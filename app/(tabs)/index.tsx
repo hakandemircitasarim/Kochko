@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useLogStore } from '@/stores/log.store';
 import { Card } from '@/components/ui/Card';
+import { CoachingBanner } from '@/components/coaching/CoachingBanner';
 import { COLORS, SPACING, FONT_SIZE, WATER_INCREMENT } from '@/lib/constants';
 
 export default function TodayScreen() {
@@ -41,6 +42,9 @@ export default function TodayScreen() {
           month: 'long',
         })}
       </Text>
+
+      {/* Coaching Banner */}
+      <CoachingBanner />
 
       {/* Quick Stats */}
       <View style={styles.statsRow}>
@@ -128,6 +132,22 @@ export default function TodayScreen() {
           ))
         )}
       </Card>
+
+      {/* Report Links */}
+      <View style={styles.reportLinks}>
+        <TouchableOpacity
+          style={styles.reportLink}
+          onPress={() => router.push('/reports/daily')}
+        >
+          <Text style={styles.reportLinkText}>Gün Sonu Raporu</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.reportLink}
+          onPress={() => router.push('/reports/weekly')}
+        >
+          <Text style={styles.reportLinkText}>Haftalık Rapor</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -218,5 +238,24 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     textAlign: 'center',
     paddingVertical: SPACING.md,
+  },
+  reportLinks: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  reportLink: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: SPACING.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  reportLinkText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '600',
   },
 });
