@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { generateDailyPlan, type GeneratedPlan } from '@/services/ai.service';
+import { usePremiumGuard } from '@/hooks/usePremiumGuard';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -15,6 +16,7 @@ import { COLORS, SPACING, FONT_SIZE } from '@/lib/constants';
 
 export default function PlanScreen() {
   const user = useAuthStore((s) => s.user);
+  const { requirePremium } = usePremiumGuard();
   const [plan, setPlan] = useState<GeneratedPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -48,13 +50,15 @@ export default function PlanScreen() {
     loadPlan();
   }, [user?.id, today]);
 
-  const handleGenerate = async () => {
-    setGenerating(true);
-    const { data, error } = await generateDailyPlan();
-    if (data) {
-      setPlan(data);
-    }
-    setGenerating(false);
+  const handleGenerate = () => {
+    requirePremium(async () => {
+      setGenerating(true);
+      const { data } = await generateDailyPlan();
+      if (data) {
+        setPlan(data);
+      }
+      setGenerating(false);
+    });
   };
 
   if (loading) {
