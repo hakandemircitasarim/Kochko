@@ -6,12 +6,15 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useLogStore } from '@/stores/log.store';
+import { parseMealText, type ParseMealResult } from '@/services/ai.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT_SIZE } from '@/lib/constants';
 import type { MealType } from '@/types/database';
 
@@ -28,6 +31,8 @@ export default function MealLogScreen() {
   const [input, setInput] = useState('');
   const [mealType, setMealType] = useState<MealType>('lunch');
   const [loading, setLoading] = useState(false);
+  const [parseResult, setParseResult] = useState<ParseMealResult | null>(null);
+  const [parsing, setParsing] = useState(false);
 
   const handleSave = async () => {
     if (!user?.id || !input.trim()) {
@@ -36,14 +41,32 @@ export default function MealLogScreen() {
     }
 
     setLoading(true);
-    const { error } = await addMealLog(user.id, input.trim(), mealType);
+
+    // 1. Save meal log
+    const { data: mealLog, error } = await addMealLog(user.id, input.trim(), mealType);
+    if (error || !mealLog) {
+      Alert.alert('Hata', error ?? 'Kayıt başarısız');
+      setLoading(false);
+      return;
+    }
+
+    // 2. Parse with AI (non-blocking - show result but don't block navigation)
+    setParsing(true);
     setLoading(false);
 
-    if (error) {
-      Alert.alert('Hata', error);
+    const { data: parsed } = await parseMealText(input.trim(), mealLog.id);
+    if (parsed) {
+      setParseResult(parsed);
+      setParsing(false);
     } else {
+      // AI parse failed - still saved, just no macros yet
+      setParsing(false);
       router.back();
     }
+  };
+
+  const handleDone = () => {
+    router.back();
   };
 
   return (
@@ -79,7 +102,39 @@ export default function MealLogScreen() {
           style={styles.textArea}
         />
 
-        <Button title="Kaydet" onPress={handleSave} loading={loading} size="lg" />
+        {!parseResult && (
+          <Button title="Kaydet" onPress={handleSave} loading={loading || parsing} size="lg" />
+        )}
+
+        {parsing && (
+          <Text style={styles.parsingText}>AI analiz ediyor...</Text>
+        )}
+
+        {parseResult && (
+          <ScrollView style={styles.resultScroll}>
+            <Card title="AI Analizi">
+              {parseResult.items.map((item, i) => (
+                <View key={i} style={styles.parsedItem}>
+                  <Text style={styles.parsedName}>{item.food_name}</Text>
+                  <Text style={styles.parsedPortion}>{item.portion_text}</Text>
+                  <View style={styles.macroRow}>
+                    <Text style={styles.macroText}>{item.calories} kcal</Text>
+                    <Text style={styles.macroText}>P:{item.protein_g}g</Text>
+                    <Text style={styles.macroText}>K:{item.carbs_g}g</Text>
+                    <Text style={styles.macroText}>Y:{item.fat_g}g</Text>
+                  </View>
+                </View>
+              ))}
+              {parseResult.notes && (
+                <Text style={styles.parseNote}>{parseResult.notes}</Text>
+              )}
+              <Text style={styles.confidence}>
+                Güven: {parseResult.confidence === 'high' ? 'Yüksek' : parseResult.confidence === 'medium' ? 'Orta' : 'Düşük'}
+              </Text>
+            </Card>
+            <Button title="Tamam" onPress={handleDone} size="lg" />
+          </ScrollView>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -114,5 +169,51 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+  parsingText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZE.sm,
+    textAlign: 'center',
+    marginTop: SPACING.md,
+  },
+  resultScroll: {
+    flex: 1,
+    marginTop: SPACING.md,
+  },
+  parsedItem: {
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  parsedName: {
+    color: COLORS.text,
+    fontSize: FONT_SIZE.md,
+    fontWeight: '600',
+  },
+  parsedPortion: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZE.sm,
+    marginTop: 2,
+  },
+  macroRow: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginTop: SPACING.xs,
+  },
+  macroText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZE.sm,
+    fontWeight: '500',
+  },
+  parseNote: {
+    color: COLORS.warning,
+    fontSize: FONT_SIZE.xs,
+    marginTop: SPACING.sm,
+  },
+  confidence: {
+    color: COLORS.textMuted,
+    fontSize: FONT_SIZE.xs,
+    marginTop: SPACING.sm,
+    textAlign: 'right',
   },
 });
