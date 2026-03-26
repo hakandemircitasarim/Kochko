@@ -5,6 +5,7 @@ import { COLORS } from '@/lib/constants';
 function TabIcon({ name, focused }: { name: string; focused: boolean }) {
   const icons: Record<string, string> = {
     index: focused ? '●' : '○',
+    chat: focused ? '◈' : '◇',
     plan: focused ? '◆' : '◇',
     progress: focused ? '▲' : '△',
     profile: focused ? '■' : '□',
@@ -38,6 +39,13 @@ export default function TabLayout() {
         options={{
           title: 'Bugün',
           tabBarIcon: ({ focused }) => <TabIcon name="index" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Koç',
+          tabBarIcon: ({ focused }) => <TabIcon name="chat" focused={focused} />,
         }}
       />
       <Tabs.Screen
