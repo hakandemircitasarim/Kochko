@@ -9,10 +9,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/stores/auth.store';
 import {
   sendMessage,
+  sendMessageWithPhoto,
   loadChatHistory,
   type ChatMessage,
 } from '@/services/chat.service';
@@ -20,10 +24,12 @@ import { COLORS, SPACING, FONT_SIZE } from '@/lib/constants';
 
 export default function ChatScreen() {
   const user = useAuthStore((s) => s.user);
+  const { prefill } = useLocalSearchParams<{ prefill?: string }>();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -35,25 +41,73 @@ export default function ChatScreen() {
     load();
   }, []);
 
+  // Handle prefill from Today screen
+  useEffect(() => {
+    if (prefill && !loading) {
+      setInput(prefill);
+    }
+  }, [prefill, loading]);
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') return;
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.7,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if ((!text && !selectedImage) || sending) return;
 
-    // Optimistic: add user message immediately
+    const displayText = selectedImage
+      ? text ? `[Foto] ${text}` : '[Foto gonderildi]'
+      : text;
+
+    // Optimistic: add user message
     const userMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
-      content: text,
+      content: displayText,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
+    const imageUri = selectedImage;
+    setSelectedImage(null);
     setSending(true);
 
-    // Scroll to bottom
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-    const { data, error } = await sendMessage(text);
+    let response;
+    if (imageUri) {
+      response = await sendMessageWithPhoto(text || 'Bu fotodaki yemekleri analiz et.', imageUri);
+    } else {
+      response = await sendMessage(text);
+    }
+
+    const { data, error } = response;
 
     if (data) {
       const assistantMsg: ChatMessage = {
@@ -64,7 +118,6 @@ export default function ChatScreen() {
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // Show action feedback if any
       if (data.actions.length > 0) {
         const actionMsg: ChatMessage = {
           id: `temp-${Date.now()}-action`,
@@ -78,7 +131,7 @@ export default function ChatScreen() {
       const errorMsg: ChatMessage = {
         id: `temp-${Date.now()}-error`,
         role: 'assistant',
-        content: 'Bir hata oluştu. Tekrar dene.',
+        content: 'Bir hata olustu. Tekrar dene.',
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -106,18 +159,17 @@ export default function ChatScreen() {
         <View style={styles.emptyState}>
           <Text style={styles.emptyTitle}>Merhaba!</Text>
           <Text style={styles.emptyText}>
-            Ben Kochko, yaşam tarzı koçun. Benimle her şeyi paylaşabilirsin -
-            ne yediğini, nasıl hissettiğini, hedeflerini, sorularını.
+            Ben Kochko, yasam tarzi kocun. Benimle her seyi paylasabilirsin -
+            ne yedigini, nasil hissettigini, hedeflerini, sorularini.
           </Text>
           <Text style={styles.emptyText}>
-            Her konuşmamızdan seni daha iyi tanıyorum. Ne kadar çok
-            paylaşırsan, o kadar iyi yardımcı olurum.
+            Foto da atabilirsin - yemeginin fotosunu cek, ben analiz edeyim.
           </Text>
           <View style={styles.suggestions}>
-            <SuggestionChip text="Kendimi tanıtmak istiyorum" onPress={setInput} />
-            <SuggestionChip text="Bugün kahvaltıda 2 yumurta yedim" onPress={setInput} />
-            <SuggestionChip text="Kilo vermek istiyorum, nereden başlamalıyım?" onPress={setInput} />
-            <SuggestionChip text="Evde yapabileceğim bir antrenman öner" onPress={setInput} />
+            <SuggestionChip text="Kendimi tanitmak istiyorum" onPress={setInput} />
+            <SuggestionChip text="Bugun kahvaltida 2 yumurta yedim" onPress={setInput} />
+            <SuggestionChip text="Kilo vermek istiyorum, nereden baslamaliyim?" onPress={setInput} />
+            <SuggestionChip text="Evde yapabilecegim bir antrenman oner" onPress={setInput} />
           </View>
         </View>
       ) : (
@@ -133,11 +185,27 @@ export default function ChatScreen() {
         />
       )}
 
+      {/* Selected Image Preview */}
+      {selectedImage && (
+        <View style={styles.imagePreview}>
+          <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+          <TouchableOpacity style={styles.removeImage} onPress={() => setSelectedImage(null)}>
+            <Text style={styles.removeImageText}>X</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Input Bar */}
       <View style={styles.inputBar}>
+        <TouchableOpacity style={styles.photoBtn} onPress={takePhoto}>
+          <Text style={styles.photoBtnText}>O</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.photoBtn} onPress={pickImage}>
+          <Text style={styles.photoBtnText}>+</Text>
+        </TouchableOpacity>
         <TextInput
           style={styles.textInput}
-          placeholder="Mesajını yaz..."
+          placeholder="Mesajini yaz..."
           placeholderTextColor={COLORS.textMuted}
           value={input}
           onChangeText={setInput}
@@ -146,9 +214,9 @@ export default function ChatScreen() {
           editable={!sending}
         />
         <TouchableOpacity
-          style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
+          style={[styles.sendBtn, ((!input.trim() && !selectedImage) || sending) && styles.sendBtnDisabled]}
           onPress={handleSend}
-          disabled={!input.trim() || sending}
+          disabled={(!input.trim() && !selectedImage) || sending}
         >
           {sending ? (
             <ActivityIndicator size="small" color="#fff" />
@@ -171,8 +239,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       </Text>
       <Text style={styles.timestamp}>
         {new Date(message.created_at).toLocaleTimeString('tr-TR', {
-          hour: '2-digit',
-          minute: '2-digit',
+          hour: '2-digit', minute: '2-digit',
         })}
       </Text>
     </View>
@@ -191,7 +258,7 @@ function formatActions(actions: { type: string; [key: string]: unknown }[]): str
   const labels: Record<string, string> = {
     meal_log: 'Ogun kaydedildi',
     workout_log: 'Antrenman kaydedildi',
-    weight_log: 'Tartı kaydedildi',
+    weight_log: 'Tarti kaydedildi',
     water_log: 'Su kaydedildi',
     mood_note: 'Not kaydedildi',
   };
@@ -202,98 +269,59 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
 
-  // Empty state
   emptyState: { flex: 1, justifyContent: 'center', padding: SPACING.lg },
   emptyTitle: { fontSize: FONT_SIZE.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md },
   emptyText: { fontSize: FONT_SIZE.md, color: COLORS.textSecondary, lineHeight: 24, marginBottom: SPACING.sm },
   suggestions: { marginTop: SPACING.lg, gap: SPACING.sm },
   suggestion: {
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.border,
   },
   suggestionText: { color: COLORS.primary, fontSize: FONT_SIZE.sm },
 
-  // Messages
   messageList: { padding: SPACING.md, paddingBottom: SPACING.sm },
-  bubble: {
-    maxWidth: '82%',
-    borderRadius: 16,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  userBubble: {
-    backgroundColor: COLORS.primary,
-    alignSelf: 'flex-end',
-    borderBottomRightRadius: 4,
-  },
+  bubble: { maxWidth: '82%', borderRadius: 16, padding: SPACING.md, marginBottom: SPACING.sm },
+  userBubble: { backgroundColor: COLORS.primary, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
   assistantBubble: {
-    backgroundColor: COLORS.card,
-    alignSelf: 'flex-start',
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: COLORS.card, alignSelf: 'flex-start', borderBottomLeftRadius: 4,
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  coachLabel: {
-    color: COLORS.primary,
-    fontSize: FONT_SIZE.xs,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  bubbleText: {
-    color: COLORS.text,
-    fontSize: FONT_SIZE.md,
-    lineHeight: 22,
-  },
-  userBubbleText: {
-    color: '#fff',
-  },
-  timestamp: {
-    color: COLORS.textMuted,
-    fontSize: 10,
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
+  coachLabel: { color: COLORS.primary, fontSize: FONT_SIZE.xs, fontWeight: '700', marginBottom: 4 },
+  bubbleText: { color: COLORS.text, fontSize: FONT_SIZE.md, lineHeight: 22 },
+  userBubbleText: { color: '#fff' },
+  timestamp: { color: COLORS.textMuted, fontSize: 10, marginTop: 4, alignSelf: 'flex-end' },
 
-  // Input
-  inputBar: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: SPACING.sm,
-    paddingBottom: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    gap: SPACING.sm,
+  imagePreview: {
+    padding: SPACING.sm, flexDirection: 'row', alignItems: 'center',
+    borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface,
   },
+  previewImage: { width: 60, height: 60, borderRadius: 8 },
+  removeImage: {
+    marginLeft: SPACING.sm, width: 24, height: 24, borderRadius: 12,
+    backgroundColor: COLORS.error, justifyContent: 'center', alignItems: 'center',
+  },
+  removeImageText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  inputBar: {
+    flexDirection: 'row', alignItems: 'flex-end', padding: SPACING.sm,
+    paddingBottom: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border,
+    backgroundColor: COLORS.surface, gap: SPACING.xs,
+  },
+  photoBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.inputBg,
+    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border,
+  },
+  photoBtnText: { color: COLORS.primary, fontSize: FONT_SIZE.lg, fontWeight: '700' },
   textInput: {
-    flex: 1,
-    backgroundColor: COLORS.inputBg,
-    borderRadius: 20,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    color: COLORS.text,
-    fontSize: FONT_SIZE.md,
-    maxHeight: 120,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    flex: 1, backgroundColor: COLORS.inputBg, borderRadius: 20,
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2,
+    color: COLORS.text, fontSize: FONT_SIZE.md, maxHeight: 120,
+    borderWidth: 1, borderColor: COLORS.border,
   },
   sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary,
+    justifyContent: 'center', alignItems: 'center',
   },
-  sendBtnDisabled: {
-    opacity: 0.4,
-  },
-  sendBtnText: {
-    color: '#fff',
-    fontSize: FONT_SIZE.lg,
-    fontWeight: '700',
-  },
+  sendBtnDisabled: { opacity: 0.4 },
+  sendBtnText: { color: '#fff', fontSize: FONT_SIZE.lg, fontWeight: '700' },
 });

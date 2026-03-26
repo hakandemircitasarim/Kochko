@@ -106,11 +106,11 @@ Hiçbir yeni çıkarım yoksa boş liste ver: {"insights": [], "updated_insights
 serve(async (req: Request) => {
   try {
     const userId = await getUserId(req);
-    const { message } = await req.json();
+    const { message, image_base64 } = await req.json();
 
-    if (!message?.trim()) {
+    if (!message?.trim() && !image_base64) {
       return new Response(
-        JSON.stringify({ error: 'message required' }),
+        JSON.stringify({ error: 'message or image required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -205,8 +205,8 @@ Su: ${todayMetrics?.water_liters ?? 0}L
 Tartı: ${todayMetrics?.weight_kg ? `${todayMetrics.weight_kg}kg` : 'girilmemiş'}
 `.trim();
 
-    // 2. Build messages array for GPT
-    const gptMessages: { role: string; content: string }[] = [
+    // 2. Build messages array for GPT (supports both text and vision)
+    const gptMessages: unknown[] = [
       { role: 'system', content: COACH_SYSTEM_PROMPT + '\n\n' + contextBlock },
     ];
 
@@ -218,10 +218,27 @@ Tartı: ${todayMetrics?.weight_kg ? `${todayMetrics.weight_kg}kg` : 'girilmemiş
       });
     }
 
-    // Add current message
-    gptMessages.push({ role: 'user', content: message });
+    // Add current message - with image if provided
+    if (image_base64) {
+      // GPT-4o vision: send image + text as multipart content
+      const userContent: unknown[] = [];
+      if (message?.trim()) {
+        userContent.push({ type: 'text', text: message });
+      }
+      userContent.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:image/jpeg;base64,${image_base64}`,
+          detail: 'high',
+        },
+      });
+      gptMessages.push({ role: 'user', content: userContent });
+    } else {
+      gptMessages.push({ role: 'user', content: message });
+    }
 
-    // 3. Generate coach response
+    // 3. Generate coach response (use gpt-4o for vision, gpt-4o-mini for text)
+    const modelToUse = image_base64 ? 'gpt-4o' : 'gpt-4o-mini';
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -229,10 +246,10 @@ Tartı: ${todayMetrics?.weight_kg ? `${todayMetrics.weight_kg}kg` : 'girilmemiş
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: modelToUse,
         messages: gptMessages,
         temperature: 0.6,
-        max_tokens: 1500,
+        max_tokens: 2000,
       }),
     });
 

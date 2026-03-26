@@ -1,3 +1,4 @@
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/lib/supabase';
 
 export interface ChatMessage {
@@ -13,12 +14,7 @@ export interface ChatResponse {
 }
 
 /**
- * Sends a message to the AI coach and returns the response.
- * The Edge Function handles:
- * - Context building (profile + insights + history + today's data)
- * - Response generation
- * - Action detection and execution (meal/workout/weight/water logging)
- * - Insight extraction (background, non-blocking)
+ * Sends a text message to the AI coach.
  */
 export async function sendMessage(
   text: string
@@ -27,15 +23,41 @@ export async function sendMessage(
     body: { message: text },
   });
 
-  if (error) {
-    return { data: null, error: error.message };
-  }
-
+  if (error) return { data: null, error: error.message };
   return { data: data as ChatResponse, error: null };
 }
 
 /**
- * Loads recent chat history from the database.
+ * Sends a message with a photo to the AI coach.
+ * The photo is converted to base64 and sent to the Edge Function,
+ * which uses GPT-4o's vision capability to analyze the image.
+ */
+export async function sendMessageWithPhoto(
+  text: string,
+  imageUri: string
+): Promise<{ data: ChatResponse | null; error: string | null }> {
+  try {
+    // Read image as base64
+    const base64 = await FileSystem.readAsStringAsync(imageUri, {
+      encoding: 'base64' as const,
+    });
+
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: {
+        message: text,
+        image_base64: base64,
+      },
+    });
+
+    if (error) return { data: null, error: error.message };
+    return { data: data as ChatResponse, error: null };
+  } catch (err) {
+    return { data: null, error: (err as Error).message };
+  }
+}
+
+/**
+ * Loads recent chat history.
  */
 export async function loadChatHistory(
   limit = 50
@@ -46,15 +68,12 @@ export async function loadChatHistory(
     .order('created_at', { ascending: true })
     .limit(limit);
 
-  if (error) {
-    return { data: [], error: error.message };
-  }
-
+  if (error) return { data: [], error: error.message };
   return { data: (data as ChatMessage[]) ?? [], error: null };
 }
 
 /**
- * Loads user insights for display in profile.
+ * Loads user insights for profile display.
  */
 export async function loadInsights(): Promise<{
   data: { category: string; insight: string; updated_at: string }[];
@@ -66,9 +85,6 @@ export async function loadInsights(): Promise<{
     .eq('active', true)
     .order('updated_at', { ascending: false });
 
-  if (error) {
-    return { data: [], error: error.message };
-  }
-
+  if (error) return { data: [], error: error.message };
   return { data: data ?? [], error: null };
 }
