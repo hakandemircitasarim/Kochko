@@ -14,16 +14,19 @@ import {
 import { useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
 import {
   sendMessage,
   sendMessageWithPhoto,
   loadChatHistory,
   type ChatMessage,
 } from '@/services/chat.service';
+import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT_SIZE } from '@/lib/constants';
 
 export default function ChatScreen() {
   const user = useAuthStore((s) => s.user);
+  const profile = useProfileStore((s) => s.profile);
   const { prefill } = useLocalSearchParams<{ prefill?: string }>();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -35,11 +38,24 @@ export default function ChatScreen() {
   useEffect(() => {
     async function load() {
       const { data } = await loadChatHistory();
+
+      // If no chat history and onboarding not completed, send intro
+      if (data.length === 0 && profile && !profile.onboarding_completed) {
+        setMessages([{
+          id: 'onboarding-intro',
+          role: 'assistant',
+          content: 'Merhaba! Ben Kochko, yasam tarzi kocun. Seni tanimak istiyorum.\n\nBiraz kendinden bahseder misin? Kac yasindasin, boyun kilon ne, ne is yapiyorsun? Beslenme veya sporla ilgili hedeflerin var mi?\n\nIstedigin kadar detay ver - ne kadar cok paylasirsan sana o kadar iyi yardimci olurum.',
+          created_at: new Date().toISOString(),
+        }]);
+        setLoading(false);
+        return;
+      }
+
       setMessages(data);
       setLoading(false);
     }
     load();
-  }, []);
+  }, [profile]);
 
   // Handle prefill from Today screen
   useEffect(() => {

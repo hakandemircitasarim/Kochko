@@ -28,7 +28,8 @@ export default function Index() {
   }
 
   if (profile && !profile.onboarding_completed) {
-    return <Redirect href="/onboarding/quick-start" />;
+    // Conversation-based onboarding - coach introduces itself via chat
+    return <Redirect href="/(tabs)/chat" />;
   }
 
   return <Redirect href="/(tabs)" />;
