@@ -100,8 +100,10 @@ export default function ProfileScreen() {
 
       {/* Navigation */}
       <View style={{ gap: SPACING.sm, marginTop: SPACING.md }}>
+        <Button title="Profil Duzenle" variant="outline" onPress={() => router.push('/settings/edit-profile')} />
         <Button title="Hedef Ayarlari" variant="outline" onPress={() => router.push('/settings/goals')} />
         <Button title="Yemek Tercihleri" variant="outline" onPress={() => router.push('/settings/food-preferences')} />
+        <Button title="IF Ayarlari" variant="outline" onPress={() => router.push('/settings/if-settings')} />
         <Button title="Basarimlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
         <Button title="Tum Ayarlar" variant="outline" onPress={() => router.push('/settings' as never)} />
       </View>
