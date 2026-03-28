@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Dimensions, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { router } from 'expo-router';
 import { LineChart } from 'react-native-chart-kit';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
+import { detectPlateau } from '@/services/plateau.service';
+import { getMaintenanceStatus } from '@/services/maintenance.service';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
@@ -25,6 +29,8 @@ export default function ProgressScreen() {
   const [metrics, setMetrics] = useState<MetricPt[]>([]);
   const [compliance, setCompliance] = useState<CompPt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [plateauMsg, setPlateauMsg] = useState<string | null>(null);
+  const [maintenanceMsg, setMaintenanceMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -32,9 +38,13 @@ export default function ProgressScreen() {
     Promise.all([
       supabase.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps').eq('user_id', user.id).gte('date', from).order('date'),
       supabase.from('daily_reports').select('date, compliance_score').eq('user_id', user.id).gte('date', from).order('date'),
-    ]).then(([m, c]) => {
+      detectPlateau(user.id),
+      getMaintenanceStatus(user.id),
+    ]).then(([m, c, plateau, maintenance]) => {
       setMetrics((m.data ?? []) as MetricPt[]);
       setCompliance((c.data ?? []) as CompPt[]);
+      if (plateau.isInPlateau) setPlateauMsg(plateau.message);
+      if (maintenance.isInMaintenance) setMaintenanceMsg(maintenance.message);
       setLoading(false);
     });
   }, [user?.id]);
@@ -110,6 +120,31 @@ export default function ProgressScreen() {
           })()}
         </Card>
       )}
+
+      {/* Plateau Warning */}
+      {plateauMsg && (
+        <Card style={{ borderColor: COLORS.warning, borderWidth: 2 }}>
+          <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>Plateau Tespiti</Text>
+          <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{plateauMsg}</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>Kocunla konusarak strateji belirleyebilirsin.</Text>
+        </Card>
+      )}
+
+      {/* Maintenance Mode */}
+      {maintenanceMsg && (
+        <Card style={{ borderColor: COLORS.success, borderWidth: 2 }}>
+          <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>Bakim Modu</Text>
+          <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{maintenanceMsg}</Text>
+        </Card>
+      )}
+
+      {/* Calendar Link */}
+      <Button
+        title="Takvim Gorunumu"
+        variant="outline"
+        onPress={() => router.push('/reports/calendar')}
+        style={{ marginTop: SPACING.sm }}
+      />
     </ScrollView>
   );
 }

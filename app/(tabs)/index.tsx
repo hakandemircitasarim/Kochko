@@ -4,10 +4,14 @@ import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
-import { calculateStreak } from '@/services/achievements.service';
+import { useStreak } from '@/hooks/useStreak';
 import { Card } from '@/components/ui/Card';
 import { WaterTracker } from '@/components/tracking/WaterTracker';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
+import { CalorieProgress } from '@/components/tracking/CalorieProgress';
+import { MoodTracker } from '@/components/tracking/MoodTracker';
+import { SleepInput } from '@/components/tracking/SleepInput';
+import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT, WATER_INCREMENT } from '@/lib/constants';
 
 const MEAL_LABELS: Record<string, string> = {
@@ -21,14 +25,14 @@ export default function TodayScreen() {
     meals, workouts, weightKg, waterLiters, sleepHours, steps, moodScore,
     totalCalories, totalProtein, loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
-  const [streak, setStreak] = useState(0);
+  const { streak, checkForMilestones } = useStreak();
 
   const refresh = useCallback(() => {
     if (user?.id) {
       fetchToday(user.id);
-      calculateStreak(user.id).then(setStreak);
+      checkForMilestones();
     }
-  }, [user?.id, fetchToday]);
+  }, [user?.id, fetchToday, checkForMilestones]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -55,9 +59,57 @@ export default function TodayScreen() {
         <StatBox value={sleepHours ? `${sleepHours}sa` : '-'} label="uyku" />
       </View>
 
+      {/* Calorie Progress */}
+      {profile?.calorie_range_training_min && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <CalorieProgress
+            consumed={totalCalories}
+            targetMin={profile.calorie_range_training_min as number}
+            targetMax={profile.calorie_range_training_max as number}
+            protein={totalProtein}
+            proteinTarget={profile.protein_per_kg && profile.weight_kg
+              ? Math.round(Number(profile.protein_per_kg) * Number(profile.weight_kg))
+              : 100}
+          />
+        </View>
+      )}
+
       {/* Water Tracker */}
       <View style={{ marginBottom: SPACING.md }}>
         <WaterTracker current={waterLiters} target={waterTarget} onAdd={() => user?.id && addWater(user.id, WATER_INCREMENT)} />
+      </View>
+
+      {/* Mood + Sleep (side by side) */}
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
+        <View style={{ flex: 1 }}>
+          <MoodTracker
+            currentScore={moodScore}
+            onSelect={async (score) => {
+              if (!user?.id) return;
+              const date = new Date().toISOString().split('T')[0];
+              await supabase.from('daily_metrics').upsert(
+                { user_id: user.id, date, mood_score: score, water_liters: waterLiters, synced: true },
+                { onConflict: 'user_id,date' }
+              );
+              refresh();
+            }}
+          />
+        </View>
+      </View>
+
+      <View style={{ marginBottom: SPACING.md }}>
+        <SleepInput
+          currentHours={sleepHours}
+          onSave={async (hours, quality) => {
+            if (!user?.id) return;
+            const date = new Date().toISOString().split('T')[0];
+            await supabase.from('daily_metrics').upsert(
+              { user_id: user.id, date, sleep_hours: hours, sleep_quality: quality, water_liters: waterLiters, synced: true },
+              { onConflict: 'user_id,date' }
+            );
+            refresh();
+          }}
+        />
       </View>
 
       {/* Quick Input */}
