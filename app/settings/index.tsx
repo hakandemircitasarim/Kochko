@@ -1,39 +1,76 @@
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
+import { exportJSON, exportCSV } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuthStore();
+  const profile = useProfileStore(s => s.profile);
 
   const handleDelete = () => {
-    Alert.alert('Hesabi Sil', 'Bu islem geri alinamaz. Tum verileriniz 30 gun sonra kalici silinir.', [
-      { text: 'Iptal', style: 'cancel' },
-      { text: 'Hesabimi Sil', style: 'destructive', onPress: async () => {
-        if (user?.id) {
-          await supabase.from('profiles').delete().eq('id', user.id);
-          await signOut();
-        }
-      }},
-    ]);
+    Alert.alert(
+      'Hesabi Sil',
+      'Bu islem geri alinamaz. Tum verileriniz 30 gun sonra kalici silinir. (Spec 1.4)',
+      [
+        { text: 'Iptal', style: 'cancel' },
+        { text: 'Hesabimi Sil', style: 'destructive', onPress: async () => {
+          if (user?.id) {
+            await supabase.from('profiles').delete().eq('id', user.id);
+            await signOut();
+          }
+        }},
+      ]
+    );
   };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Ayarlar</Text>
-      <Card title="Gizlilik ve Guvenlik">
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>Verileriniz sifrelenerek saklanir. Istediginiz zaman export alabilir veya hesabinizi silebilirsiniz.</Text>
+
+      {/* Premium */}
+      <Card>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600' }}>
+            {profile?.premium ? 'Premium Aktif' : 'Ucretsiz Plan'}
+          </Text>
+          {!profile?.premium && <Button title="Premium" size="sm" onPress={() => {}} />}
+        </View>
       </Card>
+
+      {/* Profile & Goals */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Profil ve Hedefler</Text>
       <View style={{ gap: SPACING.sm }}>
-        <Button title="Veri Disa Aktar" variant="outline" onPress={() => {}} />
-        <Button title="Bildirim Ayarlari" variant="outline" onPress={() => {}} />
-        <Button title="Koc Tonu Ayarlari" variant="outline" onPress={() => {}} />
-        <Button title="Cikis Yap" variant="ghost" onPress={signOut} />
-        <Button title="Hesabimi Sil" variant="ghost" onPress={handleDelete} style={{ marginTop: SPACING.lg }} />
+        <Button title="Hedef Ayarlari" variant="outline" onPress={() => router.push('/settings/goals')} />
+        <Button title="Yemek Tercihleri" variant="outline" onPress={() => router.push('/settings/food-preferences')} />
+        <Button title="Saglik Gecmisi" variant="outline" onPress={() => router.push('/settings/health-events')} />
+        <Button title="Lab Degerleri" variant="outline" onPress={() => router.push('/settings/lab-values')} />
       </View>
+
+      {/* Data */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Veri</Text>
+      <View style={{ gap: SPACING.sm }}>
+        <Button title="JSON Export" variant="outline" onPress={exportJSON} />
+        <Button title="CSV Export" variant="outline" onPress={exportCSV} />
+      </View>
+
+      {/* Privacy */}
+      <Card title="Gizlilik ve Guvenlik" style={{ marginTop: SPACING.lg }}>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+          Verileriniz sifrelenerek saklanir. Tum verilerinizi export alabilir veya hesabinizi silebilirsiniz. AI'in hakkınızda bildiklerini Profil {'>'} "Kocun Seni Nasil Taniyor" bolumunden gorebilir, duzeltebilir veya silebilirsiniz.
+        </Text>
+      </Card>
+
+      {/* Danger */}
+      <View style={{ marginTop: SPACING.xl, gap: SPACING.sm }}>
+        <Button title="Cikis Yap" variant="ghost" onPress={() => Alert.alert('Cikis', 'Emin misin?', [{ text: 'Iptal' }, { text: 'Cikis', style: 'destructive', onPress: signOut }])} />
+        <Button title="Hesabimi Sil" variant="ghost" onPress={handleDelete} />
+      </View>
+
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xxl }}>Kochko v1.0.0</Text>
     </ScrollView>
   );

@@ -1,9 +1,13 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
+import { calculateStreak } from '@/services/achievements.service';
 import { Card } from '@/components/ui/Card';
+import { WaterTracker } from '@/components/tracking/WaterTracker';
+import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { COLORS, SPACING, FONT, WATER_INCREMENT } from '@/lib/constants';
 
 const MEAL_LABELS: Record<string, string> = {
@@ -12,18 +16,24 @@ const MEAL_LABELS: Record<string, string> = {
 
 export default function TodayScreen() {
   const user = useAuthStore(s => s.user);
+  const profile = useProfileStore(s => s.profile);
   const {
     meals, workouts, weightKg, waterLiters, sleepHours, steps, moodScore,
     totalCalories, totalProtein, loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
+  const [streak, setStreak] = useState(0);
 
   const refresh = useCallback(() => {
-    if (user?.id) fetchToday(user.id);
+    if (user?.id) {
+      fetchToday(user.id);
+      calculateStreak(user.id).then(setStreak);
+    }
   }, [user?.id, fetchToday]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
   const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const waterTarget = profile?.water_target_liters ?? 2.5;
 
   return (
     <ScrollView
@@ -31,19 +41,23 @@ export default function TodayScreen() {
       contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={COLORS.primary} />}
     >
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Bugun</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Bugun</Text>
+        <StreakBadge days={streak} />
+      </View>
       <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.md }}>{today}</Text>
 
       {/* Stats Row */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md }}>
         <StatBox value={`${totalCalories}`} label="kcal" />
         <StatBox value={`${totalProtein}g`} label="protein" />
-        <StatBox
-          value={`${waterLiters.toFixed(1)}L`}
-          label="+Su"
-          onPress={() => user?.id && addWater(user.id, WATER_INCREMENT)}
-        />
         <StatBox value={weightKg ? `${weightKg}` : '-'} label="kg" />
+        <StatBox value={sleepHours ? `${sleepHours}sa` : '-'} label="uyku" />
+      </View>
+
+      {/* Water Tracker */}
+      <View style={{ marginBottom: SPACING.md }}>
+        <WaterTracker current={waterLiters} target={waterTarget} onAdd={() => user?.id && addWater(user.id, WATER_INCREMENT)} />
       </View>
 
       {/* Quick Input */}
