@@ -49,6 +49,17 @@ export default function SettingsScreen() {
         <Button title="Yemek Tercihleri" variant="outline" onPress={() => router.push('/settings/food-preferences')} />
         <Button title="Saglik Gecmisi" variant="outline" onPress={() => router.push('/settings/health-events')} />
         <Button title="Lab Degerleri" variant="outline" onPress={() => router.push('/settings/lab-values')} />
+        <Button title="Supplement Takibi" variant="outline" onPress={() => router.push('/settings/supplements')} />
+        <Button title="Mekanlar" variant="outline" onPress={() => router.push('/settings/venues')} />
+      </View>
+
+      {/* Tracking & Progress */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Takip ve Ilerleme</Text>
+      <View style={{ gap: SPACING.sm }}>
+        <Button title="Guc Progresyon" variant="outline" onPress={() => router.push('/settings/strength')} />
+        <Button title="Challenge'lar" variant="outline" onPress={() => router.push('/settings/challenges')} />
+        <Button title="Basarimlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
+        <Button title="Tarif Kutuphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
       </View>
 
       {/* Data */}
