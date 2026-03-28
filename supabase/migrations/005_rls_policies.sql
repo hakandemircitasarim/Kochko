@@ -1,93 +1,103 @@
--- Enable Row Level Security on all tables
+-- Migration 005: RLS policies for all tables
+-- Every table gets row-level security
+
+-- Enable RLS
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE weight_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE health_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE food_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE meal_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_venues ENABLE ROW LEVEL SECURITY;
+ALTER TABLE weight_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meal_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meal_log_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workout_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE strength_sets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE supplement_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE lab_values ENABLE ROW LEVEL SECURITY;
+ALTER TABLE progress_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_summary ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_commitments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE coaching_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_feedback ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE weekly_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE weekly_reports ENABLE ROW LEVEL SECURITY;
-ALTER TABLE coaching_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE lab_values ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_food_scores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE monthly_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE challenges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE achievements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE saved_recipes ENABLE ROW LEVEL SECURITY;
 
--- Profiles: users can only read/update their own profile
-CREATE POLICY profiles_select ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY profiles_update ON profiles FOR UPDATE USING (auth.uid() = id);
+-- Helper function for owner check
+CREATE OR REPLACE FUNCTION is_owner(row_user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN auth.uid() = row_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Goals: full CRUD on own data
-CREATE POLICY goals_select ON goals FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY goals_insert ON goals FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY goals_update ON goals FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY goals_delete ON goals FOR DELETE USING (auth.uid() = user_id);
+-- Profile: read/update own only
+CREATE POLICY profiles_sel ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY profiles_upd ON profiles FOR UPDATE USING (auth.uid() = id);
 
--- Weight history
-CREATE POLICY weight_history_select ON weight_history FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY weight_history_insert ON weight_history FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY weight_history_update ON weight_history FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY weight_history_delete ON weight_history FOR DELETE USING (auth.uid() = user_id);
+-- Full CRUD tables (user owns their data)
+-- Macro for tables with user_id column
+DO $$
+DECLARE
+  t TEXT;
+BEGIN
+  FOR t IN SELECT unnest(ARRAY[
+    'goals', 'health_events', 'food_preferences', 'meal_templates',
+    'user_venues', 'weight_history', 'meal_logs', 'workout_logs',
+    'daily_metrics', 'supplement_logs', 'lab_values', 'progress_photos',
+    'chat_messages', 'chat_sessions', 'user_commitments', 'ai_feedback',
+    'challenges', 'achievements', 'saved_recipes'
+  ])
+  LOOP
+    EXECUTE format('CREATE POLICY %I_sel ON %I FOR SELECT USING (auth.uid() = user_id)', t, t);
+    EXECUTE format('CREATE POLICY %I_ins ON %I FOR INSERT WITH CHECK (auth.uid() = user_id)', t, t);
+    EXECUTE format('CREATE POLICY %I_upd ON %I FOR UPDATE USING (auth.uid() = user_id)', t, t);
+    EXECUTE format('CREATE POLICY %I_del ON %I FOR DELETE USING (auth.uid() = user_id)', t, t);
+  END LOOP;
+END $$;
 
--- Health events
-CREATE POLICY health_events_select ON health_events FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY health_events_insert ON health_events FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY health_events_update ON health_events FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY health_events_delete ON health_events FOR DELETE USING (auth.uid() = user_id);
-
--- Food preferences
-CREATE POLICY food_prefs_select ON food_preferences FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY food_prefs_insert ON food_preferences FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY food_prefs_update ON food_preferences FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY food_prefs_delete ON food_preferences FOR DELETE USING (auth.uid() = user_id);
-
--- Meal logs
-CREATE POLICY meal_logs_select ON meal_logs FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY meal_logs_insert ON meal_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY meal_logs_update ON meal_logs FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY meal_logs_delete ON meal_logs FOR DELETE USING (auth.uid() = user_id);
-
--- Meal log items: access through meal_logs ownership
-CREATE POLICY meal_items_select ON meal_log_items FOR SELECT
+-- Meal log items: access through meal ownership
+CREATE POLICY meal_items_sel ON meal_log_items FOR SELECT
   USING (EXISTS (SELECT 1 FROM meal_logs WHERE meal_logs.id = meal_log_items.meal_log_id AND meal_logs.user_id = auth.uid()));
-CREATE POLICY meal_items_insert ON meal_log_items FOR INSERT
+CREATE POLICY meal_items_ins ON meal_log_items FOR INSERT
   WITH CHECK (EXISTS (SELECT 1 FROM meal_logs WHERE meal_logs.id = meal_log_items.meal_log_id AND meal_logs.user_id = auth.uid()));
-CREATE POLICY meal_items_update ON meal_log_items FOR UPDATE
+CREATE POLICY meal_items_upd ON meal_log_items FOR UPDATE
   USING (EXISTS (SELECT 1 FROM meal_logs WHERE meal_logs.id = meal_log_items.meal_log_id AND meal_logs.user_id = auth.uid()));
-CREATE POLICY meal_items_delete ON meal_log_items FOR DELETE
+CREATE POLICY meal_items_del ON meal_log_items FOR DELETE
   USING (EXISTS (SELECT 1 FROM meal_logs WHERE meal_logs.id = meal_log_items.meal_log_id AND meal_logs.user_id = auth.uid()));
 
--- Workout logs
-CREATE POLICY workout_logs_select ON workout_logs FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY workout_logs_insert ON workout_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY workout_logs_update ON workout_logs FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY workout_logs_delete ON workout_logs FOR DELETE USING (auth.uid() = user_id);
+-- Strength sets: through workout ownership
+CREATE POLICY strength_sel ON strength_sets FOR SELECT
+  USING (EXISTS (SELECT 1 FROM workout_logs WHERE workout_logs.id = strength_sets.workout_log_id AND workout_logs.user_id = auth.uid()));
+CREATE POLICY strength_ins ON strength_sets FOR INSERT
+  WITH CHECK (EXISTS (SELECT 1 FROM workout_logs WHERE workout_logs.id = strength_sets.workout_log_id AND workout_logs.user_id = auth.uid()));
+CREATE POLICY strength_upd ON strength_sets FOR UPDATE
+  USING (EXISTS (SELECT 1 FROM workout_logs WHERE workout_logs.id = strength_sets.workout_log_id AND workout_logs.user_id = auth.uid()));
+CREATE POLICY strength_del ON strength_sets FOR DELETE
+  USING (EXISTS (SELECT 1 FROM workout_logs WHERE workout_logs.id = strength_sets.workout_log_id AND workout_logs.user_id = auth.uid()));
 
--- Daily metrics
-CREATE POLICY daily_metrics_select ON daily_metrics FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY daily_metrics_insert ON daily_metrics FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY daily_metrics_update ON daily_metrics FOR UPDATE USING (auth.uid() = user_id);
+-- AI Summary: read-only for user, written by Edge Functions (service role)
+CREATE POLICY ai_summary_sel ON ai_summary FOR SELECT USING (auth.uid() = user_id);
 
--- Daily plans (read-only for user, written by Edge Functions with service key)
-CREATE POLICY daily_plans_select ON daily_plans FOR SELECT USING (auth.uid() = user_id);
+-- Coaching messages: read + mark as read
+CREATE POLICY coaching_sel ON coaching_messages FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY coaching_upd ON coaching_messages FOR UPDATE USING (auth.uid() = user_id);
 
--- Daily reports (read-only for user)
-CREATE POLICY daily_reports_select ON daily_reports FOR SELECT USING (auth.uid() = user_id);
+-- Plans: read-only (generated by Edge Functions)
+CREATE POLICY plans_sel ON daily_plans FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY plans_upd ON daily_plans FOR UPDATE USING (auth.uid() = user_id); -- for approve/reject
+CREATE POLICY weekly_plans_sel ON weekly_plans FOR SELECT USING (auth.uid() = user_id);
 
--- Weekly reports (read-only for user)
-CREATE POLICY weekly_reports_select ON weekly_reports FOR SELECT USING (auth.uid() = user_id);
-
--- Coaching messages (read + update read flag)
-CREATE POLICY coaching_select ON coaching_messages FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY coaching_update ON coaching_messages FOR UPDATE USING (auth.uid() = user_id);
-
--- Lab values
-CREATE POLICY lab_values_select ON lab_values FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY lab_values_insert ON lab_values FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY lab_values_update ON lab_values FOR UPDATE USING (auth.uid() = user_id);
-CREATE POLICY lab_values_delete ON lab_values FOR DELETE USING (auth.uid() = user_id);
-
--- User food scores (read-only for user, written by Edge Functions)
-CREATE POLICY food_scores_select ON user_food_scores FOR SELECT USING (auth.uid() = user_id);
+-- Reports: read-only
+CREATE POLICY daily_reports_sel ON daily_reports FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY weekly_reports_sel ON weekly_reports FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY monthly_reports_sel ON monthly_reports FOR SELECT USING (auth.uid() = user_id);
