@@ -78,6 +78,9 @@ export default function SettingsScreen() {
       <View style={{ gap: SPACING.sm }}>
         <Button title="JSON Export" variant="outline" onPress={exportJSON} />
         <Button title="CSV Export" variant="outline" onPress={exportCSV} />
+        <Button title="Saglik Profesyoneli Raporu" variant="outline" onPress={() => router.push('/settings/health-export')} />
+        <Button title="Veri Iceri Aktar" variant="outline" onPress={() => router.push('/settings/data-import')} />
+        <Button title="Sohbet Gecmisi" variant="outline" onPress={() => router.push('/settings/chat-history')} />
       </View>
 
       {/* Privacy */}
