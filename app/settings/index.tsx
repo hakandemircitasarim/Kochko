@@ -47,6 +47,7 @@ export default function SettingsScreen() {
       <View style={{ gap: SPACING.sm }}>
         <Button title="Hedef Ayarlari" variant="outline" onPress={() => router.push('/settings/goals')} />
         <Button title="Yemek Tercihleri" variant="outline" onPress={() => router.push('/settings/food-preferences')} />
+        <Button title="Favori Ogunler" variant="outline" onPress={() => router.push('/settings/meal-templates')} />
         <Button title="Saglik Gecmisi" variant="outline" onPress={() => router.push('/settings/health-events')} />
         <Button title="Lab Degerleri" variant="outline" onPress={() => router.push('/settings/lab-values')} />
         <Button title="Supplement Takibi" variant="outline" onPress={() => router.push('/settings/supplements')} />
@@ -60,12 +61,14 @@ export default function SettingsScreen() {
         <Button title="Challenge'lar" variant="outline" onPress={() => router.push('/settings/challenges')} />
         <Button title="Basarimlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
         <Button title="Tarif Kutuphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
+        <Button title="Haftalik Menu" variant="outline" onPress={() => router.push('/settings/weekly-menu')} />
       </View>
 
       {/* Preferences */}
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Tercihler</Text>
       <View style={{ gap: SPACING.sm }}>
         <Button title="Koc Tonu" variant="outline" onPress={() => router.push('/settings/coach-tone')} />
+        <Button title="Bildirimler" variant="outline" onPress={() => router.push('/settings/notifications')} />
         <Button title="Donemsel Durum" variant="outline" onPress={() => router.push('/settings/periodic-state')} />
         <Button title="Premium" variant="outline" onPress={() => router.push('/settings/premium')} />
       </View>
