@@ -38,7 +38,7 @@ export default function SettingsScreen() {
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600' }}>
             {profile?.premium ? 'Premium Aktif' : 'Ucretsiz Plan'}
           </Text>
-          {!profile?.premium && <Button title="Premium" size="sm" onPress={() => {}} />}
+          {!profile?.premium && <Button title="Premium" size="sm" onPress={() => router.push('/settings/premium')} />}
         </View>
       </Card>
 
@@ -60,6 +60,14 @@ export default function SettingsScreen() {
         <Button title="Challenge'lar" variant="outline" onPress={() => router.push('/settings/challenges')} />
         <Button title="Basarimlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
         <Button title="Tarif Kutuphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
+      </View>
+
+      {/* Preferences */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Tercihler</Text>
+      <View style={{ gap: SPACING.sm }}>
+        <Button title="Koc Tonu" variant="outline" onPress={() => router.push('/settings/coach-tone')} />
+        <Button title="Donemsel Durum" variant="outline" onPress={() => router.push('/settings/periodic-state')} />
+        <Button title="Premium" variant="outline" onPress={() => router.push('/settings/premium')} />
       </View>
 
       {/* Data */}
