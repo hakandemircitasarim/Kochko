@@ -17,6 +17,7 @@ import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shar
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { buildFullContext, updateLayer2 } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, checkAllergens } from '../shared/guardrails.ts';
+import { validateMealParse } from '../shared/output-validator.ts';
 import { BASE_SYSTEM_PROMPT } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions } from './task-modes.ts';
 
