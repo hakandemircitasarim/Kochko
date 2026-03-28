@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, FlatList, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useProfileStore } from '@/stores/profile.store';
 import { sendMessage, sendMessageWithPhoto, loadChatHistory, type ChatMessage, type ChatResponse } from '@/services/chat.service';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function ChatScreen() {
+  const profile = useProfileStore(s => s.profile);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -12,9 +14,24 @@ export default function ChatScreen() {
   const [photo, setPhoto] = useState<string | null>(null);
   const listRef = useRef<FlatList>(null);
 
+  const isOnboarding = profile && !profile.onboarding_completed;
+
   useEffect(() => {
-    loadChatHistory().then(data => { setMessages(data); setLoading(false); });
-  }, []);
+    loadChatHistory().then(data => {
+      if (data.length === 0 && isOnboarding) {
+        // Conversational onboarding: coach introduces itself (Spec 15)
+        setMessages([{
+          id: 'onboard-intro',
+          role: 'assistant',
+          content: 'Merhaba! Ben Kochko, yasam tarzi kocun.\n\nSeni tanimak istiyorum - biraz kendinden bahseder misin? Kac yasindasin, boyun ve kilon ne kadar? Beslenme veya sporla ilgili hedeflerin var mi?',
+          created_at: new Date().toISOString(),
+        }]);
+      } else {
+        setMessages(data);
+      }
+      setLoading(false);
+    });
+  }, [isOnboarding]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -67,12 +84,25 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={90}>
-      {messages.length === 0 ? (
+      {messages.length <= 1 && !sending ? (
         <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.lg }}>
-          <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Merhaba!</Text>
-          <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, lineHeight: 24, marginBottom: SPACING.sm }}>Ben Kochko, yasam tarzi kocun. Seni tanimak istiyorum - biraz kendinden bahset!</Text>
-          <View style={{ marginTop: SPACING.lg, gap: SPACING.sm }}>
-            {['Kendimi tanitmak istiyorum', '2 yumurta 1 ekmek yedim', 'Kilo vermek istiyorum', 'Evde antrenman oner'].map((s, i) => (
+          {messages.length === 1 && messages[0].role === 'assistant' && (
+            <View style={{ maxWidth: '90%', backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.md, marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border }}>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', marginBottom: 4 }}>Kochko</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>{messages[0].content}</Text>
+            </View>
+          )}
+          {messages.length === 0 && (
+            <>
+              <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Merhaba!</Text>
+              <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, lineHeight: 24, marginBottom: SPACING.sm }}>Ben Kochko, yasam tarzi kocun.</Text>
+            </>
+          )}
+          <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
+            {(isOnboarding
+              ? ['30 yasinda, 80 kilo, 175 boy erkeğim', 'Kilo vermek istiyorum', 'Kendimi tanitmak istiyorum']
+              : ['Bugun kahvaltida 2 yumurta yedim', 'Bugunku planımı olustur', 'Kilo vermek istiyorum, nereden baslayalim?', 'Evde yapabilecegim antrenman oner']
+            ).map((s, i) => (
               <TouchableOpacity key={i} style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }} onPress={() => setInput(s)}>
                 <Text style={{ color: COLORS.primary, fontSize: FONT.sm }}>{s}</Text>
               </TouchableOpacity>
