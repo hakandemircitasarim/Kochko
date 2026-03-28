@@ -9,6 +9,9 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
+import { ProfileCompletion } from '@/components/profile/ProfileCompletion';
+import { InsightCard } from '@/components/profile/InsightCard';
+import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 const DIET_LABELS: Record<string, string> = { standard: 'Standart', low_carb: 'Dusuk Karb', keto: 'Ketojenik', high_protein: 'Yuksek Protein' };
@@ -61,12 +64,7 @@ export default function ProfileScreen() {
       </Card>
 
       {/* Completion Bar */}
-      <Card title="Profil Tamamlanma">
-        <View style={{ height: 8, backgroundColor: COLORS.surfaceLight, borderRadius: 4, overflow: 'hidden', marginBottom: SPACING.xs }}>
-          <View style={{ height: '100%', width: `${completionPct}%`, backgroundColor: completionPct >= 80 ? COLORS.success : COLORS.primary, borderRadius: 4 }} />
-        </View>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>%{completionPct} - ne kadar doldurursan o kadar iyi sonuc alirsin</Text>
-      </Card>
+      <ProfileCompletion percentage={completionPct} />
 
       {/* Calorie Targets */}
       {profile?.calorie_range_training_min && (
@@ -81,21 +79,26 @@ export default function ProfileScreen() {
       )}
 
       {/* AI Summary */}
-      {summary?.general_summary && (
-        <Card title="Kocun Seni Nasil Taniyor">
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>Her konusmandan ogrenilen bilgiler. Yanlis varsa kocuna soyle duzeltsin.</Text>
-          <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{String(summary.general_summary)}</Text>
-
-          {/* Patterns */}
-          {summary.behavioral_patterns && (summary.behavioral_patterns as { type: string; description: string }[]).length > 0 && (
-            <View style={{ marginTop: SPACING.md }}>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.xs }}>TESPIT EDILEN KALIPLAR</Text>
-              {(summary.behavioral_patterns as { type: string; description: string }[]).map((p, i) => (
-                <Text key={i} style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>- [{p.type}] {p.description}</Text>
-              ))}
-            </View>
-          )}
-        </Card>
+      {/* AI Insights with KVKK-compliant edit/delete */}
+      {summary && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <InsightCard
+            generalSummary={String(summary.general_summary ?? '')}
+            patterns={(summary.behavioral_patterns as { type: string; description: string }[]) ?? []}
+            portionCalibration={(summary.portion_calibration as Record<string, unknown>) ?? {}}
+            coachingNotes={String(summary.coaching_notes ?? '')}
+            onDeleteNote={async (note) => {
+              if (!user?.id) return;
+              await deleteAISummaryNote(user.id, 'general_summary', note);
+              loadInsights().then(setSummary);
+            }}
+            onResetAll={async () => {
+              if (!user?.id) return;
+              await resetAISummary(user.id);
+              setSummary(null);
+            }}
+          />
+        </View>
       )}
 
       {/* Navigation */}

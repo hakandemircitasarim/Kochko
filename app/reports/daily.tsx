@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ComplianceScore } from '@/components/reports/ComplianceScore';
+import { DeviationTag } from '@/components/reports/DeviationTag';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 interface DailyReport {
@@ -71,10 +73,7 @@ export default function DailyReportScreen() {
         <>
           {/* Score */}
           <Card>
-            <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-              <Text style={{ fontSize: 64, fontWeight: '800', color: scoreColor }}>{report.compliance_score}</Text>
-              <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary }}>Uyum Puani</Text>
-            </View>
+            <ComplianceScore score={report.compliance_score} />
           </Card>
 
           {/* Checklist */}
@@ -106,9 +105,7 @@ export default function DailyReportScreen() {
           {/* Deviation */}
           {report.deviation_reason && report.deviation_reason !== 'yok' && (
             <Card title="Sapma Nedeni">
-              <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '500' }}>
-                {DEVIATION_LABELS[report.deviation_reason] ?? report.deviation_reason}
-              </Text>
+              <DeviationTag reason={report.deviation_reason} />
             </Card>
           )}
 
