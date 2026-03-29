@@ -2,11 +2,21 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/stores/auth.store';
+import { detectTimezoneChange } from '@/services/timezone.service';
 import { COLORS } from '@/lib/constants';
 
 export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
+  const session = useAuthStore((s) => s.session);
+
   useEffect(() => { initialize(); }, [initialize]);
+
+  // Spec 2.5: Auto-detect timezone changes on app open
+  useEffect(() => {
+    if (session?.user?.id) {
+      detectTimezoneChange(session.user.id).catch(() => {});
+    }
+  }, [session?.user?.id]);
 
   return (
     <>

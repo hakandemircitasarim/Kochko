@@ -85,6 +85,8 @@ export default function SettingsScreen() {
         <Button title="Saglik Profesyoneli Raporu" variant="outline" onPress={() => router.push('/settings/health-export')} />
         <Button title="Veri Iceri Aktar" variant="outline" onPress={() => router.push('/settings/data-import')} />
         <Button title="Sohbet Gecmisi" variant="outline" onPress={() => router.push('/settings/chat-history')} />
+        <Button title="Aylik Rapor" variant="outline" onPress={() => router.push('/reports/monthly')} />
+        <Button title="Tum Zamanlar" variant="outline" onPress={() => router.push('/reports/alltime')} />
         <Button title="Otomatik Yedek" variant="outline" onPress={() => router.push('/settings/scheduled-export')} />
       </View>
 
@@ -108,6 +110,8 @@ export default function SettingsScreen() {
         <Button title="Tema" variant="outline" onPress={() => router.push('/settings/theme')} />
         <Button title="Gun Siniri" variant="outline" onPress={() => router.push('/settings/day-boundary')} />
         <Button title="Aktif Oturumlar" variant="outline" onPress={() => router.push('/settings/active-sessions')} />
+        <Button title="E-posta Degistir" variant="outline" onPress={() => router.push('/settings/change-email')} />
+        <Button title="Sifre Degistir" variant="outline" onPress={() => router.push('/settings/change-password')} />
         <Button title="Profil Duzenle" variant="outline" onPress={() => router.push('/settings/edit-profile')} />
         <Button title="Debug Modu" variant="ghost" onPress={() => router.push('/settings/debug')} />
       </View>

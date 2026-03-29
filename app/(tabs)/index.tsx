@@ -13,6 +13,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useStreak } from '@/hooks/useStreak';
 import { usePremium } from '@/hooks/usePremium';
+import { getWeekendRiskPrediction, detectMotivationDrop } from '@/services/predictive.service';
 import { Card } from '@/components/ui/Card';
 import { WaterTracker } from '@/components/tracking/WaterTracker';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
@@ -41,6 +42,9 @@ export default function TodayScreen() {
   const { streak, checkForMilestones, newAchievement } = useStreak();
   const { isPremium } = usePremium();
 
+  // Predictive alert (Spec 5.14)
+  const [predictiveAlert, setPredictiveAlert] = useState<string | null>(null);
+
   // Weekly budget state
   const [weeklyBudget, setWeeklyBudget] = useState<{
     consumed: number; total: number; remaining: number; daysLeft: number; rebalanceMessage: string | null;
@@ -54,6 +58,18 @@ export default function TodayScreen() {
   }, [user?.id, fetchToday, checkForMilestones]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Predictive analytics on load (Spec 5.14)
+  useEffect(() => {
+    if (!user?.id || !isPremium) return;
+    Promise.all([
+      getWeekendRiskPrediction(user.id),
+      detectMotivationDrop(user.id),
+    ]).then(([weekend, motivation]) => {
+      if (weekend) setPredictiveAlert(weekend.message);
+      else if (motivation) setPredictiveAlert(motivation.message);
+    }).catch(() => {});
+  }, [user?.id, isPremium]);
 
   // Calculate weekly budget
   useEffect(() => {
@@ -98,6 +114,15 @@ export default function TodayScreen() {
             {newAchievement}
           </Text>
         </View>
+      )}
+
+      {/* Predictive Alert (Spec 5.14) */}
+      {predictiveAlert && (
+        <TouchableOpacity onPress={() => setPredictiveAlert(null)}
+          style={{ backgroundColor: COLORS.surfaceLight, borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.md, borderLeftWidth: 3, borderLeftColor: COLORS.warning }}>
+          <Text style={{ color: COLORS.warning, fontSize: FONT.xs, fontWeight: '600', marginBottom: 2 }}>Tahmin</Text>
+          <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{predictiveAlert}</Text>
+        </TouchableOpacity>
       )}
 
       {/* Stats Row */}
