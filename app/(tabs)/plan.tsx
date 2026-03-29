@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { MealOptionCard } from '@/components/plan/MealOptionCard';
-import { WorkoutCard } from '@/components/plan/WorkoutCard';
+import { WorkoutCard, type CompletedSet } from '@/components/plan/WorkoutCard';
 import { DayTargets } from '@/components/plan/DayTargets';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
@@ -53,7 +53,7 @@ interface PlanData {
 export default function PlanScreen() {
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
-  const { totalCalories, totalProtein, totalCarbs, totalFat, waterLiters } = useDashboardStore();
+  const { totalCalories, totalProtein, totalCarbs, totalFat, waterLiters, fetchToday: refreshDashboard } = useDashboardStore();
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -152,7 +152,29 @@ export default function PlanScreen() {
       {/* Workout with WorkoutCard */}
       <View style={{ marginBottom: SPACING.md }}>
         <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>Antrenman</Text>
-        <WorkoutCard plan={plan.workout_plan} />
+        <WorkoutCard plan={plan.workout_plan} onComplete={async (sets: CompletedSet[], durationMin: number) => {
+          if (!user?.id) return;
+          const date = new Date().toISOString().split('T')[0];
+          // Create workout log
+          const { data: wLog } = await supabase.from('workout_logs').insert({
+            user_id: user.id, date, logged_for_date: date,
+            raw_input: `[Plan] ${plan.workout_plan.type} antrenman`,
+            workout_type: plan.workout_plan.type, duration_min: durationMin,
+            intensity: plan.workout_plan.rpe >= 7 ? 'high' : plan.workout_plan.rpe >= 4 ? 'moderate' : 'low',
+          }).select('id').single();
+          // Save strength sets
+          if (wLog?.id && sets.length > 0) {
+            await supabase.from('strength_sets').insert(
+              sets.map(s => ({
+                workout_log_id: wLog.id, exercise_name: s.exercise,
+                set_number: s.setNumber, target_reps: s.targetReps,
+                target_weight_kg: s.targetWeight, actual_reps: s.actualReps,
+                actual_weight_kg: s.actualWeight, completed: s.completed,
+              }))
+            );
+          }
+          if (user.id) refreshDashboard(user.id);
+        }} />
       </View>
 
       <Button title="Plani Yeniden Olustur" variant="outline" onPress={handleGenerate} loading={generating} />
