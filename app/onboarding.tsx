@@ -5,6 +5,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { supabase } from '@/lib/supabase';
+import { calculateBMR, calculateTDEE, calculateTargets, calculateWaterTarget } from '@/lib/tdee';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import type { Gender, ActivityLevel, GoalType } from '@/types/database';
 
@@ -86,14 +88,58 @@ export default function OnboardingScreen() {
     if (!user?.id || !gender || !activityLevel || !goalType) return;
     setSaving(true);
     try {
-      await update(user.id, {
-        birth_year: parseInt(birthYear, 10),
-        gender,
-        height_cm: parseFloat(heightCm),
-        weight_kg: parseFloat(weightKg),
-        activity_level: activityLevel,
-        onboarding_completed: true,
+      const w = parseFloat(weightKg);
+      const h = parseFloat(heightCm);
+      const by = parseInt(birthYear, 10);
+      const age = new Date().getFullYear() - by;
+
+      // Calculate TDEE and calorie targets (Spec 2.4)
+      const bmr = calculateBMR(w, h, age, gender as 'male' | 'female');
+      const tdee = calculateTDEE(bmr, activityLevel);
+      const macros = { protein: 30, carb: 40, fat: 30 }; // Standard default (Spec 2.1)
+      const targets = calculateTargets({
+        tdee, goalType, restrictionMode: 'sustainable',
+        weeksSinceStart: 0, complianceAvg: 50, weightKg: w, macroPct: macros,
       });
+      const waterTarget = calculateWaterTarget(w, false, false);
+
+      // Save profile with calculated targets
+      await update(user.id, {
+        birth_year: by, gender, height_cm: h, weight_kg: w,
+        activity_level: activityLevel,
+        tdee_calculated: tdee,
+        tdee_calculated_at: new Date().toISOString(),
+        calorie_range_training_min: targets.trainingDay.min,
+        calorie_range_training_max: targets.trainingDay.max,
+        calorie_range_rest_min: targets.restDay.min,
+        calorie_range_rest_max: targets.restDay.max,
+        protein_per_kg: Math.round(targets.proteinG / w * 10) / 10,
+        macro_protein_pct: macros.protein,
+        macro_carb_pct: macros.carb,
+        macro_fat_pct: macros.fat,
+        water_target_liters: waterTarget,
+        profile_completion_pct: 35, // minimum fields filled
+        onboarding_completed: true,
+      } as never);
+
+      // Create initial goal (Spec 6.1)
+      await supabase.from('goals').insert({
+        user_id: user.id,
+        goal_type: goalType,
+        restriction_mode: 'sustainable',
+        is_active: true,
+        phase_order: 1,
+        phase_label: goalType === 'lose_weight' ? 'Kilo verme' : goalType === 'gain_muscle' ? 'Kas kazanma' : 'Saglik',
+      });
+
+      // Record initial weight (Spec 3.1)
+      await supabase.from('weight_history').insert({ user_id: user.id, weight_kg: w });
+      const date = new Date().toISOString().split('T')[0];
+      await supabase.from('daily_metrics').upsert(
+        { user_id: user.id, date, weight_kg: w, synced: true },
+        { onConflict: 'user_id,date' },
+      );
+
       // Navigate to chat for AI conversational onboarding (Spec 15.2)
       router.replace('/(tabs)/chat');
     } catch {

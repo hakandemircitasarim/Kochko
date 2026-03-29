@@ -1,10 +1,22 @@
+/**
+ * Quick Log Modal
+ * Spec 3.1: Kayıt türleri — öğün, spor, tartı, takviye
+ * Spec 3.5: Her kayıt max 1 dakikada girilebilmeli
+ *
+ * Meals and workouts are sent to AI for parsing (calories/macros/duration).
+ * Weight and supplements are saved directly.
+ */
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
+import { sendMessage } from '@/services/chat.service';
+import { logSupplement } from '@/services/supplements.service';
+import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { supabase } from '@/lib/supabase';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import type { MealType } from '@/types/database';
@@ -22,7 +34,15 @@ const MEAL_TYPES: { label: string; value: MealType }[] = [
   { label: 'Kahvalti', value: 'breakfast' },
   { label: 'Ogle', value: 'lunch' },
   { label: 'Aksam', value: 'dinner' },
-  { label: 'Ara ogun', value: 'snack' },
+  { label: 'Ara', value: 'snack' },
+];
+
+const SUPPLEMENT_PRESETS = [
+  { label: 'Protein', cmd: 'protein tozu 1 olcu' },
+  { label: 'Kreatin', cmd: 'kreatin 5g' },
+  { label: 'Omega-3', cmd: 'omega-3 1 kapsul' },
+  { label: 'D Vit', cmd: 'D vitamini 1 tablet' },
+  { label: 'Multi', cmd: 'multivitamin 1 tablet' },
 ];
 
 export default function LogScreen() {
@@ -30,6 +50,7 @@ export default function LogScreen() {
   const { fetchToday } = useDashboardStore();
   const [logType, setLogType] = useState<LogType>('meal');
   const [saving, setSaving] = useState(false);
+  const [aiResult, setAiResult] = useState<string | null>(null);
 
   // Meal state
   const [mealType, setMealType] = useState<MealType>('lunch');
@@ -47,27 +68,45 @@ export default function LogScreen() {
   const handleSave = async () => {
     if (!user?.id) return;
     setSaving(true);
-    const date = new Date().toISOString().split('T')[0];
+    setAiResult(null);
 
     try {
       if (logType === 'meal' && mealInput.trim()) {
-        // Quick manual entry — AI chat is preferred for parsing, this is a fallback
-        const { error } = await supabase.from('meal_logs').insert({
-          user_id: user.id,
-          date,
-          meal_type: mealType,
-          raw_input: mealInput.trim(),
-          input_method: 'text',
-          confidence: 'low',
-        });
-        if (error) throw error;
+        // Send to AI for parsing — AI will extract calories, macros, create meal_log + items
+        const prefix = `yedim ${mealType === 'breakfast' ? 'kahvaltida' : mealType === 'lunch' ? 'ogle' : mealType === 'dinner' ? 'aksam' : 'ara ogunde'}: `;
+        const { data, error } = await sendMessage(prefix + mealInput.trim());
+
+        if (error) {
+          Alert.alert('Hata', 'AI baglantisi kurulamadi. Tekrar dene.');
+          setSaving(false);
+          return;
+        }
+
+        if (data) {
+          setAiResult(data.message);
+          // AI edge function already creates meal_log + meal_log_items via action execution
+          if (user.id) fetchToday(user.id);
+          setTimeout(() => router.back(), 2000);
+          setSaving(false);
+          return;
+        }
       } else if (logType === 'workout' && workoutInput.trim()) {
-        const { error } = await supabase.from('workout_logs').insert({
-          user_id: user.id,
-          date,
-          raw_input: workoutInput.trim(),
-        });
-        if (error) throw error;
+        // Send to AI for parsing — duration, type, intensity
+        const { data, error } = await sendMessage('yaptim: ' + workoutInput.trim());
+
+        if (error) {
+          Alert.alert('Hata', 'AI baglantisi kurulamadi.');
+          setSaving(false);
+          return;
+        }
+
+        if (data) {
+          setAiResult(data.message);
+          if (user.id) fetchToday(user.id);
+          setTimeout(() => router.back(), 2000);
+          setSaving(false);
+          return;
+        }
       } else if (logType === 'weight' && weightInput.trim()) {
         const w = parseFloat(weightInput);
         if (isNaN(w) || w < 30 || w > 300) {
@@ -75,28 +114,54 @@ export default function LogScreen() {
           setSaving(false);
           return;
         }
-        const { error } = await supabase.from('daily_metrics').upsert(
+
+        // Suspicious weight check (Spec 12.6)
+        const { data: lastMetric } = await supabase
+          .from('daily_metrics')
+          .select('weight_kg')
+          .eq('user_id', user.id)
+          .not('weight_kg', 'is', null)
+          .order('date', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (lastMetric?.weight_kg) {
+          const check = checkSuspiciousInput('weight', w, lastMetric.weight_kg as number);
+          if (check) {
+            const confirmed = await new Promise<boolean>(resolve => {
+              Alert.alert('Dogrulama', check, [
+                { text: 'Iptal', onPress: () => resolve(false) },
+                { text: 'Evet dogru', onPress: () => resolve(true) },
+              ]);
+            });
+            if (!confirmed) { setSaving(false); return; }
+          }
+        }
+
+        const date = new Date().toISOString().split('T')[0];
+        await supabase.from('daily_metrics').upsert(
           { user_id: user.id, date, weight_kg: w, synced: true },
-          { onConflict: 'user_id,date' }
+          { onConflict: 'user_id,date' },
         );
-        if (error) throw error;
-        // Also update weight history
         await supabase.from('weight_history').insert({ user_id: user.id, weight_kg: w });
+
+        // Also update profile weight
+        await supabase.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', user.id);
+
+        setAiResult(`Tarti kaydedildi: ${w} kg`);
+        if (user.id) fetchToday(user.id);
+        setTimeout(() => router.back(), 1500);
       } else if (logType === 'supplement' && supplementInput.trim()) {
-        const { error } = await supabase.from('supplement_logs').insert({
-          user_id: user.id,
-          date,
-          supplement_name: supplementInput.trim(),
-        });
-        if (error) throw error;
+        const parts = supplementInput.trim().split(' ');
+        const name = parts.slice(0, -1).join(' ') || parts[0];
+        const amount = parts.length > 1 ? parts[parts.length - 1] : '1 adet';
+        await logSupplement(name, amount);
+        setAiResult(`Takviye kaydedildi: ${supplementInput.trim()}`);
+        if (user.id) fetchToday(user.id);
+        setTimeout(() => router.back(), 1500);
       } else {
         Alert.alert('Hata', 'Bir sey gir.');
-        setSaving(false);
-        return;
       }
-
-      fetchToday(user.id);
-      router.back();
     } catch {
       Alert.alert('Hata', 'Kayit yapilamadi, tekrar dene.');
     } finally {
@@ -108,7 +173,7 @@ export default function LogScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ padding: SPACING.lg, paddingTop: SPACING.xl }} keyboardShouldPersistTaps="handled">
         {/* Header */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
           <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: COLORS.text }}>Hizli Kayit</Text>
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Kapat</Text>
@@ -116,7 +181,7 @@ export default function LogScreen() {
         </View>
 
         <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.md }}>
-          Detayli kayit icin kocunla sohbet et — AI kalori ve makrolari otomatik hesaplar.
+          Ogun ve spor kayitlari AI tarafindan otomatik analiz edilir.
         </Text>
 
         {/* Log Type Selector */}
@@ -124,7 +189,7 @@ export default function LogScreen() {
           {LOG_TYPES.map(t => (
             <TouchableOpacity
               key={t.value}
-              onPress={() => setLogType(t.value)}
+              onPress={() => { setLogType(t.value); setAiResult(null); }}
               style={{
                 flex: 1, paddingVertical: SPACING.sm, borderRadius: 10, alignItems: 'center',
                 backgroundColor: logType === t.value ? COLORS.primary : COLORS.inputBg,
@@ -136,8 +201,16 @@ export default function LogScreen() {
           ))}
         </View>
 
+        {/* AI Result */}
+        {aiResult && (
+          <Card>
+            <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Kaydedildi</Text>
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>{aiResult}</Text>
+          </Card>
+        )}
+
         {/* Meal Form */}
-        {logType === 'meal' && (
+        {logType === 'meal' && !aiResult && (
           <>
             <View style={{ flexDirection: 'row', gap: SPACING.xs, marginBottom: SPACING.md }}>
               {MEAL_TYPES.map(mt => (
@@ -158,49 +231,89 @@ export default function LogScreen() {
               label="Ne yedin?"
               value={mealInput}
               onChangeText={setMealInput}
-              placeholder="ornek: 2 yumurta, 1 dilim ekmek, peynir"
+              placeholder="2 yumurta, 1 dilim ekmek, peynir"
               multiline
               numberOfLines={3}
               style={{ minHeight: 80, textAlignVertical: 'top' }}
             />
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+              AI kalori ve makrolari otomatik hesaplar. Pisirme yontemi de yaz (haslama, kizartma vb.)
+            </Text>
           </>
         )}
 
         {/* Workout Form */}
-        {logType === 'workout' && (
-          <Input
-            label="Ne yaptin?"
-            value={workoutInput}
-            onChangeText={setWorkoutInput}
-            placeholder="ornek: 30 dk yuruyus, orta tempo"
-            multiline
-            numberOfLines={3}
-            style={{ minHeight: 80, textAlignVertical: 'top' }}
-          />
+        {logType === 'workout' && !aiResult && (
+          <>
+            <Input
+              label="Ne yaptin?"
+              value={workoutInput}
+              onChangeText={setWorkoutInput}
+              placeholder="30 dk yuruyus, orta tempo"
+              multiline
+              numberOfLines={3}
+              style={{ minHeight: 80, textAlignVertical: 'top' }}
+            />
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+              Sure, yogunluk ve tip otomatik parse edilir. Guc antrenmani icin: "squat 3x8 70kg"
+            </Text>
+          </>
         )}
 
         {/* Weight Form */}
-        {logType === 'weight' && (
+        {logType === 'weight' && !aiResult && (
           <Input
             label="Kilonuz (kg)"
             value={weightInput}
             onChangeText={setWeightInput}
             keyboardType="decimal-pad"
-            placeholder="ornek: 82.5"
+            placeholder="82.5"
           />
         )}
 
         {/* Supplement Form */}
-        {logType === 'supplement' && (
-          <Input
-            label="Takviye"
-            value={supplementInput}
-            onChangeText={setSupplementInput}
-            placeholder="ornek: kreatin 5g, D vitamini"
+        {logType === 'supplement' && !aiResult && (
+          <>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
+              {SUPPLEMENT_PRESETS.map(s => (
+                <TouchableOpacity
+                  key={s.label}
+                  onPress={() => setSupplementInput(s.cmd)}
+                  style={{
+                    paddingVertical: 6, paddingHorizontal: SPACING.md, borderRadius: 8,
+                    backgroundColor: supplementInput === s.cmd ? COLORS.primary : COLORS.inputBg,
+                    borderWidth: 1, borderColor: COLORS.border,
+                  }}
+                >
+                  <Text style={{ color: supplementInput === s.cmd ? '#fff' : COLORS.textSecondary, fontSize: FONT.xs }}>{s.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Input
+              label="Takviye"
+              value={supplementInput}
+              onChangeText={setSupplementInput}
+              placeholder="kreatin 5g"
+            />
+          </>
+        )}
+
+        {!aiResult && (
+          <Button
+            title={saving ? '' : 'Kaydet'}
+            onPress={handleSave}
+            loading={saving}
+            disabled={saving}
+            style={{ marginTop: SPACING.md }}
           />
         )}
 
-        <Button title="Kaydet" onPress={handleSave} loading={saving} style={{ marginTop: SPACING.md }} />
+        {saving && logType === 'meal' && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACING.md, gap: SPACING.sm }}>
+            <ActivityIndicator size="small" color={COLORS.primary} />
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>AI analiz ediyor...</Text>
+          </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );

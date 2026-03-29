@@ -53,7 +53,7 @@ interface PlanData {
 export default function PlanScreen() {
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
-  const { totalCalories, totalProtein, waterLiters } = useDashboardStore();
+  const { totalCalories, totalProtein, totalCarbs, totalFat, waterLiters } = useDashboardStore();
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -112,9 +112,9 @@ export default function PlanScreen() {
           proteinTarget={plan.protein_target_g}
           proteinConsumed={totalProtein}
           carbsTarget={plan.carbs_target_g}
-          carbsConsumed={0}
+          carbsConsumed={totalCarbs}
           fatTarget={plan.fat_target_g}
-          fatConsumed={0}
+          fatConsumed={totalFat}
           waterTarget={plan.water_target_liters ?? 2.5}
           waterConsumed={waterLiters}
           isTrainingDay={plan.plan_type === 'training'}

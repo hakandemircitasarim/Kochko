@@ -1,6 +1,7 @@
 /**
  * Dashboard Store
  * Manages today's live tracking data for the dashboard screen.
+ * Spec 3.1: All daily log types aggregated in real-time.
  */
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
@@ -12,6 +13,9 @@ interface MealEntry {
   logged_at: string;
   calories: number;
   protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  alcohol_g: number;
 }
 
 interface WorkoutEntry {
@@ -31,6 +35,9 @@ interface TodayState {
   moodScore: number | null;
   totalCalories: number;
   totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  totalAlcohol: number;
   loading: boolean;
 
   fetchToday: (userId: string) => Promise<void>;
@@ -51,6 +58,9 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   moodScore: null,
   totalCalories: 0,
   totalProtein: 0,
+  totalCarbs: 0,
+  totalFat: 0,
+  totalAlcohol: 0,
   loading: false,
 
   fetchToday: async (userId) => {
@@ -66,18 +76,28 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         .eq('user_id', userId).eq('date', date).single(),
     ]);
 
-    // Get calories for each meal
+    // Get full macros for each meal
     const meals: MealEntry[] = [];
     for (const meal of (mealsRes.data ?? []) as { id: string; raw_input: string; meal_type: string; logged_at: string }[]) {
       const { data: items } = await supabase
-        .from('meal_log_items').select('calories, protein_g').eq('meal_log_id', meal.id);
-      const cal = (items ?? []).reduce((s: number, i: { calories: number }) => s + i.calories, 0);
-      const pro = (items ?? []).reduce((s: number, i: { protein_g: number }) => s + i.protein_g, 0);
-      meals.push({ ...meal, calories: cal, protein_g: pro });
+        .from('meal_log_items')
+        .select('calories, protein_g, carbs_g, fat_g, alcohol_g')
+        .eq('meal_log_id', meal.id);
+
+      const cal = (items ?? []).reduce((s: number, i: { calories: number }) => s + (i.calories ?? 0), 0);
+      const pro = (items ?? []).reduce((s: number, i: { protein_g: number }) => s + (i.protein_g ?? 0), 0);
+      const carb = (items ?? []).reduce((s: number, i: { carbs_g: number }) => s + (i.carbs_g ?? 0), 0);
+      const fat = (items ?? []).reduce((s: number, i: { fat_g: number }) => s + (i.fat_g ?? 0), 0);
+      const alc = (items ?? []).reduce((s: number, i: { alcohol_g: number }) => s + (i.alcohol_g ?? 0), 0);
+
+      meals.push({ ...meal, calories: cal, protein_g: pro, carbs_g: carb, fat_g: fat, alcohol_g: alc });
     }
 
     const totalCalories = meals.reduce((s, m) => s + m.calories, 0);
     const totalProtein = meals.reduce((s, m) => s + m.protein_g, 0);
+    const totalCarbs = meals.reduce((s, m) => s + m.carbs_g, 0);
+    const totalFat = meals.reduce((s, m) => s + m.fat_g, 0);
+    const totalAlcohol = meals.reduce((s, m) => s + m.alcohol_g, 0);
     const metrics = metricsRes.data;
 
     set({
@@ -90,6 +110,9 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       moodScore: metrics?.mood_score ?? null,
       totalCalories,
       totalProtein: Math.round(totalProtein),
+      totalCarbs: Math.round(totalCarbs),
+      totalFat: Math.round(totalFat),
+      totalAlcohol: Math.round(totalAlcohol),
       loading: false,
     });
   },
@@ -115,6 +138,9 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         meals: state.meals.filter(m => m.id !== mealId),
         totalCalories: state.totalCalories - (deleted?.calories ?? 0),
         totalProtein: state.totalProtein - Math.round(deleted?.protein_g ?? 0),
+        totalCarbs: state.totalCarbs - Math.round(deleted?.carbs_g ?? 0),
+        totalFat: state.totalFat - Math.round(deleted?.fat_g ?? 0),
+        totalAlcohol: state.totalAlcohol - Math.round(deleted?.alcohol_g ?? 0),
       };
     });
   },

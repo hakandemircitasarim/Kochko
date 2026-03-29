@@ -11,10 +11,11 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, FlatList, TextInput, TouchableOpacity,
+  View, Text, FlatList, TextInput, TouchableOpacity, Alert,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { Audio } from 'expo-av';
 import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -22,6 +23,7 @@ import {
   sendMessage, sendMessageWithPhoto, loadChatHistory,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
+import { transcribeAudio, getRecordingOptions } from '@/services/voice-input.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -41,6 +43,8 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const listRef = useRef<FlatList>(null);
 
   const isOnboarding = profile && !profile.onboarding_completed;
@@ -80,6 +84,74 @@ export default function ChatScreen() {
     if (status !== 'granted') return;
     const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
     if (!result.canceled) setPhoto(result.assets[0].uri);
+  };
+
+  // Voice recording (Spec 3.1, 20.3)
+  const startRecording = async () => {
+    try {
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) return;
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const rec = new Audio.Recording();
+      await rec.prepareToRecordAsync(getRecordingOptions() as Audio.RecordingOptions);
+      await rec.startAsync();
+      setRecording(rec);
+      setIsRecording(true);
+    } catch {
+      Alert.alert('Hata', 'Mikrofon baslatılamadı.');
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recording) return;
+    setIsRecording(false);
+    await recording.stopAndUnloadAsync();
+    const uri = recording.getURI();
+    setRecording(null);
+
+    if (!uri) return;
+
+    // Transcribe and send
+    setSending(true);
+    const userMsg: UIMessage = {
+      id: `u-${Date.now()}`,
+      role: 'user',
+      content: '[Sesli mesaj gonderildi...]',
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+    scrollToBottom();
+
+    const result = await transcribeAudio(uri);
+    if (result.success && result.transcript) {
+      // Update user message with transcript
+      setMessages(prev => prev.map(m => m.id === userMsg.id ? { ...m, content: result.transcript } : m));
+
+      // Send transcribed text to AI
+      const { data } = await sendMessage(result.transcript);
+      if (data) {
+        const reply: UIMessage = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: data.message,
+          task_mode: data.task_mode,
+          created_at: new Date().toISOString(),
+          actions: data.actions,
+          showFeedback: ['plan', 'coaching', 'recipe', 'simulation'].includes(data.task_mode),
+        };
+        setMessages(prev => [...prev, reply]);
+        if (data.actions.some(a => a.feedback) && user?.id) refreshDashboard(user.id);
+      }
+    } else {
+      setMessages(prev => [...prev, {
+        id: `e-${Date.now()}`,
+        role: 'assistant',
+        content: 'Ses kaydini isleyemedim. Metin olarak yazar misin?',
+        created_at: new Date().toISOString(),
+      }]);
+    }
+    setSending(false);
+    scrollToBottom();
   };
 
   // Send message
@@ -213,6 +285,14 @@ export default function ChatScreen() {
         </TouchableOpacity>
         <TouchableOpacity onPress={pickImage} style={styles.iconBtn}>
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={isRecording ? stopRecording : startRecording}
+          style={[styles.iconBtn, isRecording && { backgroundColor: COLORS.error, borderColor: COLORS.error }]}
+        >
+          <Text style={{ color: isRecording ? '#fff' : COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>
+            {isRecording ? '■' : '●'}
+          </Text>
         </TouchableOpacity>
         <TextInput
           style={styles.textInput}
