@@ -44,10 +44,12 @@ export default function MealTemplatesScreen() {
   };
 
   const handleUse = async (t: MealTemplate) => {
-    await useTemplate(t.id);
-    // In a real flow, this would add the template items to today's meal log
-    // For now we just increment usage and show confirmation
-    Alert.alert('Kullanildi', `"${t.name}" sablonu kullanildi. Kocuna yazarak da hizlica girebilirsin.`);
+    const { error } = await useTemplate(t.id);
+    if (error) {
+      Alert.alert('Hata', error);
+      return;
+    }
+    Alert.alert('Kaydedildi', `"${t.name}" bugunku ogunlere eklendi. ${t.total_calories} kcal, ${t.total_protein}g protein.`);
     load();
   };
 

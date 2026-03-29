@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { readAsStringAsync } from 'expo-file-system';
 import { supabase } from '@/lib/supabase';
 
 export interface ChatMessage {
@@ -23,7 +23,7 @@ export async function sendMessage(text: string): Promise<{ data: ChatResponse | 
 
 export async function sendMessageWithPhoto(text: string, imageUri: string): Promise<{ data: ChatResponse | null; error: string | null }> {
   try {
-    const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' as const });
+    const base64 = await readAsStringAsync(imageUri, { encoding: 'base64' });
     const { data, error } = await supabase.functions.invoke('ai-chat', {
       body: { message: text, image_base64: base64 },
     });
