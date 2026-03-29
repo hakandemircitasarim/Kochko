@@ -1,26 +1,31 @@
 /**
- * Action Feedback Display
+ * Action Feedback Display — Spec 5.2
  * Shows inline confirmation when AI executes actions from chat.
- * "Öğün kaydedildi", "Tartı kaydedildi", etc.
+ * Grouped by type, with emoji icons and macro details.
  */
 import { View, Text } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 
-interface Props {
-  actions: { type: string; feedback: string | null }[];
+interface ActionItem {
+  type: string;
+  feedback: string | null;
 }
 
-const ACTION_ICONS: Record<string, string> = {
-  meal_log: 'Ogun',
-  workout_log: 'Antrenman',
-  weight_log: 'Tarti',
-  water_log: 'Su',
-  sleep_log: 'Uyku',
-  mood_log: 'Mood',
-  supplement_log: 'Supplement',
-  commitment: 'Taahhut',
-  profile_update: 'Profil',
-  venue_log: 'Mekan',
+interface Props {
+  actions: ActionItem[];
+}
+
+const ACTION_CONFIG: Record<string, { label: string; emoji: string; color: string }> = {
+  meal_log: { label: 'Ogun kaydedildi', emoji: '🍽️', color: COLORS.success },
+  workout_log: { label: 'Antrenman kaydedildi', emoji: '💪', color: COLORS.primary },
+  weight_log: { label: 'Tarti kaydedildi', emoji: '⚖️', color: COLORS.info },
+  water_log: { label: 'Su kaydedildi', emoji: '💧', color: COLORS.water },
+  sleep_log: { label: 'Uyku kaydedildi', emoji: '😴', color: COLORS.sleep },
+  mood_log: { label: 'Mood kaydedildi', emoji: '😊', color: COLORS.mood },
+  supplement_log: { label: 'Takviye kaydedildi', emoji: '💊', color: COLORS.warning },
+  commitment: { label: 'Taahhut olusturuldu', emoji: '🎯', color: COLORS.primary },
+  profile_update: { label: 'Profil guncellendi', emoji: '📝', color: COLORS.info },
+  venue_log: { label: 'Mekan ogrenildi', emoji: '📍', color: COLORS.warning },
 };
 
 export function ActionFeedback({ actions }: Props) {
@@ -28,13 +33,23 @@ export function ActionFeedback({ actions }: Props) {
   if (executed.length === 0) return null;
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: SPACING.xs }}>
-      {executed.map((a, i) => (
-        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.surfaceLight, borderRadius: 6, paddingVertical: 2, paddingHorizontal: SPACING.sm, gap: 4 }}>
-          <Text style={{ color: COLORS.success, fontSize: 10, fontWeight: '700' }}>+</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>{a.feedback ?? ACTION_ICONS[a.type] ?? a.type}</Text>
-        </View>
-      ))}
+    <View style={{ marginTop: SPACING.xs, gap: SPACING.xxs }}>
+      {executed.map((a, i) => {
+        const config = ACTION_CONFIG[a.type] ?? { label: a.type, emoji: '✓', color: COLORS.success };
+
+        return (
+          <View key={i} style={{
+            flexDirection: 'row', alignItems: 'center',
+            backgroundColor: config.color + '12', borderRadius: RADIUS.sm,
+            paddingVertical: SPACING.xxs, paddingHorizontal: SPACING.sm, gap: SPACING.xs,
+          }}>
+            <Text style={{ fontSize: 14 }}>{config.emoji}</Text>
+            <Text style={{ color: config.color, fontSize: FONT.xs, fontWeight: '600', flex: 1 }}>
+              {a.feedback ?? config.label}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
