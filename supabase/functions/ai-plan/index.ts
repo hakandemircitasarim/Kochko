@@ -117,12 +117,15 @@ serve(async (req: Request) => {
       );
 
     const weekConsumed = (weekMeals ?? []).reduce((s: number, i: { calories: number }) => s + i.calories, 0);
-    plan.weekly_budget_consumed = weekConsumed;
+    const avgDailyTarget = Math.round((plan.calorie_target_min + plan.calorie_target_max) / 2);
+    const weeklyBudgetTotal = avgDailyTarget * 7;
+    const weeklyBudgetRemaining = weeklyBudgetTotal - weekConsumed;
 
-    // Store plan
+    // Store plan (version 1 for new plans, upsert by user_id+date)
     await supabaseAdmin.from('daily_plans').upsert({
       user_id: userId,
       date: today,
+      version: 1,
       plan_type: plan.plan_type ?? 'rest',
       calorie_target_min: plan.calorie_target_min,
       calorie_target_max: plan.calorie_target_max,
@@ -134,9 +137,9 @@ serve(async (req: Request) => {
       meal_suggestions: plan.meal_suggestions,
       snack_strategy: plan.snack_strategy,
       workout_plan: plan.workout_plan,
-      weekly_budget_total: plan.weekly_budget_total,
+      weekly_budget_total: weeklyBudgetTotal,
       weekly_budget_consumed: weekConsumed,
-      weekly_budget_remaining: plan.weekly_budget_remaining,
+      weekly_budget_remaining: weeklyBudgetRemaining,
       status: 'draft',
       generated_at: new Date().toISOString(),
     }, { onConflict: 'user_id,date,version' });

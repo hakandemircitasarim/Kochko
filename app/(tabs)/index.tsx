@@ -122,10 +122,15 @@ export default function TodayScreen() {
 
       {/* Quick Actions */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: SPACING.lg }}>
-        {['Ogun', 'Spor', 'Tarti', 'Foto'].map((label, i) => (
-          <TouchableOpacity key={i} onPress={() => router.push('/(tabs)/chat')} style={{ alignItems: 'center', padding: SPACING.sm }}>
+        {[
+          { label: 'Ogun', route: '/log' },
+          { label: 'Spor', route: '/log' },
+          { label: 'Tarti', route: '/log' },
+          { label: 'Foto', route: '/(tabs)/chat' },
+        ].map((item, i) => (
+          <TouchableOpacity key={i} onPress={() => router.push(item.route as never)} style={{ alignItems: 'center', padding: SPACING.sm }}>
             <Text style={{ fontSize: 24, color: COLORS.primary, fontWeight: '700' }}>+</Text>
-            <Text style={{ fontSize: FONT.xs, color: COLORS.textSecondary }}>{label}</Text>
+            <Text style={{ fontSize: FONT.xs, color: COLORS.textSecondary }}>{item.label}</Text>
           </TouchableOpacity>
         ))}
       </View>

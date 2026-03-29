@@ -21,9 +21,9 @@ export default function Index() {
 
   if (!session) return <Redirect href="/(auth)/login" />;
 
-  // Spec 15: New users go straight to chat for conversational onboarding
+  // Spec 15.1: Minimum data (height, weight, birth_year, gender) required before AI can work
   if (profile && !profile.onboarding_completed) {
-    return <Redirect href="/(tabs)/chat" />;
+    return <Redirect href="/onboarding" />;
   }
 
   return <Redirect href="/(tabs)" />;
