@@ -16,6 +16,8 @@ interface Profile {
   if_window: string | null;
   onboarding_completed: boolean;
   premium: boolean;
+  premium_expires_at: string | null;
+  profile_completion_pct: number;
   calorie_range_training_min: number | null;
   calorie_range_training_max: number | null;
   calorie_range_rest_min: number | null;

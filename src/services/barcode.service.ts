@@ -42,8 +42,8 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeResult> {
     const data = await response.json();
 
     if (data.status !== 1 || !data.product) {
-      // Barcode not found - log for future community contribution (Spec 19.3)
-      // TODO: Store unfound barcode for community contribution flow
+      // Barcode not found — store for future community contribution (Spec 19.3)
+      await storeUnfoundBarcode(barcode);
       return notFound();
     }
 
@@ -80,6 +80,21 @@ function notFound(): BarcodeResult {
     source: 'not_found',
     confidence: 'low',
   };
+}
+
+/**
+ * Store barcode that wasn't found, for future community DB (Spec 19.3).
+ */
+async function storeUnfoundBarcode(barcode: string): Promise<void> {
+  try {
+    const { supabase: sb } = await import('@/lib/supabase');
+    await sb.from('unfound_barcodes').upsert(
+      { barcode, scan_count: 1, last_scanned_at: new Date().toISOString() },
+      { onConflict: 'barcode', ignoreDuplicates: false }
+    ).select();
+  } catch {
+    // Silently fail — this is a background task, don't block scanning UX
+  }
 }
 
 /**

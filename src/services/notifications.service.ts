@@ -2,11 +2,14 @@
  * Notification Service
  * Spec 10.1-10.3: Bildirim sistemi
  *
- * Handles push notification registration and local notification scheduling.
- * Note: Full implementation requires expo-notifications setup with
- * Firebase (Android) and APNs (iOS) configuration.
+ * Handles notification preferences stored in profile metadata,
+ * local notification scheduling via expo-notifications,
+ * and re-engagement logic.
  */
 import { supabase } from '@/lib/supabase';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
 
 export interface NotificationPreferences {
   enabled: boolean;
@@ -50,26 +53,98 @@ const DEFAULT_PREFS: NotificationPreferences = {
   },
 };
 
-// For now, store preferences in profile metadata
-// In production, integrate with expo-notifications + FCM/APNs
-
+/**
+ * Read notification preferences from user profile metadata.
+ */
 export async function getNotificationPrefs(): Promise<NotificationPreferences> {
-  // TODO: Read from profile or separate table
+  const { data } = await supabase.from('profiles').select('notification_prefs').single();
+  if (data?.notification_prefs && typeof data.notification_prefs === 'object') {
+    return { ...DEFAULT_PREFS, ...(data.notification_prefs as Partial<NotificationPreferences>) };
+  }
   return DEFAULT_PREFS;
 }
 
+/**
+ * Save notification preferences to user profile.
+ */
 export async function updateNotificationPrefs(prefs: Partial<NotificationPreferences>): Promise<void> {
-  // TODO: Save to profile or separate table
-  // TODO: Update push notification channels
+  const current = await getNotificationPrefs();
+  const merged = { ...current, ...prefs };
+  await supabase.from('profiles').update({ notification_prefs: merged as never }).single();
+}
+
+/**
+ * Register for push notifications.
+ * Spec 10.3: bildirim izni stratejik zamanda istenir.
+ */
+export async function registerForPushNotifications(): Promise<string | null> {
+  if (!Device.isDevice) return null;
+
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+  let finalStatus = existingStatus;
+
+  if (existingStatus !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+
+  if (finalStatus !== 'granted') return null;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Kochko',
+      importance: Notifications.AndroidImportance.DEFAULT,
+    });
+  }
+
+  const token = await Notifications.getExpoPushTokenAsync();
+  return token.data;
+}
+
+/**
+ * Schedule a local notification.
+ */
+export async function scheduleLocalNotification(
+  title: string,
+  body: string,
+  triggerSeconds: number,
+): Promise<string> {
+  const prefs = await getNotificationPrefs();
+  if (!prefs.enabled) return '';
+
+  return Notifications.scheduleNotificationAsync({
+    content: { title, body, sound: true },
+    trigger: { seconds: triggerSeconds, type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL },
+  });
+}
+
+/**
+ * Cancel all scheduled notifications.
+ */
+export async function cancelAllNotifications(): Promise<void> {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+}
+
+/**
+ * Check if current time is in quiet hours.
+ */
+export function isInQuietHours(quietStart: string, quietEnd: string): boolean {
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const [startH, startM] = quietStart.split(':').map(Number);
+  const [endH, endM] = quietEnd.split(':').map(Number);
+  const startMinutes = startH * 60 + startM;
+  const endMinutes = endH * 60 + endM;
+
+  if (startMinutes > endMinutes) {
+    // Overnight quiet hours (e.g., 23:00 - 07:00)
+    return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+  }
+  return currentMinutes >= startMinutes && currentMinutes < endMinutes;
 }
 
 /**
  * Re-engagement notification schedule (Spec 10.4)
- * - 3 days silent: "Bir suredir gorusmedik"
- * - 7 days: Personal message from Katman 2
- * - 14 days: Email
- * - 30 days: Final email
- * - 30+ days: No notification, wait for return
  */
 export function getReengagementLevel(hoursSinceLastActivity: number): 'none' | '3day' | '7day' | '14day' | '30day' | 'stopped' {
   const days = hoursSinceLastActivity / 24;
@@ -79,4 +154,17 @@ export function getReengagementLevel(hoursSinceLastActivity: number): 'none' | '
   if (days < 30) return '14day';
   if (days < 31) return '30day';
   return 'stopped';
+}
+
+/**
+ * Get re-engagement message based on level.
+ */
+export function getReengagementMessage(level: string): string {
+  switch (level) {
+    case '3day': return 'Bir suredir gorusmedik, bugun nasilsin?';
+    case '7day': return 'Seni ozledik! Kaldigin yerden devam edelim mi?';
+    case '14day': return 'Hedefin seni bekliyor. Geri donmek icin harika bir gun!';
+    case '30day': return 'Merhaba! Istedigin zaman buradayim, tekrar baslayalim mi?';
+    default: return '';
+  }
 }

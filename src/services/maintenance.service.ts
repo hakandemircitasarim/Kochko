@@ -79,7 +79,24 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
     currentWeight,
     goalWeight,
     bandStatus,
-    weeksSinceGoalReached: 0, // TODO: calculate from achievement date
+    weeksSinceGoalReached: await calcWeeksSinceGoalReached(userId),
     message,
   };
+}
+
+async function calcWeeksSinceGoalReached(userId: string): Promise<number> {
+  const { data } = await supabase
+    .from('achievements')
+    .select('unlocked_at')
+    .eq('user_id', userId)
+    .eq('achievement_type', 'goal_reached')
+    .order('unlocked_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!data?.unlocked_at) return 0;
+
+  const reached = new Date(data.unlocked_at).getTime();
+  const now = Date.now();
+  return Math.floor((now - reached) / (7 * 24 * 60 * 60 * 1000));
 }

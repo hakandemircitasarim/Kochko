@@ -62,6 +62,7 @@ export default function SettingsScreen() {
         <Button title="Basarimlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
         <Button title="Tarif Kutuphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
         <Button title="Haftalik Menu" variant="outline" onPress={() => router.push('/settings/weekly-menu')} />
+        <Button title="Ilerleme Fotograflari" variant="outline" onPress={() => router.push('/settings/progress-photos')} />
       </View>
 
       {/* Preferences */}
@@ -69,7 +70,10 @@ export default function SettingsScreen() {
       <View style={{ gap: SPACING.sm }}>
         <Button title="Koc Tonu" variant="outline" onPress={() => router.push('/settings/coach-tone')} />
         <Button title="Bildirimler" variant="outline" onPress={() => router.push('/settings/notifications')} />
+        <Button title="Adet Dongusu" variant="outline" onPress={() => router.push('/settings/menstrual')} />
+        <Button title="IF Ayarlari" variant="outline" onPress={() => router.push('/settings/if-settings')} />
         <Button title="Donemsel Durum" variant="outline" onPress={() => router.push('/settings/periodic-state')} />
+        <Button title="Cok Fazli Hedefler" variant="outline" onPress={() => router.push('/settings/multi-phase-goals')} />
         <Button title="Premium" variant="outline" onPress={() => router.push('/settings/premium')} />
       </View>
 
@@ -81,6 +85,7 @@ export default function SettingsScreen() {
         <Button title="Saglik Profesyoneli Raporu" variant="outline" onPress={() => router.push('/settings/health-export')} />
         <Button title="Veri Iceri Aktar" variant="outline" onPress={() => router.push('/settings/data-import')} />
         <Button title="Sohbet Gecmisi" variant="outline" onPress={() => router.push('/settings/chat-history')} />
+        <Button title="Otomatik Yedek" variant="outline" onPress={() => router.push('/settings/scheduled-export')} />
       </View>
 
       {/* Privacy */}
@@ -94,6 +99,13 @@ export default function SettingsScreen() {
       <View style={{ marginTop: SPACING.xl, gap: SPACING.sm }}>
         <Button title="Cikis Yap" variant="ghost" onPress={() => Alert.alert('Cikis', 'Emin misin?', [{ text: 'Iptal' }, { text: 'Cikis', style: 'destructive', onPress: signOut }])} />
         <Button title="Hesabimi Sil" variant="ghost" onPress={handleDelete} />
+      </View>
+
+      {/* Developer */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Gelistirici</Text>
+      <View style={{ gap: SPACING.sm }}>
+        <Button title="Debug Modu" variant="ghost" onPress={() => router.push('/settings/debug')} />
+        <Button title="Profil Duzenle" variant="ghost" onPress={() => router.push('/settings/edit-profile')} />
       </View>
 
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xxl }}>Kochko v1.0.0</Text>
