@@ -101,11 +101,15 @@ export default function SettingsScreen() {
         <Button title="Hesabimi Sil" variant="ghost" onPress={handleDelete} />
       </View>
 
-      {/* Developer */}
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Gelistirici</Text>
+      {/* System */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Sistem</Text>
       <View style={{ gap: SPACING.sm }}>
+        <Button title="Saat Dilimi" variant="outline" onPress={() => router.push('/settings/timezone')} />
+        <Button title="Tema" variant="outline" onPress={() => router.push('/settings/theme')} />
+        <Button title="Gun Siniri" variant="outline" onPress={() => router.push('/settings/day-boundary')} />
+        <Button title="Aktif Oturumlar" variant="outline" onPress={() => router.push('/settings/active-sessions')} />
+        <Button title="Profil Duzenle" variant="outline" onPress={() => router.push('/settings/edit-profile')} />
         <Button title="Debug Modu" variant="ghost" onPress={() => router.push('/settings/debug')} />
-        <Button title="Profil Duzenle" variant="ghost" onPress={() => router.push('/settings/edit-profile')} />
       </View>
 
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xxl }}>Kochko v1.0.0</Text>

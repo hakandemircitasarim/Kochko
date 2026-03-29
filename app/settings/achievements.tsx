@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { getAchievements, type Achievement } from '@/services/achievements.service';
+import { shareMilestone } from '@/services/sharing.service';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
@@ -23,18 +24,22 @@ export default function AchievementsScreen() {
         <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henuz basarim yok. Kayit girmeye devam et!</Text></Card>
       ) : (
         items.map(a => (
-          <View key={a.id} style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+          <TouchableOpacity key={a.id} onPress={() => shareMilestone(a.title, a.description ?? '')}
+            style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
             <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
               <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '800' }}>{TYPE_ICONS[a.achievement_type] ?? '+'}</Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700' }}>{a.title}</Text>
               {a.description && <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{a.description}</Text>}
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 4 }}>
-                {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
-              </Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+                  {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </Text>
+                <Text style={{ color: COLORS.primary, fontSize: FONT.xs }}>Paylas</Text>
+              </View>
             </View>
-          </View>
+          </TouchableOpacity>
         ))
       )}
     </ScrollView>

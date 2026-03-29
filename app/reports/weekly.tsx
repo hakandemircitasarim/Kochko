@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { shareWeeklyReport } from '@/services/sharing.service';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 interface WeeklyReport {
@@ -176,7 +177,16 @@ export default function WeeklyReportScreen() {
             </Card>
           )}
 
-          <Button title="Yeniden Olustur" variant="outline" onPress={handleGenerate} loading={generating} />
+          <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+            <Button title="Yeniden Olustur" variant="outline" onPress={handleGenerate} loading={generating} style={{ flex: 1 }} />
+            <Button title="Paylas" variant="ghost" onPress={() => {
+              if (report) {
+                const wt = report.weight_trend;
+                const delta = wt.length >= 2 ? wt[wt.length - 1].kg - wt[0].kg : 0;
+                shareWeeklyReport(report.avg_compliance, delta);
+              }
+            }} style={{ flex: 1 }} />
+          </View>
         </>
       )}
     </ScrollView>
