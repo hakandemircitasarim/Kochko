@@ -50,7 +50,7 @@ export default function RecipesScreen() {
             <Card>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{r.title}</Text>
+                  <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{r.name}</Text>
                   <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: 4 }}>
                     {r.total_calories && <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{r.total_calories} kcal</Text>}
                     {r.total_protein && <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{r.total_protein}g pro</Text>}

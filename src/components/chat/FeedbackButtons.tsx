@@ -17,7 +17,7 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
 
   const handleFeedback = async (fb: FeedbackType) => {
     setSubmitted(fb);
-    await submitFeedback(contextType, contextId, fb);
+    if (contextId) await submitFeedback(contextType, contextId, fb);
   };
 
   if (submitted) {
