@@ -82,6 +82,8 @@ export default function DailyReportScreen() {
             <CheckItem label="Protein" met={report.protein_target_met} detail={`${report.protein_actual}g`} />
             <CheckItem label="Antrenman" met={report.workout_completed} />
             <CheckItem label="Su" met={report.water_target_met ?? false} />
+            {report.steps_actual != null && <CheckItem label="Adim" met={(report.steps_actual ?? 0) >= 8000} detail={`${(report.steps_actual ?? 0).toLocaleString('tr-TR')}`} />}
+            {report.alcohol_calories > 0 && <CheckItem label="Alkol" met={false} detail={`${report.alcohol_calories} kcal`} />}
           </Card>
 
           {/* Macros */}

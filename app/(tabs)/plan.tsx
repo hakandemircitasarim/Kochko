@@ -57,6 +57,7 @@ export default function PlanScreen() {
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [selectedMeals, setSelectedMeals] = useState<Record<string, number>>({});
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
@@ -137,8 +138,37 @@ export default function PlanScreen() {
             {MEAL_LABELS[meal.meal_type] ?? meal.meal_type}
           </Text>
           {meal.options?.map((opt, oidx) => (
-            <MealOptionCard key={oidx} option={opt} />
+            <MealOptionCard
+              key={oidx}
+              option={opt}
+              selected={selectedMeals[meal.meal_type] === oidx}
+              onSelect={() => setSelectedMeals(prev => ({ ...prev, [meal.meal_type]: oidx }))}
+            />
           ))}
+          {selectedMeals[meal.meal_type] !== undefined && (
+            <Button title="Bu Ogunu Kaydet" size="sm" variant="outline" style={{ marginTop: SPACING.xs }}
+              onPress={async () => {
+                if (!user?.id) return;
+                const selected = meal.options[selectedMeals[meal.meal_type]];
+                if (!selected) return;
+                const { data: mealLog } = await supabase.from('meal_logs').insert({
+                  user_id: user.id, date: today, logged_for_date: today,
+                  meal_type: meal.meal_type, raw_input: `[Plan] ${selected.name}`,
+                  input_method: 'ai_chat', confidence: 'high',
+                }).select('id').single();
+                if (mealLog?.id) {
+                  await supabase.from('meal_log_items').insert({
+                    meal_log_id: mealLog.id, food_name: selected.name,
+                    calories: selected.calories, protein_g: selected.protein_g,
+                    carbs_g: selected.carbs_g, fat_g: selected.fat_g,
+                    data_source: 'ai_estimate',
+                  });
+                }
+                setSelectedMeals(prev => { const n = { ...prev }; delete n[meal.meal_type]; return n; });
+                if (user.id) refreshDashboard(user.id);
+              }}
+            />
+          )}
         </View>
       ))}
 

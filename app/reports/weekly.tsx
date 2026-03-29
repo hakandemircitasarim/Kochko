@@ -18,6 +18,15 @@ interface WeeklyReport {
   ai_learning_note: string | null;
   next_week_strategy: string;
   plan_revision: Record<string, unknown>;
+  // Spec 8.2 additional trends
+  protein_avg: number | null;
+  carbs_avg: number | null;
+  fat_avg: number | null;
+  water_avg: number | null;
+  sleep_avg: number | null;
+  steps_avg: number | null;
+  alcohol_total_calories: number | null;
+  micro_nutrient_note: string | null;
 }
 
 export default function WeeklyReportScreen() {
@@ -119,6 +128,28 @@ export default function WeeklyReportScreen() {
             </Card>
           )}
 
+          {/* Additional Trends (Spec 8.2) */}
+          {(report.protein_avg || report.water_avg || report.sleep_avg || report.steps_avg) && (
+            <Card title="Haftalik Trendler">
+              {report.protein_avg != null && <TrendRow label="Protein ort." value={`${report.protein_avg}g/gun`} />}
+              {report.carbs_avg != null && <TrendRow label="Karbonhidrat ort." value={`${report.carbs_avg}g/gun`} />}
+              {report.fat_avg != null && <TrendRow label="Yag ort." value={`${report.fat_avg}g/gun`} />}
+              {report.water_avg != null && <TrendRow label="Su ort." value={`${report.water_avg}L/gun`} />}
+              {report.sleep_avg != null && <TrendRow label="Uyku ort." value={`${report.sleep_avg}sa/gun`} />}
+              {report.steps_avg != null && <TrendRow label="Adim ort." value={`${report.steps_avg?.toLocaleString('tr-TR')}/gun`} />}
+              {report.alcohol_total_calories != null && report.alcohol_total_calories > 0 && (
+                <TrendRow label="Alkol toplam" value={`${report.alcohol_total_calories} kcal`} color={COLORS.error} />
+              )}
+            </Card>
+          )}
+
+          {/* Micro Nutrient Note (Spec 5.16) */}
+          {report.micro_nutrient_note && (
+            <Card title="Mikro Besin Notu">
+              <Text style={{ color: COLORS.warning, fontSize: FONT.sm, lineHeight: 20 }}>{report.micro_nutrient_note}</Text>
+            </Card>
+          )}
+
           {/* AI Learning Note */}
           {report.ai_learning_note && (
             <Card title="Bu Hafta Seni Daha Iyi Tanidim">
@@ -149,5 +180,14 @@ export default function WeeklyReportScreen() {
         </>
       )}
     </ScrollView>
+  );
+}
+
+function TrendRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{label}</Text>
+      <Text style={{ color: color ?? COLORS.text, fontSize: FONT.sm, fontWeight: '600' }}>{value}</Text>
+    </View>
   );
 }
