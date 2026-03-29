@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
-import { setPeriodicState, clearPeriodicState, PERIODIC_LABELS, type PeriodicState } from '@/services/periodic.service';
+import { setPeriodicState, clearPeriodicState, PERIODIC_LABELS, type PeriodicStateType } from '@/services/periodic.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -12,7 +12,7 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 export default function PeriodicStateScreen() {
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
-  const [selected, setSelected] = useState<PeriodicState | null>((profile?.periodic_state as PeriodicState) ?? null);
+  const [selected, setSelected] = useState<PeriodicStateType | null>((profile?.periodic_state as PeriodicStateType) ?? null);
   const [endDate, setEndDate] = useState('');
 
   const handleActivate = async () => {
@@ -28,7 +28,7 @@ export default function PeriodicStateScreen() {
     Alert.alert('Temizlendi', 'Donemsel durum kaldirildi.');
   };
 
-  const states = Object.entries(PERIODIC_LABELS) as [PeriodicState, string][];
+  const states = Object.entries(PERIODIC_LABELS) as [PeriodicStateType, string][];
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
@@ -39,7 +39,7 @@ export default function PeriodicStateScreen() {
 
       {profile?.periodic_state && (
         <Card style={{ borderColor: COLORS.warning, borderWidth: 2 }}>
-          <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '600' }}>Aktif: {PERIODIC_LABELS[profile.periodic_state as PeriodicState] ?? profile.periodic_state}</Text>
+          <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '600' }}>Aktif: {PERIODIC_LABELS[profile.periodic_state as PeriodicStateType] ?? profile.periodic_state}</Text>
           <Button title="Donemi Sonlandir" variant="ghost" onPress={handleClear} style={{ marginTop: SPACING.sm }} />
         </Card>
       )}
