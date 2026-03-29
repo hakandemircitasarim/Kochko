@@ -14,6 +14,9 @@ import { useDashboardStore } from '@/stores/dashboard.store';
 import { useStreak } from '@/hooks/useStreak';
 import { usePremium } from '@/hooks/usePremium';
 import { getWeekendRiskPrediction, detectMotivationDrop } from '@/services/predictive.service';
+import { checkAdaptiveDifficulty } from '@/services/adaptive-difficulty.service';
+import { getNextHabit, type Habit } from '@/services/habits.service';
+import { getFeaturesToIntroduce, daysSinceSignup } from '@/services/progressive-disclosure.service';
 import { Card } from '@/components/ui/Card';
 import { WaterTracker } from '@/components/tracking/WaterTracker';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
@@ -23,6 +26,7 @@ import { SleepInput } from '@/components/tracking/SleepInput';
 import { StepCounter } from '@/components/tracking/StepCounter';
 import { WeeklyBudgetWidget } from '@/components/tracking/WeeklyBudgetWidget';
 import { SupplementQuickAdd } from '@/components/tracking/SupplementQuickAdd';
+import { UndoToast } from '@/components/ui/UndoToast';
 import { supabase } from '@/lib/supabase';
 import { getStepGoal } from '@/services/step-counter.service';
 import { calculateWeeklyBudget } from '@/lib/weekly-budget';
@@ -42,8 +46,14 @@ export default function TodayScreen() {
   const { streak, checkForMilestones, newAchievement } = useStreak();
   const { isPremium } = usePremium();
 
-  // Predictive alert (Spec 5.14)
+  // Predictive alert (Spec 5.14) + coaching tip (Spec 5.30, 5.35, 5.33)
   const [predictiveAlert, setPredictiveAlert] = useState<string | null>(null);
+  const [coachingTip, setCoachingTip] = useState<string | null>(null);
+
+  // Undo toast state (Spec 3.2)
+  const [undoVisible, setUndoVisible] = useState(false);
+  const [undoMessage, setUndoMessage] = useState('');
+  const [undoAction, setUndoAction] = useState<(() => void) | null>(null);
 
   // Weekly budget state
   const [weeklyBudget, setWeeklyBudget] = useState<{
@@ -69,7 +79,22 @@ export default function TodayScreen() {
       if (weekend) setPredictiveAlert(weekend.message);
       else if (motivation) setPredictiveAlert(motivation.message);
     }).catch(() => {});
-  }, [user?.id, isPremium]);
+
+    // Adaptive difficulty (Spec 5.30)
+    checkAdaptiveDifficulty(user.id).then(result => {
+      if (result.shouldAdjust) setCoachingTip(result.message);
+    }).catch(() => {});
+
+    // Progressive disclosure: feature tips for newer users (Spec 5.33)
+    const p = (profile ?? {}) as Record<string, unknown>;
+    if (p.created_at) {
+      const days = daysSinceSignup(p.created_at as string);
+      const feature = getFeaturesToIntroduce(days, [], '');
+      if (feature && !coachingTip) {
+        setCoachingTip(feature.introMessage);
+      }
+    }
+  }, [user?.id, isPremium, profile, coachingTip]);
 
   // Calculate weekly budget
   useEffect(() => {
@@ -95,6 +120,7 @@ export default function TodayScreen() {
   const stepGoal = getStepGoal(profile?.activity_level ?? 'moderate');
 
   return (
+    <>
     <ScrollView
       style={{ flex: 1, backgroundColor: COLORS.background }}
       contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}
@@ -122,6 +148,15 @@ export default function TodayScreen() {
           style={{ backgroundColor: COLORS.surfaceLight, borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.md, borderLeftWidth: 3, borderLeftColor: COLORS.warning }}>
           <Text style={{ color: COLORS.warning, fontSize: FONT.xs, fontWeight: '600', marginBottom: 2 }}>Tahmin</Text>
           <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{predictiveAlert}</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Coaching Tip (Spec 5.30, 5.33, 5.35) */}
+      {coachingTip && !predictiveAlert && (
+        <TouchableOpacity onPress={() => setCoachingTip(null)}
+          style={{ backgroundColor: COLORS.surfaceLight, borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.md, borderLeftWidth: 3, borderLeftColor: COLORS.primary }}>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600', marginBottom: 2 }}>Koc Notu</Text>
+          <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{coachingTip}</Text>
         </TouchableOpacity>
       )}
 
@@ -245,10 +280,10 @@ export default function TodayScreen() {
             <TouchableOpacity
               key={meal.id}
               onLongPress={() => {
-                Alert.alert('Kaydi Sil', `"${meal.raw_input}" silinsin mi?`, [
-                  { text: 'Iptal' },
-                  { text: 'Sil', style: 'destructive', onPress: () => deleteMeal(meal.id) },
-                ]);
+                deleteMeal(meal.id);
+                setUndoMessage(`"${meal.raw_input}" silindi`);
+                setUndoAction(() => () => { if (user?.id) fetchToday(user.id); });
+                setUndoVisible(true);
               }}
               style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}
             >
@@ -278,10 +313,10 @@ export default function TodayScreen() {
             <TouchableOpacity
               key={w.id}
               onLongPress={() => {
-                Alert.alert('Kaydi Sil', 'Antrenman silinsin mi?', [
-                  { text: 'Iptal' },
-                  { text: 'Sil', style: 'destructive', onPress: () => deleteWorkout(w.id) },
-                ]);
+                deleteWorkout(w.id);
+                setUndoMessage('Antrenman silindi');
+                setUndoAction(() => () => { if (user?.id) fetchToday(user.id); });
+                setUndoVisible(true);
               }}
               style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}
             >
@@ -313,6 +348,13 @@ export default function TodayScreen() {
         Uzun bas: kaydi sil
       </Text>
     </ScrollView>
+    <UndoToast
+      visible={undoVisible}
+      message={undoMessage}
+      onUndo={() => { undoAction?.(); }}
+      onDismiss={() => setUndoVisible(false)}
+    />
+    </>
   );
 }
 

@@ -110,6 +110,7 @@ export default function SettingsScreen() {
         <Button title="Tema" variant="outline" onPress={() => router.push('/settings/theme')} />
         <Button title="Gun Siniri" variant="outline" onPress={() => router.push('/settings/day-boundary')} />
         <Button title="Aktif Oturumlar" variant="outline" onPress={() => router.push('/settings/active-sessions')} />
+        <Button title="Hesap Baglama" variant="outline" onPress={() => router.push('/settings/account-linking')} />
         <Button title="E-posta Degistir" variant="outline" onPress={() => router.push('/settings/change-email')} />
         <Button title="Sifre Degistir" variant="outline" onPress={() => router.push('/settings/change-password')} />
         <Button title="Profil Duzenle" variant="outline" onPress={() => router.push('/settings/edit-profile')} />

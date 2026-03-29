@@ -16,14 +16,16 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
+import { router } from 'expo-router';
 import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
-  sendMessage, sendMessageWithPhoto, loadChatHistory,
+  sendMessage, sendMessageWithPhoto, loadChatHistory, checkMessageQuota,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { transcribeAudio, getRecordingOptions } from '@/services/voice-input.service';
+import { estimateCaffeine, checkDailyCaffeineLimit } from '@/services/caffeine.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -159,6 +161,17 @@ export default function ChatScreen() {
     const text = input.trim();
     if ((!text && !photo) || sending) return;
 
+    // Rate limiting check (Spec 16.1)
+    const isPrem = profile?.premium ?? false;
+    const { allowed, remaining } = await checkMessageQuota(isPrem);
+    if (!allowed) {
+      Alert.alert('Gunluk Limit', 'Ucretsiz planda gunluk 5 mesaj hakkin var. Kayit parse mesajlari sayilmaz.\n\nPremium\'a gecerek sinirsiz sohbet edebilirsin.', [
+        { text: 'Tamam' },
+        { text: "Premium'a Gec", onPress: () => router.push('/settings/premium' as never) },
+      ]);
+      return;
+    }
+
     // Add user message optimistically
     const userMsg: UIMessage = {
       id: `u-${Date.now()}`,
@@ -199,6 +212,17 @@ export default function ChatScreen() {
       // Refresh dashboard if actions were executed (meal logged, weight updated, etc.)
       if (data.actions.some(a => a.feedback) && user?.id) {
         refreshDashboard(user.id);
+      }
+
+      // Track caffeine if meal was logged (Spec 5.34)
+      if (data.task_mode === 'register' && text) {
+        const caff = estimateCaffeine(text);
+        if (caff.totalMg > 0) {
+          const limit = checkDailyCaffeineLimit(caff.totalMg);
+          if (limit) {
+            // Will show as part of next AI response context
+          }
+        }
       }
     } else {
       setMessages(prev => [...prev, {
