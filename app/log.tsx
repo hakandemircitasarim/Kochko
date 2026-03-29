@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { sendMessage } from '@/services/chat.service';
 import { logSupplement } from '@/services/supplements.service';
+import { BarcodeScanner } from '@/components/tracking/BarcodeScanner';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -64,6 +65,9 @@ export default function LogScreen() {
 
   // Supplement state
   const [supplementInput, setSupplementInput] = useState('');
+
+  // Barcode scanner (Spec 3.1)
+  const [showBarcode, setShowBarcode] = useState(false);
 
   const handleSave = async () => {
     if (!user?.id) return;
@@ -239,6 +243,7 @@ export default function LogScreen() {
             <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
               AI kalori ve makrolari otomatik hesaplar. Pisirme yontemi de yaz (haslama, kizartma vb.)
             </Text>
+            <Button title="Barkod Tara" variant="outline" size="sm" onPress={() => setShowBarcode(true)} style={{ marginBottom: SPACING.sm }} />
           </>
         )}
 
@@ -315,6 +320,17 @@ export default function LogScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Barcode Scanner Modal */}
+      <BarcodeScanner
+        visible={showBarcode}
+        onClose={() => setShowBarcode(false)}
+        onResult={(result) => {
+          // Pre-fill meal input with scanned product
+          setMealInput(`${result.name} (${result.servingG}g) — ${result.calories} kcal, ${result.protein_g}g pro`);
+          setShowBarcode(false);
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
