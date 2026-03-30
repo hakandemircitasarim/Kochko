@@ -43,6 +43,18 @@ export async function loadChatHistory(limit = 50): Promise<ChatMessage[]> {
   return (data as ChatMessage[]) ?? [];
 }
 
+/**
+ * T1.17: Send message with a specific date for batch/retroactive entry.
+ * Spec 3.1: Geçmişe dönük kayıt (batch entry)
+ */
+export async function sendMessageForDate(text: string, targetDate: string): Promise<{ data: ChatResponse | null; error: string | null }> {
+  const { data, error } = await supabase.functions.invoke('ai-chat', {
+    body: { message: `[${targetDate} icin kayit] ${text}`, target_date: targetDate },
+  });
+  if (error) return { data: null, error: error.message };
+  return { data: data as ChatResponse, error: null };
+}
+
 export async function loadInsights(): Promise<Record<string, unknown> | null> {
   const { data } = await supabase.from('ai_summary').select('*').single();
   return data;

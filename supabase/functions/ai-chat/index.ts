@@ -35,7 +35,7 @@ serve(async (req: Request) => {
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
 
-    const { message, image_base64 } = body;
+    const { message, image_base64, target_date } = body;
 
     if (!message?.trim() && !image_base64) {
       return respond({ error: 'message or image required' }, 400);
@@ -127,8 +127,8 @@ serve(async (req: Request) => {
     const { cleanMessage: finalMessage, layer2Updates } = extractLayer2Updates(assistantMessage);
     assistantMessage = finalMessage;
 
-    // Execute actions
-    const actionFeedback = await executeActions(userId, actions, profile?.gender);
+    // Execute actions (use target_date for batch entry, T1.17)
+    const actionFeedback = await executeActions(userId, actions, profile?.gender, target_date);
 
     // Store messages with token count and model version (Spec 5.25)
     const tokenEstimate = Math.round((message?.length ?? 0) / 3.5) + Math.round(assistantMessage.length / 3.5);
@@ -227,9 +227,10 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
 async function executeActions(
   userId: string,
   actions: Record<string, unknown>[],
-  gender: string | null
+  gender: string | null,
+  targetDate?: string
 ): Promise<(string | null)[]> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = targetDate ?? new Date().toISOString().split('T')[0];
   const feedback: (string | null)[] = [];
 
   // Get existing water for today
