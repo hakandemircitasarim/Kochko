@@ -271,6 +271,8 @@ async function executeActions(
               { onConflict: 'user_id,date' }
             );
             await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
+            // T1.19: Check if TDEE recalculation needed
+            recalculateTDEEIfNeeded(userId, w).catch(() => {});
             feedback.push('Tarti kaydedildi');
           }
           break;
@@ -441,12 +443,102 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
 async function checkOnboardingCompletion(userId: string) {
   const { data } = await supabaseAdmin
     .from('profiles')
-    .select('height_cm, weight_kg, birth_year, gender, onboarding_completed')
+    .select('height_cm, weight_kg, birth_year, gender, activity_level, onboarding_completed')
     .eq('id', userId).single();
 
   if (data && !data.onboarding_completed && data.height_cm && data.weight_kg && data.birth_year && data.gender) {
-    await supabaseAdmin.from('profiles')
-      .update({ onboarding_completed: true, updated_at: new Date().toISOString() })
-      .eq('id', userId);
+    // Calculate TDEE and save targets (Spec 2.4, T1.18)
+    const age = new Date().getFullYear() - data.birth_year;
+    const base = 10 * data.weight_kg + 6.25 * data.height_cm - 5 * age;
+    const bmr = data.gender === 'male' ? base + 5 : base - 161;
+    const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
+    const tdee = Math.round(bmr * (multipliers[data.activity_level ?? 'moderate'] ?? 1.55));
+
+    // Default sustainable deficit targets
+    const targetCal = Math.round(tdee * 0.85);
+    const rangeWidth = Math.round(targetCal * 0.10);
+    const trainingMin = Math.max(targetCal - Math.round(rangeWidth / 2), data.gender === 'female' ? 1200 : 1400);
+    const trainingMax = targetCal + Math.round(rangeWidth / 2);
+    const restMin = Math.max(trainingMin - 250, data.gender === 'female' ? 1200 : 1400);
+    const restMax = trainingMax - 250;
+    const proteinG = Math.round(data.weight_kg * 1.8);
+    const waterTarget = Math.round(data.weight_kg * 0.033 * 10) / 10;
+    const weeklyBudget = 4 * Math.round((trainingMin + trainingMax) / 2) + 3 * Math.round((restMin + restMax) / 2);
+
+    await supabaseAdmin.from('profiles').update({
+      onboarding_completed: true,
+      tdee_calculated: tdee,
+      tdee_last_weight: data.weight_kg,
+      tdee_last_date: new Date().toISOString().split('T')[0],
+      calorie_range_training_min: trainingMin,
+      calorie_range_training_max: trainingMax,
+      calorie_range_rest_min: restMin,
+      calorie_range_rest_max: restMax,
+      protein_target_g: proteinG,
+      protein_per_kg: 1.8,
+      water_target_liters: waterTarget,
+      weekly_calorie_budget: weeklyBudget,
+      macro_pct_protein: 30,
+      macro_pct_carb: 40,
+      macro_pct_fat: 30,
+      updated_at: new Date().toISOString(),
+    }).eq('id', userId);
   }
+}
+
+/**
+ * T1.19: Recalculate TDEE when significant weight change detected.
+ * Spec 2.4: Triggers on 2.5+ kg change or 30+ days since last calc.
+ */
+async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('height_cm, birth_year, gender, activity_level, tdee_last_weight, tdee_last_date')
+    .eq('id', userId).single();
+
+  if (!profile?.height_cm || !profile?.birth_year || !profile?.gender) return;
+
+  const lastWeight = profile.tdee_last_weight as number | null;
+  const lastDate = profile.tdee_last_date as string | null;
+
+  // Check if recalculation needed
+  let needed = false;
+  if (!lastWeight || !lastDate) { needed = true; }
+  else if (Math.abs(currentWeight - lastWeight) >= 2.5) { needed = true; }
+  else {
+    const daysSince = Math.floor((Date.now() - new Date(lastDate).getTime()) / 86400000);
+    if (daysSince > 30) needed = true;
+  }
+
+  if (!needed) return;
+
+  const age = new Date().getFullYear() - profile.birth_year;
+  const base = 10 * currentWeight + 6.25 * profile.height_cm - 5 * age;
+  const bmr = profile.gender === 'male' ? base + 5 : base - 161;
+  const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
+  const tdee = Math.round(bmr * (multipliers[profile.activity_level ?? 'moderate'] ?? 1.55));
+
+  const targetCal = Math.round(tdee * 0.85);
+  const rangeWidth = Math.round(targetCal * 0.10);
+  const trainingMin = Math.max(targetCal - Math.round(rangeWidth / 2), profile.gender === 'female' ? 1200 : 1400);
+  const trainingMax = targetCal + Math.round(rangeWidth / 2);
+  const restMin = Math.max(trainingMin - 250, profile.gender === 'female' ? 1200 : 1400);
+  const restMax = trainingMax - 250;
+  const proteinG = Math.round(currentWeight * 1.8);
+  const waterTarget = Math.round(currentWeight * 0.033 * 10) / 10;
+  const weeklyBudget = 4 * Math.round((trainingMin + trainingMax) / 2) + 3 * Math.round((restMin + restMax) / 2);
+
+  await supabaseAdmin.from('profiles').update({
+    tdee_calculated: tdee,
+    tdee_last_weight: currentWeight,
+    tdee_last_date: new Date().toISOString().split('T')[0],
+    calorie_range_training_min: trainingMin,
+    calorie_range_training_max: trainingMax,
+    calorie_range_rest_min: restMin,
+    calorie_range_rest_max: restMax,
+    protein_target_g: proteinG,
+    water_target_liters: waterTarget,
+    weekly_calorie_budget: weeklyBudget,
+    updated_at: new Date().toISOString(),
+  }).eq('id', userId);
 }
