@@ -347,6 +347,38 @@ async function executeActions(
           }
           break;
         }
+        case 'strength_log': {
+          // T3.24: Parse strength sets from chat (e.g., "bench press 4x8 70kg")
+          const sets = action.sets as { exercise: string; set_number: number; reps: number; weight_kg: number; rpe?: number }[] | undefined;
+          if (sets?.length) {
+            await supabaseAdmin.from('strength_sets').insert(
+              sets.map(s => ({
+                user_id: userId, exercise_name: s.exercise,
+                set_number: s.set_number, reps: s.reps, weight_kg: s.weight_kg,
+                rpe: s.rpe ?? null, logged_for_date: today,
+              }))
+            );
+            feedback.push(`Guc kaydi: ${sets.length} set kaydedildi`);
+          }
+          break;
+        }
+        case 'save_recipe': {
+          // T3.6: Save recipe from AI chat to recipe library
+          const recipe = action as Record<string, unknown>;
+          await supabaseAdmin.from('saved_recipes').insert({
+            user_id: userId,
+            title: recipe.title as string ?? 'Tarif',
+            category: recipe.category as string ?? 'dinner',
+            ingredients: recipe.ingredients,
+            instructions: recipe.instructions as string ?? '',
+            total_calories: recipe.calories as number ?? 0,
+            total_protein_g: recipe.protein_g as number ?? 0,
+            prep_time_min: recipe.prep_time_min as number ?? 0,
+            servings: recipe.servings as number ?? 1,
+          });
+          feedback.push('Tarif kaydedildi');
+          break;
+        }
         case 'undo_last': {
           // Spec 5.32: Undo last action - find and reverse most recent log
           const undoType = action.undo_type as string ?? 'meal';
