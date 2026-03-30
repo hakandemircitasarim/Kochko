@@ -29,21 +29,9 @@ ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS model_version text;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS token_count integer;
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS actions_executed jsonb;
 
--- Progress photos table
-CREATE TABLE IF NOT EXISTS progress_photos (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  photo_uri text NOT NULL,
-  pose_type text DEFAULT 'on',
-  taken_at timestamptz DEFAULT now(),
-  notes text,
-  created_at timestamptz DEFAULT now()
-);
-
--- RLS for progress_photos
-ALTER TABLE progress_photos ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users manage own photos" ON progress_photos
-  FOR ALL USING (auth.uid() = user_id);
+-- progress_photos already exists in migration 002
+-- Add pose_type column if not present (002 may not have it)
+ALTER TABLE progress_photos ADD COLUMN IF NOT EXISTS pose_type text DEFAULT 'on';
 
 -- Index for daily_plans versioning
 CREATE INDEX IF NOT EXISTS idx_daily_plans_version ON daily_plans(user_id, date, version DESC);

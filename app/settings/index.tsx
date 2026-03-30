@@ -74,6 +74,7 @@ export default function SettingsScreen() {
         <Button title="Koc Tonu" variant="outline" onPress={() => router.push('/settings/coach-tone')} />
         <Button title="Bildirimler" variant="outline" onPress={() => router.push('/settings/notifications')} />
         <Button title="Donemsel Durum" variant="outline" onPress={() => router.push('/settings/periodic-state')} />
+        <Button title="Tema" variant="outline" onPress={() => router.push('/settings/theme')} />
         <Button title="Premium" variant="outline" onPress={() => router.push('/settings/premium')} />
       </View>
 
