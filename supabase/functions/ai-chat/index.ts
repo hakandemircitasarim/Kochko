@@ -19,13 +19,23 @@ import { buildFullContext, updateLayer2 } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, checkAllergens, sanitizeUserInput } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit } from '../shared/rate-limit.ts';
+import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
 import { BASE_SYSTEM_PROMPT } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions } from './task-modes.ts';
 
 serve(async (req: Request) => {
   try {
+    // T1.10: Request validation
+    const sizeCheck = checkPayloadSize(req.headers.get('content-length'));
+    if (!sizeCheck.valid) return respond({ error: sizeCheck.error }, 413);
+
     const userId = await getUserId(req);
-    const { message, image_base64 } = await req.json();
+    const body = await req.json();
+
+    const validation = validateChatRequest(body);
+    if (!validation.valid) return respond({ error: validation.error }, 400);
+
+    const { message, image_base64 } = body;
 
     if (!message?.trim() && !image_base64) {
       return respond({ error: 'message or image required' }, 400);

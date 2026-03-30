@@ -126,11 +126,11 @@ export default function TodayScreen() {
         <View style={{ flex: 1 }}>
           <MoodTracker
             currentScore={moodScore}
-            onSelect={async (score) => {
+            onSelect={async (score, stressNote) => {
               if (!user?.id) return;
               const date = getEffectiveDate(new Date(), dayBoundaryHour);
               await supabase.from('daily_metrics').upsert(
-                { user_id: user.id, date, mood_score: score, water_liters: waterLiters, synced: true },
+                { user_id: user.id, date, mood_score: score, mood_note: stressNote ?? null, stress_note: stressNote ?? null, water_liters: waterLiters, synced: true },
                 { onConflict: 'user_id,date' }
               );
               refresh();
