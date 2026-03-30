@@ -25,11 +25,11 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 1.1 Auth Sistemi (Spec 1.1-1.4)
 **Dosyalar:** `src/stores/auth.store.ts`, `app/(auth)/login.tsx`, `app/(auth)/register.tsx`
 
-- [ ] **T1.1** Google Sign-In entegrasyonu: `expo-auth-session` veya `@react-native-google-signin` kur, Supabase OAuth ayarla
-- [ ] **T1.2** Apple Sign-In entegrasyonu: `expo-apple-authentication` kur, Supabase'de aktif et
-- [ ] **T1.3** `auth.store.ts`'e `signInWithGoogle()` ve `signInWithApple()` ekle, login/register ekranlarinda sosyal giris butonlari ekle
-- [ ] **T1.4** Email dogrulama zorunlulugu: Kayit sonrasi "email kontrol et" ekrani (`app/(auth)/verify-email.tsx`), `email_confirmed_at` olmadan plan uretimini engelle
-- [ ] **T1.5** Sifre sifirlama: `supabase.auth.resetPasswordForEmail()`, yeni `app/(auth)/reset-password.tsx` ekrani, login'de "sifremi unuttum" linki
+- [x] **T1.1** Google Sign-In entegrasyonu: `expo-auth-session` veya `@react-native-google-signin` kur, Supabase OAuth ayarla
+- [x] **T1.2** Apple Sign-In entegrasyonu: `expo-apple-authentication` kur, Supabase'de aktif et
+- [x] **T1.3** `auth.store.ts`'e `signInWithGoogle()` ve `signInWithApple()` ekle, login/register ekranlarinda sosyal giris butonlari ekle
+- [x] **T1.4** Email dogrulama zorunlulugu: Kayit sonrasi "email kontrol et" ekrani (`app/(auth)/verify-email.tsx`), `email_confirmed_at` olmadan plan uretimini engelle
+- [x] **T1.5** Sifre sifirlama: `supabase.auth.resetPasswordForEmail()`, yeni `app/(auth)/reset-password.tsx` ekrani, login'de "sifremi unuttum" linki
 - [ ] **T1.6** Hesap baglama (account linking): Google kullanici sonradan Apple/email baglayabilmeli. Yeni `app/settings/account-security.tsx` ekrani
 - [ ] **T1.7** Coklu cihaz oturum yonetimi: Aktif oturumlari gorme ve uzaktan kapatma. Esanli AI sohbet kilidi (15dk timeout)
 - [ ] **T1.8** Hesap silme 30 gunluk yumusak silme: `deleted_at` kolonu, 30 gun icinde geri donebilme, sonra kalici silme (scheduled function)
@@ -37,18 +37,18 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 1.2 Backend Guvenlik (Spec 18.4, 16.4)
 **Dosyalar:** `supabase/functions/shared/`
 
-- [ ] **T1.9** Rate limiting: Tum edge function'lara kullanici bazli gunluk API call siniri (free vs premium). Yeni `shared/rate-limit.ts`
+- [x] **T1.9** Rate limiting: Tum edge function'lara kullanici bazli gunluk API call siniri (free vs premium). Yeni `shared/rate-limit.ts`
 - [ ] **T1.10** Request validasyonu: JSON body sema kontrolu, buyuk payload reddi. Yeni `shared/request-validator.ts`
-- [ ] **T1.11** Prompt injection korumasi: `sanitizeUserInput()` fonksiyonu `shared/guardrails.ts`'e ekle. Bilinen injection kaliplarini tespit et ve engelle (Spec 5.26)
+- [x] **T1.11** Prompt injection korumasi: `sanitizeUserInput()` fonksiyonu `shared/guardrails.ts`'e ekle. Bilinen injection kaliplarini tespit et ve engelle (Spec 5.26)
 
 ### 1.3 Profil + Kayit Sistemi Entegrasyonu (Spec 2.1, 3.1, 12.6)
 **Dosyalar:** `src/stores/dashboard.store.ts`, `app/(tabs)/index.tsx`, `src/lib/day-boundary.ts`
 
-- [ ] **T1.12** Gun siniri (day boundary) entegrasyonu: `dashboard.store.ts`'deki naive `new Date()` kullanimimini `getEffectiveDate()` ile degistir. Tum tarih hesaplamalari `day-boundary.ts` uzerinden
+- [x] **T1.12** Gun siniri (day boundary) entegrasyonu: `dashboard.store.ts`'deki naive `new Date()` kullanimimini `getEffectiveDate()` ile degistir. Tum tarih hesaplamalari `day-boundary.ts` uzerinden
 - [ ] **T1.13** Stres kaydi UI: `MoodTracker.tsx`'e stres notu alani ekle veya ayri `StressInput` componenti, `daily_metrics.stress_note` yazilsin
-- [ ] **T1.14** Toparlanma kaydi UI: Yeni `RecoveryInput.tsx` componenti (kas agrisi 1-5, toparlanma hissi), dashboard'a ekle. Sadece guc antrenmani yapanlara goster
-- [ ] **T1.15** `checkSuspiciousInput()` entegrasyonu: `guardrails-client.ts`'deki fonksiyonu su, kilo, uyku girisleri oncesi cagir. Suphe varsa Alert ile dogrulama iste
-- [ ] **T1.16** Supplement hizli kayit: `SupplementQuickAdd.tsx` componentini dashboard'a entegre et
+- [x] **T1.14** Toparlanma kaydi UI: Yeni `RecoveryInput.tsx` componenti (kas agrisi 1-5, toparlanma hissi), dashboard'a ekle. Sadece guc antrenmani yapanlara goster
+- [x] **T1.15** `checkSuspiciousInput()` entegrasyonu: `guardrails-client.ts`'deki fonksiyonu su, kilo, uyku girisleri oncesi cagir. Suphe varsa Alert ile dogrulama iste
+- [x] **T1.16** Supplement hizli kayit: `SupplementQuickAdd.tsx` componentini dashboard'a entegre et
 - [ ] **T1.17** Gecmise donuk kayit (batch entry): Sohbette "dunku ogunu gireyim" dendiginde tarih secici, `logged_for_date` kolonunu kullan
 
 ### 1.4 TDEE Hesaplama Entegrasyonu (Spec 2.4)
@@ -61,27 +61,27 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 1.5 AI Chat Saglamlastirma (Spec 5.1-5.32)
 **Dosyalar:** `supabase/functions/ai-chat/index.ts`, `supabase/functions/shared/output-validator.ts`
 
-- [ ] **T1.21** Structured output retry: `validateMealParse()` hata bulursa hatayi OpenAI'a geri gonderip 1 kez retry yap
-- [ ] **T1.22** "Son kaydi sil" aksiyonu: `undo_last` action tipi ekle, son action'i geri al
-- [ ] **T1.23** `token_count` ve `model_version` bilgisini `chat_messages`'a yaz (kolonlar var, hic doldurulmuyor)
-- [ ] **T1.24** `actions_executed` JSONB bilgisini mesajla birlikte kaydet
-- [ ] **T1.25** Sohbet oturumu baslik otomatik olusturma: Her N mesajda `chat_sessions.title` ve `topic_tags` guncelle
+- [x] **T1.21** Structured output retry: `validateMealParse()` hata bulursa hatayi OpenAI'a geri gonderip 1 kez retry yap
+- [x] **T1.22** "Son kaydi sil" aksiyonu: `undo_last` action tipi ekle, son action'i geri al
+- [x] **T1.23** `token_count` ve `model_version` bilgisini `chat_messages`'a yaz (kolonlar var, hic doldurulmuyor)
+- [x] **T1.24** `actions_executed` JSONB bilgisini mesajla birlikte kaydet
+- [x] **T1.25** Sohbet oturumu baslik otomatik olusturma: Her N mesajda `chat_sessions.title` ve `topic_tags` guncelle
 - [ ] **T1.26** Dusuk guven durumunda kullanicidan onay isteme akisi: "pending_confirmation" state
 
 ### 1.6 Plan Uretimi Tamamlama (Spec 7.1-7.4)
 **Dosyalar:** `supabase/functions/ai-plan/index.ts`, `app/(tabs)/plan.tsx`
 
-- [ ] **T1.27** Plan versiyonlama: Regenerate'de version artir, versiyon gecmisi goster
-- [ ] **T1.28** Plan onaylama/reddetme akisi: "Onayla" / "Degistir" butonlari, `status` ve `approved_at` kaydet
-- [ ] **T1.29** `validatePlanOutput()` calistir: Plan uretildikten sonra output-validator'den gecir
+- [x] **T1.27** Plan versiyonlama: Regenerate'de version artir, versiyon gecmisi goster
+- [x] **T1.28** Plan onaylama/reddetme akisi: "Onayla" / "Degistir" butonlari, `status` ve `approved_at` kaydet
+- [x] **T1.29** `validatePlanOutput()` calistir: Plan uretildikten sonra output-validator'den gecir
 
 ### 1.7 Dashboard Tamamlama (Spec 8, 17)
 **Dosyalar:** `app/(tabs)/index.tsx`, `src/stores/dashboard.store.ts`
 
-- [ ] **T1.30** "Bugunun tek odagi" mesaji: `daily_plans.focus_message` fetch et, dashboard'un ustune goster
-- [ ] **T1.31** `WeeklyBudgetWidget` entegrasyonu: Component var, `weekly-budget.ts` ile veri bagla, dashboard'a ekle
-- [ ] **T1.32** IF penceresi gostergesi: `profile.if_active` ise yeme penceresi durumunu goster (acik/kapali, geri sayim)
-- [ ] **T1.33** `StepCounter.tsx` entegrasyonu: Component var, `daily_metrics.steps` ile bagla
+- [x] **T1.30** "Bugunun tek odagi" mesaji: `daily_plans.focus_message` fetch et, dashboard'un ustune goster
+- [x] **T1.31** `WeeklyBudgetWidget` entegrasyonu: Component var, `weekly-budget.ts` ile veri bagla, dashboard'a ekle
+- [x] **T1.32** IF penceresi gostergesi: `profile.if_active` ise yeme penceresi durumunu goster (acik/kapali, geri sayim)
+- [x] **T1.33** `StepCounter.tsx` entegrasyonu: Component var, `daily_metrics.steps` ile bagla
 
 ### 1.8 Premium / Odeme (Spec 16)
 **Dosyalar:** `app/settings/premium.tsx`, `src/hooks/usePremium.ts`
