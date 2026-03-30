@@ -15,6 +15,8 @@ import { StepCounter } from '@/components/tracking/StepCounter';
 import { WeeklyBudgetWidget } from '@/components/tracking/WeeklyBudgetWidget';
 import { SupplementQuickAdd } from '@/components/tracking/SupplementQuickAdd';
 import { RecoveryInput } from '@/components/tracking/RecoveryInput';
+import { IFTimerWidget } from '@/components/tracking/IFTimerWidget';
+import { ChallengeWidget } from '@/components/tracking/ChallengeWidget';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
@@ -34,11 +36,16 @@ export default function TodayScreen() {
     loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
+  const [activeChallenges, setActiveChallenges] = useState<{ id: string; challenge_name: string; target_days: number; completed_days: number }[]>([]);
 
   const refresh = useCallback(() => {
     if (user?.id) {
       fetchToday(user.id);
       checkForMilestones();
+      // Fetch active challenges for widget
+      supabase.from('challenges').select('id, challenge_name, target_days, completed_days')
+        .eq('user_id', user.id).eq('status', 'active').limit(2)
+        .then(({ data }) => setActiveChallenges((data ?? []) as typeof activeChallenges));
     }
   }, [user?.id, fetchToday, checkForMilestones]);
 
@@ -73,11 +80,10 @@ export default function TodayScreen() {
         </View>
       )}
 
-      {/* IF Window Indicator (Spec 2.1) */}
+      {/* IF Timer Widget (Spec 2.1, T2.18) */}
       {ifActive && ifEatingStart && ifEatingEnd && (
-        <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>IF Penceresi</Text>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>{ifEatingStart} - {ifEatingEnd}</Text>
+        <View style={{ marginBottom: SPACING.md }}>
+          <IFTimerWidget eatingStart={ifEatingStart} eatingEnd={ifEatingEnd} />
         </View>
       )}
 
@@ -251,6 +257,13 @@ export default function TodayScreen() {
           ))
         )}
       </Card>
+
+      {/* Active Challenges Widget (Spec 13.5, T3.37) */}
+      {activeChallenges.length > 0 && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <ChallengeWidget challenges={activeChallenges} />
+        </View>
+      )}
 
       {/* Step Counter (Spec 14.2) */}
       {steps !== null && (
