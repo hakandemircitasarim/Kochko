@@ -93,6 +93,65 @@ ${hoursSinceChat > 48 ? 'TETIK: 2+ gundur sessiz' : ''}`;
       }
     }
 
+    // T1.38: Auto-trigger daily report for users at day boundary (Spec 8.1)
+    if (hour >= 4 && hour <= 6) {
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      for (const profile of profiles as { id: string }[]) {
+        // Check if yesterday's report already exists
+        const { data: existingReport } = await supabaseAdmin
+          .from('daily_reports').select('id')
+          .eq('user_id', profile.id).eq('date', yesterdayStr).single();
+
+        if (!existingReport) {
+          // Trigger report generation by calling ai-report function internally
+          try {
+            const reportUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-report`;
+            await fetch(reportUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                'x-user-id': profile.id,
+              },
+              body: JSON.stringify({ type: 'daily', date: yesterdayStr }),
+            });
+          } catch { /* non-critical */ }
+        }
+      }
+    }
+
+    // T1.38: Auto-trigger weekly report on Monday mornings
+    const dayOfWeek = now.getDay(); // 0=Sunday, 1=Monday
+    if (dayOfWeek === 1 && hour >= 6 && hour <= 8) {
+      for (const profile of profiles as { id: string }[]) {
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() - 7);
+        const weekStartStr = weekStart.toISOString().split('T')[0];
+
+        const { data: existingWeekly } = await supabaseAdmin
+          .from('weekly_reports').select('id')
+          .eq('user_id', profile.id).eq('week_start', weekStartStr).single();
+
+        if (!existingWeekly) {
+          try {
+            const reportUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-report`;
+            await fetch(reportUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                'x-user-id': profile.id,
+              },
+              body: JSON.stringify({ type: 'weekly' }),
+            });
+          } catch { /* non-critical */ }
+        }
+      }
+    }
+
     return respond({ processed: profiles.length, sent: totalSent });
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);
