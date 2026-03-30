@@ -13,8 +13,12 @@ import { MoodTracker } from '@/components/tracking/MoodTracker';
 import { SleepInput } from '@/components/tracking/SleepInput';
 import { StepCounter } from '@/components/tracking/StepCounter';
 import { WeeklyBudgetWidget } from '@/components/tracking/WeeklyBudgetWidget';
+import { SupplementQuickAdd } from '@/components/tracking/SupplementQuickAdd';
+import { RecoveryInput } from '@/components/tracking/RecoveryInput';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
+import { checkSuspiciousInput } from '@/lib/guardrails-client';
+import { Alert } from 'react-native';
 import { COLORS, SPACING, FONT, WATER_INCREMENT } from '@/lib/constants';
 
 const MEAL_LABELS: Record<string, string> = {
@@ -102,7 +106,19 @@ export default function TodayScreen() {
 
       {/* Water Tracker */}
       <View style={{ marginBottom: SPACING.md }}>
-        <WaterTracker current={waterLiters} target={waterTarget} onAdd={() => user?.id && addWater(user.id, WATER_INCREMENT)} />
+        <WaterTracker current={waterLiters} target={waterTarget} onAdd={() => {
+          if (!user?.id) return;
+          const newTotal = waterLiters + WATER_INCREMENT;
+          const warning = checkSuspiciousInput('water', newTotal);
+          if (warning) {
+            Alert.alert('Dogrulama', warning, [
+              { text: 'Iptal', style: 'cancel' },
+              { text: 'Evet', onPress: () => addWater(user.id, WATER_INCREMENT, dayBoundaryHour) },
+            ]);
+          } else {
+            addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
+          }
+        }} />
       </View>
 
       {/* Mood + Sleep (side by side) */}
@@ -128,15 +144,50 @@ export default function TodayScreen() {
           currentHours={sleepHours}
           onSave={async (hours, quality) => {
             if (!user?.id) return;
-            const date = getEffectiveDate(new Date(), dayBoundaryHour);
-            await supabase.from('daily_metrics').upsert(
-              { user_id: user.id, date, sleep_hours: hours, sleep_quality: quality, water_liters: waterLiters, synced: true },
-              { onConflict: 'user_id,date' }
-            );
-            refresh();
+            const warning = checkSuspiciousInput('sleep', hours);
+            const doSave = async () => {
+              const date = getEffectiveDate(new Date(), dayBoundaryHour);
+              await supabase.from('daily_metrics').upsert(
+                { user_id: user.id, date, sleep_hours: hours, sleep_quality: quality, water_liters: waterLiters, synced: true },
+                { onConflict: 'user_id,date' }
+              );
+              refresh();
+            };
+            if (warning) {
+              Alert.alert('Dogrulama', warning, [
+                { text: 'Iptal', style: 'cancel' },
+                { text: 'Evet', onPress: doSave },
+              ]);
+            } else {
+              await doSave();
+            }
           }}
         />
       </View>
+
+      {/* Supplement Quick Add (Spec 3.1) */}
+      <View style={{ marginBottom: SPACING.md }}>
+        <SupplementQuickAdd onLogged={refresh} />
+      </View>
+
+      {/* Recovery Input - only for strength/mixed training (Spec 3.1) */}
+      {((profile as Record<string, unknown>)?.training_style === 'strength' || (profile as Record<string, unknown>)?.training_style === 'mixed') && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <RecoveryInput
+            muscleSoreness={null}
+            recoveryScore={null}
+            onSave={async (soreness, recovery) => {
+              if (!user?.id) return;
+              const date = getEffectiveDate(new Date(), dayBoundaryHour);
+              await supabase.from('daily_metrics').upsert(
+                { user_id: user.id, date, muscle_soreness: soreness, recovery_score: recovery, water_liters: waterLiters, synced: true },
+                { onConflict: 'user_id,date' }
+              );
+              refresh();
+            }}
+          />
+        </View>
+      )}
 
       {/* Quick Input */}
       <TouchableOpacity
