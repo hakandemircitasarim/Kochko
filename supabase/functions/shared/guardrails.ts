@@ -175,3 +175,46 @@ export function detectEmergency(text: string): { isEmergency: boolean; message: 
 
   return { isEmergency: false, message: '' };
 }
+
+/**
+ * Spec 5.26: Prompt Injection Protection
+ * Detect and sanitize known injection patterns.
+ * Returns sanitized text and whether injection was detected.
+ */
+const INJECTION_PATTERNS = [
+  /ignore\s+(all\s+)?previous\s+instructions/i,
+  /ignore\s+above/i,
+  /disregard\s+(all\s+)?previous/i,
+  /system\s*prompt/i,
+  /you\s+are\s+(now|no\s+longer)/i,
+  /act\s+as\s+(a|an)\s+(?!koc|coach)/i,
+  /pretend\s+(to\s+be|you('re|\s+are))/i,
+  /roleplay\s+as/i,
+  /new\s+instructions/i,
+  /override\s+(your|the)\s+(instructions|rules|prompt)/i,
+  /reveal\s+(your|the)\s+(system|prompt|instructions)/i,
+  /what\s+(are|is)\s+your\s+(system|initial)\s+(prompt|instructions)/i,
+  /repeat\s+(your|the)\s+(system|initial)\s+(prompt|instructions)/i,
+  /sen\s+(artık|artik)\s+(bir|)/i,
+  /rolunu\s+degistir/i,
+  /talimatlarini\s+(goster|göster|yaz)/i,
+  /sistem\s+promptunu/i,
+];
+
+export function sanitizeUserInput(text: string): {
+  sanitized: string;
+  injectionDetected: boolean;
+} {
+  let injectionDetected = false;
+
+  for (const pattern of INJECTION_PATTERNS) {
+    if (pattern.test(text)) {
+      injectionDetected = true;
+      break;
+    }
+  }
+
+  // Don't modify the text - let the system prompt handle it
+  // But flag it so the response can be adjusted
+  return { sanitized: text, injectionDetected };
+}

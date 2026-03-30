@@ -16,8 +16,9 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { buildFullContext, updateLayer2 } from '../shared/memory.ts';
-import { sanitizeText, detectEmergency, checkAllergens } from '../shared/guardrails.ts';
+import { sanitizeText, detectEmergency, checkAllergens, sanitizeUserInput } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
+import { checkRateLimit } from '../shared/rate-limit.ts';
 import { BASE_SYSTEM_PROMPT } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions } from './task-modes.ts';
 
@@ -28,6 +29,26 @@ serve(async (req: Request) => {
 
     if (!message?.trim() && !image_base64) {
       return respond({ error: 'message or image required' }, 400);
+    }
+
+    // Prompt injection detection (Spec 5.26)
+    let injectionDetected = false;
+    if (message) {
+      const injection = sanitizeUserInput(message);
+      injectionDetected = injection.injectionDetected;
+      if (injectionDetected) {
+        const rejectMsg = 'Ben Kochko, beslenme ve antrenman kocunum. Bu konuda sana yardimci olamam ama beslenme veya sporla ilgili sorun varsa konusalim.';
+        await storeMessages(userId, message, rejectMsg);
+        return respond({ message: rejectMsg, actions: [], task_mode: 'coaching' });
+      }
+    }
+
+    // Rate limiting (Spec 16.4)
+    const taskMode = message ? detectTaskMode(message, false) : 'coaching';
+    const isRecordParse = taskMode === 'register';
+    const rateLimit = await checkRateLimit(userId, isRecordParse);
+    if (!rateLimit.allowed) {
+      return respond({ error: rateLimit.message, rate_limited: true }, 429);
     }
 
     // Emergency detection (Spec 5.5)
