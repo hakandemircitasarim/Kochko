@@ -15,12 +15,15 @@ export default function SettingsScreen() {
   const handleDelete = () => {
     Alert.alert(
       'Hesabi Sil',
-      'Bu islem geri alinamaz. Tum verileriniz 30 gun sonra kalici silinir. (Spec 1.4)',
+      'Bu islem geri alinamaz. Tum verileriniz 30 gun sonra kalici silinir. Bu sure icinde giris yaparsaniz hesabiniz yeniden aktif olur.',
       [
         { text: 'Iptal', style: 'cancel' },
         { text: 'Hesabimi Sil', style: 'destructive', onPress: async () => {
           if (user?.id) {
-            await supabase.from('profiles').delete().eq('id', user.id);
+            // T1.8: Soft delete - set deleted_at, don't actually delete
+            await supabase.from('profiles').update({
+              deleted_at: new Date().toISOString(),
+            }).eq('id', user.id);
             await signOut();
           }
         }},
@@ -62,6 +65,7 @@ export default function SettingsScreen() {
         <Button title="Basarimlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
         <Button title="Tarif Kutuphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
         <Button title="Haftalik Menu" variant="outline" onPress={() => router.push('/settings/weekly-menu')} />
+        <Button title="Ilerleme Fotograflari" variant="outline" onPress={() => router.push('/settings/progress-photos')} />
       </View>
 
       {/* Preferences */}
@@ -81,6 +85,16 @@ export default function SettingsScreen() {
         <Button title="Saglik Profesyoneli Raporu" variant="outline" onPress={() => router.push('/settings/health-export')} />
         <Button title="Veri Iceri Aktar" variant="outline" onPress={() => router.push('/settings/data-import')} />
         <Button title="Sohbet Gecmisi" variant="outline" onPress={() => router.push('/settings/chat-history')} />
+      </View>
+
+      {/* Privacy & Security */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Guvenlik</Text>
+      <View style={{ gap: SPACING.sm }}>
+        <Button title="Hesap Guvenligi" variant="outline" onPress={() => router.push('/settings/account-security')} />
+        <Button title="Cok Fazli Hedefler" variant="outline" onPress={() => router.push('/settings/multi-phase-goals')} />
+        <Button title="IF Ayarlari" variant="outline" onPress={() => router.push('/settings/if-settings')} />
+        <Button title="Adet Dongusu" variant="outline" onPress={() => router.push('/settings/menstrual')} />
+        <Button title="Profil Duzenle" variant="outline" onPress={() => router.push('/settings/edit-profile')} />
       </View>
 
       {/* Privacy */}
