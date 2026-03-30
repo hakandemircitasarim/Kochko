@@ -38,18 +38,18 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 **Dosyalar:** `supabase/functions/shared/`
 
 - [x] **T1.9** Rate limiting: Tum edge function'lara kullanici bazli gunluk API call siniri (free vs premium). Yeni `shared/rate-limit.ts`
-- [ ] **T1.10** Request validasyonu: JSON body sema kontrolu, buyuk payload reddi. Yeni `shared/request-validator.ts`
+- [x] **T1.10** Request validasyonu: JSON body sema kontrolu, buyuk payload reddi. Yeni `shared/request-validator.ts`
 - [x] **T1.11** Prompt injection korumasi: `sanitizeUserInput()` fonksiyonu `shared/guardrails.ts`'e ekle. Bilinen injection kaliplarini tespit et ve engelle (Spec 5.26)
 
 ### 1.3 Profil + Kayit Sistemi Entegrasyonu (Spec 2.1, 3.1, 12.6)
 **Dosyalar:** `src/stores/dashboard.store.ts`, `app/(tabs)/index.tsx`, `src/lib/day-boundary.ts`
 
 - [x] **T1.12** Gun siniri (day boundary) entegrasyonu: `dashboard.store.ts`'deki naive `new Date()` kullanimimini `getEffectiveDate()` ile degistir. Tum tarih hesaplamalari `day-boundary.ts` uzerinden
-- [ ] **T1.13** Stres kaydi UI: `MoodTracker.tsx`'e stres notu alani ekle veya ayri `StressInput` componenti, `daily_metrics.stress_note` yazilsin
+- [x] **T1.13** Stres kaydi UI: `MoodTracker.tsx`'e stres notu alani ekle veya ayri `StressInput` componenti, `daily_metrics.stress_note` yazilsin
 - [x] **T1.14** Toparlanma kaydi UI: Yeni `RecoveryInput.tsx` componenti (kas agrisi 1-5, toparlanma hissi), dashboard'a ekle. Sadece guc antrenmani yapanlara goster
 - [x] **T1.15** `checkSuspiciousInput()` entegrasyonu: `guardrails-client.ts`'deki fonksiyonu su, kilo, uyku girisleri oncesi cagir. Suphe varsa Alert ile dogrulama iste
 - [x] **T1.16** Supplement hizli kayit: `SupplementQuickAdd.tsx` componentini dashboard'a entegre et
-- [ ] **T1.17** Gecmise donuk kayit (batch entry): Sohbette "dunku ogunu gireyim" dendiginde tarih secici, `logged_for_date` kolonunu kullan
+- [x] **T1.17** Gecmise donuk kayit (batch entry): Sohbette "dunku ogunu gireyim" dendiginde tarih secici, `logged_for_date` kolonunu kullan
 
 ### 1.4 TDEE Hesaplama Entegrasyonu (Spec 2.4)
 **Dosyalar:** `src/lib/tdee.ts`, `supabase/functions/ai-chat/index.ts`
@@ -66,7 +66,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 - [x] **T1.23** `token_count` ve `model_version` bilgisini `chat_messages`'a yaz (kolonlar var, hic doldurulmuyor)
 - [x] **T1.24** `actions_executed` JSONB bilgisini mesajla birlikte kaydet
 - [x] **T1.25** Sohbet oturumu baslik otomatik olusturma: Her N mesajda `chat_sessions.title` ve `topic_tags` guncelle
-- [ ] **T1.26** Dusuk guven durumunda kullanicidan onay isteme akisi: "pending_confirmation" state
+- [x] **T1.26** Dusuk guven durumunda kullanicidan onay isteme akisi: "pending_confirmation" state
 
 ### 1.6 Plan Uretimi Tamamlama (Spec 7.1-7.4)
 **Dosyalar:** `supabase/functions/ai-plan/index.ts`, `app/(tabs)/plan.tsx`
@@ -88,15 +88,15 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 
 - [x] **T1.34** RevenueCat veya `expo-in-app-purchases` entegrasyonu: Aylik/yillik abonelik urunleri
 - [x] **T1.35** Trial donemi: Yeni kullanicilar N gun ucretsiz premium. `premium_expires_at` takibi
-- [ ] **T1.36** Edge function'larda premium bazli rate limiting
+- [x] **T1.36** Edge function'larda premium bazli rate limiting
 - [x] **T1.37** Downgrade akisi: Premium bitince veriyi koru, AI etkilesimini sinirla, upsell goster
 
 ### 1.9 Rapor Uretimi (Spec 8.1-8.2)
 **Dosyalar:** `supabase/functions/ai-report/index.ts`, `app/reports/`
 
 - [x] **T1.38** Otomatik gunluk rapor tetikleyici: Gun sinirinda veya ertesi gun ilk giriste otomatik uret
-- [ ] **T1.39** Gunluk rapor ekraninin veriye baglanmasi: Compliance score gorsellestirimesi, sapma etiketleri
-- [ ] **T1.40** Haftalik rapor ekraninin veriye baglanmasi: Kilo trendi grafigi, uyum haritasi
+- [x] **T1.39** Gunluk rapor ekraninin veriye baglanmasi: Compliance score gorsellestirimesi, sapma etiketleri
+- [x] **T1.40** Haftalik rapor ekraninin veriye baglanmasi: Kilo trendi grafigi, uyum haritasi
 
 ### 1.10 Hedef Motoru (Spec 6.1-6.7)
 **Dosyalar:** `src/services/goals.service.ts`, `app/settings/goals.tsx`
@@ -138,7 +138,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 - [x] **T2.12** `expo-camera` barkod modu veya `expo-barcode-scanner` entegrasyonu
 - [x] **T2.13** Barkod tarama butonunu chat input'a veya dashboard hizli aksiyona ekle
 - [x] **T2.14** OpenFoodFacts API lookup + yerel cache (AsyncStorage ile offline destek)
-- [ ] **T2.15** Bulunamayan barkod icin serbest metin girisi fallback ve barkod kaydedilmesi
+- [x] **T2.15** Bulunamayan barkod icin serbest metin girisi fallback ve barkod kaydedilmesi
 
 ### 2.5 IF (Aralikli Oruc) Modu (Spec 2.1, 9.4) - Item 16
 **Dosyalar:** `app/settings/if-settings.tsx`, `supabase/functions/ai-plan/index.ts`
@@ -192,8 +192,8 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 2.12 AI Oneri Geri Bildirimi (Spec 5.7) - Item 23
 **Dosyalar:** `src/services/feedback.service.ts`, `src/components/chat/FeedbackButtons.tsx`
 
-- [ ] **T2.37** `feedback.service.ts`'in `ai_feedback` tablosuna yazdigini dogrula
-- [ ] **T2.38** Geri bildirimlerin Layer 2'de okunup gelecek onerileri etkiledigini dogrula
+- [x] **T2.37** `feedback.service.ts`'in `ai_feedback` tablosuna yazdigini dogrula
+- [x] **T2.38** Geri bildirimlerin Layer 2'de okunup gelecek onerileri etkiledigini dogrula
 
 ### 2.13 Simulasyon Modu (Spec 5.2) - Item 24
 - [ ] **T2.39** Uctan uca test: "pizza yesem ne olur?" -> kalan butce, alternatif, haftalik etki
@@ -258,16 +258,16 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 3.4 Plateau Yonetimi (Spec 6.5) - Item 34
 **Dosyalar:** `src/services/plateau.service.ts`, `supabase/functions/ai-proactive/index.ts`
 
-- [ ] **T3.12** `plateau.service.ts` dogrula: 3+ hafta +-0.3kg durgunluk tespiti
-- [ ] **T3.13** Proaktif mesajla plateau bildirimi: AI kullaniciya strateji secenekleri sun (kalori dongusu, refeed, TDEE yeniden hesap, 2 hafta bakim, antrenman degisikligi)
+- [x] **T3.12** `plateau.service.ts` dogrula: 3+ hafta +-0.3kg durgunluk tespiti
+- [x] **T3.13** Proaktif mesajla plateau bildirimi: AI kullaniciya strateji secenekleri sun (kalori dongusu, refeed, TDEE yeniden hesap, 2 hafta bakim, antrenman degisikligi)
 - [ ] **T3.14** Secilen stratejiyi plana uygulama akisi
 
 ### 3.5 Bakim Modu / Maintenance (Spec 6.6) - Item 35
 **Dosyalar:** `src/services/maintenance.service.ts`
 
-- [ ] **T3.15** `maintenance.service.ts` dogrula: Hedefe ulastiginda otomatik oneri
+- [x] **T3.15** `maintenance.service.ts` dogrula: Hedefe ulastiginda otomatik oneri
 - [ ] **T3.16** Reverse diet: 2-4 haftalik kademeli kalori artisi plani
-- [ ] **T3.17** Tolerans bandi: Hedef kilodan +-1.5kg, asildiginda proaktif uyari
+- [x] **T3.17** Tolerans bandi: Hedef kilodan +-1.5kg, asildiginda proaktif uyari
 - [ ] **T3.18** Bakim milestone'lari: 1 ay, 3 ay, 6 ay bakimda kalma basarilari
 
 ### 3.6 Cok Fazli Hedef (Cut/Bulk Dongusu) (Spec 6.7) - Item 36
@@ -288,7 +288,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 3.8 Alkol Takibi (Spec 3.1) - Item 38
 **Dosyalar:** `supabase/functions/ai-chat/index.ts`
 
-- [ ] **T3.26** AI'in "2 bira ictim" parse edip `meal_log_items.alcohol_g` doldurdugunu dogrula
+- [x] **T3.26** AI'in "2 bira ictim" parse edip `meal_log_items.alcohol_g` doldurdugunu dogrula
 - [ ] **T3.27** Alkol kalorisinin gunluk toplama ve haftalik rapora ayri satirda yansimasi
 - [ ] **T3.28** Alkol-sapma korelasyonu: AI'in alkol sonrasi plansiz atistirma kalibini tespit etmesi
 
@@ -331,7 +331,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 3.14 Kafein-Uyku Korelasyonu (Spec 5.34) - Item 44
 **Dosyalar:** `src/services/caffeine.service.ts`
 
-- [ ] **T3.45** `caffeine.service.ts` dogrula: Kafein tespiti (kahve, cay, enerji icecegi), gunluk toplam
+- [x] **T3.45** `caffeine.service.ts` dogrula: Kafein tespiti (kahve, cay, enerji icecegi), gunluk toplam
 - [ ] **T3.46** Kafein-uyku korelasyonu: 15:00 sonrasi kafein ile uyku kalitesi iliskisi
 - [ ] **T3.47** 400mg/gun uyarisi
 
@@ -346,8 +346,8 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 4.1 Sesli Giris (Spec 20.3) - Item 46
 **Dosyalar:** `app/(tabs)/chat.tsx`, yeni `src/services/voice.service.ts`
 
-- [ ] **T4.1** `expo-speech` veya Whisper API entegrasyonu
-- [ ] **T4.2** Chat input'a mikrofon butonu ekle
+- [x] **T4.1** `expo-speech` veya Whisper API entegrasyonu
+- [x] **T4.2** Chat input'a mikrofon butonu ekle
 - [ ] **T4.3** Speech-to-text sonucunu normal metin mesaji olarak isle
 
 ### 4.2 Ilerleme Fotograflari (Spec 3.1) - Item 47
@@ -392,7 +392,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 4.8 Zengin Sohbet Yanitlari (Spec 5.20) - Item 53
 **Dosyalar:** `src/components/chat/RichMessage.tsx`
 
-- [ ] **T4.23** Mini chart destegi: Kalori progress bar, makro pie chart inline gosterim
+- [x] **T4.23** Mini chart destegi: Kalori progress bar, makro pie chart inline gosterim
 - [ ] **T4.24** Hizli secim butonlari: "Aksam ne yiyelim?" sorusuna 2-3 secenek butonu
 - [ ] **T4.25** Onay butonlari: Plan degisikligi onerildikginde "Onayla / Reddet"
 - [ ] **T4.26** Kaydiriabilir tarif karti ve simulasyon karti
@@ -447,9 +447,9 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 4.17 Gizlilik / KVKK / GDPR (Spec 18)
 **Dosyalar:** `src/services/privacy.service.ts`
 
-- [ ] **T4.52** Veri export tamamla: Tum kullanici verisi JSON/CSV olarak
+- [x] **T4.52** Veri export tamamla: Tum kullanici verisi JSON/CSV olarak
 - [ ] **T4.53** Veri silme akisi: 30 gunluk yumusak silme (T1.8 ile baglanli)
-- [ ] **T4.54** Katman 2 seffafligi: "Benim hakkimda ne biliyorsun?" ekrani, duzeltme/silme hakki
+- [x] **T4.54** Katman 2 seffafligi: "Benim hakkimda ne biliyorsun?" ekrani, duzeltme/silme hakki
 - [ ] **T4.55** Ogun fotograflari retention: Parse sonrasi 24 saat icinde sunucudan silme
 
 ### 4.18 i18n Altyapisi (Spec 20.2)
