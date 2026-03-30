@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -22,6 +23,7 @@ import {
   sendMessage, sendMessageWithPhoto, loadChatHistory,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
+import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -41,9 +43,34 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
 
   const isOnboarding = profile && !profile.onboarding_completed;
+
+  // Barcode scan handler (T2.12-T2.13)
+  const handleBarcodeScan = async (barcode: string) => {
+    setShowBarcodeScanner(false);
+    setSending(true);
+    const result = await lookupBarcode(barcode);
+    if (result.found) {
+      const serving = calculateServing(result, result.serving_size_g ?? 100);
+      const msg = `Barkod: ${result.product_name} (${result.brand ?? ''}) - ${serving?.calories ?? '?'} kcal, ${serving?.protein_g ?? '?'}g protein (100g bazinda)`;
+      setInput(msg);
+    } else {
+      setInput(`Barkod ${barcode} bulunamadi. Bu urunu metin olarak girebilirsin.`);
+    }
+    setSending(false);
+  };
+
+  const openBarcodeScanner = async () => {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) return;
+    }
+    setShowBarcodeScanner(true);
+  };
 
   // Load chat history
   useEffect(() => {
@@ -187,6 +214,25 @@ export default function ChatScreen() {
         </View>
       )}
 
+      {/* Barcode Scanner Overlay (T2.12) */}
+      {showBarcodeScanner && (
+        <View style={{ height: 250, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+          <CameraView
+            style={{ flex: 1 }}
+            barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] }}
+            onBarcodeScanned={(result) => {
+              if (result.data) handleBarcodeScan(result.data);
+            }}
+          />
+          <TouchableOpacity
+            onPress={() => setShowBarcodeScanner(false)}
+            style={{ position: 'absolute', top: 8, right: 8, backgroundColor: COLORS.error, borderRadius: 16, width: 32, height: 32, justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>X</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Photo preview */}
       {photo && (
         <View style={{ padding: SPACING.sm, flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface }}>
@@ -213,6 +259,9 @@ export default function ChatScreen() {
         </TouchableOpacity>
         <TouchableOpacity onPress={pickImage} style={styles.iconBtn}>
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={openBarcodeScanner} style={styles.iconBtn}>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>BC</Text>
         </TouchableOpacity>
         <TextInput
           style={styles.textInput}
