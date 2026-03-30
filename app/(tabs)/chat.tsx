@@ -24,6 +24,7 @@ import {
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
+import { startRecording, stopRecording, isRecording as checkIsRecording } from '@/services/voice.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -44,6 +45,7 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(true);
   const [photo, setPhoto] = useState<string | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
 
@@ -62,6 +64,22 @@ export default function ChatScreen() {
       setInput(`Barkod ${barcode} bulunamadi. Bu urunu metin olarak girebilirsin.`);
     }
     setSending(false);
+  };
+
+  // Voice recording handler (T4.1)
+  const handleVoiceToggle = async () => {
+    if (isRecordingVoice) {
+      setIsRecordingVoice(false);
+      const uri = await stopRecording();
+      if (uri) {
+        // For now, show a message that audio was recorded
+        // Full STT requires backend Whisper integration
+        setInput('[Sesli mesaj kaydedildi - metin olarak yazin]');
+      }
+    } else {
+      const started = await startRecording();
+      if (started) setIsRecordingVoice(true);
+    }
   };
 
   const openBarcodeScanner = async () => {
@@ -262,6 +280,11 @@ export default function ChatScreen() {
         </TouchableOpacity>
         <TouchableOpacity onPress={openBarcodeScanner} style={styles.iconBtn}>
           <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>BC</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleVoiceToggle} style={[styles.iconBtn, isRecordingVoice && { backgroundColor: COLORS.error }]}>
+          <Text style={{ color: isRecordingVoice ? '#fff' : COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>
+            {isRecordingVoice ? 'II' : 'MIC'}
+          </Text>
         </TouchableOpacity>
         <TextInput
           style={styles.textInput}
