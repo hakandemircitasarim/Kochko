@@ -130,3 +130,42 @@ export async function detectMotivationDrop(userId: string): Promise<PredictiveAl
 
   return null;
 }
+
+/**
+ * Detect alcohol-related deviation patterns (Spec 5.14).
+ * If user tends to overeat after drinking on Fridays, warn on Friday.
+ */
+export async function detectAlcoholRisk(userId: string): Promise<PredictiveAlert | null> {
+  const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
+  const { data: reports } = await supabase
+    .from('daily_reports')
+    .select('date, deviation_reason, compliance_score')
+    .eq('user_id', userId)
+    .gte('date', fourWeeksAgo);
+
+  if (!reports || reports.length < 10) return null;
+
+  let alcoholDeviations = 0;
+  let weekendDays = 0;
+
+  for (const r of reports as { date: string; deviation_reason: string | null; compliance_score: number }[]) {
+    const day = new Date(r.date).getDay();
+    if (day === 5 || day === 6) {
+      weekendDays++;
+      if (r.deviation_reason?.includes('alkol') || r.deviation_reason?.includes('alcohol')) {
+        alcoholDeviations++;
+      }
+    }
+  }
+
+  if (weekendDays >= 4 && alcoholDeviations >= 2) {
+    return {
+      type: 'alcohol_risk',
+      message: `Son 4 haftada ${alcoholDeviations} hafta sonu alkol kaynakli sapma tespit ettim. Bu hafta sonu icin strateji konusalim mi?`,
+      confidence: alcoholDeviations / weekendDays,
+      actionSuggestion: 'Cuma gunu once dusuk kalorili gunluk plan hazirla, alkol tamponlu butce olustur.',
+    };
+  }
+
+  return null;
+}

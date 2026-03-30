@@ -84,3 +84,45 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
 
   return { shouldAdjust: false, direction: 'none', changes: {}, message: '' };
 }
+
+/**
+ * T2.41: Apply difficulty adjustment to user profile.
+ * Previously this only returned recommendations without persisting.
+ */
+export async function applyDifficultyAdjustment(userId: string, adjustment: DifficultyAdjustment): Promise<void> {
+  if (!adjustment.shouldAdjust) return;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, protein_target_g, water_target_liters')
+    .eq('id', userId)
+    .single();
+
+  if (!profile) return;
+
+  const updates: Record<string, unknown> = {};
+
+  if (adjustment.changes.calorie_range_reduction) {
+    const reduction = adjustment.changes.calorie_range_reduction;
+    if (adjustment.direction === 'increase') {
+      // Tighten: increase min, keep max
+      updates.calorie_range_training_min = (profile.calorie_range_training_min ?? 0) + Math.abs(reduction);
+      updates.calorie_range_rest_min = (profile.calorie_range_rest_min ?? 0) + Math.abs(reduction);
+    } else {
+      // Revert: decrease min
+      updates.calorie_range_training_min = Math.max(1200, (profile.calorie_range_training_min ?? 0) - Math.abs(reduction));
+      updates.calorie_range_rest_min = Math.max(1200, (profile.calorie_range_rest_min ?? 0) - Math.abs(reduction));
+    }
+  }
+
+  if (adjustment.changes.protein_increase) {
+    updates.protein_target_g = (profile.protein_target_g ?? 100) + adjustment.changes.protein_increase;
+  }
+
+  if (adjustment.changes.water_increase) {
+    updates.water_target_liters = Math.round(((profile.water_target_liters ?? 2.5) + adjustment.changes.water_increase) * 10) / 10;
+  }
+
+  updates.updated_at = new Date().toISOString();
+  await supabase.from('profiles').update(updates).eq('id', userId);
+}
