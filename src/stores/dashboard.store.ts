@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { getEffectiveDate } from '@/lib/day-boundary';
 
 interface MealEntry {
   id: string;
@@ -31,15 +32,17 @@ interface TodayState {
   moodScore: number | null;
   totalCalories: number;
   totalProtein: number;
+  focusMessage: string | null;
+  weeklyBudgetRemaining: number | null;
   loading: boolean;
 
-  fetchToday: (userId: string) => Promise<void>;
-  addWater: (userId: string, amount: number) => Promise<void>;
+  fetchToday: (userId: string, dayBoundaryHour?: number) => Promise<void>;
+  addWater: (userId: string, amount: number, dayBoundaryHour?: number) => Promise<void>;
   deleteMeal: (mealId: string) => Promise<void>;
   deleteWorkout: (workoutId: string) => Promise<void>;
 }
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = (dayBoundaryHour: number = 4) => getEffectiveDate(new Date(), dayBoundaryHour);
 
 export const useDashboardStore = create<TodayState>((set, get) => ({
   meals: [],
@@ -51,19 +54,23 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   moodScore: null,
   totalCalories: 0,
   totalProtein: 0,
+  focusMessage: null,
+  weeklyBudgetRemaining: null,
   loading: false,
 
-  fetchToday: async (userId) => {
+  fetchToday: async (userId, dayBoundaryHour = 4) => {
     set({ loading: true });
-    const date = todayStr();
+    const date = todayStr(dayBoundaryHour);
 
-    const [mealsRes, workoutsRes, metricsRes] = await Promise.all([
+    const [mealsRes, workoutsRes, metricsRes, planRes] = await Promise.all([
       supabase.from('meal_logs').select('id, raw_input, meal_type, logged_at')
         .eq('user_id', userId).eq('logged_for_date', date).eq('is_deleted', false).order('logged_at'),
       supabase.from('workout_logs').select('id, raw_input, duration_min, workout_type')
         .eq('user_id', userId).eq('logged_for_date', date).order('logged_at'),
       supabase.from('daily_metrics').select('*')
         .eq('user_id', userId).eq('date', date).single(),
+      supabase.from('daily_plans').select('focus_message, weekly_budget_remaining')
+        .eq('user_id', userId).eq('date', date).order('version', { ascending: false }).limit(1).single(),
     ]);
 
     // Get calories for each meal
@@ -90,12 +97,14 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       moodScore: metrics?.mood_score ?? null,
       totalCalories,
       totalProtein: Math.round(totalProtein),
+      focusMessage: planRes.data?.focus_message ?? null,
+      weeklyBudgetRemaining: planRes.data?.weekly_budget_remaining ?? null,
       loading: false,
     });
   },
 
-  addWater: async (userId, amount) => {
-    const date = todayStr();
+  addWater: async (userId, amount, dayBoundaryHour = 4) => {
+    const date = todayStr(dayBoundaryHour);
     const current = get().waterLiters;
     const newTotal = Math.round((current + amount) * 100) / 100;
 

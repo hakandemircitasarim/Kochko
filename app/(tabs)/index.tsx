@@ -11,7 +11,10 @@ import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { CalorieProgress } from '@/components/tracking/CalorieProgress';
 import { MoodTracker } from '@/components/tracking/MoodTracker';
 import { SleepInput } from '@/components/tracking/SleepInput';
+import { StepCounter } from '@/components/tracking/StepCounter';
+import { WeeklyBudgetWidget } from '@/components/tracking/WeeklyBudgetWidget';
 import { supabase } from '@/lib/supabase';
+import { getEffectiveDate } from '@/lib/day-boundary';
 import { COLORS, SPACING, FONT, WATER_INCREMENT } from '@/lib/constants';
 
 const MEAL_LABELS: Record<string, string> = {
@@ -23,7 +26,8 @@ export default function TodayScreen() {
   const profile = useProfileStore(s => s.profile);
   const {
     meals, workouts, weightKg, waterLiters, sleepHours, steps, moodScore,
-    totalCalories, totalProtein, loading, fetchToday, addWater, deleteMeal, deleteWorkout,
+    totalCalories, totalProtein, focusMessage, weeklyBudgetRemaining,
+    loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
 
@@ -36,8 +40,14 @@ export default function TodayScreen() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  const dayBoundaryHour = (profile as Record<string, unknown>)?.day_boundary_hour as number ?? 4;
   const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
   const waterTarget = profile?.water_target_liters ?? 2.5;
+  const ifActive = !!(profile as Record<string, unknown>)?.if_active;
+  const ifEatingStart = (profile as Record<string, unknown>)?.if_eating_start as string | null;
+  const ifEatingEnd = (profile as Record<string, unknown>)?.if_eating_end as string | null;
+  const weeklyCalorieTarget = (profile as Record<string, unknown>)?.weekly_calorie_budget as number | null;
+  const stepTarget = (profile as Record<string, unknown>)?.step_target as number ?? 10000;
 
   return (
     <ScrollView
@@ -50,6 +60,22 @@ export default function TodayScreen() {
         <StreakBadge days={streak} />
       </View>
       <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.md }}>{today}</Text>
+
+      {/* Focus Message (Spec 5.5) */}
+      {focusMessage && (
+        <View style={{ backgroundColor: COLORS.primary + '18', borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.md, borderLeftWidth: 3, borderLeftColor: COLORS.primary }}>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: 4 }}>Bugunun Odagi</Text>
+          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '500' }}>{focusMessage}</Text>
+        </View>
+      )}
+
+      {/* IF Window Indicator (Spec 2.1) */}
+      {ifActive && ifEatingStart && ifEatingEnd && (
+        <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.sm, marginBottom: SPACING.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>IF Penceresi</Text>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>{ifEatingStart} - {ifEatingEnd}</Text>
+        </View>
+      )}
 
       {/* Stats Row */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md }}>
@@ -86,7 +112,7 @@ export default function TodayScreen() {
             currentScore={moodScore}
             onSelect={async (score) => {
               if (!user?.id) return;
-              const date = new Date().toISOString().split('T')[0];
+              const date = getEffectiveDate(new Date(), dayBoundaryHour);
               await supabase.from('daily_metrics').upsert(
                 { user_id: user.id, date, mood_score: score, water_liters: waterLiters, synced: true },
                 { onConflict: 'user_id,date' }
@@ -102,7 +128,7 @@ export default function TodayScreen() {
           currentHours={sleepHours}
           onSave={async (hours, quality) => {
             if (!user?.id) return;
-            const date = new Date().toISOString().split('T')[0];
+            const date = getEffectiveDate(new Date(), dayBoundaryHour);
             await supabase.from('daily_metrics').upsert(
               { user_id: user.id, date, sleep_hours: hours, sleep_quality: quality, water_liters: waterLiters, synced: true },
               { onConflict: 'user_id,date' }
@@ -174,6 +200,25 @@ export default function TodayScreen() {
           ))
         )}
       </Card>
+
+      {/* Step Counter (Spec 14.2) */}
+      {steps !== null && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <StepCounter steps={steps} target={stepTarget} source="manual" />
+        </View>
+      )}
+
+      {/* Weekly Budget Widget (Spec 2.6) */}
+      {weeklyCalorieTarget && weeklyCalorieTarget > 0 && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <WeeklyBudgetWidget
+            consumed={weeklyCalorieTarget - (weeklyBudgetRemaining ?? weeklyCalorieTarget)}
+            total={weeklyCalorieTarget}
+            daysLeft={7 - new Date().getDay() || 7}
+            rebalanceMessage={null}
+          />
+        </View>
+      )}
 
       {/* Report Links */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
