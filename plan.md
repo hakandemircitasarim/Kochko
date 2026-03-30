@@ -380,14 +380,14 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 - [x] **T4.16** Seyahat tespiti ve baglamsali mutfak bilgisi genisletme
 
 ### 4.6 Wearable Entegrasyonlari (Spec 14.1) - Item 51
-- [ ] **T4.17** Apple Health / Google Fit entegrasyonu: adim, nabiz, uyku verisi cekme
-- [ ] **T4.18** HRV verisi ile toparlanma durumu degerlendirme
-- [ ] **T4.19** Akilli tarti entegrasyonu (ileride)
+- [x] **T4.17** Apple Health / Google Fit entegrasyonu: adim, nabiz, uyku verisi cekme
+- [x] **T4.18** HRV verisi ile toparlanma durumu degerlendirme
+- [x] **T4.19** Akilli tarti entegrasyonu (ileride)
 
 ### 4.7 Sosyal / Paylasim Ozellikleri (Spec 13.4) - Item 52
-- [ ] **T4.20** Ilerleme grafigi, haftalik rapor veya milestone paylasimi (Instagram story, WhatsApp)
-- [ ] **T4.21** Arkadaslik davet mekanizmasi
-- [ ] **T4.22** Gizlilik kontrolu: Neyin paylasilacagini secme, hassas veri otomatik gizleme
+- [x] **T4.20** Ilerleme grafigi, haftalik rapor veya milestone paylasimi (Instagram story, WhatsApp)
+- [x] **T4.21** Arkadaslik davet mekanizmasi
+- [x] **T4.22** Gizlilik kontrolu: Neyin paylasilacagini secme, hassas veri otomatik gizleme
 
 ### 4.8 Zengin Sohbet Yanitlari (Spec 5.20) - Item 53
 **Dosyalar:** `src/components/chat/RichMessage.tsx`
@@ -398,14 +398,14 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 - [x] **T4.26** Kaydiriabilir tarif karti ve simulasyon karti
 
 ### 4.9 AI Sesli Yanit (Spec 20.3) - Item 54
-- [ ] **T4.27** TTS entegrasyonu: AI yanitini sesli okuma
-- [ ] **T4.28** Ses tonu koc tercihine uyumlu
+- [x] **T4.27** TTS entegrasyonu: AI yanitini sesli okuma
+- [x] **T4.28** Ses tonu koc tercihine uyumlu
 
 ### 4.10 Widget Destegi (Spec 23) - Item 55
-- [ ] **T4.29** Gunluk ozet widget: Kalori durumu, protein bari, su bari
-- [ ] **T4.30** Bugunun tek odagi widget
-- [ ] **T4.31** Hizli kayit widget: Su ekle, ogun kaydi kisayolu
-- [ ] **T4.32** Streak widget
+- [x] **T4.29** Gunluk ozet widget: Kalori durumu, protein bari, su bari
+- [x] **T4.30** Bugunun tek odagi widget
+- [x] **T4.31** Hizli kayit widget: Su ekle, ogun kaydi kisayolu
+- [x] **T4.32** Streak widget
 
 ### 4.11 Debug/Seffaflik Modu (Spec 5.22) - Item 56
 - [x] **T4.33** Ayarlar > Gelistirici Modu: Katman token kullanimini goster
@@ -413,12 +413,12 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 - [x] **T4.35** Kullanilan AI modeli ve versiyonu bilgisi
 
 ### 4.12 Zamanlanmis Export + Katman 2 Export (Spec 18.2) - Item 57
-- [ ] **T4.36** Haftalik/aylik otomatik veri yedegi (email veya bulut depolama)
-- [ ] **T4.37** Katman 2 (AI ogrenme notlari) export: JSON formatinda
+- [x] **T4.36** Haftalik/aylik otomatik veri yedegi (email veya bulut depolama)
+- [x] **T4.37** Katman 2 (AI ogrenme notlari) export: JSON formatinda
 
 ### 4.13 Aile Plani / Household (Spec 20.4) - Item 58
-- [ ] **T4.38** `household_id` alani profil tablosuna ekle (null varsayilan)
-- [ ] **T4.39** Ortak alisveris listesi, ortak meal prep, paylasilan tarif kutuphanesi
+- [x] **T4.38** `household_id` alani profil tablosuna ekle (null varsayilan)
+- [x] **T4.39** Ortak alisveris listesi, ortak meal prep, paylasilan tarif kutuphanesi
 
 ### 4.14 Tema Degistirme ve Erisilebilirlik (Spec 22)
 **Dosyalar:** `src/lib/constants.ts`, `src/lib/accessibility.ts`
