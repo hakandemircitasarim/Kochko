@@ -104,6 +104,12 @@ export default function SettingsScreen() {
         </Text>
       </Card>
 
+      {/* Developer */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Gelistirici</Text>
+      <View style={{ gap: SPACING.sm }}>
+        <Button title="Debug Modu" variant="outline" onPress={() => router.push('/settings/debug-mode')} />
+      </View>
+
       {/* Danger */}
       <View style={{ marginTop: SPACING.xl, gap: SPACING.sm }}>
         <Button title="Cikis Yap" variant="ghost" onPress={() => Alert.alert('Cikis', 'Emin misin?', [{ text: 'Iptal' }, { text: 'Cikis', style: 'destructive', onPress: signOut }])} />
