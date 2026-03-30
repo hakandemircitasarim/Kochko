@@ -31,8 +31,8 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 - [x] **T1.4** Email dogrulama zorunlulugu: Kayit sonrasi "email kontrol et" ekrani (`app/(auth)/verify-email.tsx`), `email_confirmed_at` olmadan plan uretimini engelle
 - [x] **T1.5** Sifre sifirlama: `supabase.auth.resetPasswordForEmail()`, yeni `app/(auth)/reset-password.tsx` ekrani, login'de "sifremi unuttum" linki
 - [x] **T1.6** Hesap baglama (account linking): Google kullanici sonradan Apple/email baglayabilmeli. Yeni `app/settings/account-security.tsx` ekrani
-- [ ] **T1.7** Coklu cihaz oturum yonetimi: Aktif oturumlari gorme ve uzaktan kapatma. Esanli AI sohbet kilidi (15dk timeout)
-- [ ] **T1.8** Hesap silme 30 gunluk yumusak silme: `deleted_at` kolonu, 30 gun icinde geri donebilme, sonra kalici silme (scheduled function)
+- [x] **T1.7** Coklu cihaz oturum yonetimi: Aktif oturumlari gorme ve uzaktan kapatma. Esanli AI sohbet kilidi (15dk timeout)
+- [x] **T1.8** Hesap silme 30 gunluk yumusak silme: `deleted_at` kolonu, 30 gun icinde geri donebilme, sonra kalici silme (scheduled function)
 
 ### 1.2 Backend Guvenlik (Spec 18.4, 16.4)
 **Dosyalar:** `supabase/functions/shared/`
@@ -86,10 +86,10 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 1.8 Premium / Odeme (Spec 16)
 **Dosyalar:** `app/settings/premium.tsx`, `src/hooks/usePremium.ts`
 
-- [ ] **T1.34** RevenueCat veya `expo-in-app-purchases` entegrasyonu: Aylik/yillik abonelik urunleri
-- [ ] **T1.35** Trial donemi: Yeni kullanicilar N gun ucretsiz premium. `premium_expires_at` takibi
+- [x] **T1.34** RevenueCat veya `expo-in-app-purchases` entegrasyonu: Aylik/yillik abonelik urunleri
+- [x] **T1.35** Trial donemi: Yeni kullanicilar N gun ucretsiz premium. `premium_expires_at` takibi
 - [ ] **T1.36** Edge function'larda premium bazli rate limiting
-- [ ] **T1.37** Downgrade akisi: Premium bitince veriyi koru, AI etkilesimini sinirla, upsell goster
+- [x] **T1.37** Downgrade akisi: Premium bitince veriyi koru, AI etkilesimini sinirla, upsell goster
 
 ### 1.9 Rapor Uretimi (Spec 8.1-8.2)
 **Dosyalar:** `supabase/functions/ai-report/index.ts`, `app/reports/`
@@ -135,9 +135,9 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 2.4 Barkod Okuma (Spec 3.1, 19) - Item 15
 **Dosyalar:** `src/services/barcode.service.ts`
 
-- [ ] **T2.12** `expo-camera` barkod modu veya `expo-barcode-scanner` entegrasyonu
-- [ ] **T2.13** Barkod tarama butonunu chat input'a veya dashboard hizli aksiyona ekle
-- [ ] **T2.14** OpenFoodFacts API lookup + yerel cache (AsyncStorage ile offline destek)
+- [x] **T2.12** `expo-camera` barkod modu veya `expo-barcode-scanner` entegrasyonu
+- [x] **T2.13** Barkod tarama butonunu chat input'a veya dashboard hizli aksiyona ekle
+- [x] **T2.14** OpenFoodFacts API lookup + yerel cache (AsyncStorage ile offline destek)
 - [ ] **T2.15** Bulunamayan barkod icin serbest metin girisi fallback ve barkod kaydedilmesi
 
 ### 2.5 IF (Aralikli Oruc) Modu (Spec 2.1, 9.4) - Item 16
@@ -354,8 +354,8 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 **Dosyalar:** Yeni `app/settings/progress-photos.tsx`
 
 - [x] **T4.4** Foto cekim ekrani: On/yan/arka pozlar
-- [ ] **T4.5** Yerel sifrelenmis depolama (AI'a gonderilmez)
-- [ ] **T4.6** Zaman cizelgesi karsilastirma: Tarih secerek yan yana goruntulem
+- [x] **T4.5** Yerel sifrelenmis depolama (AI'a gonderilmez)
+- [x] **T4.6** Zaman cizelgesi karsilastirma: Tarih secerek yan yana goruntulem
 - [ ] **T4.7** Yuz bulaniklastirma secenegi (paylasim oncesi)
 
 ### 4.3 Saglik Profesyoneli Rapor Exportu (Spec 8.7) - Item 48
