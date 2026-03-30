@@ -27,6 +27,7 @@ import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { startRecording, stopRecording, isRecording as checkIsRecording } from '@/services/voice.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
+import { MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons } from '@/components/chat/RichMessage';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 // Extended message type for UI state
@@ -388,6 +389,11 @@ function MessageBubble({ message }: { message: UIMessage }) {
         <Text style={{ color: isUser ? '#fff' : COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>
           {message.content}
         </Text>
+
+        {/* Inline rich content for AI responses (Spec 5.20) */}
+        {!isUser && message.task_mode === 'register' && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
+          <MacroSummary protein={0} carbs={0} fat={0} targets={{ protein: 100, carbs: 200, fat: 60 }} />
+        )}
 
         {/* Timestamp */}
         <Text style={{ color: isUser ? 'rgba(255,255,255,0.6)' : COLORS.textMuted, fontSize: 10, marginTop: 4, alignSelf: 'flex-end' }}>
