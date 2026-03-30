@@ -10,6 +10,7 @@ import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { buildFullContext } from '../shared/memory.ts';
 import { checkAllergens, validateCalories, sanitizeText } from '../shared/guardrails.ts';
+import { validatePlanOutput } from '../shared/output-validator.ts';
 
 const PLAN_SYSTEM = `Sen Kochko plan yapicisisin. Kullanicinin profiline, hedefine ve gecmis verilerine gore gunluk beslenme + antrenman plani olustur.
 
@@ -81,6 +82,9 @@ serve(async (req: Request) => {
       { temperature: TEMPERATURE.plan, maxTokens: 3000, jsonMode: true }
     );
 
+    // Structured output validation (Spec 5.29)
+    const validated = validatePlanOutput(plan);
+
     // Guardrail: validate calories
     const calMin = plan.calorie_target_min as number;
     const calCheck = validateCalories(calMin, profile?.gender);
@@ -119,10 +123,18 @@ serve(async (req: Request) => {
     const weekConsumed = (weekMeals ?? []).reduce((s: number, i: { calories: number }) => s + i.calories, 0);
     plan.weekly_budget_consumed = weekConsumed;
 
-    // Store plan
-    await supabaseAdmin.from('daily_plans').upsert({
+    // Get current version for today (Spec 7.3: plan versioning)
+    const { data: existingPlan } = await supabaseAdmin
+      .from('daily_plans').select('version')
+      .eq('user_id', userId).eq('date', today)
+      .order('version', { ascending: false }).limit(1).single();
+    const nextVersion = (existingPlan?.version ?? 0) + 1;
+
+    // Store plan with version
+    await supabaseAdmin.from('daily_plans').insert({
       user_id: userId,
       date: today,
+      version: nextVersion,
       plan_type: plan.plan_type ?? 'rest',
       calorie_target_min: plan.calorie_target_min,
       calorie_target_max: plan.calorie_target_max,
@@ -139,7 +151,7 @@ serve(async (req: Request) => {
       weekly_budget_remaining: plan.weekly_budget_remaining,
       status: 'draft',
       generated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id,date,version' });
+    });
 
     return new Response(JSON.stringify(plan), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {

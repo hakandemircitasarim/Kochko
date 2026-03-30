@@ -155,6 +155,29 @@ export default function PlanScreen() {
         <WorkoutCard plan={plan.workout_plan} />
       </View>
 
+      {/* Plan approval (Spec 7.2) */}
+      {plan.status === 'draft' && (
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
+          <View style={{ flex: 1 }}>
+            <Button title="Plani Onayla" onPress={async () => {
+              if (!user?.id) return;
+              await supabase.from('daily_plans')
+                .update({ status: 'approved', approved_at: new Date().toISOString() })
+                .eq('user_id', user.id).eq('date', today).order('version', { ascending: false }).limit(1);
+              setPlan({ ...plan, status: 'approved' });
+            }} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button title="Degistir" variant="outline" onPress={handleGenerate} loading={generating} />
+          </View>
+        </View>
+      )}
+      {plan.status === 'approved' && (
+        <View style={{ backgroundColor: COLORS.success + '20', borderRadius: 8, padding: SPACING.sm, marginBottom: SPACING.md }}>
+          <Text style={{ color: COLORS.success, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>Plan onaylandi</Text>
+        </View>
+      )}
+
       <Button title="Plani Yeniden Olustur" variant="outline" onPress={handleGenerate} loading={generating} />
     </ScrollView>
   );
