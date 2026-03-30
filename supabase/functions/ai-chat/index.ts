@@ -120,8 +120,9 @@ serve(async (req: Request) => {
     // Execute actions
     const actionFeedback = await executeActions(userId, actions, profile?.gender);
 
-    // Store messages
-    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode);
+    // Store messages with token count and model version (Spec 5.25)
+    const tokenEstimate = Math.round((message?.length ?? 0) / 3.5) + Math.round(assistantMessage.length / 3.5);
+    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, model, tokenEstimate, actions);
 
     // Async: update Layer 2 if needed
     if (layer2Updates) {
@@ -173,7 +174,7 @@ function extractLayer2Updates(text: string): { cleanMessage: string; layer2Updat
   return { cleanMessage: text.replace(/<layer2_update>[\s\S]*?<\/layer2_update>/, '').trim(), layer2Updates: updates };
 }
 
-async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string) {
+async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[]) {
   // Get or create active session
   let { data: session } = await supabaseAdmin
     .from('chat_sessions')
@@ -193,8 +194,24 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
 
   await supabaseAdmin.from('chat_messages').insert([
     { user_id: userId, session_id: session?.id, role: 'user', content: userMsg, task_mode: taskMode },
-    { user_id: userId, session_id: session?.id, role: 'assistant', content: assistantMsg, task_mode: taskMode },
+    {
+      user_id: userId, session_id: session?.id, role: 'assistant', content: assistantMsg,
+      task_mode: taskMode, model_version: modelUsed ?? null,
+      token_count: tokenCount ?? null,
+      actions_executed: executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null,
+    },
   ]);
+
+  // Auto-generate session title after 4 messages (Spec 5.18)
+  const { count } = await supabaseAdmin
+    .from('chat_messages').select('*', { count: 'exact', head: true })
+    .eq('session_id', session?.id);
+  if (count && count === 4 && session?.id) {
+    const title = assistantMsg.substring(0, 60).replace(/\n/g, ' ');
+    await supabaseAdmin.from('chat_sessions')
+      .update({ title })
+      .eq('id', session.id);
+  }
 }
 
 async function executeActions(
@@ -325,6 +342,36 @@ async function executeActions(
               weekly_rate: 0.5, is_active: true,
             });
             feedback.push('Hedef belirlendi');
+          }
+          break;
+        }
+        case 'undo_last': {
+          // Spec 5.32: Undo last action - find and reverse most recent log
+          const undoType = action.undo_type as string ?? 'meal';
+          if (undoType === 'meal') {
+            const { data: lastMeal } = await supabaseAdmin.from('meal_logs')
+              .select('id').eq('user_id', userId).eq('is_deleted', false)
+              .order('logged_at', { ascending: false }).limit(1).single();
+            if (lastMeal) {
+              await supabaseAdmin.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', lastMeal.id);
+              feedback.push('Son ogun kaydi silindi');
+            }
+          } else if (undoType === 'workout') {
+            const { data: lastWorkout } = await supabaseAdmin.from('workout_logs')
+              .select('id').eq('user_id', userId)
+              .order('logged_at', { ascending: false }).limit(1).single();
+            if (lastWorkout) {
+              await supabaseAdmin.from('workout_logs').delete().eq('id', lastWorkout.id);
+              feedback.push('Son antrenman kaydi silindi');
+            }
+          } else if (undoType === 'supplement') {
+            const { data: lastSupp } = await supabaseAdmin.from('supplement_logs')
+              .select('id').eq('user_id', userId)
+              .order('logged_at', { ascending: false }).limit(1).single();
+            if (lastSupp) {
+              await supabaseAdmin.from('supplement_logs').delete().eq('id', lastSupp.id);
+              feedback.push('Son supplement kaydi silindi');
+            }
           }
           break;
         }
