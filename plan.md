@@ -30,7 +30,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 - [x] **T1.3** `auth.store.ts`'e `signInWithGoogle()` ve `signInWithApple()` ekle, login/register ekranlarinda sosyal giris butonlari ekle
 - [x] **T1.4** Email dogrulama zorunlulugu: Kayit sonrasi "email kontrol et" ekrani (`app/(auth)/verify-email.tsx`), `email_confirmed_at` olmadan plan uretimini engelle
 - [x] **T1.5** Sifre sifirlama: `supabase.auth.resetPasswordForEmail()`, yeni `app/(auth)/reset-password.tsx` ekrani, login'de "sifremi unuttum" linki
-- [ ] **T1.6** Hesap baglama (account linking): Google kullanici sonradan Apple/email baglayabilmeli. Yeni `app/settings/account-security.tsx` ekrani
+- [x] **T1.6** Hesap baglama (account linking): Google kullanici sonradan Apple/email baglayabilmeli. Yeni `app/settings/account-security.tsx` ekrani
 - [ ] **T1.7** Coklu cihaz oturum yonetimi: Aktif oturumlari gorme ve uzaktan kapatma. Esanli AI sohbet kilidi (15dk timeout)
 - [ ] **T1.8** Hesap silme 30 gunluk yumusak silme: `deleted_at` kolonu, 30 gun icinde geri donebilme, sonra kalici silme (scheduled function)
 
@@ -54,8 +54,8 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 1.4 TDEE Hesaplama Entegrasyonu (Spec 2.4)
 **Dosyalar:** `src/lib/tdee.ts`, `supabase/functions/ai-chat/index.ts`
 
-- [ ] **T1.18** Onboarding tamamlandiginda TDEE hesapla ve profile kaydet (kalori araliklari, makro hedefleri)
-- [ ] **T1.19** Kilo kaydedildiginde `shouldRecalculateTDEE()` kontrol et, gerekirse otomatik yeniden hesapla
+- [x] **T1.18** Onboarding tamamlandiginda TDEE hesapla ve profile kaydet (kalori araliklari, makro hedefleri)
+- [x] **T1.19** Kilo kaydedildiginde `shouldRecalculateTDEE()` kontrol et, gerekirse otomatik yeniden hesapla
 - [ ] **T1.20** Dinamik aktivite carpani: 2-4 haftalik veri sonrasi tahmini vs gercek kilo degisimini karsilastirarak carpani refine et
 
 ### 1.5 AI Chat Saglamlastirma (Spec 5.1-5.32)
@@ -94,7 +94,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 1.9 Rapor Uretimi (Spec 8.1-8.2)
 **Dosyalar:** `supabase/functions/ai-report/index.ts`, `app/reports/`
 
-- [ ] **T1.38** Otomatik gunluk rapor tetikleyici: Gun sinirinda veya ertesi gun ilk giriste otomatik uret
+- [x] **T1.38** Otomatik gunluk rapor tetikleyici: Gun sinirinda veya ertesi gun ilk giriste otomatik uret
 - [ ] **T1.39** Gunluk rapor ekraninin veriye baglanmasi: Compliance score gorsellestirimesi, sapma etiketleri
 - [ ] **T1.40** Haftalik rapor ekraninin veriye baglanmasi: Kilo trendi grafigi, uyum haritasi
 
@@ -150,12 +150,12 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 2.6 Bildirim Sistemi (Spec 10.1-10.4) - Item 17
 **Dosyalar:** `src/services/notifications.service.ts`, `app/_layout.tsx`, `app/settings/notifications.tsx`
 
-- [ ] **T2.19** `expo-notifications` baslatma: Root layout'ta kayit, push token alma
-- [ ] **T2.20** `device_tokens` tablosu veya profilde token saklama (yeni migration)
-- [ ] **T2.21** Yerel bildirim zamanlama: Ogun hatirlatma, su hatirlatma, tarti hatirlatma, spor hatirlatma
+- [x] **T2.19** `expo-notifications` baslatma: Root layout'ta kayit, push token alma
+- [x] **T2.20** `device_tokens` tablosu veya profilde token saklama (yeni migration)
+- [x] **T2.21** Yerel bildirim zamanlama: Ogun hatirlatma, su hatirlatma, tarti hatirlatma, spor hatirlatma
 - [ ] **T2.22** `ai-proactive/index.ts` mesajlarini push notification'a bagla
 - [ ] **T2.23** Bildirim izni UX akisi: Ilk kez stratejik zamanda iste, reddedilirse 3-5 gun sonra tekrar dene
-- [ ] **T2.24** Bildirim ayarlari ekranini dogrula: Her tip ayri toggle, sessiz saatler, gunluk limit
+- [x] **T2.24** Bildirim ayarlari ekranini dogrula: Her tip ayri toggle, sessiz saatler, gunluk limit
 
 ### 2.7 Minimum Viable Day Modu (Spec 5.2) - Item 18
 **Dosyalar:** `supabase/functions/ai-chat/task-modes.ts`
@@ -204,7 +204,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 2.15 Kademeli Zorluk Artisi (Spec 5.30) - Item 26
 **Dosyalar:** `src/services/adaptive-difficulty.service.ts`
 
-- [ ] **T2.41** `checkAdaptiveDifficulty()` sonuclarini profile kaydet (su an sadece oneri donuyor, persist etmiyor)
+- [x] **T2.41** `checkAdaptiveDifficulty()` sonuclarini profile kaydet (su an sadece oneri donuyor, persist etmiyor)
 - [ ] **T2.42** Haftalik rapor veya plan uretiminde zorluk ayarlamasini tetikle
 
 ### 2.16 Beslenme Okuryazarligi (Spec 5.31) - Item 27
@@ -244,14 +244,14 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 
 - [ ] **T3.4** `recipes.service.ts` CRUD dogrula: kaydet, listele, filtrele, sil
 - [ ] **T3.5** `recipes.tsx` ekranini dogrula: kategori filtresi, malzeme listesi, pisirme talimatlari
-- [ ] **T3.6** Sohbette tarif kaydetme aksiyonu: AI tarif verdiginde "kaydet" butonu, `save_recipe` action tipi
+- [x] **T3.6** Sohbette tarif kaydetme aksiyonu: AI tarif verdiginde "kaydet" butonu, `save_recipe` action tipi
 - [ ] **T3.7** Malzeme ikamesi: "Tavuk yerine ne koyabilirim?" akisi (AI prompt-driven)
 - [ ] **T3.8** "Elimde sunlar var" modu: Kullanicinin mevcut malzemelerinden tarif onerisi (AI prompt-driven)
 
 ### 3.3 Meal Prep Plani (Spec 7.6) - Item 33
 **Dosyalar:** Yeni `src/services/meal-prep.service.ts`
 
-- [ ] **T3.9** Meal prep servisi olustur: Toplu hazirlama plani, miktar olcekleme, saklama talimatlari
+- [x] **T3.9** Meal prep servisi olustur: Toplu hazirlama plani, miktar olcekleme, saklama talimatlari
 - [ ] **T3.10** Haftalik menu ekranina veya ayri ekrana meal prep bolumu ekle
 - [ ] **T3.11** Profildeki `meal_prep_active` ve `meal_prep_days` degerlerini kullan
 
@@ -282,7 +282,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 
 - [ ] **T3.22** `strength.service.ts` dogrula: `strength_sets` okuma, PR hesaplama, progresyon takibi
 - [ ] **T3.23** `strength.tsx` dogrula: Hareket listesi, 1RM gecmisi, PR rozeti, progresyon grafigi
-- [ ] **T3.24** AI chat'te guc set parse: "bench press 4x8 70kg" -> `strength_sets` tablosuna kayit
+- [x] **T3.24** AI chat'te guc set parse: "bench press 4x8 70kg" -> `strength_sets` tablosuna kayit
 - [ ] **T3.25** Deload onerisi: 4-6 haftalik yogun donem sonrasi otomatik deload hatirlat
 
 ### 3.8 Alkol Takibi (Spec 3.1) - Item 38
@@ -324,7 +324,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 3.13 Prediktif Analitik (Spec 5.14) - Item 43
 **Dosyalar:** `src/services/predictive.service.ts`
 
-- [ ] **T3.42** `predictive.service.ts` tamamla (dosya truncated gorunuyor): Hafta sonu sapma tahmini, atistirma saati tahmini
+- [x] **T3.42** `predictive.service.ts` tamamla (dosya truncated gorunuyor): Hafta sonu sapma tahmini, atistirma saati tahmini
 - [ ] **T3.43** Motivasyon dusus erken uyarisi: Streak kirilma riski, kayit sikligi dusme
 - [ ] **T3.44** Alkol-sapma tahmini: Cuma gunu proaktif strateji sunma
 
@@ -353,7 +353,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 4.2 Ilerleme Fotograflari (Spec 3.1) - Item 47
 **Dosyalar:** Yeni `app/settings/progress-photos.tsx`
 
-- [ ] **T4.4** Foto cekim ekrani: On/yan/arka pozlar
+- [x] **T4.4** Foto cekim ekrani: On/yan/arka pozlar
 - [ ] **T4.5** Yerel sifrelenmis depolama (AI'a gonderilmez)
 - [ ] **T4.6** Zaman cizelgesi karsilastirma: Tarih secerek yan yana goruntulem
 - [ ] **T4.7** Yuz bulaniklastirma secenegi (paylasim oncesi)
@@ -423,7 +423,7 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 4.14 Tema Degistirme ve Erisilebilirlik (Spec 22)
 **Dosyalar:** `src/lib/constants.ts`, `src/lib/accessibility.ts`
 
-- [ ] **T4.40** Acik tema renk seti olustur, tema context/provider yaz
+- [x] **T4.40** Acik tema renk seti olustur, tema context/provider yaz
 - [ ] **T4.41** Ayarlarda tema secimi: Sistemi takip et / Her zaman acik / Her zaman koyu
 - [ ] **T4.42** `accessibility.ts` helper'larini uygula: Min 44x44px dokunma alanlari, screen reader etiketleri
 - [ ] **T4.43** WCAG AA kontrast orani kontrolu
@@ -431,8 +431,8 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 ### 4.15 Offline Destek (Spec 11)
 **Dosyalar:** `src/services/conflict-resolver.service.ts`, yeni `src/services/offline-queue.service.ts`
 
-- [ ] **T4.44** Offline kuyruk: Ag yokken aksiyonlari AsyncStorage'da sakla
-- [ ] **T4.45** Yeniden baglantiginda senkronizasyon: Kayitlar icin append, profil icin last-write-wins
+- [x] **T4.44** Offline kuyruk: Ag yokken aksiyonlari AsyncStorage'da sakla
+- [x] **T4.45** Yeniden baglantiginda senkronizasyon: Kayitlar icin append, profil icin last-write-wins
 - [ ] **T4.46** Ag durumu izleme: UI'da offline gostergesi
 - [ ] **T4.47** Barkod offline cache: Onceden taranan urunler yerel calissin
 
@@ -440,9 +440,9 @@ Kochko, AI destekli yasam tarzi kocluk uygulamasi (React Native/Expo + Supabase)
 **Dosyalar:** `supabase/functions/ai-report/index.ts`
 
 - [ ] **T4.48** Aylik rapor uretimi: 4 haftalik raporlarin birlestirilmesi, trend analizi
-- [ ] **T4.49** Yeni `app/reports/monthly.tsx` ekrani
+- [x] **T4.49** Yeni `app/reports/monthly.tsx` ekrani
 - [ ] **T4.50** Tum zamanlar raporu: Baslangictan bugune toplam ilerleme, en uzun streak, km taslari
-- [ ] **T4.51** Yeni `app/reports/all-time.tsx` ekrani
+- [x] **T4.51** Yeni `app/reports/all-time.tsx` ekrani
 
 ### 4.17 Gizlilik / KVKK / GDPR (Spec 18)
 **Dosyalar:** `src/services/privacy.service.ts`
