@@ -272,8 +272,8 @@ export default function TodayScreen() {
       )}
 
       {/* Report Links */}
-      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-        {[['Gun Sonu Raporu', '/reports/daily'], ['Haftalik Rapor', '/reports/weekly']].map(([label, href], i) => (
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
+        {[['Gunluk', '/reports/daily'], ['Haftalik', '/reports/weekly'], ['Aylik', '/reports/monthly'], ['Tum Zamanlar', '/reports/all-time']].map(([label, href], i) => (
           <TouchableOpacity key={i} style={{ flex: 1, backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border }}
             onPress={() => router.push(href as never)}>
             <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>{label}</Text>
