@@ -57,6 +57,44 @@ serve(async (req: Request) => {
 
       const nightRisk = profile.night_eating_risk && hour >= 21 && hour <= 23;
 
+      // T3.13: Plateau detection for proactive messaging
+      let plateauInfo = '';
+      if (hour >= 8 && hour <= 10) { // Check once in the morning
+        const threeWeeksAgo = new Date(Date.now() - 21 * 86400000).toISOString().split('T')[0];
+        const { data: weights } = await supabaseAdmin
+          .from('daily_metrics').select('weight_kg')
+          .eq('user_id', profile.id).gte('date', threeWeeksAgo)
+          .not('weight_kg', 'is', null);
+        if (weights && weights.length >= 5) {
+          const ws = weights.map((w: { weight_kg: number }) => w.weight_kg);
+          const avg = ws.reduce((s: number, w: number) => s + w, 0) / ws.length;
+          const maxDiff = Math.max(...ws.map((w: number) => Math.abs(w - avg)));
+          if (maxDiff <= 0.3) {
+            plateauInfo = `TETIK: PLATEAU - ${ws.length} kayitla ${avg.toFixed(1)}kg civarinda durgun`;
+          }
+        }
+      }
+
+      // T3.17: Maintenance band check
+      let maintenanceInfo = '';
+      const { data: activeGoal } = await supabaseAdmin
+        .from('goals').select('target_weight_kg, goal_type')
+        .eq('user_id', profile.id).eq('is_active', true).single();
+      if (activeGoal?.target_weight_kg) {
+        const { data: latestWeight } = await supabaseAdmin
+          .from('daily_metrics').select('weight_kg')
+          .eq('user_id', profile.id).not('weight_kg', 'is', null)
+          .order('date', { ascending: false }).limit(1).single();
+        if (latestWeight?.weight_kg) {
+          const diff = Math.abs(latestWeight.weight_kg - activeGoal.target_weight_kg);
+          if (activeGoal.goal_type === 'maintain' || (activeGoal.goal_type === 'lose_weight' && latestWeight.weight_kg <= activeGoal.target_weight_kg)) {
+            if (diff > 1.5) {
+              maintenanceInfo = `TETIK: BAKIM BANDI ASILDI - hedef ${activeGoal.target_weight_kg}kg, simdi ${latestWeight.weight_kg}kg`;
+            }
+          }
+        }
+      }
+
       const context = `Saat: ${hour}:00 | Koc tonu: ${profile.coach_tone ?? 'balanced'}
 Son ogun: ${hoursSinceMeal < 999 ? `${Math.round(hoursSinceMeal)}sa once` : 'hic yok'}
 Son konusma: ${hoursSinceChat < 999 ? `${Math.round(hoursSinceChat)}sa once` : 'hic yok'}
@@ -64,7 +102,9 @@ Gece riski: ${nightRisk ? 'AKTIF' : 'yok'}
 ${dueCommitments.length > 0 ? `TAKIP: ${dueCommitments.map(c => `"${c.commitment}"`).join(', ')}` : ''}
 ${patterns.length > 0 ? `Kaliplar: ${patterns.map(p => p.description).join('; ')}` : ''}
 ${hoursSinceMeal > 8 && hour >= 9 && hour <= 22 ? 'TETIK: Uzun suredir ogun yok' : ''}
-${hoursSinceChat > 48 ? 'TETIK: 2+ gundur sessiz' : ''}`;
+${hoursSinceChat > 48 ? 'TETIK: 2+ gundur sessiz' : ''}
+${plateauInfo}
+${maintenanceInfo}`;
 
       interface NudgeResult { send: boolean; message?: string; trigger?: string; priority?: string; }
 
