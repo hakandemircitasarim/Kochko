@@ -24,40 +24,48 @@ export interface HealthDataPoint {
 
 /**
  * Check if health platform is available on this device.
+ * Returns true as placeholder on both iOS/Android.
+ * TODO: Replace with actual expo-health / Health Connect availability check.
  */
 export async function isHealthAvailable(): Promise<boolean> {
-  // Placeholder: check for expo-health or platform health APIs
-  return false;
+  // Placeholder: Both platforms support health APIs in principle.
+  // Real implementation will check for HealthKit (iOS) or Health Connect (Android).
+  return true;
 }
 
 /**
  * Request permissions for health data access.
+ * Returns true as placeholder until real SDK is integrated.
  */
 export async function requestHealthPermissions(
-  types: HealthDataType[]
+  _types: HealthDataType[]
 ): Promise<boolean> {
   // TODO: Implement with expo-health or react-native-health
-  // iOS: Request HealthKit read permissions
-  // Android: Request Health Connect read permissions
-  return false;
+  // iOS: Request HealthKit read permissions for specified types
+  // Android: Request Health Connect read permissions for specified types
+  return true;
 }
 
 /**
  * Fetch today's step count from health platform.
  */
 export async function getTodaySteps(): Promise<number | null> {
-  const available = await isHealthAvailable();
-  if (!available) return null;
-
-  // TODO: Query HealthKit/Health Connect for today's steps
+  // TODO: Replace with real HealthKit/Health Connect query:
+  // iOS: HKQuantityType.quantityType(forIdentifier: .stepCount)
+  // Android: StepsRecord via Health Connect client
   return null;
 }
 
 /**
  * Fetch recent sleep data.
+ * Returns empty array with structure ready for real implementation.
  */
-export async function getRecentSleep(days: number = 7): Promise<HealthDataPoint[]> {
-  // TODO: Query sleep data from health platform
+export async function getRecentSleep(_days: number = 7): Promise<HealthDataPoint[]> {
+  // TODO: Replace with real sleep data query:
+  // iOS: HKCategoryType.categoryType(forIdentifier: .sleepAnalysis)
+  // Android: SleepSessionRecord via Health Connect
+  // Expected return shape:
+  // [{ type: 'sleep', value: 7.5, unit: 'hours', startDate: '...', endDate: '...', source: 'apple_health' }]
   return [];
 }
 
@@ -67,7 +75,9 @@ export async function getRecentSleep(days: number = 7): Promise<HealthDataPoint[
  * High HRV = good recovery, suggest intense training.
  */
 export async function getLatestHRV(): Promise<number | null> {
-  // TODO: Query HRV from wearable/health platform
+  // TODO: Replace with real HRV query:
+  // iOS: HKQuantityType.quantityType(forIdentifier: .heartRateVariabilitySDNN)
+  // Android: Not natively available in Health Connect; requires wearable SDK
   return null;
 }
 
@@ -75,38 +85,82 @@ export async function getLatestHRV(): Promise<number | null> {
  * Sync weight from smart scale (if connected).
  */
 export async function getLatestWeight(): Promise<number | null> {
-  // TODO: Query weight from health platform (smart scale integration)
+  // TODO: Replace with real weight query:
+  // iOS: HKQuantityType.quantityType(forIdentifier: .bodyMass)
+  // Android: WeightRecord via Health Connect
   return null;
 }
 
+export type RecoveryScore = 'good' | 'moderate' | 'poor' | 'unknown';
+export type SorenessLevel = 'none' | 'light' | 'moderate' | 'severe';
+
+export interface RecoveryResult {
+  score: RecoveryScore;
+  message_tr: string;
+  trainingRecommendation: string;
+}
+
 /**
- * Evaluate recovery readiness based on HRV + subjective data.
- * Spec 14.1: HRV + kullanıcı his birlikte değerlendirilir.
+ * Evaluate recovery readiness based on HRV, sleep hours, and muscle soreness.
+ * Spec 14.1: HRV + uyku + kas agrisi birlikte degerlendirilir.
+ *
+ * Rules:
+ * - HRV > 60 + sleep > 7 + soreness none/light = "good"
+ * - HRV 40-60 OR sleep 5-7 OR soreness moderate = "moderate"
+ * - Else = "poor"
  */
 export function evaluateRecovery(
   hrv: number | null,
-  muscleSoreness: number | null,
-  sleepQuality: string | null
-): 'good' | 'moderate' | 'poor' | 'unknown' {
-  if (!hrv && !muscleSoreness) return 'unknown';
-
-  let score = 50; // neutral
-
-  if (hrv) {
-    if (hrv > 60) score += 20;      // Good HRV
-    else if (hrv < 40) score -= 20; // Poor HRV
+  sleepHours: number | null,
+  muscleSoreness: SorenessLevel | null
+): RecoveryResult {
+  // If we have no data at all, return unknown
+  if (hrv == null && sleepHours == null && muscleSoreness == null) {
+    return {
+      score: 'unknown',
+      message_tr: 'Toparlanma durumunu degerlendirmek icin yeterli veri yok.',
+      trainingRecommendation: 'Veri toplandikca daha iyi onerilerde bulunabiliriz.',
+    };
   }
 
-  if (muscleSoreness) {
-    if (muscleSoreness <= 1) score += 15;
-    else if (muscleSoreness >= 3) score -= 15;
-    else if (muscleSoreness >= 4) score -= 25;
+  // Check for "good" recovery: all indicators positive
+  const hrvGood = hrv != null && hrv > 60;
+  const sleepGood = sleepHours != null && sleepHours > 7;
+  const sorenessGood = muscleSoreness === 'none' || muscleSoreness === 'light';
+
+  // Check for "poor" indicators
+  const hrvPoor = hrv != null && hrv < 40;
+  const sleepPoor = sleepHours != null && sleepHours < 5;
+  const sorenessPoor = muscleSoreness === 'severe';
+
+  // Good: all available data points are positive
+  if (
+    (hrv == null || hrvGood) &&
+    (sleepHours == null || sleepGood) &&
+    (muscleSoreness == null || sorenessGood) &&
+    // At least one data point must confirm good
+    (hrvGood || sleepGood || sorenessGood)
+  ) {
+    return {
+      score: 'good',
+      message_tr: 'Toparlanman iyi gorunuyor. Bugun yogun antrenman yapabilirsin.',
+      trainingRecommendation: 'Agir bilesik hareketler, HIIT veya yogun hacimli antrenman uygun.',
+    };
   }
 
-  if (sleepQuality === 'good') score += 10;
-  else if (sleepQuality === 'poor') score -= 10;
+  // Poor: any severe indicator
+  if (hrvPoor || sleepPoor || sorenessPoor) {
+    return {
+      score: 'poor',
+      message_tr: 'Toparlanman zayif. Bugün hafif aktivite veya dinlenme onerilir.',
+      trainingRecommendation: 'Hafif yuruyus, esneme veya tam dinlenme gunu. Agir antrenman onerilmez.',
+    };
+  }
 
-  if (score >= 60) return 'good';
-  if (score >= 40) return 'moderate';
-  return 'poor';
+  // Moderate: everything else (mixed signals)
+  return {
+    score: 'moderate',
+    message_tr: 'Toparlanman orta seviyede. Orta yogunlukta antrenman yapabilirsin.',
+    trainingRecommendation: 'Orta yogunlukta antrenman, teknik calisma veya hafif kardiyo uygun.',
+  };
 }

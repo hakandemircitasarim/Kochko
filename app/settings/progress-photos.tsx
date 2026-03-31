@@ -3,8 +3,8 @@
  * Spec 3.1: İlerleme fotoğrafları - sadece kullanıcı cihazında/şifreli bulutta.
  * AI'a gönderilmez, üçüncü tarafla paylaşılmaz.
  */
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Image, TouchableOpacity, Alert, Dimensions } from 'react-native';
+import { useState, useEffect, useMemo } from 'react';
+import { View, Text, ScrollView, Image, TouchableOpacity, Alert, Dimensions, Modal } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
@@ -28,6 +28,7 @@ export default function ProgressPhotosScreen() {
   const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPose, setSelectedPose] = useState<string>('on');
+  const [showComparison, setShowComparison] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -99,6 +100,17 @@ export default function ProgressPhotosScreen() {
     return acc;
   }, {});
 
+  // Comparison: earliest vs latest photo for the selected pose
+  const comparisonPhotos = useMemo(() => {
+    const posePhotos = photos
+      .filter(p => p.pose_type === selectedPose)
+      .sort((a, b) => new Date(a.taken_at).getTime() - new Date(b.taken_at).getTime());
+    if (posePhotos.length < 2) return null;
+    return { earliest: posePhotos[0], latest: posePhotos[posePhotos.length - 1] };
+  }, [photos, selectedPose]);
+
+  const comparisonWidth = (screenWidth - SPACING.md * 2 - SPACING.sm) / 2;
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Ilerleme Fotograflari</Text>
@@ -129,6 +141,46 @@ export default function ProgressPhotosScreen() {
           <Button title="Galeriden Sec" variant="outline" onPress={pickPhoto} />
         </View>
       </View>
+
+      {/* Comparison Button */}
+      {comparisonPhotos && (
+        <View style={{ marginBottom: SPACING.lg }}>
+          <Button title="Fotograflari Karsilastir" variant="outline" onPress={() => setShowComparison(true)} />
+        </View>
+      )}
+
+      {/* Comparison Modal - Photos NEVER sent to AI (privacy) */}
+      <Modal visible={showComparison} animationType="slide" presentationStyle="pageSheet">
+        <View style={{ flex: 1, backgroundColor: COLORS.background, padding: SPACING.md }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
+            <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>Karsilastirma ({selectedPose})</Text>
+            <TouchableOpacity onPress={() => setShowComparison(false)}>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>Kapat</Text>
+            </TouchableOpacity>
+          </View>
+          {comparisonPhotos && (
+            <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+              <View style={{ width: comparisonWidth }}>
+                <Image source={{ uri: comparisonPhotos.earliest.photo_uri }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} />
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
+                  {new Date(comparisonPhotos.earliest.taken_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Baslangic</Text>
+              </View>
+              <View style={{ width: comparisonWidth }}>
+                <Image source={{ uri: comparisonPhotos.latest.photo_uri }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} />
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
+                  {new Date(comparisonPhotos.latest.taken_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Guncel</Text>
+              </View>
+            </View>
+          )}
+          <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.lg }}>
+            Bu fotograflar AI'a gonderilmez ve ucuncu taraflarla paylasilmaz.
+          </Text>
+        </View>
+      </Modal>
 
       {/* Timeline */}
       {Object.entries(grouped).map(([date, datePhotos]) => (

@@ -410,9 +410,9 @@ Asagidaki ozellikler analizde PARTIAL/STUB cikmis ama hicbir pakete atanmamisti:
 | 12. Guvenlik | [x] | [x] | [ ] | Tamamlandi |
 | 13. Turk Besin DB | [x] | [x] | [ ] | Tamamlandi |
 | 14. Odeme & Premium | [x] | [x] | [ ] | Tamamlandi |
-| 15. Coklu Cihaz | [ ] | [ ] | [ ] | Bekliyor |
-| 16. Ses & Medya | [ ] | [ ] | [ ] | Bekliyor |
-| 17. Wearable | [ ] | [ ] | [ ] | Bekliyor |
+| 15. Coklu Cihaz | [x] | [x] | [ ] | Tamamlandi |
+| 16. Ses & Medya | [x] | [x] | [ ] | Tamamlandi |
+| 17. Wearable | [x] | [x] | [ ] | Tamamlandi |
 | 18. Erisilebilirlik & i18n | [ ] | [ ] | [ ] | Bekliyor |
 | 19. Mobil Widget | [ ] | [ ] | [ ] | Bekliyor |
 | 20. B2B, Aile, Polish | [ ] | [ ] | [ ] | Bekliyor |
