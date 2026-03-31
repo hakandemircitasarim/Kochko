@@ -67,6 +67,7 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -205,6 +206,16 @@ export default function ChatScreen() {
       // Refresh dashboard if actions were executed (meal logged, weight updated, etc.)
       if (data.actions.some(a => a.feedback) && user?.id) {
         refreshDashboard(user.id);
+
+        // 10-second undo window for meal/workout logs (Spec 3.2)
+        const undoableAction = data.actions.find(a =>
+          a.feedback && (a.type === 'meal_log' || a.type === 'workout_log' || a.type === 'supplement_log')
+        );
+        if (undoableAction) {
+          const expiresAt = Date.now() + 10000;
+          setUndoAction({ type: undoableAction.type, messageId: reply.id, expiresAt });
+          setTimeout(() => setUndoAction(prev => prev?.expiresAt === expiresAt ? null : prev), 10000);
+        }
       }
     } else {
       setMessages(prev => [...prev, {
@@ -366,6 +377,19 @@ export default function ChatScreen() {
         borderTopWidth: 1, borderTopColor: COLORS.border,
         backgroundColor: COLORS.surface, gap: SPACING.xs,
       }}>
+        {/* 10-second undo window (Spec 3.2) */}
+        {undoAction && Date.now() < undoAction.expiresAt && (
+          <TouchableOpacity
+            onPress={async () => {
+              const undoText = `Son ${undoAction.type === 'meal_log' ? 'ogun' : undoAction.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydini geri al`;
+              setUndoAction(null);
+              await sendMessageWithRetry(undoText);
+            }}
+            style={{ backgroundColor: COLORS.warning, borderRadius: 8, paddingVertical: 6, paddingHorizontal: SPACING.md, marginBottom: SPACING.xs, alignSelf: 'center' }}
+          >
+            <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Geri Al (10sn)</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={takePhoto} style={styles.iconBtn}>
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>O</Text>
         </TouchableOpacity>

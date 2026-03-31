@@ -206,6 +206,14 @@ export async function setPeriodicState(
   }
 
   await supabase.from('profiles').update(updates).eq('id', userId);
+
+  // Auto-replan: trigger new daily plan generation when periodic state changes (Spec 9.2)
+  if (state) {
+    supabase.functions.invoke('ai-plan', {
+      body: { type: 'daily', periodic_state_changed: true },
+    }).catch(() => {}); // Non-blocking, best effort
+  }
+
   return { ifPaused };
 }
 

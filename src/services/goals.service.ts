@@ -98,3 +98,39 @@ export async function advanceToNextPhase(userId: string): Promise<GoalPhase | nu
 export async function deletePhase(phaseId: string): Promise<void> {
   await supabase.from('goals').delete().eq('id', phaseId);
 }
+
+// ─── Goal Compatibility Matrix (Spec 6.2) ───
+
+const COMPATIBILITY_MATRIX: Record<string, Record<string, 'compatible' | 'conflict' | 'warning'>> = {
+  lose_weight: { lose_weight: 'compatible', gain_weight: 'conflict', gain_muscle: 'warning', health: 'compatible', maintain: 'conflict', conditioning: 'compatible' },
+  gain_weight: { lose_weight: 'conflict', gain_weight: 'compatible', gain_muscle: 'compatible', health: 'compatible', maintain: 'conflict', conditioning: 'compatible' },
+  gain_muscle: { lose_weight: 'warning', gain_weight: 'compatible', gain_muscle: 'compatible', health: 'compatible', maintain: 'compatible', conditioning: 'compatible' },
+  health:      { lose_weight: 'compatible', gain_weight: 'compatible', gain_muscle: 'compatible', health: 'compatible', maintain: 'compatible', conditioning: 'compatible' },
+  maintain:    { lose_weight: 'conflict', gain_weight: 'conflict', gain_muscle: 'compatible', health: 'compatible', maintain: 'compatible', conditioning: 'compatible' },
+  conditioning:{ lose_weight: 'compatible', gain_weight: 'compatible', gain_muscle: 'compatible', health: 'compatible', maintain: 'compatible', conditioning: 'compatible' },
+};
+
+const CONFLICT_MESSAGES: Record<string, string> = {
+  'lose_weight+gain_weight': 'Kilo vermek ve kilo almak ayni anda mumkun degil.',
+  'lose_weight+maintain': 'Kilo vermek ve kilo korumak celisiyor. Birini sec.',
+  'gain_weight+maintain': 'Kilo almak ve kilo korumak celisiyor.',
+  'lose_weight+gain_muscle': 'Kilo verirken kas kazanmak zor ama mumkun (body recomp). Yeni baslayanlar icin uygun, ileri seviyede cok zor.',
+};
+
+export function checkGoalCompatibility(
+  newGoalType: string,
+  existingGoalType: string,
+): { compatible: boolean; level: 'compatible' | 'conflict' | 'warning'; message_tr: string } {
+  const compatibility = COMPATIBILITY_MATRIX[newGoalType]?.[existingGoalType] ?? 'compatible';
+  const key1 = `${newGoalType}+${existingGoalType}`;
+  const key2 = `${existingGoalType}+${newGoalType}`;
+  const message = CONFLICT_MESSAGES[key1] ?? CONFLICT_MESSAGES[key2] ?? '';
+
+  return {
+    compatible: compatibility !== 'conflict',
+    level: compatibility,
+    message_tr: compatibility === 'conflict' ? message || 'Bu hedefler birbiriyle celisiyor.'
+      : compatibility === 'warning' ? message || 'Bu hedefler birlikte zor ama mumkun.'
+      : '',
+  };
+}

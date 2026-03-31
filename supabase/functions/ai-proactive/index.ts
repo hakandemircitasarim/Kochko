@@ -273,7 +273,29 @@ ${(() => {
           user_id: profile.id, content: clean,
           trigger_type: result.trigger ?? 'proactive',
           priority: result.priority ?? 'medium', read: false,
+          push_sent: !!profile.push_token,
         });
+
+        // Send push notification via Expo Push API (Spec 10.1)
+        if (profile.push_token) {
+          const prefs = profile.notification_prefs as { quietStart?: string; quietEnd?: string; enabled?: boolean } | null;
+          const shouldSend = prefs?.enabled !== false && !isQuietHour(prefs?.quietStart ?? '23:00', prefs?.quietEnd ?? '07:00', hour);
+          if (shouldSend) {
+            try {
+              await fetch('https://exp.host/--/api/v2/push/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  to: profile.push_token,
+                  title: 'Kochko',
+                  body: clean,
+                  sound: 'default',
+                  data: { type: 'coaching', trigger: result.trigger },
+                }),
+              });
+            } catch { /* push non-critical */ }
+          }
+        }
 
         // Mark commitments as followed up
         for (const c of dueCommitments) {
@@ -518,6 +540,18 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
     priority: 'medium',
     read: false,
   });
+}
+
+// ─── Push Notification Helpers ───
+
+function isQuietHour(quietStart: string, quietEnd: string, currentHour: number): boolean {
+  const [sH] = quietStart.split(':').map(Number);
+  const [eH] = quietEnd.split(':').map(Number);
+  if (sH > eH) {
+    // Overnight: e.g., 23:00 - 07:00
+    return currentHour >= sH || currentHour < eH;
+  }
+  return currentHour >= sH && currentHour < eH;
 }
 
 /**
