@@ -27,13 +27,35 @@ import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { startRecording, stopRecording, isRecording as checkIsRecording } from '@/services/voice.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
+import { SimulationCard } from '@/components/chat/RichMessage';
 import { MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons, RecipeCard } from '@/components/chat/RichMessage';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+
+// Simulation data parsed from AI responses
+interface SimulationData {
+  foodName: string;
+  calories: number;
+  remaining: number;
+  weeklyImpact: string;
+}
 
 // Extended message type for UI state
 interface UIMessage extends ChatMessage {
   actions?: { type: string; feedback: string | null }[];
-  showFeedback?: boolean; // show ise yaradi / bana gore degil
+  showFeedback?: boolean;
+  simulationData?: SimulationData | null;
+}
+
+function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
+  const match = content.match(/<simulation>([\s\S]*?)<\/simulation>/);
+  if (!match) return { cleanContent: content, data: null };
+  try {
+    const data = JSON.parse(match[1]) as SimulationData;
+    const cleanContent = content.replace(/<simulation>[\s\S]*?<\/simulation>/, '').trim();
+    return { cleanContent, data };
+  } catch {
+    return { cleanContent: content, data: null };
+  }
 }
 
 export default function ChatScreen() {
@@ -159,14 +181,24 @@ export default function ChatScreen() {
         || data.task_mode === 'recipe' || data.task_mode === 'simulation'
         || data.task_mode === 'eating_out' || data.task_mode === 'plateau';
 
+      // Parse simulation data if in simulation mode
+      let messageContent = data.message;
+      let simulationData: SimulationData | null = null;
+      if (data.task_mode === 'simulation') {
+        const parsed = parseSimulationData(data.message);
+        messageContent = parsed.cleanContent;
+        simulationData = parsed.data;
+      }
+
       const reply: UIMessage = {
         id: `a-${Date.now()}`,
         role: 'assistant',
-        content: data.message,
+        content: messageContent,
         task_mode: data.task_mode,
         created_at: new Date().toISOString(),
         actions: data.actions,
         showFeedback,
+        simulationData,
       };
       setMessages(prev => [...prev, reply]);
 
@@ -482,6 +514,18 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets }: {
           {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </View>
+
+      {/* Simulation card */}
+      {!isUser && message.simulationData && (
+        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
+          <SimulationCard
+            foodName={message.simulationData.foodName}
+            calories={message.simulationData.calories}
+            remaining={message.simulationData.remaining}
+            weeklyImpact={message.simulationData.weeklyImpact}
+          />
+        </View>
+      )}
 
       {/* Action feedback (below the bubble) */}
       {!isUser && message.actions && message.actions.length > 0 && (

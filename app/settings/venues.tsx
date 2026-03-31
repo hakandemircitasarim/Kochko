@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { getVenues, type Venue } from '@/services/venues.service';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -10,9 +12,15 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function VenuesScreen() {
+  const router = useRouter();
   const [venues, setVenues] = useState<Venue[]>([]);
 
   useEffect(() => { getVenues().then(setVenues); }, []);
+
+  const navigateToEatingOut = () => {
+    router.push('/(tabs)/chat');
+    // The chat screen will pick up the eating_out mode from the user's message
+  };
 
   const handleDelete = async (id: string) => {
     await supabase.from('user_venues').delete().eq('id', id);
@@ -22,7 +30,12 @@ export default function VenuesScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Mekanlar</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Sik gittigin mekanlar ve ogrenilen makro tahminleri.</Text>
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.md }}>Sik gittigin mekanlar ve ogrenilen makro tahminleri.</Text>
+
+      {/* Quick Action: Navigate to chat for eating out planning */}
+      <View style={{ marginBottom: SPACING.lg }}>
+        <Button title="Disarida Yemek Planliyorum" onPress={navigateToEatingOut} variant="outline" />
+      </View>
 
       {venues.length === 0 ? (
         <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henuz kayitli mekan yok. Kocuna "Simit Sarayi'nda yedim" gibi yazdiginda mekan otomatik ogrenilir.</Text></Card>

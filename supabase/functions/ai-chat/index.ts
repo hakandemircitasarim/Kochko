@@ -436,9 +436,40 @@ async function executeActions(
           break;
         }
         case 'venue_log': {
+          const venueName = action.venue_name as string;
+          // Fetch existing venue to merge learned items and increment visit count
+          const { data: existingVenue } = await supabaseAdmin
+            .from('user_venues')
+            .select('learned_items, visit_count')
+            .eq('user_id', userId)
+            .eq('venue_name', venueName)
+            .single();
+
+          const existingItems = (existingVenue?.learned_items as { name: string; calories: number; protein_g?: number; confirmed: boolean }[]) ?? [];
+          const newItems = (action.items as { name: string; calories: number; protein_g?: number; confirmed?: boolean }[]) ?? [];
+
+          // Merge: update existing items, add new ones
+          const mergedItems = [...existingItems];
+          for (const item of newItems) {
+            const idx = mergedItems.findIndex(m => m.name.toLowerCase() === item.name.toLowerCase());
+            if (idx >= 0) {
+              mergedItems[idx] = {
+                ...mergedItems[idx],
+                calories: Math.round((mergedItems[idx].calories + item.calories) / 2),
+                protein_g: item.protein_g ?? mergedItems[idx].protein_g,
+              };
+            } else {
+              mergedItems.push({ name: item.name, calories: item.calories, protein_g: item.protein_g, confirmed: item.confirmed ?? false });
+            }
+          }
+
+          const newVisitCount = (existingVenue?.visit_count ?? 0) + 1;
+
           await supabaseAdmin.from('user_venues').upsert({
-            user_id: userId, venue_name: action.venue_name as string,
-            learned_items: action.items,
+            user_id: userId,
+            venue_name: venueName,
+            learned_items: mergedItems,
+            visit_count: newVisitCount,
           }, { onConflict: 'user_id,venue_name' });
           feedback.push('Mekan kaydedildi');
           break;

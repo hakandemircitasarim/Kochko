@@ -32,3 +32,8 @@ export async function saveRecipe(recipe: Omit<SavedRecipe, 'id' | 'created_at'>)
 export async function deleteRecipe(id: string): Promise<void> {
   await supabase.from('saved_recipes').delete().eq('id', id);
 }
+
+export async function updateRecipe(recipeId: string, updates: Partial<SavedRecipe>): Promise<void> {
+  const { id, created_at, ...rest } = updates as Record<string, unknown>;
+  await supabase.from('saved_recipes').update(rest).eq('id', recipeId);
+}

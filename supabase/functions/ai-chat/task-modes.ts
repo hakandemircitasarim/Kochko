@@ -153,7 +153,14 @@ Gerekce ver neden bu stratejiyi sectigini.`;
 Kalan butceyi goster.
 Protein/karb/yag etkisini goster.
 Alternatif senaryo sun ("bunun yerine sunu yesen...").
-Haftalik butce etkisini de goster.`;
+Haftalik butce etkisini de goster.
+
+ONEMLI: Yanıtının sonuna asagidaki formatta bir <simulation> blogu ekle:
+<simulation>{"foodName":"Yiyecek Adi","calories":350,"remaining":450,"weeklyImpact":"Haftalik butcede 2100 kcal kaliyor"}</simulation>
+- foodName: Sorgulanan yiyecegin adi
+- calories: Yiyecegin tahmini kalorisi
+- remaining: Bu yiyecekten sonra gunluk kalan kalori butcesi
+- weeklyImpact: Haftalik butce etkisini aciklayan kisa Turkce cumle`;
 
     case 'recovery':
       return `## MOD: HIZLI KURTARMA

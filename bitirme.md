@@ -404,9 +404,9 @@ Asagidaki ozellikler analizde PARTIAL/STUB cikmis ama hicbir pakete atanmamisti:
 | 6. Zengin Sohbet | [x] | [x] | [ ] | Tamamlandi |
 | 7. Bildirim | [x] | [x] | [ ] | Tamamlandi |
 | 8. Raporlama | [x] | [x] | [ ] | Tamamlandi |
-| 9. Tarif & Meal Prep | [ ] | [ ] | [ ] | Bekliyor |
-| 10. Disarida Yemek | [ ] | [ ] | [ ] | Bekliyor |
-| 11. Simulasyon | [ ] | [ ] | [ ] | Bekliyor |
+| 9. Tarif & Meal Prep | [x] | [x] | [ ] | Tamamlandi |
+| 10. Disarida Yemek | [x] | [x] | [ ] | Tamamlandi |
+| 11. Simulasyon | [x] | [x] | [ ] | Tamamlandi |
 | 12. Guvenlik | [ ] | [ ] | [ ] | Bekliyor |
 | 13. Turk Besin DB | [ ] | [ ] | [ ] | Bekliyor |
 | 14. Odeme & Premium | [ ] | [ ] | [ ] | Bekliyor |
