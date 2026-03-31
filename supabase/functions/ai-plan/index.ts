@@ -204,6 +204,7 @@ serve(async (req: Request) => {
 
     // Structured output validation (Spec 5.29)
     const validated = validatePlanOutput(plan);
+    Object.assign(plan, validated.corrected);
 
     // Guardrail: apply periodic calorie adjustment (code-enforced, not prompt-dependent)
     const periodicAdj = getPeriodicCalorieAdjustment(profile?.periodic_state);

@@ -681,6 +681,29 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       changes.learned_meal_times = { ...existingTimes, ...newTimes };
     }
 
+    // Spec 5.34: Caffeine-sleep notes
+    if (updates.caffeine_note) {
+      const { data: summaryForCaffeine } = await supabaseAdmin
+        .from('ai_summary').select('caffeine_sleep_notes').eq('user_id', userId).single();
+      const current = (summaryForCaffeine?.caffeine_sleep_notes as string) ?? '';
+      changes.caffeine_sleep_notes = current ? `${current}\n${updates.caffeine_note}` : (updates.caffeine_note as string);
+    }
+
+    // Spec 5.35: Habit updates
+    if (updates.habit_update) {
+      const { data: summaryForHabits } = await supabaseAdmin
+        .from('ai_summary').select('habit_progress').eq('user_id', userId).single();
+      const habits = (summaryForHabits?.habit_progress as { habit: string; status: string; streak: number }[]) ?? [];
+      const hu = updates.habit_update as { habit: string; status: string; streak: number };
+      const idx = habits.findIndex(h => h.habit === hu.habit);
+      if (idx >= 0) {
+        habits[idx] = { ...habits[idx], ...hu };
+      } else {
+        habits.push(hu);
+      }
+      changes.habit_progress = habits;
+    }
+
     // Seasonal/periodic note (Spec 9.3)
     if (updates.seasonal_note) {
       const { data: summaryData } = await supabaseAdmin
