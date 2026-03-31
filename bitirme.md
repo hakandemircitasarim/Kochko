@@ -407,9 +407,9 @@ Asagidaki ozellikler analizde PARTIAL/STUB cikmis ama hicbir pakete atanmamisti:
 | 9. Tarif & Meal Prep | [x] | [x] | [ ] | Tamamlandi |
 | 10. Disarida Yemek | [x] | [x] | [ ] | Tamamlandi |
 | 11. Simulasyon | [x] | [x] | [ ] | Tamamlandi |
-| 12. Guvenlik | [ ] | [ ] | [ ] | Bekliyor |
-| 13. Turk Besin DB | [ ] | [ ] | [ ] | Bekliyor |
-| 14. Odeme & Premium | [ ] | [ ] | [ ] | Bekliyor |
+| 12. Guvenlik | [x] | [x] | [ ] | Tamamlandi |
+| 13. Turk Besin DB | [x] | [x] | [ ] | Tamamlandi |
+| 14. Odeme & Premium | [x] | [x] | [ ] | Tamamlandi |
 | 15. Coklu Cihaz | [ ] | [ ] | [ ] | Bekliyor |
 | 16. Ses & Medya | [ ] | [ ] | [ ] | Bekliyor |
 | 17. Wearable | [ ] | [ ] | [ ] | Bekliyor |

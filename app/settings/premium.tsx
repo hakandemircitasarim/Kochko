@@ -62,6 +62,23 @@ export default function PremiumScreen() {
     );
   };
 
+  const handleBuy = () => {
+    Alert.alert(
+      'Gelistirici Modu',
+      'Uygulama icin satin alma (IAP) henuz baglantili degil. Gercek odeme altyapisi App Store / Google Play entegrasyonu ile aktif olacaktir. Simdilik test icin "Abone Ol" butonunu kullanabilirsiniz.',
+      [{ text: 'Tamam' }]
+    );
+  };
+
+  const handleRestorePurchases = () => {
+    // Production: RevenueCat restore purchases
+    Alert.alert(
+      'Satin Alimlari Geri Yukle',
+      'Onceki satin aliminiz bulunamadi. Farkli bir hesapla giris yaptiysaniz, o hesabi deneyin.',
+      [{ text: 'Tamam' }]
+    );
+  };
+
   const activatePremium = async (months: number) => {
     if (!user?.id) return;
     const expiresAt = new Date();
@@ -115,17 +132,42 @@ export default function PremiumScreen() {
   if (isInTrial) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md }}>
+        {/* Trial expiry countdown banner */}
+        <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md }}>
+          <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>
+            Deneme sureniz {trialDaysLeft} gun sonra bitiyor
+          </Text>
+        </View>
+
         <Card>
           <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Deneme Suresi</Text>
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>
             {trialDaysLeft} gun kaldi. Tum Premium ozellikler acik.
           </Text>
         </Card>
+
+        {/* Feature comparison */}
+        <View style={{ marginTop: SPACING.md }}>
+          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', marginBottom: SPACING.sm }}>Ucretsiz vs Premium</Text>
+          <Card title="Ucretsiz">
+            {FREE.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.success} />)}
+          </Card>
+          <Card title="Premium" style={{ borderColor: COLORS.primary, borderWidth: 2 }}>
+            {PREMIUM.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.primary} />)}
+          </Card>
+        </View>
+
         <View style={{ marginTop: SPACING.md }}>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
             Deneme bitmeden abone olarak kesintisiz devam et.
           </Text>
-          <Button title="Simdi Abone Ol" onPress={handleSubscribe} size="lg" />
+          <Button title="Satin Al" onPress={handleBuy} size="lg" />
+          <View style={{ marginTop: SPACING.sm }}>
+            <Button title="Simdi Abone Ol (Test)" onPress={handleSubscribe} size="lg" variant="ghost" />
+          </View>
+          <View style={{ marginTop: SPACING.sm }}>
+            <Button title="Satin Alimlari Geri Yukle" variant="ghost" onPress={handleRestorePurchases} />
+          </View>
         </View>
       </ScrollView>
     );
@@ -165,10 +207,16 @@ export default function PremiumScreen() {
         </Card>
       </View>
 
-      <Button title="Premium'u Baslat" onPress={handleSubscribe} size="lg" />
+      <Button title="Satin Al" onPress={handleBuy} size="lg" />
+      <View style={{ marginTop: SPACING.sm }}>
+        <Button title="Premium'u Baslat (Test)" onPress={handleSubscribe} size="lg" variant="ghost" />
+      </View>
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
         7 gun ucretsiz deneme. Istedigin zaman iptal et.
       </Text>
+      <View style={{ marginTop: SPACING.md }}>
+        <Button title="Satin Alimlari Geri Yukle" variant="ghost" onPress={handleRestorePurchases} />
+      </View>
     </ScrollView>
   );
 }

@@ -268,6 +268,50 @@ export async function scheduleLocalNotifications(
 }
 
 /**
+ * Schedule a trial expiry reminder notification.
+ * Spec 16: If trial is active and 2 days remaining, notify user.
+ */
+export async function scheduleTrialReminder(trialDaysLeft: number): Promise<void> {
+  if (trialDaysLeft !== 2) return;
+
+  // Cancel any existing trial reminders first
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of scheduled) {
+    if (n.content.data?.type === 'trial_reminder') {
+      await Notifications.cancelScheduledNotificationAsync(n.identifier);
+    }
+  }
+
+  // Schedule immediate-ish notification (next day at 10:00)
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Deneme Sureniz Bitiyor',
+      body: "Deneme sureniz 2 gun sonra bitiyor. Premium'a gecin!",
+      data: { type: 'trial_reminder' },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: 10,
+      minute: 0,
+    },
+  });
+}
+
+/**
+ * Check trial status and schedule reminder if needed.
+ * Call this on app open / profile load.
+ */
+export async function checkAndScheduleTrialReminder(
+  isInTrial: boolean,
+  trialDaysLeft: number
+): Promise<void> {
+  if (!isInTrial) return;
+  if (trialDaysLeft <= 2 && trialDaysLeft > 0) {
+    await scheduleTrialReminder(trialDaysLeft);
+  }
+}
+
+/**
  * Re-engagement notification schedule (Spec 10.4)
  */
 export function getReengagementLevel(hoursSinceLastActivity: number): 'none' | '3day' | '7day' | '14day' | '30day' | 'stopped' {
