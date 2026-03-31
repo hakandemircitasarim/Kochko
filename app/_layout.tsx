@@ -4,8 +4,10 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
 import { initializeNotifications, savePushToken } from '@/services/notifications.service';
 import { checkAndRunBackup } from '@/services/auto-backup.service';
+import { detectTimezone } from '@/lib/timezone';
 import { ThemeContext, DARK_COLORS, LIGHT_COLORS, type ThemeMode } from '@/lib/theme';
 
 const THEME_KEY = '@kochko_theme_mode';
@@ -50,6 +52,22 @@ export default function RootLayout() {
     }).catch(() => {});
     // Auto backup check (Spec 18.2)
     checkAndRunBackup().catch(() => {});
+
+    // Auto-detect timezone (Spec 2.5)
+    const profile = useProfileStore.getState().profile;
+    if (profile) {
+      const detectedTz = detectTimezone();
+      const updates: Record<string, string> = {};
+      if (!profile.home_timezone || profile.home_timezone === 'Europe/Istanbul') {
+        if (detectedTz !== 'Europe/Istanbul') updates.home_timezone = detectedTz;
+      }
+      if (profile.active_timezone !== detectedTz) {
+        updates.active_timezone = detectedTz;
+      }
+      if (Object.keys(updates).length > 0) {
+        useProfileStore.getState().update(user.id, updates as never);
+      }
+    }
   }, [user?.id]);
 
   return (

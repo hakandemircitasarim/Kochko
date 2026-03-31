@@ -15,7 +15,7 @@ export default function SettingsScreen() {
   const handleDelete = () => {
     Alert.alert(
       'Hesabi Sil',
-      'Bu islem geri alinamaz. Tum verileriniz 30 gun sonra kalici silinir. Bu sure icinde giris yaparsaniz hesabiniz yeniden aktif olur.',
+      'Hesabiniz silinmek uzere isaretlenecek. 30 gun icinde tekrar giris yaparsaniz hesabiniz otomatik olarak yeniden aktif olur. 30 gun sonra tum verileriniz kalici olarak silinecektir.',
       [
         { text: 'Iptal', style: 'cancel' },
         { text: 'Hesabimi Sil', style: 'destructive', onPress: async () => {
