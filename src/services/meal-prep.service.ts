@@ -51,11 +51,11 @@ export async function generateMealPrepPlan(
 ): Promise<MealPrepPlan | null> {
   const { data: plan } = await supabase
     .from('weekly_plans')
-    .select('meal_plan')
+    .select('plan_data')
     .eq('id', weeklyPlanId)
     .single();
 
-  if (!plan?.meal_plan) return null;
+  if (!plan?.plan_data) return null;
 
   const prefs = await getMealPrepPrefs(userId);
   if (!prefs.active) return null;
@@ -63,7 +63,7 @@ export async function generateMealPrepPlan(
   // Call AI to generate prep plan from weekly menu
   const { data: result } = await supabase.functions.invoke('ai-chat', {
     body: {
-      message: `Haftalik menumdeki su yemeklerden toplu hazirlama plani olustur. Hangi yemekler onceden hazirlabilir, nasil saklanir, kac gun dayanir? Hazirlik sirasi ve toplam sure belirt. Menu: ${JSON.stringify(plan.meal_plan)}`,
+      message: `Haftalik menumdeki su yemeklerden toplu hazirlama plani olustur. Hangi yemekler onceden hazirlabilir, nasil saklanir, kac gun dayanir? Hazirlik sirasi ve toplam sure belirt. Menu: ${JSON.stringify(plan.plan_data)}`,
     },
   });
 
