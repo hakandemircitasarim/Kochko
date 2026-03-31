@@ -78,7 +78,8 @@ Yemek becerisi: ${p.cooking_skill ?? '?'} | Butce: ${p.budget_level ?? '?'} | Po
 Diyet modu: ${p.diet_mode ?? 'standard'}${p.if_active ? ` | IF: ${p.if_window} (${p.if_eating_start}-${p.if_eating_end})` : ''}
 Koc tonu: ${p.coach_tone ?? 'balanced'}
 ${p.menstrual_tracking ? `Regl takibi aktif | Siklus: ${p.menstrual_cycle_length ?? '?'} gun` : ''}
-${p.periodic_state ? `*** DONEMSEL DURUM: ${p.periodic_state} (${p.periodic_state_start} - ${p.periodic_state_end ?? '?'}) ***` : ''}
+${p.periodic_state ? `*** DONEMSEL DURUM: ${p.periodic_state} (${p.periodic_state_start} - ${p.periodic_state_end ?? '?'}) ***${(() => { if (p.periodic_state_end) { const days = Math.ceil((new Date(p.periodic_state_end).getTime() - new Date().getTime()) / (1000*60*60*24)); return days > 0 ? ` | ${days} gun kaldi` : ' | SURESI DOLDU'; } return ''; })()}` : ''}
+${(() => { const m = new Date().getMonth() + 1; const s = m >= 3 && m <= 5 ? 'ilkbahar' : m >= 6 && m <= 8 ? 'yaz' : m >= 9 && m <= 11 ? 'sonbahar' : 'kis'; return `MEVSIM: ${s}`; })()}
 
 ## HEDEFLER
 ${goals.length > 0 ? goals.map(g => `${g.phase_label ?? g.goal_type}: ${g.target_weight_kg ?? '?'}kg | ${g.priority} | ${g.weekly_rate ?? '?'}kg/hafta`).join('\n') : 'Hedef belirlenmemis'}
@@ -146,6 +147,7 @@ async function buildLayer2(userId: string): Promise<string> {
   if (s.menstrual_notes) parts.push(`Regl notlari: ${s.menstrual_notes}`);
   if (s.weekly_budget_pattern) parts.push(`Haftalik butce kalibi: ${s.weekly_budget_pattern}`);
   if (s.supplement_notes) parts.push(`Supplement: ${s.supplement_notes}`);
+  if (s.seasonal_notes) parts.push(`## DONEMSEL NOTLAR\n${s.seasonal_notes}`);
 
   const habits = s.habit_progress as { habit: string; status: string; streak: number }[] | null;
   if (habits && habits.length > 0) {

@@ -11,13 +11,17 @@ import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { buildFullContext } from '../shared/memory.ts';
 import { checkAllergens, validateCalories, sanitizeText } from '../shared/guardrails.ts';
 import { validatePlanOutput } from '../shared/output-validator.ts';
+import { getPeriodicCalorieAdjustment, isIFCompatible, buildPeriodicPlanContext, getSeasonalContext } from '../shared/periodic-config.ts';
 
 const PLAN_SYSTEM = `Sen Kochko plan yapicisisin. Kullanicinin profiline, hedefine ve gecmis verilerine gore gunluk beslenme + antrenman plani olustur.
 
 KURALLAR:
 - Her ogun icin 2-3 secenek sun
 - Alerjen listesindeki hicbir yiyecegi ONERME
-- IF aktifse ogunleri yeme penceresine sigdir
+- IF aktifse VE donemsel durumla celismiyorsa ogunleri yeme penceresine sigdir
+- DONEMSEL DURUM aktifse ayarlamalari MUTLAKA uygula (kalori, protein, antrenman yogunlugu)
+- Ramazanda: ogunleri iftar-sahur penceresine sigdir, sahur karbonhidrat agirlikli
+- Mevsimsel oneriler sun (yaz=salata/soguk, kis=corba/sicak)
 - Antrenman/dinlenme gunu ayrimi yap
 - Haftalik butce baglamini goster
 - Protein zamanlamasini dikkate al (antrenman oncesi karb, sonrasi protein)
@@ -68,11 +72,18 @@ serve(async (req: Request) => {
       .eq('is_allergen', true);
     const allergens = (prefs ?? []).map((p: { food_name: string }) => p.food_name);
 
-    // Get profile gender for calorie validation
+    // Get profile for calorie validation and periodic state
     const { data: profile } = await supabaseAdmin
-      .from('profiles').select('gender').eq('id', userId).single();
+      .from('profiles')
+      .select('gender, periodic_state, periodic_state_start, periodic_state_end, if_active')
+      .eq('id', userId).single();
 
-    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\nBugunku plani olustur.`;
+    // Build periodic + seasonal context
+    const periodicContext = buildPeriodicPlanContext(profile ?? {});
+    const seasonal = getSeasonalContext();
+    const seasonalLine = `MEVSIM: ${seasonal.season}${seasonal.isRamadan ? ' | RAMAZAN DONEMI' : ''} | Oneriler: ${seasonal.suggestions_tr.join(', ')}`;
+
+    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}\n\nBugunku plani olustur.`;
 
     const plan = await chatCompletion<Record<string, unknown>>(
       [
@@ -85,11 +96,24 @@ serve(async (req: Request) => {
     // Structured output validation (Spec 5.29)
     const validated = validatePlanOutput(plan);
 
-    // Guardrail: validate calories
+    // Guardrail: apply periodic calorie adjustment (code-enforced, not prompt-dependent)
+    const periodicAdj = getPeriodicCalorieAdjustment(profile?.periodic_state);
+    if (periodicAdj !== 0) {
+      plan.calorie_target_min = (plan.calorie_target_min as number) + periodicAdj;
+      plan.calorie_target_max = (plan.calorie_target_max as number) + periodicAdj;
+    }
+
+    // Guardrail: validate calories (after periodic adjustment)
     const calMin = plan.calorie_target_min as number;
     const calCheck = validateCalories(calMin, profile?.gender);
     if (!calCheck.valid) {
       plan.calorie_target_min = calCheck.corrected;
+    }
+
+    // Guardrail: IF compatibility check — skip IF validation if periodic state conflicts
+    if (profile?.if_active && !isIFCompatible(profile?.periodic_state)) {
+      // Don't enforce IF window when periodic state overrides it
+      plan._if_overridden = true;
     }
 
     // Guardrail: allergen check on meal suggestions

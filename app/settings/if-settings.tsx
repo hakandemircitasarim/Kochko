@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { PERIODIC_STATE_CONFIG, type PeriodicState } from '@/services/periodic.service';
 
 const IF_WINDOWS = [
   { label: '16:8', eating: '8 saat yeme, 16 saat oruc', start: '12:00', end: '20:00' },
@@ -48,8 +49,35 @@ export default function IFSettingsScreen() {
         IF aktif oldugunda kocun tum ogun onerilerini yeme penceresine sigdirir. Pencere disinda bildirim gondermez.
       </Text>
 
+      {/* Periodic state conflict banner */}
+      {(() => {
+        const ps = profile?.periodic_state as PeriodicState | null;
+        if (ps && !PERIODIC_STATE_CONFIG[ps]?.ifCompatible) {
+          return (
+            <Card style={{ borderColor: COLORS.error, borderWidth: 2, marginBottom: SPACING.md }}>
+              <Text style={{ color: COLORS.error, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>
+                IF Devre Disi
+              </Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+                Mevcut donemsel durumunuz ({PERIODIC_STATE_CONFIG[ps]?.label_tr}) IF ile uyumlu degil. Donem bitene kadar IF devre disi kaldi.
+              </Text>
+            </Card>
+          );
+        }
+        return null;
+      })()}
+
       {/* Toggle */}
-      <TouchableOpacity onPress={() => setActive(!active)} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg }}>
+      <TouchableOpacity
+        onPress={() => {
+          const ps = profile?.periodic_state as PeriodicState | null;
+          if (ps && !PERIODIC_STATE_CONFIG[ps]?.ifCompatible) {
+            Alert.alert('IF Kullanilamaz', `${PERIODIC_STATE_CONFIG[ps]?.label_tr} doneminde IF uygun degil.`);
+            return;
+          }
+          setActive(!active);
+        }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg }}>
         <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: active ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
           <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: active ? 'flex-end' : 'flex-start' }} />
         </View>

@@ -10,6 +10,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
+import { isIFCompatible, getSeasonalContext, type PeriodicState } from '../shared/periodic-config.ts';
 
 const NUDGE_PROMPT = `Sen Kochko kocusun. Kullanicinin durumunu degerlendir.
 SADECE gercekten gerekli oldugunda mesaj uret. Spam YAPMA.
@@ -21,7 +22,7 @@ serve(async (req: Request) => {
   try {
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, gender, night_eating_risk, coach_tone, if_active, if_eating_start, if_eating_end')
+      .select('id, gender, night_eating_risk, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end')
       .eq('onboarding_completed', true);
 
     if (!profiles?.length) return respond({ processed: 0, sent: 0 });
@@ -31,7 +32,10 @@ serve(async (req: Request) => {
     const today = now.toISOString().split('T')[0];
     let totalSent = 0;
 
-    for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean }[]) {
+    // Check if Ramadan is approaching (weekly check)
+    const seasonal = getSeasonalContext();
+
+    for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null }[]) {
       // Max messages per day check
       const { count } = await supabaseAdmin
         .from('coaching_messages')
@@ -104,7 +108,58 @@ ${patterns.length > 0 ? `Kaliplar: ${patterns.map(p => p.description).join('; ')
 ${hoursSinceMeal > 8 && hour >= 9 && hour <= 22 ? 'TETIK: Uzun suredir ogun yok' : ''}
 ${hoursSinceChat > 48 ? 'TETIK: 2+ gundur sessiz' : ''}
 ${plateauInfo}
-${maintenanceInfo}`;
+${maintenanceInfo}
+${(() => {
+  const triggers: string[] = [];
+  const ps = profile.periodic_state as PeriodicState | null;
+
+  if (ps) {
+    // Transition check: end date approaching
+    if (profile.periodic_state_end) {
+      const daysLeft = Math.ceil((new Date(profile.periodic_state_end).getTime() - now.getTime()) / 86400000);
+      if (daysLeft <= 0) {
+        triggers.push(`TETIK: DONEM DOLDU - ${ps} donemi sona erdi, gecis plani olustur`);
+        // Auto-clear expired state
+        supabaseAdmin.from('profiles').update({
+          periodic_state: null, periodic_state_start: null, periodic_state_end: null,
+          updated_at: new Date().toISOString(),
+        }).eq('id', profile.id).then(() => {});
+      } else if (daysLeft <= 3) {
+        triggers.push(`TETIK: GECIS YAKLASYOR - ${ps} donemi ${daysLeft} gun icinde bitiyor`);
+      }
+    }
+
+    // No end date set and active >7 days
+    if (!profile.periodic_state_end && profile.periodic_state_start) {
+      const daysActive = Math.ceil((now.getTime() - new Date(profile.periodic_state_start).getTime()) / 86400000);
+      if (daysActive > 7) {
+        triggers.push(`TETIK: TARIH EKSIK - ${ps} donemi ${daysActive} gundur aktif ama bitis tarihi yok`);
+      }
+    }
+
+    // IF conflict safety net
+    if (profile.if_active && !isIFCompatible(ps)) {
+      triggers.push(`TETIK: IF CELISKISI - ${ps} doneminde IF aktif olmamali`);
+    }
+
+    // Ramadan specific: pre-iftar reminder
+    if (ps === 'ramadan' && hour >= 15 && hour <= 17) {
+      triggers.push('TETIK: RAMAZAN IFTAR - Iftar yaklasıyor, su hazirligi ve hafif baslangic hatırlat');
+    }
+
+    // Illness: long time no food
+    if (ps === 'illness' && hoursSinceMeal > 6 && hour >= 9 && hour <= 22) {
+      triggers.push('TETIK: HASTALIK BESLENME - Uzun suredir bir sey yememis, hafif besin hatırlat');
+    }
+  } else {
+    // Ramadan approaching (no periodic state active)
+    if (seasonal.isRamadanApproaching && now.getDay() === 1) { // Monday check
+      triggers.push('TETIK: RAMAZAN YAKLASYOR - Ramazan modunu aktive etmeyi hatırlat');
+    }
+  }
+
+  return triggers.join('\n');
+})()}`;
 
       interface NudgeResult { send: boolean; message?: string; trigger?: string; priority?: string; }
 

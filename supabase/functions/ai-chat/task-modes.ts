@@ -18,7 +18,8 @@ export type TaskMode =
   | 'plateau'        // Plateau yönetimi
   | 'simulation'     // "Şunu yesem ne olur?" scenarios
   | 'recovery'       // Hızlı kurtarma - "bugün çok yedim"
-  | 'onboarding';    // İlk tanışma - profile building
+  | 'onboarding'     // İlk tanışma - profile building
+  | 'periodic';      // Dönemsel durum yönetimi
 
 /**
  * Detect the appropriate task mode from user message.
@@ -34,6 +35,9 @@ export function detectTaskMode(message: string, isOnboarding: boolean): TaskMode
   if (/\d+\s*k(g|ilo)|tartildim|tartıldım/.test(lower)) return 'register';
   if (/su (ic|iç)|bardak|litre/.test(lower)) return 'register';
   if (/saat uyudum|gec yattim|geç yattım|erken kalktim/.test(lower)) return 'register';
+
+  // Periodic state mode
+  if (/ramazan|hamile|hastalandim|hastalandım|tatile|seyahate|sakatl|sakatlandim|sakatlandım|emzir|donemsel|dönemsel|yogun is|yoğun iş|sinav|sınav/.test(lower)) return 'periodic';
 
   // Simulation mode
   if (/yesem|yersem|icsem|içsem|olur mu|yer miyim|ice bilir|içe bilir|ne olur/.test(lower)) return 'simulation';
@@ -166,5 +170,18 @@ Dogal sohbet akisinda bilgi topla.
 Boy, kilo, yas, cinsiyet, hedef - bunlari ogren.
 Yeterli bilgi toplayinca profili tamamla.
 Ilk plani olusturmak icin minimum: boy + kilo + yas + cinsiyet + hedef.`;
+
+    case 'periodic':
+      return `## MOD: DONEMSEL DURUM
+Kullanici donemsel bir durum hakkinda konusuyor.
+1. Durumu tani (ramazan/hastalik/hamilelik/emzirme/tatil/sinav/sakatlik/seyahat)
+2. Bitis tarihi sor (biliniyorsa)
+3. Plan degisikliklerini HEMEN acikla: kalori, antrenman, IF degisiklikleri
+4. periodic_state_update eylemi olustur
+5. Empati kur ama pratik ol
+
+Durum uyumsuz ise IF'i otomatik durdur ve kullaniciya bildir.
+Hastalik/sakatlanma durumunda iyilesme odakli ol.
+Hamilelik/emzirmede destekleyici ve sabırli ol.`;
   }
 }

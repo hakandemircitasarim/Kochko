@@ -428,6 +428,33 @@ async function executeActions(
           feedback.push('Mekan kaydedildi');
           break;
         }
+        case 'periodic_state_update': {
+          const newState = action.state as string;
+          const endDate = action.end_date as string | null;
+          const profileUpdates: Record<string, unknown> = {
+            periodic_state: newState,
+            periodic_state_start: new Date().toISOString().split('T')[0],
+            periodic_state_end: endDate ?? null,
+            updated_at: new Date().toISOString(),
+          };
+          // Auto-pause IF if incompatible (illness, pregnancy, breastfeeding)
+          if (['illness', 'pregnancy', 'breastfeeding'].includes(newState)) {
+            profileUpdates.if_active = false;
+          }
+          await supabaseAdmin.from('profiles').update(profileUpdates).eq('id', userId);
+          // Write seasonal note to Layer 2
+          const { data: existing } = await supabaseAdmin
+            .from('ai_summaries').select('seasonal_notes').eq('user_id', userId).single();
+          const currentNotes = (existing?.seasonal_notes as string) ?? '';
+          const dateStr = new Date().toISOString().split('T')[0];
+          const newNote = `${currentNotes}\n[${dateStr}] ${newState} donemi baslatildi${endDate ? ` (bitis: ${endDate})` : ''}`.trim();
+          await supabaseAdmin.from('ai_summaries').upsert(
+            { user_id: userId, seasonal_notes: newNote, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          );
+          feedback.push(`Donemsel durum: ${newState}`);
+          break;
+        }
         default:
           feedback.push(null);
       }
@@ -475,6 +502,15 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
     if (updates.coaching_note) {
       const current = (existing?.coaching_notes as string) ?? '';
       changes.coaching_notes = current + '\n' + updates.coaching_note;
+    }
+
+    // Seasonal/periodic note (Spec 9.3)
+    if (updates.seasonal_note) {
+      const { data: summaryData } = await supabaseAdmin
+        .from('ai_summary').select('seasonal_notes').eq('user_id', userId).single();
+      const current = (summaryData?.seasonal_notes as string) ?? '';
+      const dateStr = new Date().toISOString().split('T')[0];
+      changes.seasonal_notes = `${current}\n[${dateStr}] ${updates.seasonal_note}`.trim();
     }
 
     if (Object.keys(changes).length > 0) {
