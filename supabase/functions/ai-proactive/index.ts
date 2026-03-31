@@ -30,6 +30,7 @@ serve(async (req: Request) => {
     const now = new Date();
     const hour = now.getHours();
     const today = now.toISOString().split('T')[0];
+    const dayOfWeek = now.getDay(); // 0=Sunday, 1=Monday
     let totalSent = 0;
 
     // Check if Ramadan is approaching (weekly check)
@@ -281,7 +282,6 @@ ${(() => {
     }
 
     // T1.38: Auto-trigger weekly report on Monday mornings
-    const dayOfWeek = now.getDay(); // 0=Sunday, 1=Monday
     if (dayOfWeek === 1 && hour >= 6 && hour <= 8) {
       for (const profile of profiles as { id: string }[]) {
         const weekStart = new Date(now);

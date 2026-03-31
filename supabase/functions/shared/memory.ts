@@ -138,9 +138,20 @@ async function buildLayer2(userId: string): Promise<string> {
 
   if (s.coaching_notes) parts.push(`## KOCLUK NOTLARI\n${s.coaching_notes}`);
 
+  // Spec 5.15: Learned meal times
+  const learnedMealTimes = s.learned_meal_times as Record<string, string> | null;
+  if (learnedMealTimes && Object.keys(learnedMealTimes).length > 0) {
+    const timeLabels: Record<string, string> = { breakfast: 'kahvalti', lunch: 'ogle', dinner: 'aksam', snack: 'atistirma' };
+    const formatted = Object.entries(learnedMealTimes)
+      .map(([k, v]) => `${timeLabels[k] ?? k} ${v}`)
+      .join(', ');
+    parts.push(`## OGRENILEN OGUN SAATLERI\nOgrenilen ogun saatleri: ${formatted}`);
+  }
+
   const portion = s.portion_calibration as Record<string, unknown> | null;
   if (portion && Object.keys(portion).length > 0) {
-    parts.push(`## PORSIYON KALIBRASYONU\n${Object.entries(portion).map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+    const formatted = Object.entries(portion).map(([k, v]) => `${k}=${v}g`).join(', ');
+    parts.push(`## PORSIYON HAFIZASI\nPORSIYON HAFIZASI: ${formatted}`);
   }
 
   const strength = s.strength_records as Record<string, { '1rm': number }> | null;
