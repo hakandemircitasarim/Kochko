@@ -27,7 +27,7 @@ import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { startRecording, stopRecording, isRecording as checkIsRecording } from '@/services/voice.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
-import { MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons } from '@/components/chat/RichMessage';
+import { MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons, RecipeCard } from '@/components/chat/RichMessage';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 // Extended message type for UI state
@@ -192,6 +192,67 @@ export default function ChatScreen() {
     setInput(text);
   };
 
+  // Dashboard macros for real-time MacroSummary after meal_log
+  const totalProtein = useDashboardStore(s => s.totalProtein);
+  const totalCarbs = useDashboardStore(s => s.totalCarbs);
+  const totalFat = useDashboardStore(s => s.totalFat);
+  const dashboardMacros = { protein: totalProtein, carbs: totalCarbs, fat: totalFat };
+
+  // Compute macro gram targets from profile
+  const macroTargets = (() => {
+    const tdee = profile?.tdee_calculated ?? 2000;
+    const pPct = profile?.macro_protein_pct ?? 30;
+    const cPct = profile?.macro_carb_pct ?? 40;
+    const fPct = profile?.macro_fat_pct ?? 30;
+    return {
+      protein: Math.round((tdee * pPct / 100) / 4),
+      carbs: Math.round((tdee * cPct / 100) / 4),
+      fat: Math.round((tdee * fPct / 100) / 9),
+    };
+  })();
+
+  // "Neden bu oneriyi yaptin?" handler
+  const handleAskWhy = useCallback((messageContent: string) => {
+    setInput('Neden bu oneriyi yaptin?');
+    // Trigger send after state update
+    setTimeout(async () => {
+      const text = 'Neden bu oneriyi yaptin?';
+      const userMsg: UIMessage = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: text,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setInput('');
+      setSending(true);
+      scrollToBottom();
+
+      const { data, error } = await sendMessage(text);
+      if (data) {
+        const reply: UIMessage = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: data.message,
+          task_mode: data.task_mode,
+          created_at: new Date().toISOString(),
+          actions: data.actions,
+          showFeedback: false,
+        };
+        setMessages(prev => [...prev, reply]);
+      } else {
+        setMessages(prev => [...prev, {
+          id: `e-${Date.now()}`,
+          role: 'assistant',
+          content: error ?? 'Baglanti hatasi. Tekrar dene.',
+          created_at: new Date().toISOString(),
+        }]);
+      }
+      setSending(false);
+      scrollToBottom();
+    }, 0);
+  }, [scrollToBottom]);
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
@@ -218,7 +279,7 @@ export default function ChatScreen() {
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} />}
+          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} />}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
@@ -367,7 +428,12 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   );
 }
 
-function MessageBubble({ message }: { message: UIMessage }) {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets }: {
+  message: UIMessage;
+  onAskWhy: (content: string) => void;
+  dashboardMacros: { protein: number; carbs: number; fat: number };
+  macroTargets: { protein: number; carbs: number; fat: number };
+}) {
   const isUser = message.role === 'user';
 
   return (
@@ -391,8 +457,24 @@ function MessageBubble({ message }: { message: UIMessage }) {
         </Text>
 
         {/* Inline rich content for AI responses (Spec 5.20) */}
-        {!isUser && message.task_mode === 'register' && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
-          <MacroSummary protein={0} carbs={0} fat={0} targets={{ protein: 100, carbs: 200, fat: 60 }} />
+        {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
+          <MacroSummary
+            protein={dashboardMacros.protein}
+            carbs={dashboardMacros.carbs}
+            fat={dashboardMacros.fat}
+            targets={macroTargets}
+          />
+        )}
+
+        {/* Recipe card for recipe task_mode */}
+        {!isUser && message.task_mode === 'recipe' && (message as any).recipe && (
+          <RecipeCard
+            title={(message as any).recipe.title}
+            prepTime={(message as any).recipe.prepTime}
+            servings={(message as any).recipe.servings}
+            ingredients={(message as any).recipe.ingredients}
+            macros={(message as any).recipe.macros}
+          />
         )}
 
         {/* Timestamp */}
@@ -415,6 +497,15 @@ function MessageBubble({ message }: { message: UIMessage }) {
             contextType={message.task_mode === 'recipe' ? 'recipe' : message.task_mode === 'plan' ? 'meal_suggestion' : 'coaching_message'}
             contextId={message.id}
           />
+          {/* Transparency: ask why this suggestion */}
+          <TouchableOpacity
+            onPress={() => onAskWhy(message.content)}
+            style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm }}
+          >
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
+              Neden bu oneriyi yaptin?
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>

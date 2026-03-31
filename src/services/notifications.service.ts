@@ -52,11 +52,10 @@ const DEFAULT_PREFS: NotificationPreferences = {
 };
 
 /**
- * Initialize notifications - call in app root layout.
- * Spec 10.3: Strategic permission request timing.
+ * Setup notification handler only - no permission request.
+ * Safe to call early in app lifecycle (e.g., root layout mount).
  */
-export async function initializeNotifications(): Promise<string | null> {
-  // Set notification handler for foreground
+export function setupNotificationHandler(): void {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -64,29 +63,54 @@ export async function initializeNotifications(): Promise<string | null> {
       shouldSetBadge: true,
     }),
   });
+}
 
-  // Request permission
+/**
+ * Request notification permission only if status is 'undetermined'.
+ * Spec 10.3: Strategic permission request timing - ask only at the right moment.
+ * Returns push token if granted, null otherwise.
+ */
+export async function requestNotificationPermissionIfNeeded(): Promise<string | null> {
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
 
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
+  // Only prompt if undetermined - don't re-prompt denied users
+  if (existingStatus === 'granted') {
+    try {
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: undefined,
+      });
+      return tokenData.data;
+    } catch {
+      return null;
+    }
   }
 
-  if (finalStatus !== 'granted') {
+  if (existingStatus !== 'undetermined') {
     return null;
   }
 
-  // Get push token
+  const { status } = await Notifications.requestPermissionsAsync();
+  if (status !== 'granted') {
+    return null;
+  }
+
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: undefined, // Will use app.json projectId
+      projectId: undefined,
     });
     return tokenData.data;
   } catch {
     return null;
   }
+}
+
+/**
+ * Initialize notifications - call in app root layout.
+ * Spec 10.3: Backward-compatible wrapper that sets up handler + requests permission.
+ */
+export async function initializeNotifications(): Promise<string | null> {
+  setupNotificationHandler();
+  return requestNotificationPermissionIfNeeded();
 }
 
 /**
@@ -147,6 +171,39 @@ export async function scheduleLocalNotifications(
 
   if (!prefs.enabled) return;
 
+  // Meal reminders - breakfast, lunch, dinner
+  if (prefs.types.meal_reminder) {
+    // Kahvalti - 08:00
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Kahvalti Zamani',
+        body: 'Gune saglikli bir kahvalti ile basla.',
+        data: { type: 'meal_reminder', meal: 'kahvalti' },
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 8, minute: 0 },
+    });
+
+    // Ogle yemegi - 12:30
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Ogle Yemegi',
+        body: 'Ogle yemegi vakti geldi, dengeli bir ogun sec.',
+        data: { type: 'meal_reminder', meal: 'ogle' },
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 12, minute: 30 },
+    });
+
+    // Aksam yemegi - 19:00
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Aksam Yemegi',
+        body: 'Aksam yemegi icin hafif ve doyurucu bir sey hazirla.',
+        data: { type: 'meal_reminder', meal: 'aksam' },
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 19, minute: 0 },
+    });
+  }
+
   // Water reminder - every 2 hours during waking hours
   if (prefs.types.water_reminder) {
     for (let hour = 9; hour <= 20; hour += 2) {
@@ -194,6 +251,18 @@ export async function scheduleLocalNotifications(
         data: { type: 'weekly_report' },
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 1, hour: 19, minute: 0 },
+    });
+  }
+
+  // Night risk / sleep reminder - 22:30
+  if (prefs.types.night_risk) {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Gece Hatirlatma',
+        body: 'Uykudan once mutfaktan uzak dur. Yarin icin planin hazir.',
+        data: { type: 'night_risk' },
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 22, minute: 30 },
     });
   }
 }

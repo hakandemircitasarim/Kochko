@@ -38,6 +38,21 @@ JSON formatinda:
   "full_report": "2-3 cumle degerlendirme"
 }`;
 
+const MONTHLY_REPORT_SYSTEM = `Kullanicinin aylik performansini degerlendir. Son 4 haftanin verilerini analiz et.
+
+JSON formatinda:
+{
+  "monthly_summary": "3-4 cumle aylik degerlendirme",
+  "avg_compliance": sayi,
+  "trend_direction": "yukselis|dusus|stabil",
+  "weight_change_kg": sayi_veya_null,
+  "risk_signals": ["risk1", "risk2"],
+  "behavioral_patterns": ["pattern1", "pattern2"],
+  "top_achievement": "ayin en buyuk basarisi",
+  "deviation_distribution": {"stres": sayi, "aclik": sayi, "disarida_yemek": sayi, "plansiz_atistirma": sayi, "sosyal": sayi, "alkol": sayi, "yok": sayi},
+  "next_month_focus": "gelecek ay odak noktasi 2-3 cumle"
+}`;
+
 const WEEKLY_REPORT_SYSTEM = `Kullanicinin haftalik performansini degerlendir.
 
 JSON formatinda:
@@ -62,9 +77,11 @@ serve(async (req: Request) => {
       return await generateDailyReport(userId, date);
     } else if (report_type === 'weekly') {
       return await generateWeeklyReport(userId);
+    } else if (report_type === 'monthly') {
+      return await generateMonthlyReport(userId);
     }
 
-    return respond({ error: 'report_type must be "daily" or "weekly"' }, 400);
+    return respond({ error: 'report_type must be "daily", "weekly", or "monthly"' }, 400);
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);
   }
@@ -203,6 +220,85 @@ Metrikler: ${metrics.map((m: { date: string; weight_kg: number | null; sleep_hou
     plan_revision: report.plan_revision,
     generated_at: new Date().toISOString(),
   }, { onConflict: 'user_id,week_start' });
+
+  return respond(report);
+}
+
+async function generateMonthlyReport(userId: string) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const msStr = monthStart.toISOString().split('T')[0];
+  const meStr = monthEnd.toISOString().split('T')[0];
+
+  const [weeklyRes, dailyRes, metricsRes] = await Promise.all([
+    supabaseAdmin.from('weekly_reports').select('*').eq('user_id', userId).gte('week_start', msStr).lte('week_start', meStr).order('week_start'),
+    supabaseAdmin.from('daily_reports').select('date, compliance_score, deviation_reason').eq('user_id', userId).gte('date', msStr).lte('date', meStr).order('date'),
+    supabaseAdmin.from('daily_metrics').select('date, weight_kg').eq('user_id', userId).gte('date', msStr).lte('date', meStr).order('date'),
+  ]);
+
+  const weeklyReports = weeklyRes.data ?? [];
+  const dailyReports = dailyRes.data ?? [];
+  const metrics = metricsRes.data ?? [];
+
+  // Calculate stats
+  const avgCompliance = dailyReports.length > 0
+    ? Math.round(dailyReports.reduce((s: number, r: { compliance_score: number }) => s + (r.compliance_score ?? 0), 0) / dailyReports.length)
+    : 0;
+
+  const weights = metrics.filter((m: { weight_kg: number | null }) => m.weight_kg != null).map((m: { date: string; weight_kg: number }) => ({ date: m.date, kg: m.weight_kg }));
+  const weightChange = weights.length >= 2 ? weights[weights.length - 1].kg - weights[0].kg : null;
+
+  // Deviation distribution
+  const devDist: Record<string, number> = {};
+  for (const r of dailyReports as { deviation_reason?: string }[]) {
+    const reason = r.deviation_reason ?? 'yok';
+    devDist[reason] = (devDist[reason] ?? 0) + 1;
+  }
+
+  const prompt = `Ay: ${msStr} - ${meStr}
+Ortalama Uyum: %${avgCompliance}
+Kilo Degisimi: ${weightChange !== null ? `${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)}kg` : 'veri yok'}
+Sapma Dagilimi: ${JSON.stringify(devDist)}
+Haftalik Raporlar: ${weeklyReports.map((wr: { week_start: string; avg_compliance: number; next_week_strategy: string }) => `${wr.week_start}: uyum %${wr.avg_compliance}, strateji: ${wr.next_week_strategy ?? '-'}`).join('\n') || 'rapor yok'}
+Gunluk Uyum: ${dailyReports.map((r: { date: string; compliance_score: number }) => `${r.date}: %${r.compliance_score}`).join(', ') || 'veri yok'}`;
+
+  const report = await chatCompletion<Record<string, unknown>>(
+    [{ role: 'system', content: MONTHLY_REPORT_SYSTEM }, { role: 'user', content: prompt }],
+    { temperature: TEMPERATURE.analyst, maxTokens: 2500, jsonMode: true }
+  );
+
+  // Sanitize text fields
+  if (typeof report.monthly_summary === 'string') report.monthly_summary = sanitizeText(report.monthly_summary).clean;
+  if (typeof report.top_achievement === 'string') report.top_achievement = sanitizeText(report.top_achievement).clean;
+  if (typeof report.next_month_focus === 'string') report.next_month_focus = sanitizeText(report.next_month_focus).clean;
+  if (Array.isArray(report.risk_signals)) {
+    report.risk_signals = report.risk_signals.map((s: unknown) => typeof s === 'string' ? sanitizeText(s).clean : s);
+  }
+  if (Array.isArray(report.behavioral_patterns)) {
+    report.behavioral_patterns = report.behavioral_patterns.map((s: unknown) => typeof s === 'string' ? sanitizeText(s).clean : s);
+  }
+
+  // Clamp compliance
+  if (typeof report.avg_compliance === 'number') {
+    report.avg_compliance = Math.max(0, Math.min(100, Math.round(report.avg_compliance)));
+  }
+
+  await supabaseAdmin.from('monthly_reports').upsert({
+    user_id: userId,
+    month_start: msStr,
+    avg_compliance: report.avg_compliance ?? avgCompliance,
+    weight_change_kg: report.weight_change_kg ?? weightChange,
+    trend_direction: report.trend_direction,
+    monthly_summary: report.monthly_summary,
+    risk_signals: report.risk_signals,
+    behavioral_patterns: report.behavioral_patterns,
+    top_achievement: report.top_achievement,
+    deviation_distribution: report.deviation_distribution,
+    next_month_focus: report.next_month_focus,
+    weight_trend: weights,
+    generated_at: new Date().toISOString(),
+  }, { onConflict: 'user_id,month_start' });
 
   return respond(report);
 }

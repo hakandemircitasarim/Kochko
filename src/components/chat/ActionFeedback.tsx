@@ -21,6 +21,10 @@ const ACTION_ICONS: Record<string, string> = {
   commitment: 'Taahhut',
   profile_update: 'Profil',
   venue_log: 'Mekan',
+  periodic_state_update: 'Donem guncellendi',
+  strength_log: 'Guc kaydi',
+  save_recipe: 'Tarif kaydedildi',
+  undo_last: 'Geri alindi',
 };
 
 export function ActionFeedback({ actions }: Props) {

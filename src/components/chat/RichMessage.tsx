@@ -99,6 +99,53 @@ export function SimulationCard({ foodName, calories, remaining, weeklyImpact }: 
   );
 }
 
+// Recipe Card (rich recipe display in chat)
+export function RecipeCard({ title, prepTime, servings, ingredients, macros }: {
+  title: string;
+  prepTime: number;
+  servings: number;
+  ingredients: { name: string; amount: string }[];
+  macros: { calories: number; protein: number; carbs: number; fat: number };
+}) {
+  return (
+    <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 1, borderColor: COLORS.border }}>
+      <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700' }}>{title}</Text>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
+        {prepTime} dk | {servings} porsiyon
+      </Text>
+
+      {/* Ingredients */}
+      <View style={{ marginTop: SPACING.sm }}>
+        {ingredients.map((ing, i) => (
+          <Text key={i} style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>
+            - {ing.amount} {ing.name}
+          </Text>
+        ))}
+      </View>
+
+      {/* Macro stats */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '700' }}>{macros.calories}</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>kcal</Text>
+        </View>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={{ color: COLORS.success, fontSize: FONT.md, fontWeight: '700' }}>{macros.protein}g</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>protein</Text>
+        </View>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '700' }}>{macros.carbs}g</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>karb</Text>
+        </View>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>{macros.fat}g</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>yag</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // Weekly Budget Bar (inline in chat)
 export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: number }) {
   const pct = total > 0 ? Math.min(1, consumed / total) : 0;

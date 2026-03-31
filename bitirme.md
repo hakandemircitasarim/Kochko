@@ -401,9 +401,9 @@ Asagidaki ozellikler analizde PARTIAL/STUB cikmis ama hicbir pakete atanmamisti:
 | 3. Hedef Motoru | [x] | [x] | [ ] | Tamamlandi |
 | 4. Plan Uretimi | [x] | [x] | [ ] | Tamamlandi |
 | 5. AI Ogrenme | [x] | [x] | [ ] | Tamamlandi |
-| 6. Zengin Sohbet | [ ] | [ ] | [ ] | Bekliyor |
-| 7. Bildirim | [ ] | [ ] | [ ] | Bekliyor |
-| 8. Raporlama | [ ] | [ ] | [ ] | Bekliyor |
+| 6. Zengin Sohbet | [x] | [x] | [ ] | Tamamlandi |
+| 7. Bildirim | [x] | [x] | [ ] | Tamamlandi |
+| 8. Raporlama | [x] | [x] | [ ] | Tamamlandi |
 | 9. Tarif & Meal Prep | [ ] | [ ] | [ ] | Bekliyor |
 | 10. Disarida Yemek | [ ] | [ ] | [ ] | Bekliyor |
 | 11. Simulasyon | [ ] | [ ] | [ ] | Bekliyor |
