@@ -243,9 +243,10 @@ async function executeActions(
       switch (action.type) {
         case 'meal_log': {
           const items = action.items as { name: string; portion: string; calories: number; protein_g: number; carbs_g: number; fat_g: number }[] | undefined;
+          const mealType = action.meal_type as string ?? 'snack';
           const { data: log } = await supabaseAdmin.from('meal_logs').insert({
             user_id: userId, raw_input: action.raw as string ?? '',
-            meal_type: action.meal_type as string ?? 'snack',
+            meal_type: mealType,
             input_method: 'ai_chat', logged_for_date: today, synced: true,
           }).select('id').single();
 
@@ -259,6 +260,20 @@ async function executeActions(
               }))
             );
           }
+
+          // --- Auto Meal Time Learning (Spec 5.15) ---
+          learnMealTime(userId, mealType, action.logged_at as string | undefined).catch(() => {});
+
+          // --- Caffeine Integration (Spec 5.34) ---
+          if (items?.length) {
+            const caffeineFeedback = await checkCaffeineIntake(userId, items, today);
+            if (caffeineFeedback.length > 0) {
+              feedback.push('Ogun kaydedildi');
+              for (const cf of caffeineFeedback) feedback.push(cf);
+              break;
+            }
+          }
+
           feedback.push('Ogun kaydedildi');
           break;
         }
@@ -466,6 +481,144 @@ async function executeActions(
   return feedback;
 }
 
+/**
+ * Spec 5.15: Auto Meal Time Learning
+ * Every 7th meal_log for a given meal_type, calculate average time and update ai_summary.learned_meal_times.
+ */
+async function learnMealTime(userId: string, mealType: string, loggedAt?: string) {
+  // Extract current hour:minute
+  const now = loggedAt ? new Date(loggedAt) : new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+
+  // Count how many logs of this meal_type exist
+  const { count } = await supabaseAdmin
+    .from('meal_logs')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('meal_type', mealType)
+    .eq('is_deleted', false);
+
+  // Only recalculate every 7th log
+  if (!count || count % 7 !== 0) return;
+
+  // Fetch last 7 meal logs of this type to calculate average time
+  const { data: recentLogs } = await supabaseAdmin
+    .from('meal_logs')
+    .select('logged_at')
+    .eq('user_id', userId)
+    .eq('meal_type', mealType)
+    .eq('is_deleted', false)
+    .order('logged_at', { ascending: false })
+    .limit(7);
+
+  if (!recentLogs || recentLogs.length < 7) return;
+
+  // Calculate average time in minutes from midnight
+  let totalMinutes = 0;
+  for (const log of recentLogs) {
+    const d = new Date(log.logged_at);
+    totalMinutes += d.getHours() * 60 + d.getMinutes();
+  }
+  const avgMinutes = Math.round(totalMinutes / recentLogs.length);
+  const avgHour = Math.floor(avgMinutes / 60).toString().padStart(2, '0');
+  const avgMin = (avgMinutes % 60).toString().padStart(2, '0');
+  const timeStr = `${avgHour}:${avgMin}`;
+
+  // Fetch existing learned_meal_times
+  const { data: existing } = await supabaseAdmin
+    .from('ai_summary')
+    .select('learned_meal_times')
+    .eq('user_id', userId)
+    .single();
+
+  const learnedTimes = (existing?.learned_meal_times as Record<string, string>) ?? {};
+  learnedTimes[mealType] = timeStr;
+
+  await supabaseAdmin.from('ai_summary').upsert(
+    { user_id: userId, learned_meal_times: learnedTimes, updated_at: new Date().toISOString() },
+    { onConflict: 'user_id' }
+  );
+}
+
+/**
+ * Spec 5.34: Caffeine Integration
+ * Check if meal items contain caffeine, estimate mg, warn if over 400mg/day or after 15:00.
+ */
+async function checkCaffeineIntake(
+  userId: string,
+  items: { name: string; portion: string; calories: number; protein_g: number; carbs_g: number; fat_g: number }[],
+  today: string
+): Promise<string[]> {
+  const caffeineMap: { keywords: string[]; mg: number }[] = [
+    { keywords: ['espresso'], mg: 63 },
+    { keywords: ['americano', 'latte', 'cappuccino', 'kahve', 'coffee'], mg: 95 },
+    { keywords: ['cay', 'tea'], mg: 47 },
+    { keywords: ['enerji icecegi', 'enerji', 'red bull', 'monster'], mg: 80 },
+    { keywords: ['cola', 'kola'], mg: 35 },
+  ];
+
+  let mealCaffeine = 0;
+  for (const item of items) {
+    const nameLower = item.name.toLowerCase();
+    for (const entry of caffeineMap) {
+      if (entry.keywords.some(kw => nameLower.includes(kw))) {
+        mealCaffeine += entry.mg;
+        break; // one match per item
+      }
+    }
+  }
+
+  if (mealCaffeine === 0) return [];
+
+  // Calculate today's total caffeine from all meal_log_items
+  const { data: todayLogs } = await supabaseAdmin
+    .from('meal_logs')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('logged_for_date', today)
+    .eq('is_deleted', false);
+
+  let totalCaffeine = mealCaffeine; // start with current meal
+  if (todayLogs && todayLogs.length > 0) {
+    const logIds = todayLogs.map((l: { id: string }) => l.id);
+    // We need to check previous meals' items for caffeine (excluding the one we just logged)
+    const { data: allItems } = await supabaseAdmin
+      .from('meal_log_items')
+      .select('food_name')
+      .in('meal_log_id', logIds);
+
+    if (allItems) {
+      for (const existingItem of allItems) {
+        const nameLower = (existingItem.food_name as string).toLowerCase();
+        for (const entry of caffeineMap) {
+          if (entry.keywords.some(kw => nameLower.includes(kw))) {
+            totalCaffeine += entry.mg;
+            break;
+          }
+        }
+      }
+      // We double-counted current meal items since they're already inserted
+      // totalCaffeine already includes mealCaffeine, and allItems includes current items
+      // so subtract mealCaffeine once (it was counted in both loops)
+      // Actually, the current meal's items were already inserted before this runs,
+      // so allItems already includes them. We should NOT add mealCaffeine separately.
+      totalCaffeine -= mealCaffeine;
+    }
+  }
+
+  const warnings: string[] = [];
+  if (totalCaffeine > 400) {
+    warnings.push(`Kafein uyarisi: gunluk limitin (400mg) asildi (toplam: ~${totalCaffeine}mg)`);
+  }
+  const currentHour = new Date().getHours();
+  if (currentHour >= 15) {
+    warnings.push('Kafein uyarisi: ogleden sonra kafein uyku kaliteni dusurur');
+  }
+
+  return warnings;
+}
+
 async function processLayer2Updates(userId: string, updates: Record<string, unknown>) {
   try {
     const { data: existing } = await supabaseAdmin
@@ -502,6 +655,30 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
     if (updates.coaching_note) {
       const current = (existing?.coaching_notes as string) ?? '';
       changes.coaching_notes = current + '\n' + updates.coaching_note;
+    }
+
+    // Spec 5.15: User persona
+    if (updates.user_persona) {
+      changes.user_persona = updates.user_persona;
+    }
+
+    // Spec 5.9: Learned tone preference
+    if (updates.learned_tone_preference) {
+      changes.learned_tone_preference = updates.learned_tone_preference;
+    }
+
+    // Spec 5.31: Nutrition literacy
+    if (updates.nutrition_literacy) {
+      changes.nutrition_literacy = updates.nutrition_literacy;
+    }
+
+    // Spec 5.15: Learned meal times (merge with existing)
+    if (updates.learned_meal_times) {
+      const { data: summaryForTimes } = await supabaseAdmin
+        .from('ai_summary').select('learned_meal_times').eq('user_id', userId).single();
+      const existingTimes = (summaryForTimes?.learned_meal_times as Record<string, string>) ?? {};
+      const newTimes = updates.learned_meal_times as Record<string, string>;
+      changes.learned_meal_times = { ...existingTimes, ...newTimes };
     }
 
     // Seasonal/periodic note (Spec 9.3)

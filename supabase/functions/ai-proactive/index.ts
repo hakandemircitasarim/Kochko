@@ -35,6 +35,15 @@ serve(async (req: Request) => {
     // Check if Ramadan is approaching (weekly check)
     const seasonal = getSeasonalContext();
 
+    // --- Adaptive Difficulty (Spec 5.34) - Monday morning check ---
+    if (dayOfWeek === 1 && hour >= 6 && hour <= 8) {
+      for (const profile of profiles as { id: string }[]) {
+        try {
+          await adjustAdaptiveDifficulty(profile.id, now);
+        } catch { /* non-critical */ }
+      }
+    }
+
     for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null }[]) {
       // Max messages per day check
       const { count } = await supabaseAdmin
@@ -142,6 +151,26 @@ ${hoursSinceChat > 48 ? 'TETIK: 2+ gundur sessiz' : ''}
 ${plateauInfo}
 ${maintenanceInfo}
 ${goalTempoInfo}
+${(() => {
+  // Weekend Risk (Spec 5.35) - Friday evening check
+  const triggers: string[] = [];
+  if (now.getDay() === 5 && hour >= 17 && hour <= 19) {
+    const bp = (summaryRes.data?.behavioral_patterns as { type: string; description: string }[]) ?? [];
+    const weekendPattern = bp.find(p => p.type === 'weekend_deviation' || p.description?.toLowerCase().includes('hafta sonu'));
+    if (weekendPattern) {
+      triggers.push('TETIK: HAFTA SONU RISKI - gecmiste hafta sonlari sapma egilimi');
+    }
+  }
+  // Habit check (Spec 5.35)
+  const habits = (summaryRes.data as Record<string, unknown>)?.habit_progress as { habit: string; status: string; streak: number; weekly_compliance?: number }[] | null;
+  if (habits && habits.length > 0) {
+    const activeHabit = habits.find(h => h.status === 'active');
+    if (activeHabit && activeHabit.streak >= 14 && (activeHabit.weekly_compliance ?? 0) >= 80) {
+      triggers.push(`TETIK: ALISKANLIK ILERLEME - "${activeHabit.habit}" ${activeHabit.streak} gundur suruyor (%80+), sonraki aliskanlik onerisi yap`);
+    }
+  }
+  return triggers.join('\n');
+})()}
 ${(() => {
   const triggers: string[] = [];
   const ps = profile.periodic_state as PeriodicState | null;
@@ -285,6 +314,99 @@ ${(() => {
     return respond({ error: (err as Error).message }, 500);
   }
 });
+
+/**
+ * Spec 5.34: Adaptive Difficulty
+ * Weekly Monday morning check. Adjusts calorie range and protein based on compliance.
+ */
+async function adjustAdaptiveDifficulty(userId: string, now: Date) {
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000).toISOString().split('T')[0];
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
+
+  const { data: reports } = await supabaseAdmin
+    .from('daily_reports')
+    .select('date, compliance_score')
+    .eq('user_id', userId)
+    .gte('date', fourteenDaysAgo)
+    .order('date');
+
+  if (!reports || reports.length < 7) return; // not enough data
+
+  const allScores = reports.map((r: { compliance_score: number }) => r.compliance_score);
+  const avgAll = allScores.reduce((s: number, v: number) => s + v, 0) / allScores.length;
+
+  // Check last 7 days separately
+  const recentReports = reports.filter((r: { date: string }) => r.date >= sevenDaysAgo);
+  const recentScores = recentReports.map((r: { compliance_score: number }) => r.compliance_score);
+  const avgRecent = recentScores.length > 0 ? recentScores.reduce((s: number, v: number) => s + v, 0) / recentScores.length : 0;
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, protein_per_kg, weight_kg, gender')
+    .eq('id', userId)
+    .single();
+
+  if (!profile) return;
+
+  let adjustment: 'increase' | 'decrease' | null = null;
+
+  // 2+ weeks at 85%+ → tighten
+  if (reports.length >= 14 && avgAll >= 85) {
+    adjustment = 'increase';
+  }
+  // 1+ week under 60% → widen
+  else if (recentScores.length >= 7 && avgRecent < 60) {
+    adjustment = 'decrease';
+  }
+
+  if (!adjustment) return;
+
+  const factor = adjustment === 'increase' ? 0.05 : -0.05;
+  const proteinDelta = adjustment === 'increase' ? 5 : -5;
+
+  const tMin = profile.calorie_range_training_min as number;
+  const tMax = profile.calorie_range_training_max as number;
+  const rMin = profile.calorie_range_rest_min as number;
+  const rMax = profile.calorie_range_rest_max as number;
+  const proteinPerKg = (profile.protein_per_kg as number) ?? 1.8;
+  const weightKg = (profile.weight_kg as number) ?? 70;
+  const minCal = profile.gender === 'female' ? 1200 : 1400;
+
+  // Tighten = narrow range (increase min, decrease max); Widen = opposite
+  const newTMin = Math.max(minCal, Math.round(tMin + tMin * factor));
+  const newTMax = Math.round(tMax - tMax * factor);
+  const newRMin = Math.max(minCal, Math.round(rMin + rMin * factor));
+  const newRMax = Math.round(rMax - rMax * factor);
+  const newProteinPerKg = Math.max(1.2, Math.round((proteinPerKg + proteinDelta / weightKg) * 100) / 100);
+
+  // Safety: min must be less than max
+  if (newTMin >= newTMax || newRMin >= newRMax) return;
+
+  await supabaseAdmin.from('profiles').update({
+    calorie_range_training_min: newTMin,
+    calorie_range_training_max: newTMax,
+    calorie_range_rest_min: newRMin,
+    calorie_range_rest_max: newRMax,
+    protein_per_kg: newProteinPerKg,
+    protein_target_g: Math.round(weightKg * newProteinPerKg),
+    updated_at: new Date().toISOString(),
+  }).eq('id', userId);
+
+  // Send trigger as coaching message
+  const triggerMsg = adjustment === 'increase'
+    ? 'TETIK: ZORLUK AYARLANDI - arttirildi'
+    : 'TETIK: ZORLUK AYARLANDI - azaltildi';
+
+  await supabaseAdmin.from('coaching_messages').insert({
+    user_id: userId,
+    content: adjustment === 'increase'
+      ? 'Citayi yukseltiyorum! Son 2 haftada harika bir uyum gosterdin. Kalori araligini biraz daraltip protein hedefini artiriyorum.'
+      : 'Eski seviyeye donuyoruz, rahat ol. Bu hafta hedefler biraz esnek olacak, tekrar ritim yakala.',
+    trigger_type: triggerMsg,
+    priority: 'medium',
+    read: false,
+  });
+}
 
 function respond(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
