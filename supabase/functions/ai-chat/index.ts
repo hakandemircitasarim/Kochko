@@ -15,12 +15,14 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
-import { buildFullContext, updateLayer2 } from '../shared/memory.ts';
+import { updateLayer2 } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, checkAllergens, sanitizeUserInput } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
-import { BASE_SYSTEM_PROMPT } from './system-prompt.ts';
+import { analyzeMessage, getRetrievalPlan } from '../shared/retrieval-planner.ts';
+import { buildContextFromPlan } from '../shared/context-builders.ts';
+import { BASE_SYSTEM_PROMPT, buildConfidenceNote } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions } from './task-modes.ts';
 
 serve(async (req: Request) => {
@@ -79,12 +81,24 @@ serve(async (req: Request) => {
     // Detect task mode (Spec 5.2)
     const taskMode = detectTaskMode(message ?? '', isOnboarding);
 
-    // Build 4-layer context (Spec 5.1)
-    const ctx = await buildFullContext(userId);
+    // Analyze message for subtype + risk + retrieval needs (Retrieval Planner v2)
+    const analysis = analyzeMessage(message ?? '', taskMode);
+    const retrievalPlan = getRetrievalPlan(analysis);
 
-    // Assemble system prompt = base + mode instructions
+    // Build scoped context based on retrieval plan
+    const ctx = await buildContextFromPlan(userId, retrievalPlan);
+
+    // Assemble system prompt = base + mode instructions + confidence note
     const modeInstructions = getModeInstructions(taskMode);
-    const systemPrompt = `${BASE_SYSTEM_PROMPT}\n\n${modeInstructions}\n\n--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}\n\n--- AI OZETI ---\n\n${ctx.layer2}\n\n--- SON VERILER ---\n\n${ctx.layer3}`;
+    const confidenceNote = buildConfidenceNote(ctx.contextMeta);
+    const systemPrompt = [
+      BASE_SYSTEM_PROMPT,
+      modeInstructions,
+      confidenceNote,
+      ctx.layer1 ? `--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}` : '',
+      ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
+      ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
+    ].filter(Boolean).join('\n\n');
 
     // Build messages array
     const gptMessages: { role: string; content: string | unknown[] }[] = [
@@ -654,7 +668,7 @@ async function checkCaffeineIntake(
 async function processLayer2Updates(userId: string, updates: Record<string, unknown>) {
   try {
     const { data: existing } = await supabaseAdmin
-      .from('ai_summary').select('general_summary, behavioral_patterns, portion_calibration, strength_records, coaching_notes')
+      .from('ai_summary').select('general_summary, behavioral_patterns, portion_calibration, strength_records, coaching_notes, caffeine_sleep_notes, habit_progress, learned_meal_times, seasonal_notes')
       .eq('user_id', userId).single();
 
     const changes: Record<string, unknown> = {};
@@ -664,17 +678,92 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       changes.general_summary = current + '\n' + updates.general_summary_append;
     }
 
+    // ─── Memory Lifecycle: Pattern Management ───
     if (updates.new_pattern) {
-      const patterns = (existing?.behavioral_patterns as unknown[]) ?? [];
-      patterns.push({ ...(updates.new_pattern as Record<string, unknown>), detected_at: new Date().toISOString() });
-      changes.behavioral_patterns = patterns;
+      const newP = updates.new_pattern as Record<string, unknown>;
+      const confidence = (newP.confidence as number) ?? 0.5;
+
+      // Reject low-confidence patterns — store as coaching note instead
+      if (confidence < 0.5) {
+        const current = (existing?.coaching_notes as string) ?? '';
+        const dateStr = new Date().toISOString().split('T')[0];
+        changes.coaching_notes = `${current}\n[${dateStr}] Gozlem: ${newP.description ?? ''} (dusuk guven, takip edilecek)`.trim();
+      } else {
+        const patterns = (existing?.behavioral_patterns as Record<string, unknown>[]) ?? [];
+
+        // Dedup: check if similar pattern already exists
+        const existingIdx = patterns.findIndex(p =>
+          (p.type as string) === (newP.type as string) &&
+          (p.trigger as string) === (newP.trigger as string)
+        );
+
+        if (existingIdx >= 0) {
+          // Update existing: increment times_observed, refresh last_occurred, update confidence
+          const ep = patterns[existingIdx];
+          patterns[existingIdx] = {
+            ...ep,
+            times_observed: ((ep.times_observed as number) ?? 1) + 1,
+            last_occurred: new Date().toISOString(),
+            confidence: Math.min(1, Math.max(confidence, (ep.confidence as number) ?? 0.5)),
+            intervention: (newP.intervention as string) ?? (ep.intervention as string),
+            impact: (newP.impact as string) ?? (ep.impact as string) ?? 'medium',
+            evidence_count: ((ep.evidence_count as number) ?? 1) + 1,
+            status: 'active',
+          };
+        } else {
+          // New pattern: add with lifecycle fields
+          patterns.push({
+            ...newP,
+            first_detected: new Date().toISOString(),
+            last_occurred: new Date().toISOString(),
+            times_observed: 1,
+            evidence_count: 1,
+            impact: (newP.impact as string) ?? 'medium',
+            status: confidence >= 0.7 ? 'active' : 'candidate',
+          });
+        }
+
+        // Decay: mark stale patterns as resolved (90+ days without observation)
+        const now = Date.now();
+        for (const p of patterns) {
+          if (p.status !== 'resolved' && p.last_occurred) {
+            const daysSince = Math.floor((now - new Date(p.last_occurred as string).getTime()) / 86400000);
+            if (daysSince > 90) {
+              p.status = 'resolved';
+            }
+          }
+        }
+
+        // Size governance: if too many active patterns, drop lowest-scoring resolved ones
+        const MAX_PATTERNS = 20;
+        if (patterns.length > MAX_PATTERNS) {
+          // Remove resolved patterns first, then lowest confidence candidates
+          const resolved = patterns.filter(p => p.status === 'resolved');
+          const active = patterns.filter(p => p.status !== 'resolved');
+          const kept = [...active];
+          if (kept.length < MAX_PATTERNS) {
+            // Keep some resolved for reference
+            resolved.sort((a, b) => ((b.confidence as number) ?? 0) - ((a.confidence as number) ?? 0));
+            kept.push(...resolved.slice(0, MAX_PATTERNS - kept.length));
+          }
+          changes.behavioral_patterns = kept.slice(0, MAX_PATTERNS);
+        } else {
+          changes.behavioral_patterns = patterns;
+        }
+      }
     }
 
+    // ─── Portion calibration with confidence gate ───
     if (updates.portion_update) {
-      const pu = updates.portion_update as { food: string; user_portion_grams: number };
-      const cal = (existing?.portion_calibration as Record<string, unknown>) ?? {};
-      cal[pu.food] = pu.user_portion_grams;
-      changes.portion_calibration = cal;
+      const pu = updates.portion_update as { food: string; user_portion_grams: number; confidence?: number };
+      const portionConfidence = pu.confidence ?? 0.7;
+
+      // Only write if confidence >= 0.7
+      if (portionConfidence >= 0.7) {
+        const cal = (existing?.portion_calibration as Record<string, unknown>) ?? {};
+        cal[pu.food] = pu.user_portion_grams;
+        changes.portion_calibration = cal;
+      }
     }
 
     if (updates.strength_update) {
@@ -686,46 +775,41 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
 
     if (updates.coaching_note) {
       const current = (existing?.coaching_notes as string) ?? '';
-      changes.coaching_notes = current + '\n' + updates.coaching_note;
+      const dateStr = new Date().toISOString().split('T')[0];
+      changes.coaching_notes = `${current}\n[${dateStr}] ${updates.coaching_note}`.trim();
     }
 
-    // Spec 5.15: User persona
+    // Spec 5.15: User persona (override)
     if (updates.user_persona) {
       changes.user_persona = updates.user_persona;
     }
 
-    // Spec 5.9: Learned tone preference
+    // Spec 5.9: Learned tone preference (override)
     if (updates.learned_tone_preference) {
       changes.learned_tone_preference = updates.learned_tone_preference;
     }
 
-    // Spec 5.31: Nutrition literacy
+    // Spec 5.31: Nutrition literacy (override)
     if (updates.nutrition_literacy) {
       changes.nutrition_literacy = updates.nutrition_literacy;
     }
 
-    // Spec 5.15: Learned meal times (merge with existing)
+    // Spec 5.15: Learned meal times (merge)
     if (updates.learned_meal_times) {
-      const { data: summaryForTimes } = await supabaseAdmin
-        .from('ai_summary').select('learned_meal_times').eq('user_id', userId).single();
-      const existingTimes = (summaryForTimes?.learned_meal_times as Record<string, string>) ?? {};
+      const existingTimes = (existing?.learned_meal_times as Record<string, string>) ?? {};
       const newTimes = updates.learned_meal_times as Record<string, string>;
       changes.learned_meal_times = { ...existingTimes, ...newTimes };
     }
 
     // Spec 5.34: Caffeine-sleep notes
     if (updates.caffeine_note) {
-      const { data: summaryForCaffeine } = await supabaseAdmin
-        .from('ai_summary').select('caffeine_sleep_notes').eq('user_id', userId).single();
-      const current = (summaryForCaffeine?.caffeine_sleep_notes as string) ?? '';
+      const current = (existing?.caffeine_sleep_notes as string) ?? '';
       changes.caffeine_sleep_notes = current ? `${current}\n${updates.caffeine_note}` : (updates.caffeine_note as string);
     }
 
-    // Spec 5.35: Habit updates
+    // Spec 5.35: Habit updates (merge)
     if (updates.habit_update) {
-      const { data: summaryForHabits } = await supabaseAdmin
-        .from('ai_summary').select('habit_progress').eq('user_id', userId).single();
-      const habits = (summaryForHabits?.habit_progress as { habit: string; status: string; streak: number }[]) ?? [];
+      const habits = (existing?.habit_progress as { habit: string; status: string; streak: number }[]) ?? [];
       const hu = updates.habit_update as { habit: string; status: string; streak: number };
       const idx = habits.findIndex(h => h.habit === hu.habit);
       if (idx >= 0) {
@@ -738,9 +822,7 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
 
     // Seasonal/periodic note (Spec 9.3)
     if (updates.seasonal_note) {
-      const { data: summaryData } = await supabaseAdmin
-        .from('ai_summary').select('seasonal_notes').eq('user_id', userId).single();
-      const current = (summaryData?.seasonal_notes as string) ?? '';
+      const current = (existing?.seasonal_notes as string) ?? '';
       const dateStr = new Date().toISOString().split('T')[0];
       changes.seasonal_notes = `${current}\n[${dateStr}] ${updates.seasonal_note}`.trim();
     }
