@@ -355,6 +355,43 @@ Tumunu gerektirir: Paket 20 (Polish)
 
 ---
 
+## PAKETLERE GIRMEYEN EKSIKLER (Mevcut paketlere dagitilacak)
+
+Asagidaki ozellikler analizde PARTIAL/STUB cikmis ama hicbir pakete atanmamisti:
+
+### Paket 1'e eklenecek:
+- 2.5 Saat Dilimi ve Seyahat: Timezone degisim tespiti, jet lag uyumu, seyahat tespiti (Faz 4 item 50)
+
+### Paket 3'e eklenecek:
+- 3.2 Kayit Duzenleme/Silme: 10 sn geri alma (undo) penceresi, degisiklik gecmisi
+
+### Paket 5'e eklenecek:
+- AI oneri geri bildirimi: "ise yaradi/yaramadi" butonu (Faz 2 item 23)
+- 5.24 eksik: Hizli kurtarma modu - "bugun cok yedim" (Faz 2 item 25)
+- MVD (Minimum Viable Day) modu tamamlama (Faz 2 item 18)
+
+### Paket 6'ya eklenecek:
+- AI feedback butonlari: FeedbackButtons.tsx bileseni mevcut ama backend entegrasyonu eksik
+
+### Paket 7'ye eklenecek:
+- Uyku zamani hatirlatmasi
+- Commitment followup bildirimleri
+
+### Paket 8'e eklenecek:
+- 8.5 Dashboard: Compliance score trendi, streak gorseli iyilestirme
+
+### Paket 12'ye eklenecek:
+- Fotograf retansiyon (24 saat sonra otomatik silme job'u)
+- Aşırı porsiyon tespiti ("50 yumurta yedim" gibi metin kontrolu)
+
+### Paket 13'e eklenecek:
+- JSON import destegi (su an sadece CSV var)
+
+### Paket 14'e eklenecek:
+- Trial-to-paid conversion tracking analitik
+
+---
+
 ## ILERLEME TAKIBI
 
 | Paket | Plan | Uygulama | Test | Durum |
