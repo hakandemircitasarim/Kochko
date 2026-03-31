@@ -504,8 +504,9 @@ async function executeActions(
         default:
           feedback.push(null);
       }
-    } catch {
-      feedback.push(null);
+    } catch (err) {
+      console.error(`Action failed [${action.type}]:`, (err as Error).message);
+      feedback.push(`Kayit basarisiz: ${action.type}`);
     }
   }
 

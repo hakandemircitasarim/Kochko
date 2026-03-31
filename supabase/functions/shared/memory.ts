@@ -274,14 +274,51 @@ async function buildLayer3(userId: string): Promise<string> {
 
   let result = parts.join('\n');
 
-  // Token budget check - if too large, compress
+  // Token budget check - if too large, smart compress instead of truncation
   const maxTokens = Math.floor(TOKEN_BUDGET.TOTAL * TOKEN_BUDGET.LAYER3_PCT);
   if (estimateTokens(result) > maxTokens) {
-    // Compress: remove old data, keep only 7 days and today
-    result = result.slice(0, maxTokens * 3); // rough truncation
+    result = compressLayer3(parts, maxTokens);
   }
 
   return result;
+}
+
+/**
+ * Smart Layer 3 compression.
+ * Priority: today > yesterday > lab alerts > commitments > recent days > old days
+ * Never truncates mid-JSON. Drops oldest complete sections first.
+ */
+function compressLayer3(parts: string[], maxTokens: number): string {
+  // Categorize parts by priority
+  const prioritized: { text: string; priority: number }[] = parts.map(part => {
+    const lower = part.toLowerCase();
+    if (lower.includes('bugun') || lower.includes('today')) return { text: part, priority: 10 };
+    if (lower.includes('dun') || lower.includes('yesterday')) return { text: part, priority: 9 };
+    if (lower.includes('lab') || lower.includes('uyari')) return { text: part, priority: 8 };
+    if (lower.includes('takip') || lower.includes('commitment')) return { text: part, priority: 7 };
+    if (lower.includes('plan') || lower.includes('rapor')) return { text: part, priority: 6 };
+    return { text: part, priority: 3 }; // older data
+  });
+
+  // Sort by priority descending
+  prioritized.sort((a, b) => b.priority - a.priority);
+
+  // Add parts until budget is hit
+  const kept: string[] = [];
+  let currentTokens = 0;
+  for (const item of prioritized) {
+    const itemTokens = estimateTokens(item.text);
+    if (currentTokens + itemTokens <= maxTokens) {
+      kept.push(item.text);
+      currentTokens += itemTokens;
+    }
+  }
+
+  if (kept.length < parts.length) {
+    kept.push(`\n[${parts.length - kept.length} eski bolum token butcesi icin cikarildi]`);
+  }
+
+  return kept.join('\n');
 }
 
 /**
