@@ -413,6 +413,6 @@ Asagidaki ozellikler analizde PARTIAL/STUB cikmis ama hicbir pakete atanmamisti:
 | 15. Coklu Cihaz | [x] | [x] | [ ] | Tamamlandi |
 | 16. Ses & Medya | [x] | [x] | [ ] | Tamamlandi |
 | 17. Wearable | [x] | [x] | [ ] | Tamamlandi |
-| 18. Erisilebilirlik & i18n | [ ] | [ ] | [ ] | Bekliyor |
-| 19. Mobil Widget | [ ] | [ ] | [ ] | Bekliyor |
-| 20. B2B, Aile, Polish | [ ] | [ ] | [ ] | Bekliyor |
+| 18. Erisilebilirlik & i18n | [x] | [x] | [ ] | Tamamlandi |
+| 19. Mobil Widget | [x] | [x] | [ ] | Tamamlandi |
+| 20. B2B, Aile, Polish | [x] | [x] | [ ] | Tamamlandi |

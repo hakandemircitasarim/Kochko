@@ -202,6 +202,42 @@ const translations: Record<Locale, Record<string, string>> = {
     'a11y.close_menu': 'Menuyu kapat',
     'a11y.navigate_back': 'Geri don',
     'a11y.progress_of': '/ hedefinden',
+
+    // Widget
+    'widget.title': 'Widget Onizleme',
+    'widget.calories': 'Kalori',
+    'widget.protein': 'Protein',
+    'widget.water': 'Su',
+    'widget.steps': 'Adim',
+    'widget.streak': 'Seri',
+    'widget.focus': 'Bugunun Odagi',
+    'widget.budget_remaining': 'Kalan Butce',
+
+    // Coach Mode (B2B)
+    'coach.mode': 'Koc Modu',
+    'coach.clients': 'Danisanlar',
+    'coach.share_data': 'Veri Paylas',
+    'coach.revoke_access': 'Erisimi Kaldir',
+    'coach.data_shared': 'Veri paylasimi aktif',
+    'coach.no_clients': 'Henuz danisan yok',
+
+    // Household / Family
+    'household.title': 'Aile',
+    'household.members': 'Aile Uyeleri',
+    'household.create': 'Aile Olustur',
+    'household.join': 'Aileye Katil',
+    'household.leave': 'Aileden Ayril',
+    'household.invite_code': 'Davet Kodu',
+    'household.shared_list': 'Ortak Alisveris Listesi',
+    'household.shopping': 'Alisveris',
+
+    // Analytics
+    'analytics.retention': 'Elde Tutma',
+    'analytics.engagement': 'Etkilesim',
+    'analytics.conversion': 'Donusum',
+    'analytics.active_days': 'Aktif Gun',
+    'analytics.sessions': 'Oturum',
+    'analytics.avg_meals': 'Ortalama Ogun',
   },
 
   en: {
@@ -397,6 +433,42 @@ const translations: Record<Locale, Record<string, string>> = {
     'a11y.close_menu': 'Close menu',
     'a11y.navigate_back': 'Go back',
     'a11y.progress_of': 'of target',
+
+    // Widget
+    'widget.title': 'Widget Preview',
+    'widget.calories': 'Calories',
+    'widget.protein': 'Protein',
+    'widget.water': 'Water',
+    'widget.steps': 'Steps',
+    'widget.streak': 'Streak',
+    'widget.focus': 'Today\'s Focus',
+    'widget.budget_remaining': 'Budget Remaining',
+
+    // Coach Mode (B2B)
+    'coach.mode': 'Coach Mode',
+    'coach.clients': 'Clients',
+    'coach.share_data': 'Share Data',
+    'coach.revoke_access': 'Revoke Access',
+    'coach.data_shared': 'Data sharing active',
+    'coach.no_clients': 'No clients yet',
+
+    // Household / Family
+    'household.title': 'Family',
+    'household.members': 'Family Members',
+    'household.create': 'Create Household',
+    'household.join': 'Join Household',
+    'household.leave': 'Leave Household',
+    'household.invite_code': 'Invite Code',
+    'household.shared_list': 'Shared Shopping List',
+    'household.shopping': 'Shopping',
+
+    // Analytics
+    'analytics.retention': 'Retention',
+    'analytics.engagement': 'Engagement',
+    'analytics.conversion': 'Conversion',
+    'analytics.active_days': 'Active Days',
+    'analytics.sessions': 'Sessions',
+    'analytics.avg_meals': 'Average Meals',
   },
 };
 
