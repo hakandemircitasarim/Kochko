@@ -54,8 +54,8 @@ serve(async (req: Request) => {
     }
 
     // Rate limiting (Spec 16.4)
-    const taskMode = message ? detectTaskMode(message, false) : 'coaching';
-    const isRecordParse = taskMode === 'register';
+    const preliminaryTaskMode = message ? detectTaskMode(message, false) : 'coaching';
+    const isRecordParse = preliminaryTaskMode === 'register';
     const rateLimit = await checkRateLimit(userId, isRecordParse);
     if (!rateLimit.allowed) {
       return respond({ error: rateLimit.message, rate_limited: true }, 429);
