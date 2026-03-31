@@ -90,6 +90,22 @@ serve(async (req: Request) => {
     const userId = await getUserId(req);
     const today = new Date().toISOString().split('T')[0];
 
+    // Parse request body for type and rejection_context
+    let body: { type?: string; rejection_context?: string } = {};
+    try {
+      body = await req.json();
+    } catch {
+      // No body or invalid JSON — default to daily
+    }
+
+    // Route to weekly or daily plan generation
+    if (body.type === 'weekly') {
+      const result = await generateWeeklyPlan(userId, today);
+      return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // === DAILY PLAN GENERATION ===
+
     // Build context
     const ctx = await buildFullContext(userId);
 
@@ -128,7 +144,55 @@ serve(async (req: Request) => {
       }
     }
 
-    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}\n\nBugunku plani olustur.`;
+    // Fetch strength records from ai_summary for strength/mixed workout plans
+    let strengthContext = '';
+    const { data: aiSummary } = await supabaseAdmin
+      .from('ai_summary')
+      .select('strength_records')
+      .eq('user_id', userId)
+      .single();
+    const strengthRecords = aiSummary?.strength_records as Record<string, { last_weight: number; last_reps: number; '1rm'?: number }> | null;
+    if (strengthRecords && Object.keys(strengthRecords).length > 0) {
+      const lines = Object.entries(strengthRecords).map(
+        ([exercise, data]) => `Son antrenman: ${exercise} ${data.last_reps}x@${data.last_weight}kg`
+      );
+      strengthContext = `\nGUC GECMISI:\n${lines.join('\n')}`;
+    }
+
+    // Deload check: if 6+ weeks since last deload
+    let deloadContext = '';
+    const { data: recentDeload } = await supabaseAdmin
+      .from('daily_plans')
+      .select('date')
+      .eq('user_id', userId)
+      .like('workout_plan->type', '%deload%')
+      .order('date', { ascending: false })
+      .limit(1)
+      .single();
+    if (!recentDeload) {
+      // No deload ever found — check how many weeks of training exist
+      const { count } = await supabaseAdmin
+        .from('workout_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .gte('logged_for_date', new Date(Date.now() - 42 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+      if ((count ?? 0) >= 6) {
+        deloadContext = '\nDELOAD HAFTASI - yogunlugu %60-70\'e dusur';
+      }
+    } else {
+      const daysSinceDeload = Math.floor((Date.now() - new Date(recentDeload.date).getTime()) / (24 * 60 * 60 * 1000));
+      if (daysSinceDeload >= 42) { // 6 weeks
+        deloadContext = '\nDELOAD HAFTASI - yogunlugu %60-70\'e dusur';
+      }
+    }
+
+    // Rejection context: if user rejected previous plan
+    let rejectionLine = '';
+    if (body.rejection_context) {
+      rejectionLine = `\nONCEKI PLAN REDDEDILDI. Sebep: ${body.rejection_context}. Yeni plan buna gore farkli olmali.`;
+    }
+
+    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${strengthContext}${deloadContext}${rejectionLine}\n\nBugunku plani olustur.`;
 
     const plan = await chatCompletion<Record<string, unknown>>(
       [
@@ -227,6 +291,82 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
 });
+
+/**
+ * Generate a 7-day weekly plan with shopping list.
+ */
+async function generateWeeklyPlan(userId: string, today: string): Promise<Record<string, unknown>> {
+  const ctx = await buildFullContext(userId);
+
+  // Get allergens
+  const { data: prefs } = await supabaseAdmin
+    .from('food_preferences')
+    .select('food_name, is_allergen')
+    .eq('user_id', userId)
+    .eq('is_allergen', true);
+  const allergens = (prefs ?? []).map((p: { food_name: string }) => p.food_name);
+
+  // Get profile
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated')
+    .eq('id', userId).single();
+
+  const periodicContext = buildPeriodicPlanContext(profile ?? {});
+  const seasonal = getSeasonalContext();
+  const seasonalLine = `MEVSIM: ${seasonal.season}${seasonal.isRamadan ? ' | RAMAZAN DONEMI' : ''} | Oneriler: ${seasonal.suggestions_tr.join(', ')}`;
+
+  // Strength context
+  let strengthContext = '';
+  const { data: aiSummary } = await supabaseAdmin
+    .from('ai_summary')
+    .select('strength_records')
+    .eq('user_id', userId)
+    .single();
+  const strengthRecords = aiSummary?.strength_records as Record<string, { last_weight: number; last_reps: number; '1rm'?: number }> | null;
+  if (strengthRecords && Object.keys(strengthRecords).length > 0) {
+    const lines = Object.entries(strengthRecords).map(
+      ([exercise, data]) => `Son antrenman: ${exercise} ${data.last_reps}x@${data.last_weight}kg`
+    );
+    strengthContext = `\nGUC GECMISI:\n${lines.join('\n')}`;
+  }
+
+  const weekStart = getWeekStart(today);
+  const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${strengthContext}\n\nHafta baslangici: ${weekStart}. 7 gunluk menu ve alisveris listesi olustur.`;
+
+  const weeklyPlan = await chatCompletion<Record<string, unknown>>(
+    [
+      { role: 'system', content: WEEKLY_PLAN_SYSTEM },
+      { role: 'user', content: prompt },
+    ],
+    { temperature: TEMPERATURE.plan, maxTokens: 5000, jsonMode: true }
+  );
+
+  // Allergen check on weekly plan meals
+  const days = weeklyPlan.days as { meals: { name: string }[] }[] | undefined;
+  if (days && allergens.length > 0) {
+    for (const day of days) {
+      day.meals = day.meals.filter(meal => {
+        const check = checkAllergens(meal.name, allergens);
+        return check.passed;
+      });
+    }
+  }
+
+  // Store in weekly_plans table using plan_data field
+  await supabaseAdmin.from('weekly_plans').upsert(
+    {
+      user_id: userId,
+      week_start: weekStart,
+      plan_data: weeklyPlan.days,
+      shopping_list: weeklyPlan.shopping_list ?? [],
+      generated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,week_start' }
+  );
+
+  return weeklyPlan;
+}
 
 function getWeekStart(dateStr: string): string {
   const d = new Date(dateStr);
