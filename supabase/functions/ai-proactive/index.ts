@@ -79,10 +79,11 @@ serve(async (req: Request) => {
         }
       }
 
-      // T3.17: Maintenance band check
+      // T3.17: Goal tracking + Maintenance band check
       let maintenanceInfo = '';
+      let goalTempoInfo = '';
       const { data: activeGoal } = await supabaseAdmin
-        .from('goals').select('target_weight_kg, goal_type')
+        .from('goals').select('target_weight_kg, goal_type, weekly_rate, target_weeks, created_at')
         .eq('user_id', profile.id).eq('is_active', true).single();
       if (activeGoal?.target_weight_kg) {
         const { data: latestWeight } = await supabaseAdmin
@@ -91,9 +92,40 @@ serve(async (req: Request) => {
           .order('date', { ascending: false }).limit(1).single();
         if (latestWeight?.weight_kg) {
           const diff = Math.abs(latestWeight.weight_kg - activeGoal.target_weight_kg);
-          if (activeGoal.goal_type === 'maintain' || (activeGoal.goal_type === 'lose_weight' && latestWeight.weight_kg <= activeGoal.target_weight_kg)) {
-            if (diff > 1.5) {
-              maintenanceInfo = `TETIK: BAKIM BANDI ASILDI - hedef ${activeGoal.target_weight_kg}kg, simdi ${latestWeight.weight_kg}kg`;
+          const goalReached = activeGoal.goal_type === 'lose_weight'
+            ? latestWeight.weight_kg <= activeGoal.target_weight_kg + 0.5
+            : activeGoal.goal_type === 'maintain'
+              ? true
+              : latestWeight.weight_kg >= activeGoal.target_weight_kg - 0.5;
+
+          if (goalReached && activeGoal.goal_type !== 'maintain') {
+            // Goal reached - celebrate + suggest maintenance
+            maintenanceInfo = `TETIK: HEDEFE ULASILDI - hedef ${activeGoal.target_weight_kg}kg, simdi ${latestWeight.weight_kg}kg. Tebrik et ve bakim modunu oner!`;
+            // Check for multi-phase: auto-advance
+            const { data: nextPhase } = await supabaseAdmin
+              .from('goals').select('id, goal_type, phase_label')
+              .eq('user_id', profile.id).eq('is_active', false)
+              .gt('phase_order', 1).order('phase_order').limit(1).single();
+            if (nextPhase) {
+              // Auto-advance to next phase
+              await supabaseAdmin.from('goals').update({ is_active: false }).eq('user_id', profile.id).eq('is_active', true);
+              await supabaseAdmin.from('goals').update({ is_active: true }).eq('id', nextPhase.id);
+              maintenanceInfo += ` | FAZ GECISI: Sonraki faz aktif edildi: ${nextPhase.phase_label ?? nextPhase.goal_type}`;
+            }
+          } else if (goalReached && diff > 1.5) {
+            maintenanceInfo = `TETIK: BAKIM BANDI ASILDI - hedef ${activeGoal.target_weight_kg}kg, simdi ${latestWeight.weight_kg}kg`;
+          }
+
+          // Tempo tracking (weekly check)
+          if (!goalReached && activeGoal.weekly_rate && hour >= 8 && hour <= 10 && now.getDay() === 1) {
+            const weeksElapsed = Math.max(1, Math.round((Date.now() - new Date(activeGoal.created_at as string).getTime()) / (7*24*60*60*1000)));
+            const expectedChange = (activeGoal.weekly_rate as number) * weeksElapsed;
+            const actualChange = Math.abs((latestWeight.weight_kg as number) - 80); // approximate start weight from profile
+            const tempoRatio = expectedChange > 0 ? actualChange / expectedChange : 1;
+            if (tempoRatio < 0.5) {
+              goalTempoInfo = `TETIK: YAVAS TEMPO - hedef haftada ${activeGoal.weekly_rate}kg ama gercek tempo cok yavas (oran: ${tempoRatio.toFixed(2)})`;
+            } else if (tempoRatio > 1.5) {
+              goalTempoInfo = `TETIK: HIZLI KAYIP - haftada ${(actualChange / weeksElapsed).toFixed(2)}kg, guvenli olmayabilir`;
             }
           }
         }
@@ -109,6 +141,7 @@ ${hoursSinceMeal > 8 && hour >= 9 && hour <= 22 ? 'TETIK: Uzun suredir ogun yok'
 ${hoursSinceChat > 48 ? 'TETIK: 2+ gundur sessiz' : ''}
 ${plateauInfo}
 ${maintenanceInfo}
+${goalTempoInfo}
 ${(() => {
   const triggers: string[] = [];
   const ps = profile.periodic_state as PeriodicState | null;

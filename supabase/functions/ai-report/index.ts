@@ -74,11 +74,12 @@ async function generateDailyReport(userId: string, date?: string) {
   const reportDate = date ?? new Date().toISOString().split('T')[0];
 
   // Fetch today's data
-  const [planRes, mealsRes, workoutsRes, metricsRes] = await Promise.all([
+  const [planRes, mealsRes, workoutsRes, metricsRes, goalRes] = await Promise.all([
     supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, protein_target_g').eq('user_id', userId).eq('date', reportDate).limit(1).single(),
     supabaseAdmin.from('meal_logs').select('id').eq('user_id', userId).eq('logged_for_date', reportDate).eq('is_deleted', false),
     supabaseAdmin.from('workout_logs').select('duration_min').eq('user_id', userId).eq('logged_for_date', reportDate),
     supabaseAdmin.from('daily_metrics').select('*').eq('user_id', userId).eq('date', reportDate).single(),
+    supabaseAdmin.from('goals').select('goal_type, target_weight_kg, weekly_rate, target_weeks, created_at').eq('user_id', userId).eq('is_active', true).limit(1).single(),
   ]);
 
   // Sum calories/protein from meal items
@@ -107,7 +108,20 @@ async function generateDailyReport(userId: string, date?: string) {
 Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g
 Gerceklesen: Kalori ${totalCal} kcal | Protein ${Math.round(totalPro)}g | Karb ${Math.round(totalCarb)}g | Yag ${Math.round(totalFat)}g | Alkol ${totalAlcCal} kcal
 Antrenman: ${workouts.length > 0 ? `${workouts.length} seans, ${totalWorkoutMin} dk` : 'yapilmadi'}
-Su: ${metrics?.water_liters ?? 0}L | Uyku: ${metrics?.sleep_hours ?? '?'}sa | Adim: ${metrics?.steps ?? '?'} | Mood: ${metrics?.mood_score ?? '?'}/5`;
+Su: ${metrics?.water_liters ?? 0}L | Uyku: ${metrics?.sleep_hours ?? '?'}sa | Adim: ${metrics?.steps ?? '?'} | Mood: ${metrics?.mood_score ?? '?'}/5
+${(() => {
+  const g = goalRes.data;
+  if (!g || !g.target_weight_kg || !metrics?.weight_kg) return '';
+  const tw = g.target_weight_kg as number;
+  const cw = metrics.weight_kg as number;
+  const kgLeft = Math.abs(cw - tw);
+  const created = new Date(g.created_at as string);
+  const weeksElapsed = Math.max(1, Math.round((Date.now() - created.getTime()) / (7*24*60*60*1000)));
+  const targetWeeks = (g.target_weeks as number) ?? 12;
+  const weeksLeft = Math.max(0, targetWeeks - weeksElapsed);
+  const pace = kgLeft > 0 && weeksLeft > 0 ? (kgLeft / weeksLeft).toFixed(2) : '?';
+  return `HEDEF: ${g.goal_type} -> ${tw}kg | Simdi: ${cw}kg | ${kgLeft.toFixed(1)}kg kaldi | ${weeksElapsed}/${targetWeeks} hafta | Gereken tempo: ${pace}kg/hafta`;
+})()}`;
 
   const report = await chatCompletion<Record<string, unknown>>(
     [{ role: 'system', content: DAILY_REPORT_SYSTEM }, { role: 'user', content: prompt }],

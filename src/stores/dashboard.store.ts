@@ -5,6 +5,8 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
+import { calculateGoalProgress, type GoalProgress } from '@/lib/goal-progress';
+import type { Goal } from '@/types/database';
 
 interface MealEntry {
   id: string;
@@ -34,6 +36,8 @@ interface TodayState {
   totalProtein: number;
   focusMessage: string | null;
   weeklyBudgetRemaining: number | null;
+  goalProgress: GoalProgress | null;
+  activeGoal: Goal | null;
   loading: boolean;
 
   fetchToday: (userId: string, dayBoundaryHour?: number) => Promise<void>;
@@ -56,13 +60,15 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   totalProtein: 0,
   focusMessage: null,
   weeklyBudgetRemaining: null,
+  goalProgress: null,
+  activeGoal: null,
   loading: false,
 
   fetchToday: async (userId, dayBoundaryHour = 4) => {
     set({ loading: true });
     const date = todayStr(dayBoundaryHour);
 
-    const [mealsRes, workoutsRes, metricsRes, planRes] = await Promise.all([
+    const [mealsRes, workoutsRes, metricsRes, planRes, goalRes, profileRes] = await Promise.all([
       supabase.from('meal_logs').select('id, raw_input, meal_type, logged_at')
         .eq('user_id', userId).eq('logged_for_date', date).eq('is_deleted', false).order('logged_at'),
       supabase.from('workout_logs').select('id, raw_input, duration_min, workout_type')
@@ -71,6 +77,10 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         .eq('user_id', userId).eq('date', date).single(),
       supabase.from('daily_plans').select('focus_message, weekly_budget_remaining')
         .eq('user_id', userId).eq('date', date).order('version', { ascending: false }).limit(1).single(),
+      supabase.from('goals').select('*')
+        .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).single(),
+      supabase.from('profiles').select('weight_kg')
+        .eq('id', userId).single(),
     ]);
 
     // Get calories for each meal
@@ -99,6 +109,14 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       totalProtein: Math.round(totalProtein),
       focusMessage: planRes.data?.focus_message ?? null,
       weeklyBudgetRemaining: planRes.data?.weekly_budget_remaining ?? null,
+      activeGoal: goalRes.data as Goal | null,
+      goalProgress: (() => {
+        const goal = goalRes.data as Goal | null;
+        const startWeight = profileRes.data?.weight_kg as number | null;
+        const curWeight = metrics?.weight_kg ?? startWeight;
+        if (!goal || !curWeight || !startWeight) return null;
+        return calculateGoalProgress(goal, curWeight, startWeight);
+      })(),
       loading: false,
     });
   },

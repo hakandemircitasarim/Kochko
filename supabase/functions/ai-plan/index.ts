@@ -75,7 +75,7 @@ serve(async (req: Request) => {
     // Get profile for calorie validation and periodic state
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('gender, periodic_state, periodic_state_start, periodic_state_end, if_active')
+      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min')
       .eq('id', userId).single();
 
     // Build periodic + seasonal context
@@ -83,7 +83,23 @@ serve(async (req: Request) => {
     const seasonal = getSeasonalContext();
     const seasonalLine = `MEVSIM: ${seasonal.season}${seasonal.isRamadan ? ' | RAMAZAN DONEMI' : ''} | Oneriler: ${seasonal.suggestions_tr.join(', ')}`;
 
-    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}\n\nBugunku plani olustur.`;
+    // Goal-based calorie context (Spec 6.3)
+    let goalContext = '';
+    const { data: activeGoal } = await supabaseAdmin
+      .from('goals').select('goal_type, target_weight_kg, target_weeks, weekly_rate, created_at')
+      .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).single();
+    if (activeGoal && profile?.weight_kg && profile?.tdee_calculated) {
+      const tw = activeGoal.target_weight_kg as number | null;
+      const cw = profile.weight_kg as number;
+      const rate = activeGoal.weekly_rate as number | null;
+      if (tw && rate) {
+        const dailyDeficit = Math.round((rate * 7700) / 7); // kcal/day
+        const isLoss = activeGoal.goal_type === 'lose_weight';
+        goalContext = `\nHEDEF BAZLI KALORI: ${isLoss ? 'Acik' : 'Fazla'} ${dailyDeficit} kcal/gun (haftalik ${rate}kg ${isLoss ? 'kayip' : 'artis'} icin). Mevcut: ${cw}kg -> Hedef: ${tw}kg`;
+      }
+    }
+
+    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}\n\nBugunku plani olustur.`;
 
     const plan = await chatCompletion<Record<string, unknown>>(
       [

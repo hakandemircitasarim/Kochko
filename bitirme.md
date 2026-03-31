@@ -398,7 +398,7 @@ Asagidaki ozellikler analizde PARTIAL/STUB cikmis ama hicbir pakete atanmamisti:
 |-------|------|----------|------|-------|
 | 1. Onboarding & Hesap | [x] | [x] | [ ] | Tamamlandi |
 | 2. Donemsel Durum | [x] | [x] | [ ] | Tamamlandi |
-| 3. Hedef Motoru | [ ] | [ ] | [ ] | Bekliyor |
+| 3. Hedef Motoru | [x] | [x] | [ ] | Tamamlandi |
 | 4. Plan Uretimi | [ ] | [ ] | [ ] | Bekliyor |
 | 5. AI Ogrenme | [ ] | [ ] | [ ] | Bekliyor |
 | 6. Zengin Sohbet | [ ] | [ ] | [ ] | Bekliyor |

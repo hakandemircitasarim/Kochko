@@ -82,7 +82,18 @@ ${p.periodic_state ? `*** DONEMSEL DURUM: ${p.periodic_state} (${p.periodic_stat
 ${(() => { const m = new Date().getMonth() + 1; const s = m >= 3 && m <= 5 ? 'ilkbahar' : m >= 6 && m <= 8 ? 'yaz' : m >= 9 && m <= 11 ? 'sonbahar' : 'kis'; return `MEVSIM: ${s}`; })()}
 
 ## HEDEFLER
-${goals.length > 0 ? goals.map(g => `${g.phase_label ?? g.goal_type}: ${g.target_weight_kg ?? '?'}kg | ${g.priority} | ${g.weekly_rate ?? '?'}kg/hafta`).join('\n') : 'Hedef belirlenmemis'}
+${goals.length > 0 ? goals.map(g => {
+  const tw = g.target_weight_kg as number | null;
+  const cw = p.weight_kg as number | null;
+  const created = g.created_at as string;
+  const weeksElapsed = Math.max(1, Math.round((Date.now() - new Date(created).getTime()) / (7*24*60*60*1000)));
+  const targetWeeks = (g.target_weeks as number | null) ?? 12;
+  const weeksLeft = Math.max(0, targetWeeks - weeksElapsed);
+  const kgRemaining = tw && cw ? Math.abs(cw - tw) : null;
+  const kgLost = tw && cw ? (g.goal_type === 'lose_weight' ? (p.weight_kg as number) - cw : cw - (p.weight_kg as number)) : null;
+  const pct = tw && cw && kgRemaining !== null ? Math.min(100, Math.round(((Math.abs((p.weight_kg as number) - tw) - kgRemaining) / Math.abs((p.weight_kg as number) - tw)) * 100)) : null;
+  return `${g.phase_label ?? g.goal_type}: ${tw ?? '?'}kg | ${g.priority} | ${g.weekly_rate ?? '?'}kg/hafta | ${weeksElapsed}/${targetWeeks} hafta | ${kgRemaining !== null ? kgRemaining.toFixed(1) + 'kg kaldi' : ''} | ${pct !== null ? '%' + pct : ''}`;
+}).join('\n') : 'Hedef belirlenmemis'}
 
 ## KALORI
 Antrenman gunu: ${p.calorie_range_training_min ?? '?'}-${p.calorie_range_training_max ?? '?'} kcal

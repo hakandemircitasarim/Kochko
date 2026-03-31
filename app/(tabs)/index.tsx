@@ -17,6 +17,7 @@ import { SupplementQuickAdd } from '@/components/tracking/SupplementQuickAdd';
 import { RecoveryInput } from '@/components/tracking/RecoveryInput';
 import { IFTimerWidget } from '@/components/tracking/IFTimerWidget';
 import { ChallengeWidget } from '@/components/tracking/ChallengeWidget';
+import { GoalProgressWidget } from '@/components/tracking/GoalProgress';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
@@ -33,6 +34,7 @@ export default function TodayScreen() {
   const {
     meals, workouts, weightKg, waterLiters, sleepHours, steps, moodScore,
     totalCalories, totalProtein, focusMessage, weeklyBudgetRemaining,
+    goalProgress, activeGoal,
     loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
@@ -106,6 +108,18 @@ export default function TodayScreen() {
             proteinTarget={profile.protein_per_kg && profile.weight_kg
               ? Math.round(Number(profile.protein_per_kg) * Number(profile.weight_kg))
               : 100}
+          />
+        </View>
+      )}
+
+      {/* Goal Progress */}
+      {goalProgress && activeGoal && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <GoalProgressWidget
+            progress={goalProgress}
+            goalType={activeGoal.goal_type}
+            targetWeight={activeGoal.target_weight_kg}
+            currentWeight={weightKg ?? (profile?.weight_kg as number | null)}
           />
         </View>
       )}
