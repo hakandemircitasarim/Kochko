@@ -22,6 +22,7 @@ import { checkRateLimit } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
 import { analyzeMessage, getRetrievalPlan } from '../shared/retrieval-planner.ts';
 import { buildContextFromPlan } from '../shared/context-builders.ts';
+import { selectModel } from '../shared/model-router.ts';
 import { BASE_SYSTEM_PROMPT, buildConfidenceNote } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions } from './task-modes.ts';
 
@@ -120,13 +121,13 @@ serve(async (req: Request) => {
       gptMessages.push({ role: 'user', content: message });
     }
 
-    // Call OpenAI (Spec 5.27: temperature by mode)
-    const model = image_base64 ? MODELS.vision : MODELS.primary;
+    // Call OpenAI (Spec 5.27: temperature by mode, model router for tier selection)
+    const modelSelection = selectModel(analysis, !!image_base64);
     const temperature = TEMPERATURE[taskMode] ?? 0.5;
 
     let assistantMessage = await chatCompletion<string>(
       gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[],
-      { model, temperature, maxTokens: 2000 }
+      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens }
     );
 
     // Guardrail: sanitize medical language (Spec 12.3)
@@ -146,7 +147,7 @@ serve(async (req: Request) => {
 
     // Store messages with token count and model version (Spec 5.25)
     const tokenEstimate = Math.round((message?.length ?? 0) / 3.5) + Math.round(assistantMessage.length / 3.5);
-    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, model, tokenEstimate, actions);
+    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions);
 
     // Async: update Layer 2 if needed
     if (layer2Updates) {
