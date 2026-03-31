@@ -147,6 +147,7 @@ function QuickForm() {
       const { error: goalError } = await supabase.from('goals').insert({
         user_id: user.id,
         goal_type: goalType,
+        start_weight_kg: parseFloat(weightKg),
         priority: 'sustainable',
         restriction_mode: 'sustainable',
         is_active: true,

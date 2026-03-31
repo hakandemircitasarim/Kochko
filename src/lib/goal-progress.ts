@@ -53,9 +53,9 @@ export function calculateGoalProgress(
       ? targetWeight - currentWeight
       : 0);
 
-  const percentComplete = totalChangeNeeded > 0
-    ? Math.min(100, Math.round((actualChange / totalChangeNeeded) * 100 * (movingRight ? 1 : 0)))
-    : 100;
+  const percentComplete = totalChangeNeeded > 0 && movingRight
+    ? Math.min(100, Math.round((actualChange / totalChangeNeeded) * 100))
+    : totalChangeNeeded > 0 ? 0 : 100; // 0% if moving wrong direction
 
   // Time calculations
   const createdAt = new Date(goal.created_at);

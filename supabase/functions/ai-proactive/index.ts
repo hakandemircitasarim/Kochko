@@ -93,7 +93,7 @@ serve(async (req: Request) => {
       let maintenanceInfo = '';
       let goalTempoInfo = '';
       const { data: activeGoal } = await supabaseAdmin
-        .from('goals').select('target_weight_kg, goal_type, weekly_rate, target_weeks, created_at')
+        .from('goals').select('target_weight_kg, start_weight_kg, goal_type, weekly_rate, target_weeks, created_at')
         .eq('user_id', profile.id).eq('is_active', true).single();
       if (activeGoal?.target_weight_kg) {
         const { data: latestWeight } = await supabaseAdmin
@@ -130,7 +130,8 @@ serve(async (req: Request) => {
           if (!goalReached && activeGoal.weekly_rate && hour >= 8 && hour <= 10 && now.getDay() === 1) {
             const weeksElapsed = Math.max(1, Math.round((Date.now() - new Date(activeGoal.created_at as string).getTime()) / (7*24*60*60*1000)));
             const expectedChange = (activeGoal.weekly_rate as number) * weeksElapsed;
-            const actualChange = Math.abs((latestWeight.weight_kg as number) - 80); // approximate start weight from profile
+            const goalStartWeight = (activeGoal.start_weight_kg as number) ?? (latestWeight.weight_kg as number);
+            const actualChange = Math.abs((latestWeight.weight_kg as number) - goalStartWeight);
             const tempoRatio = expectedChange > 0 ? actualChange / expectedChange : 1;
             if (tempoRatio < 0.5) {
               goalTempoInfo = `TETIK: YAVAS TEMPO - hedef haftada ${activeGoal.weekly_rate}kg ama gercek tempo cok yavas (oran: ${tempoRatio.toFixed(2)})`;

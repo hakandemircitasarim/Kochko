@@ -112,6 +112,7 @@ export interface Goal {
   user_id: string;
   goal_type: GoalType;
   target_weight_kg: number | null;
+  start_weight_kg: number | null;
   target_weeks: number | null;
   priority: GoalPriority;
   restriction_mode: RestrictionMode;

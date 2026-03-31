@@ -124,9 +124,10 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       activeGoal: goalRes.data as Goal | null,
       goalProgress: (() => {
         const goal = goalRes.data as Goal | null;
-        const startWeight = profileRes.data?.weight_kg as number | null;
-        const curWeight = metrics?.weight_kg ?? startWeight;
-        if (!goal || !curWeight || !startWeight) return null;
+        if (!goal) return null;
+        const startWeight = goal.start_weight_kg ?? (profileRes.data?.weight_kg as number | null);
+        const curWeight = (metrics?.weight_kg as number | null) ?? (profileRes.data?.weight_kg as number | null);
+        if (!curWeight || !startWeight) return null;
         return calculateGoalProgress(goal, curWeight, startWeight);
       })(),
       loading: false,
@@ -154,6 +155,8 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         meals: state.meals.filter(m => m.id !== mealId),
         totalCalories: state.totalCalories - (deleted?.calories ?? 0),
         totalProtein: state.totalProtein - Math.round(deleted?.protein_g ?? 0),
+        totalCarbs: state.totalCarbs - Math.round(deleted?.carbs_g ?? 0),
+        totalFat: state.totalFat - Math.round(deleted?.fat_g ?? 0),
       };
     });
   },

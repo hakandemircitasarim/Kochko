@@ -49,7 +49,7 @@ export default function GoalsScreen() {
 
   // Progress for existing goal
   const progress = existingGoal && profile?.weight_kg
-    ? calculateGoalProgress(existingGoal, profile.weight_kg as number, profile.weight_kg as number)
+    ? calculateGoalProgress(existingGoal, profile.weight_kg as number, existingGoal.start_weight_kg ?? (profile.weight_kg as number))
     : null;
   const summaryText = progress ? getGoalSummaryText(progress, goalType) : null;
 
@@ -68,6 +68,7 @@ export default function GoalsScreen() {
     await supabase.from('goals').insert({
       user_id: user.id, goal_type: goalType,
       target_weight_kg: tw || null, target_weeks: weeks,
+      start_weight_kg: profile?.weight_kg ?? null,
       priority: 'sustainable', restriction_mode: 'sustainable',
       weekly_rate: tw && profile?.weight_kg ? Math.abs(profile.weight_kg - tw) / weeks : null,
       is_active: true,
