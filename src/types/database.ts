@@ -102,6 +102,7 @@ export interface Profile {
   profile_completion_pct: number;
   premium: boolean;
   premium_expires_at: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }

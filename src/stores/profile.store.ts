@@ -46,12 +46,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   reactivateAccount: async (userId) => {
     await supabase
       .from('profiles')
-      .update({ deleted_at: null, updated_at: new Date().toISOString() } as Record<string, unknown>)
+      .update({ deleted_at: null, updated_at: new Date().toISOString() })
       .eq('id', userId);
     set(state => ({
-      profile: state.profile
-        ? ({ ...state.profile, deleted_at: null } as unknown as Profile)
-        : null,
+      profile: state.profile ? { ...state.profile, deleted_at: null } : null,
     }));
   },
 

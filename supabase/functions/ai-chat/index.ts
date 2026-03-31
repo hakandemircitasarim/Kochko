@@ -444,11 +444,11 @@ async function executeActions(
           await supabaseAdmin.from('profiles').update(profileUpdates).eq('id', userId);
           // Write seasonal note to Layer 2
           const { data: existing } = await supabaseAdmin
-            .from('ai_summaries').select('seasonal_notes').eq('user_id', userId).single();
+            .from('ai_summary').select('seasonal_notes').eq('user_id', userId).single();
           const currentNotes = (existing?.seasonal_notes as string) ?? '';
           const dateStr = new Date().toISOString().split('T')[0];
           const newNote = `${currentNotes}\n[${dateStr}] ${newState} donemi baslatildi${endDate ? ` (bitis: ${endDate})` : ''}`.trim();
-          await supabaseAdmin.from('ai_summaries').upsert(
+          await supabaseAdmin.from('ai_summary').upsert(
             { user_id: userId, seasonal_notes: newNote, updated_at: new Date().toISOString() },
             { onConflict: 'user_id' }
           );
