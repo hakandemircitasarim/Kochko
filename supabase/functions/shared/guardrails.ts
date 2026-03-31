@@ -71,9 +71,24 @@ export function validateCalories(
  * Scan text for forbidden medical language (Spec 12.3).
  * Returns cleaned text with violations replaced.
  */
-export function sanitizeText(text: string): { clean: string; hadViolations: boolean } {
+// Spec 12: Eating disorder language patterns - trigger professional referral
+const ED_PATTERNS = [
+  'kusma', 'kustum', 'kusuyorum',
+  'laksatif', 'müshil', 'mushil',
+  'aç kalma', 'ac kalma', 'hiç yemiyorum', 'hic yemiyorum',
+  'yeme bozukluğu', 'yeme bozuklugu',
+  'anoreksiya', 'anorexia', 'bulimiya', 'bulimia',
+  'purging', 'binge',
+  'kendime zarar', 'intihar',
+];
+
+const ED_REFERRAL_MESSAGE =
+  'Bu konuda profesyonel destek almanizi oneririz. Turkiye Yeme Bozukluklari Dernegi veya bir uzman diyetisyen/psikolog ile gorusmeniz faydali olacaktir.';
+
+export function sanitizeText(text: string): { clean: string; hadViolations: boolean; edReferral: boolean } {
   let clean = text;
   let hadViolations = false;
+  let edReferral = false;
 
   for (const phrase of FORBIDDEN_PHRASES) {
     const regex = new RegExp(phrase, 'gi');
@@ -83,7 +98,20 @@ export function sanitizeText(text: string): { clean: string; hadViolations: bool
     }
   }
 
-  return { clean, hadViolations };
+  // Check for eating disorder language patterns
+  const lower = clean.toLocaleLowerCase('tr');
+  for (const pattern of ED_PATTERNS) {
+    if (lower.includes(pattern)) {
+      edReferral = true;
+      break;
+    }
+  }
+
+  if (edReferral) {
+    clean = clean + '\n\n' + ED_REFERRAL_MESSAGE;
+  }
+
+  return { clean, hadViolations, edReferral };
 }
 
 /**
@@ -217,4 +245,87 @@ export function sanitizeUserInput(text: string): {
   // Don't modify the text - let the system prompt handle it
   // But flag it so the response can be adjusted
   return { sanitized: text, injectionDetected };
+}
+
+/**
+ * Exercise guardrail (Spec 12.2 extended).
+ * Validates exercise parameters against safety thresholds.
+ */
+export function validateExercise(
+  durationMin: number,
+  intensity: string,
+  sleepHours: number | null,
+  consecutiveHardDays: number
+): { safe: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+
+  if (durationMin > MAX_WORKOUT_DURATION_MIN) {
+    warnings.push(`${durationMin} dakika cok uzun, ${MAX_WORKOUT_DURATION_MIN} dakikayi gecmemesi onerilir`);
+  }
+
+  const isHighIntensity = ['high', 'yuksek', 'yogun', 'agir'].includes(
+    intensity.toLocaleLowerCase('tr')
+  );
+
+  if (isHighIntensity && sleepHours !== null && sleepHours < 6) {
+    warnings.push('Uyku azken yogun antrenman onerilmez');
+  }
+
+  if (consecutiveHardDays >= 3) {
+    warnings.push('Arka arkaya yogun gunler, dinlenme gunu onerilir');
+  }
+
+  return {
+    safe: warnings.length === 0,
+    warnings,
+  };
+}
+
+/**
+ * Weight velocity guardrail.
+ * Checks if weight loss rate is dangerously fast over 2-3 weeks.
+ */
+export function checkWeightVelocity(
+  weights: { date: string; kg: number }[]
+): { safe: boolean; warning: string | null; weeklyRate: number } {
+  if (weights.length < 2) {
+    return { safe: true, warning: null, weeklyRate: 0 };
+  }
+
+  // Sort by date ascending
+  const sorted = [...weights].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+
+  // Look at last 3 weeks of data
+  const threeWeeksAgo = new Date();
+  threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+  const recent = sorted.filter(w => new Date(w.date) >= threeWeeksAgo);
+
+  if (recent.length < 2) {
+    return { safe: true, warning: null, weeklyRate: 0 };
+  }
+
+  const first = recent[0];
+  const last = recent[recent.length - 1];
+  const daysDiff = (new Date(last.date).getTime() - new Date(first.date).getTime()) / 86400000;
+
+  if (daysDiff < 7) {
+    return { safe: true, warning: null, weeklyRate: 0 };
+  }
+
+  const totalLoss = first.kg - last.kg; // positive = lost weight
+  const weeks = daysDiff / 7;
+  const weeklyRate = Math.round((totalLoss / weeks) * 100) / 100;
+
+  // Check if losing more than 1.5 kg/week over 2+ weeks
+  if (weeklyRate > 1.5 && weeks >= 2) {
+    return {
+      safe: false,
+      warning: `Haftada ${weeklyRate}kg kayip cok hizli. Saglikli kayip haftada 0.5-1kg arasi olmalidir. Daha yavas ilerlemenizi oneririz.`,
+      weeklyRate,
+    };
+  }
+
+  return { safe: true, warning: null, weeklyRate };
 }

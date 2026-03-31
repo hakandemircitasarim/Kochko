@@ -51,3 +51,33 @@ export function usePremium() {
     requirePremium,
   };
 }
+
+/**
+ * Get restriction flags when user downgrades from premium.
+ * Used by UI components to gate features.
+ */
+export function getDowngradeRestrictions(isPremium: boolean): {
+  readOnlyPlans: boolean;
+  noPhotoLog: boolean;
+  noVoiceLog: boolean;
+  noWeeklyMenu: boolean;
+  limitedAI: boolean;
+} {
+  if (isPremium) {
+    return {
+      readOnlyPlans: false,
+      noPhotoLog: false,
+      noVoiceLog: false,
+      noWeeklyMenu: false,
+      limitedAI: false,
+    };
+  }
+
+  return {
+    readOnlyPlans: true,
+    noPhotoLog: true,
+    noVoiceLog: true,
+    noWeeklyMenu: true,
+    limitedAI: true,
+  };
+}
