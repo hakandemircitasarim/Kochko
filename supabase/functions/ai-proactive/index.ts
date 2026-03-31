@@ -171,6 +171,41 @@ ${(() => {
       triggers.push(`TETIK: ALISKANLIK ILERLEME - "${activeHabit.habit}" ${activeHabit.streak} gundur suruyor (%80+), sonraki aliskanlik onerisi yap`);
     }
   }
+  // Recovery trigger: high soreness + low sleep
+  const { data: todayMetrics } = await supabaseAdmin
+    .from('daily_metrics').select('muscle_soreness, sleep_hours')
+    .eq('user_id', profile.id).eq('date', today).single();
+  if (todayMetrics?.muscle_soreness === 'severe' && ((todayMetrics?.sleep_hours as number) ?? 8) < 6) {
+    triggers.push('TETIK: DINLENME GEREKLI - Kas agrisi yuksek ve uyku yetersiz, bugun hafif aktivite veya dinlenme oner');
+  }
+
+  // Binge recovery: yesterday compliance very low
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const { data: yesterdayReport } = await supabaseAdmin
+    .from('daily_reports').select('compliance_score')
+    .eq('user_id', profile.id).eq('date', yesterdayStr).single();
+  if (yesterdayReport && (yesterdayReport.compliance_score as number) < 30) {
+    triggers.push('TETIK: DESTEK GUNU - Dun zorlandi, bugun destekleyici ve yargisiz ol');
+  }
+
+  // Calorie creep: check 2-week trend
+  if (hour >= 8 && hour <= 10 && dayOfWeek === 3) { // Wednesday morning
+    const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
+    const { data: recentReports } = await supabaseAdmin
+      .from('daily_reports').select('date, calorie_actual')
+      .eq('user_id', profile.id).gte('date', twoWeeksAgo).order('date');
+    if (recentReports && recentReports.length >= 10) {
+      const half = Math.floor(recentReports.length / 2);
+      const week1Avg = recentReports.slice(0, half).reduce((s, r) => s + (r.calorie_actual as number), 0) / half;
+      const week2Avg = recentReports.slice(half).reduce((s, r) => s + (r.calorie_actual as number), 0) / (recentReports.length - half);
+      if (week2Avg > week1Avg * 1.05) {
+        triggers.push(`TETIK: PORSIYON DIKKAT - Son 2 haftada kademeli kalori artisi (${Math.round(week1Avg)} → ${Math.round(week2Avg)} kcal)`);
+      }
+    }
+  }
+
   return triggers.join('\n');
 })()}
 ${(() => {

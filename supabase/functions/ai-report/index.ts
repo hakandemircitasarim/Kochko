@@ -11,16 +11,30 @@ import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
 
-const DAILY_REPORT_SYSTEM = `Kullanicinin gunluk performansini degerlendir. Uyum puani (0-100) hesapla.
+// Goal-type-based compliance weights (Spec 8.1 deepening)
+function getComplianceWeights(goalType: string): Record<string, number> {
+  switch (goalType) {
+    case 'lose_weight': return { calorie: 40, protein: 25, workout: 20, water: 10, sleep: 5, mood: 0 };
+    case 'gain_muscle': return { calorie: 20, protein: 35, workout: 30, water: 5, sleep: 10, mood: 0 };
+    case 'gain_weight': return { calorie: 25, protein: 30, workout: 25, water: 5, sleep: 10, mood: 5 };
+    case 'health':      return { calorie: 20, protein: 15, workout: 20, water: 20, sleep: 15, mood: 10 };
+    case 'maintain':    return { calorie: 25, protein: 20, workout: 20, water: 15, sleep: 15, mood: 5 };
+    default:            return { calorie: 30, protein: 20, workout: 20, water: 10, sleep: 10, mood: 10 };
+  }
+}
 
-Puan hesabi:
-- Kalori hedef araliginda: +30
-- Protein hedefe ulasti: +20
-- Antrenman yapildi: +20
-- Su hedefine ulasti: +10
-- Uyku 7+ saat: +10
-- Adim hedefine ulasti: +10
+const DAILY_REPORT_SYSTEM = `Kullanicinin gunluk performansini degerlendir. Uyum puani (0-100) hesapla.
+Onemli: Puan agirliklari kullanicinin hedef turune gore degisir (prompt'ta AGIRLIKLAR satirinda verilir).
+
+Puan hesabi (AGIRLIKLAR satirindaki yuzdelere gore):
+- Kalori hedef araliginda: AGIRLIK'a gore
+- Protein hedefe ulasti: AGIRLIK'a gore
+- Antrenman yapildi: AGIRLIK'a gore
+- Su hedefine ulasti: AGIRLIK'a gore
+- Uyku 7+ saat: AGIRLIK'a gore
+- Adim/Mood: AGIRLIK'a gore
 Eksikleri orantili dus.
+Yarin icin 1 SPESIFIK, UYGULANABILIR aksiyon ver (genel tavsiye degil).
 
 JSON formatinda:
 {
@@ -121,7 +135,12 @@ async function generateDailyReport(userId: string, date?: string) {
   const workouts = workoutsRes.data ?? [];
   const totalWorkoutMin = workouts.reduce((s: number, w: { duration_min: number }) => s + (w.duration_min || 0), 0);
 
+  // Goal-based compliance weights
+  const goalType = goalRes.data?.goal_type as string ?? 'health';
+  const weights = getComplianceWeights(goalType);
+
   const prompt = `Tarih: ${reportDate}
+AGIRLIKLAR: Kalori=%${weights.calorie} Protein=%${weights.protein} Antrenman=%${weights.workout} Su=%${weights.water} Uyku=%${weights.sleep} Mood=%${weights.mood} (Hedef: ${goalType})
 Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g
 Gerceklesen: Kalori ${totalCal} kcal | Protein ${Math.round(totalPro)}g | Karb ${Math.round(totalCarb)}g | Yag ${Math.round(totalFat)}g | Alkol ${totalAlcCal} kcal
 Antrenman: ${workouts.length > 0 ? `${workouts.length} seans, ${totalWorkoutMin} dk` : 'yapilmadi'}

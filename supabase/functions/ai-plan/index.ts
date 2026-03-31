@@ -192,7 +192,34 @@ serve(async (req: Request) => {
       rejectionLine = `\nONCEKI PLAN REDDEDILDI. Sebep: ${body.rejection_context}. Yeni plan buna gore farkli olmali.`;
     }
 
-    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${strengthContext}${deloadContext}${rejectionLine}\n\nBugunku plani olustur.`;
+    // Persona + learned context from AI summary (Faz 5a deepening)
+    let personaContext = '';
+    const { data: aiSummary } = await supabaseAdmin
+      .from('ai_summary').select('user_persona, learned_meal_times, portion_calibration')
+      .eq('user_id', userId).single();
+    if (aiSummary) {
+      const persona = aiSummary.user_persona as string | null;
+      if (persona) {
+        const personaInstructions: Record<string, string> = {
+          minimalist: 'PERSONA: minimalist — Kisa ve oz plan, detay verme',
+          veri_odakli: 'PERSONA: veri_odakli — Detayli makro dagilimi ve sayilar goster',
+          motivasyon_bagimlisi: 'PERSONA: motivasyon — Motive edici mesajlar ekle',
+          disiplinli: 'PERSONA: disiplinli — Kesin hedefler ve kurallar belirt',
+        };
+        personaContext += `\n${personaInstructions[persona] ?? ''}`;
+      }
+      const mealTimes = aiSummary.learned_meal_times as Record<string, string> | null;
+      if (mealTimes && Object.keys(mealTimes).length > 0) {
+        const labels: Record<string, string> = { breakfast: 'kahvalti', lunch: 'ogle', dinner: 'aksam', snack: 'atistirma' };
+        personaContext += `\nOGUN SAATLERI: ${Object.entries(mealTimes).map(([k, v]) => `${labels[k] ?? k} ${v}`).join(', ')}`;
+      }
+      const portions = aiSummary.portion_calibration as Record<string, number> | null;
+      if (portions && Object.keys(portions).length > 0) {
+        personaContext += `\nPORSIYON: ${Object.entries(portions).map(([k, v]) => `${k}=${v}g`).join(', ')}`;
+      }
+    }
+
+    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${strengthContext}${deloadContext}${personaContext}${rejectionLine}\n\nBugunku plani olustur.`;
 
     const plan = await chatCompletion<Record<string, unknown>>(
       [
