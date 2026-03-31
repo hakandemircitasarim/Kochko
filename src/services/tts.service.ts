@@ -61,6 +61,14 @@ export async function isSpeaking(): Promise<boolean> {
 }
 
 /**
+ * Convenience alias: speak text with default Turkish settings.
+ * Simple API for components that don't need tone customization.
+ */
+export async function speakText(text: string): Promise<void> {
+  return speak(text, { language: 'tr-TR' });
+}
+
+/**
  * Get available voices for the current locale.
  */
 export async function getAvailableVoices(): Promise<Speech.Voice[]> {

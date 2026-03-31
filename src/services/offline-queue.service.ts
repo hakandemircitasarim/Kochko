@@ -9,8 +9,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import NetInfo from '@react-native-community/netinfo';
+import { resolveConflict, type SyncDataType } from './conflict-resolver.service';
 
 const QUEUE_KEY = '@kochko_offline_queue';
+const LAST_SYNC_KEY = '@kochko_last_sync';
 
 export interface QueuedAction {
   id: string;
@@ -67,17 +69,42 @@ export async function syncQueue(): Promise<{ synced: number; failed: number }> {
 
   for (const action of queue) {
     try {
-      if (action.type === 'profile_update') {
-        // Last-write-wins for profile
+      const dataType = mapActionTypeToSyncType(action.type);
+
+      if (dataType === 'profile') {
+        // Fetch server version to resolve conflict
+        const { data: serverData } = await supabase.from(action.table)
+          .select('*').eq('id', action.userId).single();
+
+        if (serverData) {
+          const result = resolveConflict(action.data as Record<string, unknown>, serverData, 'profile');
+          if (result.winner === 'server') {
+            // Server wins, discard local change
+            synced++;
+            continue;
+          }
+        }
         await supabase.from(action.table)
           .update({ ...action.data, synced: true })
           .eq('id', action.userId);
+      } else if (dataType === 'daily_metrics') {
+        // Merge strategy for daily metrics
+        const recordDate = (action.data as Record<string, unknown>).date as string;
+        const { data: serverData } = await supabase.from(action.table)
+          .select('*').eq('user_id', action.userId).eq('date', recordDate).single();
+
+        if (serverData) {
+          const result = resolveConflict(action.data as Record<string, unknown>, serverData, 'daily_metrics');
+          await supabase.from(action.table)
+            .upsert({ ...(result.data as Record<string, unknown>), synced: true }, { onConflict: 'user_id,date' });
+        } else {
+          await supabase.from(action.table)
+            .upsert({ ...action.data, synced: true }, { onConflict: 'user_id,date' });
+        }
       } else {
-        // Append for log data (insert, let DB handle conflicts)
+        // Append for log data (meal_log, workout_log, supplement_log, etc.)
         await supabase.from(action.table)
-          .upsert({ ...action.data, synced: true }, {
-            onConflict: action.table === 'daily_metrics' ? 'user_id,date' : undefined,
-          });
+          .upsert({ ...action.data, synced: true });
       }
       synced++;
     } catch {
@@ -87,7 +114,21 @@ export async function syncQueue(): Promise<{ synced: number; failed: number }> {
   }
 
   await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(remaining));
+  await AsyncStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
   return { synced, failed };
+}
+
+/**
+ * Map queue action type to sync data type for conflict resolution.
+ */
+function mapActionTypeToSyncType(actionType: QueuedAction['type']): SyncDataType | null {
+  switch (actionType) {
+    case 'meal_log': return 'meal_log';
+    case 'workout_log': return 'workout_log';
+    case 'supplement_log': return 'supplement_log';
+    case 'profile_update': return 'profile';
+    default: return null;
+  }
 }
 
 /**
@@ -103,4 +144,23 @@ export async function clearQueue(): Promise<void> {
 export async function getQueueCount(): Promise<number> {
   const queue = await getQueue();
   return queue.length;
+}
+
+/**
+ * Get detailed queue status for sync UI.
+ */
+export async function getQueueStatus(): Promise<{
+  pending: number;
+  failed: number;
+  lastSyncAt: string | null;
+}> {
+  const queue = await getQueue();
+  const lastSyncAt = await AsyncStorage.getItem(LAST_SYNC_KEY);
+  // Count items that have been attempted before (they remain in queue = failed on last attempt)
+  // For now, all items in queue are pending; failed count comes from last sync result
+  return {
+    pending: queue.length,
+    failed: 0,
+    lastSyncAt,
+  };
 }

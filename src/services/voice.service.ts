@@ -89,3 +89,16 @@ export async function transcribeAudio(audioUri: string): Promise<string | null> 
 export function isRecording(): boolean {
   return recording !== null;
 }
+
+/**
+ * Convenience: record, stop, and transcribe in one flow.
+ * Call startRecording first, then call this when user taps stop.
+ * Returns the transcribed text ready to send to chat.
+ */
+export async function stopAndTranscribe(): Promise<{ text: string | null; audioUri: string | null }> {
+  const uri = await stopRecording();
+  if (!uri) return { text: null, audioUri: null };
+
+  const text = await transcribeAudio(uri);
+  return { text, audioUri: uri };
+}
