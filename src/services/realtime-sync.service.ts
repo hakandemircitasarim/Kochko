@@ -152,6 +152,17 @@ export async function getActiveSessions(): Promise<{
 }
 
 /**
+ * Terminate a specific session by deleting its record.
+ */
+export async function terminateSession(sessionId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('user_sessions')
+    .delete()
+    .eq('id', sessionId);
+  return { error: error?.message ?? null };
+}
+
+/**
  * Force sync — pull latest data from server.
  */
 export async function forceSync(userId: string): Promise<{ synced: boolean; error: string | null }> {

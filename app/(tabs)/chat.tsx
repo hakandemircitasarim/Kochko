@@ -20,7 +20,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
-  sendMessage, sendMessageWithPhoto, loadChatHistory,
+  sendMessage, sendMessageWithPhoto, sendMessageWithRetry, loadChatHistory,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';

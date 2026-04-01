@@ -2,10 +2,11 @@
  * Account Security Settings
  * Spec 1.2-1.4: Session management, password change, account linking, email change.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, Platform } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
+import { getActiveSessions, terminateSession } from '@/src/services/realtime-sync.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -22,8 +23,50 @@ export default function AccountSecurityScreen() {
   const [newEmail, setNewEmail] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
 
+  // Active sessions
+  const [sessions, setSessions] = useState<{ sessionId: string; deviceInfo: string; lastActiveAt: string }[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
   const providers = user?.app_metadata?.providers as string[] ?? [];
   const identities = user?.identities ?? [];
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
+
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const data = await getActiveSessions();
+      setSessions(data);
+    } catch {
+      // silently ignore
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const handleTerminateSession = async (sessionId: string) => {
+    Alert.alert(
+      'Oturumu Kapat',
+      'Bu oturumu kapatmak istediginize emin misiniz?',
+      [
+        { text: 'Iptal', style: 'cancel' },
+        {
+          text: 'Kapat',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await terminateSession(sessionId);
+            if (error) {
+              Alert.alert('Hata', error);
+            } else {
+              setSessions(prev => prev.filter(s => s.sessionId !== sessionId));
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // ─── Password Change ───
 
@@ -184,6 +227,36 @@ export default function AccountSecurityScreen() {
             {providers.includes('email') ? 'Aktif' : '-'}
           </Text>
         </View>
+      </Card>
+
+      {/* Active Sessions (Spec 1.2) */}
+      <SectionHeader title="Aktif Oturumlar" />
+      <Card>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
+          Hesabiniza bagli aktif cihazlar. Tanimlamadiginiz bir oturumu kapatabilirsiniz.
+        </Text>
+        {sessionsLoading ? (
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Yukleniyor...</Text>
+        ) : sessions.length === 0 ? (
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Aktif oturum bulunamadi.</Text>
+        ) : (
+          sessions.map((session, index) => (
+            <View key={session.sessionId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: index < sessions.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{session.deviceInfo}</Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
+                  Son aktif: {new Date(session.lastActiveAt).toLocaleString('tr-TR')}
+                </Text>
+              </View>
+              {index !== 0 && (
+                <Button title="Kapat" variant="ghost" size="sm" onPress={() => handleTerminateSession(session.sessionId)} />
+              )}
+              {index === 0 && (
+                <Text style={{ color: COLORS.success, fontSize: FONT.xs, marginLeft: SPACING.sm }}>Mevcut</Text>
+              )}
+            </View>
+          ))
+        )}
       </Card>
     </ScrollView>
   );

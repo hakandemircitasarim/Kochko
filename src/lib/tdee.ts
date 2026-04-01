@@ -73,6 +73,7 @@ export function calculateTargets(input: {
   weeksSinceStart: number;
   complianceAvg: number; // 0-100, last 2 weeks
   weightKg: number;
+  gender?: 'male' | 'female' | 'other';
   macroPct: { protein: number; carb: number; fat: number };
   proteinPerKg?: number;
 }): CalorieTargets {
