@@ -331,12 +331,27 @@ async function executeActions(
           }).select('id').single();
 
           if (log && items?.length) {
+            // Phase 6: Cooking method calorie adjustments
+            const cookingMethod = action.cooking_method as string | null;
+            const COOKING_MULTIPLIERS: Record<string, number> = {
+              fried: 1.15, deep_fried: 1.25, kizartma: 1.15, derin_kizartma: 1.25,
+              grilled: 0.95, izgara: 0.95,
+              steamed: 0.90, buharla: 0.90,
+              boiled: 0.95, haslama: 0.95,
+              sauteed: 1.10, sotele: 1.10, kavurma: 1.10,
+              raw: 1.0, cig: 1.0,
+              baked: 1.0, firinda: 1.0,
+            };
+            const multiplier = cookingMethod ? (COOKING_MULTIPLIERS[cookingMethod.toLowerCase()] ?? 1.0) : 1.0;
+
             await supabaseAdmin.from('meal_log_items').insert(
               items.map(i => ({
                 meal_log_id: log.id, food_name: i.name, portion_text: i.portion,
-                calories: Math.max(0, Math.round(i.calories)),
+                calories: Math.max(0, Math.round(i.calories * multiplier)),
                 protein_g: Math.max(0, i.protein_g), carbs_g: Math.max(0, i.carbs_g),
-                fat_g: Math.max(0, i.fat_g), data_source: 'ai_estimate',
+                fat_g: Math.max(0, Math.round(i.fat_g * multiplier)),
+                data_source: 'ai_estimate',
+                cooking_method: cookingMethod,
               }))
             );
           }

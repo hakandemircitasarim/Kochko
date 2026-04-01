@@ -249,3 +249,65 @@ export function getRecipeNutritionBreakdown(recipe: SavedRecipe): {
     perIngredient,
   };
 }
+
+// ─── Recipe Planning Integration (Phase 6) ───
+
+/**
+ * Get recipes suitable for weekly plan integration.
+ * Returns favorites + most used recipes, formatted for AI plan prompt.
+ */
+export async function getRecipesForPlanning(
+  userId: string,
+  limit = 10
+): Promise<{ title: string; calories: number; protein: number; category: string; prepTime: number }[]> {
+  const { data: favorites } = await supabase
+    .from('saved_recipes')
+    .select('title, total_calories, total_protein, category, prep_time_min')
+    .eq('user_id', userId)
+    .eq('is_favorite', true)
+    .order('use_count', { ascending: false })
+    .limit(Math.ceil(limit / 2));
+
+  const { data: popular } = await supabase
+    .from('saved_recipes')
+    .select('title, total_calories, total_protein, category, prep_time_min')
+    .eq('user_id', userId)
+    .order('use_count', { ascending: false })
+    .limit(limit);
+
+  // Merge and deduplicate
+  const all = [...(favorites ?? []), ...(popular ?? [])];
+  const seen = new Set<string>();
+  const unique: typeof all = [];
+
+  for (const r of all) {
+    const key = (r.title as string).toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      unique.push(r);
+    }
+  }
+
+  return unique.slice(0, limit).map(r => ({
+    title: r.title as string,
+    calories: (r.total_calories as number) ?? 0,
+    protein: (r.total_protein as number) ?? 0,
+    category: (r.category as string) ?? 'dinner',
+    prepTime: (r.prep_time_min as number) ?? 0,
+  }));
+}
+
+/**
+ * Format recipes for AI plan prompt inclusion.
+ */
+export function formatRecipesForPrompt(
+  recipes: { title: string; calories: number; protein: number; category: string; prepTime: number }[]
+): string {
+  if (recipes.length === 0) return '';
+
+  const lines = recipes.map(r =>
+    `- ${r.title} (${r.calories}kcal, ${r.protein}g protein, ${r.category}, ${r.prepTime}dk)`
+  );
+
+  return `\nKULLANICININ KAYITLI TARIFLERI (mumkunse bunlari tercih et):\n${lines.join('\n')}`;
+}

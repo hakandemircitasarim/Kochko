@@ -99,6 +99,57 @@ export async function deletePhase(phaseId: string): Promise<void> {
   await supabase.from('goals').delete().eq('id', phaseId);
 }
 
+// ─── Phase Transitions (Phase 6) ───
+
+/**
+ * Calculate gradual transition between phases.
+ * 7-day calorie/macro shift from current to next phase.
+ */
+export function calculatePhaseTransition(
+  currentCalorie: { min: number; max: number },
+  nextCalorie: { min: number; max: number },
+  transitionDay: number, // 1-7
+  totalDays: number = 7
+): { min: number; max: number; progress: number } {
+  const progress = Math.min(1, transitionDay / totalDays);
+
+  return {
+    min: Math.round(currentCalorie.min + (nextCalorie.min - currentCalorie.min) * progress),
+    max: Math.round(currentCalorie.max + (nextCalorie.max - currentCalorie.max) * progress),
+    progress,
+  };
+}
+
+/**
+ * Get timeline data for PhaseTimeline component.
+ */
+export async function getTimelineData(userId: string): Promise<{
+  phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[];
+  currentWeek: number;
+}> {
+  const phases = await getGoalPhases(userId);
+
+  const activePhase = phases.find(p => p.is_active);
+  let currentWeek = 0;
+
+  if (activePhase) {
+    const created = new Date(activePhase.created_at);
+    currentWeek = Math.max(1, Math.round((Date.now() - created.getTime()) / (7 * 86400000)));
+  }
+
+  return {
+    phases: phases.map(p => ({
+      id: p.id,
+      label: p.phase_label ?? p.goal_type,
+      goalType: p.goal_type,
+      targetWeeks: p.target_weeks ?? 12,
+      isActive: p.is_active,
+      isCompleted: !p.is_active && phases.indexOf(p) < phases.indexOf(activePhase!),
+    })),
+    currentWeek,
+  };
+}
+
 // ─── Goal Compatibility Matrix (Spec 6.2) ───
 
 const COMPATIBILITY_MATRIX: Record<string, Record<string, 'compatible' | 'conflict' | 'warning'>> = {
