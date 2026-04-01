@@ -591,12 +591,22 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDir
 
         {/* Inline rich content for AI responses (Spec 5.20) */}
         {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
-          <MacroSummary
-            protein={dashboardMacros.protein}
-            carbs={dashboardMacros.carbs}
-            fat={dashboardMacros.fat}
-            targets={macroTargets}
-          />
+          <>
+            <MacroSummary
+              protein={dashboardMacros.protein}
+              carbs={dashboardMacros.carbs}
+              fat={dashboardMacros.fat}
+              targets={macroTargets}
+            />
+            {/* D15: Weekly budget bar after meal_log actions */}
+            {weeklyBudgetRemaining !== null && (
+              <WeeklyBudgetBar
+                consumed={weeklyBudgetRemaining.consumed}
+                total={weeklyBudgetRemaining.total}
+              />
+            )}
+            {/* placeholder - replaced below */}
+          </>
         )}
 
         {/* Recipe card for recipe task_mode */}

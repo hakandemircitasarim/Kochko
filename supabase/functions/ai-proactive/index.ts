@@ -113,7 +113,7 @@ serve(async (req: Request) => {
             maintenanceInfo = `TETIK: HEDEFE ULASILDI - hedef ${activeGoal.target_weight_kg}kg, simdi ${latestWeight.weight_kg}kg. Tebrik et ve bakim modunu oner!`;
             // Check for multi-phase: auto-advance
             const { data: nextPhase } = await supabaseAdmin
-              .from('goals').select('id, goal_type, phase_label')
+              .from('goals').select('id, goal_type, phase_label, weekly_rate')
               .eq('user_id', profile.id).eq('is_active', false)
               .gt('phase_order', 1).order('phase_order').limit(1).single();
             if (nextPhase) {

@@ -50,8 +50,23 @@ export default function ProgressScreen() {
       supabase.from('goals').select('id, goal_type, target_weeks, phase_order, phase_label, is_active, created_at').eq('user_id', user.id).not('phase_order', 'is', null).order('phase_order', { ascending: true }),
     ]).then(([m, c, plateau, maintenance, phasesResult]) => {
       setMetrics((m.data ?? []) as MetricPt[]);
-      setCompliance((c.data ?? []) as CompPt[]);
-      if (plateau.isInPlateau) setPlateauMsg(plateau.message);
+      const complianceData = (c.data ?? []) as CompPt[];
+      setCompliance(complianceData);
+
+      if (plateau.isInPlateau) {
+        setPlateauMsg(plateau.message);
+        setPlateauStatus(plateau);
+        // Compute avg compliance and infer training style from active phase
+        const avgCompliance = complianceData.length > 0
+          ? Math.round(complianceData.reduce((s, cp) => s + cp.compliance_score, 0) / complianceData.length)
+          : null;
+        const rawPhasesForStrategy = (phasesResult.data ?? []) as { goal_type: string; is_active: boolean }[];
+        const activePhaseGoal = rawPhasesForStrategy.find(p => p.is_active);
+        const trainingStyle = activePhaseGoal?.goal_type === 'gain_muscle' ? 'strength' : null;
+        const rec = selectBestStrategy(plateau.weeksSinceChange, trainingStyle, avgCompliance, 500);
+        setStrategyRec(rec);
+      }
+
       if (maintenance.isInMaintenance) setMaintenanceMsg(maintenance.message);
 
       const rawPhases = (phasesResult.data ?? []) as { id: string; goal_type: string; target_weeks: number | null; phase_order: number; phase_label: string | null; is_active: boolean; created_at: string }[];
@@ -61,7 +76,7 @@ export default function ProgressScreen() {
           ? Math.max(1, Math.round((Date.now() - new Date(activePhase.created_at).getTime()) / (7 * 86400000)))
           : 0;
         setCurrentWeek(week);
-        setPhases(rawPhases.map((p, i) => ({
+        setPhases(rawPhases.map((p) => ({
           id: p.id,
           label: p.phase_label ?? p.goal_type,
           goalType: p.goal_type,
@@ -87,6 +102,32 @@ export default function ProgressScreen() {
   const sleepDays = metrics.filter(m => m.sleep_hours != null);
   const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1) : null;
 
+  const handleApplyStrategy = async () => {
+    if (!strategyRec || !user?.id) return;
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('calorie_range_rest_min, calorie_range_rest_max, protein_target_g')
+      .eq('id', user.id)
+      .single();
+    const currentMin = (profile?.calorie_range_rest_min as number | null) ?? 1800;
+    const currentMax = (profile?.calorie_range_rest_max as number | null) ?? 2200;
+    const currentProtein = (profile?.protein_target_g as number | null) ?? 150;
+    const result = applyPlateauStrategy(
+      strategyRec.primary.id,
+      { min: currentMin, max: currentMax },
+      currentProtein
+    );
+    await supabase
+      .from('profiles')
+      .update({
+        calorie_range_rest_min: result.adjustedCalorie.min,
+        calorie_range_rest_max: result.adjustedCalorie.max,
+        protein_target_g: result.adjustedProtein,
+      })
+      .eq('id', user.id);
+    setStrategyApplied(true);
+  };
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Ilerleme</Text>
@@ -111,7 +152,7 @@ export default function ProgressScreen() {
           />
         </Card>
       ) : (
-        <Card title="Kilo Trendi"><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>En az 2 tarti kaydı gerekli.</Text></Card>
+        <Card title="Kilo Trendi"><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>En az 2 tarti kaydi gerekli.</Text></Card>
       )}
 
       {/* Phase Timeline */}
@@ -154,12 +195,35 @@ export default function ProgressScreen() {
         </Card>
       )}
 
-      {/* Plateau Warning */}
+      {/* Plateau Warning + Strategy */}
       {plateauMsg && (
         <Card style={{ borderColor: COLORS.warning, borderWidth: 2 }}>
           <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>Plateau Tespiti</Text>
           <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{plateauMsg}</Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>Kocunla konusarak strateji belirleyebilirsin.</Text>
+          {strategyRec && !strategyApplied && (
+            <View style={{ marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: COLORS.background, borderRadius: 8 }}>
+              <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '700', marginBottom: SPACING.xs }}>
+                Onerilen Strateji: {strategyRec.primary.name}
+              </Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, lineHeight: 18, marginBottom: SPACING.xs }}>
+                {strategyRec.primary.description}
+              </Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, lineHeight: 16, fontStyle: 'italic', marginBottom: SPACING.sm }}>
+                {strategyRec.reasoning}
+              </Text>
+              <TouchableOpacity
+                onPress={handleApplyStrategy}
+                style={{ backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: SPACING.xs, paddingHorizontal: SPACING.md, alignSelf: 'flex-start' }}
+              >
+                <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Onayla</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {strategyApplied && (
+            <Text style={{ color: COLORS.success, fontSize: FONT.xs, marginTop: SPACING.sm, fontWeight: '600' }}>
+              Strateji uygulandi. Kalori hedeflerin guncellendi.
+            </Text>
+          )}
         </Card>
       )}
 
