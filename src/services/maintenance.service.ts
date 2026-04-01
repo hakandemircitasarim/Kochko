@@ -183,3 +183,62 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
     message,
   };
 }
+
+// ─── Behavior Reinforcement (Phase 7) ───
+
+/**
+ * Generate positive reinforcement message for maintenance users.
+ */
+export function generateReinforcementMessage(
+  weeksSinceGoalReached: number,
+  bandStatus: string
+): string | null {
+  if (bandStatus !== 'in_band') return null;
+
+  if (weeksSinceGoalReached >= 24) {
+    return `6 aydir hedef kilonda tutunuyorsun! Bu inanilmaz bir basari. Cogul insan bunu basaramaz.`;
+  }
+  if (weeksSinceGoalReached >= 12) {
+    return `3 aydir bakim modunda basarilisin. Aliskanliklarinin gucunun kaniti bu.`;
+  }
+  if (weeksSinceGoalReached >= 4) {
+    return `1 aydir hedef kilonda kalmaya devam ediyorsun. Harika gidiyorsun!`;
+  }
+
+  return null;
+}
+
+/**
+ * Get retention strategy — keep user engaged in maintenance mode.
+ */
+export function getRetentionStrategy(
+  bandStatus: string,
+  weeksSinceGoalReached: number
+): { strategy: string; message: string } {
+  if (bandStatus === 'approaching_limit') {
+    return {
+      strategy: 'proactive_warning',
+      message: 'Hedef kilonun sinirina yaklasiyorsun. Mini-cut'a gerek kalmadan onlem alalim — bu hafta su ve protein hedeflerine odaklan.',
+    };
+  }
+
+  if (bandStatus === 'exceeded') {
+    return {
+      strategy: 'mini_cut_suggestion',
+      message: 'Tolerans bandini astin. Tam diyete donus degil, 2-4 haftalik hafif kalori acigi ile dengeye donebilirsin.',
+    };
+  }
+
+  // In band — micro-goals to stay engaged
+  const microGoals = [
+    'Bu hafta her gun su hedefini tut.',
+    'Bu hafta 3 gun protein hedefini tuttur.',
+    'Bu hafta yeni bir saglikli tarif dene.',
+    'Bu hafta uyku duzulune odaklan — her gece ayni saatte yat.',
+  ];
+
+  return {
+    strategy: 'micro_goals',
+    message: microGoals[weeksSinceGoalReached % microGoals.length],
+  };
+}

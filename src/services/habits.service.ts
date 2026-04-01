@@ -70,3 +70,63 @@ export function getNextHabit(currentHabits: Habit[]): { habit: typeof HABIT_SEQU
       : `Ilk aliskanlik hedefin: "${next.name}". ${next.description}.`,
   };
 }
+
+// ─── Chat Integration (Phase 7) ───
+
+/**
+ * Get current habit stack formatted for system prompt inclusion.
+ */
+export function getChatIntegrationPrompt(habits: Habit[]): string {
+  const active = habits.filter(h => h.status === 'active');
+  const mastered = habits.filter(h => h.status === 'mastered');
+
+  if (active.length === 0 && mastered.length === 0) return '';
+
+  const parts: string[] = ['## ALISKANLIK DURUMU'];
+
+  if (active.length > 0) {
+    parts.push(`Aktif: ${active.map(h => `"${h.habit}" (${h.streak} gun seri)`).join(', ')}`);
+  }
+  if (mastered.length > 0) {
+    parts.push(`Oturtulmus: ${mastered.map(h => h.habit).join(', ')}`);
+  }
+
+  // If active habit streak is about to reach 14 days, note it
+  const almostMastered = active.find(h => h.streak >= 12 && h.streak < 14);
+  if (almostMastered) {
+    parts.push(`"${almostMastered.habit}" 2 gun sonra oturtulmus sayilacak!`);
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Check if a chat message contains habit-relevant behavior.
+ * Returns habit update if applicable.
+ */
+export function checkHabitFromChat(
+  message: string,
+  activeHabits: Habit[]
+): { habitName: string; increment: boolean } | null {
+  const lower = message.toLocaleLowerCase('tr');
+
+  for (const habit of activeHabits) {
+    const habitLower = habit.habit.toLocaleLowerCase('tr');
+
+    // Check if message relates to habit completion
+    if (habitLower.includes('kahvalti') && /kahvalt|sabah.*(yedim|ictim)/i.test(lower)) {
+      return { habitName: habit.habit, increment: true };
+    }
+    if (habitLower.includes('su') && /su.*(ictim|içtim)|bardak.*su|litre/i.test(lower)) {
+      return { habitName: habit.habit, increment: true };
+    }
+    if (habitLower.includes('kayit') && /yedim|ictim|antrenman|kaydet/i.test(lower)) {
+      return { habitName: habit.habit, increment: true };
+    }
+    if (habitLower.includes('protein') && /protein.*yedim|tavuk|yumurta|yogurt/i.test(lower)) {
+      return { habitName: habit.habit, increment: true };
+    }
+  }
+
+  return null;
+}

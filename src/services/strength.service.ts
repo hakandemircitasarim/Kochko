@@ -489,3 +489,69 @@ export function isOverreaching(
 
   return { warning: false, level: 'ok', message: '' };
 }
+
+// ─── Goal-Based Workout Routing (Phase 7) ───
+
+/**
+ * Get recommended workout type based on user's active goal.
+ */
+export function getGoalBasedWorkoutType(
+  goalType: string
+): { recommendedType: string; focus: string; note: string } {
+  switch (goalType) {
+    case 'lose_weight':
+      return {
+        recommendedType: 'mixed',
+        focus: 'Kardiyo agirlikli + guc koruma',
+        note: 'Yag yakim: 3x kardiyo + 2x guc. Kas kaybini onlemek icin guc antrenmanini birakma.',
+      };
+    case 'gain_muscle':
+      return {
+        recommendedType: 'strength',
+        focus: 'Guc agirlikli + minimal kardiyo',
+        note: 'Kas gelistirme: 4x guc + 1x hafif kardiyo. Progresif yuklenmeye odaklan.',
+      };
+    case 'gain_weight':
+      return {
+        recommendedType: 'strength',
+        focus: 'Bilesik hareketler + az kardiyo',
+        note: 'Kilo alma: agir bilesik hareketler (squat, deadlift, bench). Kardiyo minimumda.',
+      };
+    case 'health':
+      return {
+        recommendedType: 'mixed',
+        focus: 'Dengeli — guc + kardiyo + esneklik',
+        note: 'Genel saglik: 2x guc + 2x kardiyo + 1x yoga/mobilite.',
+      };
+    case 'conditioning':
+      return {
+        recommendedType: 'cardio',
+        focus: 'Kardiyo + HIIT',
+        note: 'Kondisyon: 3x orta kardiyo + 2x HIIT.',
+      };
+    default:
+      return {
+        recommendedType: 'mixed',
+        focus: 'Dengeli antrenman',
+        note: '3x guc + 2x kardiyo.',
+      };
+  }
+}
+
+/**
+ * Get workout-nutrition timing recommendations.
+ */
+export function getWorkoutNutritionTiming(
+  workoutType: string
+): { preWorkout: string; postWorkout: string } {
+  const isStrength = workoutType === 'strength' || workoutType === 'mixed';
+
+  return {
+    preWorkout: isStrength
+      ? '1-2 saat once: 30-50g karb + 15-20g protein (muz + yulaf, ekmek + peynir)'
+      : '1 saat once: hafif karb (muz, hurma). Tok karna yapma.',
+    postWorkout: isStrength
+      ? '30dk-1 saat icinde: 30-40g protein + 40-60g karb (tavuk + pirinc, shake + muz)'
+      : '20-30g protein + bol su.',
+  };
+}

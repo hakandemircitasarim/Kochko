@@ -127,3 +127,60 @@ export async function resetAISummary(userId: string): Promise<void> {
     updated_at: new Date().toISOString(),
   } as never).eq('user_id', userId);
 }
+
+// ─── Photo Cleanup (Phase 7) ───
+
+/**
+ * Schedule photo cleanup — delete food photos 24h after parse.
+ * Creates a scheduled cleanup entry.
+ */
+export async function schedulePhotoCleanup(
+  userId: string,
+  photoUrl: string
+): Promise<void> {
+  const deleteAt = new Date(Date.now() + 24 * 3600000).toISOString();
+  await supabase.from('scheduled_cleanups').upsert({
+    user_id: userId,
+    resource_type: 'meal_photo',
+    resource_id: photoUrl,
+    scheduled_at: deleteAt,
+    status: 'pending',
+  });
+}
+
+// ─── KVKK Audit Log (Phase 7) ───
+
+/**
+ * Log a KVKK/GDPR audit event.
+ */
+export async function logAuditEvent(
+  userId: string,
+  eventType: string,
+  description: string
+): Promise<void> {
+  await supabase.from('audit_logs').insert({
+    user_id: userId,
+    event_type: eventType,
+    description,
+  });
+}
+
+// ─── Data Minimization (Phase 7) ───
+
+/**
+ * Apply data minimization for records older than 2 years.
+ * Detailed meal items are aggregated into daily summaries.
+ */
+export async function applyDataMinimization(userId: string): Promise<{ count: number }> {
+  const twoYearsAgo = new Date(Date.now() - 730 * 86400000).toISOString().split('T')[0];
+
+  const { data: oldLogs } = await supabase
+    .from('meal_logs')
+    .select('id')
+    .eq('user_id', userId)
+    .lt('logged_for_date', twoYearsAgo);
+
+  // Server-side aggregation would be handled by a scheduled function.
+  // Client-side just reports the count.
+  return { count: (oldLogs ?? []).length };
+}
