@@ -20,7 +20,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
-  sendMessage, sendMessageWithPhoto, sendMessageWithRetry, loadChatHistory,
+  sendMessage, sendMessageWithPhoto, sendMessageWithRetry, sendMessageForDate, loadChatHistory,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
@@ -91,7 +91,12 @@ export default function ChatScreen() {
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [targetDate, setTargetDate] = useState<string | null>(null);
+  const [showDateInput, setShowDateInput] = useState(false);
+  const [dateInputText, setDateInputText] = useState('');
   const listRef = useRef<FlatList>(null);
+
+  const todayStr = new Date().toISOString().split('T')[0];
 
   const isOnboarding = profile && !profile.onboarding_completed;
 
@@ -190,10 +195,12 @@ export default function ChatScreen() {
     setSending(true);
     scrollToBottom();
 
-    // Call AI
+    // Call AI (use targetDate for retroactive logging if set)
     const { data, error } = img
       ? await sendMessageWithPhoto(text || 'Bu yemegi analiz et.', img)
-      : await sendMessage(text);
+      : targetDate && targetDate !== todayStr
+        ? await sendMessageForDate(text, targetDate)
+        : await sendMessage(text);
 
     if (data) {
       // Determine if this message type should show feedback buttons
@@ -452,6 +459,51 @@ export default function ChatScreen() {
         </View>
       )}
 
+      {/* Date picker affordance (GAP 5: retroactive logging) */}
+      {showDateInput && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, backgroundColor: COLORS.surface, borderTopWidth: 1, borderTopColor: COLORS.border, gap: SPACING.xs }}>
+          <TextInput
+            style={{ flex: 1, backgroundColor: COLORS.inputBg, borderRadius: 10, paddingHorizontal: SPACING.sm, paddingVertical: 6, color: COLORS.text, fontSize: FONT.sm, borderWidth: 1, borderColor: COLORS.border }}
+            placeholder="YYYY-AA-GG (orn: 2026-03-28)"
+            placeholderTextColor={COLORS.textMuted}
+            value={dateInputText}
+            onChangeText={setDateInputText}
+            maxLength={10}
+            autoFocus
+          />
+          <TouchableOpacity
+            onPress={() => {
+              const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+              if (dateRegex.test(dateInputText) && dateInputText < todayStr) {
+                setTargetDate(dateInputText);
+              }
+              setShowDateInput(false);
+            }}
+            style={{ backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: 6, paddingHorizontal: SPACING.sm }}
+          >
+            <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Sec</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => { setShowDateInput(false); setDateInputText(''); }}
+            style={{ backgroundColor: COLORS.inputBg, borderRadius: 8, paddingVertical: 6, paddingHorizontal: SPACING.sm, borderWidth: 1, borderColor: COLORS.border }}
+          >
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Iptal</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Retroactive date badge */}
+      {targetDate && targetDate !== todayStr && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, backgroundColor: COLORS.primary + '22', borderTopWidth: 1, borderTopColor: COLORS.primary + '44' }}>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600', flex: 1 }}>
+            Kayit tarihi: {targetDate}
+          </Text>
+          <TouchableOpacity onPress={() => { setTargetDate(null); setDateInputText(''); }}>
+            <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', paddingHorizontal: SPACING.sm }}>Temizle</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Input bar */}
       <View style={{
         flexDirection: 'row', alignItems: 'flex-end',
@@ -485,6 +537,12 @@ export default function ChatScreen() {
           <Text style={{ color: isRecordingVoice ? '#fff' : COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>
             {isRecordingVoice ? 'II' : 'MIC'}
           </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => { setShowDateInput(prev => !prev); setDateInputText(targetDate ?? ''); }}
+          style={[styles.iconBtn, targetDate && targetDate !== todayStr && { backgroundColor: COLORS.primary + '33', borderColor: COLORS.primary }]}
+        >
+          <Text style={{ color: COLORS.primary, fontSize: 10, fontWeight: '700' }}>TAR</Text>
         </TouchableOpacity>
         <TextInput
           style={styles.textInput}
