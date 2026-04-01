@@ -669,6 +669,26 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDir
           </TouchableOpacity>
         </View>
       )}
+
+      {/* D13: Quick select buttons */}
+      {!isUser && message.quickSelectOptions && message.quickSelectOptions.length > 0 && (
+        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
+          <QuickSelectButtons
+            options={message.quickSelectOptions}
+            onSelect={(option) => onDirectSend(option)}
+          />
+        </View>
+      )}
+
+      {/* D14: Confirm/Reject buttons */}
+      {!isUser && message.hasConfirm && (
+        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
+          <ConfirmRejectButtons
+            onConfirm={() => onDirectSend('Onayliyorum')}
+            onReject={() => onDirectSend('Reddediyorum')}
+          />
+        </View>
+      )}
     </View>
   );
 }
