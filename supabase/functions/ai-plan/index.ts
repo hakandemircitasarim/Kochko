@@ -219,7 +219,46 @@ serve(async (req: Request) => {
       }
     }
 
-    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${strengthContext}${deloadContext}${personaContext}${rejectionLine}\n\nBugunku plani olustur.`;
+    // Cycle phase adjustments (Phase 3: Kadın kullanıcılara özel)
+    let cycleContext = '';
+    if (profile?.menstrual_tracking && profile?.menstrual_last_period_start && profile?.menstrual_cycle_length) {
+      const cycleLength = profile.menstrual_cycle_length as number;
+      const lastStart = profile.menstrual_last_period_start as string;
+      const daysSince = Math.floor((Date.now() - new Date(lastStart).getTime()) / 86400000);
+      const dayOfCycle = (daysSince % cycleLength) + 1;
+      const ovDay = Math.round(cycleLength / 2);
+      let phase: string;
+      if (dayOfCycle <= 5) phase = 'menstrual';
+      else if (dayOfCycle <= ovDay - 2) phase = 'follicular';
+      else if (dayOfCycle <= ovDay + 1) phase = 'ovulation';
+      else phase = 'luteal';
+
+      const phaseAdj: Record<string, { cal: number; water: number; maxIntensity: string; note: string }> = {
+        menstrual: { cal: 0, water: 0, maxIntensity: 'low', note: 'Enerji dusuk — hafif aktivite' },
+        follicular: { cal: 0, water: 0, maxIntensity: 'high', note: 'Yogun antrenman icin ideal' },
+        ovulation: { cal: 0, water: 0, maxIntensity: 'high', note: 'Guc zirvede — PR gunleri' },
+        luteal: { cal: 150, water: 0.2, maxIntensity: 'moderate', note: 'Istah artisi normal, su tutulumu olabilir' },
+      };
+      const adj = phaseAdj[phase];
+      cycleContext = `\nDONGU FAZI: ${phase} (gun ${dayOfCycle}/${cycleLength}) | Kalori: +${adj.cal}kcal | Su: +${adj.water}L | Max antrenman: ${adj.maxIntensity} | ${adj.note}`;
+    }
+
+    // Plateau context (Phase 3)
+    let plateauContext = '';
+    const threeWeeksAgo = new Date(Date.now() - 21 * 86400000).toISOString().split('T')[0];
+    const { data: recentWeights } = await supabaseAdmin
+      .from('daily_metrics').select('weight_kg')
+      .eq('user_id', userId).gte('date', threeWeeksAgo).not('weight_kg', 'is', null);
+    if (recentWeights && recentWeights.length >= 5) {
+      const wts = recentWeights.map((d: { weight_kg: number }) => d.weight_kg);
+      const avgW = wts.reduce((s: number, w: number) => s + w, 0) / wts.length;
+      const maxDiff = Math.max(...wts.map((w: number) => Math.abs(w - avgW)));
+      if (maxDiff <= 0.3) {
+        plateauContext = `\nPLATEAU TESPIT: ${Math.floor(wts.length / 3)}+ hafta ~${avgW.toFixed(1)}kg. Strateji onerisi gerekebilir.`;
+      }
+    }
+
+    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${strengthContext}${deloadContext}${personaContext}${cycleContext}${plateauContext}${rejectionLine}\n\nBugunku plani olustur.`;
 
     const plan = await chatCompletion<Record<string, unknown>>(
       [

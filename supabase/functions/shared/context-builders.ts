@@ -146,9 +146,25 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
       parts.push(`\n*** DONEMSEL DURUM: ${p.periodic_state} (${p.periodic_state_start} - ${p.periodic_state_end ?? '?'}) ***`);
     }
 
-    // Menstrual
+    // Menstrual + Cycle Phase
     if (p.menstrual_tracking) {
-      parts.push(`Regl takibi aktif | Siklus: ${p.menstrual_cycle_length ?? '?'} gun`);
+      let cycleInfo = `Regl takibi aktif | Siklus: ${p.menstrual_cycle_length ?? '?'} gun`;
+      if (p.menstrual_last_period_start && p.menstrual_cycle_length) {
+        const cycleLen = p.menstrual_cycle_length as number;
+        const lastStart = p.menstrual_last_period_start as string;
+        const daysSince = Math.floor((Date.now() - new Date(lastStart).getTime()) / 86400000);
+        const dayOfCycle = (daysSince % cycleLen) + 1;
+        const ovDay = Math.round(cycleLen / 2);
+        let phase = 'follicular';
+        if (dayOfCycle <= 5) phase = 'menstrual';
+        else if (dayOfCycle <= ovDay - 2) phase = 'follicular';
+        else if (dayOfCycle <= ovDay + 1) phase = 'ovulation';
+        else phase = 'luteal';
+        cycleInfo += ` | Faz: ${phase} (gun ${dayOfCycle})`;
+        if (phase === 'luteal') cycleInfo += ' | Kalori: +150kcal, Su: +0.2L, Tarti artisi normal (su tutulumu)';
+        if (phase === 'menstrual') cycleInfo += ' | Max antrenman: hafif';
+      }
+      parts.push(cycleInfo);
     }
   }
 

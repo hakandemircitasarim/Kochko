@@ -142,6 +142,34 @@ serve(async (req: Request) => {
         }
       }
 
+      // Return flow detection (Phase 3: Geri dönüş akışı)
+      let returnFlowInfo = '';
+      const daysSinceChat = Math.round(hoursSinceChat / 24);
+      if (daysSinceChat >= 3 && daysSinceChat < 7) {
+        returnFlowInfo = 'TETIK: 3+ GUN SESSIZ - hafif, yargilamayan bildirim gonder';
+      } else if (daysSinceChat >= 7 && daysSinceChat < 30) {
+        returnFlowInfo = 'TETIK: 7+ GUN SESSIZ - kisisel bildirim, gecmis basarilarina referans ver';
+      } else if (daysSinceChat >= 30) {
+        returnFlowInfo = 'TETIK: 30+ GUN SESSIZ - "Seni ozledik" mesaji, geri donus plani hazirla';
+      }
+
+      // Cycle phase transition notification (Phase 3: Kadın kullanıcılara özel)
+      let cycleTransitionInfo = '';
+      const prof = profile as Record<string, unknown>;
+      if (prof.menstrual_tracking && prof.menstrual_last_period_start && prof.menstrual_cycle_length) {
+        const cycleLen = prof.menstrual_cycle_length as number;
+        const lastStart = prof.menstrual_last_period_start as string;
+        const daysSincePeriod = Math.floor((Date.now() - new Date(lastStart).getTime()) / 86400000);
+        const dayOfCycle = (daysSincePeriod % cycleLen) + 1;
+        const ovDay = Math.round(cycleLen / 2);
+
+        // Notify on phase transitions
+        if (dayOfCycle === 6) cycleTransitionInfo = 'TETIK: DONGU GECISI - Folikuler faza gecis. Enerji artacak, yogun antrenman uygun.';
+        else if (dayOfCycle === ovDay - 1) cycleTransitionInfo = 'TETIK: DONGU GECISI - Ovulasyon yaklasıyor. Guc zirvesi, PR denemesi icin uygun.';
+        else if (dayOfCycle === ovDay + 2) cycleTransitionInfo = 'TETIK: DONGU GECISI - Luteal faza gecis. Istah artabilir, su tutulumu normal. Tarti artisi YAG DEGIL.';
+        else if (dayOfCycle === cycleLen - 1) cycleTransitionInfo = 'TETIK: DONGU GECISI - Adet yaklasıyor. Enerji dusebilir, hafif aktivite oner.';
+      }
+
       const context = `Saat: ${hour}:00 | Koc tonu: ${profile.coach_tone ?? 'balanced'}
 Son ogun: ${hoursSinceMeal < 999 ? `${Math.round(hoursSinceMeal)}sa once` : 'hic yok'}
 Son konusma: ${hoursSinceChat < 999 ? `${Math.round(hoursSinceChat)}sa once` : 'hic yok'}
@@ -153,6 +181,8 @@ ${hoursSinceChat > 48 ? 'TETIK: 2+ gundur sessiz' : ''}
 ${plateauInfo}
 ${maintenanceInfo}
 ${goalTempoInfo}
+${returnFlowInfo}
+${cycleTransitionInfo}
 ${(() => {
   // Weekend Risk (Spec 5.35) - Friday evening check
   const triggers: string[] = [];
