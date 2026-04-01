@@ -394,7 +394,20 @@ async function executeActions(
             await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
             // T1.19: Check if TDEE recalculation needed
             recalculateTDEEIfNeeded(userId, w).catch(() => {});
-            feedback.push('Tarti kaydedildi');
+
+            // Creatine water retention check
+            const { data: recentCreatine } = await supabaseAdmin
+              .from('supplement_logs')
+              .select('id')
+              .eq('user_id', userId)
+              .or('supplement_name.ilike.%kreatin%,supplement_name.ilike.%creatine%')
+              .gte('logged_for_date', new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0])
+              .limit(1);
+            if (recentCreatine && recentCreatine.length > 0) {
+              feedback.push('Tarti kaydedildi (kreatin kullaniyorsun — olasi su tutulumunu goz onunde bulundur)');
+            } else {
+              feedback.push('Tarti kaydedildi');
+            }
           }
           break;
         }
