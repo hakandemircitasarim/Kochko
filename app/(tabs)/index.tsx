@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
@@ -21,8 +21,11 @@ import { GoalProgressWidget } from '@/components/tracking/GoalProgress';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
+import { getWeeklyStatus } from '@/lib/weekly-budget';
 import { Alert } from 'react-native';
 import { COLORS, SPACING, FONT, WATER_INCREMENT } from '@/lib/constants';
+import NetInfo from '@react-native-community/netinfo';
+import { setupAutoSync } from '@/services/offline-queue.service';
 
 const MEAL_LABELS: Record<string, string> = {
   breakfast: 'Kahvalti', lunch: 'Ogle', dinner: 'Aksam', snack: 'Ara',
@@ -39,6 +42,8 @@ export default function TodayScreen() {
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
   const [activeChallenges, setActiveChallenges] = useState<{ id: string; challenge_name: string; target_days: number; completed_days: number }[]>([]);
+  const [isOffline, setIsOffline] = useState(false);
+  const [weeklyRebalanceMessage, setWeeklyRebalanceMessage] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     if (user?.id) {
@@ -53,6 +58,18 @@ export default function TodayScreen() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Offline detection banner + auto-sync on reconnect
+  useEffect(() => {
+    const unsubscribeNetInfo = NetInfo.addEventListener(state => {
+      setIsOffline(!state.isConnected);
+    });
+    const unsubscribeAutoSync = setupAutoSync();
+    return () => {
+      unsubscribeNetInfo();
+      unsubscribeAutoSync();
+    };
+  }, []);
+
   const dayBoundaryHour = (profile as Record<string, unknown>)?.day_boundary_hour as number ?? 4;
   const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
   const waterTarget = profile?.water_target_liters ?? 2.5;
@@ -62,12 +79,31 @@ export default function TodayScreen() {
   const weeklyCalorieTarget = (profile as Record<string, unknown>)?.weekly_calorie_budget as number | null;
   const stepTarget = (profile as Record<string, unknown>)?.step_target as number ?? 10000;
 
+  // GAP 3: Compute weekly rebalance message from today's meals
+  useEffect(() => {
+    if (!weeklyCalorieTarget || weeklyCalorieTarget <= 0) return;
+    const todayDow = new Date().getDay(); // 0=Sun, 1=Mon,...
+    const todayIndex = todayDow === 0 ? 6 : todayDow - 1; // convert to Mon=0..Sun=6
+    const dailyTarget = Math.round(weeklyCalorieTarget / 7);
+    const todayData = { date: new Date().toISOString().split('T')[0], consumed: totalCalories, target: dailyTarget, isTrainingDay: false };
+    const status = getWeeklyStatus(weeklyCalorieTarget, [todayData], 0);
+    setWeeklyRebalanceMessage(status.rebalanceMessage);
+  }, [totalCalories, weeklyCalorieTarget]);
+
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: COLORS.background }}
       contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={COLORS.primary} />}
     >
+      {isOffline && (
+        <View style={{ backgroundColor: '#f59e0b', borderRadius: 10, padding: SPACING.sm, marginBottom: SPACING.sm, flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600', flex: 1 }}>
+            Cevrimdisi moddasin. Kayitlarin internet geldiginde senkronize edilecek.
+          </Text>
+        </View>
+      )}
+
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Bugun</Text>
         <StreakBadge days={streak} />
@@ -293,7 +329,7 @@ export default function TodayScreen() {
             consumed={weeklyCalorieTarget - (weeklyBudgetRemaining ?? weeklyCalorieTarget)}
             total={weeklyCalorieTarget}
             daysLeft={7 - new Date().getDay() || 7}
-            rebalanceMessage={null}
+            rebalanceMessage={weeklyRebalanceMessage ?? null}
           />
         </View>
       )}

@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, Platform } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
-import { getActiveSessions, terminateSession } from '@/src/services/realtime-sync.service';
+import { getActiveSessions, terminateSession } from '@/services/realtime-sync.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';

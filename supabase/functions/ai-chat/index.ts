@@ -43,7 +43,23 @@ serve(async (req: Request) => {
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
 
-    const { message, image_base64, target_date } = body;
+    const { message, image_base64, target_date, audio_base64 } = body;
+
+    // GAP 2: STT/Whisper transcription handler
+    if (audio_base64 && body.transcribe_only) {
+      const audioBuffer = Uint8Array.from(atob(audio_base64), (c: string) => c.charCodeAt(0));
+      const formData = new FormData();
+      formData.append('file', new File([audioBuffer], 'audio.m4a', { type: 'audio/m4a' }));
+      formData.append('model', 'whisper-1');
+      const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}` },
+        body: formData,
+      });
+      const whisperData = await whisperRes.json() as { text?: string; error?: unknown };
+      if (!whisperRes.ok) return respond({ error: whisperData.error ?? 'Transcription failed' }, 500);
+      return respond({ transcription: whisperData.text ?? '' });
+    }
 
     if (!message?.trim() && !image_base64) {
       return respond({ error: 'message or image required' }, 400);
@@ -113,6 +129,31 @@ serve(async (req: Request) => {
       .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg')
       .eq('id', userId).single();
     const isOnboarding = !profile?.onboarding_completed;
+
+    // GAP 1: Return-flow detection — check how long the user has been silent
+    let returnFlowContext = '';
+    try {
+      const { data: lastMsgs } = await supabaseAdmin
+        .from('chat_messages')
+        .select('created_at')
+        .eq('user_id', userId)
+        .eq('role', 'user')
+        .order('created_at', { ascending: false })
+        .limit(2); // index 0 = current (just inserted), index 1 = previous
+      const prevMsg = lastMsgs && lastMsgs.length >= 2 ? lastMsgs[1] : (lastMsgs && lastMsgs.length === 1 ? null : null);
+      if (prevMsg) {
+        const daysSinceLastChat = (Date.now() - new Date(prevMsg.created_at).getTime()) / 86400000;
+        if (daysSinceLastChat >= 180) {
+          returnFlowContext = 'KULLANICI 6+ AYDIR SESSIZ. Seni ozledik tonu. Mini re-onboarding: mevcut kilo, hedef, yasam tarzi guncelle.';
+        } else if (daysSinceLastChat >= 30) {
+          returnFlowContext = 'KULLANICI 1-6 AYDIR SESSIZ. Seni ozledik tonu. Plan %30 hafiflet.';
+        } else if (daysSinceLastChat >= 7) {
+          returnFlowContext = 'KULLANICI 1-4 HAFTADIR SESSIZ. Gecmis basarilarini referans ver. Ilk 3 gun plan hafiflet (%20).';
+        } else if (daysSinceLastChat >= 3) {
+          returnFlowContext = "KULLANICI 3-7 GUNDUR SESSIZ. Yargilamadan karsilamla. 'Hos geldin, nereden devam edelim?'";
+        }
+      }
+    } catch { /* non-critical */ }
 
     // Detect task mode (Spec 5.2)
     const taskMode = detectTaskMode(message ?? '', isOnboarding);
@@ -199,6 +240,7 @@ serve(async (req: Request) => {
       toneContext,
       personaPrompt,
       correctionCtx,
+      returnFlowContext,
       ctx.layer1 ? `--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}` : '',
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',

@@ -147,6 +147,19 @@ export async function getQueueCount(): Promise<number> {
 }
 
 /**
+ * Set up automatic sync when the device reconnects to the internet.
+ * Returns an unsubscribe function to stop listening.
+ */
+export function setupAutoSync(): () => void {
+  const unsubscribe = NetInfo.addEventListener(state => {
+    if (state.isConnected) {
+      syncQueue().catch(() => {});
+    }
+  });
+  return unsubscribe;
+}
+
+/**
  * Get detailed queue status for sync UI.
  */
 export async function getQueueStatus(): Promise<{
