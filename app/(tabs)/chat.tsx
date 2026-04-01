@@ -316,6 +316,13 @@ export default function ChatScreen() {
   const weeklyBudgetRemaining = useDashboardStore(s => s.weeklyBudgetRemaining);
   const dashboardMacros = { protein: totalProtein, carbs: totalCarbs, fat: totalFat };
 
+  // Weekly budget for WeeklyBudgetBar (D15)
+  const weeklyBudget = (() => {
+    if (weeklyBudgetRemaining === null) return null;
+    const weeklyTotal = (profile?.tdee_calculated ?? 2000) * 7;
+    return { consumed: weeklyTotal - weeklyBudgetRemaining, total: weeklyTotal };
+  })();
+
   // Compute macro gram targets from profile
   const macroTargets = (() => {
     const tdee = profile?.tdee_calculated ?? 2000;
@@ -397,7 +404,7 @@ export default function ChatScreen() {
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onDirectSend={handleDirectSend} weeklyBudgetRemaining={weeklyBudgetRemaining} />}
+          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onDirectSend={handleDirectSend} weeklyBudget={weeklyBudget} />}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
@@ -559,13 +566,13 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   );
 }
 
-function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDirectSend, weeklyBudgetRemaining }: {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDirectSend, weeklyBudget }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
   macroTargets: { protein: number; carbs: number; fat: number };
   onDirectSend: (text: string) => void;
-  weeklyBudgetRemaining: number | null;
+  weeklyBudget: { consumed: number; total: number } | null;
 }) {
   const isUser = message.role === 'user';
 
@@ -599,13 +606,12 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDir
               targets={macroTargets}
             />
             {/* D15: Weekly budget bar after meal_log actions */}
-            {weeklyBudgetRemaining !== null && (
+            {weeklyBudget !== null && (
               <WeeklyBudgetBar
-                consumed={weeklyBudgetRemaining.consumed}
-                total={weeklyBudgetRemaining.total}
+                consumed={weeklyBudget.consumed}
+                total={weeklyBudget.total}
               />
             )}
-            {/* placeholder - replaced below */}
           </>
         )}
 
