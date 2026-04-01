@@ -93,9 +93,11 @@ serve(async (req: Request) => {
       return await generateWeeklyReport(userId);
     } else if (report_type === 'monthly') {
       return await generateMonthlyReport(userId);
+    } else if (report_type === 'all_time') {
+      return await generateAllTimeReport(userId);
     }
 
-    return respond({ error: 'report_type must be "daily", "weekly", or "monthly"' }, 400);
+    return respond({ error: 'report_type must be "daily", "weekly", "monthly", or "all_time"' }, 400);
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);
   }
@@ -320,6 +322,84 @@ Gunluk Uyum: ${dailyReports.map((r: { date: string; compliance_score: number }) 
   }, { onConflict: 'user_id,month_start' });
 
   return respond(report);
+}
+
+// ─── All-Time Report (Phase 4) ───
+
+async function generateAllTimeReport(userId: string) {
+  const [dailyRes, metricsRes, goalsRes, streakRes, strengthRes] = await Promise.all([
+    supabaseAdmin.from('daily_reports')
+      .select('date, compliance_score')
+      .eq('user_id', userId)
+      .order('date'),
+    supabaseAdmin.from('daily_metrics')
+      .select('date, weight_kg')
+      .eq('user_id', userId)
+      .not('weight_kg', 'is', null)
+      .order('date'),
+    supabaseAdmin.from('goals')
+      .select('goal_type, target_weight_kg, created_at, is_active')
+      .eq('user_id', userId)
+      .order('created_at'),
+    supabaseAdmin.from('daily_reports')
+      .select('compliance_score')
+      .eq('user_id', userId)
+      .gte('compliance_score', 70)
+      .order('date'),
+    supabaseAdmin.from('strength_sets')
+      .select('exercise_name, weight_kg, reps')
+      .eq('user_id', userId)
+      .order('logged_for_date', { ascending: false })
+      .limit(50),
+  ]);
+
+  const reports = (dailyRes.data ?? []) as { date: string; compliance_score: number }[];
+  const weights = (metricsRes.data ?? []) as { date: string; weight_kg: number }[];
+  const goals = (goalsRes.data ?? []) as { goal_type: string; target_weight_kg: number | null; created_at: string; is_active: boolean }[];
+
+  // Lifetime stats
+  const totalDays = reports.length;
+  const avgCompliance = totalDays > 0
+    ? Math.round(reports.reduce((s, r) => s + r.compliance_score, 0) / totalDays)
+    : 0;
+
+  // Weight journey
+  const firstWeight = weights.length > 0 ? weights[0].weight_kg : null;
+  const lastWeight = weights.length > 0 ? weights[weights.length - 1].weight_kg : null;
+  const totalWeightChange = firstWeight && lastWeight ? Math.round((lastWeight - firstWeight) * 10) / 10 : null;
+
+  // Best streak
+  let maxStreak = 0;
+  let currentStreak = 0;
+  for (const r of reports) {
+    if (r.compliance_score >= 70) {
+      currentStreak++;
+      maxStreak = Math.max(maxStreak, currentStreak);
+    } else {
+      currentStreak = 0;
+    }
+  }
+
+  // First activity date
+  const firstDate = reports.length > 0 ? reports[0].date : null;
+  const daysSinceStart = firstDate ? Math.floor((Date.now() - new Date(firstDate).getTime()) / 86400000) : 0;
+
+  const allTimeReport = {
+    total_days_tracked: totalDays,
+    days_since_start: daysSinceStart,
+    avg_compliance: avgCompliance,
+    total_weight_change_kg: totalWeightChange,
+    first_weight_kg: firstWeight,
+    current_weight_kg: lastWeight,
+    longest_streak: maxStreak,
+    goals_completed: goals.filter(g => !g.is_active).length,
+    goals_active: goals.filter(g => g.is_active).length,
+    weight_journey: weights.length > 10
+      ? weights.filter((_, i) => i % Math.ceil(weights.length / 10) === 0).map(w => ({ date: w.date, kg: w.weight_kg }))
+      : weights.map(w => ({ date: w.date, kg: w.weight_kg })),
+  };
+
+  return respond(allTimeReport);
 }
 
 function respond(data: unknown, status = 200) {
