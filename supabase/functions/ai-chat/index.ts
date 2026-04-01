@@ -133,14 +133,15 @@ serve(async (req: Request) => {
     // GAP 1: Return-flow detection — check how long the user has been silent
     let returnFlowContext = '';
     try {
+      // At this point storeMessages hasn't been called yet, so index 0 is the previous message
       const { data: lastMsgs } = await supabaseAdmin
         .from('chat_messages')
         .select('created_at')
         .eq('user_id', userId)
         .eq('role', 'user')
         .order('created_at', { ascending: false })
-        .limit(2); // index 0 = current (just inserted), index 1 = previous
-      const prevMsg = lastMsgs && lastMsgs.length >= 2 ? lastMsgs[1] : (lastMsgs && lastMsgs.length === 1 ? null : null);
+        .limit(1);
+      const prevMsg = lastMsgs && lastMsgs.length > 0 ? lastMsgs[0] : null;
       if (prevMsg) {
         const daysSinceLastChat = (Date.now() - new Date(prevMsg.created_at).getTime()) / 86400000;
         if (daysSinceLastChat >= 180) {
