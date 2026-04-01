@@ -515,6 +515,36 @@ async function executeActions(
           }
           break;
         }
+        case 'mvd_activate': {
+          // Spec 6.4: Suspend today's plan for Minimum Viable Day
+          await supabaseAdmin.from('daily_plans')
+            .update({ status: 'mvd_suspended' })
+            .eq('user_id', userId).eq('date', today);
+          // Schedule next-day follow-up
+          const mvdFollowUp = new Date(Date.now() + 86400000);
+          mvdFollowUp.setHours(9, 0, 0, 0);
+          await supabaseAdmin.from('user_commitments').insert({
+            user_id: userId,
+            commitment: 'MVD gunu — yarin normal plana don',
+            follow_up_at: mvdFollowUp.toISOString(),
+            status: 'pending',
+          });
+          feedback.push('MVD modu aktif — bugun sadece basit hedefler');
+          break;
+        }
+        case 'recovery_plan': {
+          // Spec 6.3: Schedule recovery follow-up
+          const recoveryFollowUp = new Date(Date.now() + 86400000);
+          recoveryFollowUp.setHours(9, 0, 0, 0);
+          await supabaseAdmin.from('user_commitments').insert({
+            user_id: userId,
+            commitment: 'Kurtarma takibi — dun fazla yedin, bugun nasil gidiyor?',
+            follow_up_at: recoveryFollowUp.toISOString(),
+            status: 'pending',
+          });
+          feedback.push('Kurtarma plani olusturuldu');
+          break;
+        }
         case 'venue_log': {
           const venueName = action.venue_name as string;
           // Fetch existing venue to merge learned items and increment visit count

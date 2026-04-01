@@ -84,3 +84,29 @@ export async function learnFromMealLog(
     .update({ visit_count: newVisitCount })
     .eq('venue_name', venueName);
 }
+
+/**
+ * Get recommended venues — most visited with learned items.
+ */
+export async function getRecommendedVenues(limit = 5): Promise<Venue[]> {
+  const { data } = await supabase
+    .from('user_venues')
+    .select('*')
+    .order('visit_count', { ascending: false })
+    .limit(limit);
+
+  return ((data ?? []) as Venue[]).filter(v => v.learned_items.length > 0);
+}
+
+/**
+ * Get menu history for a specific venue.
+ */
+export async function getVenueMenuHistory(venueName: string): Promise<Venue['learned_items']> {
+  const { data } = await supabase
+    .from('user_venues')
+    .select('learned_items')
+    .eq('venue_name', venueName)
+    .single();
+
+  return (data?.learned_items as Venue['learned_items']) ?? [];
+}
