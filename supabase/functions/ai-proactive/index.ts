@@ -121,9 +121,79 @@ serve(async (req: Request) => {
               await supabaseAdmin.from('goals').update({ is_active: false }).eq('user_id', profile.id).eq('is_active', true);
               await supabaseAdmin.from('goals').update({ is_active: true }).eq('id', nextPhase.id);
               maintenanceInfo += ` | FAZ GECISI: Sonraki faz aktif edildi: ${nextPhase.phase_label ?? nextPhase.goal_type}`;
+
+              // Gradual 7-day calorie transition: interpolate from old phase to new phase (day 1 of 7)
+              try {
+                const { data: profileCalories } = await supabaseAdmin
+                  .from('profiles')
+                  .select('calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, tdee_calculated')
+                  .eq('id', profile.id)
+                  .single();
+                if (profileCalories && profileCalories.tdee_calculated) {
+                  const tdee = profileCalories.tdee_calculated as number;
+                  const nextGoal = nextPhase as { goal_type: string; weekly_rate?: number };
+                  const nextRate = (nextGoal.weekly_rate as number | null) ?? 0.5;
+                  const dailyDelta = Math.round((nextRate * 7700) / 7);
+                  const nextCalOffset = nextGoal.goal_type === 'lose_weight' ? -dailyDelta
+                    : nextGoal.goal_type === 'gain_weight' || nextGoal.goal_type === 'gain_muscle' ? dailyDelta
+                    : 0;
+                  // Current ranges
+                  const oldRestMin = profileCalories.calorie_range_rest_min as number;
+                  const oldRestMax = profileCalories.calorie_range_rest_max as number;
+                  const oldTrainMin = profileCalories.calorie_range_training_min as number;
+                  const oldTrainMax = profileCalories.calorie_range_training_max as number;
+                  // Target ranges for new phase (based on TDEE +/- delta)
+                  const newRestMin = tdee + nextCalOffset - 100;
+                  const newRestMax = tdee + nextCalOffset + 100;
+                  const newTrainMin = tdee + nextCalOffset + 100;
+                  const newTrainMax = tdee + nextCalOffset + 300;
+                  // Day 1 of 7 interpolation (progress = 1/7)
+                  const progress = 1 / 7;
+                  const transRestMin = Math.round(oldRestMin + (newRestMin - oldRestMin) * progress);
+                  const transRestMax = Math.round(oldRestMax + (newRestMax - oldRestMax) * progress);
+                  const transTrainMin = Math.round(oldTrainMin + (newTrainMin - oldTrainMin) * progress);
+                  const transTrainMax = Math.round(oldTrainMax + (newTrainMax - oldTrainMax) * progress);
+                  await supabaseAdmin.from('profiles').update({
+                    calorie_range_rest_min: transRestMin,
+                    calorie_range_rest_max: transRestMax,
+                    calorie_range_training_min: transTrainMin,
+                    calorie_range_training_max: transTrainMax,
+                    updated_at: new Date().toISOString(),
+                  }).eq('id', profile.id);
+                }
+              } catch { /* transition calc non-critical */ }
             }
           } else if (goalReached && diff > 1.5) {
             maintenanceInfo = `TETIK: BAKIM BANDI ASILDI - hedef ${activeGoal.target_weight_kg}kg, simdi ${latestWeight.weight_kg}kg`;
+
+            // Mini-cut suggestion: check if band exceeded for 2+ consecutive weigh-ins
+            try {
+              const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0];
+              const { data: recentWeighIns } = await supabaseAdmin
+                .from('daily_metrics')
+                .select('weight_kg, date')
+                .eq('user_id', profile.id)
+                .not('weight_kg', 'is', null)
+                .gte('date', twoDaysAgo)
+                .order('date', { ascending: false })
+                .limit(3);
+              if (recentWeighIns && recentWeighIns.length >= 2) {
+                const targetKg = activeGoal.target_weight_kg as number;
+                const allExceeded = recentWeighIns.every(
+                  (w: { weight_kg: number }) => (w.weight_kg as number) > targetKg + 1.5
+                );
+                if (allExceeded) {
+                  await supabaseAdmin.from('coaching_messages').insert({
+                    user_id: profile.id,
+                    content: 'MINI CUT ONERISI: Hedef kilonun 1.5kg ustundesin. 2-4 haftalik mini cut donemi onerilir.',
+                    trigger_type: 'mini_cut_suggestion',
+                    priority: 'high',
+                    read: false,
+                    push_sent: false,
+                  });
+                }
+              }
+            } catch { /* mini-cut check non-critical */ }
           }
 
           // Tempo tracking (weekly check)
@@ -140,6 +210,53 @@ serve(async (req: Request) => {
             }
           }
         }
+      }
+
+      // Reinforcement message: congratulate maintenance users at milestone weeks (4, 12, 24)
+      if (hour >= 8 && hour <= 10) {
+        try {
+          const { data: achievement } = await supabaseAdmin
+            .from('achievements')
+            .select('achieved_at')
+            .eq('user_id', profile.id)
+            .eq('achievement_type', 'goal_reached')
+            .order('achieved_at', { ascending: false })
+            .limit(1)
+            .single();
+          if (achievement?.achieved_at) {
+            const weeksSinceGoalReached = Math.max(0, Math.round(
+              (Date.now() - new Date(achievement.achieved_at as string).getTime()) / (7 * 24 * 60 * 60 * 1000)
+            ));
+            if (weeksSinceGoalReached === 4 || weeksSinceGoalReached === 12 || weeksSinceGoalReached === 24) {
+              let reinforcementMsg: string;
+              if (weeksSinceGoalReached >= 24) {
+                reinforcementMsg = '6 aydir hedef kilonda tutunuyorsun! Bu inanilmaz bir basari. Cogul insan bunu basaramaz.';
+              } else if (weeksSinceGoalReached >= 12) {
+                reinforcementMsg = '3 aydir bakim modunda basarilisin. Aliskanliklarinin gucunun kaniti bu.';
+              } else {
+                reinforcementMsg = '1 aydir hedef kilonda kalmaya devam ediyorsun. Harika gidiyorsun!';
+              }
+              // Only send once per milestone (check not already sent this week)
+              const oneWeekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+              const { count: alreadySent } = await supabaseAdmin
+                .from('coaching_messages')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', profile.id)
+                .eq('trigger_type', 'reinforcement_milestone')
+                .gte('created_at', oneWeekAgo);
+              if ((alreadySent ?? 0) === 0) {
+                await supabaseAdmin.from('coaching_messages').insert({
+                  user_id: profile.id,
+                  content: reinforcementMsg,
+                  trigger_type: 'reinforcement_milestone',
+                  priority: 'medium',
+                  read: false,
+                  push_sent: false,
+                });
+              }
+            }
+          }
+        } catch { /* reinforcement check non-critical */ }
       }
 
       // Return flow detection (Phase 3: Geri dönüş akışı)
@@ -168,6 +285,74 @@ serve(async (req: Request) => {
         else if (dayOfCycle === ovDay - 1) cycleTransitionInfo = 'TETIK: DONGU GECISI - Ovulasyon yaklasıyor. Guc zirvesi, PR denemesi icin uygun.';
         else if (dayOfCycle === ovDay + 2) cycleTransitionInfo = 'TETIK: DONGU GECISI - Luteal faza gecis. Istah artabilir, su tutulumu normal. Tarti artisi YAG DEGIL.';
         else if (dayOfCycle === cycleLen - 1) cycleTransitionInfo = 'TETIK: DONGU GECISI - Adet yaklasıyor. Enerji dusebilir, hafif aktivite oner.';
+      }
+
+      // Predictive: Snack pattern detection (14-day window)
+      let snackPatternInfo = '';
+      {
+        const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
+        const { data: snackLogs } = await supabaseAdmin
+          .from('meal_logs')
+          .select('created_at')
+          .eq('user_id', profile.id)
+          .eq('meal_type', 'snack')
+          .eq('is_deleted', false)
+          .gte('logged_for_date', fourteenDaysAgo);
+        if (snackLogs && snackLogs.length > 0) {
+          const hourCounts: Record<number, number> = {};
+          for (const s of snackLogs as { created_at: string }[]) {
+            const h = new Date(s.created_at).getHours();
+            hourCounts[h] = (hourCounts[h] ?? 0) + 1;
+          }
+          for (const [h, cnt] of Object.entries(hourCounts)) {
+            if (cnt >= 5) {
+              snackPatternInfo += `ATISTIRMA RISKI: Saat ${h}'te sik atistirma tespit edildi. `;
+            }
+          }
+          snackPatternInfo = snackPatternInfo.trim();
+        }
+      }
+
+      // Predictive: Alcohol risk (Friday check – past 4 Fri/Sat deviation_reason)
+      let alcoholRiskInfo = '';
+      if (now.getDay() === 5) {
+        const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
+        const { data: alcoholReports } = await supabaseAdmin
+          .from('daily_reports')
+          .select('date, deviation_reason')
+          .eq('user_id', profile.id)
+          .gte('date', fourWeeksAgo);
+        if (alcoholReports) {
+          let alcoholDeviations = 0;
+          for (const r of alcoholReports as { date: string; deviation_reason: string | null }[]) {
+            const d = new Date(r.date).getDay();
+            if ((d === 5 || d === 6) && r.deviation_reason?.includes('alkol')) {
+              alcoholDeviations++;
+            }
+          }
+          if (alcoholDeviations >= 2) {
+            alcoholRiskInfo = `ALKOL-SAPMA RISKI: Son 4 haftanin 2'sinde cuma/cumartesi alkol sapmasi.`;
+          }
+        }
+      }
+
+      // Predictive: Motivation drop (chat message frequency this week vs last)
+      let motivationDropInfo = '';
+      {
+        const oneWeekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+        const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString();
+        const [thisWeekChat, lastWeekChat] = await Promise.all([
+          supabaseAdmin.from('chat_messages').select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id).gte('created_at', oneWeekAgo),
+          supabaseAdmin.from('chat_messages').select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id).gte('created_at', twoWeeksAgo).lt('created_at', oneWeekAgo),
+        ]);
+        const thisCount = thisWeekChat.count ?? 0;
+        const lastCount = lastWeekChat.count ?? 0;
+        if (lastCount > 5 && thisCount < lastCount * 0.6) {
+          const dropPct = Math.round(((lastCount - thisCount) / lastCount) * 100);
+          motivationDropInfo = `MOTIVASYON DUSUSU: Mesaj sikligi %${dropPct} azaldi.`;
+        }
       }
 
       const context = `Saat: ${hour}:00 | Koc tonu: ${profile.coach_tone ?? 'balanced'}
@@ -288,7 +473,10 @@ ${(() => {
   }
 
   return triggers.join('\n');
-})()}`;
+})()}
+${snackPatternInfo}
+${alcoholRiskInfo}
+${motivationDropInfo}`;
 
       interface NudgeResult { send: boolean; message?: string; trigger?: string; priority?: string; }
 

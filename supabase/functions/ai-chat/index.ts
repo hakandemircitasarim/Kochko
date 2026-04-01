@@ -506,7 +506,7 @@ async function executeActions(
             ingredients: recipe.ingredients,
             instructions: recipe.instructions as string ?? '',
             total_calories: recipe.calories as number ?? 0,
-            total_protein_g: recipe.protein_g as number ?? 0,
+            total_protein: recipe.protein_g as number ?? 0,
             prep_time_min: recipe.prep_time_min as number ?? 0,
             servings: recipe.servings as number ?? 1,
           });
@@ -942,6 +942,28 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
         habits.push(hu);
       }
       changes.habit_progress = habits;
+    }
+
+    // A1: Alcohol pattern (Spec 3.1 — previously silently dropped)
+    if (updates.alcohol_pattern) {
+      const current = (existing?.coaching_notes as string) ?? '';
+      const dateStr = new Date().toISOString().split('T')[0];
+      changes.coaching_notes = `${current}\n[${dateStr}] Alkol kalıbı: ${updates.alcohol_pattern}`.trim();
+    }
+
+    // A2: Social eating note (Spec 7.4 — previously silently dropped)
+    if (updates.social_eating_note) {
+      const current = (existing?.coaching_notes as string) ?? '';
+      const dateStr = new Date().toISOString().split('T')[0];
+      changes.coaching_notes = `${current}\n[${dateStr}] Sosyal yeme: ${updates.social_eating_note}`.trim();
+    }
+
+    // A3: Features introduced tracking (Spec 15 — progressive disclosure)
+    if (updates.features_introduced) {
+      const existing_features = (existing as Record<string, unknown>)?.features_introduced as string[] ?? [];
+      const new_features = Array.isArray(updates.features_introduced) ? updates.features_introduced as string[] : [updates.features_introduced as string];
+      const merged = [...new Set([...existing_features, ...new_features])];
+      changes.features_introduced = merged;
     }
 
     // Seasonal/periodic note (Spec 9.3)

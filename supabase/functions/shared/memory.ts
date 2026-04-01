@@ -171,6 +171,12 @@ async function buildLayer2(userId: string): Promise<string> {
   if (s.supplement_notes) parts.push(`Supplement: ${s.supplement_notes}`);
   if (s.seasonal_notes) parts.push(`## DONEMSEL NOTLAR\n${s.seasonal_notes}`);
 
+  // A3: Progressive disclosure — track introduced features
+  const featuresIntroduced = s.features_introduced as string[] | null;
+  if (featuresIntroduced && featuresIntroduced.length > 0) {
+    parts.push(`## TANITILAN OZELLIKLER (bunlari tekrar tanitma)\n${featuresIntroduced.join(', ')}`);
+  }
+
   const habits = s.habit_progress as { habit: string; status: string; streak: number }[] | null;
   if (habits && habits.length > 0) {
     parts.push(`## ALISKANLIKLAR\n${habits.map(h => `- ${h.habit}: ${h.status} (${h.streak} gun)`).join('\n')}`);

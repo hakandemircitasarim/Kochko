@@ -24,8 +24,10 @@ KURALLAR:
 - Mevsimsel oneriler sun (yaz=salata/soguk, kis=corba/sicak)
 - Antrenman/dinlenme gunu ayrimi yap
 - Haftalik butce baglamini goster
+- Proteini ogunlere ESIT dagit (ornegin 3 ogun = her ogunde ~30g protein, tek seferde 90g degil)
 - Protein zamanlamasini dikkate al (antrenman oncesi karb, sonrasi protein)
 - Pisirilme yontemi ve hazirlik suresi belirt
+- Plan degistiyse veya reddedildiyse NE DEGISTI ve NEDEN degisti kisa acikla (focus_message icinde)
 
 JSON formati:
 {
@@ -144,19 +146,58 @@ serve(async (req: Request) => {
       }
     }
 
+    // D3: Goal-based workout type emphasis
+    let goalWorkoutContext = '';
+    if (activeGoal?.goal_type) {
+      if (activeGoal.goal_type === 'lose_weight') {
+        goalWorkoutContext = '\nANTRENMAN ODAGI: Hedef kilo verme — kardio ve HIIT agirlikli antrenman oner, guc calismasini tamamlayici tut.';
+      } else if (activeGoal.goal_type === 'gain_muscle') {
+        goalWorkoutContext = '\nANTRENMAN ODAGI: Hedef kas kazanimi — guc antrenmanini on plana al, kardioyu minimum tut (haftada 1-2 hafif seans).';
+      } else if (activeGoal.goal_type === 'health') {
+        goalWorkoutContext = '\nANTRENMAN ODAGI: Hedef genel saglik — karisik program: mobilite, hafif kardio ve fonksiyonel hareketler oner.';
+      }
+    }
+
     // Fetch strength records from ai_summary for strength/mixed workout plans
     let strengthContext = '';
-    const { data: aiSummary } = await supabaseAdmin
+    const { data: aiSummaryStrength } = await supabaseAdmin
       .from('ai_summary')
       .select('strength_records')
       .eq('user_id', userId)
       .single();
-    const strengthRecords = aiSummary?.strength_records as Record<string, { last_weight: number; last_reps: number; '1rm'?: number }> | null;
+    const strengthRecords = aiSummaryStrength?.strength_records as Record<string, { last_weight: number; last_reps: number; '1rm'?: number }> | null;
     if (strengthRecords && Object.keys(strengthRecords).length > 0) {
       const lines = Object.entries(strengthRecords).map(
         ([exercise, data]) => `Son antrenman: ${exercise} ${data.last_reps}x@${data.last_weight}kg`
       );
       strengthContext = `\nGUC GECMISI:\n${lines.join('\n')}`;
+    }
+
+    // D2: Progressive overload — check last 3 sessions for compound lifts
+    const COMPOUND_LIFTS = ['squat', 'bench_press', 'deadlift'];
+    const progressionLines: string[] = [];
+    for (const lift of COMPOUND_LIFTS) {
+      const { data: recentSets } = await supabaseAdmin
+        .from('strength_sets')
+        .select('reps, logged_at')
+        .eq('user_id', userId)
+        .eq('exercise', lift)
+        .order('logged_at', { ascending: false })
+        .limit(3);
+      if (recentSets && recentSets.length >= 2) {
+        const TARGET_REPS = 8;
+        let consecutiveSuccesses = 0;
+        for (const set of recentSets as { reps: number }[]) {
+          if (set.reps >= TARGET_REPS) consecutiveSuccesses++;
+          else break;
+        }
+        if (consecutiveSuccesses >= 2) {
+          progressionLines.push(`PROGRESIF YUKLENME: ${lift} icin ${consecutiveSuccesses} ardisik basarili seans. Bir sonraki seans icin +2.5kg oner.`);
+        }
+      }
+    }
+    if (progressionLines.length > 0) {
+      strengthContext += `\n${progressionLines.join('\n')}`;
     }
 
     // Deload check: if 6+ weeks since last deload
@@ -186,6 +227,25 @@ serve(async (req: Request) => {
       }
     }
 
+    // D1: Sleep check — query yesterday's daily_metrics for sleep data
+    let sleepWarning = '';
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const { data: yesterdaySleep } = await supabaseAdmin
+      .from('daily_metrics')
+      .select('sleep_hours, sleep_quality')
+      .eq('user_id', userId)
+      .eq('date', yesterday)
+      .single();
+    if (yesterdaySleep) {
+      const sleepHours = yesterdaySleep.sleep_hours as number | null;
+      const sleepQuality = yesterdaySleep.sleep_quality as string | null;
+      if ((sleepHours !== null && sleepHours < 6) || sleepQuality === 'bad') {
+        const hoursDisplay = sleepHours !== null ? `${sleepHours}` : '?';
+        const qualityDisplay = sleepQuality ?? 'bilinmiyor';
+        sleepWarning = `\nUYKU UYARISI: Kullanici dun ${hoursDisplay} saat uyumus (kalite: ${qualityDisplay}). Yogun antrenman ONERME, hafif aktivite/mobilite oner.`;
+      }
+    }
+
     // Rejection context: if user rejected previous plan
     let rejectionLine = '';
     if (body.rejection_context) {
@@ -197,6 +257,7 @@ serve(async (req: Request) => {
     const { data: aiSummary } = await supabaseAdmin
       .from('ai_summary').select('user_persona, learned_meal_times, portion_calibration')
       .eq('user_id', userId).single();
+
     if (aiSummary) {
       const persona = aiSummary.user_persona as string | null;
       if (persona) {
@@ -258,7 +319,7 @@ serve(async (req: Request) => {
       }
     }
 
-    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${strengthContext}${deloadContext}${personaContext}${cycleContext}${plateauContext}${rejectionLine}\n\nBugunku plani olustur.`;
+    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${goalWorkoutContext}${sleepWarning}${strengthContext}${deloadContext}${personaContext}${cycleContext}${plateauContext}${rejectionLine}\n\nBugunku plani olustur.`;
 
     const plan = await chatCompletion<Record<string, unknown>>(
       [

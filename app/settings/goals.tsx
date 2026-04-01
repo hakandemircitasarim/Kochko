@@ -6,6 +6,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
 import { validateWeeklyRate } from '@/lib/tdee';
 import { calculateGoalProgress, getGoalSummaryText, validateGoalSafety } from '@/lib/goal-progress';
+import { getAIGoalSuggestions, checkGoalCompatibility, type GoalSuggestion } from '@/services/goals.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -26,6 +27,8 @@ export default function GoalsScreen() {
   const [targetWeeks, setTargetWeeks] = useState('12');
   const [saving, setSaving] = useState(false);
   const [existingGoal, setExistingGoal] = useState<Goal | null>(null);
+  const [aiSuggestions, setAiSuggestions] = useState<GoalSuggestion[]>([]);
+  const [loadingAI, setLoadingAI] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;

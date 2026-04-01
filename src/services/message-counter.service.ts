@@ -9,7 +9,7 @@ import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const COUNTER_KEY = '@kochko_daily_msg_count';
-const FREE_DAILY_LIMIT = 20;
+const FREE_DAILY_LIMIT = 5;
 
 interface DailyCount {
   date: string;

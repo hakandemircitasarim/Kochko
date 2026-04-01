@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { getAchievements, type Achievement } from '@/services/achievements.service';
+import { shareMilestone } from '@/services/sharing.service';
+import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
@@ -12,8 +14,17 @@ const TYPE_ICONS: Record<string, string> = {
 
 export default function AchievementsScreen() {
   const [items, setItems] = useState<Achievement[]>([]);
+  const [shared, setShared] = useState<Record<string, boolean>>({});
 
   useEffect(() => { getAchievements().then(setItems); }, []);
+
+  const handleShare = async (a: Achievement) => {
+    const didShare = await shareMilestone(a.title, a.description ?? '');
+    if (didShare) {
+      await supabase.from('achievements').update({ shared: true }).eq('id', a.id);
+      setShared(prev => ({ ...prev, [a.id]: true }));
+    }
+  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
@@ -34,6 +45,14 @@ export default function AchievementsScreen() {
                 {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
               </Text>
             </View>
+            <TouchableOpacity
+              onPress={() => handleShare(a)}
+              style={{ paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, borderRadius: 8, borderWidth: 1, borderColor: shared[a.id] ? COLORS.success : COLORS.primary, backgroundColor: shared[a.id] ? COLORS.success + '20' : 'transparent' }}
+            >
+              <Text style={{ color: shared[a.id] ? COLORS.success : COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>
+                {shared[a.id] ? 'Paylasildi' : 'Paylas'}
+              </Text>
+            </TouchableOpacity>
           </View>
         ))
       )}

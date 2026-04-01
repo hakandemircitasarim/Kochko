@@ -4,11 +4,13 @@ import { router } from 'expo-router';
 import { LineChart } from 'react-native-chart-kit';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
-import { detectPlateau } from '@/services/plateau.service';
+import { detectPlateau, selectBestStrategy, applyPlateauStrategy } from '@/services/plateau.service';
+import type { PlateauStatus, StrategyRecommendation } from '@/services/plateau.service';
 import { getMaintenanceStatus } from '@/services/maintenance.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 
 const chartWidth = Dimensions.get('window').width - SPACING.md * 4;
 const chartConfig = {
@@ -30,7 +32,12 @@ export default function ProgressScreen() {
   const [compliance, setCompliance] = useState<CompPt[]>([]);
   const [loading, setLoading] = useState(true);
   const [plateauMsg, setPlateauMsg] = useState<string | null>(null);
+  const [plateauStatus, setPlateauStatus] = useState<PlateauStatus | null>(null);
+  const [strategyRec, setStrategyRec] = useState<StrategyRecommendation | null>(null);
+  const [strategyApplied, setStrategyApplied] = useState(false);
   const [maintenanceMsg, setMaintenanceMsg] = useState<string | null>(null);
+  const [phases, setPhases] = useState<{ id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]>([]);
+  const [currentWeek, setCurrentWeek] = useState(0);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -40,11 +47,30 @@ export default function ProgressScreen() {
       supabase.from('daily_reports').select('date, compliance_score').eq('user_id', user.id).gte('date', from).order('date'),
       detectPlateau(user.id),
       getMaintenanceStatus(user.id),
-    ]).then(([m, c, plateau, maintenance]) => {
+      supabase.from('goals').select('id, goal_type, target_weeks, phase_order, phase_label, is_active, created_at').eq('user_id', user.id).not('phase_order', 'is', null).order('phase_order', { ascending: true }),
+    ]).then(([m, c, plateau, maintenance, phasesResult]) => {
       setMetrics((m.data ?? []) as MetricPt[]);
       setCompliance((c.data ?? []) as CompPt[]);
       if (plateau.isInPlateau) setPlateauMsg(plateau.message);
       if (maintenance.isInMaintenance) setMaintenanceMsg(maintenance.message);
+
+      const rawPhases = (phasesResult.data ?? []) as { id: string; goal_type: string; target_weeks: number | null; phase_order: number; phase_label: string | null; is_active: boolean; created_at: string }[];
+      if (rawPhases.length > 1) {
+        const activePhase = rawPhases.find(p => p.is_active);
+        const week = activePhase
+          ? Math.max(1, Math.round((Date.now() - new Date(activePhase.created_at).getTime()) / (7 * 86400000)))
+          : 0;
+        setCurrentWeek(week);
+        setPhases(rawPhases.map((p, i) => ({
+          id: p.id,
+          label: p.phase_label ?? p.goal_type,
+          goalType: p.goal_type,
+          targetWeeks: p.target_weeks ?? 12,
+          isActive: p.is_active,
+          isCompleted: !p.is_active && activePhase ? p.phase_order < activePhase.phase_order : false,
+        })));
+      }
+
       setLoading(false);
     });
   }, [user?.id]);
@@ -86,6 +112,13 @@ export default function ProgressScreen() {
         </Card>
       ) : (
         <Card title="Kilo Trendi"><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>En az 2 tarti kaydı gerekli.</Text></Card>
+      )}
+
+      {/* Phase Timeline */}
+      {phases.length > 1 && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <PhaseTimeline phases={phases} currentWeek={currentWeek} />
+        </View>
       )}
 
       {/* Compliance Chart */}

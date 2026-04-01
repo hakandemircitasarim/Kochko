@@ -27,8 +27,7 @@ import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { startRecording, stopRecording, isRecording as checkIsRecording } from '@/services/voice.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
-import { SimulationCard } from '@/components/chat/RichMessage';
-import { MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons, RecipeCard } from '@/components/chat/RichMessage';
+import { MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons, ConfirmRejectButtons, RecipeCard } from '@/components/chat/RichMessage';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 // Simulation data parsed from AI responses
@@ -44,6 +43,8 @@ interface UIMessage extends ChatMessage {
   actions?: { type: string; feedback: string | null }[];
   showFeedback?: boolean;
   simulationData?: SimulationData | null;
+  quickSelectOptions?: string[] | null;
+  hasConfirm?: boolean;
 }
 
 function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {

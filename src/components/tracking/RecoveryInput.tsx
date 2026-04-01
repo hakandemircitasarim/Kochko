@@ -13,11 +13,21 @@ interface Props {
 }
 
 const SORENESS_LEVELS = [
-  { value: 1, label: 'Yok' },
-  { value: 2, label: 'Hafif' },
-  { value: 3, label: 'Orta' },
-  { value: 4, label: 'Siddetli' },
+  { value: 1, label: 'Yok', dbValue: 'none' as const },
+  { value: 2, label: 'Hafif', dbValue: 'light' as const },
+  { value: 3, label: 'Orta', dbValue: 'moderate' as const },
+  { value: 4, label: 'Siddetli', dbValue: 'severe' as const },
 ];
+
+/** Map numeric soreness to DB text value */
+export function sorenessToDb(value: number): string {
+  return SORENESS_LEVELS.find(s => s.value === value)?.dbValue ?? 'none';
+}
+
+/** Map DB text value to numeric soreness */
+export function sorenessFromDb(dbValue: string): number {
+  return SORENESS_LEVELS.find(s => s.dbValue === dbValue)?.value ?? 1;
+}
 
 const RECOVERY_LEVELS = [
   { value: 1, label: '1' },
