@@ -56,3 +56,64 @@ export function formatTimezoneLabel(timezone: string): string {
   const sign = offset >= 0 ? '+' : '';
   return `${city} (UTC${sign}${offset})`;
 }
+
+// ─── Phase 5: Jet Lag & Travel Mode ───
+
+/**
+ * Detect timezone change from previous known timezone.
+ */
+export function detectTimezoneChange(previousTimezone: string | null): {
+  changed: boolean;
+  from: string | null;
+  to: string;
+  offsetDifference: number;
+} {
+  const current = detectTimezone();
+  if (!previousTimezone || previousTimezone === current) {
+    return { changed: false, from: previousTimezone, to: current, offsetDifference: 0 };
+  }
+
+  const prevOffset = getTimezoneOffsetHours(previousTimezone);
+  const currOffset = getTimezoneOffsetHours(current);
+
+  return {
+    changed: true,
+    from: previousTimezone,
+    to: current,
+    offsetDifference: currOffset - prevOffset,
+  };
+}
+
+/**
+ * Get jet lag grace period duration (48 hours from timezone change).
+ * Returns remaining hours of grace or 0 if expired.
+ */
+export function getJetLagGracePeriod(timezoneChangedAt: string | null): {
+  isActive: boolean;
+  remainingHours: number;
+} {
+  if (!timezoneChangedAt) return { isActive: false, remainingHours: 0 };
+
+  const changeTime = new Date(timezoneChangedAt).getTime();
+  const graceDuration = 48 * 3600000; // 48 hours
+  const elapsed = Date.now() - changeTime;
+  const remaining = Math.max(0, graceDuration - elapsed);
+
+  return {
+    isActive: remaining > 0,
+    remainingHours: Math.round(remaining / 3600000),
+  };
+}
+
+/**
+ * Adjust a schedule time for a new timezone.
+ * Shifts hours by the offset difference.
+ */
+export function adjustScheduleForTimezone(
+  time: string, // "HH:MM"
+  offsetHours: number
+): string {
+  const [h, m] = time.split(':').map(Number);
+  const newH = ((h + offsetHours) % 24 + 24) % 24;
+  return `${newH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+}

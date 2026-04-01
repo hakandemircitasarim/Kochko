@@ -146,6 +146,65 @@ export function RecipeCard({ title, prepTime, servings, ingredients, macros }: {
   );
 }
 
+// ─── Action Buttons (Phase 5) ───
+
+export function ActionButtons({ actions, onAction }: {
+  actions: { label: string; action: string; variant?: 'primary' | 'secondary' }[];
+  onAction: (action: string) => void;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: SPACING.sm }}>
+      {actions.map((a, i) => (
+        <TouchableOpacity key={i} onPress={() => onAction(a.action)}
+          style={{
+            paddingVertical: 8, paddingHorizontal: SPACING.md, borderRadius: 8,
+            backgroundColor: a.variant === 'primary' ? COLORS.primary : COLORS.surfaceLight,
+            borderWidth: a.variant === 'primary' ? 0 : 1, borderColor: COLORS.border,
+          }}>
+          <Text style={{
+            color: a.variant === 'primary' ? '#fff' : COLORS.primary,
+            fontSize: FONT.sm, fontWeight: '600',
+          }}>{a.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+// Confidence Badge (Yuksek/Orta/Dusuk)
+export function ConfidenceBadge({ level }: { level: 'high' | 'medium' | 'low' }) {
+  const config = {
+    high: { label: 'Yuksek guven', color: COLORS.success, bg: '#E8F5E9' },
+    medium: { label: 'Orta guven', color: COLORS.warning, bg: '#FFF8E1' },
+    low: { label: 'Dusuk guven', color: COLORS.error, bg: '#FFEBEE' },
+  };
+  const c = config[level];
+
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', paddingVertical: 2, paddingHorizontal: 8,
+      borderRadius: 12, backgroundColor: c.bg, alignSelf: 'flex-start', marginTop: SPACING.xs,
+    }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.color, marginRight: 4 }} />
+      <Text style={{ color: c.color, fontSize: FONT.xs, fontWeight: '600' }}>{c.label}</Text>
+    </View>
+  );
+}
+
+// "Make Something Else" Button (for plan/recipe cards)
+export function MakeSomethingElseButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress}
+      style={{
+        paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md, borderRadius: 8,
+        backgroundColor: COLORS.surfaceLight, alignItems: 'center', marginTop: SPACING.sm,
+        borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed',
+      }}>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Baska bir sey oner</Text>
+    </TouchableOpacity>
+  );
+}
+
 // Weekly Budget Bar (inline in chat)
 export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: number }) {
   const pct = total > 0 ? Math.min(1, consumed / total) : 0;
