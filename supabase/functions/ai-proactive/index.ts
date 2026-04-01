@@ -22,7 +22,7 @@ serve(async (req: Request) => {
   try {
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, gender, night_eating_risk, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs')
+      .select('id, gender, night_eating_risk, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget')
       .eq('onboarding_completed', true);
 
     if (!profiles?.length) return respond({ processed: 0, sent: 0 });
@@ -45,14 +45,15 @@ serve(async (req: Request) => {
       }
     }
 
-    for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null }[]) {
+    for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null; weekly_calorie_budget: number | null }[]) {
       // Max messages per day check
       const { count } = await supabaseAdmin
         .from('coaching_messages')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', profile.id)
         .gte('created_at', `${today}T00:00:00`);
-      if ((count ?? 0) >= 3) continue;
+      const dailyLimit = (profile.notification_prefs?.dailyLimit as number | undefined) ?? 5;
+      if ((count ?? 0) >= dailyLimit) continue;
 
       // Gather state
       const [lastMealRes, lastChatRes, commitmentsRes, summaryRes] = await Promise.all([
@@ -421,6 +422,32 @@ ${(() => {
     }
   }
 
+  // Mid-week budget warning: Wednesday or Thursday
+  if ((dayOfWeek === 3 || dayOfWeek === 4) && profile.weekly_calorie_budget) {
+    const weeklyBudget = profile.weekly_calorie_budget as number;
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay() + 1); // Monday
+    const weekStartStr = startOfWeek.toISOString().split('T')[0];
+    const { data: weekMealLogs } = await supabaseAdmin
+      .from('meal_logs')
+      .select('meal_log_items(calories)')
+      .eq('user_id', profile.id)
+      .eq('is_deleted', false)
+      .gte('logged_for_date', weekStartStr);
+    if (weekMealLogs) {
+      let totalConsumed = 0;
+      for (const log of weekMealLogs as { meal_log_items: { calories: number }[] }[]) {
+        for (const item of log.meal_log_items ?? []) {
+          totalConsumed += item.calories ?? 0;
+        }
+      }
+      const pct = Math.round((totalConsumed / weeklyBudget) * 100);
+      if (totalConsumed >= weeklyBudget * 0.7) {
+        triggers.push(`TETIK: HAFTALIK BUTCE UYARISI — Haftanin ortasinda butcenin %${pct}'i tukendi. Kalan gunler icin dikkatli planlama oner.`);
+      }
+    }
+  }
+
   return triggers.join('\n');
 })()}
 ${(() => {
@@ -758,6 +785,75 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
     priority: 'medium',
     read: false,
   });
+
+  // A9: Reverse diet — write escalating calorie targets during first 4 weeks post-goal
+  // Each Monday: +125 kcal/week from current deficit toward TDEE.
+  try {
+    const { data: rdProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('calorie_range_rest_min, calorie_range_rest_max, tdee_calculated')
+      .eq('id', userId)
+      .single();
+    if (rdProfile?.tdee_calculated) {
+      const { data: goalAchievement } = await supabaseAdmin
+        .from('achievements')
+        .select('achieved_at')
+        .eq('user_id', userId)
+        .eq('achievement_type', 'goal_reached')
+        .order('achieved_at', { ascending: false })
+        .limit(1)
+        .single();
+      if (goalAchievement?.achieved_at) {
+        const weeksSinceGoal = Math.floor(
+          (now.getTime() - new Date(goalAchievement.achieved_at as string).getTime()) / (7 * 24 * 60 * 60 * 1000)
+        );
+        if (weeksSinceGoal >= 0 && weeksSinceGoal < 4) {
+          const tdee = rdProfile.tdee_calculated as number;
+          const currentMin = rdProfile.calorie_range_rest_min as number;
+          const newMin = Math.round(Math.min(tdee - 100, currentMin + 125));
+          const newMax = Math.round(Math.min(tdee + 100, newMin + 200));
+          await supabaseAdmin.from('profiles').update({
+            calorie_range_rest_min: newMin,
+            calorie_range_rest_max: newMax,
+            updated_at: now.toISOString(),
+          }).eq('id', userId);
+        }
+      }
+    }
+  } catch { /* reverse diet calc non-critical */ }
+
+  // A10: Pattern confidence decay — weekly decay for behavioral patterns not seen in 30+ days
+  try {
+    const { data: summaryRow } = await supabaseAdmin
+      .from('ai_summary')
+      .select('behavioral_patterns')
+      .eq('user_id', userId)
+      .single();
+    if (summaryRow?.behavioral_patterns) {
+      const patterns = summaryRow.behavioral_patterns as {
+        type?: string; description?: string; confidence?: number; status?: string; last_occurred?: string;
+      }[];
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
+      let changed = false;
+      const updatedPatterns = patterns.map(p => {
+        if (p.status !== 'active') return p;
+        const lastOccurred = p.last_occurred ?? '';
+        if (lastOccurred < thirtyDaysAgo) {
+          const currentConf = p.confidence ?? 1.0;
+          const newConf = Math.max(0.3, Math.round((currentConf - 0.1) * 100) / 100);
+          changed = true;
+          return { ...p, confidence: newConf, status: newConf <= 0.3 ? 'resolved' : 'active' };
+        }
+        return p;
+      });
+      if (changed) {
+        await supabaseAdmin.from('ai_summary').update({
+          behavioral_patterns: updatedPatterns,
+          updated_at: now.toISOString(),
+        }).eq('user_id', userId);
+      }
+    }
+  } catch { /* pattern decay non-critical */ }
 }
 
 // ─── Push Notification Helpers ───

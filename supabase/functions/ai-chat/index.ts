@@ -110,7 +110,7 @@ serve(async (req: Request) => {
 
     // Check onboarding status
     const { data: profile } = await supabaseAdmin
-      .from('profiles').select('onboarding_completed, gender')
+      .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg')
       .eq('id', userId).single();
     const isOnboarding = !profile?.onboarding_completed;
 
@@ -153,6 +153,45 @@ serve(async (req: Request) => {
       }
     }
 
+    // A7: Remaining macro budget for recipe mode
+    let remainingMacrosNote = '';
+    if (taskMode === 'recipe') {
+      try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { data: todayLogs } = await supabaseAdmin
+          .from('meal_logs')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('logged_for_date', todayStr)
+          .eq('is_deleted', false);
+        if (todayLogs && todayLogs.length > 0) {
+          const logIds = todayLogs.map((l: { id: string }) => l.id);
+          const { data: items } = await supabaseAdmin
+            .from('meal_log_items')
+            .select('calories, protein_g, carbs_g, fat_g')
+            .in('meal_log_id', logIds);
+          const consumed = (items ?? []).reduce(
+            (acc: { cal: number; prot: number; carbs: number; fat: number }, it: { calories: number; protein_g: number; carbs_g: number; fat_g: number }) => ({
+              cal: acc.cal + (it.calories ?? 0),
+              prot: acc.prot + (it.protein_g ?? 0),
+              carbs: acc.carbs + (it.carbs_g ?? 0),
+              fat: acc.fat + (it.fat_g ?? 0),
+            }),
+            { cal: 0, prot: 0, carbs: 0, fat: 0 }
+          );
+          const calTarget = Math.round(
+            ((profile?.calorie_range_rest_min ?? 1800) + (profile?.calorie_range_rest_max ?? 2200)) / 2
+          );
+          const protTarget = Math.round(
+            (profile?.weight_kg ?? 70) * (profile?.protein_per_kg ?? 1.8)
+          );
+          const calRemaining = Math.max(0, calTarget - consumed.cal);
+          const protRemaining = Math.max(0, protTarget - consumed.prot);
+          remainingMacrosNote = `KALAN MAKRO BUTCESI: Bugun ${Math.round(consumed.cal)} kcal yenildi, ${calRemaining} kcal kaldi. Protein: ${Math.round(consumed.prot)}g yenildi, ${protRemaining}g kaldi. Karbonhidrat: ${Math.round(consumed.carbs)}g yenildi. Yag: ${Math.round(consumed.fat)}g yenildi.`;
+        }
+      } catch { /* macro calc non-critical */ }
+    }
+
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
       modeInstructions,
@@ -164,6 +203,7 @@ serve(async (req: Request) => {
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
       repairContext,
+      remainingMacrosNote,
     ].filter(Boolean).join('\n\n');
 
     // Build messages array
@@ -209,6 +249,14 @@ serve(async (req: Request) => {
 
     // Execute actions (use target_date for batch entry, T1.17)
     const actionFeedback = await executeActions(userId, actions, profile?.gender, target_date);
+
+    // A8: Text-based confidence check — if AI response contains low-confidence indicators, append note to meal_log feedback
+    if (/dusuk guven|[Dd]usuk/i.test(assistantMessage)) {
+      const mealLogIdx = actions.findIndex((a: { type: string }) => a.type === 'meal_log');
+      if (mealLogIdx !== -1 && actionFeedback[mealLogIdx] != null) {
+        actionFeedback[mealLogIdx] = (actionFeedback[mealLogIdx] ?? '') + ' NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste.';
+      }
+    }
 
     // Store messages with token count and model version (Spec 5.25)
     const tokenEstimate = Math.round((message?.length ?? 0) / 3.5) + Math.round(assistantMessage.length / 3.5);
@@ -366,6 +414,16 @@ async function executeActions(
               feedback.push('Ogun kaydedildi');
               for (const cf of caffeineFeedback) feedback.push(cf);
               break;
+            }
+          }
+
+          // A8: Low confidence proactive verification
+          // NOTE: assistantMessage is not in scope here; pass via closure via the outer variable.
+          // We check the action's items for suspicious calorie totals.
+          if (items?.length) {
+            const totalMealCal = items.reduce((s, i) => s + (i.calories ?? 0), 0);
+            if (totalMealCal > 1500 || (totalMealCal > 0 && totalMealCal < 50)) {
+              feedback.push('NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste.');
             }
           }
 
@@ -626,6 +684,26 @@ async function executeActions(
             profileUpdates.if_active = false;
           }
           await supabaseAdmin.from('profiles').update(profileUpdates).eq('id', userId);
+
+          // Auto-pause active challenges on illness
+          if (newState === 'illness') {
+            try {
+              const { data: activeChallenges } = await supabaseAdmin
+                .from('challenges')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('status', 'active');
+              if (activeChallenges && activeChallenges.length > 0) {
+                const challengeIds = activeChallenges.map((c: { id: string }) => c.id);
+                await supabaseAdmin
+                  .from('challenges')
+                  .update({ status: 'paused', paused_at: new Date().toISOString() })
+                  .in('id', challengeIds);
+                feedback.push('Hastalik nedeniyle aktif challenge\'lar otomatik duraklatildi.');
+              }
+            } catch { /* challenge pause non-critical */ }
+          }
+
           // Write seasonal note to Layer 2
           const { data: existing } = await supabaseAdmin
             .from('ai_summary').select('seasonal_notes').eq('user_id', userId).single();

@@ -164,44 +164,78 @@ export async function updateNotificationPrefs(
  * Spec 10.1: Meal reminders, water reminders, etc.
  */
 export async function scheduleLocalNotifications(
-  prefs: NotificationPreferences
+  prefs: NotificationPreferences,
+  profile?: { if_active?: boolean; if_eating_start?: string; if_eating_end?: string }
 ): Promise<void> {
   // Cancel all existing scheduled notifications
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   if (!prefs.enabled) return;
 
+  // Morning plan notification - 07:30
+  if (prefs.types.morning_plan !== false) {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Gunun Plani Hazir',
+        body: 'Bugunun beslenme ve antrenman planina goz at.',
+        data: { type: 'morning_plan' },
+      },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 7, minute: 30 },
+    });
+  }
+
   // Meal reminders - breakfast, lunch, dinner
   if (prefs.types.meal_reminder) {
+    // Helper: check if a given hour:minute falls within the IF eating window
+    const isWithinIFWindow = (mealHour: number, mealMinute: number): boolean => {
+      if (!profile?.if_active || !profile.if_eating_start || !profile.if_eating_end) return true;
+      const [startH, startM] = profile.if_eating_start.split(':').map(Number);
+      const [endH, endM] = profile.if_eating_end.split(':').map(Number);
+      const mealMins = mealHour * 60 + mealMinute;
+      const startMins = startH * 60 + startM;
+      const endMins = endH * 60 + endM;
+      if (startMins <= endMins) {
+        return mealMins >= startMins && mealMins <= endMins;
+      }
+      // Eating window crosses midnight
+      return mealMins >= startMins || mealMins <= endMins;
+    };
+
     // Kahvalti - 08:00
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Kahvalti Zamani',
-        body: 'Gune saglikli bir kahvalti ile basla.',
-        data: { type: 'meal_reminder', meal: 'kahvalti' },
-      },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 8, minute: 0 },
-    });
+    if (isWithinIFWindow(8, 0)) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Kahvalti Zamani',
+          body: 'Gune saglikli bir kahvalti ile basla.',
+          data: { type: 'meal_reminder', meal: 'kahvalti' },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 8, minute: 0 },
+      });
+    }
 
     // Ogle yemegi - 12:30
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Ogle Yemegi',
-        body: 'Ogle yemegi vakti geldi, dengeli bir ogun sec.',
-        data: { type: 'meal_reminder', meal: 'ogle' },
-      },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 12, minute: 30 },
-    });
+    if (isWithinIFWindow(12, 30)) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Ogle Yemegi',
+          body: 'Ogle yemegi vakti geldi, dengeli bir ogun sec.',
+          data: { type: 'meal_reminder', meal: 'ogle' },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 12, minute: 30 },
+      });
+    }
 
     // Aksam yemegi - 19:00
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Aksam Yemegi',
-        body: 'Aksam yemegi icin hafif ve doyurucu bir sey hazirla.',
-        data: { type: 'meal_reminder', meal: 'aksam' },
-      },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 19, minute: 0 },
-    });
+    if (isWithinIFWindow(19, 0)) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Aksam Yemegi',
+          body: 'Aksam yemegi icin hafif ve doyurucu bir sey hazirla.',
+          data: { type: 'meal_reminder', meal: 'aksam' },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 19, minute: 0 },
+      });
+    }
   }
 
   // Water reminder - every 2 hours during waking hours
@@ -252,6 +286,20 @@ export async function scheduleLocalNotifications(
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 1, hour: 19, minute: 0 },
     });
+  }
+
+  // Workout reminder - 17:00 on weekdays (Monday=2 through Friday=6 in expo-notifications weekday)
+  if (prefs.types.workout_reminder !== false) {
+    for (const weekday of [2, 3, 4, 5, 6]) { // Mon–Fri
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Antrenman Zamani',
+          body: 'Bugunun antrenman planin hazir. Harekete gec!',
+          data: { type: 'workout_reminder' },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday, hour: 17, minute: 0 },
+      });
+    }
   }
 
   // Night risk / sleep reminder - 22:30
