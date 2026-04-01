@@ -47,6 +47,25 @@ interface UIMessage extends ChatMessage {
   hasConfirm?: boolean;
 }
 
+function parseQuickSelect(content: string): { cleanContent: string; options: string[] | null } {
+  const match = content.match(/<quick_select>([\s\S]*?)<\/quick_select>/);
+  if (!match) return { cleanContent: content, options: null };
+  try {
+    const options = JSON.parse(match[1]) as string[];
+    const cleanContent = content.replace(/<quick_select>[\s\S]*?<\/quick_select>/, '').trim();
+    return { cleanContent, options: Array.isArray(options) ? options : null };
+  } catch {
+    return { cleanContent: content, options: null };
+  }
+}
+
+function parseConfirm(content: string): { cleanContent: string; hasConfirm: boolean } {
+  const hasConfirm = /<confirm>[\s\S]*?<\/confirm>/.test(content);
+  if (!hasConfirm) return { cleanContent: content, hasConfirm: false };
+  const cleanContent = content.replace(/<confirm>[\s\S]*?<\/confirm>/, '').trim();
+  return { cleanContent, hasConfirm: true };
+}
+
 function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
   const match = content.match(/<simulation>([\s\S]*?)<\/simulation>/);
   if (!match) return { cleanContent: content, data: null };
@@ -192,6 +211,12 @@ export default function ChatScreen() {
         simulationData = parsed.data;
       }
 
+      // Parse quick_select and confirm tags
+      const { cleanContent: contentAfterQS, options: quickSelectOptions } = parseQuickSelect(messageContent);
+      messageContent = contentAfterQS;
+      const { cleanContent: contentAfterConfirm, hasConfirm } = parseConfirm(messageContent);
+      messageContent = contentAfterConfirm;
+
       const reply: UIMessage = {
         id: `a-${Date.now()}`,
         role: 'assistant',
@@ -201,6 +226,8 @@ export default function ChatScreen() {
         actions: data.actions,
         showFeedback,
         simulationData,
+        quickSelectOptions,
+        hasConfirm,
       };
       setMessages(prev => [...prev, reply]);
 
@@ -236,10 +263,57 @@ export default function ChatScreen() {
     setInput(text);
   };
 
+  // Direct send handler for QuickSelectButtons and ConfirmRejectButtons
+  const handleDirectSend = useCallback(async (text: string) => {
+    if (sending) return;
+    const userMsg: UIMessage = {
+      id: `u-${Date.now()}`,
+      role: 'user',
+      content: text,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMsg]);
+    setSending(true);
+    scrollToBottom();
+    const { data, error } = await sendMessage(text);
+    if (data) {
+      let messageContent = data.message;
+      const { cleanContent: contentAfterQS, options: quickSelectOptions } = parseQuickSelect(messageContent);
+      messageContent = contentAfterQS;
+      const { cleanContent: contentAfterConfirm, hasConfirm } = parseConfirm(messageContent);
+      messageContent = contentAfterConfirm;
+      const reply: UIMessage = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: messageContent,
+        task_mode: data.task_mode,
+        created_at: new Date().toISOString(),
+        actions: data.actions,
+        showFeedback: false,
+        quickSelectOptions,
+        hasConfirm,
+      };
+      setMessages(prev => [...prev, reply]);
+      if (data.actions.some(a => a.feedback) && user?.id) {
+        refreshDashboard(user.id);
+      }
+    } else {
+      setMessages(prev => [...prev, {
+        id: `e-${Date.now()}`,
+        role: 'assistant',
+        content: error ?? 'Baglanti hatasi. Tekrar dene.',
+        created_at: new Date().toISOString(),
+      }]);
+    }
+    setSending(false);
+    scrollToBottom();
+  }, [sending, scrollToBottom, user?.id, refreshDashboard]);
+
   // Dashboard macros for real-time MacroSummary after meal_log
   const totalProtein = useDashboardStore(s => s.totalProtein);
   const totalCarbs = useDashboardStore(s => s.totalCarbs);
   const totalFat = useDashboardStore(s => s.totalFat);
+  const weeklyBudgetRemaining = useDashboardStore(s => s.weeklyBudgetRemaining);
   const dashboardMacros = { protein: totalProtein, carbs: totalCarbs, fat: totalFat };
 
   // Compute macro gram targets from profile
@@ -323,7 +397,7 @@ export default function ChatScreen() {
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} />}
+          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onDirectSend={handleDirectSend} weeklyBudgetRemaining={weeklyBudgetRemaining} />}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
@@ -485,11 +559,13 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   );
 }
 
-function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets }: {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDirectSend, weeklyBudgetRemaining }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
   macroTargets: { protein: number; carbs: number; fat: number };
+  onDirectSend: (text: string) => void;
+  weeklyBudgetRemaining: number | null;
 }) {
   const isUser = message.role === 'user';
 

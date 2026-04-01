@@ -460,7 +460,25 @@ async function generateWeeklyPlan(userId: string, today: string): Promise<Record
   }
 
   const weekStart = getWeekStart(today);
-  const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${strengthContext}\n\nHafta baslangici: ${weekStart}. 7 gunluk menu ve alisveris listesi olustur.`;
+
+  // Fetch user's favorite and frequently used recipes to include in plan prompt
+  let savedRecipesContext = '';
+  try {
+    const { data: favRecipes } = await supabaseAdmin
+      .from('saved_recipes')
+      .select('title, total_calories, total_protein, category')
+      .eq('user_id', userId)
+      .or('is_favorite.eq.true,use_count.gt.2')
+      .order('use_count', { ascending: false })
+      .limit(10);
+    if (favRecipes && favRecipes.length > 0) {
+      const lines = (favRecipes as { title: string; total_calories: number | null; total_protein: number | null }[])
+        .map(r => `- ${r.title} (${r.total_calories ?? '?'} kcal, ${r.total_protein ?? '?'}g protein)`);
+      savedRecipesContext = `\n\nKULLANICININ FAVORI TARIFLERI:\n${lines.join('\n')}`;
+    }
+  } catch { /* non-critical */ }
+
+  const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${strengthContext}${savedRecipesContext}\n\nHafta baslangici: ${weekStart}. 7 gunluk menu ve alisveris listesi olustur.`;
 
   const weeklyPlan = await chatCompletion<Record<string, unknown>>(
     [

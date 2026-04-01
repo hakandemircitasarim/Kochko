@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getRecipes, deleteRecipe, updateRecipe, type SavedRecipe } from '@/services/recipes.service';
+import { getRecipes, deleteRecipe, updateRecipe, scaleRecipe, suggestSubstitution, type SavedRecipe } from '@/services/recipes.service';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -19,6 +19,8 @@ export default function RecipesScreen() {
   const [editTitle, setEditTitle] = useState('');
   const [editInstructions, setEditInstructions] = useState('');
   const [editServings, setEditServings] = useState('');
+  const [scaledRecipes, setScaledRecipes] = useState<Record<string, SavedRecipe>>({});
+  const [servingInputs, setServingInputs] = useState<Record<string, string>>({});
 
   useEffect(() => { load(); }, [filter]);
   const load = () => getRecipes(filter ?? undefined).then(setRecipes);
@@ -51,6 +53,27 @@ export default function RecipesScreen() {
     });
     setEditingId(null);
     load();
+  };
+
+  const handleServingChange = (recipe: SavedRecipe, value: string) => {
+    setServingInputs(prev => ({ ...prev, [recipe.id]: value }));
+    const num = parseInt(value, 10);
+    if (!isNaN(num) && num > 0) {
+      setScaledRecipes(prev => ({ ...prev, [recipe.id]: scaleRecipe(recipe, num) }));
+    } else if (value === '') {
+      // Reset to original when cleared
+      setScaledRecipes(prev => { const next = { ...prev }; delete next[recipe.id]; return next; });
+    }
+  };
+
+  const handleSubstitution = (ingredientName: string) => {
+    const alternatives = suggestSubstitution(ingredientName);
+    if (alternatives.length === 0) {
+      Alert.alert('Ikame Onerileri', `"${ingredientName}" icin bilinen bir ikame bulunamadi.`);
+    } else {
+      const lines = alternatives.map(a => `• ${a.replacement} — ${a.note_tr}`).join('\n');
+      Alert.alert('Ikame Onerileri', `${ingredientName} yerine:\n\n${lines}`);
+    }
   };
 
   const navigateToChat = () => {
@@ -136,13 +159,34 @@ export default function RecipesScreen() {
 
                   {expanded === r.id && (
                     <View style={{ marginTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING.md }}>
+                      {/* Serving scaler */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.sm }}>
+                        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>Porsiyon:</Text>
+                        <TextInput
+                          style={[inputStyle, { width: 60, textAlign: 'center', paddingVertical: 2, marginBottom: 0 }]}
+                          value={servingInputs[r.id] ?? String(r.servings)}
+                          onChangeText={val => handleServingChange(r, val)}
+                          keyboardType="numeric"
+                          placeholderTextColor={COLORS.textMuted}
+                        />
+                        {scaledRecipes[r.id] && (
+                          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+                            {scaledRecipes[r.id].total_calories ?? r.total_calories} kcal · {scaledRecipes[r.id].total_protein ?? r.total_protein}g pro
+                          </Text>
+                        )}
+                      </View>
                       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.xs }}>MALZEMELER</Text>
-                      {r.ingredients.map((ing, i) => (
-                        <Text key={i} style={{ color: COLORS.text, fontSize: FONT.sm, paddingVertical: 1 }}>- {ing.amount} {ing.unit} {ing.name}</Text>
+                      {(scaledRecipes[r.id] ?? r).ingredients.map((ing, i) => (
+                        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 1 }}>
+                          <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1 }}>- {ing.amount} {ing.unit} {ing.name}</Text>
+                          <TouchableOpacity onPress={() => handleSubstitution(ing.name)} style={{ paddingHorizontal: SPACING.xs, paddingVertical: 2 }}>
+                            <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>Ikame</Text>
+                          </TouchableOpacity>
+                        </View>
                       ))}
                       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.md, marginBottom: SPACING.xs }}>YAPILISI</Text>
                       <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 22 }}>{r.instructions}</Text>
-                      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>{r.servings} porsiyon</Text>
+                      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>{(scaledRecipes[r.id] ?? r).servings} porsiyon</Text>
                       <TouchableOpacity onPress={() => startEdit(r)} style={{ marginTop: SPACING.sm, paddingVertical: SPACING.xs, alignSelf: 'flex-start' }}>
                         <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>Duzenle</Text>
                       </TouchableOpacity>

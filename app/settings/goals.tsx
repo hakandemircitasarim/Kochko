@@ -56,6 +56,22 @@ export default function GoalsScreen() {
     : null;
   const summaryText = progress ? getGoalSummaryText(progress, goalType) : null;
 
+  const handleGetAISuggestions = async () => {
+    if (!user?.id) return;
+    setLoadingAI(true);
+    const suggestions = await getAIGoalSuggestions(
+      user.id,
+      profile?.weight_kg as number | null ?? null,
+      parseFloat(targetWeight) || null,
+    );
+    setLoadingAI(false);
+    if (suggestions.length === 0) {
+      Alert.alert('AI Oneri', 'Simdilik ek bir oneri yok. Hedefin iyi gorunuyor!');
+    } else {
+      setAiSuggestions(suggestions);
+    }
+  };
+
   const handleSave = async () => {
     if (!user?.id) return;
     const tw = parseFloat(targetWeight);
@@ -64,6 +80,26 @@ export default function GoalsScreen() {
     if (tw && profile?.weight_kg && (goalType === 'lose_weight' || goalType === 'gain_weight')) {
       const check = validateWeeklyRate(profile.weight_kg, tw, weeks);
       if (!check.valid) { Alert.alert('Dikkat', check.message); return; }
+    }
+
+    // D19: Check compatibility with existing active goal
+    if (existingGoal && existingGoal.goal_type !== goalType) {
+      const compat = checkGoalCompatibility(goalType, existingGoal.goal_type);
+      if (!compat.compatible || compat.level === 'warning') {
+        const proceed = await new Promise<boolean>(resolve => {
+          Alert.alert(
+            compat.level === 'conflict' ? 'Hedef Catismasi' : 'Uyari',
+            compat.message_tr,
+            compat.level === 'conflict'
+              ? [{ text: 'Tamam', onPress: () => resolve(false) }]
+              : [
+                  { text: 'Iptal', style: 'cancel', onPress: () => resolve(false) },
+                  { text: 'Yine de Kaydet', onPress: () => resolve(true) },
+                ],
+          );
+        });
+        if (!proceed) return;
+      }
     }
 
     setSaving(true);
@@ -137,13 +173,25 @@ export default function GoalsScreen() {
 
         <Button title="Kaydet" onPress={handleSave} loading={saving} size="lg" />
 
-        {/* AI suggestion link */}
+        {/* AI suggestions */}
         <Button
           title="AI'dan Hedef Onerisi Al"
           variant="ghost"
-          onPress={() => router.push('/(tabs)/chat')}
+          onPress={handleGetAISuggestions}
+          loading={loadingAI}
           style={{ marginTop: SPACING.md }}
         />
+        {aiSuggestions.length > 0 && (
+          <Card style={{ marginTop: SPACING.sm }}>
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>AI Onerileri</Text>
+            {aiSuggestions.map((s, i) => (
+              <View key={i} style={{ paddingVertical: SPACING.xs, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: COLORS.border }}>
+                <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>{GOAL_LABELS[s.goalType as GoalType] ?? s.goalType}</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 2, lineHeight: 18 }}>{s.reasoning}</Text>
+              </View>
+            ))}
+          </Card>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
