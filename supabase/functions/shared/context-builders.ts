@@ -226,8 +226,8 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
     }
   }
 
-  // Persona
-  if (isFull || focuses.includes('persona')) {
+  // Persona — always include if available (drives tone/style)
+  if (isFull || focuses.includes('persona') || s.user_persona) {
     if (s.user_persona) parts.push(`Persona: ${s.user_persona}`);
     if (s.learned_tone_preference) parts.push(`Ogrenilen ton: ${s.learned_tone_preference}`);
     if (s.nutrition_literacy) parts.push(`Beslenme okuryazarligi: ${s.nutrition_literacy}`);

@@ -186,9 +186,17 @@ export function isSuspiciousInput(
  */
 export function detectEmergency(text: string): { isEmergency: boolean; message: string } {
   const emergencyPhrases = [
-    'gogus agrisi', 'göğüs ağrısı', 'nefes alamıyorum', 'nefes alamiyorum',
-    'bayiliyorum', 'bayılıyorum', 'kalp krizi', 'felc', 'felç',
-    'kan kusuyorum', 'bilincimi kaybediyorum',
+    'gogus agrisi', 'göğüs ağrısı', 'gogsum agriyor', 'göğsüm ağrıyor',
+    'nefes alamıyorum', 'nefes alamiyorum', 'nefesim kesildi', 'nefesim yok',
+    'bayiliyorum', 'bayılıyorum', 'bayildim', 'bayıldım',
+    'kalp krizi', 'felc', 'felç',
+    'kan kusuyorum', 'kan kusdum', 'kan küstüm',
+    'bilincimi kaybediyorum', 'bilincim kapaniyor', 'bilincim kapanıyor',
+    'cok siddetli agri', 'çok şiddetli ağrı', 'dayanilmaz agri', 'dayanılmaz ağrı',
+    'kalp çarpıntısı', 'kalp carpintisi',
+    'sol kolum uyusuyor', 'sol kolum uyuşuyor',
+    'yutamiyorum', 'yutamıyorum',
+    'gorme kaybı', 'gorme kaybi', 'göremiyorum', 'goremiyorum',
   ];
 
   const lower = text.toLocaleLowerCase('tr');
@@ -196,12 +204,58 @@ export function detectEmergency(text: string): { isEmergency: boolean; message: 
     if (lower.includes(phrase)) {
       return {
         isEmergency: true,
-        message: 'Ciddi bir saglik belirtisi anlattın. Lütfen hemen 112\'yi ara. Ben yasam tarzi kocuyum, acil tibbi durumlar icin yetkim yok.',
+        message: 'Bu ciddi bir belirti. Lutfen HEMEN 112\'yi ara veya en yakin acil servise git. Ben yasam tarzi kocuyum, acil tibbi durumlar icin yetkim yok. Sagligin her seyden onemli.',
       };
     }
   }
 
   return { isEmergency: false, message: '' };
+}
+
+/**
+ * Eating Disorder Risk Detection (Spec 12.5).
+ * Detects potential eating disorder language and returns appropriate response.
+ */
+export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' | 'medium' | 'high'; message: string } {
+  const lower = text.toLocaleLowerCase('tr');
+
+  // High severity — active purging/self-harm
+  const highPatterns = [
+    'kusma', 'kustum', 'kusuyorum', 'kusmak istiyorum',
+    'laksatif', 'müshil', 'mushil',
+    'kendime zarar', 'intihar', 'olmek istiyorum', 'ölmek istiyorum',
+    'purging', 'binge and purge',
+  ];
+  for (const p of highPatterns) {
+    if (lower.includes(p)) {
+      return {
+        isRisk: true,
+        severity: 'high',
+        message: 'Bu konuda sana yardimci olabilecek bir profesyonele ulasman cok onemli. Turkiye Yeme Bozukluklari Dernegi veya bir uzman psikolog ile gorusmenizi oneririm. Yalniz degilsin.',
+      };
+    }
+  }
+
+  // Medium severity — restrictive patterns
+  const mediumPatterns = [
+    'hic yemiyorum', 'hiç yemiyorum', 'hic bir sey yemiyorum',
+    'ac kalma', 'aç kalma', 'ac kalmak istiyorum',
+    'yeme bozukluğu', 'yeme bozuklugu',
+    'anoreksiya', 'anorexia', 'bulimiya', 'bulimia',
+    'yemek yemekten korkuyorum', 'yemekten nefret',
+    'cok sismansim', 'çok şişmanım', 'igrenc gorunuyorum', 'iğrenç görünüyorum',
+  ];
+  for (const p of mediumPatterns) {
+    if (lower.includes(p)) {
+      return {
+        isRisk: true,
+        severity: 'medium',
+        message: 'Anlattiklarin beni endiselendiiriyor. Bir uzman diyetisyen veya psikolog ile gorusmeni oneririm. Bu konuda profesyonel destek almak guclu bir adimdir.',
+      };
+    }
+  }
+
+  return { isRisk: false, severity: 'low', message: '' };
 }
 
 /**
@@ -227,6 +281,23 @@ const INJECTION_PATTERNS = [
   /rolunu\s+degistir/i,
   /talimatlarini\s+(goster|göster|yaz)/i,
   /sistem\s+promptunu/i,
+  // Additional injection vectors
+  /forget\s+(everything|all|your)/i,
+  /jailbreak/i,
+  /DAN\s+mode/i,
+  /developer\s+mode/i,
+  /debug\s+mode\s+on/i,
+  /unfiltered\s+mode/i,
+  /do\s+anything\s+now/i,
+  /bypass\s+(safety|filter|guardrail)/i,
+  /respond\s+without\s+(filter|restriction)/i,
+  /as\s+an?\s+unrestricted/i,
+  // Turkish additional patterns
+  /filtresiz\s+(cevap|yanit|yanitla)/i,
+  /kural(lar)?\s*i?\s*(yoksay|gormezden|görmezden)/i,
+  /sinir(lar)?\s*i?\s*(kaldir|kaldır|yoksay)/i,
+  /guvenlik(leri)?\s*(kapat|devre\s*disi)/i,
+  /onceki\s+talimatlari\s+(unut|yoksay)/i,
 ];
 
 export function sanitizeUserInput(text: string): {

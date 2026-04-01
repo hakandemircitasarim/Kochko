@@ -407,3 +407,100 @@ export async function updateLayer2(
       .insert({ user_id: userId, ...updates });
   }
 }
+
+// ─── Repair History Queries ───
+
+/**
+ * Get repair event count for a user (used for analytics).
+ */
+export async function getRepairCount(userId: string): Promise<number> {
+  const { count } = await supabaseAdmin
+    .from('repair_history')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId);
+  return count ?? 0;
+}
+
+/**
+ * Store a repair event.
+ */
+export async function storeRepairEvent(
+  userId: string,
+  repairType: string,
+  originalInput: string,
+  correctedInput: string | null,
+  foodItem: string | null
+): Promise<void> {
+  await supabaseAdmin.from('repair_history').insert({
+    user_id: userId,
+    repair_type: repairType,
+    original_input: originalInput,
+    corrected_input: correctedInput,
+    food_item: foodItem,
+  });
+}
+
+// ─── Pattern Confidence Evolution ───
+
+/**
+ * Evolve pattern confidence scores.
+ * - Patterns not seen for 14+ days: confidence decays by 0.05
+ * - Patterns with 4+ observations: boosted to 0.8+
+ * - Very low confidence candidates (<0.15): marked resolved
+ */
+export async function evolvePatternConfidence(userId: string): Promise<void> {
+  const { data: summary } = await supabaseAdmin
+    .from('ai_summary')
+    .select('behavioral_patterns')
+    .eq('user_id', userId)
+    .single();
+
+  if (!summary) return;
+
+  const patterns = (summary.behavioral_patterns as Record<string, unknown>[] | null) ?? [];
+  if (patterns.length === 0) return;
+
+  const now = Date.now();
+  let changed = false;
+
+  for (const pattern of patterns) {
+    const confidence = (pattern.confidence as number) ?? 0.5;
+    const lastOccurred = pattern.last_occurred as string | null;
+    const timesObserved = (pattern.times_observed as number) ?? 1;
+
+    // Decay: not observed for 14+ days
+    if (lastOccurred) {
+      const daysSince = Math.floor((now - new Date(lastOccurred).getTime()) / 86400000);
+      if (daysSince > 14 && confidence > 0.2) {
+        pattern.confidence = Math.max(0.1, confidence - 0.05);
+        changed = true;
+      }
+    }
+
+    // Boost: 4+ observations
+    if (timesObserved >= 4 && confidence < 0.8) {
+      pattern.confidence = Math.min(0.95, confidence + 0.1);
+      changed = true;
+    }
+
+    // Clean up: very low confidence candidates
+    if (confidence < 0.15 && (pattern.status as string) === 'candidate') {
+      pattern.status = 'resolved';
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    const activePatterns = patterns.filter(p => {
+      if (p.status !== 'resolved') return true;
+      const lastOcc = p.last_occurred as string | null;
+      if (!lastOcc) return false;
+      return (now - new Date(lastOcc).getTime()) < 30 * 86400000;
+    });
+
+    await supabaseAdmin
+      .from('ai_summary')
+      .update({ behavioral_patterns: activePatterns, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
+  }
+}

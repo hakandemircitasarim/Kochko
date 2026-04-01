@@ -16,7 +16,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2 } from '../shared/memory.ts';
-import { sanitizeText, detectEmergency, checkAllergens, sanitizeUserInput } from '../shared/guardrails.ts';
+import { sanitizeText, detectEmergency, detectEDRisk, checkAllergens, sanitizeUserInput } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -25,6 +25,11 @@ import { buildContextFromPlan } from '../shared/context-builders.ts';
 import { selectModel } from '../shared/model-router.ts';
 import { BASE_SYSTEM_PROMPT, buildConfidenceNote } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions } from './task-modes.ts';
+import {
+  detectRepairIntent, handleUndo, buildCorrectionContext,
+  shouldDetectPersona, buildPersonaDetectionPrompt, getMessageCount,
+  getToneContext, buildKnowledgeSummary, getRepairContext,
+} from '../shared/repair-handler.ts';
 
 serve(async (req: Request) => {
   try {
@@ -73,6 +78,36 @@ serve(async (req: Request) => {
       }
     }
 
+    // Eating disorder risk detection (Spec 12.5)
+    if (message) {
+      const edRisk = detectEDRisk(message);
+      if (edRisk.isRisk && edRisk.severity === 'high') {
+        await storeMessages(userId, message, edRisk.message);
+        return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
+      }
+      // Medium severity: continue normal flow but AI will see ED_REFERRAL in sanitized output
+    }
+
+    // Repair intent detection — BEFORE task mode (Spec 5.32)
+    if (message) {
+      const repairIntent = detectRepairIntent(message);
+
+      // Handle direct undo requests
+      if (repairIntent.type === 'undo') {
+        const undoResult = await handleUndo(userId);
+        await storeMessages(userId, message, undoResult.response ?? '');
+        return respond({ message: undoResult.response, actions: [], task_mode: 'repair' });
+      }
+
+      // "Benim hakkımda ne biliyorsun?" handler (Spec 5.18)
+      const knowledgePatterns = /benim hakkimda|beni tan[iı]|ne [oö]grendin|ne biliyorsun|beni ne kadar/i;
+      if (knowledgePatterns.test(message)) {
+        const summary = await buildKnowledgeSummary(userId);
+        await storeMessages(userId, message, summary);
+        return respond({ message: summary, actions: [], task_mode: 'knowledge' });
+      }
+    }
+
     // Check onboarding status
     const { data: profile } = await supabaseAdmin
       .from('profiles').select('onboarding_completed, gender')
@@ -89,16 +124,46 @@ serve(async (req: Request) => {
     // Build scoped context based on retrieval plan
     const ctx = await buildContextFromPlan(userId, retrievalPlan);
 
-    // Assemble system prompt = base + mode instructions + confidence note
+    // Assemble system prompt = base + mode instructions + confidence note + persona/tone/repair context
     const modeInstructions = getModeInstructions(taskMode);
     const confidenceNote = buildConfidenceNote(ctx.contextMeta);
+
+    // Persona detection trigger (Spec 5.15: after 100+ messages)
+    let personaPrompt = '';
+    const personaNeeded = await shouldDetectPersona(userId);
+    if (personaNeeded) {
+      const msgCount = await getMessageCount(userId);
+      if (msgCount >= 100) {
+        personaPrompt = buildPersonaDetectionPrompt(msgCount);
+      }
+    }
+
+    // Tone context from learned preferences (Spec 5.9)
+    const toneContext = await getToneContext(userId);
+
+    // Repair context — frequent corrections (Spec 5.32)
+    const repairContext = await getRepairContext(userId);
+
+    // Correction mode — if user said "yanlış anladın"
+    let correctionCtx = '';
+    if (message) {
+      const repairCheck = detectRepairIntent(message);
+      if (repairCheck.type === 'correction') {
+        correctionCtx = buildCorrectionContext(userId);
+      }
+    }
+
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
       modeInstructions,
       confidenceNote,
+      toneContext,
+      personaPrompt,
+      correctionCtx,
       ctx.layer1 ? `--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}` : '',
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
+      repairContext,
     ].filter(Boolean).join('\n\n');
 
     // Build messages array
