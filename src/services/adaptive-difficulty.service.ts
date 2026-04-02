@@ -11,9 +11,9 @@ export interface DifficultyAdjustment {
   shouldAdjust: boolean;
   direction: 'increase' | 'decrease' | 'none';
   changes: {
-    calorie_range_reduction?: number;  // tighten range by X kcal
+    calorie_range_reduction?: number;  // tighten range by X kcal (now %5 based)
     protein_increase?: number;         // +Xg
-    workout_intensity_bump?: boolean;
+    workout_intensity_bump?: number;   // intensity_level increment (+1 or -1)
     water_increase?: number;           // +X liters
   };
   message: string;
@@ -52,18 +52,35 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
   const avg1 = week1.reduce((s, r) => s + r.compliance_score, 0) / week1.length;
   const avg2 = week2.reduce((s, r) => s + r.compliance_score, 0) / week2.length;
 
+  // Fetch profile for percentage-based calorie calculation
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max')
+    .eq('id', userId)
+    .single();
+
+  // A11: Calculate 5% of (max - min) range instead of fixed 50 kcal
+  let calorieReduction = 50; // fallback
+  if (profile) {
+    const rangeMax = profile.calorie_range_rest_max ?? profile.calorie_range_training_max ?? 2500;
+    const rangeMin = profile.calorie_range_rest_min ?? profile.calorie_range_training_min ?? 1800;
+    calorieReduction = Math.round((rangeMax - rangeMin) * 0.05);
+    // Ensure at least a meaningful adjustment
+    if (calorieReduction < 10) calorieReduction = 10;
+  }
+
   // Both weeks 85%+ → increase difficulty
   if (avg1 >= 85 && avg2 >= 85) {
     return {
       shouldAdjust: true,
       direction: 'increase',
       changes: {
-        calorie_range_reduction: undefined, // calculated as 5% of range in applyDifficultyAdjustment
-        protein_increase: 5,                // +5g
-        workout_intensity_bump: true,
-        water_increase: 0.2,               // +0.2L
+        calorie_range_reduction: calorieReduction, // A11: %5 of (max-min) range
+        protein_increase: 5,                        // +5g
+        workout_intensity_bump: 1,                  // A11: intensity_level + 1
+        water_increase: 0.2,                        // +0.2L
       },
-      message: 'Son 2 hafta cok iyi gitti! Citayi biraz yukseltiyorum - kalori araligini daraltiyorum, protein hedefini +5g artiriyorum.',
+      message: `Son 2 hafta cok iyi gitti! Citayi biraz yukseltiyorum - kalori araligini %5 daraltiyorum (${calorieReduction} kcal), protein hedefini +5g artiriyorum, antrenman yogunlugunu 1 kademe artiriyorum.`,
     };
   }
 
@@ -73,9 +90,9 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
       shouldAdjust: true,
       direction: 'decrease',
       changes: {
-        calorie_range_reduction: undefined, // calculated as 5% of range in applyDifficultyAdjustment
+        calorie_range_reduction: -calorieReduction,
         protein_increase: -5,
-        workout_intensity_bump: false,
+        workout_intensity_bump: -1,                 // intensity_level - 1
         water_increase: -0.2,
       },
       message: 'Bu hafta zorlandin, hedefleri eski seviyeye geri aliyorum. Rahat ol.',
@@ -86,64 +103,88 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
 }
 
 /**
+ * A11: Calculate new targets based on current profile and adjustment direction.
+ * - Kalori: (max-min) * 0.05 daraltma (percentage-based, not fixed 50kcal)
+ * - Protein: +5g
+ * - Antrenman: intensity_level + 1 (if field exists)
+ */
+export function calculateNewTargets(
+  currentProfile: {
+    calorie_range_rest_min: number | null;
+    calorie_range_rest_max: number | null;
+    calorie_range_training_min: number | null;
+    calorie_range_training_max: number | null;
+    protein_target_g: number | null;
+    water_target_liters: number | null;
+    intensity_level?: number | null;
+  },
+  direction: 'increase' | 'decrease',
+): Record<string, unknown> {
+  const updates: Record<string, unknown> = {};
+  const restMax = currentProfile.calorie_range_rest_max ?? 2500;
+  const restMin = currentProfile.calorie_range_rest_min ?? 1800;
+  const trainingMax = currentProfile.calorie_range_training_max ?? 2800;
+  const trainingMin = currentProfile.calorie_range_training_min ?? 2000;
+
+  // Calorie: 5% of (max - min) range
+  const restReduction = Math.round((restMax - restMin) * 0.05);
+  const trainingReduction = Math.round((trainingMax - trainingMin) * 0.05);
+
+  if (direction === 'increase') {
+    updates.calorie_range_rest_min = restMin + Math.max(restReduction, 10);
+    updates.calorie_range_training_min = trainingMin + Math.max(trainingReduction, 10);
+  } else {
+    updates.calorie_range_rest_min = Math.max(1200, restMin - Math.max(restReduction, 10));
+    updates.calorie_range_training_min = Math.max(1200, trainingMin - Math.max(trainingReduction, 10));
+  }
+
+  // Protein: +5g / -5g
+  const proteinDelta = direction === 'increase' ? 5 : -5;
+  updates.protein_target_g = Math.max(50, (currentProfile.protein_target_g ?? 100) + proteinDelta);
+
+  // Water
+  const waterDelta = direction === 'increase' ? 0.2 : -0.2;
+  updates.water_target_liters = Math.round(
+    Math.max(1.5, ((currentProfile.water_target_liters ?? 2.5) + waterDelta)) * 10
+  ) / 10;
+
+  // Intensity level: +1 / -1 (if field exists in profile)
+  if (currentProfile.intensity_level !== undefined && currentProfile.intensity_level !== null) {
+    const intensityDelta = direction === 'increase' ? 1 : -1;
+    updates.intensity_level = Math.max(1, Math.min(10, currentProfile.intensity_level + intensityDelta));
+  }
+
+  return updates;
+}
+
+/**
  * T2.41: Apply difficulty adjustment to user profile.
- * Previously this only returned recommendations without persisting.
+ * A11: Now uses calculateNewTargets for percentage-based calorie adjustment
+ * and intensity_level support.
  */
 export async function applyDifficultyAdjustment(userId: string, adjustment: DifficultyAdjustment): Promise<void> {
   if (!adjustment.shouldAdjust) return;
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, protein_target_g, water_target_liters, workout_intensity')
+    .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, protein_target_g, water_target_liters, intensity_level')
     .eq('id', userId)
     .single();
 
   if (!profile) return;
 
-  const updates: Record<string, unknown> = {};
-
-  // Use 5% of current calorie range (matching server-side implementation) instead of flat 50 kcal
-  const tMin = (profile.calorie_range_training_min ?? 1800) as number;
-  const tMax = (profile.calorie_range_training_max ?? 2200) as number;
-  const rMin = (profile.calorie_range_rest_min ?? 1600) as number;
-  const rMax = (profile.calorie_range_rest_max ?? 2000) as number;
-  const trainingRangeStep = Math.round((tMax - tMin) * 0.05);
-  const restRangeStep = Math.round((rMax - rMin) * 0.05);
-
-  if (adjustment.direction === 'increase') {
-    // Tighten: increase min by 5% of range width (narrows the range from below)
-    updates.calorie_range_training_min = tMin + trainingRangeStep;
-    updates.calorie_range_rest_min = rMin + restRangeStep;
-  } else if (adjustment.direction === 'decrease') {
-    // Widen: decrease min by 5% of range width
-    updates.calorie_range_training_min = Math.max(1200, tMin - trainingRangeStep);
-    updates.calorie_range_rest_min = Math.max(1200, rMin - restRangeStep);
-  }
-
-  if (adjustment.changes.protein_increase) {
-    updates.protein_target_g = (profile.protein_target_g ?? 100) + adjustment.changes.protein_increase;
-  }
-
-  if (adjustment.changes.water_increase) {
-    updates.water_target_liters = Math.round(((profile.water_target_liters ?? 2.5) + adjustment.changes.water_increase) * 10) / 10;
-  }
-
-  // workout_intensity_bump: persist intensity level change to profile
-  if (adjustment.changes.workout_intensity_bump === true) {
-    const INTENSITY_LEVELS = ['light', 'moderate', 'hard', 'very_hard'];
-    const currentIntensity = (profile.workout_intensity as string) ?? 'moderate';
-    const currentIdx = INTENSITY_LEVELS.indexOf(currentIntensity);
-    if (currentIdx !== -1 && currentIdx < INTENSITY_LEVELS.length - 1) {
-      updates.workout_intensity = INTENSITY_LEVELS[currentIdx + 1];
-    }
-  } else if (adjustment.changes.workout_intensity_bump === false && adjustment.direction === 'decrease') {
-    const INTENSITY_LEVELS = ['light', 'moderate', 'hard', 'very_hard'];
-    const currentIntensity = (profile.workout_intensity as string) ?? 'moderate';
-    const currentIdx = INTENSITY_LEVELS.indexOf(currentIntensity);
-    if (currentIdx > 0) {
-      updates.workout_intensity = INTENSITY_LEVELS[currentIdx - 1];
-    }
-  }
+  const updates = calculateNewTargets(
+    {
+      calorie_range_rest_min: profile.calorie_range_rest_min as number | null,
+      calorie_range_rest_max: profile.calorie_range_rest_max as number | null,
+      calorie_range_training_min: profile.calorie_range_training_min as number | null,
+      calorie_range_training_max: profile.calorie_range_training_max as number | null,
+      protein_target_g: profile.protein_target_g as number | null,
+      water_target_liters: profile.water_target_liters as number | null,
+      intensity_level: (profile as Record<string, unknown>).intensity_level as number | null | undefined,
+    },
+    adjustment.direction === 'none' ? 'increase' : adjustment.direction,
+  );
 
   updates.updated_at = new Date().toISOString();
   await supabase.from('profiles').update(updates).eq('id', userId);

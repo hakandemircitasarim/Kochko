@@ -159,6 +159,14 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
     ? reverseDiet.targetCalories
     : tdee;
 
+  // A9: Write reverse diet target calories to daily_plans
+  if (reverseDiet && !reverseDiet.isComplete) {
+    // Fire-and-forget: write to plan in background
+    writeReverseDietToPlan(userId, reverseDiet).catch(() => {
+      // Silently ignore write errors - plan generation will correct on next cycle
+    });
+  }
+
   // Message
   let message: string;
   if (reverseDiet && !reverseDiet.isComplete) {
@@ -182,6 +190,55 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
     reverseDiet,
     message,
   };
+}
+
+/**
+ * A9: Write reverse diet target calories to daily_plans.
+ * During reverse diet, updates the daily plan's calorie targets to reflect
+ * the weekly +125 kcal progression.
+ */
+export async function writeReverseDietToPlan(
+  userId: string,
+  reverseDiet: ReverseDietStatus,
+): Promise<void> {
+  if (reverseDiet.isComplete) return;
+
+  const today = new Date().toISOString().split('T')[0];
+
+  // Calculate a reasonable range around the target (±100 kcal)
+  const targetMin = reverseDiet.targetCalories - 100;
+  const targetMax = reverseDiet.targetCalories + 100;
+
+  // Upsert today's daily_plan with reverse diet calories
+  const { data: existingPlan } = await supabase
+    .from('daily_plans')
+    .select('id, calorie_target_min, calorie_target_max, version')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .order('version', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (existingPlan) {
+    // Update existing plan with reverse diet calories
+    await supabase.from('daily_plans').update({
+      calorie_target_min: targetMin,
+      calorie_target_max: targetMax,
+      focus_message: `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal hedef (haftalik +${reverseDiet.weeklyIncrease} kcal artis)`,
+    }).eq('id', existingPlan.id);
+  } else {
+    // Create a new plan entry for reverse diet
+    await supabase.from('daily_plans').insert({
+      user_id: userId,
+      date: today,
+      plan_type: 'rest',
+      calorie_target_min: targetMin,
+      calorie_target_max: targetMax,
+      protein_target_g: 0, // Will be filled by AI plan generation
+      focus_message: `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal hedef (haftalik +${reverseDiet.weeklyIncrease} kcal artis)`,
+      meal_suggestions: [],
+    });
+  }
 }
 
 // ─── Behavior Reinforcement (Phase 7) ───
@@ -218,7 +275,7 @@ export function getRetentionStrategy(
   if (bandStatus === 'approaching_limit') {
     return {
       strategy: 'proactive_warning',
-      message: "Hedef kilonun sinirina yaklasiyorsun. Mini-cut'a gerek kalmadan onlem alalim — bu hafta su ve protein hedeflerine odaklan.",
+      message: 'Hedef kilonun sinirina yaklasiyorsun. Mini-cut\'a gerek kalmadan onlem alalim - bu hafta su ve protein hedeflerine odaklan.',
     };
   }
 

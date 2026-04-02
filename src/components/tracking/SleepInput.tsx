@@ -1,8 +1,9 @@
 /**
- * Quick Sleep Input
- * Spec 3.1: Yatış/kalkış saati + kalite
+ * Sleep Input with Time Pickers
+ * Spec 3.1: Yatis/kalkis saati + kalite
+ * U4: Yatis saati ve kalkis saati girisi, toplam sure otomatik hesaplama
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -10,18 +11,74 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 interface Props {
   currentHours: number | null;
-  onSave: (hours: number, quality: 'good' | 'ok' | 'bad') => void;
+  currentSleepTime?: string | null; // "HH:MM" format
+  currentWakeTime?: string | null;  // "HH:MM" format
+  onSave: (hours: number, quality: 'good' | 'ok' | 'bad', sleepTime?: string, wakeTime?: string) => void;
 }
 
-export function SleepInput({ currentHours, onSave }: Props) {
+/**
+ * Parse "HH:MM" string into { hour, minute }.
+ */
+function parseTime(timeStr: string): { hour: number; minute: number } | null {
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2], 10);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
+
+/**
+ * Calculate sleep duration in hours from sleep_time and wake_time.
+ * Handles overnight sleep (e.g., 23:00 -> 07:00 = 8 hours).
+ */
+function calculateDuration(sleepTime: string, wakeTime: string): number | null {
+  const sleep = parseTime(sleepTime);
+  const wake = parseTime(wakeTime);
+  if (!sleep || !wake) return null;
+
+  let sleepMinutes = sleep.hour * 60 + sleep.minute;
+  let wakeMinutes = wake.hour * 60 + wake.minute;
+
+  // If wake is earlier than sleep, it crossed midnight
+  if (wakeMinutes <= sleepMinutes) {
+    wakeMinutes += 24 * 60;
+  }
+
+  const durationMinutes = wakeMinutes - sleepMinutes;
+  const durationHours = Math.round((durationMinutes / 60) * 10) / 10;
+
+  // Sanity check: sleep duration should be between 0.5 and 18 hours
+  if (durationHours < 0.5 || durationHours > 18) return null;
+  return durationHours;
+}
+
+export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, onSave }: Props) {
+  const [sleepTime, setSleepTime] = useState(currentSleepTime ?? '');
+  const [wakeTime, setWakeTime] = useState(currentWakeTime ?? '');
   const [hours, setHours] = useState(currentHours ? String(currentHours) : '');
   const [quality, setQuality] = useState<'good' | 'ok' | 'bad'>('ok');
   const [expanded, setExpanded] = useState(false);
 
+  // U4: Auto-calculate duration when sleep_time or wake_time changes
+  useEffect(() => {
+    if (sleepTime && wakeTime) {
+      const duration = calculateDuration(sleepTime, wakeTime);
+      if (duration !== null) {
+        setHours(String(duration));
+      }
+    }
+  }, [sleepTime, wakeTime]);
+
   const handleSave = () => {
     const h = parseFloat(hours);
     if (h > 0 && h < 24) {
-      onSave(h, quality);
+      onSave(
+        h,
+        quality,
+        sleepTime || undefined,
+        wakeTime || undefined,
+      );
       setExpanded(false);
     }
   };
@@ -40,7 +97,42 @@ export function SleepInput({ currentHours, onSave }: Props) {
 
   return (
     <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}>
-      <Input label="Kac saat uyudun?" value={hours} onChangeText={setHours} keyboardType="decimal-pad" placeholder="7.5" />
+      {/* U4: Sleep time and wake time inputs */}
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+        <View style={{ flex: 1 }}>
+          <Input
+            label="Yatis saati"
+            value={sleepTime}
+            onChangeText={setSleepTime}
+            placeholder="23:00"
+            keyboardType="numbers-and-punctuation"
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Input
+            label="Kalkis saati"
+            value={wakeTime}
+            onChangeText={setWakeTime}
+            placeholder="07:00"
+            keyboardType="numbers-and-punctuation"
+          />
+        </View>
+      </View>
+
+      {/* Duration - auto-calculated or manual entry */}
+      <Input
+        label="Toplam sure (saat)"
+        value={hours}
+        onChangeText={setHours}
+        keyboardType="decimal-pad"
+        placeholder="7.5"
+      />
+      {sleepTime && wakeTime && calculateDuration(sleepTime, wakeTime) !== null && (
+        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: -4, marginBottom: SPACING.sm }}>
+          Otomatik hesaplandi
+        </Text>
+      )}
+
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.xs }}>Kalite</Text>
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
         {(['good', 'ok', 'bad'] as const).map(q => (

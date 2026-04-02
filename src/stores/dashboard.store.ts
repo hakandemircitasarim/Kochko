@@ -32,6 +32,8 @@ interface TodayState {
   weightKg: number | null;
   waterLiters: number;
   sleepHours: number | null;
+  sleepTime: string | null;   // U4: "HH:MM" yatis saati
+  wakeTime: string | null;    // U4: "HH:MM" kalkis saati
   steps: number | null;
   moodScore: number | null;
   totalCalories: number;
@@ -58,6 +60,8 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   weightKg: null,
   waterLiters: 0,
   sleepHours: null,
+  sleepTime: null,
+  wakeTime: null,
   steps: null,
   moodScore: null,
   totalCalories: 0,
@@ -113,6 +117,8 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       weightKg: metrics?.weight_kg ?? null,
       waterLiters: metrics?.water_liters ?? 0,
       sleepHours: metrics?.sleep_hours ?? null,
+      sleepTime: metrics?.sleep_time ?? null,
+      wakeTime: metrics?.wake_time ?? null,
       steps: metrics?.steps ?? null,
       moodScore: metrics?.mood_score ?? null,
       totalCalories,

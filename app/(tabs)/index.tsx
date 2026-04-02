@@ -35,7 +35,7 @@ export default function TodayScreen() {
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const {
-    meals, workouts, weightKg, waterLiters, sleepHours, steps, moodScore,
+    meals, workouts, weightKg, waterLiters, sleepHours, sleepTime, wakeTime, steps, moodScore,
     totalCalories, totalProtein, focusMessage, weeklyBudgetRemaining,
     goalProgress, activeGoal,
     loading, fetchToday, addWater, deleteMeal, deleteWorkout,
@@ -198,13 +198,15 @@ export default function TodayScreen() {
       <View style={{ marginBottom: SPACING.md }}>
         <SleepInput
           currentHours={sleepHours}
-          onSave={async (hours, quality) => {
+          currentSleepTime={sleepTime}
+          currentWakeTime={wakeTime}
+          onSave={async (hours, quality, savedSleepTime, savedWakeTime) => {
             if (!user?.id) return;
             const warning = checkSuspiciousInput('sleep', hours);
             const doSave = async () => {
               const date = getEffectiveDate(new Date(), dayBoundaryHour);
               await supabase.from('daily_metrics').upsert(
-                { user_id: user.id, date, sleep_hours: hours, sleep_quality: quality, water_liters: waterLiters, synced: true },
+                { user_id: user.id, date, sleep_hours: hours, sleep_quality: quality, sleep_time: savedSleepTime ?? null, wake_time: savedWakeTime ?? null, water_liters: waterLiters, synced: true },
                 { onConflict: 'user_id,date' }
               );
               refresh();

@@ -24,7 +24,7 @@ import {
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
-import { startRecording, stopRecording, isRecording as checkIsRecording } from '@/services/voice.service';
+import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons, ConfirmRejectButtons, RecipeCard } from '@/components/chat/RichMessage';
@@ -115,15 +115,15 @@ export default function ChatScreen() {
     setSending(false);
   };
 
-  // Voice recording handler (T4.1)
+  // Voice recording handler (T4.1 / U1)
   const handleVoiceToggle = async () => {
     if (isRecordingVoice) {
       setIsRecordingVoice(false);
-      const uri = await stopRecording();
-      if (uri) {
-        // For now, show a message that audio was recorded
-        // Full STT requires backend Whisper integration
-        setInput('[Sesli mesaj kaydedildi - metin olarak yazin]');
+      const { text, audioUri } = await stopAndTranscribe();
+      if (text) {
+        setInput(text);
+      } else if (audioUri) {
+        setInput('[Ses kaydedildi ama yazilamadi - metin olarak yazin]');
       }
     } else {
       const started = await startRecording();
