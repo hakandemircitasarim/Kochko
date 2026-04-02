@@ -85,9 +85,7 @@ export async function getExerciseHistory(
     lastWeight: latest.weight_kg,
     lastReps: latest.reps,
     history,
-    weeksSinceDeload: history.length > 0
-      ? Math.round((Date.now() - new Date(history[0].date).getTime()) / (7 * 24 * 60 * 60 * 1000))
-      : 0,
+    weeksSinceDeload: history.length, // simplified
   };
 }
 
