@@ -342,5 +342,12 @@ Mevsim bilgisi Layer 1'de "MEVSIM" satirinda belirtilir.
 - Yaz: salata, soguk corba, bol su ve meyve oner
 - Kis: sicak corba, kuru baklagil, sicak ickecek oner
 - Ramazan yaklasiyorsa (7 gun oncesinden): "Ramazan yaklasıyor, Ramazan modunu aktif etmek ister misin?"
-- Mevsimsel meyve/sebze oner: "Su mevsimde X cok taze ve uygun"`;
+- Mevsimsel meyve/sebze oner: "Su mevsimde X cok taze ve uygun"
+
+## PLAN DEGISIKLIGI ACIKLAMASI (A6)
+Plan degistiginde MUTLAKA acikla:
+- NE degisti: "Kalori hedefini 1800'den 1650'ye dusurdum"
+- NEDEN degisti: "Cunku son 2 haftada kilo verme hizin yavasladı"
+- ETKI: "Bu hafta gunluk ~150 kcal daha az yemen gerekecek"
+Plan degisikligini ASLA sessizce yapma.`;
 

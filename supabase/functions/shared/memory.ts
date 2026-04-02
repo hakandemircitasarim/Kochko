@@ -162,8 +162,17 @@ async function buildLayer2(userId: string): Promise<string> {
   if (s.user_persona) parts.push(`Persona: ${s.user_persona}`);
   if (s.nutrition_literacy) parts.push(`Beslenme okuryazarligi: ${s.nutrition_literacy}`);
   if (s.learned_tone_preference) parts.push(`Ogrenilen ton: ${s.learned_tone_preference}`);
-  if (s.alcohol_pattern) parts.push(`Alkol kalibi: ${s.alcohol_pattern}`);
+  // A1: Structured alcohol pattern
+  const alcoholPattern = s.alcohol_pattern as { pattern: string; frequency: string; impact: string } | string | null;
+  if (alcoholPattern) {
+    if (typeof alcoholPattern === 'object') {
+      parts.push(`Alkol kalibi: ${alcoholPattern.pattern} | Siklik: ${alcoholPattern.frequency} | Etki: ${alcoholPattern.impact}`);
+    } else {
+      parts.push(`Alkol kalibi: ${alcoholPattern}`);
+    }
+  }
   if (s.caffeine_sleep_notes) parts.push(`Kafein-uyku: ${s.caffeine_sleep_notes}`);
+  // A2: Social eating notes (structured date-stamped)
   if (s.social_eating_notes) parts.push(`Sosyal yeme: ${s.social_eating_notes}`);
   if (s.recovery_pattern) parts.push(`Toparlanma: ${s.recovery_pattern}`);
   if (s.menstrual_notes) parts.push(`Regl notlari: ${s.menstrual_notes}`);

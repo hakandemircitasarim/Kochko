@@ -234,6 +234,26 @@ serve(async (req: Request) => {
       } catch { /* macro calc non-critical */ }
     }
 
+    // D12: Habits context injection — query ai_summary directly
+    let habitsCtx = '';
+    try {
+      const { data: habitSummary } = await supabaseAdmin
+        .from('ai_summary').select('habit_progress').eq('user_id', userId).single();
+      if (habitSummary?.habit_progress) {
+        const habits = habitSummary.habit_progress as { habit: string; status: string; streak: number }[];
+        const active = habits.filter(h => h.status === 'active');
+        const mastered = habits.filter(h => h.status === 'mastered');
+        if (active.length > 0 || mastered.length > 0) {
+          const hParts: string[] = ['## ALISKANLIK DURUMU'];
+          if (active.length > 0) hParts.push(`Aktif: ${active.map(h => `"${h.habit}" (${h.streak} gun seri)`).join(', ')}`);
+          if (mastered.length > 0) hParts.push(`Oturtulmus: ${mastered.map(h => h.habit).join(', ')}`);
+          const almostMastered = active.find(h => h.streak >= 12 && h.streak < 14);
+          if (almostMastered) hParts.push(`"${almostMastered.habit}" 2 gun sonra oturtulmus sayilacak!`);
+          habitsCtx = hParts.join('\n');
+        }
+      }
+    } catch { /* non-critical */ }
+
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
       modeInstructions,
@@ -242,6 +262,7 @@ serve(async (req: Request) => {
       personaPrompt,
       correctionCtx,
       returnFlowContext,
+      habitsCtx,
       ctx.layer1 ? `--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}` : '',
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
@@ -293,11 +314,18 @@ serve(async (req: Request) => {
     // Execute actions (use target_date for batch entry, T1.17)
     const actionFeedback = await executeActions(userId, actions, profile?.gender, target_date);
 
-    // A8: Text-based confidence check — if AI response contains low-confidence indicators, append note to meal_log feedback
-    if (/dusuk guven|[Dd]usuk/i.test(assistantMessage)) {
-      const mealLogIdx = actions.findIndex((a: { type: string }) => a.type === 'meal_log');
-      if (mealLogIdx !== -1 && actionFeedback[mealLogIdx] != null) {
-        actionFeedback[mealLogIdx] = (actionFeedback[mealLogIdx] ?? '') + ' NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste.';
+    // A8: Low confidence proactive verification — append confirmation question
+    const mealActions = actions.filter((a: { type: string }) => a.type === 'meal_log');
+    for (const mealAction of mealActions) {
+      const items = mealAction.items as { name: string; portion: string; calories: number; confidence?: number }[] | undefined;
+      if (items && items.length > 0) {
+        const lowConf = items.filter(i => (i.confidence ?? 0.8) < 0.7);
+        if (lowConf.length > 0) {
+          const parsed = items.map(i => `${i.portion} ${i.name} (~${i.calories} kcal)`).join(', ');
+          if (!assistantMessage.includes('Dogru anladiysam')) {
+            assistantMessage += `\n\nDogru anladiysam: ${parsed}. Bu dogru mu?`;
+          }
+        }
       }
     }
 
@@ -913,7 +941,7 @@ async function checkCaffeineIntake(
 async function processLayer2Updates(userId: string, updates: Record<string, unknown>) {
   try {
     const { data: existing } = await supabaseAdmin
-      .from('ai_summary').select('general_summary, behavioral_patterns, portion_calibration, strength_records, coaching_notes, caffeine_sleep_notes, habit_progress, learned_meal_times, seasonal_notes')
+      .from('ai_summary').select('general_summary, behavioral_patterns, portion_calibration, strength_records, coaching_notes, caffeine_sleep_notes, habit_progress, learned_meal_times, seasonal_notes, alcohol_pattern, social_eating_notes, features_introduced')
       .eq('user_id', userId).single();
 
     const changes: Record<string, unknown> = {};
@@ -1092,6 +1120,35 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       const current = (existing?.seasonal_notes as string) ?? '';
       const dateStr = new Date().toISOString().split('T')[0];
       changes.seasonal_notes = `${current}\n[${dateStr}] ${updates.seasonal_note}`.trim();
+    }
+
+    // A1: Alcohol pattern — structured format { pattern, frequency, impact }
+    if (updates.alcohol_pattern) {
+      if (typeof updates.alcohol_pattern === 'object') {
+        changes.alcohol_pattern = updates.alcohol_pattern;
+      } else {
+        changes.alcohol_pattern = {
+          pattern: updates.alcohol_pattern as string,
+          frequency: 'bilinmiyor',
+          impact: 'bilinmiyor',
+        };
+      }
+    }
+
+    // A2: Social eating note — append date-stamped notes
+    if (updates.social_eating_note) {
+      const current = (existing?.social_eating_notes as string) ?? '';
+      const dateStr = new Date().toISOString().split('T')[0];
+      changes.social_eating_notes = `${current}\n[${dateStr}] ${updates.social_eating_note}`.trim();
+    }
+
+    // A3: Feature introduced — track to prevent re-introducing
+    if (updates.feature_introduced) {
+      const current = (existing?.features_introduced as string[]) ?? [];
+      const newFeature = updates.feature_introduced as string;
+      if (!current.includes(newFeature)) {
+        changes.features_introduced = [...current, newFeature];
+      }
     }
 
     if (Object.keys(changes).length > 0) {
