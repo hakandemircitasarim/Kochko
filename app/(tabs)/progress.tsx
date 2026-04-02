@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { LineChart } from 'react-native-chart-kit';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
-import { detectPlateau, selectBestStrategy, applyPlateauStrategy } from '@/services/plateau.service';
-import type { PlateauStatus, StrategyRecommendation } from '@/services/plateau.service';
-import { getMaintenanceStatus } from '@/services/maintenance.service';
+import { detectPlateau, selectBestStrategy, applyPlateauStrategy, type PlateauStatus, type PlateauStrategy, type StrategyRecommendation } from '@/services/plateau.service';
+import { getMaintenanceStatus, shouldTriggerMiniCut, type MaintenanceStatus } from '@/services/maintenance.service';
+import { getTimelineData } from '@/services/goals.service';
+import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
-import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 
 const chartWidth = Dimensions.get('window').width - SPACING.md * 4;
 const chartConfig = {
@@ -28,16 +29,17 @@ interface CompPt { date: string; compliance_score: number; }
 
 export default function ProgressScreen() {
   const user = useAuthStore(s => s.user);
+  const profile = useProfileStore(s => s.profile);
   const [metrics, setMetrics] = useState<MetricPt[]>([]);
   const [compliance, setCompliance] = useState<CompPt[]>([]);
   const [loading, setLoading] = useState(true);
   const [plateauMsg, setPlateauMsg] = useState<string | null>(null);
   const [plateauStatus, setPlateauStatus] = useState<PlateauStatus | null>(null);
   const [strategyRec, setStrategyRec] = useState<StrategyRecommendation | null>(null);
-  const [strategyApplied, setStrategyApplied] = useState(false);
   const [maintenanceMsg, setMaintenanceMsg] = useState<string | null>(null);
-  const [phases, setPhases] = useState<{ id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]>([]);
-  const [currentWeek, setCurrentWeek] = useState(0);
+  const [maintenanceData, setMaintenanceData] = useState<MaintenanceStatus | null>(null);
+  const [miniCutOffered, setMiniCutOffered] = useState(false);
+  const [timelinePhases, setTimelinePhases] = useState<{ phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]; currentWeek: number } | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -47,48 +49,91 @@ export default function ProgressScreen() {
       supabase.from('daily_reports').select('date, compliance_score').eq('user_id', user.id).gte('date', from).order('date'),
       detectPlateau(user.id),
       getMaintenanceStatus(user.id),
-      supabase.from('goals').select('id, goal_type, target_weeks, phase_order, phase_label, is_active, created_at').eq('user_id', user.id).not('phase_order', 'is', null).order('phase_order', { ascending: true }),
-    ]).then(([m, c, plateau, maintenance, phasesResult]) => {
+      getTimelineData(user.id),
+    ]).then(([m, c, plateau, maintenance, timeline]) => {
       setMetrics((m.data ?? []) as MetricPt[]);
-      const complianceData = (c.data ?? []) as CompPt[];
-      setCompliance(complianceData);
+      const compData = (c.data ?? []) as CompPt[];
+      setCompliance(compData);
 
       if (plateau.isInPlateau) {
         setPlateauMsg(plateau.message);
         setPlateauStatus(plateau);
-        // Compute avg compliance and infer training style from active phase
-        const avgCompliance = complianceData.length > 0
-          ? Math.round(complianceData.reduce((s, cp) => s + cp.compliance_score, 0) / complianceData.length)
-          : null;
-        const rawPhasesForStrategy = (phasesResult.data ?? []) as { goal_type: string; is_active: boolean }[];
-        const activePhaseGoal = rawPhasesForStrategy.find(p => p.is_active);
-        const trainingStyle = activePhaseGoal?.goal_type === 'gain_muscle' ? 'strength' : null;
-        const rec = selectBestStrategy(plateau.weeksSinceChange, trainingStyle, avgCompliance, 500);
+        // Calculate best strategy recommendation
+        const avgComp = compData.length > 0 ? Math.round(compData.reduce((s, cc) => s + cc.compliance_score, 0) / compData.length) : null;
+        const trainingStyle = profile?.training_style as string | null ?? null;
+        const deficit = (profile?.tdee_calculated as number ?? 2000) - (profile?.calorie_range_rest_min as number ?? 1800);
+        const rec = selectBestStrategy(plateau.weeksSinceChange, trainingStyle, avgComp, deficit);
         setStrategyRec(rec);
       }
 
-      if (maintenance.isInMaintenance) setMaintenanceMsg(maintenance.message);
+      if (maintenance.isInMaintenance) {
+        setMaintenanceMsg(maintenance.message);
+        setMaintenanceData(maintenance);
+        // D6: Check if mini-cut should be triggered
+        if (maintenance.bandStatus === 'exceeded') {
+          // Count weeks exceeded from maintenance data
+          const miniCut = shouldTriggerMiniCut(maintenance.bandStatus, maintenance.weeksSinceGoalReached >= 2 ? 2 : 1);
+          if (miniCut.trigger) {
+            setMiniCutOffered(true);
+          }
+        }
+      }
 
-      const rawPhases = (phasesResult.data ?? []) as { id: string; goal_type: string; target_weeks: number | null; phase_order: number; phase_label: string | null; is_active: boolean; created_at: string }[];
-      if (rawPhases.length > 1) {
-        const activePhase = rawPhases.find(p => p.is_active);
-        const week = activePhase
-          ? Math.max(1, Math.round((Date.now() - new Date(activePhase.created_at).getTime()) / (7 * 86400000)))
-          : 0;
-        setCurrentWeek(week);
-        setPhases(rawPhases.map((p) => ({
-          id: p.id,
-          label: p.phase_label ?? p.goal_type,
-          goalType: p.goal_type,
-          targetWeeks: p.target_weeks ?? 12,
-          isActive: p.is_active,
-          isCompleted: !p.is_active && activePhase ? p.phase_order < activePhase.phase_order : false,
-        })));
+      // D16: PhaseTimeline data
+      if (timeline.phases.length > 1) {
+        setTimelinePhases(timeline);
       }
 
       setLoading(false);
     });
-  }, [user?.id]);
+  }, [user?.id, profile]);
+
+  // D4: Apply plateau strategy
+  const handleApplyStrategy = async (strategyId: string) => {
+    if (!profile || !user?.id) return;
+    const currentCalorie = {
+      min: (profile.calorie_range_rest_min as number) ?? 1800,
+      max: (profile.calorie_range_rest_max as number) ?? 2200,
+    };
+    const currentProtein = (profile.protein_target_g as number) ?? 120;
+    const result = applyPlateauStrategy(strategyId, currentCalorie, currentProtein);
+
+    // Update profile with adjusted calories
+    await supabase.from('profiles').update({
+      calorie_range_rest_min: result.adjustedCalorie.min,
+      calorie_range_rest_max: result.adjustedCalorie.max,
+      protein_target_g: result.adjustedProtein,
+    }).eq('id', user.id);
+
+    Alert.alert('Strateji Uygulandi', result.instructions, [{ text: 'Tamam' }]);
+    setStrategyRec(null);
+  };
+
+  // D6: Activate mini-cut mode
+  const handleMiniCut = async () => {
+    if (!user?.id || !profile) return;
+    const tdee = (profile.tdee_calculated as number) ?? 2000;
+    const miniCutCalories = Math.round(tdee * 0.85); // 15% deficit for mini-cut
+
+    await supabase.from('profiles').update({
+      calorie_range_rest_min: miniCutCalories - 100,
+      calorie_range_rest_max: miniCutCalories + 100,
+    }).eq('id', user.id);
+
+    // Create a temporary mini-cut goal
+    await supabase.from('goals').insert({
+      user_id: user.id,
+      goal_type: 'lose_weight',
+      target_weeks: 3,
+      phase_label: 'Mini-Cut',
+      priority: 'sustainable',
+      restriction_mode: 'sustainable',
+      is_active: true,
+    });
+
+    Alert.alert('Mini-Cut Baslatildi', `3 haftalik mini-cut: ${miniCutCalories - 100}-${miniCutCalories + 100} kcal. Sonra tekrar bakima donersin.`);
+    setMiniCutOffered(false);
+  };
 
   if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
 
@@ -101,32 +146,6 @@ export default function ProgressScreen() {
   const avgWater = metrics.length > 0 ? (metrics.reduce((s, m) => s + m.water_liters, 0) / metrics.length).toFixed(1) : null;
   const sleepDays = metrics.filter(m => m.sleep_hours != null);
   const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1) : null;
-
-  const handleApplyStrategy = async () => {
-    if (!strategyRec || !user?.id) return;
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('calorie_range_rest_min, calorie_range_rest_max, protein_target_g')
-      .eq('id', user.id)
-      .single();
-    const currentMin = (profile?.calorie_range_rest_min as number | null) ?? 1800;
-    const currentMax = (profile?.calorie_range_rest_max as number | null) ?? 2200;
-    const currentProtein = (profile?.protein_target_g as number | null) ?? 150;
-    const result = applyPlateauStrategy(
-      strategyRec.primary.id,
-      { min: currentMin, max: currentMax },
-      currentProtein
-    );
-    await supabase
-      .from('profiles')
-      .update({
-        calorie_range_rest_min: result.adjustedCalorie.min,
-        calorie_range_rest_max: result.adjustedCalorie.max,
-        protein_target_g: result.adjustedProtein,
-      })
-      .eq('id', user.id);
-    setStrategyApplied(true);
-  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
@@ -152,14 +171,7 @@ export default function ProgressScreen() {
           />
         </Card>
       ) : (
-        <Card title="Kilo Trendi"><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>En az 2 tarti kaydi gerekli.</Text></Card>
-      )}
-
-      {/* Phase Timeline */}
-      {phases.length > 1 && (
-        <View style={{ marginBottom: SPACING.md }}>
-          <PhaseTimeline phases={phases} currentWeek={currentWeek} />
-        </View>
+        <Card title="Kilo Trendi"><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>En az 2 tarti kaydı gerekli.</Text></Card>
       )}
 
       {/* Compliance Chart */}
@@ -195,43 +207,100 @@ export default function ProgressScreen() {
         </Card>
       )}
 
-      {/* Plateau Warning + Strategy */}
+      {/* D16: Phase Timeline */}
+      {timelinePhases && timelinePhases.phases.length > 1 && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <PhaseTimeline phases={timelinePhases.phases} currentWeek={timelinePhases.currentWeek} />
+        </View>
+      )}
+
+      {/* Plateau Warning + D4: Strategy Cards */}
       {plateauMsg && (
         <Card style={{ borderColor: COLORS.warning, borderWidth: 2 }}>
           <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>Plateau Tespiti</Text>
           <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{plateauMsg}</Text>
-          {strategyRec && !strategyApplied && (
-            <View style={{ marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: COLORS.background, borderRadius: 8 }}>
-              <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '700', marginBottom: SPACING.xs }}>
-                Onerilen Strateji: {strategyRec.primary.name}
-              </Text>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, lineHeight: 18, marginBottom: SPACING.xs }}>
-                {strategyRec.primary.description}
-              </Text>
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, lineHeight: 16, fontStyle: 'italic', marginBottom: SPACING.sm }}>
-                {strategyRec.reasoning}
-              </Text>
+
+          {/* D4: Plateau strategy recommendation cards */}
+          {strategyRec && (
+            <View style={{ marginTop: SPACING.md }}>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>ONERILEN STRATEJILER</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.sm }}>{strategyRec.reasoning}</Text>
+
+              {/* Primary strategy */}
               <TouchableOpacity
-                onPress={handleApplyStrategy}
-                style={{ backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: SPACING.xs, paddingHorizontal: SPACING.md, alignSelf: 'flex-start' }}
+                onPress={() => handleApplyStrategy(strategyRec.primary.id)}
+                style={{ backgroundColor: COLORS.card, borderRadius: 10, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 2, borderColor: COLORS.primary }}
               >
-                <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Onayla</Text>
+                <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '700' }}>{strategyRec.primary.name}</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 20 }}>{strategyRec.primary.description}</Text>
+                <View style={{ backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm }}>
+                  <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Onayla</Text>
+                </View>
               </TouchableOpacity>
+
+              {/* Secondary strategy */}
+              {strategyRec.secondary && (
+                <TouchableOpacity
+                  onPress={() => handleApplyStrategy(strategyRec.secondary!.id)}
+                  style={{ backgroundColor: COLORS.card, borderRadius: 10, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}
+                >
+                  <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{strategyRec.secondary.name}</Text>
+                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 20 }}>{strategyRec.secondary.description}</Text>
+                  <View style={{ backgroundColor: COLORS.surfaceLight, borderRadius: 8, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm, borderWidth: 1, borderColor: COLORS.border }}>
+                    <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Bunu Dene</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
             </View>
           )}
-          {strategyApplied && (
-            <Text style={{ color: COLORS.success, fontSize: FONT.xs, marginTop: SPACING.sm, fontWeight: '600' }}>
-              Strateji uygulandi. Kalori hedeflerin guncellendi.
-            </Text>
+
+          {!strategyRec && (
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>Kocunla konusarak strateji belirleyebilirsin.</Text>
           )}
         </Card>
       )}
 
-      {/* Maintenance Mode */}
+      {/* Maintenance Mode + D6: Mini-Cut UI */}
       {maintenanceMsg && (
         <Card style={{ borderColor: COLORS.success, borderWidth: 2 }}>
           <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>Bakim Modu</Text>
           <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{maintenanceMsg}</Text>
+
+          {/* D6: Tolerance band info */}
+          {maintenanceData?.toleranceBand && (
+            <View style={{ marginTop: SPACING.sm, flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+                Band: {maintenanceData.toleranceBand.min.toFixed(1)} - {maintenanceData.toleranceBand.max.toFixed(1)} kg
+              </Text>
+              <Text style={{
+                color: maintenanceData.bandStatus === 'in_band' ? COLORS.success
+                  : maintenanceData.bandStatus === 'approaching_limit' ? COLORS.warning : COLORS.error,
+                fontSize: FONT.xs, fontWeight: '600',
+              }}>
+                {maintenanceData.bandStatus === 'in_band' ? 'Bandda' : maintenanceData.bandStatus === 'approaching_limit' ? 'Sinira Yakin' : 'Band Asildi'}
+              </Text>
+            </View>
+          )}
+
+          {/* D6: Mini-cut suggestion */}
+          {miniCutOffered && (
+            <View style={{ marginTop: SPACING.md, backgroundColor: COLORS.surfaceLight, borderRadius: 10, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.error }}>
+              <Text style={{ color: COLORS.error, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>Mini-Cut Onerisi</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.sm }}>
+                Tolerans bandinin disina ciktin. 2-3 haftalik hafif kalori acigi ile dengeye donebilirsin.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                <TouchableOpacity onPress={handleMiniCut}
+                  style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: 8, backgroundColor: COLORS.primary, alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Mini-Cut Baslat</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setMiniCutOffered(false)}
+                  style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: 8, backgroundColor: COLORS.surfaceLight, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Simdilik Degil</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </Card>
       )}
 

@@ -20,14 +20,17 @@ import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
-  sendMessage, sendMessageWithPhoto, sendMessageWithRetry, sendMessageForDate, loadChatHistory,
+  sendMessage, sendMessageWithPhoto, loadChatHistory,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
-import { MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons, ConfirmRejectButtons, RecipeCard } from '@/components/chat/RichMessage';
+import {
+  MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
+  RecipeCard, ConfirmRejectButtons,
+} from '@/components/chat/RichMessage';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 // Simulation data parsed from AI responses
@@ -44,26 +47,7 @@ interface UIMessage extends ChatMessage {
   showFeedback?: boolean;
   simulationData?: SimulationData | null;
   quickSelectOptions?: string[] | null;
-  hasConfirm?: boolean;
-}
-
-function parseQuickSelect(content: string): { cleanContent: string; options: string[] | null } {
-  const match = content.match(/<quick_select>([\s\S]*?)<\/quick_select>/);
-  if (!match) return { cleanContent: content, options: null };
-  try {
-    const options = JSON.parse(match[1]) as string[];
-    const cleanContent = content.replace(/<quick_select>[\s\S]*?<\/quick_select>/, '').trim();
-    return { cleanContent, options: Array.isArray(options) ? options : null };
-  } catch {
-    return { cleanContent: content, options: null };
-  }
-}
-
-function parseConfirm(content: string): { cleanContent: string; hasConfirm: boolean } {
-  const hasConfirm = /<confirm>[\s\S]*?<\/confirm>/.test(content);
-  if (!hasConfirm) return { cleanContent: content, hasConfirm: false };
-  const cleanContent = content.replace(/<confirm>[\s\S]*?<\/confirm>/, '').trim();
-  return { cleanContent, hasConfirm: true };
+  hasPlanSuggestion?: boolean;
 }
 
 function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
@@ -76,6 +60,24 @@ function parseSimulationData(content: string): { cleanContent: string; data: Sim
   } catch {
     return { cleanContent: content, data: null };
   }
+}
+
+function parseQuickSelect(content: string): { cleanContent: string; options: string[] | null } {
+  const match = content.match(/<quick_select>([\s\S]*?)<\/quick_select>/);
+  if (!match) return { cleanContent: content, options: null };
+  try {
+    const options = JSON.parse(match[1]) as string[];
+    const cleanContent = content.replace(/<quick_select>[\s\S]*?<\/quick_select>/, '').trim();
+    return { cleanContent, options };
+  } catch {
+    return { cleanContent: content, options: null };
+  }
+}
+
+function hasConfirmRejectIndicator(content: string, taskMode?: string): boolean {
+  return !!content.match(/<confirm_reject\s*\/?>/) ||
+    taskMode === 'plan_suggestion' ||
+    (taskMode === 'plan' && (content.includes('plan') || content.includes('oneriyorum')));
 }
 
 export default function ChatScreen() {
@@ -91,12 +93,7 @@ export default function ChatScreen() {
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [targetDate, setTargetDate] = useState<string | null>(null);
-  const [showDateInput, setShowDateInput] = useState(false);
-  const [dateInputText, setDateInputText] = useState('');
   const listRef = useRef<FlatList>(null);
-
-  const todayStr = new Date().toISOString().split('T')[0];
 
   const isOnboarding = profile && !profile.onboarding_completed;
 
@@ -195,12 +192,10 @@ export default function ChatScreen() {
     setSending(true);
     scrollToBottom();
 
-    // Call AI (use targetDate for retroactive logging if set)
+    // Call AI
     const { data, error } = img
       ? await sendMessageWithPhoto(text || 'Bu yemegi analiz et.', img)
-      : targetDate && targetDate !== todayStr
-        ? await sendMessageForDate(text, targetDate)
-        : await sendMessage(text);
+      : await sendMessage(text);
 
     if (data) {
       // Determine if this message type should show feedback buttons
@@ -218,11 +213,14 @@ export default function ChatScreen() {
         simulationData = parsed.data;
       }
 
-      // Parse quick_select and confirm tags
-      const { cleanContent: contentAfterQS, options: quickSelectOptions } = parseQuickSelect(messageContent);
-      messageContent = contentAfterQS;
-      const { cleanContent: contentAfterConfirm, hasConfirm } = parseConfirm(messageContent);
-      messageContent = contentAfterConfirm;
+      // Parse quick_select options from AI response
+      const quickSelectParsed = parseQuickSelect(messageContent);
+      messageContent = quickSelectParsed.cleanContent;
+      const quickSelectOptions = quickSelectParsed.options;
+
+      // Detect confirm/reject plan suggestion
+      const hasPlanSuggestion = hasConfirmRejectIndicator(messageContent, data.task_mode);
+      messageContent = messageContent.replace(/<confirm_reject\s*\/?>/g, '').trim();
 
       const reply: UIMessage = {
         id: `a-${Date.now()}`,
@@ -234,7 +232,7 @@ export default function ChatScreen() {
         showFeedback,
         simulationData,
         quickSelectOptions,
-        hasConfirm,
+        hasPlanSuggestion,
       };
       setMessages(prev => [...prev, reply]);
 
@@ -270,65 +268,55 @@ export default function ChatScreen() {
     setInput(text);
   };
 
-  // Direct send handler for QuickSelectButtons and ConfirmRejectButtons
-  const handleDirectSend = useCallback(async (text: string) => {
-    if (sending) return;
-    const userMsg: UIMessage = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: text,
-      created_at: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, userMsg]);
-    setSending(true);
-    scrollToBottom();
-    const { data, error } = await sendMessage(text);
-    if (data) {
-      let messageContent = data.message;
-      const { cleanContent: contentAfterQS, options: quickSelectOptions } = parseQuickSelect(messageContent);
-      messageContent = contentAfterQS;
-      const { cleanContent: contentAfterConfirm, hasConfirm } = parseConfirm(messageContent);
-      messageContent = contentAfterConfirm;
-      const reply: UIMessage = {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content: messageContent,
-        task_mode: data.task_mode,
-        created_at: new Date().toISOString(),
-        actions: data.actions,
-        showFeedback: false,
-        quickSelectOptions,
-        hasConfirm,
+  // QuickSelectButtons handler — user picks an option from AI's inline choices
+  const handleQuickSelect = useCallback((option: string) => {
+    setInput(option);
+    // Auto-send after a short delay
+    setTimeout(async () => {
+      const userMsg: UIMessage = {
+        id: `u-${Date.now()}`, role: 'user', content: option, created_at: new Date().toISOString(),
       };
-      setMessages(prev => [...prev, reply]);
-      if (data.actions.some(a => a.feedback) && user?.id) {
-        refreshDashboard(user.id);
+      setMessages(prev => [...prev, userMsg]);
+      setInput('');
+      setSending(true);
+      scrollToBottom();
+      const { data, error } = await sendMessage(option);
+      if (data) {
+        let content = data.message;
+        const qsParsed = parseQuickSelect(content);
+        content = qsParsed.cleanContent;
+        const hasPlan = hasConfirmRejectIndicator(content, data.task_mode);
+        content = content.replace(/<confirm_reject\s*\/?>/g, '').trim();
+        setMessages(prev => [...prev, {
+          id: `a-${Date.now()}`, role: 'assistant', content, task_mode: data.task_mode,
+          created_at: new Date().toISOString(), actions: data.actions, showFeedback: false,
+          quickSelectOptions: qsParsed.options, hasPlanSuggestion: hasPlan,
+        }]);
+        if (data.actions.some(a => a.feedback) && user?.id) refreshDashboard(user.id);
+      } else {
+        setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: error ?? 'Baglanti hatasi.', created_at: new Date().toISOString() }]);
       }
-    } else {
-      setMessages(prev => [...prev, {
-        id: `e-${Date.now()}`,
-        role: 'assistant',
-        content: error ?? 'Baglanti hatasi. Tekrar dene.',
-        created_at: new Date().toISOString(),
-      }]);
-    }
-    setSending(false);
-    scrollToBottom();
-  }, [sending, scrollToBottom, user?.id, refreshDashboard]);
+      setSending(false);
+      scrollToBottom();
+    }, 0);
+  }, [scrollToBottom, user?.id, refreshDashboard]);
+
+  // Confirm/Reject plan suggestion handlers
+  const handlePlanConfirm = useCallback(() => {
+    handleQuickSelect('Evet, bu plani onayla');
+  }, [handleQuickSelect]);
+
+  const handlePlanReject = useCallback(() => {
+    handleQuickSelect('Hayir, degistir');
+  }, [handleQuickSelect]);
 
   // Dashboard macros for real-time MacroSummary after meal_log
   const totalProtein = useDashboardStore(s => s.totalProtein);
   const totalCarbs = useDashboardStore(s => s.totalCarbs);
   const totalFat = useDashboardStore(s => s.totalFat);
+  const totalCalories = useDashboardStore(s => s.totalCalories);
   const weeklyBudgetRemaining = useDashboardStore(s => s.weeklyBudgetRemaining);
   const dashboardMacros = { protein: totalProtein, carbs: totalCarbs, fat: totalFat };
-
-  // Weekly budget for WeeklyBudgetBar (D15)
-  const weeklyBudget = (() => {
-    if (weeklyBudgetRemaining === null) return null;
-    const weeklyTotal = (profile?.tdee_calculated ?? 2000) * 7;
-    return { consumed: weeklyTotal - weeklyBudgetRemaining, total: weeklyTotal };
-  })();
 
   // Compute macro gram targets from profile
   const macroTargets = (() => {
@@ -411,7 +399,7 @@ export default function ChatScreen() {
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onDirectSend={handleDirectSend} weeklyBudget={weeklyBudget} />}
+          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} />}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
@@ -459,51 +447,6 @@ export default function ChatScreen() {
         </View>
       )}
 
-      {/* Date picker affordance (GAP 5: retroactive logging) */}
-      {showDateInput && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, backgroundColor: COLORS.surface, borderTopWidth: 1, borderTopColor: COLORS.border, gap: SPACING.xs }}>
-          <TextInput
-            style={{ flex: 1, backgroundColor: COLORS.inputBg, borderRadius: 10, paddingHorizontal: SPACING.sm, paddingVertical: 6, color: COLORS.text, fontSize: FONT.sm, borderWidth: 1, borderColor: COLORS.border }}
-            placeholder="YYYY-AA-GG (orn: 2026-03-28)"
-            placeholderTextColor={COLORS.textMuted}
-            value={dateInputText}
-            onChangeText={setDateInputText}
-            maxLength={10}
-            autoFocus
-          />
-          <TouchableOpacity
-            onPress={() => {
-              const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-              if (dateRegex.test(dateInputText) && dateInputText < todayStr) {
-                setTargetDate(dateInputText);
-              }
-              setShowDateInput(false);
-            }}
-            style={{ backgroundColor: COLORS.primary, borderRadius: 8, paddingVertical: 6, paddingHorizontal: SPACING.sm }}
-          >
-            <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Sec</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => { setShowDateInput(false); setDateInputText(''); }}
-            style={{ backgroundColor: COLORS.inputBg, borderRadius: 8, paddingVertical: 6, paddingHorizontal: SPACING.sm, borderWidth: 1, borderColor: COLORS.border }}
-          >
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Iptal</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Retroactive date badge */}
-      {targetDate && targetDate !== todayStr && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs, backgroundColor: COLORS.primary + '22', borderTopWidth: 1, borderTopColor: COLORS.primary + '44' }}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600', flex: 1 }}>
-            Kayit tarihi: {targetDate}
-          </Text>
-          <TouchableOpacity onPress={() => { setTargetDate(null); setDateInputText(''); }}>
-            <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', paddingHorizontal: SPACING.sm }}>Temizle</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       {/* Input bar */}
       <View style={{
         flexDirection: 'row', alignItems: 'flex-end',
@@ -537,12 +480,6 @@ export default function ChatScreen() {
           <Text style={{ color: isRecordingVoice ? '#fff' : COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>
             {isRecordingVoice ? 'II' : 'MIC'}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => { setShowDateInput(prev => !prev); setDateInputText(targetDate ?? ''); }}
-          style={[styles.iconBtn, targetDate && targetDate !== todayStr && { backgroundColor: COLORS.primary + '33', borderColor: COLORS.primary }]}
-        >
-          <Text style={{ color: COLORS.primary, fontSize: 10, fontWeight: '700' }}>TAR</Text>
         </TouchableOpacity>
         <TextInput
           style={styles.textInput}
@@ -624,13 +561,16 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   );
 }
 
-function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDirectSend, weeklyBudget }: {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, totalCalories, weeklyBudgetRemaining }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
   macroTargets: { protein: number; carbs: number; fat: number };
-  onDirectSend: (text: string) => void;
-  weeklyBudget: { consumed: number; total: number } | null;
+  onQuickSelect: (option: string) => void;
+  onConfirm: () => void;
+  onReject: () => void;
+  totalCalories: number;
+  weeklyBudgetRemaining: number | null;
 }) {
   const isUser = message.role === 'user';
 
@@ -656,21 +596,12 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDir
 
         {/* Inline rich content for AI responses (Spec 5.20) */}
         {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
-          <>
-            <MacroSummary
-              protein={dashboardMacros.protein}
-              carbs={dashboardMacros.carbs}
-              fat={dashboardMacros.fat}
-              targets={macroTargets}
-            />
-            {/* D15: Weekly budget bar after meal_log actions */}
-            {weeklyBudget !== null && (
-              <WeeklyBudgetBar
-                consumed={weeklyBudget.consumed}
-                total={weeklyBudget.total}
-              />
-            )}
-          </>
+          <MacroSummary
+            protein={dashboardMacros.protein}
+            carbs={dashboardMacros.carbs}
+            fat={dashboardMacros.fat}
+            targets={macroTargets}
+          />
         )}
 
         {/* Recipe card for recipe task_mode */}
@@ -682,6 +613,16 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDir
             ingredients={(message as any).recipe.ingredients}
             macros={(message as any).recipe.macros}
           />
+        )}
+
+        {/* Quick select buttons (D13) */}
+        {!isUser && message.quickSelectOptions && message.quickSelectOptions.length > 0 && (
+          <QuickSelectButtons options={message.quickSelectOptions} onSelect={onQuickSelect} />
+        )}
+
+        {/* Confirm/Reject buttons for plan suggestion (D14) */}
+        {!isUser && message.hasPlanSuggestion && (
+          <ConfirmRejectButtons onConfirm={onConfirm} onReject={onReject} />
         )}
 
         {/* Timestamp */}
@@ -699,6 +640,13 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDir
             remaining={message.simulationData.remaining}
             weeklyImpact={message.simulationData.weeklyImpact}
           />
+        </View>
+      )}
+
+      {/* Weekly budget bar after meal_log (D15) */}
+      {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
+        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
+          <WeeklyBudgetBar consumed={totalCalories} total={weeklyBudgetRemaining != null ? totalCalories + weeklyBudgetRemaining : 0} />
         </View>
       )}
 
@@ -725,26 +673,6 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onDir
               Neden bu oneriyi yaptin?
             </Text>
           </TouchableOpacity>
-        </View>
-      )}
-
-      {/* D13: Quick select buttons */}
-      {!isUser && message.quickSelectOptions && message.quickSelectOptions.length > 0 && (
-        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
-          <QuickSelectButtons
-            options={message.quickSelectOptions}
-            onSelect={(option) => onDirectSend(option)}
-          />
-        </View>
-      )}
-
-      {/* D14: Confirm/Reject buttons */}
-      {!isUser && message.hasConfirm && (
-        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
-          <ConfirmRejectButtons
-            onConfirm={() => onDirectSend('Onayliyorum')}
-            onReject={() => onDirectSend('Reddediyorum')}
-          />
         </View>
       )}
     </View>

@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
 import { validateWeeklyRate } from '@/lib/tdee';
 import { calculateGoalProgress, getGoalSummaryText, validateGoalSafety } from '@/lib/goal-progress';
-import { getAIGoalSuggestions, checkGoalCompatibility, type GoalSuggestion } from '@/services/goals.service';
+import {
+  getAIGoalSuggestions, checkGoalCompatibility, calculatePhaseTransition,
+  type GoalSuggestion,
+} from '@/services/goals.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -28,7 +31,9 @@ export default function GoalsScreen() {
   const [saving, setSaving] = useState(false);
   const [existingGoal, setExistingGoal] = useState<Goal | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<GoalSuggestion[]>([]);
-  const [loadingAI, setLoadingAI] = useState(false);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [compatWarning, setCompatWarning] = useState<string | null>(null);
+  const [phaseTransitionInfo, setPhaseTransitionInfo] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -44,6 +49,54 @@ export default function GoalsScreen() {
       });
   }, [user?.id]);
 
+  // D19: Check goal compatibility when type changes
+  useEffect(() => {
+    if (existingGoal && goalType !== existingGoal.goal_type) {
+      const compat = checkGoalCompatibility(goalType, existingGoal.goal_type as string);
+      if (!compat.compatible || compat.level === 'warning') {
+        setCompatWarning(compat.message_tr);
+      } else {
+        setCompatWarning(null);
+      }
+
+      // D5: Calculate phase transition if switching goal type
+      if (profile?.calorie_range_rest_min && profile?.calorie_range_rest_max) {
+        const currentCal = {
+          min: profile.calorie_range_rest_min as number,
+          max: profile.calorie_range_rest_max as number,
+        };
+        // Estimate next phase calories based on goal type
+        const tdee = (profile.tdee_calculated as number) ?? 2000;
+        const nextCal = goalType === 'lose_weight'
+          ? { min: Math.round(tdee * 0.8), max: Math.round(tdee * 0.9) }
+          : goalType === 'gain_weight' || goalType === 'gain_muscle'
+            ? { min: Math.round(tdee * 1.05), max: Math.round(tdee * 1.15) }
+            : { min: Math.round(tdee * 0.95), max: Math.round(tdee * 1.05) };
+
+        const transition = calculatePhaseTransition(currentCal, nextCal, 1, 7);
+        setPhaseTransitionInfo(
+          `Faz gecisi: 7 gun icinde kademeli olarak ${currentCal.min}-${currentCal.max} kcal'den ${nextCal.min}-${nextCal.max} kcal'e gecilecek.`
+        );
+      }
+    } else {
+      setCompatWarning(null);
+      setPhaseTransitionInfo(null);
+    }
+  }, [goalType, existingGoal, profile]);
+
+  // D18: Fetch AI goal suggestions
+  const handleFetchAISuggestions = async () => {
+    if (!user?.id) return;
+    setLoadingSuggestions(true);
+    const suggestions = await getAIGoalSuggestions(
+      user.id,
+      (profile?.weight_kg as number) ?? null,
+      existingGoal?.target_weight_kg ?? null,
+    );
+    setAiSuggestions(suggestions);
+    setLoadingSuggestions(false);
+  };
+
   // Safety check for weekly rate
   const weeklyRate = targetWeight && profile?.weight_kg
     ? Math.abs((profile.weight_kg as number) - parseFloat(targetWeight)) / (parseInt(targetWeeks) || 12)
@@ -56,22 +109,6 @@ export default function GoalsScreen() {
     : null;
   const summaryText = progress ? getGoalSummaryText(progress, goalType) : null;
 
-  const handleGetAISuggestions = async () => {
-    if (!user?.id) return;
-    setLoadingAI(true);
-    const suggestions = await getAIGoalSuggestions(
-      user.id,
-      profile?.weight_kg as number | null ?? null,
-      parseFloat(targetWeight) || null,
-    );
-    setLoadingAI(false);
-    if (suggestions.length === 0) {
-      Alert.alert('AI Oneri', 'Simdilik ek bir oneri yok. Hedefin iyi gorunuyor!');
-    } else {
-      setAiSuggestions(suggestions);
-    }
-  };
-
   const handleSave = async () => {
     if (!user?.id) return;
     const tw = parseFloat(targetWeight);
@@ -80,26 +117,6 @@ export default function GoalsScreen() {
     if (tw && profile?.weight_kg && (goalType === 'lose_weight' || goalType === 'gain_weight')) {
       const check = validateWeeklyRate(profile.weight_kg, tw, weeks);
       if (!check.valid) { Alert.alert('Dikkat', check.message); return; }
-    }
-
-    // D19: Check compatibility with existing active goal
-    if (existingGoal && existingGoal.goal_type !== goalType) {
-      const compat = checkGoalCompatibility(goalType, existingGoal.goal_type);
-      if (!compat.compatible || compat.level === 'warning') {
-        const proceed = await new Promise<boolean>(resolve => {
-          Alert.alert(
-            compat.level === 'conflict' ? 'Hedef Catismasi' : 'Uyari',
-            compat.message_tr,
-            compat.level === 'conflict'
-              ? [{ text: 'Tamam', onPress: () => resolve(false) }]
-              : [
-                  { text: 'Iptal', style: 'cancel', onPress: () => resolve(false) },
-                  { text: 'Yine de Kaydet', onPress: () => resolve(true) },
-                ],
-          );
-        });
-        if (!proceed) return;
-      }
     }
 
     setSaving(true);
@@ -155,6 +172,22 @@ export default function GoalsScreen() {
         <Input label="Hedef Kilo (kg)" placeholder="70" value={targetWeight} onChangeText={setTargetWeight} keyboardType="decimal-pad" />
         <Input label="Hedef Sure (hafta)" placeholder="12" value={targetWeeks} onChangeText={setTargetWeeks} keyboardType="numeric" />
 
+        {/* D19: Goal compatibility warning */}
+        {compatWarning && (
+          <View style={{ backgroundColor: COLORS.warning + '15', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.warning }}>
+            <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Hedef Uyumsuzlugu</Text>
+            <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{compatWarning}</Text>
+          </View>
+        )}
+
+        {/* D5: Phase transition info */}
+        {phaseTransitionInfo && (
+          <View style={{ backgroundColor: COLORS.primary + '10', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '40' }}>
+            <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Kademeli Gecis</Text>
+            <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{phaseTransitionInfo}</Text>
+          </View>
+        )}
+
         {/* Safety warnings */}
         {!safety.safe && (
           <View style={{ marginBottom: SPACING.md }}>
@@ -173,24 +206,50 @@ export default function GoalsScreen() {
 
         <Button title="Kaydet" onPress={handleSave} loading={saving} size="lg" />
 
-        {/* AI suggestions */}
+        {/* D18: AI Goal Suggestions */}
         <Button
-          title="AI'dan Hedef Onerisi Al"
-          variant="ghost"
-          onPress={handleGetAISuggestions}
-          loading={loadingAI}
+          title={loadingSuggestions ? 'Yukleniyor...' : 'AI Hedef Onerisi Al'}
+          variant="outline"
+          onPress={handleFetchAISuggestions}
           style={{ marginTop: SPACING.md }}
+          disabled={loadingSuggestions}
         />
+
+        {/* AI Suggestion results */}
         {aiSuggestions.length > 0 && (
-          <Card style={{ marginTop: SPACING.sm }}>
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>AI Onerileri</Text>
+          <View style={{ marginTop: SPACING.md }}>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>AI ONERILERI</Text>
             {aiSuggestions.map((s, i) => (
-              <View key={i} style={{ paddingVertical: SPACING.xs, borderTopWidth: i > 0 ? 1 : 0, borderTopColor: COLORS.border }}>
-                <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>{GOAL_LABELS[s.goalType as GoalType] ?? s.goalType}</Text>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 2, lineHeight: 18 }}>{s.reasoning}</Text>
-              </View>
+              <TouchableOpacity key={i}
+                onPress={() => {
+                  setGoalType(s.goalType as GoalType);
+                  setAiSuggestions([]);
+                }}
+                style={{
+                  backgroundColor: COLORS.card, borderRadius: 10, padding: SPACING.md, marginBottom: SPACING.sm,
+                  borderWidth: 1, borderColor: s.priority === 'high' ? COLORS.primary : COLORS.border,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>
+                    {GOAL_LABELS[s.goalType as GoalType] ?? s.goalType}
+                  </Text>
+                  <View style={{
+                    paddingVertical: 2, paddingHorizontal: 8, borderRadius: 10,
+                    backgroundColor: s.priority === 'high' ? COLORS.primary + '20' : s.priority === 'medium' ? COLORS.warning + '20' : COLORS.surfaceLight,
+                  }}>
+                    <Text style={{
+                      color: s.priority === 'high' ? COLORS.primary : s.priority === 'medium' ? COLORS.warning : COLORS.textMuted,
+                      fontSize: FONT.xs, fontWeight: '600',
+                    }}>
+                      {s.priority === 'high' ? 'Yuksek' : s.priority === 'medium' ? 'Orta' : 'Dusuk'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>{s.reasoning}</Text>
+              </TouchableOpacity>
             ))}
-          </Card>
+          </View>
         )}
       </ScrollView>
     </KeyboardAvoidingView>
