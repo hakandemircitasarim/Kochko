@@ -218,7 +218,7 @@ export function getRetentionStrategy(
   if (bandStatus === 'approaching_limit') {
     return {
       strategy: 'proactive_warning',
-      message: 'Hedef kilonun sinirina yaklasiyorsun. Mini-cut'a gerek kalmadan onlem alalim — bu hafta su ve protein hedeflerine odaklan.',
+      message: "Hedef kilonun sinirina yaklasiyorsun. Mini-cut'a gerek kalmadan onlem alalim — bu hafta su ve protein hedeflerine odaklan.",
     };
   }
 
