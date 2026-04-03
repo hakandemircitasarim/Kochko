@@ -9,7 +9,7 @@
  */
 import { supabase } from '@/lib/supabase';
 
-const REVERSE_DIET_WEEKLY_INCREASE = 125; // kcal/week (midpoint of 100-150 range)
+const REVERSE_DIET_WEEKLY_INCREASE = 125;
 const TOLERANCE_BAND_KG = 1.5;
 const APPROACHING_LIMIT_KG = 1.0;
 const MINI_CUT_TRIGGER_WEEKS = 2;
@@ -39,10 +39,6 @@ export interface MiniCutDecision {
   reason_tr: string;
 }
 
-/**
- * Calculate reverse diet progression.
- * Gradually increase calories from deficit to TDEE over several weeks.
- */
 export function calculateReverseDiet(
   deficitCalories: number,
   tdee: number,
@@ -67,10 +63,6 @@ export function calculateReverseDiet(
   };
 }
 
-/**
- * Determine if a mini-cut should be triggered.
- * Triggers when band is exceeded for 2+ consecutive weeks.
- */
 export function shouldTriggerMiniCut(
   bandStatus: 'in_band' | 'approaching_limit' | 'exceeded',
   weeksExceeded: number,
@@ -92,15 +84,11 @@ export function shouldTriggerMiniCut(
   };
 }
 
-/**
- * Check if user is in or should enter maintenance mode.
- */
 export async function getMaintenanceStatus(userId: string): Promise<MaintenanceStatus> {
   const [profileRes, goalRes, metricsRes, achievementRes] = await Promise.all([
     supabase.from('profiles').select('weight_kg, tdee_calculated, calorie_range_rest_min').eq('id', userId).single(),
     supabase.from('goals').select('target_weight_kg, goal_type').eq('user_id', userId).eq('is_active', true).single(),
     supabase.from('daily_metrics').select('weight_kg, date').eq('user_id', userId).not('weight_kg', 'is', null).order('date', { ascending: false }).limit(1).single(),
-    // Find when goal was first reached (via achievement)
     supabase.from('achievements').select('achieved_at').eq('user_id', userId).eq('achievement_type', 'goal_reached').order('achieved_at', { ascending: false }).limit(1).single(),
   ]);
 
@@ -116,7 +104,6 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
   const goalWeight = goal.target_weight_kg as number;
   const tdee = profile.tdee_calculated as number | null;
 
-  // Check if goal reached
   const goalType = goal.goal_type as string;
   const goalReached = goalType === 'lose_weight'
     ? currentWeight <= goalWeight + 0.5
@@ -128,14 +115,12 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
     return { isInMaintenance: false, maintenanceCalories: tdee, toleranceBand: null, currentWeight, goalWeight, bandStatus: null, weeksSinceGoalReached: 0, reverseDiet: null, message: '' };
   }
 
-  // Calculate weeks since goal reached
   let weeksSinceGoalReached = 0;
   if (achievementRes.data?.achieved_at) {
     const achievedAt = new Date(achievementRes.data.achieved_at as string);
     weeksSinceGoalReached = Math.max(0, Math.round((Date.now() - achievedAt.getTime()) / (7 * 24 * 60 * 60 * 1000)));
   }
 
-  // Tolerance band
   const toleranceBand = { min: goalWeight - TOLERANCE_BAND_KG, max: goalWeight + TOLERANCE_BAND_KG };
   let bandStatus: 'in_band' | 'approaching_limit' | 'exceeded';
 
@@ -147,27 +132,20 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
     bandStatus = 'in_band';
   }
 
-  // Reverse diet calculation
   let reverseDiet: ReverseDietStatus | null = null;
   if (tdee && profile.calorie_range_rest_min) {
     const deficitCalories = profile.calorie_range_rest_min as number;
     reverseDiet = calculateReverseDiet(deficitCalories, tdee, weeksSinceGoalReached);
   }
 
-  // Maintenance calories: during reverse diet, use progressive calories
   const maintenanceCalories = reverseDiet && !reverseDiet.isComplete
     ? reverseDiet.targetCalories
     : tdee;
 
-  // A9: Write reverse diet target calories to daily_plans
   if (reverseDiet && !reverseDiet.isComplete) {
-    // Fire-and-forget: write to plan in background
-    writeReverseDietToPlan(userId, reverseDiet).catch(() => {
-      // Silently ignore write errors - plan generation will correct on next cycle
-    });
+    writeReverseDietToPlan(userId, reverseDiet).catch(() => {});
   }
 
-  // Message
   let message: string;
   if (reverseDiet && !reverseDiet.isComplete) {
     message = `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal (TDEE'ye haftalik +${REVERSE_DIET_WEEKLY_INCREASE} kcal artis)`;
@@ -192,11 +170,6 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
   };
 }
 
-/**
- * A9: Write reverse diet target calories to daily_plans.
- * During reverse diet, updates the daily plan's calorie targets to reflect
- * the weekly +125 kcal progression.
- */
 export async function writeReverseDietToPlan(
   userId: string,
   reverseDiet: ReverseDietStatus,
@@ -204,12 +177,9 @@ export async function writeReverseDietToPlan(
   if (reverseDiet.isComplete) return;
 
   const today = new Date().toISOString().split('T')[0];
-
-  // Calculate a reasonable range around the target (±100 kcal)
   const targetMin = reverseDiet.targetCalories - 100;
   const targetMax = reverseDiet.targetCalories + 100;
 
-  // Upsert today's daily_plan with reverse diet calories
   const { data: existingPlan } = await supabase
     .from('daily_plans')
     .select('id, calorie_target_min, calorie_target_max, version')
@@ -220,32 +190,25 @@ export async function writeReverseDietToPlan(
     .single();
 
   if (existingPlan) {
-    // Update existing plan with reverse diet calories
     await supabase.from('daily_plans').update({
       calorie_target_min: targetMin,
       calorie_target_max: targetMax,
       focus_message: `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal hedef (haftalik +${reverseDiet.weeklyIncrease} kcal artis)`,
     }).eq('id', existingPlan.id);
   } else {
-    // Create a new plan entry for reverse diet
     await supabase.from('daily_plans').insert({
       user_id: userId,
       date: today,
       plan_type: 'rest',
       calorie_target_min: targetMin,
       calorie_target_max: targetMax,
-      protein_target_g: 0, // Will be filled by AI plan generation
+      protein_target_g: 0,
       focus_message: `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal hedef (haftalik +${reverseDiet.weeklyIncrease} kcal artis)`,
       meal_suggestions: [],
     });
   }
 }
 
-// ─── Behavior Reinforcement (Phase 7) ───
-
-/**
- * Generate positive reinforcement message for maintenance users.
- */
 export function generateReinforcementMessage(
   weeksSinceGoalReached: number,
   bandStatus: string
@@ -265,9 +228,6 @@ export function generateReinforcementMessage(
   return null;
 }
 
-/**
- * Get retention strategy — keep user engaged in maintenance mode.
- */
 export function getRetentionStrategy(
   bandStatus: string,
   weeksSinceGoalReached: number
@@ -286,12 +246,11 @@ export function getRetentionStrategy(
     };
   }
 
-  // In band — micro-goals to stay engaged
   const microGoals = [
     'Bu hafta her gun su hedefini tut.',
     'Bu hafta 3 gun protein hedefini tuttur.',
     'Bu hafta yeni bir saglikli tarif dene.',
-    'Bu hafta uyku duzulune odaklan — her gece ayni saatte yat.',
+    'Bu hafta uyku duzulune odaklan -- her gece ayni saatte yat.',
   ];
 
   return {
