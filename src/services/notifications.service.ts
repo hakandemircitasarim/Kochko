@@ -12,8 +12,8 @@ import { supabase } from '@/lib/supabase';
 export interface NotificationPreferences {
   enabled: boolean;
   dailyLimit: number;
-  quietStart: string; // e.g. "23:00"
-  quietEnd: string;   // e.g. "07:00"
+  quietStart: string;
+  quietEnd: string;
   types: {
     morning_plan: boolean;
     meal_reminder: boolean;
@@ -51,10 +51,6 @@ const DEFAULT_PREFS: NotificationPreferences = {
   },
 };
 
-/**
- * Setup notification handler only - no permission request.
- * Safe to call early in app lifecycle (e.g., root layout mount).
- */
 export function setupNotificationHandler(): void {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -65,15 +61,9 @@ export function setupNotificationHandler(): void {
   });
 }
 
-/**
- * Request notification permission only if status is 'undetermined'.
- * Spec 10.3: Strategic permission request timing - ask only at the right moment.
- * Returns push token if granted, null otherwise.
- */
 export async function requestNotificationPermissionIfNeeded(): Promise<string | null> {
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
 
-  // Only prompt if undetermined - don't re-prompt denied users
   if (existingStatus === 'granted') {
     try {
       const tokenData = await Notifications.getExpoPushTokenAsync({
@@ -104,18 +94,11 @@ export async function requestNotificationPermissionIfNeeded(): Promise<string | 
   }
 }
 
-/**
- * Initialize notifications - call in app root layout.
- * Spec 10.3: Backward-compatible wrapper that sets up handler + requests permission.
- */
 export async function initializeNotifications(): Promise<string | null> {
   setupNotificationHandler();
   return requestNotificationPermissionIfNeeded();
 }
 
-/**
- * Save push token to user profile for backend push notifications.
- */
 export async function savePushToken(userId: string, token: string): Promise<void> {
   await supabase.from('profiles').update({
     push_token: token,
@@ -124,9 +107,6 @@ export async function savePushToken(userId: string, token: string): Promise<void
   }).eq('id', userId);
 }
 
-/**
- * Get notification preferences from profile.
- */
 export async function getNotificationPrefs(userId: string): Promise<NotificationPreferences> {
   const { data } = await supabase
     .from('profiles')
@@ -140,10 +120,6 @@ export async function getNotificationPrefs(userId: string): Promise<Notification
   return DEFAULT_PREFS;
 }
 
-/**
- * Update notification preferences.
- * Fetches IF profile and workout days to pass to scheduleLocalNotifications.
- */
 export async function updateNotificationPrefs(
   userId: string,
   prefs: Partial<NotificationPreferences>
@@ -156,7 +132,6 @@ export async function updateNotificationPrefs(
     updated_at: new Date().toISOString(),
   }).eq('id', userId);
 
-  // Fetch IF profile for IF-aware meal reminders
   const { data: profile } = await supabase
     .from('profiles')
     .select('if_active, if_eating_start, if_eating_end, workout_days')
@@ -171,28 +146,18 @@ export async function updateNotificationPrefs(
 
   const workoutDays = (profile as Record<string, unknown> | null)?.workout_days as number[] | null;
 
-  // Reschedule local notifications based on new prefs + IF + workout days
   await scheduleLocalNotifications(updated, ifProfile, workoutDays);
 }
 
-/**
- * Schedule local notifications based on user preferences.
- * Spec 10.1: Meal reminders, water reminders, morning plan, workout, etc.
- *
- * @param ifProfile - Optional IF (intermittent fasting) profile data
- * @param workoutDays - Optional array of weekday numbers (1=Sunday..7=Saturday) for workout reminders
- */
 export async function scheduleLocalNotifications(
   prefs: NotificationPreferences,
   ifProfile?: { if_active: boolean; if_eating_start: string | null; if_eating_end: string | null } | null,
   workoutDays?: number[] | null,
 ): Promise<void> {
-  // Cancel all existing scheduled notifications
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   if (!prefs.enabled) return;
 
-  // N1: Morning plan notification at 07:30
   if (prefs.types.morning_plan) {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -204,20 +169,16 @@ export async function scheduleLocalNotifications(
     });
   }
 
-  // N2: IF-aware meal reminders
   if (prefs.types.meal_reminder) {
-    // Determine meal times based on IF window
     const useIF = ifProfile?.if_active && ifProfile.if_eating_start && ifProfile.if_eating_end;
     let mealTimes: { label: string; title: string; body: string; meal: string; hour: number; minute: number }[];
 
     if (useIF) {
       const [startH, startM] = ifProfile!.if_eating_start!.split(':').map(Number);
       const [endH, endM] = ifProfile!.if_eating_end!.split(':').map(Number);
-      // Calculate eating window duration in minutes
       let windowMinutes = (endH * 60 + endM) - (startH * 60 + startM);
-      if (windowMinutes <= 0) windowMinutes += 24 * 60; // crosses midnight
+      if (windowMinutes <= 0) windowMinutes += 24 * 60;
 
-      // Distribute 3 meals within IF window
       const halfWindow = Math.floor(windowMinutes / 2);
       const midH = Math.floor((startH * 60 + startM + halfWindow) / 60) % 24;
       const midM = (startH * 60 + startM + halfWindow) % 60;
@@ -228,7 +189,6 @@ export async function scheduleLocalNotifications(
         { label: 'son_ogun', title: 'Son Ogun', body: 'IF penceresi kapanmadan son ogununu planla.', meal: 'aksam', hour: endH > 0 ? endH - 1 : 23, minute: endM },
       ];
     } else {
-      // Default fixed times
       mealTimes = [
         { label: 'kahvalti', title: 'Kahvalti Zamani', body: 'Gune saglikli bir kahvalti ile basla.', meal: 'kahvalti', hour: 8, minute: 0 },
         { label: 'ogle', title: 'Ogle Yemegi', body: 'Ogle yemegi vakti geldi, dengeli bir ogun sec.', meal: 'ogle', hour: 12, minute: 30 },
@@ -248,7 +208,6 @@ export async function scheduleLocalNotifications(
     }
   }
 
-  // N3: Workout reminder on training days
   if (prefs.types.workout_reminder && workoutDays && workoutDays.length > 0) {
     for (const weekday of workoutDays) {
       await Notifications.scheduleNotificationAsync({
@@ -262,7 +221,6 @@ export async function scheduleLocalNotifications(
     }
   }
 
-  // Water reminder - every 2 hours during waking hours
   if (prefs.types.water_reminder) {
     for (let hour = 9; hour <= 20; hour += 2) {
       await Notifications.scheduleNotificationAsync({
@@ -276,7 +234,6 @@ export async function scheduleLocalNotifications(
     }
   }
 
-  // Weight reminder - weekly on Monday morning
   if (prefs.types.weight_reminder) {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -288,7 +245,6 @@ export async function scheduleLocalNotifications(
     });
   }
 
-  // Daily report reminder - every evening
   if (prefs.types.daily_report) {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -300,7 +256,6 @@ export async function scheduleLocalNotifications(
     });
   }
 
-  // Weekly report - Sunday evening
   if (prefs.types.weekly_report) {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -312,7 +267,6 @@ export async function scheduleLocalNotifications(
     });
   }
 
-  // Night risk / sleep reminder - 22:30
   if (prefs.types.night_risk) {
     await Notifications.scheduleNotificationAsync({
       content: {
@@ -325,14 +279,9 @@ export async function scheduleLocalNotifications(
   }
 }
 
-/**
- * Schedule a trial expiry reminder notification.
- * Spec 16: If trial is active and 2 days remaining, notify user.
- */
 export async function scheduleTrialReminder(trialDaysLeft: number): Promise<void> {
   if (trialDaysLeft !== 2) return;
 
-  // Cancel any existing trial reminders first
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   for (const n of scheduled) {
     if (n.content.data?.type === 'trial_reminder') {
@@ -340,7 +289,6 @@ export async function scheduleTrialReminder(trialDaysLeft: number): Promise<void
     }
   }
 
-  // Schedule immediate-ish notification (next day at 10:00)
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'Deneme Sureniz Bitiyor',
@@ -355,10 +303,6 @@ export async function scheduleTrialReminder(trialDaysLeft: number): Promise<void
   });
 }
 
-/**
- * Check trial status and schedule reminder if needed.
- * Call this on app open / profile load.
- */
 export async function checkAndScheduleTrialReminder(
   isInTrial: boolean,
   trialDaysLeft: number
@@ -369,9 +313,6 @@ export async function checkAndScheduleTrialReminder(
   }
 }
 
-/**
- * Re-engagement notification schedule (Spec 10.4)
- */
 export function getReengagementLevel(hoursSinceLastActivity: number): 'none' | '3day' | '7day' | '14day' | '30day' | 'stopped' {
   const days = hoursSinceLastActivity / 24;
   if (days < 3) return 'none';
@@ -382,9 +323,6 @@ export function getReengagementLevel(hoursSinceLastActivity: number): 'none' | '
   return 'stopped';
 }
 
-/**
- * Check if a notification should be sent given quiet hours.
- */
 export function isQuietHour(quietStart: string, quietEnd: string): boolean {
   const now = new Date();
   const hour = now.getHours();
@@ -397,7 +335,6 @@ export function isQuietHour(quietStart: string, quietEnd: string): boolean {
   const endMinutes = endH * 60 + endM;
 
   if (startMinutes > endMinutes) {
-    // Crosses midnight: e.g. 23:00 - 07:00
     return currentMinutes >= startMinutes || currentMinutes < endMinutes;
   }
   return currentMinutes >= startMinutes && currentMinutes < endMinutes;
