@@ -1,6 +1,6 @@
 /**
  * Message Counter Service
- * Spec 16: Premium/Ücretsiz plan — günlük AI mesaj sayaıcı
+ * Spec 16: Premium/Ücretsiz plan — günlük AI mesaj sayacı
  *
  * Ücretsiz plan: 5 mesaj/gün (kayıt parse'ları sayılmaz)
  * Premium: sınırsız
