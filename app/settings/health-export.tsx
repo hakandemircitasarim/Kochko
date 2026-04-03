@@ -4,9 +4,10 @@
  * PDF/CSV format, selected date range, professional-facing format.
  */
 import { useState } from 'react';
-import { View, Text, ScrollView, Share, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
+import { exportPDF } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -43,55 +44,61 @@ export default function HealthExportScreen() {
 
       const age = profile?.birth_year ? new Date().getFullYear() - (profile.birth_year as number) : null;
 
-      // Build professional report text
-      let report = `KOCHKO - SAGLIK PROFESYONELI RAPORU\n`;
-      report += `Tarih Araligi: ${start} - ${end}\n`;
-      report += `Olusturulma: ${new Date().toISOString().split('T')[0]}\n`;
-      report += `================================================\n\n`;
-
-      report += `HASTA BILGILERI\n`;
-      report += `Yas: ${age ?? '-'} | Cinsiyet: ${profile?.gender ?? '-'} | Boy: ${profile?.height_cm ?? '-'}cm\n`;
-      report += `Mevcut Kilo: ${profile?.weight_kg ?? '-'}kg | Aktivite: ${profile?.activity_level ?? '-'}\n\n`;
-
       // Weight trend
       const weights = (metrics as { date: string; weight_kg: number | null }[]).filter(m => m.weight_kg);
-      if (weights.length > 0) {
-        report += `KILO TRENDI\n`;
-        report += `Baslangic: ${weights[0].weight_kg}kg (${weights[0].date})\n`;
-        report += `Son: ${weights[weights.length - 1].weight_kg}kg (${weights[weights.length - 1].date})\n`;
-        report += `Degisim: ${((weights[weights.length - 1].weight_kg as number) - (weights[0].weight_kg as number)).toFixed(1)}kg\n\n`;
-      }
+      const weightChange = weights.length >= 2
+        ? (weights[weights.length - 1].weight_kg as number) - (weights[0].weight_kg as number)
+        : null;
 
-      // Nutrition
-      if (reports.length > 0) {
-        const avgCal = Math.round((reports as { calorie_actual: number }[]).reduce((s, r) => s + r.calorie_actual, 0) / reports.length);
-        const avgPro = Math.round((reports as { protein_actual: number }[]).reduce((s, r) => s + r.protein_actual, 0) / reports.length);
-        report += `BESLENME (ortalama/gun)\n`;
-        report += `Kalori: ${avgCal} kcal | Protein: ${avgPro}g\n\n`;
-      }
+      // Nutrition averages
+      const typedReports = reports as { date: string; compliance_score: number; calorie_actual: number; protein_actual: number }[];
+      const avgCompliance = typedReports.length > 0
+        ? Math.round(typedReports.reduce((s, r) => s + r.compliance_score, 0) / typedReports.length)
+        : 0;
+      const avgCal = typedReports.length > 0
+        ? Math.round(typedReports.reduce((s, r) => s + r.calorie_actual, 0) / typedReports.length)
+        : 0;
+      const avgPro = typedReports.length > 0
+        ? Math.round(typedReports.reduce((s, r) => s + r.protein_actual, 0) / typedReports.length)
+        : 0;
 
-      // Lab values
-      if (labs.length > 0) {
-        report += `LAB DEGERLERI\n`;
-        for (const l of labs as { parameter_name: string; value: number; unit: string; reference_min: number | null; reference_max: number | null; measured_at: string; is_out_of_range: boolean }[]) {
-          const flag = l.is_out_of_range ? ' [REFERANS DISI]' : '';
-          report += `${l.measured_at} | ${l.parameter_name}: ${l.value} ${l.unit} (ref: ${l.reference_min ?? '-'}-${l.reference_max ?? '-'})${flag}\n`;
+      // Build insights list
+      const insights: string[] = [];
+      insights.push(`Hasta: Yas ${age ?? '-'} | Cinsiyet: ${profile?.gender ?? '-'} | Boy: ${profile?.height_cm ?? '-'} cm | Kilo: ${profile?.weight_kg ?? '-'} kg`);
+      if (avgCal > 0) insights.push(`Ortalama gunluk kalori: ${avgCal} kcal | Protein: ${avgPro} g`);
+      const typedWorkouts = workouts as { duration_min: number }[];
+      if (typedWorkouts.length > 0) {
+        const totalMin = typedWorkouts.reduce((s, w) => s + w.duration_min, 0);
+        insights.push(`Toplam antrenman: ${workouts.length} seans | ${totalMin} dakika`);
+      }
+      for (const l of labs as { parameter_name: string; value: number; unit: string; reference_min: number | null; reference_max: number | null; measured_at: string; is_out_of_range: boolean }[]) {
+        if (l.is_out_of_range) {
+          insights.push(`[REFERANS DISI] ${l.parameter_name}: ${l.value} ${l.unit} (ref: ${l.reference_min ?? '-'}-${l.reference_max ?? '-'}) — ${l.measured_at}`);
         }
-        report += '\n';
       }
 
-      // Exercise
-      if (workouts.length > 0) {
-        const totalMin = (workouts as { duration_min: number }[]).reduce((s, w) => s + w.duration_min, 0);
-        report += `EGZERSIZ\n`;
-        report += `Toplam antrenman: ${workouts.length} seans | Toplam sure: ${totalMin} dakika\n\n`;
-      }
+      // Build weekly data from reports
+      const weeklyData = typedReports.slice(-8).map(r => ({
+        week: r.date,
+        compliance: r.compliance_score,
+        weight: null as number | null,
+      }));
 
-      report += `================================================\n`;
-      report += `Bu rapor Kochko yasam tarzi kocluk uygulamasi tarafindan kullanici verileriyle olusturulmustur.\n`;
-      report += `Tibbi degerlendirme icin saglik profesyonelinin yorumu gereklidir.\n`;
+      const summaryParts: string[] = [];
+      summaryParts.push(`Tarih araligi: ${start} - ${end}.`);
+      summaryParts.push(`Hasta bilgileri: Yas ${age ?? '-'}, ${profile?.gender ?? '-'}, ${profile?.height_cm ?? '-'} cm.`);
+      if (weightChange !== null) summaryParts.push(`Kilo degisimi: ${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)} kg.`);
+      summaryParts.push('Bu rapor Kochko yasam tarzi kocluk uygulamasi tarafindan olusturulmustur. Tibbi degerlendirme icin saglik profesyonelinin yorumu gereklidir.');
 
-      await Share.share({ title: 'Kochko Saglik Raporu', message: report });
+      await exportPDF({
+        title: 'Kochko Saglik Profesyoneli Raporu',
+        period: `${start} - ${end}`,
+        compliance: avgCompliance,
+        weightChange,
+        summary: summaryParts.join(' '),
+        insights,
+        weeklyData,
+      });
     } catch (err) {
       Alert.alert('Hata', 'Export sirasinda hata olustu.');
     }

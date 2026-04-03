@@ -4,7 +4,7 @@
  * Spec 7.1: Günlük beslenme + antrenman planı
  */
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
@@ -53,7 +53,7 @@ interface PlanData {
 export default function PlanScreen() {
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
-  const { totalCalories, totalProtein, waterLiters } = useDashboardStore();
+  const { totalCalories, totalProtein, totalCarbs, totalFat, waterLiters } = useDashboardStore();
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -67,11 +67,64 @@ export default function PlanScreen() {
       .then(({ data }) => { if (data) setPlan(data as unknown as PlanData); setLoading(false); });
   }, [user?.id, today]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (rejectionContext?: string) => {
     setGenerating(true);
-    const { data } = await supabase.functions.invoke('ai-plan', {});
+    const { data } = await supabase.functions.invoke('ai-plan', {
+      body: rejectionContext ? { rejection_context: rejectionContext } : {},
+    });
     if (data) setPlan(data as PlanData);
     setGenerating(false);
+  };
+
+  const handleReject = () => {
+    Alert.alert(
+      'Neden begenmedin?',
+      'Yeni plan olusturmak icin bir sebep sec:',
+      [
+        { text: 'Ogunler', onPress: () => handleRejectWithReason('Ogun secimleri begenilmedi, farkli yemek onerileri isteniyor') },
+        { text: 'Porsiyonlar', onPress: () => handleRejectWithReason('Porsiyon miktarlari uygun degil, farkli miktarlar isteniyor') },
+        { text: 'Genel yaklasim', onPress: () => handleRejectWithReason('Genel plan yaklasimi begenilmedi, tamamen farkli bir yaklasim isteniyor') },
+        { text: 'Vazgec', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleRejectWithReason = async (reason: string) => {
+    if (!user?.id) return;
+    // Update current plan status to rejected
+    await supabase.from('daily_plans')
+      .update({ status: 'rejected' })
+      .eq('user_id', user.id).eq('date', today)
+      .order('version', { ascending: false }).limit(1);
+    setPlan(prev => prev ? { ...prev, status: 'rejected' } : null);
+    // Generate new plan with rejection context
+    handleGenerate(reason);
+  };
+
+  const handleMealSelect = async (mealType: string, option: MealOption) => {
+    if (!user?.id) return;
+    // Insert into meal_logs
+    const { data: mealLog } = await supabase.from('meal_logs').insert({
+      user_id: user.id,
+      raw_input: `${option.name} (plan secimi)`,
+      meal_type: mealType,
+      logged_for_date: today,
+      logged_at: new Date().toISOString(),
+      source: 'plan',
+    }).select('id').single();
+
+    if (!mealLog?.id) return;
+
+    // Insert into meal_log_items
+    await supabase.from('meal_log_items').insert({
+      meal_log_id: mealLog.id,
+      name: option.name,
+      portion: option.description,
+      calories: option.calories,
+      protein_g: option.protein_g,
+      carbs_g: option.carbs_g,
+      fat_g: option.fat_g,
+    });
   };
 
   if (loading) {
@@ -88,7 +141,7 @@ export default function PlanScreen() {
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg, lineHeight: 20 }}>
             Henuz plan olusturulmamis. Kocundan plan istemek icin butona bas veya sohbette "bugunku planımı olustur" yaz.
           </Text>
-          <Button title="Plan Olustur" onPress={handleGenerate} loading={generating} size="lg" />
+          <Button title="Plan Olustur" onPress={() => handleGenerate()} loading={generating} size="lg" />
         </Card>
       </ScrollView>
     );
@@ -112,9 +165,9 @@ export default function PlanScreen() {
           proteinTarget={plan.protein_target_g}
           proteinConsumed={totalProtein}
           carbsTarget={plan.carbs_target_g}
-          carbsConsumed={0}
+          carbsConsumed={totalCarbs}
           fatTarget={plan.fat_target_g}
-          fatConsumed={0}
+          fatConsumed={totalFat}
           waterTarget={plan.water_target_liters ?? 2.5}
           waterConsumed={waterLiters}
           isTrainingDay={plan.plan_type === 'training'}
@@ -137,7 +190,7 @@ export default function PlanScreen() {
             {MEAL_LABELS[meal.meal_type] ?? meal.meal_type}
           </Text>
           {meal.options?.map((opt, oidx) => (
-            <MealOptionCard key={oidx} option={opt} />
+            <MealOptionCard key={oidx} option={opt} onSelect={() => handleMealSelect(meal.meal_type, opt)} />
           ))}
         </View>
       ))}
@@ -155,7 +208,35 @@ export default function PlanScreen() {
         <WorkoutCard plan={plan.workout_plan} />
       </View>
 
-      <Button title="Plani Yeniden Olustur" variant="outline" onPress={handleGenerate} loading={generating} />
+      {/* Plan approval (Spec 7.2) */}
+      {plan.status === 'draft' && (
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
+          <View style={{ flex: 1 }}>
+            <Button title="Plani Onayla" onPress={async () => {
+              if (!user?.id) return;
+              await supabase.from('daily_plans')
+                .update({ status: 'approved', approved_at: new Date().toISOString() })
+                .eq('user_id', user.id).eq('date', today).order('version', { ascending: false }).limit(1);
+              setPlan({ ...plan, status: 'approved' });
+            }} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button title="Begenmem" variant="outline" onPress={handleReject} loading={generating} />
+          </View>
+        </View>
+      )}
+      {plan.status === 'rejected' && (
+        <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.sm, marginBottom: SPACING.md }}>
+          <Text style={{ color: COLORS.warning, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>Plan reddedildi, yeni plan olusturuluyor...</Text>
+        </View>
+      )}
+      {plan.status === 'approved' && (
+        <View style={{ backgroundColor: COLORS.success + '20', borderRadius: 8, padding: SPACING.sm, marginBottom: SPACING.md }}>
+          <Text style={{ color: COLORS.success, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>Plan onaylandi</Text>
+        </View>
+      )}
+
+      <Button title="Plani Yeniden Olustur" variant="outline" onPress={() => handleGenerate()} loading={generating} />
     </ScrollView>
   );
 }

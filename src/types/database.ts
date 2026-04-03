@@ -35,7 +35,7 @@ export type PlanStatus = 'draft' | 'approved' | 'modified' | 'rejected';
 export type ChallengeStatus = 'active' | 'paused' | 'completed' | 'abandoned';
 export type CommitmentStatus = 'pending' | 'followed_up' | 'completed' | 'abandoned';
 export type ChatRole = 'user' | 'assistant' | 'system';
-export type TaskMode = 'register' | 'plan' | 'coaching' | 'analyst' | 'qa' | 'recipe' | 'eating_out' | 'mvd' | 'plateau' | 'simulation' | 'recovery' | 'onboarding';
+export type TaskMode = 'register' | 'plan' | 'coaching' | 'analyst' | 'qa' | 'recipe' | 'eating_out' | 'mvd' | 'plateau' | 'simulation' | 'recovery' | 'onboarding' | 'periodic';
 export type FeedbackType = 'helpful' | 'not_for_me';
 export type ContextType = 'meal_suggestion' | 'workout_plan' | 'coaching_message' | 'recipe';
 export type PeriodicState = 'ramadan' | 'holiday' | 'illness' | 'busy_work' | 'exam' | 'pregnancy' | 'breastfeeding' | 'injury' | 'travel' | 'custom';
@@ -102,6 +102,7 @@ export interface Profile {
   profile_completion_pct: number;
   premium: boolean;
   premium_expires_at: string | null;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -111,6 +112,7 @@ export interface Goal {
   user_id: string;
   goal_type: GoalType;
   target_weight_kg: number | null;
+  start_weight_kg: number | null;
   target_weeks: number | null;
   priority: GoalPriority;
   restriction_mode: RestrictionMode;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { getNotificationPrefs, updateNotificationPrefs, type NotificationPreferences } from '@/services/notifications.service';
+import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -22,9 +23,10 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function NotificationsScreen() {
+  const userId = useAuthStore(s => s.user?.id);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
 
-  useEffect(() => { getNotificationPrefs().then(setPrefs); }, []);
+  useEffect(() => { if (userId) getNotificationPrefs(userId).then(setPrefs); }, [userId]);
 
   if (!prefs) return null;
 
@@ -32,13 +34,13 @@ export default function NotificationsScreen() {
     const types = { ...prefs.types, [key]: !prefs.types[key as keyof typeof prefs.types] };
     const updated = { ...prefs, types };
     setPrefs(updated);
-    updateNotificationPrefs(updated);
+    if (userId) updateNotificationPrefs(userId, updated);
   };
 
   const toggleMain = () => {
     const updated = { ...prefs, enabled: !prefs.enabled };
     setPrefs(updated);
-    updateNotificationPrefs(updated);
+    if (userId) updateNotificationPrefs(userId, updated);
   };
 
   return (

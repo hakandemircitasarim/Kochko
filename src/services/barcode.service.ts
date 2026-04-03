@@ -3,14 +3,16 @@
  * Spec 3.1, 19.3: Barkod okuma + Türk besin veritabanı stratejisi
  *
  * Priority order (Spec 3.3):
- * 1. Barcode database match (most reliable)
- * 2. User's past corrections
+ * 1. User's past corrections (personal overrides)
+ * 2. Barcode database match (most reliable)
  * 3. Venue memory
  * 4. AI estimate
  */
 
 // For MVP: use OpenFoodFacts API (free, open source)
 // Future: GS1 Turkey + Market APIs + community data
+
+import { supabase } from '@/lib/supabase';
 
 export interface BarcodeResult {
   found: boolean;
@@ -21,29 +23,58 @@ export interface BarcodeResult {
   carbs_per_100g: number | null;
   fat_per_100g: number | null;
   serving_size_g: number | null;
-  source: 'openfoodfacts' | 'community' | 'not_found';
+  source: 'openfoodfacts' | 'community' | 'user_correction' | 'not_found';
   confidence: 'high' | 'medium' | 'low';
 }
 
+export interface UserCorrectionData {
+  name: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  portion_g: number;
+}
+
 /**
- * Look up barcode from OpenFoodFacts API.
- * Spec 19.1: Barkod veri tabanı eşleşmesi
+ * Look up barcode - checks user corrections first, then OpenFoodFacts.
+ * Spec 19.1: Barkod veri tabani eslesmesi
  */
-export async function lookupBarcode(barcode: string): Promise<BarcodeResult> {
+export async function lookupBarcode(barcode: string, userId?: string): Promise<BarcodeResult> {
+  // 1. Check user corrections first
+  if (userId) {
+    const correction = await getUserCorrection(userId, barcode);
+    if (correction) {
+      return {
+        found: true,
+        product_name: correction.name,
+        brand: null,
+        calories_per_100g: Math.round((correction.calories / correction.portion_g) * 100),
+        protein_per_100g: Math.round(((correction.protein_g / correction.portion_g) * 100) * 10) / 10,
+        carbs_per_100g: Math.round(((correction.carbs_g / correction.portion_g) * 100) * 10) / 10,
+        fat_per_100g: Math.round(((correction.fat_g / correction.portion_g) * 100) * 10) / 10,
+        serving_size_g: correction.portion_g,
+        source: 'user_correction',
+        confidence: 'high',
+      };
+    }
+  }
+
+  // 2. OpenFoodFacts API
   try {
     const response = await fetch(
       `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`
     );
 
     if (!response.ok) {
+      if (userId) await logUnfoundBarcode(userId, barcode);
       return notFound();
     }
 
     const data = await response.json();
 
     if (data.status !== 1 || !data.product) {
-      // Barcode not found - log for future community contribution (Spec 19.3)
-      // TODO: Store unfound barcode for community contribution flow
+      if (userId) await logUnfoundBarcode(userId, barcode);
       return notFound();
     }
 
@@ -65,6 +96,83 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeResult> {
   } catch {
     return notFound();
   }
+}
+
+/**
+ * Log an unfound barcode for future community contribution (Spec 19.3).
+ */
+export async function logUnfoundBarcode(userId: string, barcode: string): Promise<void> {
+  try {
+    await supabase.from('barcode_corrections').insert({
+      user_id: userId,
+      barcode,
+      food_name: '_UNFOUND_',
+      calories: 0,
+      protein_g: 0,
+      carbs_g: 0,
+      fat_g: 0,
+      portion_g: 0,
+    });
+  } catch {
+    // Silent fail - logging is best-effort
+  }
+}
+
+/**
+ * Save a user's personal correction for a barcode product.
+ * Next lookups will check this before the API.
+ */
+export async function saveUserCorrection(
+  userId: string,
+  barcode: string,
+  correctedData: UserCorrectionData
+): Promise<void> {
+  // Upsert: delete old unfound/correction entries for this user+barcode, then insert
+  await supabase
+    .from('barcode_corrections')
+    .delete()
+    .eq('user_id', userId)
+    .eq('barcode', barcode);
+
+  await supabase.from('barcode_corrections').insert({
+    user_id: userId,
+    barcode,
+    food_name: correctedData.name,
+    calories: correctedData.calories,
+    protein_g: correctedData.protein_g,
+    carbs_g: correctedData.carbs_g,
+    fat_g: correctedData.fat_g,
+    portion_g: correctedData.portion_g,
+  });
+}
+
+/**
+ * Get user's correction for a barcode, if any.
+ */
+async function getUserCorrection(
+  userId: string,
+  barcode: string
+): Promise<UserCorrectionData | null> {
+  const { data } = await supabase
+    .from('barcode_corrections')
+    .select('food_name, calories, protein_g, carbs_g, fat_g, portion_g')
+    .eq('user_id', userId)
+    .eq('barcode', barcode)
+    .neq('food_name', '_UNFOUND_')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!data) return null;
+
+  return {
+    name: data.food_name,
+    calories: Number(data.calories),
+    protein_g: Number(data.protein_g),
+    carbs_g: Number(data.carbs_g),
+    fat_g: Number(data.fat_g),
+    portion_g: Number(data.portion_g),
+  };
 }
 
 function notFound(): BarcodeResult {

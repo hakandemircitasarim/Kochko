@@ -3,6 +3,8 @@
  * Spec 18: Veri saklama, gizlilik - export kapasitesi
  */
 import { Share } from 'react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -66,4 +68,106 @@ export async function exportCSV(): Promise<void> {
   }
 
   await Share.share({ title: 'Kochko CSV', message: csv });
+}
+
+/**
+ * Export report as PDF.
+ * Uses expo-print to generate HTML->PDF and expo-sharing to share.
+ */
+export interface PDFReportData {
+  title: string;
+  period: string;
+  compliance: number;
+  weightChange: number | null;
+  summary: string;
+  insights: string[];
+  weeklyData: { week: string; compliance: number; weight?: number | null }[];
+}
+
+export async function exportPDF(report: PDFReportData): Promise<void> {
+  const insightsHtml = report.insights
+    .map(i => `<li style="margin-bottom:6px;color:#333;">${i}</li>`)
+    .join('');
+
+  const weeklyRowsHtml = report.weeklyData
+    .map(
+      w =>
+        `<tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #eee;">${w.week}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;">%${w.compliance}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;">${w.weight != null ? `${w.weight} kg` : '-'}</td>
+        </tr>`
+    )
+    .join('');
+
+  const complianceColor =
+    report.compliance >= 80 ? '#22c55e' : report.compliance >= 50 ? '#f59e0b' : '#ef4444';
+
+  const weightChangeText =
+    report.weightChange != null
+      ? `${report.weightChange > 0 ? '+' : ''}${report.weightChange.toFixed(1)} kg`
+      : 'Veri yok';
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: -apple-system, Helvetica, Arial, sans-serif; padding: 32px; color: #1a1a2e; background: #fff; }
+    h1 { font-size: 24px; color: #1a1a2e; margin-bottom: 4px; }
+    .period { font-size: 14px; color: #888; margin-bottom: 24px; }
+    .metrics { display: flex; gap: 24px; margin-bottom: 24px; }
+    .metric-card { flex: 1; background: #f8f9fa; border-radius: 12px; padding: 16px; text-align: center; }
+    .metric-value { font-size: 28px; font-weight: 800; }
+    .metric-label { font-size: 12px; color: #888; margin-top: 4px; }
+    .section-title { font-size: 16px; font-weight: 700; color: #1a1a2e; margin: 20px 0 10px 0; border-bottom: 2px solid #6366f1; padding-bottom: 4px; }
+    .summary { font-size: 14px; line-height: 1.6; color: #333; margin-bottom: 16px; }
+    ul { padding-left: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th { text-align: left; padding: 8px 12px; background: #6366f1; color: #fff; font-size: 13px; }
+    td { font-size: 13px; color: #333; }
+    .footer { margin-top: 32px; text-align: center; font-size: 11px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>${report.title}</h1>
+  <div class="period">${report.period}</div>
+
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="metric-value" style="color:${complianceColor};">%${report.compliance}</div>
+      <div class="metric-label">Ortalama Uyum</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-value">${weightChangeText}</div>
+      <div class="metric-label">Kilo Degisimi</div>
+    </div>
+  </div>
+
+  <div class="section-title">Ozet</div>
+  <div class="summary">${report.summary}</div>
+
+  ${
+    insightsHtml
+      ? `<div class="section-title">Onemli Noktalar</div><ul>${insightsHtml}</ul>`
+      : ''
+  }
+
+  ${
+    weeklyRowsHtml
+      ? `<div class="section-title">Haftalik Veriler</div>
+         <table>
+           <thead><tr><th>Hafta</th><th>Uyum</th><th>Kilo</th></tr></thead>
+           <tbody>${weeklyRowsHtml}</tbody>
+         </table>`
+      : ''
+  }
+
+  <div class="footer">Kochko - Yapay Zeka Destekli Beslenme Asistani</div>
+</body>
+</html>`;
+
+  const { uri } = await Print.printToFileAsync({ html });
+  await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
 }

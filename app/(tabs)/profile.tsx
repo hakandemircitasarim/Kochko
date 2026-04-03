@@ -37,7 +37,8 @@ export default function ProfileScreen() {
   }, [user?.id, fetchProfile]);
 
   const age = profile?.birth_year ? new Date().getFullYear() - (profile.birth_year as number) : null;
-  const completionPct = profile ? calculateCompletion(profile) : 0;
+  const completionResult = useProfileStore.getState().getCompletion();
+  const completionPct = completionResult?.percentage ?? 0;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
@@ -64,7 +65,11 @@ export default function ProfileScreen() {
       </Card>
 
       {/* Completion Bar */}
-      <ProfileCompletion percentage={completionPct} />
+      <ProfileCompletion
+        percentage={completionPct}
+        lowestCategory={completionResult?.lowestCategory ?? undefined}
+        onPress={() => router.push('/settings/edit-profile')}
+      />
 
       {/* Calorie Targets */}
       {profile?.calorie_range_training_min && (
@@ -127,8 +132,3 @@ function InfoRow({ label, value, highlight }: { label: string; value: string; hi
   );
 }
 
-function calculateCompletion(profile: Record<string, unknown>): number {
-  const fields = ['height_cm', 'weight_kg', 'birth_year', 'gender', 'activity_level', 'equipment_access', 'cooking_skill', 'budget_level', 'diet_mode', 'sleep_time', 'wake_time'];
-  const filled = fields.filter(f => profile[f] != null).length;
-  return Math.round((filled / fields.length) * 100);
-}

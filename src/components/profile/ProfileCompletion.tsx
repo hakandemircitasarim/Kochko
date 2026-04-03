@@ -2,14 +2,17 @@
  * Profile Completion Bar
  * Spec 2.2: "Ne kadar doldurursan o kadar iyi sonuç alırsın"
  */
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { CATEGORY_LABELS, type ProfileCategory } from '@/lib/profile-completion';
 
 interface Props {
   percentage: number;
+  lowestCategory?: ProfileCategory;
+  onPress?: () => void;
 }
 
-export function ProfileCompletion({ percentage }: Props) {
+export function ProfileCompletion({ percentage, lowestCategory, onPress }: Props) {
   const color = percentage >= 80 ? COLORS.success : percentage >= 50 ? COLORS.primary : COLORS.warning;
 
   const messages: Record<number, string> = {
@@ -23,8 +26,11 @@ export function ProfileCompletion({ percentage }: Props) {
   const nearestKey = Object.keys(messages).map(Number).filter(k => k <= percentage).pop() ?? 0;
   const message = messages[nearestKey];
 
+  const Wrapper = onPress ? TouchableOpacity : View;
+  const wrapperProps = onPress ? { onPress, activeOpacity: 0.7 } : {};
+
   return (
-    <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}>
+    <Wrapper {...wrapperProps as Record<string, unknown>} style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>Profil Tamamlanma</Text>
         <Text style={{ color, fontSize: FONT.md, fontWeight: '700' }}>%{percentage}</Text>
@@ -33,6 +39,11 @@ export function ProfileCompletion({ percentage }: Props) {
         <View style={{ height: '100%', width: `${percentage}%`, backgroundColor: color, borderRadius: 4 }} />
       </View>
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{message}</Text>
-    </View>
+      {lowestCategory && percentage < 100 && (
+        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
+          Eksik alan: {CATEGORY_LABELS[lowestCategory]}
+        </Text>
+      )}
+    </Wrapper>
   );
 }

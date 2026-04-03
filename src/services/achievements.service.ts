@@ -91,6 +91,26 @@ export async function checkMilestones(
     else if (streak >= 100 && !types.has('streak_100')) newAchievement = { type: 'streak_100', title: '100 GUN!', desc: 'Inanilmaz. 100 gun arka arkaya.' };
   }
 
+  // Maintenance milestones (Spec 13.2)
+  if (!newAchievement && targetWeight && currentWeight) {
+    const goalReached = currentWeight <= targetWeight;
+    if (goalReached) {
+      // Check maintenance duration
+      const { data: goalReachedAch } = await supabase
+        .from('achievements').select('achieved_at')
+        .eq('user_id', userId).eq('achievement_type', 'goal_reached').single();
+      if (goalReachedAch) {
+        const daysSinceGoal = Math.floor((Date.now() - new Date(goalReachedAch.achieved_at).getTime()) / 86400000);
+        if (daysSinceGoal >= 30 && !types.has('maintenance_1m'))
+          newAchievement = { type: 'maintenance_1m', title: '1 Ay Bakimda!', desc: 'Hedef kilonda 1 aydir tutunuyorsun.' };
+        else if (daysSinceGoal >= 90 && !types.has('maintenance_3m'))
+          newAchievement = { type: 'maintenance_3m', title: '3 Ay Bakimda!', desc: 'Hedef kilonda 3 aydir devam ediyorsun, muhtesem.' };
+        else if (daysSinceGoal >= 180 && !types.has('maintenance_6m'))
+          newAchievement = { type: 'maintenance_6m', title: '6 Ay Bakimda!', desc: 'Yari yil hedef kilonda. Aliskanligin oturmus.' };
+      }
+    }
+  }
+
   if (newAchievement) {
     const { data } = await supabase.from('achievements').insert({
       user_id: userId,

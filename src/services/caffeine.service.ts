@@ -136,3 +136,27 @@ export function checkDailyCaffeineLimit(totalMg: number): { exceeded: boolean; m
   }
   return { exceeded: false, message: '' };
 }
+
+// ─── Caffeine-Water Integration (Phase 4) ───
+
+/**
+ * Calculate additional water target based on caffeine intake.
+ * For every 100mg caffeine, recommend +0.15L water.
+ */
+export function getCaffeineWaterAdjustment(totalCaffeineMg: number): {
+  additionalLiters: number;
+  message: string | null;
+} {
+  if (totalCaffeineMg <= 0) return { additionalLiters: 0, message: null };
+
+  const additional = Math.round((totalCaffeineMg / 100) * 0.15 * 100) / 100;
+
+  if (additional >= 0.3) {
+    return {
+      additionalLiters: additional,
+      message: `Bugun ${totalCaffeineMg}mg kafein aldin. Su hedefine +${additional}L ekle.`,
+    };
+  }
+
+  return { additionalLiters: additional, message: null };
+}

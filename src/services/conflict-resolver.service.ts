@@ -6,7 +6,15 @@
  * - Profile data vs logged behavior
  * - Old insights vs new information
  * - Goals vs actual patterns
+ *
+ * Also handles multi-device sync conflicts (Spec 11):
+ * - meal_log, workout_log, supplement_log → append (keep both)
+ * - profile → last-write-wins (compare updated_at)
+ * - daily_plan → server wins
+ * - daily_metrics → merge (non-null from both, server wins conflicts)
  */
+
+export type SyncDataType = 'meal_log' | 'workout_log' | 'supplement_log' | 'profile' | 'daily_plan' | 'daily_metrics';
 
 export type ConflictType =
   | 'allergen_violation'    // Profile says "gluten-free" but logged pasta
@@ -117,4 +125,113 @@ export function detectProfileContradiction(
   }
 
   return null;
+}
+
+// ──────────────────────────────────────────────
+// Multi-device Sync Conflict Resolution (Spec 11)
+// ──────────────────────────────────────────────
+
+interface SyncRecord {
+  id?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface SyncConflictResult {
+  strategy: 'append' | 'last_write_wins' | 'server_wins' | 'merge';
+  winner: 'local' | 'server' | 'both' | 'merged';
+  data: SyncRecord | SyncRecord[];
+}
+
+/**
+ * Resolve a sync conflict between local and server data.
+ * Strategy depends on data type:
+ * - Logs (meal, workout, supplement) -> append both
+ * - Profile -> last-write-wins by updated_at
+ * - Daily plan -> server always wins
+ * - Daily metrics -> merge non-null fields, server wins ties
+ */
+export function resolveConflict(
+  localData: SyncRecord,
+  serverData: SyncRecord,
+  dataType: SyncDataType
+): SyncConflictResult {
+  switch (dataType) {
+    case 'meal_log':
+    case 'workout_log':
+    case 'supplement_log':
+      // Append strategy: keep both records
+      return {
+        strategy: 'append',
+        winner: 'both',
+        data: [localData, serverData],
+      };
+
+    case 'profile': {
+      // Last-write-wins: compare updated_at timestamps
+      const localTime = localData.updated_at ? new Date(localData.updated_at).getTime() : 0;
+      const serverTime = serverData.updated_at ? new Date(serverData.updated_at).getTime() : 0;
+      const profileWinner = localTime > serverTime ? 'local' : 'server';
+      return {
+        strategy: 'last_write_wins',
+        winner: profileWinner,
+        data: profileWinner === 'local' ? localData : serverData,
+      };
+    }
+
+    case 'daily_plan':
+      // Server always wins for plans (coach-generated)
+      return {
+        strategy: 'server_wins',
+        winner: 'server',
+        data: serverData,
+      };
+
+    case 'daily_metrics': {
+      // Merge: take non-null from both, prefer server for conflicts
+      const merged: SyncRecord = { ...localData };
+      for (const key of Object.keys(serverData)) {
+        if (key === 'id' || key === 'updated_at') continue;
+        const serverVal = serverData[key];
+        const localVal = localData[key];
+        if (serverVal != null) {
+          merged[key] = serverVal;
+        } else if (localVal != null) {
+          merged[key] = localVal;
+        }
+      }
+      merged.updated_at = new Date().toISOString();
+      return {
+        strategy: 'merge',
+        winner: 'merged',
+        data: merged,
+      };
+    }
+  }
+}
+
+/**
+ * Detect conflicts between local queued actions and current server state.
+ * Returns IDs of queue items that conflict with server data.
+ */
+export function detectConflicts(
+  localQueue: Array<{ id: string; type: string; timestamp: string; data: SyncRecord }>,
+  serverState: Map<string, { updated_at: string }>
+): string[] {
+  const conflictIds: string[] = [];
+
+  for (const item of localQueue) {
+    const recordId = (item.data.id as string) ?? '';
+    const serverRecord = serverState.get(recordId);
+    if (!serverRecord) continue; // No server record = no conflict
+
+    const localTime = new Date(item.timestamp).getTime();
+    const serverTime = new Date(serverRecord.updated_at).getTime();
+
+    if (serverTime > localTime) {
+      conflictIds.push(item.id);
+    }
+  }
+
+  return conflictIds;
 }

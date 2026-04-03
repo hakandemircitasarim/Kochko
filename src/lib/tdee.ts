@@ -73,6 +73,7 @@ export function calculateTargets(input: {
   weeksSinceStart: number;
   complianceAvg: number; // 0-100, last 2 weeks
   weightKg: number;
+  gender?: 'male' | 'female' | 'other';
   macroPct: { protein: number; carb: number; fat: number };
   proteinPerKg?: number;
 }): CalorieTargets {
@@ -119,8 +120,8 @@ export function calculateTargets(input: {
   const restMin = trainingMin - restDayReduction;
   const restMax = trainingMax - restDayReduction;
 
-  // Apply absolute floors (Spec 12.1)
-  const absoluteFloor = input.weightKg > 0 && macroPct.protein > 0 ? 1200 : 1400; // simplified; real check uses gender
+  // Apply absolute floors (Spec 12.1) — gender-based: female 1200, male 1400
+  const absoluteFloor = input.gender === 'female' ? 1200 : 1400;
   const safeTrainingMin = Math.max(trainingMin, absoluteFloor);
   const safeRestMin = Math.max(restMin, absoluteFloor);
 

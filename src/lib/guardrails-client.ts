@@ -40,3 +40,37 @@ export function validateAge(birthYear: number): { valid: boolean; message: strin
   if (age > 120) return { valid: false, message: 'Gecerli bir dogum yili girin.' };
   return { valid: true, message: '' };
 }
+
+/**
+ * Detect extreme food portions in text input.
+ * Spec 12.6: Sacma giris kontrolu - extreme quantities
+ * Returns a Turkish confirmation prompt if extreme portion detected, null otherwise.
+ */
+const FOOD_WORDS = [
+  'yumurta', 'ekmek', 'tabak', 'porsiyon', 'bardak', 'dilim', 'kase',
+  'paket', 'kutu', 'sise', 'şişe', 'adet', 'tane', 'kilo', 'litre',
+  'kaşık', 'kasik', 'avuc', 'avuç', 'fincan', 'tas', 'tas',
+  'pilav', 'makarna', 'et', 'tavuk', 'balik', 'balık', 'peynir',
+  'sut', 'süt', 'yogurt', 'yoğurt', 'muz', 'elma', 'portakal',
+  'patates', 'pirinc', 'pirinç', 'pizza', 'hamburger', 'lahmacun',
+  'pide', 'doner', 'döner', 'kebap', 'kofte', 'köfte',
+];
+
+export function checkExtremePortions(text: string): string | null {
+  const lower = text.toLocaleLowerCase('tr');
+
+  // Pattern: number (>20) followed by a food word
+  const numberPattern = /(\d+)\s*([\wğüşıöçĞÜŞİÖÇ]+)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = numberPattern.exec(lower)) !== null) {
+    const quantity = parseInt(match[1], 10);
+    const word = match[2];
+
+    if (quantity > 20 && FOOD_WORDS.some(fw => word.includes(fw))) {
+      return `${quantity} ${word} girdiniz. Bu miktar cok yuksek gorunuyor. Doğru mu?`;
+    }
+  }
+
+  return null;
+}

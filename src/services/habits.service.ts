@@ -17,6 +17,8 @@ export interface Habit {
   streak: number;
   startedAt: string;
   masteredAt: string | null;
+  weekly_compliance?: number; // A4: Son 14 gundeki tamamlanma orani (0-100)
+  completion_log?: string[];  // A4: Tamamlanan gunlerin tarih listesi
 }
 
 // Progressive habit sequence
@@ -45,17 +47,49 @@ export async function getHabitStack(userId: string): Promise<Habit[]> {
 }
 
 /**
+ * A4: Calculate weekly_compliance for a habit.
+ * Looks at the last 14 days of completion_log and returns (completed_days / 14) * 100.
+ */
+export function calculateWeeklyCompliance(habit: Habit): number {
+  if (!habit.completion_log || habit.completion_log.length === 0) return 0;
+
+  const now = new Date();
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const cutoff = fourteenDaysAgo.toISOString().split('T')[0];
+
+  const recentDays = habit.completion_log.filter(dateStr => dateStr >= cutoff);
+  // Deduplicate days (in case of multiple entries per day)
+  const uniqueDays = new Set(recentDays);
+
+  return Math.round((uniqueDays.size / 14) * 100);
+}
+
+/**
+ * A4: Update weekly_compliance for all habits in the stack.
+ */
+export function updateComplianceForAll(habits: Habit[]): Habit[] {
+  return habits.map(h => ({
+    ...h,
+    weekly_compliance: calculateWeeklyCompliance(h),
+  }));
+}
+
+/**
  * Determine next habit to introduce.
- * Only introduce when current habit is at 80%+ for 2 weeks.
+ * A4: Uses weekly_compliance (80%+ over 14 days) instead of streak to decide mastery.
  */
 export function getNextHabit(currentHabits: Habit[]): { habit: typeof HABIT_SEQUENCE[0]; message: string } | null {
   const masteredCount = currentHabits.filter(h => h.status === 'mastered' || h.status === 'stacked').length;
 
   if (masteredCount >= HABIT_SEQUENCE.length) return null;
 
-  // Check if current active habit is mastered
+  // Check if current active habit has reached mastery via compliance
   const active = currentHabits.find(h => h.status === 'active');
-  if (active && active.streak < 14) return null; // Not yet 2 weeks
+  if (active) {
+    const compliance = active.weekly_compliance ?? calculateWeeklyCompliance(active);
+    // Need 80%+ compliance over 14-day window to progress
+    if (compliance < 80) return null;
+  }
 
   const nextIndex = masteredCount;
   if (nextIndex >= HABIT_SEQUENCE.length) return null;
@@ -66,7 +100,67 @@ export function getNextHabit(currentHabits: Habit[]): { habit: typeof HABIT_SEQU
   return {
     habit: next,
     message: prevName
-      ? `"${prevName}" aliskanligini oturtmussin, simdi "${next.name}" ekliyoruz. ${next.anchor ?? ''}`
+      ? `"${prevName}" aliskanligini oturtmussin (%80+ uyum), simdi "${next.name}" ekliyoruz. ${next.anchor ?? ''}`
       : `Ilk aliskanlik hedefin: "${next.name}". ${next.description}.`,
   };
+}
+
+// ─── Chat Integration (Phase 7) ───
+
+/**
+ * Get current habit stack formatted for system prompt inclusion.
+ */
+export function getChatIntegrationPrompt(habits: Habit[]): string {
+  const active = habits.filter(h => h.status === 'active');
+  const mastered = habits.filter(h => h.status === 'mastered');
+
+  if (active.length === 0 && mastered.length === 0) return '';
+
+  const parts: string[] = ['## ALISKANLIK DURUMU'];
+
+  if (active.length > 0) {
+    parts.push(`Aktif: ${active.map(h => `"${h.habit}" (${h.streak} gun seri, %${h.weekly_compliance ?? 0} uyum)`).join(', ')}`);
+  }
+  if (mastered.length > 0) {
+    parts.push(`Oturtulmus: ${mastered.map(h => h.habit).join(', ')}`);
+  }
+
+  // If active habit streak is about to reach 14 days, note it
+  const almostMastered = active.find(h => h.streak >= 12 && h.streak < 14);
+  if (almostMastered) {
+    parts.push(`"${almostMastered.habit}" 2 gun sonra oturtulmus sayilacak!`);
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Check if a chat message contains habit-relevant behavior.
+ * Returns habit update if applicable.
+ */
+export function checkHabitFromChat(
+  message: string,
+  activeHabits: Habit[]
+): { habitName: string; increment: boolean } | null {
+  const lower = message.toLocaleLowerCase('tr');
+
+  for (const habit of activeHabits) {
+    const habitLower = habit.habit.toLocaleLowerCase('tr');
+
+    // Check if message relates to habit completion
+    if (habitLower.includes('kahvalti') && /kahvalt|sabah.*(yedim|ictim)/i.test(lower)) {
+      return { habitName: habit.habit, increment: true };
+    }
+    if (habitLower.includes('su') && /su.*(ictim|içtim)|bardak.*su|litre/i.test(lower)) {
+      return { habitName: habit.habit, increment: true };
+    }
+    if (habitLower.includes('kayit') && /yedim|ictim|antrenman|kaydet/i.test(lower)) {
+      return { habitName: habit.habit, increment: true };
+    }
+    if (habitLower.includes('protein') && /protein.*yedim|tavuk|yumurta|yogurt/i.test(lower)) {
+      return { habitName: habit.habit, increment: true };
+    }
+  }
+
+  return null;
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { getAchievements, type Achievement } from '@/services/achievements.service';
+import { shareMilestone } from '@/services/sharing.service';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
@@ -30,9 +31,21 @@ export default function AchievementsScreen() {
             <View style={{ flex: 1 }}>
               <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700' }}>{a.title}</Text>
               {a.description && <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{a.description}</Text>}
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 4 }}>
-                {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+                  {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </Text>
+                {/* D17: Share button */}
+                <TouchableOpacity
+                  onPress={() => shareMilestone(a.title, a.description ?? '')}
+                  style={{
+                    paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: 8,
+                    backgroundColor: COLORS.primary + '15', borderWidth: 1, borderColor: COLORS.primary + '40',
+                  }}
+                >
+                  <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>Paylas</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         ))
