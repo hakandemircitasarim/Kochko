@@ -7,13 +7,12 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import type {
+  ActivityLevel, Equipment, CookingSkill, BudgetLevel,
+  TrainingStyle, DietMode, AlcoholFrequency, UnitSystem, PortionLanguage,
+} from '@/types/database';
 
-type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
-type Equipment = 'home' | 'gym' | 'both';
-type CookingSkill = 'none' | 'basic' | 'good';
-type BudgetLevel = 'low' | 'medium' | 'high';
-type TrainingStyle = 'cardio' | 'strength' | 'mixed';
-type DietMode = 'standard' | 'low_carb' | 'keto' | 'high_protein';
+// ─── Option Arrays ───
 
 const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
   { value: 'sedentary', label: 'Hareketsiz' }, { value: 'light', label: 'Hafif' },
@@ -35,39 +34,97 @@ const DIET_OPTIONS: { value: DietMode; label: string }[] = [
   { value: 'standard', label: 'Standart' }, { value: 'low_carb', label: 'Dusuk Karb' },
   { value: 'keto', label: 'Keto' }, { value: 'high_protein', label: 'Yuksek Protein' },
 ];
+const ALCOHOL_OPTIONS: { value: AlcoholFrequency; label: string }[] = [
+  { value: 'never', label: 'Hic' }, { value: 'rare', label: 'Nadir' },
+  { value: 'weekly', label: 'Haftalik' }, { value: 'frequent', label: 'Sik' },
+];
+const UNIT_OPTIONS: { value: UnitSystem; label: string }[] = [
+  { value: 'metric', label: 'Metrik (kg/cm)' }, { value: 'imperial', label: 'Imperial (lb/ft)' },
+];
+const PORTION_OPTIONS: { value: PortionLanguage; label: string }[] = [
+  { value: 'grams', label: 'Gram' }, { value: 'household', label: 'Kaseyle (ev olcusu)' },
+];
+const MEAL_COUNT_OPTIONS = [
+  { value: '2', label: '2' }, { value: '3', label: '3' },
+  { value: '4', label: '4' }, { value: '5', label: '5' },
+];
+const DAY_BOUNDARY_OPTIONS = [
+  { value: '3', label: '03:00' }, { value: '4', label: '04:00' },
+  { value: '5', label: '05:00' }, { value: '6', label: '06:00' },
+];
+
+// ─── Screen ───
 
 export default function EditProfileScreen() {
   const user = useAuthStore(s => s.user);
-  const { profile, fetch: fetchProfile, update } = useProfileStore();
+  const { profile, update } = useProfileStore();
   const [saving, setSaving] = useState(false);
 
-  // Form state
+  // Physical
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
   const [birthYear, setBirthYear] = useState('');
-  const [gender, setGender] = useState<string>('');
-  const [activity, setActivity] = useState<ActivityLevel>('moderate');
-  const [equipment, setEquipment] = useState<Equipment>('home');
-  const [cookingSkill, setCookingSkill] = useState<CookingSkill>('basic');
-  const [budget, setBudget] = useState<BudgetLevel>('medium');
-  const [trainingStyle, setTrainingStyle] = useState<TrainingStyle>('mixed');
-  const [dietMode, setDietMode] = useState<DietMode>('standard');
+  const [gender, setGender] = useState('');
+
+  // Lifestyle
+  const [activity, setActivity] = useState<string>('moderate');
+  const [equipment, setEquipment] = useState<string>('home');
+  const [cookingSkill, setCookingSkill] = useState<string>('basic');
+  const [budget, setBudget] = useState<string>('medium');
+  const [trainingStyle, setTrainingStyle] = useState<string>('mixed');
+  const [dietMode, setDietMode] = useState<string>('standard');
+
+  // Schedule
   const [sleepTime, setSleepTime] = useState('');
   const [wakeTime, setWakeTime] = useState('');
+  const [workStart, setWorkStart] = useState('');
+  const [workEnd, setWorkEnd] = useState('');
   const [occupation, setOccupation] = useState('');
+  const [mealCount, setMealCount] = useState('3');
 
+  // Preferences
+  const [unitSystem, setUnitSystem] = useState<string>('metric');
+  const [portionLang, setPortionLang] = useState<string>('grams');
+  const [alcoholFreq, setAlcoholFreq] = useState<string>('never');
+  const [dayBoundary, setDayBoundary] = useState('4');
+
+  // Body Measurements (optional)
+  const [bodyFat, setBodyFat] = useState('');
+  const [muscleMass, setMuscleMass] = useState('');
+  const [waist, setWaist] = useState('');
+  const [hip, setHip] = useState('');
+  const [chest, setChest] = useState('');
+  const [thigh, setThigh] = useState('');
+
+  // Load from profile
   useEffect(() => {
     if (!profile) return;
     if (profile.height_cm) setHeightCm(String(profile.height_cm));
     if (profile.weight_kg) setWeightKg(String(profile.weight_kg));
     if (profile.birth_year) setBirthYear(String(profile.birth_year));
-    if (profile.gender) setGender(String(profile.gender));
-    if (profile.activity_level) setActivity(profile.activity_level as ActivityLevel);
-    if (profile.equipment_access) setEquipment(profile.equipment_access as Equipment);
-    if (profile.cooking_skill) setCookingSkill(profile.cooking_skill as CookingSkill);
-    if (profile.budget_level) setBudget(profile.budget_level as BudgetLevel);
-    if (profile.training_style) setTrainingStyle(profile.training_style as TrainingStyle);
-    if (profile.diet_mode) setDietMode(profile.diet_mode as DietMode);
+    if (profile.gender) setGender(profile.gender);
+    if (profile.activity_level) setActivity(profile.activity_level);
+    if (profile.equipment_access) setEquipment(profile.equipment_access);
+    if (profile.cooking_skill) setCookingSkill(profile.cooking_skill);
+    if (profile.budget_level) setBudget(profile.budget_level);
+    if (profile.training_style) setTrainingStyle(profile.training_style);
+    if (profile.diet_mode) setDietMode(profile.diet_mode);
+    if (profile.sleep_time) setSleepTime(profile.sleep_time);
+    if (profile.wake_time) setWakeTime(profile.wake_time);
+    if (profile.work_start) setWorkStart(profile.work_start);
+    if (profile.work_end) setWorkEnd(profile.work_end);
+    if (profile.occupation) setOccupation(profile.occupation);
+    if (profile.meal_count_preference) setMealCount(String(profile.meal_count_preference));
+    if (profile.unit_system) setUnitSystem(profile.unit_system);
+    if (profile.portion_language) setPortionLang(profile.portion_language);
+    if (profile.alcohol_frequency) setAlcoholFreq(profile.alcohol_frequency);
+    if (profile.day_boundary_hour) setDayBoundary(String(profile.day_boundary_hour));
+    if (profile.body_fat_pct) setBodyFat(String(profile.body_fat_pct));
+    if (profile.muscle_mass_pct) setMuscleMass(String(profile.muscle_mass_pct));
+    if (profile.waist_cm) setWaist(String(profile.waist_cm));
+    if (profile.hip_cm) setHip(String(profile.hip_cm));
+    if (profile.chest_cm) setChest(String(profile.chest_cm));
+    if (profile.thigh_cm) setThigh(String(profile.thigh_cm));
   }, [profile]);
 
   const handleSave = async () => {
@@ -78,13 +135,28 @@ export default function EditProfileScreen() {
       weight_kg: weightKg ? parseFloat(weightKg) : null,
       birth_year: birthYear ? parseInt(birthYear) : null,
       gender: gender || null,
-      activity_level: activity,
-      equipment_access: equipment,
-      cooking_skill: cookingSkill,
-      budget_level: budget,
-      training_style: trainingStyle,
-      diet_mode: dietMode,
-      onboarding_completed: true,
+      activity_level: activity as ActivityLevel,
+      equipment_access: equipment as Equipment,
+      cooking_skill: cookingSkill as CookingSkill,
+      budget_level: budget as BudgetLevel,
+      training_style: trainingStyle as TrainingStyle,
+      diet_mode: dietMode as DietMode,
+      sleep_time: sleepTime || null,
+      wake_time: wakeTime || null,
+      work_start: workStart || null,
+      work_end: workEnd || null,
+      occupation: occupation || null,
+      meal_count_preference: parseInt(mealCount),
+      unit_system: unitSystem as UnitSystem,
+      portion_language: portionLang as PortionLanguage,
+      alcohol_frequency: alcoholFreq as AlcoholFrequency,
+      day_boundary_hour: parseInt(dayBoundary),
+      body_fat_pct: bodyFat ? parseFloat(bodyFat) : null,
+      muscle_mass_pct: muscleMass ? parseFloat(muscleMass) : null,
+      waist_cm: waist ? parseFloat(waist) : null,
+      hip_cm: hip ? parseFloat(hip) : null,
+      chest_cm: chest ? parseFloat(chest) : null,
+      thigh_cm: thigh ? parseFloat(thigh) : null,
     } as never);
     setSaving(false);
     Alert.alert('Kaydedildi', 'Profil guncellendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
@@ -95,6 +167,7 @@ export default function EditProfileScreen() {
       <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }} keyboardShouldPersistTaps="handled">
         <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Profil Duzenle</Text>
 
+        {/* Fiziksel */}
         <Card title="Fiziksel">
           <Input label="Boy (cm)" value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" placeholder="175" />
           <Input label="Kilo (kg)" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="80" />
@@ -102,16 +175,46 @@ export default function EditProfileScreen() {
           <ChipSelect label="Cinsiyet" options={[{ value: 'male', label: 'Erkek' }, { value: 'female', label: 'Kadin' }, { value: 'other', label: 'Diger' }]} selected={gender} onChange={setGender} />
         </Card>
 
+        {/* Yasam Tarzi */}
         <Card title="Yasam Tarzi">
-          <ChipSelect label="Aktivite Seviyesi" options={ACTIVITY_OPTIONS} selected={activity} onChange={v => setActivity(v as ActivityLevel)} />
-          <ChipSelect label="Ekipman" options={EQUIP_OPTIONS} selected={equipment} onChange={v => setEquipment(v as Equipment)} />
-          <ChipSelect label="Yemek Becerisi" options={COOK_OPTIONS} selected={cookingSkill} onChange={v => setCookingSkill(v as CookingSkill)} />
-          <ChipSelect label="Butce" options={BUDGET_OPTIONS} selected={budget} onChange={v => setBudget(v as BudgetLevel)} />
+          <ChipSelect label="Aktivite Seviyesi" options={ACTIVITY_OPTIONS} selected={activity} onChange={setActivity} />
+          <ChipSelect label="Ekipman" options={EQUIP_OPTIONS} selected={equipment} onChange={setEquipment} />
+          <ChipSelect label="Yemek Becerisi" options={COOK_OPTIONS} selected={cookingSkill} onChange={setCookingSkill} />
+          <ChipSelect label="Butce" options={BUDGET_OPTIONS} selected={budget} onChange={setBudget} />
         </Card>
 
+        {/* Antrenman ve Beslenme */}
         <Card title="Antrenman ve Beslenme">
-          <ChipSelect label="Antrenman Stili" options={STYLE_OPTIONS} selected={trainingStyle} onChange={v => setTrainingStyle(v as TrainingStyle)} />
-          <ChipSelect label="Diyet Modu" options={DIET_OPTIONS} selected={dietMode} onChange={v => setDietMode(v as DietMode)} />
+          <ChipSelect label="Antrenman Stili" options={STYLE_OPTIONS} selected={trainingStyle} onChange={setTrainingStyle} />
+          <ChipSelect label="Diyet Modu" options={DIET_OPTIONS} selected={dietMode} onChange={setDietMode} />
+          <ChipSelect label="Ogun Sayisi" options={MEAL_COUNT_OPTIONS} selected={mealCount} onChange={setMealCount} />
+        </Card>
+
+        {/* Program */}
+        <Card title="Program">
+          <Input label="Uyku Saati (ornek: 23:00)" value={sleepTime} onChangeText={setSleepTime} placeholder="23:00" />
+          <Input label="Uyanma Saati (ornek: 07:00)" value={wakeTime} onChangeText={setWakeTime} placeholder="07:00" />
+          <Input label="Is Baslangici (ornek: 09:00)" value={workStart} onChangeText={setWorkStart} placeholder="09:00" />
+          <Input label="Is Bitisi (ornek: 18:00)" value={workEnd} onChangeText={setWorkEnd} placeholder="18:00" />
+          <Input label="Meslek" value={occupation} onChangeText={setOccupation} placeholder="Yazilimci, ogrenci, vb." />
+        </Card>
+
+        {/* Tercihler */}
+        <Card title="Tercihler">
+          <ChipSelect label="Olcu Birimi" options={UNIT_OPTIONS} selected={unitSystem} onChange={setUnitSystem} />
+          <ChipSelect label="Porsiyon Dili" options={PORTION_OPTIONS} selected={portionLang} onChange={setPortionLang} />
+          <ChipSelect label="Alkol Tuketimi" options={ALCOHOL_OPTIONS} selected={alcoholFreq} onChange={setAlcoholFreq} />
+          <ChipSelect label="Gun Siniri" options={DAY_BOUNDARY_OPTIONS} selected={dayBoundary} onChange={setDayBoundary} />
+        </Card>
+
+        {/* Vucut Olculeri */}
+        <Card title="Vucut Olculeri (Opsiyonel)">
+          <Input label="Yag Orani (%)" value={bodyFat} onChangeText={setBodyFat} keyboardType="decimal-pad" placeholder="20" />
+          <Input label="Kas Orani (%)" value={muscleMass} onChangeText={setMuscleMass} keyboardType="decimal-pad" placeholder="35" />
+          <Input label="Bel Cevresi (cm)" value={waist} onChangeText={setWaist} keyboardType="decimal-pad" placeholder="85" />
+          <Input label="Kalca Cevresi (cm)" value={hip} onChangeText={setHip} keyboardType="decimal-pad" placeholder="100" />
+          <Input label="Gogus Cevresi (cm)" value={chest} onChangeText={setChest} keyboardType="decimal-pad" placeholder="95" />
+          <Input label="Uyluk Cevresi (cm)" value={thigh} onChangeText={setThigh} keyboardType="decimal-pad" placeholder="55" />
         </Card>
 
         <Button title="Kaydet" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.md }} />
@@ -119,6 +222,8 @@ export default function EditProfileScreen() {
     </KeyboardAvoidingView>
   );
 }
+
+// ─── ChipSelect Component ───
 
 function ChipSelect({ label, options, selected, onChange }: {
   label: string;

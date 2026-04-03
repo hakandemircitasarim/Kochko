@@ -18,7 +18,8 @@ export type TaskMode =
   | 'plateau'        // Plateau yönetimi
   | 'simulation'     // "Şunu yesem ne olur?" scenarios
   | 'recovery'       // Hızlı kurtarma - "bugün çok yedim"
-  | 'onboarding';    // İlk tanışma - profile building
+  | 'onboarding'     // İlk tanışma - profile building
+  | 'periodic';      // Dönemsel durum yönetimi
 
 /**
  * Detect the appropriate task mode from user message.
@@ -34,6 +35,9 @@ export function detectTaskMode(message: string, isOnboarding: boolean): TaskMode
   if (/\d+\s*k(g|ilo)|tartildim|tartıldım/.test(lower)) return 'register';
   if (/su (ic|iç)|bardak|litre/.test(lower)) return 'register';
   if (/saat uyudum|gec yattim|geç yattım|erken kalktim/.test(lower)) return 'register';
+
+  // Periodic state mode
+  if (/ramazan|hamile|hastalandim|hastalandım|tatile|seyahate|sakatl|sakatlandim|sakatlandım|emzir|donemsel|dönemsel|yogun is|yoğun iş|sinav|sınav/.test(lower)) return 'periodic';
 
   // Simulation mode
   if (/yesem|yersem|icsem|içsem|olur mu|yer miyim|ice bilir|içe bilir|ne olur/.test(lower)) return 'simulation';
@@ -117,19 +121,40 @@ Malzeme ikamesi oner.`;
 
     case 'eating_out':
       return `## MOD: DISARIDA YEMEK
-"En az hasarli" onerileri sun.
-Menu fotografini analiz edebilirsin.
-Sosyal baski koclugu yap - yargilamadan, hasar minimizasyonu.
-Haftalik butce perspektifi ver.
-Mekan hafizasini kullan (daha once gitmisse).`;
+"En az hasarli" secenekleri oner — kalorisi en dusuk, proteini en yuksek olanlari.
+Menu fotografini analiz edebilirsin — en uygun 2-3 secenegi ISARETLERLE belirt.
+Sosyal baski koclugu yap — yargilamadan, hasar minimizasyonu:
+- "Is yemegindeyim" → porsiyon kontrol + protein agirlikli sec
+- "Arkadaslar baskı yapıyor" → "karnım tok" stratejisi
+- "Aile yemegi" → az al, yavaş ye stratejisi
+Haftalik butce perspektifi MUTLAKA ver: "Haftalik butcende X kcal marjin var, rahat ol."
+Mekan hafizasini kullan: daha once gitmisse bildigi yemekleri referans ver.
+Gunu PROAKTIF ayarla: "Aksam disarida yiyeceksen, ogle hafif tut — salata veya tavuk."
+Bilinen fast food zincirleri icin hazır en az hasarli secenek listeni kullan.
+
+Yanıtının sonuna mekan bilgisi varsa:
+<actions>[{"type": "venue_log", "venue_name": "mekan adi", "items": [{"name": "yemek", "calories": sayi, "protein_g": sayi}]}]</actions>`;
 
     case 'mvd':
       return `## MOD: MINIMUM VIABLE DAY
-Ton otomatik en yumusak.
-Sadece 3 basit hedef ver (en kolay olanlar).
-Detayli plan verme, basit tut.
-Motivasyon konusmasini KISA tut, baskici olma.
-"Sadece su ic, bir seyleri kaydet, erken yat" gibi.`;
+Ton: EN YUMUSAK. Baski YAPMA. Motivasyon konusmasi YAPMA.
+Normal plani ASKIYA AL. Bugun sadece 3 basit hedef:
+1. Su ic (en az 1 bardak)
+2. Bir seyler ye ve kaydet (ne olursa olsun)
+3. 10 dakika yuru veya erken yat
+
+"Bu bile fazla" derse → 2 hedefe dusur.
+"Hic yapamam" derse → tek hedef: "Sadece bugun su ic, baska bir sey beklmiyorum."
+
+ASLA:
+- "Hadi yapabilirsin" gibi baskici cumle KURMA
+- Kalori hedefinden bahsetme
+- Antrenman onerme
+- Uzun aciklama yapma
+
+Ertesi gun icin: "Yarin normal plana donecegiz, merak etme."
+MVD plan askiya alma eylemi:
+<actions>[{"type": "mvd_activate"}]</actions>`;
 
     case 'plateau':
       return `## MOD: PLATEAU YONETIMI
@@ -149,14 +174,35 @@ Gerekce ver neden bu stratejiyi sectigini.`;
 Kalan butceyi goster.
 Protein/karb/yag etkisini goster.
 Alternatif senaryo sun ("bunun yerine sunu yesen...").
-Haftalik butce etkisini de goster.`;
+Haftalik butce etkisini de goster.
+
+ONEMLI: Yanıtının sonuna asagidaki formatta bir <simulation> blogu ekle:
+<simulation>{"foodName":"Yiyecek Adi","calories":350,"remaining":450,"weeklyImpact":"Haftalik butcede 2100 kcal kaliyor"}</simulation>
+- foodName: Sorgulanan yiyecegin adi
+- calories: Yiyecegin tahmini kalorisi
+- remaining: Bu yiyecekten sonra gunluk kalan kalori butcesi
+- weeklyImpact: Haftalik butce etkisini aciklayan kisa Turkce cumle`;
 
     case 'recovery':
       return `## MOD: HIZLI KURTARMA
-YARGILAMA. Empati kur.
-Gunun kalan mini planini ver.
-Haftalik butce perspektifi ver ("haftalik butcende hala X kcal marjin var").
-"Bugun bozuldu ama hafta bitmedi" mesajini ver.`;
+1. YARGILAMA. "Herkesin boyle gunleri olur" gibi empati kur.
+2. Gunun kalan kismina MINI KURTARMA PLANI sun:
+   - Su ic (0.5L+)
+   - Hafif aksam yemegi (protein agirlikli) veya "bugun yeterli"
+   - Erken yat
+3. HAFTALIK BUTCE perspektifi MUTLAKA ver:
+   "Bugun X kcal fazla yedin ama haftalik butcende hala Y kcal marjin var."
+4. "Bugun bozuldu ama HAFTA BITMEDI" mesajini AKTIF ver.
+5. Yarin ve sonraki gunler icin DENGELEME stratejisi oner:
+   "Kalan Z gunde gunluk W kcal azaltirsan hafta dengelenir."
+6. Takip taahhut ekle:
+   <actions>[{"type": "commitment", "text": "Kurtarma takibi", "follow_up_days": 1}]</actions>
+
+ASLA:
+- "Neden boyle yaptin?" deme
+- Katı diyet onerme
+- Sucluluk hissettirme
+- "Bir daha yapma" deme`;
 
     case 'onboarding':
       return `## MOD: ONBOARDING
@@ -166,5 +212,18 @@ Dogal sohbet akisinda bilgi topla.
 Boy, kilo, yas, cinsiyet, hedef - bunlari ogren.
 Yeterli bilgi toplayinca profili tamamla.
 Ilk plani olusturmak icin minimum: boy + kilo + yas + cinsiyet + hedef.`;
+
+    case 'periodic':
+      return `## MOD: DONEMSEL DURUM
+Kullanici donemsel bir durum hakkinda konusuyor.
+1. Durumu tani (ramazan/hastalik/hamilelik/emzirme/tatil/sinav/sakatlik/seyahat)
+2. Bitis tarihi sor (biliniyorsa)
+3. Plan degisikliklerini HEMEN acikla: kalori, antrenman, IF degisiklikleri
+4. periodic_state_update eylemi olustur
+5. Empati kur ama pratik ol
+
+Durum uyumsuz ise IF'i otomatik durdur ve kullaniciya bildir.
+Hastalik/sakatlanma durumunda iyilesme odakli ol.
+Hamilelik/emzirmede destekleyici ve sabırli ol.`;
   }
 }

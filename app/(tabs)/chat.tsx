@@ -15,6 +15,7 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -22,14 +23,61 @@ import {
   sendMessage, sendMessageWithPhoto, loadChatHistory,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
+import { lookupBarcode, calculateServing } from '@/services/barcode.service';
+import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
+import {
+  MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
+  RecipeCard, ConfirmRejectButtons,
+} from '@/components/chat/RichMessage';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+
+// Simulation data parsed from AI responses
+interface SimulationData {
+  foodName: string;
+  calories: number;
+  remaining: number;
+  weeklyImpact: string;
+}
 
 // Extended message type for UI state
 interface UIMessage extends ChatMessage {
   actions?: { type: string; feedback: string | null }[];
-  showFeedback?: boolean; // show ise yaradi / bana gore degil
+  showFeedback?: boolean;
+  simulationData?: SimulationData | null;
+  quickSelectOptions?: string[] | null;
+  hasPlanSuggestion?: boolean;
+}
+
+function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
+  const match = content.match(/<simulation>([\s\S]*?)<\/simulation>/);
+  if (!match) return { cleanContent: content, data: null };
+  try {
+    const data = JSON.parse(match[1]) as SimulationData;
+    const cleanContent = content.replace(/<simulation>[\s\S]*?<\/simulation>/, '').trim();
+    return { cleanContent, data };
+  } catch {
+    return { cleanContent: content, data: null };
+  }
+}
+
+function parseQuickSelect(content: string): { cleanContent: string; options: string[] | null } {
+  const match = content.match(/<quick_select>([\s\S]*?)<\/quick_select>/);
+  if (!match) return { cleanContent: content, options: null };
+  try {
+    const options = JSON.parse(match[1]) as string[];
+    const cleanContent = content.replace(/<quick_select>[\s\S]*?<\/quick_select>/, '').trim();
+    return { cleanContent, options };
+  } catch {
+    return { cleanContent: content, options: null };
+  }
+}
+
+function hasConfirmRejectIndicator(content: string, taskMode?: string): boolean {
+  return !!content.match(/<confirm_reject\s*\/?>/) ||
+    taskMode === 'plan_suggestion' ||
+    (taskMode === 'plan' && (content.includes('plan') || content.includes('oneriyorum')));
 }
 
 export default function ChatScreen() {
@@ -41,9 +89,52 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [photo, setPhoto] = useState<string | null>(null);
+  const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
 
   const isOnboarding = profile && !profile.onboarding_completed;
+
+  // Barcode scan handler (T2.12-T2.13)
+  const handleBarcodeScan = async (barcode: string) => {
+    setShowBarcodeScanner(false);
+    setSending(true);
+    const result = await lookupBarcode(barcode);
+    if (result.found) {
+      const serving = calculateServing(result, result.serving_size_g ?? 100);
+      const msg = `Barkod: ${result.product_name} (${result.brand ?? ''}) - ${serving?.calories ?? '?'} kcal, ${serving?.protein_g ?? '?'}g protein (100g bazinda)`;
+      setInput(msg);
+    } else {
+      setInput(`Barkod ${barcode} bulunamadi. Bu urunu metin olarak girebilirsin.`);
+    }
+    setSending(false);
+  };
+
+  // Voice recording handler (T4.1 / U1)
+  const handleVoiceToggle = async () => {
+    if (isRecordingVoice) {
+      setIsRecordingVoice(false);
+      const { text, audioUri } = await stopAndTranscribe();
+      if (text) {
+        setInput(text);
+      } else if (audioUri) {
+        setInput('[Ses kaydedildi ama yazilamadi - metin olarak yazin]');
+      }
+    } else {
+      const started = await startRecording();
+      if (started) setIsRecordingVoice(true);
+    }
+  };
+
+  const openBarcodeScanner = async () => {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) return;
+    }
+    setShowBarcodeScanner(true);
+  };
 
   // Load chat history
   useEffect(() => {
@@ -113,20 +204,51 @@ export default function ChatScreen() {
         || data.task_mode === 'recipe' || data.task_mode === 'simulation'
         || data.task_mode === 'eating_out' || data.task_mode === 'plateau';
 
+      // Parse simulation data if in simulation mode
+      let messageContent = data.message;
+      let simulationData: SimulationData | null = null;
+      if (data.task_mode === 'simulation') {
+        const parsed = parseSimulationData(data.message);
+        messageContent = parsed.cleanContent;
+        simulationData = parsed.data;
+      }
+
+      // Parse quick_select options from AI response
+      const quickSelectParsed = parseQuickSelect(messageContent);
+      messageContent = quickSelectParsed.cleanContent;
+      const quickSelectOptions = quickSelectParsed.options;
+
+      // Detect confirm/reject plan suggestion
+      const hasPlanSuggestion = hasConfirmRejectIndicator(messageContent, data.task_mode);
+      messageContent = messageContent.replace(/<confirm_reject\s*\/?>/g, '').trim();
+
       const reply: UIMessage = {
         id: `a-${Date.now()}`,
         role: 'assistant',
-        content: data.message,
+        content: messageContent,
         task_mode: data.task_mode,
         created_at: new Date().toISOString(),
         actions: data.actions,
         showFeedback,
+        simulationData,
+        quickSelectOptions,
+        hasPlanSuggestion,
       };
       setMessages(prev => [...prev, reply]);
 
       // Refresh dashboard if actions were executed (meal logged, weight updated, etc.)
       if (data.actions.some(a => a.feedback) && user?.id) {
         refreshDashboard(user.id);
+
+        // 10-second undo window for meal/workout logs (Spec 3.2)
+        const undoableAction = data.actions.find(a =>
+          a.feedback && (a.type === 'meal_log' || a.type === 'workout_log' || a.type === 'supplement_log')
+        );
+        if (undoableAction) {
+          const expiresAt = Date.now() + 10000;
+          setUndoAction({ type: undoableAction.type, messageId: reply.id, expiresAt });
+          setTimeout(() => setUndoAction(prev => prev?.expiresAt === expiresAt ? null : prev), 10000);
+        }
       }
     } else {
       setMessages(prev => [...prev, {
@@ -145,6 +267,111 @@ export default function ChatScreen() {
   const handleSuggestion = (text: string) => {
     setInput(text);
   };
+
+  // QuickSelectButtons handler — user picks an option from AI's inline choices
+  const handleQuickSelect = useCallback((option: string) => {
+    setInput(option);
+    // Auto-send after a short delay
+    setTimeout(async () => {
+      const userMsg: UIMessage = {
+        id: `u-${Date.now()}`, role: 'user', content: option, created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setInput('');
+      setSending(true);
+      scrollToBottom();
+      const { data, error } = await sendMessage(option);
+      if (data) {
+        let content = data.message;
+        const qsParsed = parseQuickSelect(content);
+        content = qsParsed.cleanContent;
+        const hasPlan = hasConfirmRejectIndicator(content, data.task_mode);
+        content = content.replace(/<confirm_reject\s*\/?>/g, '').trim();
+        setMessages(prev => [...prev, {
+          id: `a-${Date.now()}`, role: 'assistant', content, task_mode: data.task_mode,
+          created_at: new Date().toISOString(), actions: data.actions, showFeedback: false,
+          quickSelectOptions: qsParsed.options, hasPlanSuggestion: hasPlan,
+        }]);
+        if (data.actions.some(a => a.feedback) && user?.id) refreshDashboard(user.id);
+      } else {
+        setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: error ?? 'Baglanti hatasi.', created_at: new Date().toISOString() }]);
+      }
+      setSending(false);
+      scrollToBottom();
+    }, 0);
+  }, [scrollToBottom, user?.id, refreshDashboard]);
+
+  // Confirm/Reject plan suggestion handlers
+  const handlePlanConfirm = useCallback(() => {
+    handleQuickSelect('Evet, bu plani onayla');
+  }, [handleQuickSelect]);
+
+  const handlePlanReject = useCallback(() => {
+    handleQuickSelect('Hayir, degistir');
+  }, [handleQuickSelect]);
+
+  // Dashboard macros for real-time MacroSummary after meal_log
+  const totalProtein = useDashboardStore(s => s.totalProtein);
+  const totalCarbs = useDashboardStore(s => s.totalCarbs);
+  const totalFat = useDashboardStore(s => s.totalFat);
+  const totalCalories = useDashboardStore(s => s.totalCalories);
+  const weeklyBudgetRemaining = useDashboardStore(s => s.weeklyBudgetRemaining);
+  const dashboardMacros = { protein: totalProtein, carbs: totalCarbs, fat: totalFat };
+
+  // Compute macro gram targets from profile
+  const macroTargets = (() => {
+    const tdee = profile?.tdee_calculated ?? 2000;
+    const pPct = profile?.macro_protein_pct ?? 30;
+    const cPct = profile?.macro_carb_pct ?? 40;
+    const fPct = profile?.macro_fat_pct ?? 30;
+    return {
+      protein: Math.round((tdee * pPct / 100) / 4),
+      carbs: Math.round((tdee * cPct / 100) / 4),
+      fat: Math.round((tdee * fPct / 100) / 9),
+    };
+  })();
+
+  // "Neden bu oneriyi yaptin?" handler
+  const handleAskWhy = useCallback((messageContent: string) => {
+    setInput('Neden bu oneriyi yaptin?');
+    // Trigger send after state update
+    setTimeout(async () => {
+      const text = 'Neden bu oneriyi yaptin?';
+      const userMsg: UIMessage = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: text,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setInput('');
+      setSending(true);
+      scrollToBottom();
+
+      const { data, error } = await sendMessage(text);
+      if (data) {
+        const reply: UIMessage = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: data.message,
+          task_mode: data.task_mode,
+          created_at: new Date().toISOString(),
+          actions: data.actions,
+          showFeedback: false,
+        };
+        setMessages(prev => [...prev, reply]);
+      } else {
+        setMessages(prev => [...prev, {
+          id: `e-${Date.now()}`,
+          role: 'assistant',
+          content: error ?? 'Baglanti hatasi. Tekrar dene.',
+          created_at: new Date().toISOString(),
+        }]);
+      }
+      setSending(false);
+      scrollToBottom();
+    }, 0);
+  }, [scrollToBottom]);
 
   if (loading) {
     return (
@@ -172,7 +399,7 @@ export default function ChatScreen() {
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} />}
+          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} />}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
@@ -184,6 +411,25 @@ export default function ChatScreen() {
           <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.sm, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border }}>
             <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Kochko yaziyor...</Text>
           </View>
+        </View>
+      )}
+
+      {/* Barcode Scanner Overlay (T2.12) */}
+      {showBarcodeScanner && (
+        <View style={{ height: 250, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+          <CameraView
+            style={{ flex: 1 }}
+            barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] }}
+            onBarcodeScanned={(result) => {
+              if (result.data) handleBarcodeScan(result.data);
+            }}
+          />
+          <TouchableOpacity
+            onPress={() => setShowBarcodeScanner(false)}
+            style={{ position: 'absolute', top: 8, right: 8, backgroundColor: COLORS.error, borderRadius: 16, width: 32, height: 32, justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>X</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -208,11 +454,32 @@ export default function ChatScreen() {
         borderTopWidth: 1, borderTopColor: COLORS.border,
         backgroundColor: COLORS.surface, gap: SPACING.xs,
       }}>
+        {/* 10-second undo window (Spec 3.2) */}
+        {undoAction && Date.now() < undoAction.expiresAt && (
+          <TouchableOpacity
+            onPress={async () => {
+              const undoText = `Son ${undoAction.type === 'meal_log' ? 'ogun' : undoAction.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydini geri al`;
+              setUndoAction(null);
+              await sendMessageWithRetry(undoText);
+            }}
+            style={{ backgroundColor: COLORS.warning, borderRadius: 8, paddingVertical: 6, paddingHorizontal: SPACING.md, marginBottom: SPACING.xs, alignSelf: 'center' }}
+          >
+            <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Geri Al (10sn)</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={takePhoto} style={styles.iconBtn}>
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>O</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={pickImage} style={styles.iconBtn}>
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={openBarcodeScanner} style={styles.iconBtn}>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>BC</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleVoiceToggle} style={[styles.iconBtn, isRecordingVoice && { backgroundColor: COLORS.error }]}>
+          <Text style={{ color: isRecordingVoice ? '#fff' : COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>
+            {isRecordingVoice ? 'II' : 'MIC'}
+          </Text>
         </TouchableOpacity>
         <TextInput
           style={styles.textInput}
@@ -294,7 +561,17 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   );
 }
 
-function MessageBubble({ message }: { message: UIMessage }) {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, totalCalories, weeklyBudgetRemaining }: {
+  message: UIMessage;
+  onAskWhy: (content: string) => void;
+  dashboardMacros: { protein: number; carbs: number; fat: number };
+  macroTargets: { protein: number; carbs: number; fat: number };
+  onQuickSelect: (option: string) => void;
+  onConfirm: () => void;
+  onReject: () => void;
+  totalCalories: number;
+  weeklyBudgetRemaining: number | null;
+}) {
   const isUser = message.role === 'user';
 
   return (
@@ -317,11 +594,61 @@ function MessageBubble({ message }: { message: UIMessage }) {
           {message.content}
         </Text>
 
+        {/* Inline rich content for AI responses (Spec 5.20) */}
+        {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
+          <MacroSummary
+            protein={dashboardMacros.protein}
+            carbs={dashboardMacros.carbs}
+            fat={dashboardMacros.fat}
+            targets={macroTargets}
+          />
+        )}
+
+        {/* Recipe card for recipe task_mode */}
+        {!isUser && message.task_mode === 'recipe' && (message as any).recipe && (
+          <RecipeCard
+            title={(message as any).recipe.title}
+            prepTime={(message as any).recipe.prepTime}
+            servings={(message as any).recipe.servings}
+            ingredients={(message as any).recipe.ingredients}
+            macros={(message as any).recipe.macros}
+          />
+        )}
+
+        {/* Quick select buttons (D13) */}
+        {!isUser && message.quickSelectOptions && message.quickSelectOptions.length > 0 && (
+          <QuickSelectButtons options={message.quickSelectOptions} onSelect={onQuickSelect} />
+        )}
+
+        {/* Confirm/Reject buttons for plan suggestion (D14) */}
+        {!isUser && message.hasPlanSuggestion && (
+          <ConfirmRejectButtons onConfirm={onConfirm} onReject={onReject} />
+        )}
+
         {/* Timestamp */}
         <Text style={{ color: isUser ? 'rgba(255,255,255,0.6)' : COLORS.textMuted, fontSize: 10, marginTop: 4, alignSelf: 'flex-end' }}>
           {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </View>
+
+      {/* Simulation card */}
+      {!isUser && message.simulationData && (
+        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
+          <SimulationCard
+            foodName={message.simulationData.foodName}
+            calories={message.simulationData.calories}
+            remaining={message.simulationData.remaining}
+            weeklyImpact={message.simulationData.weeklyImpact}
+          />
+        </View>
+      )}
+
+      {/* Weekly budget bar after meal_log (D15) */}
+      {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
+        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
+          <WeeklyBudgetBar consumed={totalCalories} total={weeklyBudgetRemaining != null ? totalCalories + weeklyBudgetRemaining : 0} />
+        </View>
+      )}
 
       {/* Action feedback (below the bubble) */}
       {!isUser && message.actions && message.actions.length > 0 && (
@@ -337,6 +664,15 @@ function MessageBubble({ message }: { message: UIMessage }) {
             contextType={message.task_mode === 'recipe' ? 'recipe' : message.task_mode === 'plan' ? 'meal_suggestion' : 'coaching_message'}
             contextId={message.id}
           />
+          {/* Transparency: ask why this suggestion */}
+          <TouchableOpacity
+            onPress={() => onAskWhy(message.content)}
+            style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm }}
+          >
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
+              Neden bu oneriyi yaptin?
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>

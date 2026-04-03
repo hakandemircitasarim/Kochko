@@ -46,3 +46,73 @@ export async function getTodaySupplements(): Promise<SupplementLog[]> {
     .order('logged_at');
   return (data ?? []) as SupplementLog[];
 }
+
+// ─── Creatine Water Retention Awareness ───
+
+/**
+ * Check if user is taking creatine and should be warned about water retention.
+ * Kreatin kullanıyorsan tartı artışını su tutulumu olarak değerlendirir, panik yaratmaz.
+ */
+export async function checkCreatineWaterRetention(userId: string): Promise<{
+  isOnCreatine: boolean;
+  recentlyStarted: boolean;
+  message: string | null;
+}> {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+
+  const { data: creatineLogs } = await supabase
+    .from('supplement_logs')
+    .select('logged_for_date')
+    .eq('user_id', userId)
+    .ilike('supplement_name', '%kreatin%')
+    .gte('logged_for_date', thirtyDaysAgo)
+    .order('logged_for_date');
+
+  // Also check English spelling
+  const { data: creatineLogsEn } = await supabase
+    .from('supplement_logs')
+    .select('logged_for_date')
+    .eq('user_id', userId)
+    .ilike('supplement_name', '%creatine%')
+    .gte('logged_for_date', thirtyDaysAgo)
+    .order('logged_for_date');
+
+  const allLogs = [...(creatineLogs ?? []), ...(creatineLogsEn ?? [])] as { logged_for_date: string }[];
+
+  if (allLogs.length === 0) {
+    return { isOnCreatine: false, recentlyStarted: false, message: null };
+  }
+
+  // Check if recently started (first log within last 7 days)
+  const firstLog = allLogs[0].logged_for_date;
+  const recentlyStarted = firstLog >= sevenDaysAgo;
+
+  let message: string | null = null;
+
+  if (recentlyStarted) {
+    message = 'Kreatin kullanmaya yeni baslamis gorunuyorsun. Ilk 1-2 haftada tartida 1-2kg artis gorebilirsin — bu YAG DEGIL, su tutulumudir. Panik yapma, normaldir.';
+  } else if (allLogs.length >= 5) {
+    message = 'Kreatin kullaniyorsun. Tartidaki artislar su tutulumundan kaynaklanabilir. Kilo takibinde bunu goz onunde bulundur.';
+  }
+
+  return {
+    isOnCreatine: true,
+    recentlyStarted,
+    message,
+  };
+}
+
+/**
+ * Build creatine context for AI weight interpretation.
+ * Used when user logs weight and is on creatine.
+ */
+export function getCreatineWeightContext(isOnCreatine: boolean, recentlyStarted: boolean): string {
+  if (!isOnCreatine) return '';
+
+  if (recentlyStarted) {
+    return 'KREATIN NOTU: Kullanici yeni kreatin basladi. Tartidaki 1-2kg artis su tutulumudir, YAG DEGIL. Panik yaratma, normal oldugunu acikla.';
+  }
+
+  return 'KREATIN NOTU: Kullanici kreatin kullaniyor. Tarti degisimlerinde su tutulumu faktorunu dikkate al.';
+}

@@ -133,7 +133,17 @@ CREATE TABLE monthly_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   month_start DATE NOT NULL,
-  full_report JSONB NOT NULL,
+  full_report JSONB DEFAULT '{}',
+  avg_compliance SMALLINT,
+  weight_change_kg NUMERIC(5,2),
+  trend_direction TEXT CHECK (trend_direction IN ('losing', 'gaining', 'stable', 'fluctuating')),
+  monthly_summary TEXT,
+  risk_signals JSONB DEFAULT '[]',
+  behavioral_patterns JSONB DEFAULT '[]',
+  top_achievement TEXT,
+  deviation_distribution JSONB DEFAULT '{}',
+  next_month_focus TEXT,
+  weight_trend JSONB DEFAULT '[]',
   generated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, month_start)
 );

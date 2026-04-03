@@ -78,10 +78,22 @@ Yemek becerisi: ${p.cooking_skill ?? '?'} | Butce: ${p.budget_level ?? '?'} | Po
 Diyet modu: ${p.diet_mode ?? 'standard'}${p.if_active ? ` | IF: ${p.if_window} (${p.if_eating_start}-${p.if_eating_end})` : ''}
 Koc tonu: ${p.coach_tone ?? 'balanced'}
 ${p.menstrual_tracking ? `Regl takibi aktif | Siklus: ${p.menstrual_cycle_length ?? '?'} gun` : ''}
-${p.periodic_state ? `*** DONEMSEL DURUM: ${p.periodic_state} (${p.periodic_state_start} - ${p.periodic_state_end ?? '?'}) ***` : ''}
+${p.periodic_state ? `*** DONEMSEL DURUM: ${p.periodic_state} (${p.periodic_state_start} - ${p.periodic_state_end ?? '?'}) ***${(() => { if (p.periodic_state_end) { const days = Math.ceil((new Date(p.periodic_state_end).getTime() - new Date().getTime()) / (1000*60*60*24)); return days > 0 ? ` | ${days} gun kaldi` : ' | SURESI DOLDU'; } return ''; })()}` : ''}
+${(() => { const m = new Date().getMonth() + 1; const s = m >= 3 && m <= 5 ? 'ilkbahar' : m >= 6 && m <= 8 ? 'yaz' : m >= 9 && m <= 11 ? 'sonbahar' : 'kis'; return `MEVSIM: ${s}`; })()}
 
 ## HEDEFLER
-${goals.length > 0 ? goals.map(g => `${g.phase_label ?? g.goal_type}: ${g.target_weight_kg ?? '?'}kg | ${g.priority} | ${g.weekly_rate ?? '?'}kg/hafta`).join('\n') : 'Hedef belirlenmemis'}
+${goals.length > 0 ? goals.map(g => {
+  const tw = g.target_weight_kg as number | null;
+  const cw = p.weight_kg as number | null;
+  const created = g.created_at as string;
+  const weeksElapsed = Math.max(1, Math.round((Date.now() - new Date(created).getTime()) / (7*24*60*60*1000)));
+  const targetWeeks = (g.target_weeks as number | null) ?? 12;
+  const weeksLeft = Math.max(0, targetWeeks - weeksElapsed);
+  const kgRemaining = tw && cw ? Math.abs(cw - tw) : null;
+  const kgLost = tw && cw ? (g.goal_type === 'lose_weight' ? (p.weight_kg as number) - cw : cw - (p.weight_kg as number)) : null;
+  const pct = tw && cw && kgRemaining !== null ? Math.min(100, Math.round(((Math.abs((p.weight_kg as number) - tw) - kgRemaining) / Math.abs((p.weight_kg as number) - tw)) * 100)) : null;
+  return `${g.phase_label ?? g.goal_type}: ${tw ?? '?'}kg | ${g.priority} | ${g.weekly_rate ?? '?'}kg/hafta | ${weeksElapsed}/${targetWeeks} hafta | ${kgRemaining !== null ? kgRemaining.toFixed(1) + 'kg kaldi' : ''} | ${pct !== null ? '%' + pct : ''}`;
+}).join('\n') : 'Hedef belirlenmemis'}
 
 ## KALORI
 Antrenman gunu: ${p.calorie_range_training_min ?? '?'}-${p.calorie_range_training_max ?? '?'} kcal
@@ -126,9 +138,20 @@ async function buildLayer2(userId: string): Promise<string> {
 
   if (s.coaching_notes) parts.push(`## KOCLUK NOTLARI\n${s.coaching_notes}`);
 
+  // Spec 5.15: Learned meal times
+  const learnedMealTimes = s.learned_meal_times as Record<string, string> | null;
+  if (learnedMealTimes && Object.keys(learnedMealTimes).length > 0) {
+    const timeLabels: Record<string, string> = { breakfast: 'kahvalti', lunch: 'ogle', dinner: 'aksam', snack: 'atistirma' };
+    const formatted = Object.entries(learnedMealTimes)
+      .map(([k, v]) => `${timeLabels[k] ?? k} ${v}`)
+      .join(', ');
+    parts.push(`## OGRENILEN OGUN SAATLERI\nOgrenilen ogun saatleri: ${formatted}`);
+  }
+
   const portion = s.portion_calibration as Record<string, unknown> | null;
   if (portion && Object.keys(portion).length > 0) {
-    parts.push(`## PORSIYON KALIBRASYONU\n${Object.entries(portion).map(([k, v]) => `${k}: ${v}`).join(', ')}`);
+    const formatted = Object.entries(portion).map(([k, v]) => `${k}=${v}g`).join(', ');
+    parts.push(`## PORSIYON HAFIZASI\nPORSIYON HAFIZASI: ${formatted}`);
   }
 
   const strength = s.strength_records as Record<string, { '1rm': number }> | null;
@@ -139,13 +162,29 @@ async function buildLayer2(userId: string): Promise<string> {
   if (s.user_persona) parts.push(`Persona: ${s.user_persona}`);
   if (s.nutrition_literacy) parts.push(`Beslenme okuryazarligi: ${s.nutrition_literacy}`);
   if (s.learned_tone_preference) parts.push(`Ogrenilen ton: ${s.learned_tone_preference}`);
-  if (s.alcohol_pattern) parts.push(`Alkol kalibi: ${s.alcohol_pattern}`);
+  // A1: Structured alcohol pattern
+  const alcoholPattern = s.alcohol_pattern as { pattern: string; frequency: string; impact: string } | string | null;
+  if (alcoholPattern) {
+    if (typeof alcoholPattern === 'object') {
+      parts.push(`Alkol kalibi: ${alcoholPattern.pattern} | Siklik: ${alcoholPattern.frequency} | Etki: ${alcoholPattern.impact}`);
+    } else {
+      parts.push(`Alkol kalibi: ${alcoholPattern}`);
+    }
+  }
   if (s.caffeine_sleep_notes) parts.push(`Kafein-uyku: ${s.caffeine_sleep_notes}`);
+  // A2: Social eating notes (structured date-stamped)
   if (s.social_eating_notes) parts.push(`Sosyal yeme: ${s.social_eating_notes}`);
   if (s.recovery_pattern) parts.push(`Toparlanma: ${s.recovery_pattern}`);
   if (s.menstrual_notes) parts.push(`Regl notlari: ${s.menstrual_notes}`);
   if (s.weekly_budget_pattern) parts.push(`Haftalik butce kalibi: ${s.weekly_budget_pattern}`);
   if (s.supplement_notes) parts.push(`Supplement: ${s.supplement_notes}`);
+  if (s.seasonal_notes) parts.push(`## DONEMSEL NOTLAR\n${s.seasonal_notes}`);
+
+  // A3: Progressive disclosure — track introduced features
+  const featuresIntroduced = s.features_introduced as string[] | null;
+  if (featuresIntroduced && featuresIntroduced.length > 0) {
+    parts.push(`## TANITILAN OZELLIKLER (bunlari tekrar tanitma)\n${featuresIntroduced.join(', ')}`);
+  }
 
   const habits = s.habit_progress as { habit: string; status: string; streak: number }[] | null;
   if (habits && habits.length > 0) {
@@ -250,14 +289,51 @@ async function buildLayer3(userId: string): Promise<string> {
 
   let result = parts.join('\n');
 
-  // Token budget check - if too large, compress
+  // Token budget check - if too large, smart compress instead of truncation
   const maxTokens = Math.floor(TOKEN_BUDGET.TOTAL * TOKEN_BUDGET.LAYER3_PCT);
   if (estimateTokens(result) > maxTokens) {
-    // Compress: remove old data, keep only 7 days and today
-    result = result.slice(0, maxTokens * 3); // rough truncation
+    result = compressLayer3(parts, maxTokens);
   }
 
   return result;
+}
+
+/**
+ * Smart Layer 3 compression.
+ * Priority: today > yesterday > lab alerts > commitments > recent days > old days
+ * Never truncates mid-JSON. Drops oldest complete sections first.
+ */
+function compressLayer3(parts: string[], maxTokens: number): string {
+  // Categorize parts by priority
+  const prioritized: { text: string; priority: number }[] = parts.map(part => {
+    const lower = part.toLowerCase();
+    if (lower.includes('bugun') || lower.includes('today')) return { text: part, priority: 10 };
+    if (lower.includes('dun') || lower.includes('yesterday')) return { text: part, priority: 9 };
+    if (lower.includes('lab') || lower.includes('uyari')) return { text: part, priority: 8 };
+    if (lower.includes('takip') || lower.includes('commitment')) return { text: part, priority: 7 };
+    if (lower.includes('plan') || lower.includes('rapor')) return { text: part, priority: 6 };
+    return { text: part, priority: 3 }; // older data
+  });
+
+  // Sort by priority descending
+  prioritized.sort((a, b) => b.priority - a.priority);
+
+  // Add parts until budget is hit
+  const kept: string[] = [];
+  let currentTokens = 0;
+  for (const item of prioritized) {
+    const itemTokens = estimateTokens(item.text);
+    if (currentTokens + itemTokens <= maxTokens) {
+      kept.push(item.text);
+      currentTokens += itemTokens;
+    }
+  }
+
+  if (kept.length < parts.length) {
+    kept.push(`\n[${parts.length - kept.length} eski bolum token butcesi icin cikarildi]`);
+  }
+
+  return kept.join('\n');
 }
 
 /**
@@ -344,5 +420,102 @@ export async function updateLayer2(
     await supabaseAdmin
       .from('ai_summary')
       .insert({ user_id: userId, ...updates });
+  }
+}
+
+// ─── Repair History Queries ───
+
+/**
+ * Get repair event count for a user (used for analytics).
+ */
+export async function getRepairCount(userId: string): Promise<number> {
+  const { count } = await supabaseAdmin
+    .from('repair_history')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId);
+  return count ?? 0;
+}
+
+/**
+ * Store a repair event.
+ */
+export async function storeRepairEvent(
+  userId: string,
+  repairType: string,
+  originalInput: string,
+  correctedInput: string | null,
+  foodItem: string | null
+): Promise<void> {
+  await supabaseAdmin.from('repair_history').insert({
+    user_id: userId,
+    repair_type: repairType,
+    original_input: originalInput,
+    corrected_input: correctedInput,
+    food_item: foodItem,
+  });
+}
+
+// ─── Pattern Confidence Evolution ───
+
+/**
+ * Evolve pattern confidence scores.
+ * - Patterns not seen for 14+ days: confidence decays by 0.05
+ * - Patterns with 4+ observations: boosted to 0.8+
+ * - Very low confidence candidates (<0.15): marked resolved
+ */
+export async function evolvePatternConfidence(userId: string): Promise<void> {
+  const { data: summary } = await supabaseAdmin
+    .from('ai_summary')
+    .select('behavioral_patterns')
+    .eq('user_id', userId)
+    .single();
+
+  if (!summary) return;
+
+  const patterns = (summary.behavioral_patterns as Record<string, unknown>[] | null) ?? [];
+  if (patterns.length === 0) return;
+
+  const now = Date.now();
+  let changed = false;
+
+  for (const pattern of patterns) {
+    const confidence = (pattern.confidence as number) ?? 0.5;
+    const lastOccurred = pattern.last_occurred as string | null;
+    const timesObserved = (pattern.times_observed as number) ?? 1;
+
+    // Decay: not observed for 14+ days
+    if (lastOccurred) {
+      const daysSince = Math.floor((now - new Date(lastOccurred).getTime()) / 86400000);
+      if (daysSince > 14 && confidence > 0.2) {
+        pattern.confidence = Math.max(0.1, confidence - 0.05);
+        changed = true;
+      }
+    }
+
+    // Boost: 4+ observations
+    if (timesObserved >= 4 && confidence < 0.8) {
+      pattern.confidence = Math.min(0.95, confidence + 0.1);
+      changed = true;
+    }
+
+    // Clean up: very low confidence candidates
+    if (confidence < 0.15 && (pattern.status as string) === 'candidate') {
+      pattern.status = 'resolved';
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    const activePatterns = patterns.filter(p => {
+      if (p.status !== 'resolved') return true;
+      const lastOcc = p.last_occurred as string | null;
+      if (!lastOcc) return false;
+      return (now - new Date(lastOcc).getTime()) < 30 * 86400000;
+    });
+
+    await supabaseAdmin
+      .from('ai_summary')
+      .update({ behavioral_patterns: activePatterns, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
   }
 }

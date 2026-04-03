@@ -11,7 +11,7 @@ export default function RegisterScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [birthYear, setBirthYear] = useState('');
-  const { signUp, loading } = useAuthStore();
+  const { signUp, signInWithGoogle, signInWithApple, loading } = useAuthStore();
 
   const handleRegister = async () => {
     if (!email.trim() || !password.trim()) { Alert.alert('Hata', 'Tum alanlari doldurun.'); return; }
@@ -22,7 +22,21 @@ export default function RegisterScreen() {
 
     const { error } = await signUp(email.trim(), password, year);
     if (error) Alert.alert('Hata', error);
-    else Alert.alert('Basarili', 'Hesabiniz olusturuldu.', [{ text: 'Tamam', onPress: () => router.replace('/(auth)/login') }]);
+    else Alert.alert('E-posta Dogrulamasi', 'Hesabiniz olusturuldu. Lutfen e-posta adresinize gonderilen dogrulama linkine tiklayin.', [
+      { text: 'Tamam', onPress: () => router.replace('/(auth)/login') },
+    ]);
+  };
+
+  const handleGoogle = async () => {
+    const { error } = await signInWithGoogle();
+    if (error) Alert.alert('Hata', error);
+    else router.replace('/');
+  };
+
+  const handleApple = async () => {
+    const { error } = await signInWithApple();
+    if (error) Alert.alert('Hata', error);
+    else router.replace('/');
   };
 
   return (
@@ -32,6 +46,24 @@ export default function RegisterScreen() {
           <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary }}>Kochko</Text>
           <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary }}>Hesap Olustur</Text>
         </View>
+
+        {/* Social Register Buttons (Spec 1.1) */}
+        <Button title="Google ile Kayit Ol" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
+        <View style={{ height: SPACING.sm }} />
+        {Platform.OS === 'ios' && (
+          <>
+            <Button title="Apple ile Kayit Ol" onPress={handleApple} loading={loading} variant="outline" size="lg" />
+            <View style={{ height: SPACING.sm }} />
+          </>
+        )}
+
+        {/* Divider */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
+          <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
+          <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
+        </View>
+
         <Input label="E-posta" placeholder="ornek@email.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
         <Input label="Dogum Yili" placeholder="1990" value={birthYear} onChangeText={setBirthYear} keyboardType="numeric" />
         <Input label="Sifre" placeholder="En az 6 karakter" value={password} onChangeText={setPassword} secureTextEntry />

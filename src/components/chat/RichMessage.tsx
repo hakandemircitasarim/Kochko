@@ -99,6 +99,112 @@ export function SimulationCard({ foodName, calories, remaining, weeklyImpact }: 
   );
 }
 
+// Recipe Card (rich recipe display in chat)
+export function RecipeCard({ title, prepTime, servings, ingredients, macros }: {
+  title: string;
+  prepTime: number;
+  servings: number;
+  ingredients: { name: string; amount: string }[];
+  macros: { calories: number; protein: number; carbs: number; fat: number };
+}) {
+  return (
+    <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 1, borderColor: COLORS.border }}>
+      <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700' }}>{title}</Text>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
+        {prepTime} dk | {servings} porsiyon
+      </Text>
+
+      {/* Ingredients */}
+      <View style={{ marginTop: SPACING.sm }}>
+        {ingredients.map((ing, i) => (
+          <Text key={i} style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>
+            - {ing.amount} {ing.name}
+          </Text>
+        ))}
+      </View>
+
+      {/* Macro stats */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '700' }}>{macros.calories}</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>kcal</Text>
+        </View>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={{ color: COLORS.success, fontSize: FONT.md, fontWeight: '700' }}>{macros.protein}g</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>protein</Text>
+        </View>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '700' }}>{macros.carbs}g</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>karb</Text>
+        </View>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>{macros.fat}g</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>yag</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── Action Buttons (Phase 5) ───
+
+export function ActionButtons({ actions, onAction }: {
+  actions: { label: string; action: string; variant?: 'primary' | 'secondary' }[];
+  onAction: (action: string) => void;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginTop: SPACING.sm }}>
+      {actions.map((a, i) => (
+        <TouchableOpacity key={i} onPress={() => onAction(a.action)}
+          style={{
+            paddingVertical: 8, paddingHorizontal: SPACING.md, borderRadius: 8,
+            backgroundColor: a.variant === 'primary' ? COLORS.primary : COLORS.surfaceLight,
+            borderWidth: a.variant === 'primary' ? 0 : 1, borderColor: COLORS.border,
+          }}>
+          <Text style={{
+            color: a.variant === 'primary' ? '#fff' : COLORS.primary,
+            fontSize: FONT.sm, fontWeight: '600',
+          }}>{a.label}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+// Confidence Badge (Yuksek/Orta/Dusuk)
+export function ConfidenceBadge({ level }: { level: 'high' | 'medium' | 'low' }) {
+  const config = {
+    high: { label: 'Yuksek guven', color: COLORS.success, bg: '#E8F5E9' },
+    medium: { label: 'Orta guven', color: COLORS.warning, bg: '#FFF8E1' },
+    low: { label: 'Dusuk guven', color: COLORS.error, bg: '#FFEBEE' },
+  };
+  const c = config[level];
+
+  return (
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', paddingVertical: 2, paddingHorizontal: 8,
+      borderRadius: 12, backgroundColor: c.bg, alignSelf: 'flex-start', marginTop: SPACING.xs,
+    }}>
+      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.color, marginRight: 4 }} />
+      <Text style={{ color: c.color, fontSize: FONT.xs, fontWeight: '600' }}>{c.label}</Text>
+    </View>
+  );
+}
+
+// "Make Something Else" Button (for plan/recipe cards)
+export function MakeSomethingElseButton({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress}
+      style={{
+        paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md, borderRadius: 8,
+        backgroundColor: COLORS.surfaceLight, alignItems: 'center', marginTop: SPACING.sm,
+        borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed',
+      }}>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Baska bir sey oner</Text>
+    </TouchableOpacity>
+  );
+}
+
 // Weekly Budget Bar (inline in chat)
 export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: number }) {
   const pct = total > 0 ? Math.min(1, consumed / total) : 0;

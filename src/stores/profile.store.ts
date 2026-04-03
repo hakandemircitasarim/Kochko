@@ -1,39 +1,18 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
-
-interface Profile {
-  id: string;
-  height_cm: number | null;
-  weight_kg: number | null;
-  birth_year: number | null;
-  gender: string | null;
-  activity_level: string | null;
-  equipment_access: string | null;
-  training_style: string | null;
-  diet_mode: string | null;
-  coach_tone: string | null;
-  if_active: boolean;
-  if_window: string | null;
-  onboarding_completed: boolean;
-  premium: boolean;
-  calorie_range_training_min: number | null;
-  calorie_range_training_max: number | null;
-  calorie_range_rest_min: number | null;
-  calorie_range_rest_max: number | null;
-  protein_per_kg: number | null;
-  water_target_liters: number | null;
-  periodic_state: string | null;
-  [key: string]: unknown;
-}
+import { Profile } from '@/types/database';
+import { calculateProfileCompletion, CompletionResult } from '@/lib/profile-completion';
 
 interface ProfileState {
   profile: Profile | null;
   loading: boolean;
   fetch: (userId: string) => Promise<void>;
   update: (userId: string, data: Partial<Profile>) => Promise<void>;
+  reactivateAccount: (userId: string) => Promise<void>;
+  getCompletion: () => CompletionResult | null;
 }
 
-export const useProfileStore = create<ProfileState>((set) => ({
+export const useProfileStore = create<ProfileState>((set, get) => ({
   profile: null,
   loading: false,
 
@@ -44,7 +23,39 @@ export const useProfileStore = create<ProfileState>((set) => ({
   },
 
   update: async (userId, updates) => {
-    await supabase.from('profiles').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', userId);
-    set(state => ({ profile: state.profile ? { ...state.profile, ...updates } : null }));
+    await supabase
+      .from('profiles')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    const merged = { ...get().profile, ...updates } as Profile;
+
+    // Recalculate profile completion percentage
+    const { percentage } = calculateProfileCompletion(merged as unknown as Record<string, unknown>);
+    if (percentage !== merged.profile_completion_pct) {
+      await supabase
+        .from('profiles')
+        .update({ profile_completion_pct: percentage })
+        .eq('id', userId);
+      merged.profile_completion_pct = percentage;
+    }
+
+    set({ profile: merged });
+  },
+
+  reactivateAccount: async (userId) => {
+    await supabase
+      .from('profiles')
+      .update({ deleted_at: null, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+    set(state => ({
+      profile: state.profile ? { ...state.profile, deleted_at: null } : null,
+    }));
+  },
+
+  getCompletion: () => {
+    const { profile } = get();
+    if (!profile) return null;
+    return calculateProfileCompletion(profile as unknown as Record<string, unknown>);
   },
 }));

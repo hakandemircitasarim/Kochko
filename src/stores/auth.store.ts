@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
+import { makeRedirectUri } from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface AuthState {
   session: Session | null;
@@ -9,6 +14,9 @@ interface AuthState {
   initialized: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, birthYear: number) => Promise<{ error: string | null }>;
+  signInWithGoogle: () => Promise<{ error: string | null }>;
+  signInWithApple: () => Promise<{ error: string | null }>;
+  resetPassword: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   initialize: () => Promise<void>;
 }
@@ -45,6 +53,74 @@ export const useAuthStore = create<AuthState>((set) => ({
     const { error } = await supabase.auth.signUp({
       email, password,
       options: { data: { birth_year: birthYear } },
+    });
+    set({ loading: false });
+    return { error: error?.message ?? null };
+  },
+
+  signInWithGoogle: async () => {
+    set({ loading: true });
+    try {
+      const redirectTo = makeRedirectUri({ scheme: 'kochko' });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+      if (error) { set({ loading: false }); return { error: error.message }; }
+      if (data.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+        if (result.type === 'success' && result.url) {
+          const url = new URL(result.url);
+          const accessToken = url.searchParams.get('access_token') ?? url.hash?.match(/access_token=([^&]*)/)?.[1];
+          const refreshToken = url.searchParams.get('refresh_token') ?? url.hash?.match(/refresh_token=([^&]*)/)?.[1];
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          }
+        }
+      }
+      set({ loading: false });
+      return { error: null };
+    } catch (e) {
+      set({ loading: false });
+      return { error: 'Google ile giris sirasinda hata olustu.' };
+    }
+  },
+
+  signInWithApple: async () => {
+    if (Platform.OS !== 'ios') {
+      return { error: 'Apple ile giris sadece iOS cihazlarda kullanilabilir.' };
+    }
+    set({ loading: true });
+    try {
+      const redirectTo = makeRedirectUri({ scheme: 'kochko' });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: { redirectTo, skipBrowserRedirect: true },
+      });
+      if (error) { set({ loading: false }); return { error: error.message }; }
+      if (data.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+        if (result.type === 'success' && result.url) {
+          const url = new URL(result.url);
+          const accessToken = url.searchParams.get('access_token') ?? url.hash?.match(/access_token=([^&]*)/)?.[1];
+          const refreshToken = url.searchParams.get('refresh_token') ?? url.hash?.match(/refresh_token=([^&]*)/)?.[1];
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          }
+        }
+      }
+      set({ loading: false });
+      return { error: null };
+    } catch (e) {
+      set({ loading: false });
+      return { error: 'Apple ile giris sirasinda hata olustu.' };
+    }
+  },
+
+  resetPassword: async (email) => {
+    set({ loading: true });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: makeRedirectUri({ scheme: 'kochko', path: 'reset-password' }),
     });
     set({ loading: false });
     return { error: error?.message ?? null };
