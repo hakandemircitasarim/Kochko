@@ -11,10 +11,10 @@ export interface DifficultyAdjustment {
   shouldAdjust: boolean;
   direction: 'increase' | 'decrease' | 'none';
   changes: {
-    calorie_range_reduction?: number;  // tighten range by X kcal (now %5 based)
-    protein_increase?: number;         // +Xg
-    workout_intensity_bump?: number;   // intensity_level increment (+1 or -1)
-    water_increase?: number;           // +X liters
+    calorie_range_reduction?: number;
+    protein_increase?: number;
+    workout_intensity_bump?: number;
+    water_increase?: number;
   };
   message: string;
 }
@@ -24,7 +24,6 @@ export interface DifficultyAdjustment {
  * Spec: 2+ hafta %85+ uyum → %5 dar kalori aralığı, +5g protein, +1 kademe antrenman
  */
 export async function checkAdaptiveDifficulty(userId: string): Promise<DifficultyAdjustment> {
-  // Get last 3 weeks of daily reports
   const threeWeeksAgo = new Date(Date.now() - 21 * 86400000).toISOString().split('T')[0];
   const { data: reports } = await supabase
     .from('daily_reports')
@@ -37,7 +36,6 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
     return { shouldAdjust: false, direction: 'none', changes: {}, message: '' };
   }
 
-  // Split into weeks
   const now = new Date();
   const oneWeekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
   const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
@@ -52,39 +50,34 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
   const avg1 = week1.reduce((s, r) => s + r.compliance_score, 0) / week1.length;
   const avg2 = week2.reduce((s, r) => s + r.compliance_score, 0) / week2.length;
 
-  // Fetch profile for percentage-based calorie calculation
   const { data: profile } = await supabase
     .from('profiles')
     .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max')
     .eq('id', userId)
     .single();
 
-  // A11: Calculate 5% of (max - min) range instead of fixed 50 kcal
-  let calorieReduction = 50; // fallback
+  let calorieReduction = 50;
   if (profile) {
     const rangeMax = profile.calorie_range_rest_max ?? profile.calorie_range_training_max ?? 2500;
     const rangeMin = profile.calorie_range_rest_min ?? profile.calorie_range_training_min ?? 1800;
     calorieReduction = Math.round((rangeMax - rangeMin) * 0.05);
-    // Ensure at least a meaningful adjustment
     if (calorieReduction < 10) calorieReduction = 10;
   }
 
-  // Both weeks 85%+ → increase difficulty
   if (avg1 >= 85 && avg2 >= 85) {
     return {
       shouldAdjust: true,
       direction: 'increase',
       changes: {
-        calorie_range_reduction: calorieReduction, // A11: %5 of (max-min) range
-        protein_increase: 5,                        // +5g
-        workout_intensity_bump: 1,                  // A11: intensity_level + 1
-        water_increase: 0.2,                        // +0.2L
+        calorie_range_reduction: calorieReduction,
+        protein_increase: 5,
+        workout_intensity_bump: 1,
+        water_increase: 0.2,
       },
       message: `Son 2 hafta cok iyi gitti! Citayi biraz yukseltiyorum - kalori araligini %5 daraltiyorum (${calorieReduction} kcal), protein hedefini +5g artiriyorum, antrenman yogunlugunu 1 kademe artiriyorum.`,
     };
   }
 
-  // Current week < 60% after previous increase → revert
   if (avg2 < 60 && avg1 >= 75) {
     return {
       shouldAdjust: true,
@@ -92,7 +85,7 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
       changes: {
         calorie_range_reduction: -calorieReduction,
         protein_increase: -5,
-        workout_intensity_bump: -1,                 // intensity_level - 1
+        workout_intensity_bump: -1,
         water_increase: -0.2,
       },
       message: 'Bu hafta zorlandin, hedefleri eski seviyeye geri aliyorum. Rahat ol.',
@@ -102,12 +95,6 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
   return { shouldAdjust: false, direction: 'none', changes: {}, message: '' };
 }
 
-/**
- * A11: Calculate new targets based on current profile and adjustment direction.
- * - Kalori: (max-min) * 0.05 daraltma (percentage-based, not fixed 50kcal)
- * - Protein: +5g
- * - Antrenman: intensity_level + 1 (if field exists)
- */
 export function calculateNewTargets(
   currentProfile: {
     calorie_range_rest_min: number | null;
@@ -126,7 +113,6 @@ export function calculateNewTargets(
   const trainingMax = currentProfile.calorie_range_training_max ?? 2800;
   const trainingMin = currentProfile.calorie_range_training_min ?? 2000;
 
-  // Calorie: 5% of (max - min) range
   const restReduction = Math.round((restMax - restMin) * 0.05);
   const trainingReduction = Math.round((trainingMax - trainingMin) * 0.05);
 
@@ -138,17 +124,14 @@ export function calculateNewTargets(
     updates.calorie_range_training_min = Math.max(1200, trainingMin - Math.max(trainingReduction, 10));
   }
 
-  // Protein: +5g / -5g
   const proteinDelta = direction === 'increase' ? 5 : -5;
   updates.protein_target_g = Math.max(50, (currentProfile.protein_target_g ?? 100) + proteinDelta);
 
-  // Water
   const waterDelta = direction === 'increase' ? 0.2 : -0.2;
   updates.water_target_liters = Math.round(
     Math.max(1.5, ((currentProfile.water_target_liters ?? 2.5) + waterDelta)) * 10
   ) / 10;
 
-  // Intensity level: +1 / -1 (if field exists in profile)
   if (currentProfile.intensity_level !== undefined && currentProfile.intensity_level !== null) {
     const intensityDelta = direction === 'increase' ? 1 : -1;
     updates.intensity_level = Math.max(1, Math.min(10, currentProfile.intensity_level + intensityDelta));
@@ -157,11 +140,6 @@ export function calculateNewTargets(
   return updates;
 }
 
-/**
- * T2.41: Apply difficulty adjustment to user profile.
- * A11: Now uses calculateNewTargets for percentage-based calorie adjustment
- * and intensity_level support.
- */
 export async function applyDifficultyAdjustment(userId: string, adjustment: DifficultyAdjustment): Promise<void> {
   if (!adjustment.shouldAdjust) return;
 

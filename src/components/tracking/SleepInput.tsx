@@ -11,14 +11,11 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 interface Props {
   currentHours: number | null;
-  currentSleepTime?: string | null; // "HH:MM" format
-  currentWakeTime?: string | null;  // "HH:MM" format
+  currentSleepTime?: string | null;
+  currentWakeTime?: string | null;
   onSave: (hours: number, quality: 'good' | 'ok' | 'bad', sleepTime?: string, wakeTime?: string) => void;
 }
 
-/**
- * Parse "HH:MM" string into { hour, minute }.
- */
 function parseTime(timeStr: string): { hour: number; minute: number } | null {
   const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return null;
@@ -28,10 +25,6 @@ function parseTime(timeStr: string): { hour: number; minute: number } | null {
   return { hour, minute };
 }
 
-/**
- * Calculate sleep duration in hours from sleep_time and wake_time.
- * Handles overnight sleep (e.g., 23:00 -> 07:00 = 8 hours).
- */
 function calculateDuration(sleepTime: string, wakeTime: string): number | null {
   const sleep = parseTime(sleepTime);
   const wake = parseTime(wakeTime);
@@ -40,7 +33,6 @@ function calculateDuration(sleepTime: string, wakeTime: string): number | null {
   let sleepMinutes = sleep.hour * 60 + sleep.minute;
   let wakeMinutes = wake.hour * 60 + wake.minute;
 
-  // If wake is earlier than sleep, it crossed midnight
   if (wakeMinutes <= sleepMinutes) {
     wakeMinutes += 24 * 60;
   }
@@ -48,7 +40,6 @@ function calculateDuration(sleepTime: string, wakeTime: string): number | null {
   const durationMinutes = wakeMinutes - sleepMinutes;
   const durationHours = Math.round((durationMinutes / 60) * 10) / 10;
 
-  // Sanity check: sleep duration should be between 0.5 and 18 hours
   if (durationHours < 0.5 || durationHours > 18) return null;
   return durationHours;
 }
@@ -60,7 +51,6 @@ export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, on
   const [quality, setQuality] = useState<'good' | 'ok' | 'bad'>('ok');
   const [expanded, setExpanded] = useState(false);
 
-  // U4: Auto-calculate duration when sleep_time or wake_time changes
   useEffect(() => {
     if (sleepTime && wakeTime) {
       const duration = calculateDuration(sleepTime, wakeTime);
@@ -97,7 +87,6 @@ export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, on
 
   return (
     <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}>
-      {/* U4: Sleep time and wake time inputs */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
         <View style={{ flex: 1 }}>
           <Input
@@ -119,7 +108,6 @@ export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, on
         </View>
       </View>
 
-      {/* Duration - auto-calculated or manual entry */}
       <Input
         label="Toplam sure (saat)"
         value={hours}
