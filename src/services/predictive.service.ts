@@ -5,7 +5,7 @@
 import { supabase } from '@/lib/supabase';
 
 export interface PredictiveAlert {
-  type: 'weekend_risk' | 'snack_time' | 'motivation_drop' | 'alcohol_risk';
+  type: 'weekend_risk' | 'snack_time' | 'motivation_drop' | 'alcohol_risk' | 'calorie_creep' | 'sleep_debt' | 'injury_risk' | 'compliance_fatigue';
   message: string;
   confidence: number;
   actionSuggestion: string;

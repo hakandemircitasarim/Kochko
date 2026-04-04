@@ -94,10 +94,13 @@ export interface Profile {
   macro_carb_pct: number;
   macro_fat_pct: number;
   protein_per_kg: number | null;
+  protein_target_g: number | null;
   water_target_liters: number | null;
   periodic_state: PeriodicState | null;
   periodic_state_start: string | null;
   periodic_state_end: string | null;
+  weekly_calorie_budget: number | null;
+  step_target: number | null;
   onboarding_completed: boolean;
   profile_completion_pct: number;
   premium: boolean;
@@ -105,6 +108,7 @@ export interface Profile {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  [key: string]: unknown;
 }
 
 export interface Goal {

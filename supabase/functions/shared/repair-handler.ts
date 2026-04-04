@@ -90,7 +90,7 @@ export async function handleUndo(userId: string): Promise<RepairResult> {
     .eq('is_deleted', false)
     .order('logged_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   const { data: lastWorkout } = await supabaseAdmin
     .from('workout_logs')
@@ -98,7 +98,7 @@ export async function handleUndo(userId: string): Promise<RepairResult> {
     .eq('user_id', userId)
     .order('logged_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   const { data: lastSupplement } = await supabaseAdmin
     .from('supplement_logs')
@@ -106,7 +106,7 @@ export async function handleUndo(userId: string): Promise<RepairResult> {
     .eq('user_id', userId)
     .order('logged_at', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   // Find the most recent one
   type LogEntry = { id: string; logged_at: string; type: string; label: string };
@@ -279,7 +279,7 @@ export async function shouldDetectPersona(userId: string): Promise<boolean> {
       .from('ai_summary')
       .select('user_persona')
       .eq('user_id', userId)
-      .single(),
+      .maybeSingle(),
   ]);
 
   // Detect persona at 100, 250, and 500 messages (re-evaluate periodically)
@@ -319,7 +319,7 @@ export async function getToneContext(userId: string): Promise<string> {
     .from('ai_summary')
     .select('learned_tone_preference, user_persona')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!summary) return '';
 
@@ -364,7 +364,7 @@ export async function buildKnowledgeSummary(userId: string): Promise<string> {
     .from('ai_summary')
     .select('*')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!summary) return 'Henuz seni tanimiyorum — konustukca ogrenecegim!';
 
@@ -419,7 +419,7 @@ export async function evolvePatternConfidence(userId: string): Promise<void> {
     .from('ai_summary')
     .select('behavioral_patterns')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!summary) return;
 

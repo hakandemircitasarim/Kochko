@@ -57,10 +57,10 @@ serve(async (req: Request) => {
 
       // Gather state
       const [lastMealRes, lastChatRes, commitmentsRes, summaryRes] = await Promise.all([
-        supabaseAdmin.from('meal_logs').select('logged_at').eq('user_id', profile.id).order('logged_at', { ascending: false }).limit(1).single(),
-        supabaseAdmin.from('chat_messages').select('created_at').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(1).single(),
+        supabaseAdmin.from('meal_logs').select('logged_at').eq('user_id', profile.id).order('logged_at', { ascending: false }).limit(1).maybeSingle(),
+        supabaseAdmin.from('chat_messages').select('created_at').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabaseAdmin.from('user_commitments').select('commitment').eq('user_id', profile.id).eq('status', 'pending').lte('follow_up_at', now.toISOString()).limit(3),
-        supabaseAdmin.from('ai_summary').select('behavioral_patterns, general_summary').eq('user_id', profile.id).single(),
+        supabaseAdmin.from('ai_summary').select('behavioral_patterns, general_summary').eq('user_id', profile.id).maybeSingle(),
       ]);
 
       const hoursSinceMeal = lastMealRes.data?.logged_at
@@ -95,12 +95,12 @@ serve(async (req: Request) => {
       let goalTempoInfo = '';
       const { data: activeGoal } = await supabaseAdmin
         .from('goals').select('target_weight_kg, start_weight_kg, goal_type, weekly_rate, target_weeks, created_at')
-        .eq('user_id', profile.id).eq('is_active', true).single();
+        .eq('user_id', profile.id).eq('is_active', true).maybeSingle();
       if (activeGoal?.target_weight_kg) {
         const { data: latestWeight } = await supabaseAdmin
           .from('daily_metrics').select('weight_kg')
           .eq('user_id', profile.id).not('weight_kg', 'is', null)
-          .order('date', { ascending: false }).limit(1).single();
+          .order('date', { ascending: false }).limit(1).maybeSingle();
         if (latestWeight?.weight_kg) {
           const diff = Math.abs(latestWeight.weight_kg - activeGoal.target_weight_kg);
           const goalReached = activeGoal.goal_type === 'lose_weight'
@@ -116,7 +116,7 @@ serve(async (req: Request) => {
             const { data: nextPhase } = await supabaseAdmin
               .from('goals').select('id, goal_type, phase_label, weekly_rate')
               .eq('user_id', profile.id).eq('is_active', false)
-              .gt('phase_order', 1).order('phase_order').limit(1).single();
+              .gt('phase_order', 1).order('phase_order').limit(1).maybeSingle();
             if (nextPhase) {
               // Auto-advance to next phase
               await supabaseAdmin.from('goals').update({ is_active: false }).eq('user_id', profile.id).eq('is_active', true);
@@ -129,7 +129,7 @@ serve(async (req: Request) => {
                   .from('profiles')
                   .select('calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, tdee_calculated')
                   .eq('id', profile.id)
-                  .single();
+                  .maybeSingle();
                 if (profileCalories && profileCalories.tdee_calculated) {
                   const tdee = profileCalories.tdee_calculated as number;
                   const nextGoal = nextPhase as { goal_type: string; weekly_rate?: number };
@@ -223,7 +223,7 @@ serve(async (req: Request) => {
             .eq('achievement_type', 'goal_reached')
             .order('achieved_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
           if (achievement?.achieved_at) {
             const weeksSinceGoalReached = Math.max(0, Math.round(
               (Date.now() - new Date(achievement.achieved_at as string).getTime()) / (7 * 24 * 60 * 60 * 1000)
@@ -390,7 +390,7 @@ ${(() => {
   // Recovery trigger: high soreness + low sleep
   const { data: todayMetrics } = await supabaseAdmin
     .from('daily_metrics').select('muscle_soreness, sleep_hours')
-    .eq('user_id', profile.id).eq('date', today).single();
+    .eq('user_id', profile.id).eq('date', today).maybeSingle();
   if (todayMetrics?.muscle_soreness === 'severe' && ((todayMetrics?.sleep_hours as number) ?? 8) < 6) {
     triggers.push('TETIK: DINLENME GEREKLI - Kas agrisi yuksek ve uyku yetersiz, bugun hafif aktivite veya dinlenme oner');
   }
@@ -401,7 +401,7 @@ ${(() => {
   const yesterdayStr = yesterday.toISOString().split('T')[0];
   const { data: yesterdayReport } = await supabaseAdmin
     .from('daily_reports').select('compliance_score')
-    .eq('user_id', profile.id).eq('date', yesterdayStr).single();
+    .eq('user_id', profile.id).eq('date', yesterdayStr).maybeSingle();
   if (yesterdayReport && (yesterdayReport.compliance_score as number) < 30) {
     triggers.push('TETIK: DESTEK GUNU - Dun zorlandi, bugun destekleyici ve yargisiz ol');
   }
@@ -592,7 +592,7 @@ ${motivationDropInfo}`;
           .eq('user_id', profile.id)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (!lastChat?.created_at) continue;
 
@@ -640,7 +640,7 @@ ${motivationDropInfo}`;
         // Check if yesterday's report already exists
         const { data: existingReport } = await supabaseAdmin
           .from('daily_reports').select('id')
-          .eq('user_id', profile.id).eq('date', yesterdayStr).single();
+          .eq('user_id', profile.id).eq('date', yesterdayStr).maybeSingle();
 
         if (!existingReport) {
           // Trigger report generation by calling ai-report function internally
@@ -669,7 +669,7 @@ ${motivationDropInfo}`;
 
         const { data: existingWeekly } = await supabaseAdmin
           .from('weekly_reports').select('id')
-          .eq('user_id', profile.id).eq('week_start', weekStartStr).single();
+          .eq('user_id', profile.id).eq('week_start', weekStartStr).maybeSingle();
 
         if (!existingWeekly) {
           try {
@@ -723,7 +723,7 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
     .from('profiles')
     .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, protein_per_kg, weight_kg, gender')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   if (!profile) return;
 
@@ -793,7 +793,7 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
       .from('profiles')
       .select('calorie_range_rest_min, calorie_range_rest_max, tdee_calculated')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
     if (rdProfile?.tdee_calculated) {
       const { data: goalAchievement } = await supabaseAdmin
         .from('achievements')
@@ -802,7 +802,7 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
         .eq('achievement_type', 'goal_reached')
         .order('achieved_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
       if (goalAchievement?.achieved_at) {
         const weeksSinceGoal = Math.floor(
           (now.getTime() - new Date(goalAchievement.achieved_at as string).getTime()) / (7 * 24 * 60 * 60 * 1000)
@@ -828,7 +828,7 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
       .from('ai_summary')
       .select('behavioral_patterns')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     if (summaryRow?.behavioral_patterns) {
       const patterns = summaryRow.behavioral_patterns as {
         type?: string; description?: string; confidence?: number; status?: string; last_occurred?: string;
@@ -915,7 +915,7 @@ async function sendPushNotification(
     .from('profiles')
     .select('push_token, notification_prefs')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   if (!profile?.push_token) return false;
 

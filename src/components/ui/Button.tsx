@@ -1,31 +1,64 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, type ViewStyle } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, type ViewStyle } from 'react-native';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 
 interface Props {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
+  icon?: React.ReactNode;
 }
 
-export function Button({ title, onPress, variant = 'primary', size = 'md', loading, disabled, style }: Props) {
-  const bg = variant === 'primary' ? COLORS.primary : variant === 'secondary' ? COLORS.secondary : variant === 'outline' ? 'transparent' : 'transparent';
-  const border = variant === 'outline' ? COLORS.primary : 'transparent';
-  const textColor = variant === 'outline' || variant === 'ghost' ? COLORS.primary : '#fff';
-  const py = size === 'sm' ? SPACING.sm : size === 'lg' ? SPACING.md : SPACING.md - 2;
-  const px = size === 'sm' ? SPACING.md : size === 'lg' ? SPACING.xl : SPACING.lg;
+export function Button({ title, onPress, variant = 'primary', size = 'md', loading, disabled, style, icon }: Props) {
+  const isOutline = variant === 'outline';
+  const isGhost = variant === 'ghost';
+  const isDanger = variant === 'danger';
+
+  const bgColor = isOutline || isGhost ? 'transparent'
+    : isDanger ? COLORS.error
+    : variant === 'secondary' ? COLORS.secondary
+    : COLORS.primary;
+
+  const textColor = isGhost ? COLORS.primary
+    : isOutline ? COLORS.primary
+    : isDanger ? '#fff'
+    : '#fff';
+
+  const height = size === 'sm' ? 36 : size === 'lg' ? 52 : 44;
   const fontSize = size === 'sm' ? FONT.sm : size === 'lg' ? FONT.lg : FONT.md;
+  const radius = size === 'sm' ? RADIUS.sm : RADIUS.md;
 
   return (
     <TouchableOpacity
-      style={[{ backgroundColor: bg, borderColor: border, borderWidth: variant === 'outline' ? 1.5 : 0, borderRadius: 12, paddingVertical: py, paddingHorizontal: px, alignItems: 'center', opacity: disabled || loading ? 0.5 : 1 }, style]}
-      onPress={onPress} disabled={disabled || loading} activeOpacity={0.7}
+      style={[{
+        backgroundColor: bgColor,
+        borderRadius: radius,
+        height,
+        paddingHorizontal: size === 'sm' ? SPACING.md : SPACING.lg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        gap: SPACING.sm,
+        opacity: disabled || loading ? 0.5 : 1,
+        borderWidth: isOutline ? 1.5 : 0,
+        borderColor: isOutline ? COLORS.primary : 'transparent',
+      }, style]}
+      onPress={onPress}
+      disabled={disabled || loading}
+      activeOpacity={0.7}
     >
-      {loading ? <ActivityIndicator color={textColor} /> : <Text style={{ color: textColor, fontSize, fontWeight: '600' }}>{title}</Text>}
+      {loading ? (
+        <ActivityIndicator color={textColor} size="small" />
+      ) : (
+        <>
+          {icon}
+          <Text style={{ color: textColor, fontSize, fontWeight: '600', letterSpacing: -0.2 }}>{title}</Text>
+        </>
+      )}
     </TouchableOpacity>
   );
 }

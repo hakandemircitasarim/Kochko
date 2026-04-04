@@ -144,10 +144,17 @@ function QuickForm() {
 
     try {
       // 1. Create goal first
+      const w = parseFloat(weightKg);
+      const targetWeight = goalType === 'lose_weight' ? Math.round(w * 0.9 * 10) / 10
+        : goalType === 'gain_weight' || goalType === 'gain_muscle' ? Math.round(w * 1.1 * 10) / 10
+        : w;
       const { error: goalError } = await supabase.from('goals').insert({
         user_id: user.id,
         goal_type: goalType,
-        start_weight_kg: parseFloat(weightKg),
+        start_weight_kg: w,
+        target_weight_kg: targetWeight,
+        target_weeks: 12,
+        weekly_rate: 0.5,
         priority: 'sustainable',
         restriction_mode: 'sustainable',
         is_active: true,

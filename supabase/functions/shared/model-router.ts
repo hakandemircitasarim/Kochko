@@ -36,11 +36,11 @@ export interface ModelSelection {
 // Model configuration — change these when switching providers
 const MODEL_CONFIG = {
   fast: {
-    model: Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-4o-mini',
+    model: Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-4o',
     maxTokens: 1500,
   },
   smart: {
-    model: Deno.env.get('KOCHKO_MODEL_SMART') || 'gpt-4o-mini', // Same for now, will diverge later
+    model: Deno.env.get('KOCHKO_MODEL_SMART') || 'gpt-4o',
     maxTokens: 2500,
   },
   vision: {

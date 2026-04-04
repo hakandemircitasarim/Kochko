@@ -105,6 +105,8 @@ export default function ProgressScreen() {
       protein_target_g: result.adjustedProtein,
     }).eq('id', user.id);
 
+    // Refresh profile store with new values
+    useProfileStore.getState().fetch(user.id);
     Alert.alert('Strateji Uygulandi', result.instructions, [{ text: 'Tamam' }]);
     setStrategyRec(null);
   };

@@ -62,7 +62,7 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
 
   // For 'focused' and 'full', fetch profile but filter output
   const [profileRes, goalRes, prefsRes, healthRes] = await Promise.all([
-    supabaseAdmin.from('profiles').select('*').eq('id', userId).single(),
+    supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle(),
     plan.layer1Focus.includes('nutrition') || plan.layer1Focus.includes('training') || plan.layer1 === 'full'
       ? supabaseAdmin.from('goals').select('*').eq('user_id', userId).eq('is_active', true).order('phase_order').limit(3)
       : Promise.resolve({ data: [] }),
@@ -187,7 +187,7 @@ async function buildLayer1Minimal(userId: string): Promise<string> {
     .from('profiles')
     .select('gender, birth_year, height_cm, weight_kg, coach_tone, onboarding_completed, display_name')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   if (!p) return 'Profil henuz olusturulmamis.';
 
@@ -209,7 +209,7 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
     .from('ai_summary')
     .select('*')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!data) return plan.layer2 === 'full' ? 'Henuz AI ozeti olusturulmamis - kullaniciyi taniyarak ogren.' : '';
 

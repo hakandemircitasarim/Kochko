@@ -12,7 +12,7 @@ interface RateLimitResult {
   message?: string;
 }
 
-const FREE_DAILY_LIMIT = 5;
+const FREE_DAILY_LIMIT = 50; // TODO: Production'da 5 yap
 const PREMIUM_DAILY_LIMIT = 200;
 const PREMIUM_HOURLY_LIMIT = 30;
 
@@ -25,7 +25,7 @@ export async function checkRateLimit(
     .from('profiles')
     .select('premium')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   const isPremium = profile?.premium === true;
 
@@ -50,12 +50,14 @@ export async function checkRateLimit(
   const dailyLimit = isPremium ? PREMIUM_DAILY_LIMIT : FREE_DAILY_LIMIT;
 
   if (daily >= dailyLimit) {
+    const resetTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const hoursLeft = Math.ceil((resetTime.getTime() - now.getTime()) / (1000 * 60 * 60));
     return {
       allowed: false,
       remaining: 0,
       message: isPremium
-        ? 'Gunluk mesaj limitine ulastin. Biraz mola verelim.'
-        : 'Gunluk ucretsiz mesaj limitine ulastin. Premium ile sinirsiz kocluk al.',
+        ? `Bugun cok calistin, gunluk ${PREMIUM_DAILY_LIMIT} mesaj limitine ulastin. Yaklasik ${hoursLeft} saat sonra yenilenecek. Biraz mola ver, yarın devam ederiz!`
+        : `Sana daha fazla yardimci olmak isterdim ama gunluk ${FREE_DAILY_LIMIT} ucretsiz mesaj hakkini kullandin. Yaklasik ${hoursLeft} saat sonra yenilenecek. Daha fazla kocluk icin hesabini Premium'a yukseltebilirsin!`,
     };
   }
 
@@ -72,7 +74,7 @@ export async function checkRateLimit(
       return {
         allowed: false,
         remaining: 0,
-        message: 'Saatlik mesaj limitine ulastin. Biraz bekle.',
+        message: `Saatlik ${PREMIUM_HOURLY_LIMIT} mesaj limitine ulastin. Birkaç dakika sonra tekrar dene, bir yere gitmiyorum!`,
       };
     }
   }

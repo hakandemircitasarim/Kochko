@@ -54,9 +54,9 @@ const DEFAULT_PREFS: NotificationPreferences = {
 export function setupNotificationHandler(): void {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
+      shouldShowAlert: true as const,
+      shouldPlaySound: true as const,
+      shouldSetBadge: true as const,
     }),
   });
 }

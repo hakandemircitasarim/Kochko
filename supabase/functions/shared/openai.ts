@@ -7,9 +7,9 @@
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 
 const MODELS = {
-  primary: 'gpt-4o-mini',
+  primary: 'gpt-4o',
   vision: 'gpt-4o',
-  fallback: 'gpt-4o-mini', // same but could be different
+  fallback: 'gpt-4o-mini',
 };
 
 // Temperature presets per task mode (Spec 5.27)

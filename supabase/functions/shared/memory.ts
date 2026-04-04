@@ -42,7 +42,7 @@ export interface FullContext {
  */
 async function buildLayer1(userId: string): Promise<string> {
   const [profileRes, goalRes, prefsRes, healthRes] = await Promise.all([
-    supabaseAdmin.from('profiles').select('*').eq('id', userId).single(),
+    supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle(),
     supabaseAdmin.from('goals').select('*').eq('user_id', userId).eq('is_active', true).order('phase_order').limit(3),
     supabaseAdmin.from('food_preferences').select('food_name, preference, is_allergen, allergen_severity').eq('user_id', userId),
     supabaseAdmin.from('health_events').select('event_type, description, is_ongoing').eq('user_id', userId),
@@ -122,7 +122,7 @@ async function buildLayer2(userId: string): Promise<string> {
     .from('ai_summary')
     .select('*')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!data) return 'Henuz AI ozeti olusturulmamis - kullaniciyi taniyarak ogren.';
 
@@ -409,7 +409,7 @@ export async function updateLayer2(
     .from('ai_summary')
     .select('id')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (existing) {
     await supabaseAdmin
@@ -468,7 +468,7 @@ export async function evolvePatternConfidence(userId: string): Promise<void> {
     .from('ai_summary')
     .select('behavioral_patterns')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!summary) return;
 

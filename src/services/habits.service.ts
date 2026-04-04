@@ -119,16 +119,16 @@ export function getChatIntegrationPrompt(habits: Habit[]): string {
   const parts: string[] = ['## ALISKANLIK DURUMU'];
 
   if (active.length > 0) {
-    parts.push(`Aktif: ${active.map(h => `"${h.habit}" (${h.streak} gun seri, %${h.weekly_compliance ?? 0} uyum)`).join(', ')}`);
+    parts.push(`Aktif: ${active.map(h => `"${h.name}" (${h.streak} gun seri, %${h.weekly_compliance ?? 0} uyum)`).join(', ')}`);
   }
   if (mastered.length > 0) {
-    parts.push(`Oturtulmus: ${mastered.map(h => h.habit).join(', ')}`);
+    parts.push(`Oturtulmus: ${mastered.map(h => h.name).join(', ')}`);
   }
 
   // If active habit streak is about to reach 14 days, note it
   const almostMastered = active.find(h => h.streak >= 12 && h.streak < 14);
   if (almostMastered) {
-    parts.push(`"${almostMastered.habit}" 2 gun sonra oturtulmus sayilacak!`);
+    parts.push(`"${almostMastered.name}" 2 gun sonra oturtulmus sayilacak!`);
   }
 
   return parts.join('\n');
@@ -145,20 +145,20 @@ export function checkHabitFromChat(
   const lower = message.toLocaleLowerCase('tr');
 
   for (const habit of activeHabits) {
-    const habitLower = habit.habit.toLocaleLowerCase('tr');
+    const habitLower = habit.name.toLocaleLowerCase('tr');
 
     // Check if message relates to habit completion
     if (habitLower.includes('kahvalti') && /kahvalt|sabah.*(yedim|ictim)/i.test(lower)) {
-      return { habitName: habit.habit, increment: true };
+      return { habitName: habit.name, increment: true };
     }
     if (habitLower.includes('su') && /su.*(ictim|içtim)|bardak.*su|litre/i.test(lower)) {
-      return { habitName: habit.habit, increment: true };
+      return { habitName: habit.name, increment: true };
     }
     if (habitLower.includes('kayit') && /yedim|ictim|antrenman|kaydet/i.test(lower)) {
-      return { habitName: habit.habit, increment: true };
+      return { habitName: habit.name, increment: true };
     }
     if (habitLower.includes('protein') && /protein.*yedim|tavuk|yumurta|yogurt/i.test(lower)) {
-      return { habitName: habit.habit, increment: true };
+      return { habitName: habit.name, increment: true };
     }
   }
 

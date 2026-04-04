@@ -94,9 +94,9 @@ export default function MonthlyReportScreen() {
     ? Math.round(weeklyReports.reduce((s, r) => s + (r.avg_compliance as number ?? 0), 0) / weeklyReports.length)
     : 0;
 
-  const firstWeight = weeklyReports[0]?.weight_start as number ?? null;
-  const lastWeight = weeklyReports[weeklyReports.length - 1]?.weight_end as number ?? null;
-  const weightChange = firstWeight && lastWeight ? lastWeight - firstWeight : null;
+  const firstWeight: number | null = (weeklyReports[0]?.weight_start as number) ?? null;
+  const lastWeight: number | null = (weeklyReports[weeklyReports.length - 1]?.weight_end as number) ?? null;
+  const weightChange: number | null = firstWeight && lastWeight ? lastWeight - firstWeight : null;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
