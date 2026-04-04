@@ -123,7 +123,7 @@ serve(async (req: Request) => {
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min')
-      .eq('id', userId).single();
+      .eq('id', userId).maybeSingle();
 
     // Build periodic + seasonal context
     const periodicContext = buildPeriodicPlanContext(profile ?? {});
@@ -134,7 +134,7 @@ serve(async (req: Request) => {
     let goalContext = '';
     const { data: activeGoal } = await supabaseAdmin
       .from('goals').select('goal_type, target_weight_kg, target_weeks, weekly_rate, created_at')
-      .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).single();
+      .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).maybeSingle();
     if (activeGoal && profile?.weight_kg && profile?.tdee_calculated) {
       const tw = activeGoal.target_weight_kg as number | null;
       const cw = profile.weight_kg as number;
@@ -164,7 +164,7 @@ serve(async (req: Request) => {
       .from('ai_summary')
       .select('strength_records')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     const strengthRecords = aiSummaryStrength?.strength_records as Record<string, { last_weight: number; last_reps: number; '1rm'?: number }> | null;
     if (strengthRecords && Object.keys(strengthRecords).length > 0) {
       const lines = Object.entries(strengthRecords).map(
@@ -209,7 +209,7 @@ serve(async (req: Request) => {
       .like('workout_plan->type', '%deload%')
       .order('date', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     if (!recentDeload) {
       // No deload ever found — check how many weeks of training exist
       const { count } = await supabaseAdmin
@@ -235,7 +235,7 @@ serve(async (req: Request) => {
       .select('sleep_hours, sleep_quality')
       .eq('user_id', userId)
       .eq('date', yesterday)
-      .single();
+      .maybeSingle();
     if (yesterdaySleep) {
       const sleepHours = yesterdaySleep.sleep_hours as number | null;
       const sleepQuality = yesterdaySleep.sleep_quality as string | null;
@@ -256,7 +256,7 @@ serve(async (req: Request) => {
     let personaContext = '';
     const { data: aiSummary } = await supabaseAdmin
       .from('ai_summary').select('user_persona, learned_meal_times, portion_calibration')
-      .eq('user_id', userId).single();
+      .eq('user_id', userId).maybeSingle();
 
     if (aiSummary) {
       const persona = aiSummary.user_persona as string | null;
@@ -388,7 +388,7 @@ serve(async (req: Request) => {
     const { data: existingPlan } = await supabaseAdmin
       .from('daily_plans').select('version')
       .eq('user_id', userId).eq('date', today)
-      .order('version', { ascending: false }).limit(1).single();
+      .order('version', { ascending: false }).limit(1).maybeSingle();
     const nextVersion = (existingPlan?.version ?? 0) + 1;
 
     // Store plan with version
@@ -438,7 +438,7 @@ async function generateWeeklyPlan(userId: string, today: string): Promise<Record
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated')
-    .eq('id', userId).single();
+    .eq('id', userId).maybeSingle();
 
   const periodicContext = buildPeriodicPlanContext(profile ?? {});
   const seasonal = getSeasonalContext();
@@ -450,7 +450,7 @@ async function generateWeeklyPlan(userId: string, today: string): Promise<Record
     .from('ai_summary')
     .select('strength_records')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
   const strengthRecords = aiSummary?.strength_records as Record<string, { last_weight: number; last_reps: number; '1rm'?: number }> | null;
   if (strengthRecords && Object.keys(strengthRecords).length > 0) {
     const lines = Object.entries(strengthRecords).map(

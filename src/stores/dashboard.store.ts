@@ -84,13 +84,13 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       supabase.from('workout_logs').select('id, raw_input, duration_min, workout_type')
         .eq('user_id', userId).eq('logged_for_date', date).order('logged_at'),
       supabase.from('daily_metrics').select('*')
-        .eq('user_id', userId).eq('date', date).single(),
+        .eq('user_id', userId).eq('date', date).maybeSingle(),
       supabase.from('daily_plans').select('focus_message, weekly_budget_remaining')
-        .eq('user_id', userId).eq('date', date).order('version', { ascending: false }).limit(1).single(),
+        .eq('user_id', userId).eq('date', date).order('version', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('goals').select('*')
-        .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).single(),
+        .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).maybeSingle(),
       supabase.from('profiles').select('weight_kg')
-        .eq('id', userId).single(),
+        .eq('id', userId).maybeSingle(),
     ]);
 
     // Get calories for each meal

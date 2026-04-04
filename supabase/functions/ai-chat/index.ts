@@ -31,7 +31,17 @@ import {
   getToneContext, buildKnowledgeSummary, getRepairContext,
 } from '../shared/repair-handler.ts';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   try {
     // T1.10: Request validation
     const sizeCheck = checkPayloadSize(req.headers.get('content-length'));
@@ -82,7 +92,13 @@ serve(async (req: Request) => {
     const isRecordParse = preliminaryTaskMode === 'register';
     const rateLimit = await checkRateLimit(userId, isRecordParse);
     if (!rateLimit.allowed) {
-      return respond({ error: rateLimit.message, rate_limited: true }, 429);
+      return respond({
+        message: rateLimit.message,
+        actions: [],
+        task_mode: 'rate_limited',
+        rate_limited: true,
+        remaining: 0,
+      }, 200);
     }
 
     // Emergency detection (Spec 5.5)
@@ -127,7 +143,7 @@ serve(async (req: Request) => {
     // Check onboarding status
     const { data: profile } = await supabaseAdmin
       .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg')
-      .eq('id', userId).single();
+      .eq('id', userId).maybeSingle();
     const isOnboarding = !profile?.onboarding_completed;
 
     // GAP 1: Return-flow detection — check how long the user has been silent
@@ -238,7 +254,7 @@ serve(async (req: Request) => {
     let habitsCtx = '';
     try {
       const { data: habitSummary } = await supabaseAdmin
-        .from('ai_summary').select('habit_progress').eq('user_id', userId).single();
+        .from('ai_summary').select('habit_progress').eq('user_id', userId).maybeSingle();
       if (habitSummary?.habit_progress) {
         const habits = habitSummary.habit_progress as { habit: string; status: string; streak: number }[];
         const active = habits.filter(h => h.status === 'active');
@@ -307,6 +323,14 @@ serve(async (req: Request) => {
     const { cleanMessage, actions } = extractActions(assistantMessage);
     assistantMessage = cleanMessage;
 
+    // Fallback: if AI didn't produce actions but user gave profile info, extract manually
+    if (actions.length === 0 && message) {
+      const profileUpdate = extractProfileFromMessage(message);
+      if (profileUpdate && Object.keys(profileUpdate).length > 0) {
+        actions.push({ type: 'profile_update', ...profileUpdate });
+      }
+    }
+
     // Extract Layer 2 updates
     const { cleanMessage: finalMessage, layer2Updates } = extractLayer2Updates(assistantMessage);
     assistantMessage = finalMessage;
@@ -361,7 +385,7 @@ serve(async (req: Request) => {
 function respond(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
 }
 
@@ -369,9 +393,50 @@ function extractActions(text: string): { cleanMessage: string; actions: Record<s
   let actions: Record<string, unknown>[] = [];
   const match = text.match(/<actions>([\s\S]*?)<\/actions>/);
   if (match) {
-    try { actions = JSON.parse(match[1]); } catch { /* ignore */ }
+    try {
+      const parsed = JSON.parse(match[1]);
+      actions = Array.isArray(parsed) ? parsed : [parsed];
+    } catch { /* ignore */ }
   }
   return { cleanMessage: text.replace(/<actions>[\s\S]*?<\/actions>/, '').trim(), actions };
+}
+
+/** Fallback: extract profile data from user message if AI didn't produce actions */
+function extractProfileFromMessage(msg: string): Record<string, unknown> | null {
+  const result: Record<string, unknown> = {};
+  const lower = msg.toLocaleLowerCase('tr');
+
+  // Height: "boyum 175", "175 cm", "boy: 180"
+  const heightMatch = lower.match(/boy\w*\s*[:=]?\s*(\d{2,3})\s*(cm)?|(\d{2,3})\s*cm/);
+  if (heightMatch) {
+    const h = parseInt(heightMatch[1] ?? heightMatch[3]);
+    if (h >= 100 && h <= 250) result.height_cm = h;
+  }
+
+  // Weight: "kilom 72", "72 kg", "72 kiloyum"
+  const weightMatch = lower.match(/kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)/);
+  if (weightMatch) {
+    const w = parseFloat(weightMatch[1] ?? weightMatch[2]);
+    if (w >= 30 && w <= 300) result.weight_kg = w;
+  }
+
+  // Age/birth year: "25 yaşındayım", "yasim 25", "1998 doğumluyum"
+  const birthMatch = lower.match(/(19|20)\d{2}\s*(dogumlu|doğumlu)/);
+  if (birthMatch) {
+    result.birth_year = parseInt(birthMatch[0]);
+  } else {
+    const ageMatch = lower.match(/(\d{1,2})\s*(yas|yaş)|yas\w*\s*[:=]?\s*(\d{1,2})/);
+    if (ageMatch) {
+      const age = parseInt(ageMatch[1] ?? ageMatch[3]);
+      if (age >= 10 && age <= 100) result.birth_year = new Date().getFullYear() - age;
+    }
+  }
+
+  // Gender: "erkeğim", "kadınım"
+  if (/erkek|male/.test(lower)) result.gender = 'male';
+  else if (/kadin|kadın|female/.test(lower)) result.gender = 'female';
+
+  return Object.keys(result).length > 0 ? result : null;
 }
 
 function extractLayer2Updates(text: string): { cleanMessage: string; layer2Updates: Record<string, unknown> | null } {
@@ -390,14 +455,14 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
     .select('id')
     .eq('user_id', userId)
     .eq('is_active', true)
-    .single();
+    .maybeSingle();
 
   if (!session) {
     const { data: newSession } = await supabaseAdmin
       .from('chat_sessions')
       .insert({ user_id: userId, is_active: true })
       .select('id')
-      .single();
+      .maybeSingle();
     session = newSession;
   }
 
@@ -429,12 +494,13 @@ async function executeActions(
   gender: string | null,
   targetDate?: string
 ): Promise<(string | null)[]> {
+  if (!actions || !Array.isArray(actions) || actions.length === 0) return [];
   const today = targetDate ?? new Date().toISOString().split('T')[0];
   const feedback: (string | null)[] = [];
 
   // Get existing water for today
   const { data: todayMetrics } = await supabaseAdmin
-    .from('daily_metrics').select('water_liters').eq('user_id', userId).eq('date', today).single();
+    .from('daily_metrics').select('water_liters').eq('user_id', userId).eq('date', today).maybeSingle();
   const existingWater = todayMetrics?.water_liters ?? 0;
 
   for (const action of actions) {
@@ -447,7 +513,7 @@ async function executeActions(
             user_id: userId, raw_input: action.raw as string ?? '',
             meal_type: mealType,
             input_method: 'ai_chat', logged_for_date: today, synced: true,
-          }).select('id').single();
+          }).select('id').maybeSingle();
 
           if (log && items?.length) {
             // Phase 6: Cooking method calorie adjustments
@@ -612,15 +678,22 @@ async function executeActions(
         }
         case 'strength_log': {
           // T3.24: Parse strength sets from chat (e.g., "bench press 4x8 70kg")
-          const sets = action.sets as { exercise: string; set_number: number; reps: number; weight_kg: number; rpe?: number }[] | undefined;
+          // First create a workout_log, then attach strength_sets to it
+          const sets = action.sets as { exercise: string; set_number: number; reps: number; weight_kg: number }[] | undefined;
           if (sets?.length) {
-            await supabaseAdmin.from('strength_sets').insert(
-              sets.map(s => ({
-                user_id: userId, exercise_name: s.exercise,
-                set_number: s.set_number, reps: s.reps, weight_kg: s.weight_kg,
-                rpe: s.rpe ?? null, logged_for_date: today,
-              }))
-            );
+            const { data: wlog } = await supabaseAdmin.from('workout_logs').insert({
+              user_id: userId, raw_input: action.raw as string ?? 'strength',
+              workout_type: 'strength', duration_min: sets.length * 3,
+              intensity: 'moderate', logged_for_date: today,
+            }).select('id').maybeSingle();
+            if (wlog?.id) {
+              await supabaseAdmin.from('strength_sets').insert(
+                sets.map(s => ({
+                  workout_log_id: wlog.id, exercise_name: s.exercise,
+                  set_number: s.set_number, reps: s.reps, weight_kg: s.weight_kg,
+                }))
+              );
+            }
             feedback.push(`Guc kaydi: ${sets.length} set kaydedildi`);
           }
           break;
@@ -648,7 +721,7 @@ async function executeActions(
           if (undoType === 'meal') {
             const { data: lastMeal } = await supabaseAdmin.from('meal_logs')
               .select('id').eq('user_id', userId).eq('is_deleted', false)
-              .order('logged_at', { ascending: false }).limit(1).single();
+              .order('logged_at', { ascending: false }).limit(1).maybeSingle();
             if (lastMeal) {
               await supabaseAdmin.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', lastMeal.id);
               feedback.push('Son ogun kaydi silindi');
@@ -656,7 +729,7 @@ async function executeActions(
           } else if (undoType === 'workout') {
             const { data: lastWorkout } = await supabaseAdmin.from('workout_logs')
               .select('id').eq('user_id', userId)
-              .order('logged_at', { ascending: false }).limit(1).single();
+              .order('logged_at', { ascending: false }).limit(1).maybeSingle();
             if (lastWorkout) {
               await supabaseAdmin.from('workout_logs').delete().eq('id', lastWorkout.id);
               feedback.push('Son antrenman kaydi silindi');
@@ -664,7 +737,7 @@ async function executeActions(
           } else if (undoType === 'supplement') {
             const { data: lastSupp } = await supabaseAdmin.from('supplement_logs')
               .select('id').eq('user_id', userId)
-              .order('logged_at', { ascending: false }).limit(1).single();
+              .order('logged_at', { ascending: false }).limit(1).maybeSingle();
             if (lastSupp) {
               await supabaseAdmin.from('supplement_logs').delete().eq('id', lastSupp.id);
               feedback.push('Son supplement kaydi silindi');
@@ -710,7 +783,7 @@ async function executeActions(
             .select('learned_items, visit_count')
             .eq('user_id', userId)
             .eq('venue_name', venueName)
-            .single();
+            .maybeSingle();
 
           const existingItems = (existingVenue?.learned_items as { name: string; calories: number; protein_g?: number; confirmed: boolean }[]) ?? [];
           const newItems = (action.items as { name: string; calories: number; protein_g?: number; confirmed?: boolean }[]) ?? [];
@@ -777,7 +850,7 @@ async function executeActions(
 
           // Write seasonal note to Layer 2
           const { data: existing } = await supabaseAdmin
-            .from('ai_summary').select('seasonal_notes').eq('user_id', userId).single();
+            .from('ai_summary').select('seasonal_notes').eq('user_id', userId).maybeSingle();
           const currentNotes = (existing?.seasonal_notes as string) ?? '';
           const dateStr = new Date().toISOString().split('T')[0];
           const newNote = `${currentNotes}\n[${dateStr}] ${newState} donemi baslatildi${endDate ? ` (bitis: ${endDate})` : ''}`.trim();
@@ -849,7 +922,7 @@ async function learnMealTime(userId: string, mealType: string, loggedAt?: string
     .from('ai_summary')
     .select('learned_meal_times')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   const learnedTimes = (existing?.learned_meal_times as Record<string, string>) ?? {};
   learnedTimes[mealType] = timeStr;
@@ -942,7 +1015,7 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
   try {
     const { data: existing } = await supabaseAdmin
       .from('ai_summary').select('general_summary, behavioral_patterns, portion_calibration, strength_records, coaching_notes, caffeine_sleep_notes, habit_progress, learned_meal_times, seasonal_notes, alcohol_pattern, social_eating_notes, features_introduced')
-      .eq('user_id', userId).single();
+      .eq('user_id', userId).maybeSingle();
 
     const changes: Record<string, unknown> = {};
 
@@ -1161,7 +1234,7 @@ async function checkOnboardingCompletion(userId: string) {
   const { data } = await supabaseAdmin
     .from('profiles')
     .select('height_cm, weight_kg, birth_year, gender, activity_level, onboarding_completed')
-    .eq('id', userId).single();
+    .eq('id', userId).maybeSingle();
 
   if (data && !data.onboarding_completed && data.height_cm && data.weight_kg && data.birth_year && data.gender) {
     // Calculate TDEE and save targets (Spec 2.4, T1.18)
@@ -1211,7 +1284,7 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('height_cm, birth_year, gender, activity_level, tdee_last_weight, tdee_last_date')
-    .eq('id', userId).single();
+    .eq('id', userId).maybeSingle();
 
   if (!profile?.height_cm || !profile?.birth_year || !profile?.gender) return;
 

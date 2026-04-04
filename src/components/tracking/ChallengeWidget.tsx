@@ -8,9 +8,9 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 interface ActiveChallenge {
   id: string;
-  challenge_name: string;
-  target_days: number;
-  completed_days: number;
+  title: string;
+  target: { duration_days?: number } | null;
+  progress: { date: string; met: boolean }[] | null;
 }
 
 interface Props {
@@ -27,12 +27,14 @@ export function ChallengeWidget({ challenges }: Props) {
     >
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.sm }}>Aktif Challenge</Text>
       {challenges.map(ch => {
-        const pct = ch.target_days > 0 ? Math.min(1, ch.completed_days / ch.target_days) : 0;
+        const targetDays = (ch.target as { duration_days?: number })?.duration_days ?? 30;
+        const completedDays = Array.isArray(ch.progress) ? ch.progress.filter(p => p.met).length : 0;
+        const pct = targetDays > 0 ? Math.min(1, completedDays / targetDays) : 0;
         return (
           <View key={ch.id} style={{ marginBottom: challenges.length > 1 ? SPACING.sm : 0 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-              <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1 }} numberOfLines={1}>{ch.challenge_name}</Text>
-              <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>{ch.completed_days}/{ch.target_days}</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1 }} numberOfLines={1}>{ch.title}</Text>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>{completedDays}/{targetDays}</Text>
             </View>
             <View style={{ height: 4, backgroundColor: COLORS.surfaceLight, borderRadius: 2, overflow: 'hidden' }}>
               <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: pct >= 1 ? COLORS.success : COLORS.primary, borderRadius: 2 }} />

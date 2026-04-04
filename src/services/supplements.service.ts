@@ -37,13 +37,15 @@ export async function logSupplement(name: string, amount: string): Promise<void>
   });
 }
 
-export async function getTodaySupplements(): Promise<SupplementLog[]> {
+export async function getTodaySupplements(userId?: string): Promise<SupplementLog[]> {
   const date = new Date().toISOString().split('T')[0];
-  const { data } = await supabase
+  let query = supabase
     .from('supplement_logs')
     .select('*')
     .eq('logged_for_date', date)
     .order('logged_at');
+  if (userId) query = query.eq('user_id', userId);
+  const { data } = await query;
   return (data ?? []) as SupplementLog[];
 }
 

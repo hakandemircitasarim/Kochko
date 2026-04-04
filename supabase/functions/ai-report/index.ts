@@ -108,11 +108,11 @@ async function generateDailyReport(userId: string, date?: string) {
 
   // Fetch today's data
   const [planRes, mealsRes, workoutsRes, metricsRes, goalRes] = await Promise.all([
-    supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, protein_target_g').eq('user_id', userId).eq('date', reportDate).limit(1).single(),
+    supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, protein_target_g').eq('user_id', userId).eq('date', reportDate).limit(1).maybeSingle(),
     supabaseAdmin.from('meal_logs').select('id').eq('user_id', userId).eq('logged_for_date', reportDate).eq('is_deleted', false),
     supabaseAdmin.from('workout_logs').select('duration_min').eq('user_id', userId).eq('logged_for_date', reportDate),
-    supabaseAdmin.from('daily_metrics').select('*').eq('user_id', userId).eq('date', reportDate).single(),
-    supabaseAdmin.from('goals').select('goal_type, target_weight_kg, weekly_rate, target_weeks, created_at').eq('user_id', userId).eq('is_active', true).limit(1).single(),
+    supabaseAdmin.from('daily_metrics').select('*').eq('user_id', userId).eq('date', reportDate).maybeSingle(),
+    supabaseAdmin.from('goals').select('goal_type, target_weight_kg, weekly_rate, target_weeks, created_at').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle(),
   ]);
 
   // Sum calories/protein from meal items

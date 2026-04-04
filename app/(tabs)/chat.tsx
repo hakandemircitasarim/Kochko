@@ -20,7 +20,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
-  sendMessage, sendMessageWithPhoto, loadChatHistory,
+  sendMessage, sendMessageWithRetry, sendMessageWithPhoto, loadChatHistory,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
@@ -236,9 +236,13 @@ export default function ChatScreen() {
       };
       setMessages(prev => [...prev, reply]);
 
-      // Refresh dashboard if actions were executed (meal logged, weight updated, etc.)
+      // Refresh dashboard AND profile if actions were executed
       if (data.actions.some(a => a.feedback) && user?.id) {
         refreshDashboard(user.id);
+        // Refresh profile if profile_update or weight_log action
+        if (data.actions.some(a => a.type === 'profile_update' || a.type === 'weight_log')) {
+          useProfileStore.getState().fetch(user.id);
+        }
 
         // 10-second undo window for meal/workout logs (Spec 3.2)
         const undoableAction = data.actions.find(a =>

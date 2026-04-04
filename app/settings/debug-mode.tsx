@@ -73,9 +73,9 @@ export default function DebugModeScreen() {
       <Card title="Son 10 Mesaj (Gorev Modlari)">
         {lastMessages.map((m, i) => (
           <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: i < lastMessages.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>{m.task_mode ?? '-'}</Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{m.model_version ?? '-'}</Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{m.token_count ?? '-'} tok</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>{String(m.task_mode ?? '-')}</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{String(m.model_version ?? '-')}</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{String(m.token_count ?? '-')} tok</Text>
           </View>
         ))}
         {lastMessages.length === 0 && <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Henuz mesaj yok.</Text>}

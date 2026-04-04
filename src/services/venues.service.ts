@@ -18,11 +18,13 @@ export async function getVenues(): Promise<Venue[]> {
 }
 
 export async function addOrUpdateVenue(
+  userId: string,
   venueName: string,
   venueType: string | null,
   items: Venue['learned_items']
 ): Promise<void> {
   await supabase.from('user_venues').upsert({
+    user_id: userId,
     venue_name: venueName,
     venue_type: venueType,
     learned_items: items,

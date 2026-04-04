@@ -1,12 +1,59 @@
 import React, { type ReactNode } from 'react';
-import { View, Text, type ViewStyle } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 
-export function Card({ title, children, style }: { title?: string; children: ReactNode; style?: ViewStyle }) {
+interface Props {
+  title?: string;
+  subtitle?: string;
+  children: ReactNode;
+  style?: ViewStyle;
+  accent?: string;
+}
+
+export function Card({ title, subtitle, children, style, accent }: Props) {
   return (
-    <View style={[{ backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.border }, style]}>
-      {title && <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', marginBottom: SPACING.sm }}>{title}</Text>}
-      {children}
+    <View style={[styles.card, style]}>
+      {accent && <View style={[styles.accentBar, { backgroundColor: accent }]} />}
+      {title && (
+        <View style={styles.header}>
+          <Text style={styles.title}>{title}</Text>
+          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+        </View>
+      )}
+      <View style={styles.content}>{children}</View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
+  },
+  accentBar: {
+    height: 3,
+    borderTopLeftRadius: RADIUS.lg,
+    borderTopRightRadius: RADIUS.lg,
+  },
+  header: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: 0,
+  },
+  title: {
+    color: COLORS.text,
+    fontSize: FONT.md,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  subtitle: {
+    color: COLORS.textMuted,
+    fontSize: FONT.xs,
+    marginTop: 2,
+  },
+  content: {
+    padding: SPACING.md,
+  },
+});
