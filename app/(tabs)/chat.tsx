@@ -34,7 +34,7 @@ import {
   RecipeCard, ConfirmRejectButtons,
 } from '@/components/chat/RichMessage';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
 
 // Simulation data parsed from AI responses
 interface SimulationData {
@@ -407,6 +407,11 @@ export default function ChatScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
+      {/* Header */}
+      <View style={{ paddingHorizontal: SPACING.xl, paddingTop: 60, paddingBottom: SPACING.md }}>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>AI kocun</Text>
+      </View>
+
       {/* Messages or empty state */}
       {messages.length <= 1 && !sending ? (
         <EmptyState
@@ -427,20 +432,21 @@ export default function ChatScreen() {
 
       {/* Typing indicator */}
       {sending && (
-        <View style={{ paddingHorizontal: SPACING.md, paddingBottom: SPACING.xs }}>
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
           <View style={{
             backgroundColor: colors.card,
-            borderRadius: RADIUS.xl,
-            padding: SPACING.sm,
-            paddingHorizontal: SPACING.md,
+            borderRadius: 16,
+            borderBottomLeftRadius: 4,
+            padding: SPACING.md,
             alignSelf: 'flex-start',
             flexDirection: 'row',
             alignItems: 'center',
             gap: SPACING.sm,
-            ...(!isDark ? CARD_SHADOW : {}),
+            borderWidth: 0.5,
+            borderColor: colors.border,
           }}>
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Kochko yazıyor...</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 13 }}>Kochko yaziyor...</Text>
           </View>
         </View>
       )}
@@ -485,93 +491,86 @@ export default function ChatScreen() {
         </View>
       )}
 
-      {/* Input bar */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'flex-end',
-        padding: SPACING.sm, paddingBottom: SPACING.md,
-        borderTopWidth: 1, borderTopColor: colors.border,
-        backgroundColor: colors.surface, gap: SPACING.xs,
-      }}>
-        {/* 10-second undo window (Spec 3.2) */}
-        {undoAction && Date.now() < undoAction.expiresAt && (
+      {/* Undo banner */}
+      {undoAction && Date.now() < undoAction.expiresAt && (
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
           <TouchableOpacity
             onPress={async () => {
-              const undoText = `Son ${undoAction.type === 'meal_log' ? 'öğün' : undoAction.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydını geri al`;
+              const undoText = `Son ${undoAction.type === 'meal_log' ? 'ogun' : undoAction.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydini geri al`;
               setUndoAction(null);
               await sendMessageWithRetry(undoText);
             }}
             style={{
-              backgroundColor: colors.warning,
-              borderRadius: RADIUS.sm,
-              paddingVertical: 6,
-              paddingHorizontal: SPACING.md,
-              marginBottom: SPACING.xs,
-              alignSelf: 'center',
+              backgroundColor: colors.warning, borderRadius: RADIUS.pill,
+              paddingVertical: 6, paddingHorizontal: SPACING.xl, alignSelf: 'center',
             }}
           >
-            <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Geri Al (10sn)</Text>
+            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '500' }}>Geri Al (10sn)</Text>
           </TouchableOpacity>
-        )}
-        <TouchableOpacity onPress={takePhoto} style={{
-          width: 36, height: 36, borderRadius: RADIUS.full,
-          backgroundColor: colors.inputBg,
-          justifyContent: 'center', alignItems: 'center',
+        </View>
+      )}
+
+      {/* Input bar */}
+      <View style={{
+        paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm, paddingBottom: SPACING.xl,
+        borderTopWidth: 0.5, borderTopColor: colors.border, backgroundColor: colors.background,
+      }}>
+        <View style={{
+          flexDirection: 'row', alignItems: 'flex-end',
+          backgroundColor: colors.card, borderRadius: 24,
+          borderWidth: 0.5, borderColor: colors.border,
+          paddingHorizontal: SPACING.md, paddingVertical: 6,
+          gap: 4,
         }}>
-          <Ionicons name="camera-outline" size={20} color={colors.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={pickImage} style={{
-          width: 36, height: 36, borderRadius: RADIUS.full,
-          backgroundColor: colors.inputBg,
-          justifyContent: 'center', alignItems: 'center',
-        }}>
-          <Ionicons name="image-outline" size={20} color={colors.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={openBarcodeScanner} style={{
-          width: 36, height: 36, borderRadius: RADIUS.full,
-          backgroundColor: colors.inputBg,
-          justifyContent: 'center', alignItems: 'center',
-        }}>
-          <Ionicons name="barcode-outline" size={20} color={colors.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleVoiceToggle} style={{
-          width: 36, height: 36, borderRadius: RADIUS.full,
-          backgroundColor: isRecordingVoice ? colors.error : colors.inputBg,
-          justifyContent: 'center', alignItems: 'center',
-        }}>
-          <Ionicons
-            name={isRecordingVoice ? 'pause' : 'mic-outline'}
-            size={20}
-            color={isRecordingVoice ? '#fff' : colors.primary}
+          {/* Text input */}
+          <TextInput
+            style={{
+              flex: 1, color: colors.text, fontSize: 13,
+              paddingVertical: 6, maxHeight: 120,
+            }}
+            placeholder="Mesajini yaz..."
+            placeholderTextColor={colors.textMuted}
+            value={input} onChangeText={setInput}
+            multiline maxLength={2000} editable={!sending}
           />
-        </TouchableOpacity>
-        <TextInput
-          style={{
-            flex: 1, backgroundColor: colors.inputBg, borderRadius: RADIUS.xl,
-            paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2,
-            color: colors.text, fontSize: FONT.md, maxHeight: 120,
-          }}
-          placeholder="Mesajını yaz..."
-          placeholderTextColor={colors.textMuted}
-          value={input}
-          onChangeText={setInput}
-          multiline
-          maxLength={2000}
-          editable={!sending}
-        />
-        <TouchableOpacity
-          style={{
-            width: 40, height: 40, borderRadius: RADIUS.full,
-            backgroundColor: colors.primary,
-            justifyContent: 'center', alignItems: 'center',
-            opacity: sendDisabled ? 0.4 : 1,
-          }}
-          onPress={handleSend}
-          disabled={sendDisabled}
-        >
-          {sending
-            ? <ActivityIndicator size="small" color="#fff" />
-            : <Ionicons name="send" size={18} color="#fff" />}
-        </TouchableOpacity>
+
+          {/* Icon buttons */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
+            <TouchableOpacity onPress={takePhoto} style={{
+              width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
+              justifyContent: 'center', alignItems: 'center',
+            }}>
+              <Ionicons name="camera-outline" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={openBarcodeScanner} style={{
+              width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
+              justifyContent: 'center', alignItems: 'center',
+            }}>
+              <Ionicons name="barcode-outline" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleVoiceToggle} style={{
+              width: 32, height: 32, borderRadius: 16,
+              backgroundColor: isRecordingVoice ? colors.error : colors.cardElevated,
+              justifyContent: 'center', alignItems: 'center',
+            }}>
+              <Ionicons name={isRecordingVoice ? 'stop' : 'mic-outline'} size={16}
+                color={isRecordingVoice ? '#fff' : colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{
+                width: 32, height: 32, borderRadius: 16,
+                backgroundColor: colors.primary,
+                justifyContent: 'center', alignItems: 'center',
+                opacity: sendDisabled ? 0.4 : 1,
+              }}
+              onPress={handleSend} disabled={sendDisabled}
+            >
+              {sending
+                ? <ActivityIndicator size="small" color="#fff" />
+                : <Ionicons name="arrow-up" size={16} color="#fff" />}
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
@@ -600,46 +599,43 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   const suggestions = isOnboarding ? onboardingSuggestions : regularSuggestions;
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.lg }}>
-      {/* Show onboarding intro message if present */}
+    <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.xl }}>
+      {/* Onboarding intro */}
       {messages.length === 1 && messages[0].role === 'assistant' && (
         <View style={{
           maxWidth: '90%',
           backgroundColor: colors.card,
-          borderRadius: RADIUS.xxl,
-          padding: SPACING.md,
-          marginBottom: SPACING.lg,
-          ...(!isDark ? CARD_SHADOW : {}),
+          borderRadius: 16, borderBottomLeftRadius: 4,
+          padding: SPACING.lg, marginBottom: SPACING.xxl,
+          borderWidth: 0.5, borderColor: colors.border,
         }}>
-          <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', marginBottom: 4 }}>Kochko</Text>
-          <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22 }}>{messages[0].content}</Text>
+          <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>{messages[0].content}</Text>
         </View>
       )}
 
-      {/* Welcome text for truly empty state */}
+      {/* Empty state */}
       {messages.length === 0 && (
         <>
-          <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.md }}>Merhaba!</Text>
-          <Text style={{ fontSize: FONT.md, color: colors.textSecondary, lineHeight: 24, marginBottom: SPACING.sm }}>
-            Ben Kochko, yaşam tarzı koçun.
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.sm }}>AI kocun</Text>
+          <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 20, marginBottom: SPACING.md }}>
+            Beslenme, antrenman, uyku — her konuda yardimci olabilirim.
           </Text>
         </>
       )}
 
-      {/* Suggestion chips */}
+      {/* Suggestion pills */}
       <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
         {suggestions.map((s, i) => (
           <TouchableOpacity
             key={i}
             style={{
-              backgroundColor: colors.card,
-              borderRadius: RADIUS.xl,
-              padding: SPACING.md,
-              ...(!isDark ? CARD_SHADOW : {}),
+              backgroundColor: colors.card, borderRadius: RADIUS.pill,
+              paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl,
+              borderWidth: 0.5, borderColor: colors.border,
             }}
             onPress={() => onSuggestion(s)}
           >
-            <Text style={{ color: colors.primary, fontSize: FONT.sm }}>{s}</Text>
+            <Text style={{ color: colors.primary, fontSize: 13 }}>{s}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -664,22 +660,18 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   return (
     <View style={{ marginBottom: SPACING.sm }}>
       <View style={{
-        maxWidth: '82%',
-        borderRadius: RADIUS.xl,
-        padding: SPACING.md,
+        maxWidth: '85%',
+        padding: SPACING.lg,
         alignSelf: isUser ? 'flex-end' : 'flex-start',
         backgroundColor: isUser ? colors.primary : colors.card,
-        borderBottomRightRadius: isUser ? 4 : RADIUS.xl,
-        borderBottomLeftRadius: isUser ? RADIUS.xl : 4,
-        ...(!isUser && !isDark ? CARD_SHADOW : {}),
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        borderBottomRightRadius: isUser ? 4 : 16,
+        borderBottomLeftRadius: isUser ? 16 : 4,
+        ...(isUser ? {} : { borderWidth: 0.5, borderColor: colors.border }),
       }}>
-        {/* Coach label */}
-        {!isUser && (
-          <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', marginBottom: 4 }}>Kochko</Text>
-        )}
-
         {/* Message content */}
-        <Text style={{ color: isUser ? '#fff' : colors.text, fontSize: FONT.md, lineHeight: 22 }}>
+        <Text style={{ color: isUser ? '#fff' : colors.text, fontSize: 13, lineHeight: 20 }}>
           {message.content}
         </Text>
 

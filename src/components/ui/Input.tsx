@@ -15,7 +15,7 @@ export function Input({ label, error, hint, style, ...props }: Props) {
   return (
     <View style={{ marginBottom: SPACING.md }}>
       {label && (
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs + 2, letterSpacing: -0.2 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>
           {label}
         </Text>
       )}
@@ -24,11 +24,11 @@ export function Input({ label, error, hint, style, ...props }: Props) {
           {
             backgroundColor: colors.inputBg,
             borderRadius: RADIUS.md,
-            paddingHorizontal: SPACING.md,
-            paddingVertical: SPACING.md - 2,
+            paddingHorizontal: SPACING.xl,
+            paddingVertical: SPACING.md,
             color: colors.text,
-            fontSize: FONT.md,
-            borderWidth: 1,
+            fontSize: FONT.sm,
+            borderWidth: 0.5,
             borderColor: error ? colors.error : colors.border,
           },
           style,

@@ -1,7 +1,6 @@
 /**
  * Circular Progress Component
- * SVG-based ring progress indicator for calories, water, etc.
- * variant='hero' renders white text for use on gradient backgrounds.
+ * SVG-based ring progress indicator — flat design, no gradients
  */
 import React from 'react';
 import { View, Text } from 'react-native';
@@ -35,15 +34,10 @@ export function CircularProgress({
   variant = 'default',
 }: Props) {
   const { colors } = useTheme();
-  const isHero = variant === 'hero';
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference * (1 - Math.min(1, Math.max(0, progress)));
-  const track = trackColor || (isHero ? 'rgba(255,255,255,0.2)' : colors.progressTrack);
-
-  const textColor = isHero ? '#FFFFFF' : colors.text;
-  const mutedColor = isHero ? 'rgba(255,255,255,0.7)' : colors.textMuted;
-  const sublabelColor = isHero ? 'rgba(255,255,255,0.5)' : colors.textMuted;
+  const track = trackColor || colors.progressTrack;
 
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -63,22 +57,22 @@ export function CircularProgress({
       </Svg>
       <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-          <Text style={{ fontSize: size > 120 ? FONT.hero : FONT.xl, fontWeight: '800', color: textColor, letterSpacing: -1 }}>
+          <Text style={{ fontSize: size > 120 ? 24 : FONT.xl, fontWeight: '700', color: colors.text, letterSpacing: -1 }}>
             {value}
           </Text>
           {unit && (
-            <Text style={{ fontSize: FONT.sm, fontWeight: '600', color: mutedColor, marginLeft: 2 }}>
+            <Text style={{ fontSize: FONT.sm, fontWeight: '500', color: colors.textSecondary, marginLeft: 2 }}>
               {unit}
             </Text>
           )}
         </View>
         {label && (
-          <Text style={{ fontSize: FONT.sm, color: mutedColor, fontWeight: '500', marginTop: 2 }}>
+          <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, fontWeight: '400', marginTop: 2 }}>
             {label}
           </Text>
         )}
         {sublabel && (
-          <Text style={{ fontSize: FONT.xs, color: sublabelColor, marginTop: 1 }}>
+          <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 1 }}>
             {sublabel}
           </Text>
         )}

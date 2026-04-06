@@ -1,30 +1,33 @@
-import { Tabs } from 'expo-router';
-import { View, Platform } from 'react-native';
+import { Tabs, router } from 'expo-router';
+import { View, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { RADIUS, CARD_SHADOW } from '@/lib/constants';
 
-type IconName = 'home' | 'chatbubble-ellipses' | 'calendar' | 'trending-up' | 'person';
+const TEAL = '#1D9E75';
+const MUTED = '#66667A';
 
-function TabIcon({ name, focused, colors }: { name: IconName; focused: boolean; colors: any }) {
+type IconName = 'home' | 'chatbubble-ellipses' | 'add' | 'bar-chart' | 'person';
+
+function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
+  const outlineName = `${name}-outline` as keyof typeof Ionicons.glyphMap;
   return (
-    <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 4 }}>
-      {focused && (
-        <View style={{
-          position: 'absolute',
-          top: -4,
-          width: 24,
-          height: 3,
-          borderRadius: 2,
-          backgroundColor: colors.primary,
-        }} />
-      )}
-      <Ionicons
-        name={focused ? name : `${name}-outline` as keyof typeof Ionicons.glyphMap}
-        size={22}
-        color={focused ? colors.primary : colors.textMuted}
-      />
-    </View>
+    <Ionicons
+      name={focused ? name : outlineName}
+      size={22}
+      color={focused ? TEAL : MUTED}
+    />
+  );
+}
+
+function FABButton() {
+  return (
+    <TouchableOpacity
+      style={styles.fab}
+      onPress={() => router.push('/log')}
+      activeOpacity={0.8}
+    >
+      <Ionicons name="add" size={28} color="#FFFFFF" />
+    </TouchableOpacity>
   );
 }
 
@@ -35,48 +38,56 @@ export default function TabLayout() {
     <Tabs screenOptions={{
       tabBarStyle: {
         backgroundColor: colors.tabBar,
-        borderTopColor: isDark ? colors.tabBarBorder : 'transparent',
-        borderTopWidth: isDark ? 0.5 : 0,
+        borderTopColor: colors.tabBarBorder,
+        borderTopWidth: 0.5,
         height: Platform.OS === 'web' ? 64 : 84,
         paddingBottom: Platform.OS === 'web' ? 8 : 28,
         paddingTop: 8,
-        elevation: isDark ? 0 : 8,
-        ...(isDark ? {} : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.06,
-          shadowRadius: 8,
-        }),
+        elevation: 0,
       },
-      tabBarActiveTintColor: colors.primary,
-      tabBarInactiveTintColor: colors.textMuted,
+      tabBarActiveTintColor: TEAL,
+      tabBarInactiveTintColor: MUTED,
       tabBarLabelStyle: {
-        fontSize: 11,
-        fontWeight: '600',
+        fontSize: 10,
+        fontWeight: '500',
         marginTop: 2,
       },
       headerShown: false,
     }}>
       <Tabs.Screen name="index" options={{
-        title: 'Bugün',
-        tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} colors={colors} />,
+        title: 'Ana Sayfa',
+        tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
       }} />
       <Tabs.Screen name="chat" options={{
-        title: 'Koç',
-        tabBarIcon: ({ focused }) => <TabIcon name="chatbubble-ellipses" focused={focused} colors={colors} />,
+        title: 'Koc',
+        tabBarIcon: ({ focused }) => <TabIcon name="chatbubble-ellipses" focused={focused} />,
       }} />
+      {/* Center FAB — placeholder tab that opens modal */}
       <Tabs.Screen name="plan" options={{
-        title: 'Plan',
-        tabBarIcon: ({ focused }) => <TabIcon name="calendar" focused={focused} colors={colors} />,
+        title: '',
+        tabBarIcon: () => null,
+        tabBarButton: () => <FABButton />,
       }} />
       <Tabs.Screen name="progress" options={{
-        title: 'İlerleme',
-        tabBarIcon: ({ focused }) => <TabIcon name="trending-up" focused={focused} colors={colors} />,
+        title: 'Raporlar',
+        tabBarIcon: ({ focused }) => <TabIcon name="bar-chart" focused={focused} />,
       }} />
       <Tabs.Screen name="profile" options={{
         title: 'Profil',
-        tabBarIcon: ({ focused }) => <TabIcon name="person" focused={focused} colors={colors} />,
+        tabBarIcon: ({ focused }) => <TabIcon name="person" focused={focused} />,
       }} />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  fab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: TEAL,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -20,
+  },
+});

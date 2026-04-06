@@ -20,7 +20,7 @@ interface Props {
 
 const PACE_CONFIG: Record<PaceStatus, { label: string; color: string; icon: string }> = {
   ahead: { label: 'Hedefin Önünde', color: '#22C55E', icon: 'rocket' },
-  on_track: { label: 'Yolunda', color: '#6C63FF', icon: 'checkmark-circle' },
+  on_track: { label: 'Yolunda', color: '#1D9E75', icon: 'checkmark-circle' },
   behind: { label: 'Biraz Geride', color: '#F59E0B', icon: 'alert-circle' },
   stalled: { label: 'Durmuş', color: '#EF4444', icon: 'pause-circle' },
 };

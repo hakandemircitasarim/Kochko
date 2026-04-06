@@ -20,8 +20,8 @@ export function MealOptionCard({ option, onSelect, selected }: Props) {
       style={{
         backgroundColor: selected ? colors.primary + '08' : colors.card,
         borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.sm,
-        borderWidth: selected ? 2 : 0, borderColor: selected ? colors.primary : 'transparent',
-        ...(isDark ? (selected ? {} : { borderWidth: 1, borderColor: colors.border }) : CARD_SHADOW),
+        borderWidth: selected ? 1.5 : 0.5,
+        borderColor: selected ? colors.primary : colors.border,
       }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1, marginRight: SPACING.sm }}>

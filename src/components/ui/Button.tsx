@@ -30,23 +30,22 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
     : isDanger ? '#fff'
     : '#fff';
 
-  const height = size === 'sm' ? 36 : size === 'lg' ? 52 : 44;
-  const fontSize = size === 'sm' ? FONT.sm : size === 'lg' ? FONT.lg : FONT.md;
-  const radius = size === 'sm' ? RADIUS.sm : RADIUS.md;
+  const height = size === 'sm' ? 32 : size === 'lg' ? 48 : 40;
+  const fontSize = size === 'sm' ? FONT.xs : size === 'lg' ? FONT.lg : FONT.sm;
 
   return (
     <TouchableOpacity
       style={[{
         backgroundColor: bgColor,
-        borderRadius: radius,
+        borderRadius: RADIUS.sm,
         height,
-        paddingHorizontal: size === 'sm' ? SPACING.md : SPACING.lg,
+        paddingHorizontal: size === 'sm' ? SPACING.md : SPACING.xl,
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
         gap: SPACING.sm,
         opacity: disabled || loading ? 0.5 : 1,
-        borderWidth: isOutline ? 1.5 : 0,
+        borderWidth: isOutline ? 0.5 : 0,
         borderColor: isOutline ? colors.primary : 'transparent',
       }, style]}
       onPress={onPress}
@@ -58,7 +57,7 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
       ) : (
         <>
           {icon}
-          <Text style={{ color: textColor, fontSize, fontWeight: '600', letterSpacing: -0.2 }}>{title}</Text>
+          <Text style={{ color: textColor, fontSize, fontWeight: '500' }}>{title}</Text>
         </>
       )}
     </TouchableOpacity>

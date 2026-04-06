@@ -5,7 +5,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { detectTimezone } from '@/lib/timezone';
 import type { GoalType, ActivityLevel, Gender } from '@/types/database';
@@ -17,18 +18,18 @@ const { width } = Dimensions.get('window');
 const SLIDES = [
   {
     title: 'Kochko\'ya Hosgeldin',
-    body: 'Kochko senin kisisel beslenme ve yasam tarzi kocun. Seni tanir, ogrenr ve planini surekli gunceller.',
-    icon: '🎯',
+    body: 'Kochko senin kisisel beslenme ve yasam tarzi kocun. Seni tanir, ogrenir ve planini surekli gunceller.',
+    icon: 'heart-circle' as const,
   },
   {
     title: 'Sohbet Et, Kayit Tut',
     body: 'Sohbet ederek seni tanir, plan yapar. Yedigini yaz, fotograf cek veya sesli anlat — gerisini Kochko halletsin.',
-    icon: '💬',
+    icon: 'chatbubble-ellipses' as const,
   },
   {
     title: 'Hemen Baslayalim',
     body: 'Baslamak icin birkac bilgi yeterli. Geri kalani zamanla ogrenecegiz.',
-    icon: '🚀',
+    icon: 'rocket' as const,
   },
 ];
 
@@ -92,7 +93,13 @@ function WelcomeSlide({
 }) {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-      <Text style={{ fontSize: 64, marginBottom: SPACING.xl }}>{slide.icon}</Text>
+      <View style={{
+        width: 80, height: 80, borderRadius: 40,
+        backgroundColor: COLORS.primary + '20',
+        alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xl,
+      }}>
+        <Ionicons name={slide.icon} size={36} color={COLORS.primary} />
+      </View>
       <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: COLORS.text, textAlign: 'center', marginBottom: SPACING.md }}>
         {slide.title}
       </Text>
@@ -245,8 +252,8 @@ function ChipSelect({ label, options, selected, onChange }: {
             style={{
               paddingVertical: 8,
               paddingHorizontal: SPACING.md,
-              borderRadius: 8,
-              borderWidth: 1,
+              borderRadius: RADIUS.pill,
+              borderWidth: 0.5,
               borderColor: selected === opt.value ? COLORS.primary : COLORS.border,
               backgroundColor: selected === opt.value ? COLORS.primary : 'transparent',
             }}

@@ -1,5 +1,9 @@
+/**
+ * Ana Sayfa (Dashboard) — Bilgi odakli, flat dark design
+ * Kalori halkasi, hizli istatistikler, haftalik butce, diyet/spor planlari
+ */
 import { useEffect, useCallback, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform, TextInput, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -7,29 +11,41 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useStreak } from '@/hooks/useStreak';
-import { MoodTracker } from '@/components/tracking/MoodTracker';
-import { SleepInput } from '@/components/tracking/SleepInput';
-import { GoalProgressWidget } from '@/components/tracking/GoalProgress';
 import { HeroSection } from '@/components/dashboard/HeroSection';
 import { StatStrip } from '@/components/dashboard/StatStrip';
 import { ActivityTimeline } from '@/components/dashboard/ActivityTimeline';
-import { SmartActions } from '@/components/dashboard/SmartActions';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
-import { useTheme, GRADIENTS } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW, WATER_INCREMENT } from '@/lib/constants';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 import NetInfo from '@react-native-community/netinfo';
 import { setupAutoSync } from '@/services/offline-queue.service';
 
+interface PlanData {
+  plan_type: string;
+  focus_message: string;
+  meal_suggestions: { meal_type: string; options: { name: string; calories: number }[] }[];
+  workout_plan: { type: string; duration_min: number; main: string[] } | null;
+  weekly_budget_remaining: number | null;
+  status: string;
+}
+
+const MEAL_COLORS: Record<string, string> = {
+  breakfast: '#1D9E75', lunch: '#EF9F27', dinner: '#D85A30', snack: '#7F77DD',
+};
+const MEAL_LABELS: Record<string, string> = {
+  breakfast: 'Kahvalti', lunch: 'Ogle', dinner: 'Aksam', snack: 'Ara ogun',
+};
+
 export default function TodayScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const {
-    meals, workouts, weightKg, waterLiters, sleepHours, sleepTime, wakeTime, steps, moodScore,
+    meals, workouts, weightKg, waterLiters, sleepHours, steps,
     totalCalories, totalProtein, totalCarbs, totalFat, focusMessage,
-    goalProgress, activeGoal,
+    weeklyBudgetRemaining,
     loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
@@ -37,26 +53,10 @@ export default function TodayScreen() {
   const [hasFetched, setHasFetched] = useState(false);
   const [showWeightInput, setShowWeightInput] = useState(false);
   const [weightInput, setWeightInput] = useState('');
-
-  useEffect(() => {
-    if (!user?.id || hasFetched) return;
-    setHasFetched(true);
-    fetchToday(user.id).catch(() => {});
-    checkForMilestones();
-  }, [user?.id]);
-
-  const refresh = useCallback(() => {
-    if (user?.id) { fetchToday(user.id).catch(() => {}); checkForMilestones(); }
-  }, [user?.id]);
-
-  useEffect(() => {
-    const unsub1 = NetInfo.addEventListener(s => setIsOffline(!s.isConnected));
-    const unsub2 = setupAutoSync();
-    return () => { unsub1(); unsub2(); };
-  }, []);
+  const [plan, setPlan] = useState<PlanData | null>(null);
+  const [activeTab, setActiveTab] = useState<'diet' | 'workout'>('diet');
 
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
-  const today = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
   const waterTarget = (profile?.water_target_liters ?? 2.5) as number;
   const ifActive = !!profile?.if_active;
   const ifEatingStart = profile?.if_eating_start as string | null;
@@ -65,23 +65,47 @@ export default function TodayScreen() {
   const calorieTargetMax = (profile?.calorie_range_rest_max as number) ?? 0;
   const proteinTarget = profile?.protein_per_kg && profile?.weight_kg
     ? Math.round(Number(profile.protein_per_kg) * Number(profile.weight_kg)) : 120;
+  const carbsTarget = (profile?.carbs_target_g as number) ?? 200;
+  const fatTarget = (profile?.fat_target_g as number) ?? 65;
+  const userName = profile?.display_name as string | undefined;
 
-  const getMealPrefill = () => {
-    const h = new Date().getHours();
-    if (h >= 6 && h < 10) return 'Kahvaltıda yediklerim: ';
-    if (h >= 10 && h < 14) return 'Öğle yemeğim: ';
-    if (h >= 14 && h < 18) return 'Ara öğünüm: ';
-    if (h >= 18 && h < 22) return 'Akşam yemeğim: ';
-    return 'Yediklerim: ';
-  };
+  useEffect(() => {
+    if (!user?.id || hasFetched) return;
+    setHasFetched(true);
+    fetchToday(user.id).catch(() => {});
+    checkForMilestones();
+    // Fetch today's plan
+    const today = getEffectiveDate(new Date(), dayBoundaryHour);
+    supabase.from('daily_plans').select('*')
+      .eq('user_id', user.id).eq('date', today)
+      .order('version', { ascending: false }).limit(1).single()
+      .then(({ data }) => { if (data) setPlan(data as unknown as PlanData); });
+  }, [user?.id]);
+
+  const refresh = useCallback(() => {
+    if (!user?.id) return;
+    fetchToday(user.id).catch(() => {});
+    checkForMilestones();
+    const today = getEffectiveDate(new Date(), dayBoundaryHour);
+    supabase.from('daily_plans').select('*')
+      .eq('user_id', user.id).eq('date', today)
+      .order('version', { ascending: false }).limit(1).single()
+      .then(({ data }) => { if (data) setPlan(data as unknown as PlanData); });
+  }, [user?.id, dayBoundaryHour]);
+
+  useEffect(() => {
+    const unsub1 = NetInfo.addEventListener(s => setIsOffline(!s.isConnected));
+    const unsub2 = setupAutoSync();
+    return () => { unsub1(); unsub2(); };
+  }, []);
 
   const handleAddWater = () => {
     if (!user?.id) return;
     const newTotal = waterLiters + WATER_INCREMENT;
     const warning = checkSuspiciousInput('water', newTotal);
     if (warning) {
-      Alert.alert('Doğrulama', warning, [
-        { text: 'İptal', style: 'cancel' },
+      Alert.alert('Dogrulama', warning, [
+        { text: 'Iptal', style: 'cancel' },
         { text: 'Evet', onPress: () => addWater(user.id, WATER_INCREMENT, dayBoundaryHour) },
       ]);
     } else {
@@ -103,35 +127,40 @@ export default function TodayScreen() {
     refresh();
   };
 
+  // Weekly budget calculation
+  const weeklyBudgetTotal = calorieTargetMax > 0 ? calorieTargetMax * 7 : 0;
+  const weeklyConsumed = weeklyBudgetTotal - (weeklyBudgetRemaining ?? weeklyBudgetTotal);
+  const weeklyRemaining = weeklyBudgetRemaining ?? weeklyBudgetTotal;
+  const weeklyPct = weeklyBudgetTotal > 0 ? Math.min(1, weeklyConsumed / weeklyBudgetTotal) : 0;
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
 
-      {/* Weight Input Modal */}
+      {/* Weight Modal */}
       <Modal visible={showWeightInput} transparent animationType="fade" onRequestClose={() => setShowWeightInput(false)}>
         <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}
           activeOpacity={1} onPress={() => setShowWeightInput(false)}
         >
           <View style={{
-            backgroundColor: colors.card, borderRadius: RADIUS.xxl, padding: SPACING.lg,
-            width: '80%', alignItems: 'center',
-            ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+            backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl,
+            width: '80%', alignItems: 'center', borderWidth: 0.5, borderColor: colors.border,
           }}>
             <View style={{
-              width: 56, height: 56, borderRadius: 18,
-              backgroundColor: GRADIENTS.weight[0] + '20',
+              width: 48, height: 48, borderRadius: RADIUS.sm,
+              backgroundColor: METRIC_COLORS.weight + '18',
               alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
             }}>
-              <Ionicons name="scale" size={28} color={GRADIENTS.weight[0]} />
+              <Ionicons name="scale" size={24} color={METRIC_COLORS.weight} />
             </View>
-            <Text style={{ fontSize: FONT.lg, fontWeight: '700', color: colors.text, marginBottom: SPACING.md }}>Tartı Kaydı</Text>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Tarti Kaydi</Text>
             <TextInput
               style={{
                 backgroundColor: colors.inputBg, borderRadius: RADIUS.md,
-                paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2,
-                color: colors.text, fontSize: FONT.xxl, fontWeight: '800',
-                textAlign: 'center', width: '100%', borderWidth: 1, borderColor: colors.border,
+                paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md,
+                color: colors.text, fontSize: 24, fontWeight: '700',
+                textAlign: 'center', width: '100%', borderWidth: 0.5, borderColor: colors.border,
               }}
               placeholder="73.5"
               placeholderTextColor={colors.textMuted}
@@ -140,31 +169,32 @@ export default function TodayScreen() {
               keyboardType="decimal-pad"
               autoFocus
             />
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>kg</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: SPACING.xs }}>kg</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md, width: '100%' }}>
               <TouchableOpacity
                 onPress={() => setShowWeightInput(false)}
-                style={{ flex: 1, paddingVertical: SPACING.sm + 2, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
+                style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
               >
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>İptal</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>Iptal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleWeightSave}
-                style={{ flex: 1, paddingVertical: SPACING.sm + 2, borderRadius: RADIUS.md, backgroundColor: GRADIENTS.weight[0], alignItems: 'center' }}
+                style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}
               >
-                <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '700' }}>Kaydet</Text>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Kaydet</Text>
               </TouchableOpacity>
             </View>
           </View>
         </TouchableOpacity>
       </Modal>
+
       <ScrollView
         contentContainerStyle={{ paddingBottom: 120 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#fff" />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.primary} />}
       >
-        {/* ======= HERO SECTION (full-width gradient) ======= */}
+        {/* 1. Hero: Greeting + Calorie Ring + Macros */}
         <HeroSection
-          today={today}
+          today={new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
           streak={streak}
           isOffline={isOffline}
           focusMessage={focusMessage}
@@ -174,14 +204,17 @@ export default function TodayScreen() {
           protein={totalProtein}
           proteinTarget={proteinTarget}
           carbs={totalCarbs}
+          carbsTarget={carbsTarget}
           fat={totalFat}
+          fatTarget={fatTarget}
           ifActive={ifActive}
           ifEatingStart={ifEatingStart}
           ifEatingEnd={ifEatingEnd}
+          userName={userName}
         />
 
-        {/* ======= STAT STRIP (overlapping hero bottom) ======= */}
-        <View style={{ marginTop: -16, zIndex: 10, elevation: 10 }}>
+        {/* 2. Quick Stats: Su + Adim */}
+        <View style={{ marginTop: SPACING.md }}>
           <StatStrip
             waterLiters={waterLiters}
             waterTarget={waterTarget}
@@ -192,127 +225,201 @@ export default function TodayScreen() {
           />
         </View>
 
-        {/* ======= CONTENT AREA (padded) ======= */}
-        <View style={{ paddingHorizontal: SPACING.md, marginTop: SPACING.md }}>
+        {/* 3. Weekly Budget Bar */}
+        {weeklyBudgetTotal > 0 && (
+          <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+            <View style={{
+              backgroundColor: colors.card, borderRadius: RADIUS.md,
+              padding: SPACING.lg, borderWidth: 0.5, borderColor: colors.border,
+            }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
+                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Haftalik butce
+                </Text>
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
+                  {weeklyRemaining.toLocaleString('tr-TR')} kaldi
+                </Text>
+              </View>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: SPACING.sm }}>
+                {weeklyConsumed.toLocaleString('tr-TR')} / {weeklyBudgetTotal.toLocaleString('tr-TR')} kcal
+              </Text>
+              <View style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}>
+                <View style={{
+                  height: '100%', width: `${weeklyPct * 100}%`,
+                  backgroundColor: colors.primary, borderRadius: 4,
+                }} />
+              </View>
+            </View>
+          </View>
+        )}
 
-          {/* Smart Actions - Context-aware suggestions */}
-          <View style={{ marginBottom: SPACING.md }}>
-            <SmartActions
-              userState={{
-                mealsLogged: meals.length,
-                waterLiters,
-                waterTarget,
-                weightLogged: !!weightKg,
-                moodLogged: !!moodScore,
-                sleepLogged: !!sleepHours,
-                stepsLogged: !!steps,
-                hasActiveGoal: !!activeGoal,
-                hasPlan: !!focusMessage, // focusMessage exists when plan is generated
-                workoutsLogged: workouts.length,
-              }}
-              onMealLog={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: getMealPrefill() } })}
-              onWorkoutLog={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } })}
-              onWeightLog={() => setShowWeightInput(true)}
-              onWaterAdd={handleAddWater}
-              onSleepLog={() => {/* sleep input is below, user can scroll */}}
-              onMoodLog={() => {/* mood input is below, user can scroll */}}
-              onChat={() => router.push('/(tabs)/chat')}
-              onViewPlan={() => router.push('/(tabs)/plan')}
-              onViewWorkout={() => router.push('/(tabs)/plan')}
-              onBarcodeScan={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: '[BARKOD]' } })}
-              onSimulation={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Şunu yesem ne olur: ' } })}
-              onQuickLog={() => router.push('/log')}
-            />
+        {/* 4. Diyet / Spor Plan Tablari */}
+        <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
+          {/* Tab selector */}
+          <View style={{
+            flexDirection: 'row',
+            backgroundColor: colors.cardElevated,
+            borderRadius: RADIUS.sm,
+            padding: 3,
+            marginBottom: SPACING.md,
+          }}>
+            {(['diet', 'workout'] as const).map(tab => {
+              const isActive = activeTab === tab;
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  onPress={() => setActiveTab(tab)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: SPACING.sm,
+                    borderRadius: RADIUS.sm - 2,
+                    backgroundColor: isActive ? colors.text : 'transparent',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{
+                    color: isActive ? colors.background : colors.textSecondary,
+                    fontSize: 13, fontWeight: '500',
+                  }}>
+                    {tab === 'diet' ? 'Diyet Plani' : 'Spor Programi'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {/* Goal Progress (slim) */}
-          {goalProgress && activeGoal && (
-            <View style={{ marginBottom: SPACING.md }}>
-              <GoalProgressWidget
-                slim
-                progress={goalProgress}
-                goalType={activeGoal.goal_type}
-                targetWeight={activeGoal.target_weight_kg}
-                currentWeight={weightKg ?? (profile?.weight_kg as number | null)}
-              />
+          {/* Diet Tab Content */}
+          {activeTab === 'diet' && (
+            <View style={{
+              backgroundColor: colors.card, borderRadius: RADIUS.md,
+              borderWidth: 0.5, borderColor: colors.border,
+            }}>
+              {plan?.meal_suggestions && plan.meal_suggestions.length > 0 ? (
+                <>
+                  {plan.meal_suggestions.map((meal, idx) => {
+                    const mainOption = meal.options?.[0];
+                    const dotColor = MEAL_COLORS[meal.meal_type] ?? colors.primary;
+                    return (
+                      <View key={idx} style={{
+                        flexDirection: 'row', alignItems: 'center',
+                        padding: SPACING.lg,
+                        borderBottomWidth: idx < plan.meal_suggestions.length - 1 ? 0.5 : 0,
+                        borderBottomColor: colors.border,
+                      }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor, marginRight: SPACING.md }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
+                            {MEAL_LABELS[meal.meal_type] ?? meal.meal_type}
+                          </Text>
+                          {mainOption && (
+                            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2, paddingLeft: SPACING.xl }}>
+                              {mainOption.name}
+                            </Text>
+                          )}
+                        </View>
+                        {mainOption && (
+                          <Text style={{ color: colors.textMuted, fontSize: 12 }}>{mainOption.calories} kcal</Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                  {/* Detail link */}
+                  <TouchableOpacity
+                    onPress={() => router.push('/diet-plan')}
+                    style={{ padding: SPACING.lg, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border }}
+                  >
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detayli goster</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <View style={{ padding: SPACING.xxl, alignItems: 'center' }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>
+                    Henuz plan olusturulmamis
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugunku diyet planini olustur' } })}
+                    style={{
+                      borderWidth: 0.5, borderColor: colors.primary, borderRadius: RADIUS.sm,
+                      paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
+                    }}
+                  >
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan olustur</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
 
-          {/* Mood + Sleep side by side */}
-          <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
-            <MoodTracker
-              compact
-              currentScore={moodScore}
-              onSelect={async (score, stressNote) => {
-                if (!user?.id) return;
-                const date = getEffectiveDate(new Date(), dayBoundaryHour);
-                await supabase.from('daily_metrics').upsert(
-                  { user_id: user.id, date, mood_score: score, mood_note: stressNote ?? null, synced: true },
-                  { onConflict: 'user_id,date' }
-                );
-                refresh();
-              }}
-            />
-            <SleepInput
-              compact
-              currentHours={sleepHours}
-              currentSleepTime={sleepTime}
-              currentWakeTime={wakeTime}
-              onSave={async (hours, quality, savedSleepTime, savedWakeTime) => {
-                if (!user?.id) return;
-                const date = getEffectiveDate(new Date(), dayBoundaryHour);
-                await supabase.from('daily_metrics').upsert(
-                  { user_id: user.id, date, sleep_hours: hours, sleep_quality: quality, sleep_time: savedSleepTime ?? null, wake_time: savedWakeTime ?? null, synced: true },
-                  { onConflict: 'user_id,date' }
-                );
-                refresh();
-              }}
-            />
-          </View>
-
-          {/* Activity Timeline (meals + workouts) */}
-          <View style={{ marginBottom: SPACING.md }}>
-            <ActivityTimeline
-              meals={meals}
-              workouts={workouts}
-              onDeleteMeal={deleteMeal}
-              onDeleteWorkout={deleteWorkout}
-            />
-          </View>
-
-          {/* Report Links */}
-          <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-            {[
-              { label: 'Günlük', icon: 'today-outline', href: '/reports/daily', gradient: GRADIENTS.primary },
-              { label: 'Haftalık', icon: 'calendar-outline', href: '/reports/weekly', gradient: GRADIENTS.water },
-              { label: 'Aylık', icon: 'stats-chart-outline', href: '/reports/monthly', gradient: GRADIENTS.steps },
-            ].map((r, i) => (
-              <TouchableOpacity
-                key={i}
-                style={{
-                  flex: 1,
-                  backgroundColor: colors.card, borderRadius: RADIUS.xl,
-                  padding: SPACING.sm + 2, alignItems: 'center', gap: SPACING.xs,
-                  ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
-                }}
-                onPress={() => router.push(r.href as never)}
-                activeOpacity={0.7}
-              >
-                <View style={{
-                  width: 32, height: 32, borderRadius: 8,
-                  backgroundColor: r.gradient[0] + '18',
-                  alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Ionicons name={r.icon as any} size={16} color={r.gradient[0]} />
+          {/* Workout Tab Content */}
+          {activeTab === 'workout' && (
+            <View style={{
+              backgroundColor: colors.card, borderRadius: RADIUS.md,
+              borderWidth: 0.5, borderColor: colors.border,
+            }}>
+              {plan?.workout_plan ? (
+                <>
+                  <TouchableOpacity
+                    onPress={() => router.push('/workout-plan')}
+                    style={{ flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, gap: SPACING.md }}
+                  >
+                    <View style={{
+                      width: 40, height: 40, borderRadius: RADIUS.sm,
+                      backgroundColor: METRIC_COLORS.workout + '18',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <Ionicons name="barbell" size={20} color={METRIC_COLORS.workout} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
+                        {plan.workout_plan.type}
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                        {plan.workout_plan.duration_min} dk
+                        {plan.workout_plan.main?.length > 0 ? ` \u00b7 ${plan.workout_plan.main.length} egzersiz` : ''}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => router.push('/workout-plan')}
+                    style={{ padding: SPACING.lg, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border }}
+                  >
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detayli goster</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <View style={{ padding: SPACING.xxl, alignItems: 'center' }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>
+                    {plan?.plan_type === 'rest' ? 'Bugun dinlenme gunu' : 'Antrenman planlanmamis'}
+                  </Text>
+                  {plan?.plan_type !== 'rest' && (
+                    <TouchableOpacity
+                      onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugunku antrenman planini olustur' } })}
+                      style={{
+                        borderWidth: 0.5, borderColor: colors.primary, borderRadius: RADIUS.sm,
+                        paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
+                      }}
+                    >
+                      <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan olustur</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-                <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, fontWeight: '600' }}>{r.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
+              )}
+            </View>
+          )}
         </View>
+
+        {/* 5. Activity Timeline (meals + workouts logged today) */}
+        <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
+          <ActivityTimeline
+            meals={meals}
+            workouts={workouts}
+            onDeleteMeal={deleteMeal}
+            onDeleteWorkout={deleteWorkout}
+          />
+        </View>
+
       </ScrollView>
     </View>
   );
 }
-
