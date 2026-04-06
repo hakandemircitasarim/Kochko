@@ -408,8 +408,8 @@ export default function ChatScreen() {
       keyboardVerticalOffset={90}
     >
       {/* Header */}
-      <View style={{ paddingHorizontal: SPACING.xl, paddingTop: 60, paddingBottom: SPACING.md }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>AI koçun</Text>
+      <View style={{ paddingHorizontal: SPACING.xl, paddingTop: Platform.OS === 'web' ? 16 : 60, paddingBottom: SPACING.md }}>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Koç</Text>
       </View>
 
       {/* Messages or empty state */}
@@ -512,7 +512,7 @@ export default function ChatScreen() {
 
       {/* Input bar */}
       <View style={{
-        paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm, paddingBottom: SPACING.xl,
+        paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm, paddingBottom: SPACING.sm,
         borderTopWidth: 0.5, borderTopColor: colors.border, backgroundColor: colors.background,
       }}>
         <View style={{
@@ -616,7 +616,7 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
       {/* Empty state */}
       {messages.length === 0 && (
         <>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.sm }}>AI koçun</Text>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.sm }}>Kochko</Text>
           <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 20, marginBottom: SPACING.md }}>
             Beslenme, antrenman, uyku — her konuda yardımcı olabilirim.
           </Text>

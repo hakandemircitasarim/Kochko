@@ -36,8 +36,8 @@ function FABButton() {
 export default function TabLayout() {
   const { colors } = useTheme();
   const isWeb = Platform.OS === 'web';
-  const tabBarHeight = isWeb ? 60 : 84;
-  const tabBarPaddingBottom = isWeb ? 6 : 28;
+  const tabBarHeight = isWeb ? 56 : 84;
+  const tabBarPaddingBottom = isWeb ? 4 : 28;
 
   return (
     <Tabs screenOptions={{
@@ -47,7 +47,7 @@ export default function TabLayout() {
         borderTopWidth: 0.5,
         height: tabBarHeight,
         paddingBottom: tabBarPaddingBottom,
-        paddingTop: 6,
+        paddingTop: 4,
         elevation: 0,
       },
       tabBarActiveTintColor: TEAL,
@@ -55,7 +55,10 @@ export default function TabLayout() {
       tabBarLabelStyle: {
         fontSize: 10,
         fontWeight: '500',
-        marginTop: 2,
+        marginTop: 0,
+      },
+      tabBarIconStyle: {
+        marginBottom: -2,
       },
       headerShown: false,
     }}>
