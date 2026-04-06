@@ -409,7 +409,7 @@ export default function ChatScreen() {
     >
       {/* Header */}
       <View style={{ paddingHorizontal: SPACING.xl, paddingTop: 60, paddingBottom: SPACING.md }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>AI kocun</Text>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>AI koçun</Text>
       </View>
 
       {/* Messages or empty state */}
@@ -446,7 +446,7 @@ export default function ChatScreen() {
             borderColor: colors.border,
           }}>
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={{ color: colors.textMuted, fontSize: 13 }}>Kochko yaziyor...</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 13 }}>Kochko yazıyor...</Text>
           </View>
         </View>
       )}
@@ -528,7 +528,7 @@ export default function ChatScreen() {
               flex: 1, color: colors.text, fontSize: 13,
               paddingVertical: 6, maxHeight: 120,
             }}
-            placeholder="Mesajini yaz..."
+            placeholder="Mesajını yaz..."
             placeholderTextColor={colors.textMuted}
             value={input} onChangeText={setInput}
             multiline maxLength={2000} editable={!sending}
@@ -616,9 +616,9 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
       {/* Empty state */}
       {messages.length === 0 && (
         <>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.sm }}>AI kocun</Text>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.sm }}>AI koçun</Text>
           <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 20, marginBottom: SPACING.md }}>
-            Beslenme, antrenman, uyku — her konuda yardimci olabilirim.
+            Beslenme, antrenman, uyku — her konuda yardımcı olabilirim.
           </Text>
         </>
       )}

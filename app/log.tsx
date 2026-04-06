@@ -57,7 +57,7 @@ export default function QuickLogScreen() {
       const { error } = await sendMessage(text.trim());
       if (error) Alert.alert('Hata', error);
       else { await fetchToday(user.id); router.back(); }
-    } catch { Alert.alert('Hata', 'Bir sorun olustu.'); }
+    } catch { Alert.alert('Hata', 'Bir sorun oluştu.'); }
     finally { setLoading(false); }
   };
 
@@ -81,9 +81,9 @@ export default function QuickLogScreen() {
         if (user?.id) await fetchToday(user.id);
         setTimeout(() => { router.back(); }, 1500);
       } else {
-        setBarcodeResult('Urun bulunamadi. Koçuna yazarak bildir.');
+        setBarcodeResult('Ürün bulunamadı. Koçuna yazarak bildir.');
       }
-    } catch { setBarcodeResult('Barkod okunamadi.'); }
+    } catch { setBarcodeResult('Barkod okunamadı.'); }
     finally { setBarcodeLoading(false); }
   };
 
@@ -98,14 +98,14 @@ export default function QuickLogScreen() {
           setText(transcribed);
           setScreen('main');
         } else {
-          Alert.alert('Hata', 'Ses tanima basarisiz.');
+          Alert.alert('Hata', 'Ses tanıma başarısız.');
         }
       }
       setTranscribing(false);
     } else {
       const ok = await startRecording();
       if (ok) setIsRecording(true);
-      else Alert.alert('Izin gerekli', 'Mikrofon izni ver.');
+      else Alert.alert('İzin gerekli', 'Mikrofon izni ver.');
     }
   };
 
@@ -114,8 +114,8 @@ export default function QuickLogScreen() {
     const newTotal = waterLiters + WATER_INCREMENT;
     const warning = checkSuspiciousInput('water', newTotal);
     if (warning) {
-      Alert.alert('Dogrulama', warning, [
-        { text: 'Iptal', style: 'cancel' },
+      Alert.alert('Doğrulama', warning, [
+        { text: 'İptal', style: 'cancel' },
         { text: 'Evet', onPress: () => { addWater(user.id, WATER_INCREMENT, dayBoundaryHour); router.back(); } },
       ]);
     } else {
@@ -146,7 +146,7 @@ export default function QuickLogScreen() {
     let wakeMin = wh * 60 + wm;
     if (wakeMin <= sleepMin) wakeMin += 24 * 60;
     const hours = Math.round(((wakeMin - sleepMin) / 60) * 10) / 10;
-    if (hours < 0.5 || hours > 18) return Alert.alert('Hata', 'Gecersiz uyku suresi.');
+    if (hours < 0.5 || hours > 18) return Alert.alert('Hata', 'Geçersiz uyku süresi.');
 
     const date = getEffectiveDate(new Date(), dayBoundaryHour);
     await supabase.from('daily_metrics').upsert(
@@ -162,9 +162,9 @@ export default function QuickLogScreen() {
     if (!cameraPermission?.granted) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-          <Text style={{ color: colors.text, fontSize: 14, textAlign: 'center', marginBottom: SPACING.md }}>Barkod taramak icin kamera izni gerekli</Text>
+          <Text style={{ color: colors.text, fontSize: 14, textAlign: 'center', marginBottom: SPACING.md }}>Barkod taramak için kamera izni gerekli</Text>
           <TouchableOpacity onPress={requestCameraPermission} style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Izin ver</Text>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>İzin ver</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setScreen('main')} style={{ marginTop: SPACING.md }}>
             <Text style={{ color: colors.textMuted, fontSize: 13 }}>Geri</Text>
@@ -193,7 +193,7 @@ export default function QuickLogScreen() {
             {barcodeLoading && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center' }}>
                 <ActivityIndicator color="#fff" />
-                <Text style={{ color: '#fff', fontSize: 13, marginTop: SPACING.sm }}>Urun araniyor...</Text>
+                <Text style={{ color: '#fff', fontSize: 13, marginTop: SPACING.sm }}>Ürün aranıyor...</Text>
               </View>
             )}
             {barcodeResult && (
@@ -218,7 +218,7 @@ export default function QuickLogScreen() {
         {transcribing ? (
           <>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={{ color: colors.textSecondary, fontSize: 14, marginTop: SPACING.md }}>Ses taniniyor...</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 14, marginTop: SPACING.md }}>Ses tanınıyor...</Text>
           </>
         ) : (
           <>
@@ -234,10 +234,10 @@ export default function QuickLogScreen() {
               <Ionicons name={isRecording ? 'stop' : 'mic'} size={40} color="#fff" />
             </TouchableOpacity>
             <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600', marginBottom: SPACING.sm }}>
-              {isRecording ? 'Dinliyorum...' : 'Konusmaya basla'}
+              {isRecording ? 'Dinliyorum...' : 'Konuşmaya başla'}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center' }}>
-              {isRecording ? 'Bitirince butona tekrar bas' : 'Ornek: "Oglen yemekte 1 porsiyon mercimek corbasi, pilav ve ayran ictim"'}
+              {isRecording ? 'Bitirince butona tekrar bas' : 'Örnek: "Öğlen yemekte 1 porsiyon mercimek çorbası, pilav ve ayran içtim"'}
             </Text>
           </>
         )}
@@ -255,7 +255,7 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.pink + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="scale" size={24} color={colors.pink} />
         </View>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Tarti Kaydi</Text>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Tartı Kaydı</Text>
         <TextInput
           style={{
             backgroundColor: colors.card, borderRadius: RADIUS.md,
@@ -270,7 +270,7 @@ export default function QuickLogScreen() {
         <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: SPACING.xs, marginBottom: SPACING.xxl }}>kg</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>Iptal</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleWeightSave} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}>
             <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Kaydet</Text>
@@ -290,10 +290,10 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.purple + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="moon" size={24} color={colors.purple} />
         </View>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Uyku Kaydi</Text>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Uyku Kaydı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%', marginBottom: SPACING.xxl }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', marginBottom: SPACING.sm }}>Yatis</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', marginBottom: SPACING.sm }}>Yatış</Text>
             <TextInput
               style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, color: colors.text, fontSize: 20, fontWeight: '600', textAlign: 'center', borderWidth: 0.5, borderColor: colors.border }}
               placeholder="23:00" placeholderTextColor={colors.textMuted}
@@ -301,7 +301,7 @@ export default function QuickLogScreen() {
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', marginBottom: SPACING.sm }}>Kalkis</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', marginBottom: SPACING.sm }}>Kalkış</Text>
             <TextInput
               style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, color: colors.text, fontSize: 20, fontWeight: '600', textAlign: 'center', borderWidth: 0.5, borderColor: colors.border }}
               placeholder="07:00" placeholderTextColor={colors.textMuted}
@@ -311,7 +311,7 @@ export default function QuickLogScreen() {
         </View>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>Iptal</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSleepSave} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}>
             <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Kaydet</Text>
@@ -329,7 +329,7 @@ export default function QuickLogScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>Kayit ekle</Text>
+        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>Kayıt ekle</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -337,9 +337,9 @@ export default function QuickLogScreen() {
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
         {[
           { icon: 'create-outline' as const, title: 'Yazarak gir', desc: '2 yumurta, peynir, ekmek yedim', color: colors.primary, onPress: () => { router.back(); setTimeout(() => router.push('/(tabs)/chat'), 100); } },
-          { icon: 'camera-outline' as const, title: 'Fotograf cek', desc: 'Tabagini fotografla, AI tanisin', color: colors.protein, onPress: handlePhoto },
-          { icon: 'barcode-outline' as const, title: 'Barkod okut', desc: 'Paketli urunu tara', color: colors.carbs, onPress: () => setScreen('barcode') },
-          { icon: 'mic-outline' as const, title: 'Sesli giris', desc: 'Konusarak kayit gir', color: colors.pink, onPress: () => setScreen('voice') },
+          { icon: 'camera-outline' as const, title: 'Fotoğraf çek', desc: 'Tabağını fotoğrafla, AI tanısın', color: colors.protein, onPress: handlePhoto },
+          { icon: 'barcode-outline' as const, title: 'Barkod okut', desc: 'Paketli ürünü tara', color: colors.carbs, onPress: () => setScreen('barcode') },
+          { icon: 'mic-outline' as const, title: 'Sesli giriş', desc: 'Konuşarak kayıt gir', color: colors.pink, onPress: () => setScreen('voice') },
         ].map((method, i) => (
           <TouchableOpacity
             key={i} onPress={method.onPress}
@@ -362,12 +362,12 @@ export default function QuickLogScreen() {
 
       {/* Quick text input */}
       <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
-        Hizli kayit
+        Hızlı kayıt
       </Text>
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.xxl }}>
         <TextInput
           style={{ color: colors.text, fontSize: 13, minHeight: 50, textAlignVertical: 'top' }}
-          placeholder="Ornek: 2 dilim ekmek, 1 yumurta, cay"
+          placeholder="Örnek: 2 dilim ekmek, 1 yumurta, çay"
           placeholderTextColor={colors.textMuted}
           value={text} onChangeText={setText} multiline maxLength={2000}
         />
@@ -381,12 +381,12 @@ export default function QuickLogScreen() {
 
       {/* Other entries — 2x2 grid */}
       <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
-        Diger kayitlar
+        Diğer kayıtlar
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
         {[
-          { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, onPress: () => { router.back(); setTimeout(() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptim: ' } }), 100); } },
-          { icon: 'scale-outline' as const, label: 'Tarti', color: colors.pink, onPress: () => setScreen('weight') },
+          { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, onPress: () => { router.back(); setTimeout(() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }), 100); } },
+          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, onPress: () => setScreen('weight') },
           { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, onPress: () => setScreen('sleep') },
           { icon: 'water-outline' as const, label: 'Su (+0.25L)', color: colors.protein, onPress: handleWaterAdd },
         ].map((action, i) => (

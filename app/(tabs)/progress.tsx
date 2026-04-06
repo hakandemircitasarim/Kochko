@@ -154,8 +154,8 @@ export default function ProgressScreen() {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md, gap: SPACING.sm }}>
         <SummaryBox icon="scale-outline" iconColor="#EC4899" value={latestW ? `${latestW}` : '-'} label="kg" delta={wChange} />
         <SummaryBox icon="checkmark-circle-outline" iconColor="#22C55E" value={avgComp != null ? `${avgComp}` : '-'} label="uyum" />
-        <SummaryBox icon="water-outline" iconColor="#56CCF2" value={avgWater ?? '-'} label="L/gun" />
-        <SummaryBox icon="moon-outline" iconColor="#7F77DD" value={avgSleep ?? '-'} label="sa/gun" />
+        <SummaryBox icon="water-outline" iconColor="#56CCF2" value={avgWater ?? '-'} label="L/gün" />
+        <SummaryBox icon="moon-outline" iconColor="#7F77DD" value={avgSleep ?? '-'} label="sa/gün" />
       </View>
 
       {/* Weight Chart */}

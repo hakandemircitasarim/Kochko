@@ -98,7 +98,7 @@ export default function WorkoutPlanScreen() {
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: SPACING.md }}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Spor Programi</Text>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Spor Programı</Text>
         </View>
 
         {wp ? (
@@ -128,13 +128,13 @@ export default function WorkoutPlanScreen() {
 
             {/* Warmup */}
             {wp.warmup && (
-              <SectionCard title="Isinma" colors={colors}>
+              <SectionCard title="Isınma" colors={colors}>
                 <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>{wp.warmup}</Text>
               </SectionCard>
             )}
 
             {/* Main exercises */}
-            <SectionCard title="Ana bolum" colors={colors}>
+            <SectionCard title="Ana bölüm" colors={colors}>
               {wp.main?.map((exercise, idx) => (
                 <View key={idx} style={{
                   flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
@@ -150,7 +150,7 @@ export default function WorkoutPlanScreen() {
 
             {/* Strength targets */}
             {wp.strength_targets && wp.strength_targets.length > 0 && (
-              <SectionCard title="Guc hedefleri" colors={colors}>
+              <SectionCard title="Güç hedefleri" colors={colors}>
                 {/* Table header */}
                 <View style={{ flexDirection: 'row', paddingBottom: SPACING.sm, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
                   <Text style={{ flex: 2, color: colors.textMuted, fontSize: 11 }}>Egzersiz</Text>
@@ -188,15 +188,15 @@ export default function WorkoutPlanScreen() {
 
             {/* Cooldown */}
             {wp.cooldown && (
-              <SectionCard title="Soguma" colors={colors}>
+              <SectionCard title="Soğuma" colors={colors}>
                 <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>{wp.cooldown}</Text>
               </SectionCard>
             )}
 
             {/* Complete button */}
             <Button
-              title="Antrenmani tamamla"
-              onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenmani tamamladim' } })}
+              title="Antrenmanı tamamla"
+              onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenmanı tamamladım' } })}
               style={{ marginTop: SPACING.md }}
               size="lg"
             />
@@ -207,13 +207,13 @@ export default function WorkoutPlanScreen() {
             alignItems: 'center', borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.md,
           }}>
             <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>
-              {currentPlan?.plan_type === 'rest' ? 'Bugun dinlenme gunu' : 'Antrenman planlanmamis'}
+              {currentPlan?.plan_type === 'rest' ? 'Bugün dinlenme günü' : 'Antrenman planlanmamış'}
             </Text>
             {currentPlan?.plan_type !== 'rest' && (
               <Button
-                title="Plan olustur"
+                title="Plan oluştur"
                 variant="outline"
-                onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugunku antrenman planini olustur' } })}
+                onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugünkü antrenman planını oluştur' } })}
               />
             )}
           </View>
@@ -225,7 +225,7 @@ export default function WorkoutPlanScreen() {
           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACING.md, marginTop: SPACING.md }}
         >
           <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Gecmis antrenmanlar ({pastPlans.length})
+            Geçmiş antrenmanlar ({pastPlans.length})
           </Text>
           <Ionicons name={showHistory ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
         </TouchableOpacity>

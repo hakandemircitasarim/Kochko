@@ -91,7 +91,7 @@ export default function RecipeScreen() {
           </SectionCard>
 
           {/* Instructions */}
-          <SectionCard title="Yapilis" colors={colors}>
+          <SectionCard title="Yapılış" colors={colors}>
             <Text style={{ color: colors.text, fontSize: 13, lineHeight: 22 }}>{selected.instructions}</Text>
           </SectionCard>
 
@@ -99,14 +99,14 @@ export default function RecipeScreen() {
           <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
             <TouchableOpacity
               onPress={() => {
-                router.push({ pathname: '/(tabs)/chat', params: { prefill: `${selected.title} tarifindeki malzemeleri degistirebilir misin?` } });
+                router.push({ pathname: '/(tabs)/chat', params: { prefill: `${selected.title} tarifindeki malzemeleri değiştirebilir misin?` } });
               }}
               style={{
                 flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm,
                 borderWidth: 0.5, borderColor: colors.primary, alignItems: 'center',
               }}
             >
-              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Malzeme degistir</Text>
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Malzeme değiştir</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -130,10 +130,10 @@ export default function RecipeScreen() {
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
           <Ionicons name="restaurant-outline" size={48} color={colors.textMuted} />
           <Text style={{ color: colors.textMuted, fontSize: 14, marginTop: SPACING.md, textAlign: 'center' }}>
-            Henuz kayitli tarif yok
+            Henüz kayıtlı tarif yok
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center' }}>
-            Kocuna tarif sor, begendiklerini kaydet
+            Koçuna tarif sor, beğendiklerini kaydet
           </Text>
         </View>
       ) : (

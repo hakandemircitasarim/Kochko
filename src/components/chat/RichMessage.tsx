@@ -58,7 +58,7 @@ export function ConfirmRejectButtons({ onConfirm, onReject }: { onConfirm: () =>
       </TouchableOpacity>
       <TouchableOpacity onPress={onReject}
         style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center' }}>
-        <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>Degistir</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>Değiştir</Text>
       </TouchableOpacity>
     </View>
   );
@@ -134,9 +134,9 @@ export function ActionButtons({ actions, onAction }: { actions: { label: string;
 
 export function ConfidenceBadge({ level }: { level: 'high' | 'medium' | 'low' }) {
   const config = {
-    high: { label: 'Yuksek guven', color: '#1D9E75' },
-    medium: { label: 'Orta guven', color: '#EF9F27' },
-    low: { label: 'Dusuk guven', color: '#D85A30' },
+    high: { label: 'Yüksek güven', color: '#1D9E75' },
+    medium: { label: 'Orta güven', color: '#EF9F27' },
+    low: { label: 'Düşük güven', color: '#D85A30' },
   };
   const c = config[level];
   return (
@@ -152,7 +152,7 @@ export function MakeSomethingElseButton({ onPress }: { onPress: () => void }) {
   return (
     <TouchableOpacity onPress={onPress}
       style={{ paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md, borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', marginTop: SPACING.sm }}>
-      <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Baska bir sey oner</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Başka bir şey öner</Text>
     </TouchableOpacity>
   );
 }
@@ -165,7 +165,7 @@ export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: 
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 0.5, borderColor: colors.border }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
-        <Text style={{ color: colors.textMuted, fontSize: 11 }}>Haftalik Butce</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 11 }}>Haftalık Bütçe</Text>
         <Text style={{ color: colors.text, fontSize: 11, fontWeight: '500' }}>{consumed} / {total} kcal</Text>
       </View>
       <View style={{ height: 6, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>

@@ -17,18 +17,18 @@ const { width } = Dimensions.get('window');
 
 const SLIDES = [
   {
-    title: 'Kochko\'ya Hosgeldin',
-    body: 'Kochko senin kisisel beslenme ve yasam tarzi kocun. Seni tanir, ogrenir ve planini surekli gunceller.',
+    title: 'Kochko\'ya Hoşgeldin',
+    body: 'Kochko senin kişisel beslenme ve yaşam tarzı koçun. Seni tanır, öğrenir ve planını sürekli günceller.',
     icon: 'heart-circle' as const,
   },
   {
     title: 'Sohbet Et, Kayit Tut',
-    body: 'Sohbet ederek seni tanir, plan yapar. Yedigini yaz, fotograf cek veya sesli anlat — gerisini Kochko halletsin.',
+    body: 'Sohbet ederek seni tanır, plan yapar. Yediğini yaz, fotoğraf çek veya sesli anlat — gerisini Kochko halletsin.',
     icon: 'chatbubble-ellipses' as const,
   },
   {
-    title: 'Hemen Baslayalim',
-    body: 'Baslamak icin birkac bilgi yeterli. Geri kalani zamanla ogrenecegiz.',
+    title: 'Hemen Başlayalım',
+    body: 'Başlamak için birkaç bilgi yeterli. Geri kalanı zamanla öğreneceğiz.',
     icon: 'rocket' as const,
   },
 ];
@@ -37,14 +37,14 @@ const GOAL_OPTIONS: { value: GoalType; label: string }[] = [
   { value: 'lose_weight', label: 'Kilo Vermek' },
   { value: 'gain_muscle', label: 'Kas Kazanmak' },
   { value: 'maintain', label: 'Kilomu Korumak' },
-  { value: 'health', label: 'Saglikli Yasamak' },
+  { value: 'health', label: 'Sağlıklı Yaşamak' },
   { value: 'conditioning', label: 'Kondisyon' },
 ];
 
 const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'male', label: 'Erkek' },
-  { value: 'female', label: 'Kadin' },
-  { value: 'other', label: 'Diger' },
+  { value: 'female', label: 'Kadın' },
+  { value: 'other', label: 'Diğer' },
 ];
 
 const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
@@ -52,7 +52,7 @@ const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
   { value: 'light', label: 'Hafif Hareketli' },
   { value: 'moderate', label: 'Orta' },
   { value: 'active', label: 'Aktif' },
-  { value: 'very_active', label: 'Cok Aktif' },
+  { value: 'very_active', label: 'Çok Aktif' },
 ];
 
 // ─── Main Screen ───
@@ -123,7 +123,7 @@ function WelcomeSlide({
       </View>
 
       <View style={{ width: '100%', gap: SPACING.sm }}>
-        <Button title="Ileri" onPress={onNext} size="lg" />
+        <Button title="İleri" onPress={onNext} size="lg" />
         <Button title="Atla" onPress={onSkip} variant="ghost" size="sm" />
       </View>
     </View>
@@ -169,7 +169,7 @@ function QuickForm() {
       });
 
       if (goalError) {
-        Alert.alert('Hata', 'Hedef olusturulurken bir sorun olustu. Tekrar deneyin.');
+        Alert.alert('Hata', 'Hedef oluşturulurken bir sorun oluştu. Tekrar deneyin.');
         setSaving(false);
         return;
       }
@@ -189,7 +189,7 @@ function QuickForm() {
       // 3. Navigate to chat
       router.replace('/(tabs)/chat');
     } catch {
-      Alert.alert('Hata', 'Bir sorun olustu. Tekrar deneyin.');
+      Alert.alert('Hata', 'Bir sorun oluştu. Tekrar deneyin.');
     } finally {
       setSaving(false);
     }
@@ -199,10 +199,10 @@ function QuickForm() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }} keyboardShouldPersistTaps="handled">
         <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.xs }}>
-          Seni Taniyalim
+          Seni Tanıyalım
         </Text>
         <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
-          Sadece 5 bilgi ile baslayabilirsin. Geri kalani zamanla ogrenecegiz.
+          Sadece 5 bilgi ile başlayabilirsin. Geri kalanı zamanla öğreneceğiz.
         </Text>
 
         {/* Physical */}
@@ -221,7 +221,7 @@ function QuickForm() {
         <ChipSelect label="Aktivite Seviyesi" options={ACTIVITY_OPTIONS} selected={activity} onChange={v => setActivity(v as ActivityLevel)} />
 
         <Button
-          title="Baslayalim!"
+          title="Başlayalım!"
           onPress={handleComplete}
           loading={saving}
           disabled={!isValid}
