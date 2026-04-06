@@ -3,14 +3,17 @@
  * Allows fast meal/workout/water logging from anywhere in the app.
  */
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { sendMessage } from '@/services/chat.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
 
 export default function QuickLogScreen() {
+  const { colors, isDark } = useTheme();
   const user = useAuthStore(s => s.user);
   const fetchToday = useDashboardStore(s => s.fetchToday);
   const [text, setText] = useState('');
@@ -28,30 +31,35 @@ export default function QuickLogScreen() {
         router.back();
       }
     } catch {
-      Alert.alert('Hata', 'Bir sorun olustu. Tekrar dene.');
+      Alert.alert('Hata', 'Bir sorun oluştu. Tekrar dene.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <View style={{ flex: 1, backgroundColor: colors.background, padding: SPACING.md }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.cancel}>Iptal</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.md }}>İptal</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Hizli Kayit</Text>
+        <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700' }}>Hızlı Kayıt</Text>
         <TouchableOpacity onPress={handleLog} disabled={loading || !text.trim()}>
-          <Text style={[styles.save, (!text.trim() || loading) && { opacity: 0.4 }]}>
+          <Text style={[{ color: colors.primary, fontSize: FONT.md, fontWeight: '700' }, (!text.trim() || loading) && { opacity: 0.4 }]}>
             {loading ? '...' : 'Kaydet'}
           </Text>
         </TouchableOpacity>
       </View>
 
       <TextInput
-        style={styles.input}
-        placeholder="Ornek: 2 dilim ekmek, 1 yumurta, cay"
-        placeholderTextColor={COLORS.textMuted}
+        style={{
+          backgroundColor: colors.surface, borderRadius: RADIUS.lg,
+          padding: SPACING.md, color: colors.text, fontSize: FONT.md,
+          minHeight: 120, textAlignVertical: 'top',
+          borderWidth: 1, borderColor: colors.border,
+        }}
+        placeholder="Örnek: 2 dilim ekmek, 1 yumurta, çay"
+        placeholderTextColor={colors.textMuted}
         value={text}
         onChangeText={setText}
         multiline
@@ -59,33 +67,29 @@ export default function QuickLogScreen() {
         maxLength={2000}
       />
 
-      <View style={styles.hints}>
-        <Text style={styles.hintTitle}>Ornekler:</Text>
-        <Text style={styles.hint}>• Kahvaltida 2 yumurta 1 peynir yedim</Text>
-        <Text style={styles.hint}>• 30dk kosutum</Text>
-        <Text style={styles.hint}>• 73.5 kg</Text>
-        <Text style={styles.hint}>• 2 bardak su ictim</Text>
+      <View style={{ marginTop: SPACING.lg }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.sm }}>Örnekler:</Text>
+        {[
+          { icon: 'restaurant-outline', text: 'Kahvaltıda 2 yumurta 1 peynir yedim', color: '#FF6B6B' },
+          { icon: 'barbell-outline', text: '30dk koştum', color: '#6C63FF' },
+          { icon: 'scale-outline', text: '73.5 kg', color: '#EC4899' },
+          { icon: 'water-outline', text: '2 bardak su içtim', color: '#56CCF2' },
+        ].map((hint, i) => (
+          <TouchableOpacity
+            key={i}
+            onPress={() => setText(hint.text)}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+              paddingVertical: SPACING.sm, paddingHorizontal: SPACING.sm,
+              marginBottom: SPACING.xs, borderRadius: RADIUS.md,
+              backgroundColor: colors.surfaceLight,
+            }}
+          >
+            <Ionicons name={hint.icon as any} size={16} color={hint.color} />
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{hint.text}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, padding: SPACING.md },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg },
-  cancel: { color: COLORS.textMuted, fontSize: FONT.md },
-  title: { color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' },
-  save: { color: COLORS.primary, fontSize: FONT.md, fontWeight: '700' },
-  input: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: SPACING.md,
-    color: COLORS.text,
-    fontSize: FONT.md,
-    minHeight: 120,
-    textAlignVertical: 'top',
-  },
-  hints: { marginTop: SPACING.lg },
-  hintTitle: { color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs },
-  hint: { color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: 4 },
-});

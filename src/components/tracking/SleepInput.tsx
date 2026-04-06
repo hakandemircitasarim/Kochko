@@ -1,19 +1,21 @@
 /**
- * Sleep Input with Time Pickers
+ * Sleep Input - Modern card design with purple accent
  * Spec 3.1: Yatis/kalkis saati + kalite
- * U4: Yatis saati ve kalkis saati girisi, toplam sure otomatik hesaplama
  */
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { useTheme, GRADIENTS } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
 
 interface Props {
   currentHours: number | null;
   currentSleepTime?: string | null;
   currentWakeTime?: string | null;
   onSave: (hours: number, quality: 'good' | 'ok' | 'bad', sleepTime?: string, wakeTime?: string) => void;
+  compact?: boolean;
 }
 
 function parseTime(timeStr: string): { hour: number; minute: number } | null {
@@ -29,22 +31,22 @@ function calculateDuration(sleepTime: string, wakeTime: string): number | null {
   const sleep = parseTime(sleepTime);
   const wake = parseTime(wakeTime);
   if (!sleep || !wake) return null;
-
   let sleepMinutes = sleep.hour * 60 + sleep.minute;
   let wakeMinutes = wake.hour * 60 + wake.minute;
-
-  if (wakeMinutes <= sleepMinutes) {
-    wakeMinutes += 24 * 60;
-  }
-
-  const durationMinutes = wakeMinutes - sleepMinutes;
-  const durationHours = Math.round((durationMinutes / 60) * 10) / 10;
-
+  if (wakeMinutes <= sleepMinutes) wakeMinutes += 24 * 60;
+  const durationHours = Math.round(((wakeMinutes - sleepMinutes) / 60) * 10) / 10;
   if (durationHours < 0.5 || durationHours > 18) return null;
   return durationHours;
 }
 
-export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, onSave }: Props) {
+const QUALITY_OPTIONS = [
+  { key: 'good' as const, label: 'İyi', emoji: '\uD83D\uDE34', color: '#22C55E' },
+  { key: 'ok' as const, label: 'Orta', emoji: '\uD83D\uDE36', color: '#F59E0B' },
+  { key: 'bad' as const, label: 'Kötü', emoji: '\uD83D\uDE29', color: '#EF4444' },
+];
+
+export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, onSave, compact }: Props) {
+  const { colors, isDark } = useTheme();
   const [sleepTime, setSleepTime] = useState(currentSleepTime ?? '');
   const [wakeTime, setWakeTime] = useState(currentWakeTime ?? '');
   const [hours, setHours] = useState(currentHours ? String(currentHours) : '');
@@ -54,89 +56,156 @@ export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, on
   useEffect(() => {
     if (sleepTime && wakeTime) {
       const duration = calculateDuration(sleepTime, wakeTime);
-      if (duration !== null) {
-        setHours(String(duration));
-      }
+      if (duration !== null) setHours(String(duration));
     }
   }, [sleepTime, wakeTime]);
 
   const handleSave = () => {
     const h = parseFloat(hours);
     if (h > 0 && h < 24) {
-      onSave(
-        h,
-        quality,
-        sleepTime || undefined,
-        wakeTime || undefined,
-      );
+      onSave(h, quality, sleepTime || undefined, wakeTime || undefined);
       setExpanded(false);
     }
   };
 
-  if (!expanded) {
+  if (compact && !expanded) {
     return (
-      <TouchableOpacity onPress={() => setExpanded(true)}
-        style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Uyku</Text>
-        <Text style={{ color: currentHours ? COLORS.text : COLORS.textMuted, fontSize: FONT.md, fontWeight: '600' }}>
-          {currentHours ? `${currentHours} saat` : 'Kaydet'}
+      <TouchableOpacity
+        onPress={() => setExpanded(true)}
+        activeOpacity={0.7}
+        style={{
+          flex: 1, backgroundColor: colors.card, borderRadius: RADIUS.xxl,
+          padding: SPACING.sm + 2, alignItems: 'center',
+          ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+        }}
+      >
+        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>Uyku</Text>
+        <View style={{
+          width: 40, height: 40, borderRadius: 12,
+          backgroundColor: GRADIENTS.sleep[0] + '20',
+          alignItems: 'center', justifyContent: 'center', marginBottom: 4,
+        }}>
+          <Ionicons name="moon" size={20} color={GRADIENTS.sleep[0]} />
+        </View>
+        <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: currentHours ? GRADIENTS.sleep[0] : colors.textMuted }}>
+          {currentHours ? `${currentHours}h` : '-'}
         </Text>
       </TouchableOpacity>
     );
   }
 
+  if (!expanded) {
+    return (
+      <TouchableOpacity
+        onPress={() => setExpanded(true)}
+        activeOpacity={0.7}
+        style={{
+          backgroundColor: colors.card,
+          borderRadius: RADIUS.xxl,
+          padding: SPACING.md,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+          <View style={{
+            width: 44, height: 44, borderRadius: 14,
+            backgroundColor: GRADIENTS.sleep[0] + '20',
+            alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Ionicons name="moon" size={22} color={GRADIENTS.sleep[0]} />
+          </View>
+          <View>
+            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Uyku</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+              {currentHours ? `${currentHours} saat kaydedildi` : 'Kaydetmek için dokun'}
+            </Text>
+          </View>
+        </View>
+        {currentHours ? (
+          <Text style={{ color: GRADIENTS.sleep[0], fontSize: FONT.xl, fontWeight: '800' }}>{currentHours}h</Text>
+        ) : (
+          <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+        )}
+      </TouchableOpacity>
+    );
+  }
+
   return (
-    <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}>
-      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+    <View style={{
+      backgroundColor: colors.card,
+      borderRadius: RADIUS.xxl,
+      padding: SPACING.md,
+      ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+    }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
+        <View style={{
+          width: 44, height: 44, borderRadius: 14,
+          backgroundColor: GRADIENTS.sleep[0] + '20',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Ionicons name="moon" size={22} color={GRADIENTS.sleep[0]} />
+        </View>
+        <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700' }}>Uyku Kaydı</Text>
+      </View>
+
+      {/* Time inputs */}
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xs }}>
         <View style={{ flex: 1 }}>
-          <Input
-            label="Yatis saati"
-            value={sleepTime}
-            onChangeText={setSleepTime}
-            placeholder="23:00"
-            keyboardType="numbers-and-punctuation"
-          />
+          <Input label="Yatış" value={sleepTime} onChangeText={setSleepTime} placeholder="23:00" keyboardType="numbers-and-punctuation" />
         </View>
         <View style={{ flex: 1 }}>
-          <Input
-            label="Kalkis saati"
-            value={wakeTime}
-            onChangeText={setWakeTime}
-            placeholder="07:00"
-            keyboardType="numbers-and-punctuation"
-          />
+          <Input label="Kalkış" value={wakeTime} onChangeText={setWakeTime} placeholder="07:00" keyboardType="numbers-and-punctuation" />
         </View>
       </View>
 
-      <Input
-        label="Toplam sure (saat)"
-        value={hours}
-        onChangeText={setHours}
-        keyboardType="decimal-pad"
-        placeholder="7.5"
-      />
+      <Input label="Toplam süre (saat)" value={hours} onChangeText={setHours} keyboardType="decimal-pad" placeholder="7.5" />
       {sleepTime && wakeTime && calculateDuration(sleepTime, wakeTime) !== null && (
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: -4, marginBottom: SPACING.sm }}>
-          Otomatik hesaplandi
+        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: -SPACING.sm, marginBottom: SPACING.sm }}>
+          Otomatik hesaplandı
         </Text>
       )}
 
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.xs }}>Kalite</Text>
+      {/* Quality selector */}
+      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.sm }}>Kalite</Text>
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
-        {(['good', 'ok', 'bad'] as const).map(q => (
-          <TouchableOpacity key={q} onPress={() => setQuality(q)}
-            style={{ flex: 1, paddingVertical: 6, borderRadius: 8, alignItems: 'center', borderWidth: 1,
-              borderColor: quality === q ? COLORS.primary : COLORS.border,
-              backgroundColor: quality === q ? COLORS.primary : 'transparent' }}>
-            <Text style={{ color: quality === q ? '#fff' : COLORS.textSecondary, fontSize: FONT.sm }}>
-              {q === 'good' ? 'Iyi' : q === 'ok' ? 'Orta' : 'Kotu'}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {QUALITY_OPTIONS.map(q => {
+          const isSelected = quality === q.key;
+          return (
+            <TouchableOpacity
+              key={q.key}
+              onPress={() => setQuality(q.key)}
+              activeOpacity={0.7}
+              style={{
+                flex: 1,
+                paddingVertical: SPACING.sm,
+                borderRadius: RADIUS.md,
+                alignItems: 'center',
+                backgroundColor: isSelected ? q.color + '18' : colors.surfaceLight,
+                borderWidth: isSelected ? 1.5 : 0,
+                borderColor: isSelected ? q.color : 'transparent',
+              }}
+            >
+              <Text style={{ fontSize: 20, marginBottom: 2 }}>{q.emoji}</Text>
+              <Text style={{
+                color: isSelected ? q.color : colors.textSecondary,
+                fontSize: FONT.sm,
+                fontWeight: isSelected ? '700' : '500',
+              }}>
+                {q.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
+
+      {/* Actions */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
         <Button title="Kaydet" size="sm" onPress={handleSave} style={{ flex: 1 }} />
-        <Button title="Iptal" size="sm" variant="ghost" onPress={() => setExpanded(false)} style={{ flex: 1 }} />
+        <Button title="İptal" size="sm" variant="ghost" onPress={() => setExpanded(false)} style={{ flex: 1 }} />
       </View>
     </View>
   );

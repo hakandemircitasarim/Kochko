@@ -1,48 +1,47 @@
 /**
- * Profile Completion Bar
- * Spec 2.2: "Ne kadar doldurursan o kadar iyi sonuç alırsın"
+ * Profile Completion Bar - Theme-aware
  */
 import { View, Text, TouchableOpacity } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
 import { CATEGORY_LABELS, type ProfileCategory } from '@/lib/profile-completion';
 
-interface Props {
-  percentage: number;
-  lowestCategory?: ProfileCategory;
-  onPress?: () => void;
-}
+interface Props { percentage: number; lowestCategory?: ProfileCategory; onPress?: () => void; }
 
 export function ProfileCompletion({ percentage, lowestCategory, onPress }: Props) {
-  const color = percentage >= 80 ? COLORS.success : percentage >= 50 ? COLORS.primary : COLORS.warning;
-
+  const { colors, isDark } = useTheme();
+  const color = percentage >= 80 ? colors.success : percentage >= 50 ? colors.primary : '#F59E0B';
   const messages: Record<number, string> = {
-    0: 'Kocunla konusarak profilini doldur!',
-    25: 'Iyi baslangic! Devam et.',
-    50: 'Yarisina geldin. Detaylar kocunun seni daha iyi tanimasini saglar.',
-    75: 'Cok iyi! Neredeyse tamam.',
-    100: 'Profil tamamlandi. Kocun seni cok iyi taniyor.',
+    0: 'Koçunla konuşarak profilini doldur!', 25: 'İyi başlangıç! Devam et.',
+    50: 'Yarısına geldin. Detaylar koçunun seni daha iyi tanımasını sağlar.',
+    75: 'Çok iyi! Neredeyse tamam.', 100: 'Profil tamamlandı.',
   };
-
   const nearestKey = Object.keys(messages).map(Number).filter(k => k <= percentage).pop() ?? 0;
-  const message = messages[nearestKey];
 
   const Wrapper = onPress ? TouchableOpacity : View;
   const wrapperProps = onPress ? { onPress, activeOpacity: 0.7 } : {};
 
   return (
-    <Wrapper {...wrapperProps as Record<string, unknown>} style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}>
+    <Wrapper {...wrapperProps as any} style={{
+      backgroundColor: colors.card, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.md,
+      ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+    }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>Profil Tamamlanma</Text>
-        <Text style={{ color, fontSize: FONT.md, fontWeight: '700' }}>%{percentage}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: color + '18', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="person-circle" size={20} color={color} />
+          </View>
+          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>Profil</Text>
+        </View>
+        <Text style={{ color, fontSize: FONT.lg, fontWeight: '800' }}>%{percentage}</Text>
       </View>
-      <View style={{ height: 8, backgroundColor: COLORS.surfaceLight, borderRadius: 4, overflow: 'hidden', marginBottom: SPACING.sm }}>
+      <View style={{ height: 8, backgroundColor: colors.surfaceLight, borderRadius: 4, overflow: 'hidden', marginBottom: SPACING.sm }}>
         <View style={{ height: '100%', width: `${percentage}%`, backgroundColor: color, borderRadius: 4 }} />
       </View>
-      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{message}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{messages[nearestKey]}</Text>
       {lowestCategory && percentage < 100 && (
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
-          Eksik alan: {CATEGORY_LABELS[lowestCategory]}
-        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>Eksik: {CATEGORY_LABELS[lowestCategory]}</Text>
       )}
     </Wrapper>
   );

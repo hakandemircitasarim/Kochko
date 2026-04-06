@@ -10,10 +10,12 @@
  * - Dashboard refresh after actions
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useProfileStore } from '@/stores/profile.store';
@@ -31,7 +33,8 @@ import {
   MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
   RecipeCard, ConfirmRejectButtons,
 } from '@/components/chat/RichMessage';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
 
 // Simulation data parsed from AI responses
 interface SimulationData {
@@ -77,15 +80,18 @@ function parseQuickSelect(content: string): { cleanContent: string; options: str
 function hasConfirmRejectIndicator(content: string, taskMode?: string): boolean {
   return !!content.match(/<confirm_reject\s*\/?>/) ||
     taskMode === 'plan_suggestion' ||
-    (taskMode === 'plan' && (content.includes('plan') || content.includes('oneriyorum')));
+    (taskMode === 'plan' && (content.includes('plan') || content.includes('öneriyorum')));
 }
 
 export default function ChatScreen() {
+  const { colors, isDark } = useTheme();
+  const { prefill } = useLocalSearchParams<{ prefill?: string }>();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const refreshDashboard = useDashboardStore(s => s.fetchToday);
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [input, setInput] = useState('');
+  const [prefillApplied, setPrefillApplied] = useState(false);
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [photo, setPhoto] = useState<string | null>(null);
@@ -104,10 +110,10 @@ export default function ChatScreen() {
     const result = await lookupBarcode(barcode);
     if (result.found) {
       const serving = calculateServing(result, result.serving_size_g ?? 100);
-      const msg = `Barkod: ${result.product_name} (${result.brand ?? ''}) - ${serving?.calories ?? '?'} kcal, ${serving?.protein_g ?? '?'}g protein (100g bazinda)`;
+      const msg = `Barkod: ${result.product_name} (${result.brand ?? ''}) - ${serving?.calories ?? '?'} kcal, ${serving?.protein_g ?? '?'}g protein (100g bazında)`;
       setInput(msg);
     } else {
-      setInput(`Barkod ${barcode} bulunamadi. Bu urunu metin olarak girebilirsin.`);
+      setInput(`Barkod ${barcode} bulunamadı. Bu ürünü metin olarak girebilirsin.`);
     }
     setSending(false);
   };
@@ -120,7 +126,7 @@ export default function ChatScreen() {
       if (text) {
         setInput(text);
       } else if (audioUri) {
-        setInput('[Ses kaydedildi ama yazilamadi - metin olarak yazin]');
+        setInput('[Ses kaydedildi ama yazılamadı - metin olarak yazın]');
       }
     } else {
       const started = await startRecording();
@@ -143,7 +149,7 @@ export default function ChatScreen() {
         setMessages([{
           id: 'onboard-intro',
           role: 'assistant',
-          content: 'Merhaba! Ben Kochko, yasam tarzi kocun.\n\nSeni tanimak istiyorum - biraz kendinden bahseder misin? Kac yasindasin, boyun ve kilon ne kadar? Beslenme veya sporla ilgili hedeflerin var mi?',
+          content: 'Merhaba! Ben Kochko, yaşam tarzı koçun.\n\nSeni tanımak istiyorum - biraz kendinden bahseder misin? Kaç yaşındasın, boyun ve kilon ne kadar? Beslenme veya sporla ilgili hedeflerin var mı?',
           created_at: new Date().toISOString(),
         }]);
       } else {
@@ -152,6 +158,14 @@ export default function ChatScreen() {
       setLoading(false);
     });
   }, [isOnboarding]);
+
+  // Pre-fill from dashboard quick actions
+  useEffect(() => {
+    if (prefill && !prefillApplied && !loading) {
+      setInput(prefill);
+      setPrefillApplied(true);
+    }
+  }, [prefill, prefillApplied, loading]);
 
   // Scroll to bottom helper
   const scrollToBottom = useCallback(() => {
@@ -182,7 +196,7 @@ export default function ChatScreen() {
     const userMsg: UIMessage = {
       id: `u-${Date.now()}`,
       role: 'user',
-      content: photo ? (text ? `[Foto] ${text}` : '[Foto gonderildi]') : text,
+      content: photo ? (text ? `[Foto] ${text}` : '[Foto gönderildi]') : text,
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, userMsg]);
@@ -194,7 +208,7 @@ export default function ChatScreen() {
 
     // Call AI
     const { data, error } = img
-      ? await sendMessageWithPhoto(text || 'Bu yemegi analiz et.', img)
+      ? await sendMessageWithPhoto(text || 'Bu yemeği analiz et.', img)
       : await sendMessage(text);
 
     if (data) {
@@ -258,7 +272,7 @@ export default function ChatScreen() {
       setMessages(prev => [...prev, {
         id: `e-${Date.now()}`,
         role: 'assistant',
-        content: error ?? 'Baglanti hatasi. Tekrar dene.',
+        content: error ?? 'Bağlantı hatası. Tekrar dene.',
         created_at: new Date().toISOString(),
       }]);
     }
@@ -298,7 +312,7 @@ export default function ChatScreen() {
         }]);
         if (data.actions.some(a => a.feedback) && user?.id) refreshDashboard(user.id);
       } else {
-        setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: error ?? 'Baglanti hatasi.', created_at: new Date().toISOString() }]);
+        setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: error ?? 'Bağlantı hatası.', created_at: new Date().toISOString() }]);
       }
       setSending(false);
       scrollToBottom();
@@ -307,11 +321,11 @@ export default function ChatScreen() {
 
   // Confirm/Reject plan suggestion handlers
   const handlePlanConfirm = useCallback(() => {
-    handleQuickSelect('Evet, bu plani onayla');
+    handleQuickSelect('Evet, bu planı onayla');
   }, [handleQuickSelect]);
 
   const handlePlanReject = useCallback(() => {
-    handleQuickSelect('Hayir, degistir');
+    handleQuickSelect('Hayır, değiştir');
   }, [handleQuickSelect]);
 
   // Dashboard macros for real-time MacroSummary after meal_log
@@ -335,12 +349,12 @@ export default function ChatScreen() {
     };
   })();
 
-  // "Neden bu oneriyi yaptin?" handler
+  // "Neden bu öneriyi yaptın?" handler
   const handleAskWhy = useCallback((messageContent: string) => {
-    setInput('Neden bu oneriyi yaptin?');
+    setInput('Neden bu öneriyi yaptın?');
     // Trigger send after state update
     setTimeout(async () => {
-      const text = 'Neden bu oneriyi yaptin?';
+      const text = 'Neden bu öneriyi yaptın?';
       const userMsg: UIMessage = {
         id: `u-${Date.now()}`,
         role: 'user',
@@ -368,7 +382,7 @@ export default function ChatScreen() {
         setMessages(prev => [...prev, {
           id: `e-${Date.now()}`,
           role: 'assistant',
-          content: error ?? 'Baglanti hatasi. Tekrar dene.',
+          content: error ?? 'Bağlantı hatası. Tekrar dene.',
           created_at: new Date().toISOString(),
         }]);
       }
@@ -379,15 +393,17 @@ export default function ChatScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
+  const sendDisabled = (!input.trim() && !photo) || sending;
+
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: COLORS.background }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={90}
     >
@@ -412,15 +428,26 @@ export default function ChatScreen() {
       {/* Typing indicator */}
       {sending && (
         <View style={{ paddingHorizontal: SPACING.md, paddingBottom: SPACING.xs }}>
-          <View style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.sm, alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.border }}>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Kochko yaziyor...</Text>
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: RADIUS.xl,
+            padding: SPACING.sm,
+            paddingHorizontal: SPACING.md,
+            alignSelf: 'flex-start',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: SPACING.sm,
+            ...(!isDark ? CARD_SHADOW : {}),
+          }}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Kochko yazıyor...</Text>
           </View>
         </View>
       )}
 
       {/* Barcode Scanner Overlay (T2.12) */}
       {showBarcodeScanner && (
-        <View style={{ height: 250, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+        <View style={{ height: 250, borderTopWidth: 1, borderTopColor: colors.border }}>
           <CameraView
             style={{ flex: 1 }}
             barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] }}
@@ -430,24 +457,31 @@ export default function ChatScreen() {
           />
           <TouchableOpacity
             onPress={() => setShowBarcodeScanner(false)}
-            style={{ position: 'absolute', top: 8, right: 8, backgroundColor: COLORS.error, borderRadius: 16, width: 32, height: 32, justifyContent: 'center', alignItems: 'center' }}
+            style={{ position: 'absolute', top: 8, right: 8, backgroundColor: colors.error, borderRadius: RADIUS.full, width: 32, height: 32, justifyContent: 'center', alignItems: 'center' }}
           >
-            <Text style={{ color: '#fff', fontWeight: '700' }}>X</Text>
+            <Ionicons name="close" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
       )}
 
       {/* Photo preview */}
       {photo && (
-        <View style={{ padding: SPACING.sm, flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.border, backgroundColor: COLORS.surface }}>
-          <Image source={{ uri: photo }} style={{ width: 60, height: 60, borderRadius: 8 }} />
+        <View style={{
+          padding: SPACING.sm,
+          flexDirection: 'row',
+          alignItems: 'center',
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          backgroundColor: colors.surface,
+        }}>
+          <Image source={{ uri: photo }} style={{ width: 60, height: 60, borderRadius: RADIUS.md }} />
           <TouchableOpacity
             onPress={() => setPhoto(null)}
-            style={{ marginLeft: SPACING.sm, width: 24, height: 24, borderRadius: 12, backgroundColor: COLORS.error, justifyContent: 'center', alignItems: 'center' }}
+            style={{ marginLeft: SPACING.sm, width: 24, height: 24, borderRadius: RADIUS.full, backgroundColor: colors.error, justifyContent: 'center', alignItems: 'center' }}
           >
-            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>X</Text>
+            <Ionicons name="close" size={14} color="#fff" />
           </TouchableOpacity>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginLeft: SPACING.sm, flex: 1 }}>Foto eklendi. Mesajla birlikte gonderilebilir.</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginLeft: SPACING.sm, flex: 1 }}>Foto eklendi. Mesajla birlikte gönderilebilir.</Text>
         </View>
       )}
 
@@ -455,40 +489,69 @@ export default function ChatScreen() {
       <View style={{
         flexDirection: 'row', alignItems: 'flex-end',
         padding: SPACING.sm, paddingBottom: SPACING.md,
-        borderTopWidth: 1, borderTopColor: COLORS.border,
-        backgroundColor: COLORS.surface, gap: SPACING.xs,
+        borderTopWidth: 1, borderTopColor: colors.border,
+        backgroundColor: colors.surface, gap: SPACING.xs,
       }}>
         {/* 10-second undo window (Spec 3.2) */}
         {undoAction && Date.now() < undoAction.expiresAt && (
           <TouchableOpacity
             onPress={async () => {
-              const undoText = `Son ${undoAction.type === 'meal_log' ? 'ogun' : undoAction.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydini geri al`;
+              const undoText = `Son ${undoAction.type === 'meal_log' ? 'öğün' : undoAction.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydını geri al`;
               setUndoAction(null);
               await sendMessageWithRetry(undoText);
             }}
-            style={{ backgroundColor: COLORS.warning, borderRadius: 8, paddingVertical: 6, paddingHorizontal: SPACING.md, marginBottom: SPACING.xs, alignSelf: 'center' }}
+            style={{
+              backgroundColor: colors.warning,
+              borderRadius: RADIUS.sm,
+              paddingVertical: 6,
+              paddingHorizontal: SPACING.md,
+              marginBottom: SPACING.xs,
+              alignSelf: 'center',
+            }}
           >
             <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Geri Al (10sn)</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={takePhoto} style={styles.iconBtn}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>O</Text>
+        <TouchableOpacity onPress={takePhoto} style={{
+          width: 36, height: 36, borderRadius: RADIUS.full,
+          backgroundColor: colors.inputBg,
+          justifyContent: 'center', alignItems: 'center',
+        }}>
+          <Ionicons name="camera-outline" size={20} color={colors.primary} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={pickImage} style={styles.iconBtn}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>+</Text>
+        <TouchableOpacity onPress={pickImage} style={{
+          width: 36, height: 36, borderRadius: RADIUS.full,
+          backgroundColor: colors.inputBg,
+          justifyContent: 'center', alignItems: 'center',
+        }}>
+          <Ionicons name="image-outline" size={20} color={colors.primary} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={openBarcodeScanner} style={styles.iconBtn}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>BC</Text>
+        <TouchableOpacity onPress={openBarcodeScanner} style={{
+          width: 36, height: 36, borderRadius: RADIUS.full,
+          backgroundColor: colors.inputBg,
+          justifyContent: 'center', alignItems: 'center',
+        }}>
+          <Ionicons name="barcode-outline" size={20} color={colors.primary} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleVoiceToggle} style={[styles.iconBtn, isRecordingVoice && { backgroundColor: COLORS.error }]}>
-          <Text style={{ color: isRecordingVoice ? '#fff' : COLORS.primary, fontSize: FONT.sm, fontWeight: '700' }}>
-            {isRecordingVoice ? 'II' : 'MIC'}
-          </Text>
+        <TouchableOpacity onPress={handleVoiceToggle} style={{
+          width: 36, height: 36, borderRadius: RADIUS.full,
+          backgroundColor: isRecordingVoice ? colors.error : colors.inputBg,
+          justifyContent: 'center', alignItems: 'center',
+        }}>
+          <Ionicons
+            name={isRecordingVoice ? 'pause' : 'mic-outline'}
+            size={20}
+            color={isRecordingVoice ? '#fff' : colors.primary}
+          />
         </TouchableOpacity>
         <TextInput
-          style={styles.textInput}
-          placeholder="Mesajini yaz..."
-          placeholderTextColor={COLORS.textMuted}
+          style={{
+            flex: 1, backgroundColor: colors.inputBg, borderRadius: RADIUS.xl,
+            paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2,
+            color: colors.text, fontSize: FONT.md, maxHeight: 120,
+          }}
+          placeholder="Mesajını yaz..."
+          placeholderTextColor={colors.textMuted}
           value={input}
           onChangeText={setInput}
           multiline
@@ -496,13 +559,18 @@ export default function ChatScreen() {
           editable={!sending}
         />
         <TouchableOpacity
-          style={[styles.sendBtn, ((!input.trim() && !photo) || sending) && { opacity: 0.4 }]}
+          style={{
+            width: 40, height: 40, borderRadius: RADIUS.full,
+            backgroundColor: colors.primary,
+            justifyContent: 'center', alignItems: 'center',
+            opacity: sendDisabled ? 0.4 : 1,
+          }}
           onPress={handleSend}
-          disabled={(!input.trim() && !photo) || sending}
+          disabled={sendDisabled}
         >
           {sending
             ? <ActivityIndicator size="small" color="#fff" />
-            : <Text style={{ color: '#fff', fontSize: FONT.lg, fontWeight: '700' }}>{'>'}</Text>}
+            : <Ionicons name="send" size={18} color="#fff" />}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -516,16 +584,18 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   isOnboarding: boolean;
   onSuggestion: (text: string) => void;
 }) {
+  const { colors, isDark } = useTheme();
+
   const onboardingSuggestions = [
-    '30 yasinda, 80 kilo, 175 boy erkeğim',
+    '30 yaşında, 80 kilo, 175 boy erkeğim',
     'Kilo vermek istiyorum',
-    'Kendimi tanitmak istiyorum',
+    'Kendimi tanıtmak istiyorum',
   ];
   const regularSuggestions = [
-    'Bugun kahvaltida 2 yumurta yedim',
-    'Bugunku planımı olustur',
-    'Kilo vermek istiyorum, nereden baslayalim?',
-    'Evde yapabilecegim antrenman oner',
+    'Bugün kahvaltıda 2 yumurta yedim',
+    'Bugünkü planımı oluştur',
+    'Kilo vermek istiyorum, nereden başlayalım?',
+    'Evde yapabileceğim antrenman öner',
   ];
   const suggestions = isOnboarding ? onboardingSuggestions : regularSuggestions;
 
@@ -533,18 +603,25 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
     <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.lg }}>
       {/* Show onboarding intro message if present */}
       {messages.length === 1 && messages[0].role === 'assistant' && (
-        <View style={{ maxWidth: '90%', backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.md, marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border }}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', marginBottom: 4 }}>Kochko</Text>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>{messages[0].content}</Text>
+        <View style={{
+          maxWidth: '90%',
+          backgroundColor: colors.card,
+          borderRadius: RADIUS.xxl,
+          padding: SPACING.md,
+          marginBottom: SPACING.lg,
+          ...(!isDark ? CARD_SHADOW : {}),
+        }}>
+          <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', marginBottom: 4 }}>Kochko</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22 }}>{messages[0].content}</Text>
         </View>
       )}
 
       {/* Welcome text for truly empty state */}
       {messages.length === 0 && (
         <>
-          <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Merhaba!</Text>
-          <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, lineHeight: 24, marginBottom: SPACING.sm }}>
-            Ben Kochko, yasam tarzi kocun.
+          <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.md }}>Merhaba!</Text>
+          <Text style={{ fontSize: FONT.md, color: colors.textSecondary, lineHeight: 24, marginBottom: SPACING.sm }}>
+            Ben Kochko, yaşam tarzı koçun.
           </Text>
         </>
       )}
@@ -554,10 +631,15 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
         {suggestions.map((s, i) => (
           <TouchableOpacity
             key={i}
-            style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: RADIUS.xl,
+              padding: SPACING.md,
+              ...(!isDark ? CARD_SHADOW : {}),
+            }}
             onPress={() => onSuggestion(s)}
           >
-            <Text style={{ color: COLORS.primary, fontSize: FONT.sm }}>{s}</Text>
+            <Text style={{ color: colors.primary, fontSize: FONT.sm }}>{s}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -576,25 +658,28 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   totalCalories: number;
   weeklyBudgetRemaining: number | null;
 }) {
+  const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
 
   return (
     <View style={{ marginBottom: SPACING.sm }}>
       <View style={{
-        maxWidth: '82%', borderRadius: 16, padding: SPACING.md,
+        maxWidth: '82%',
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
         alignSelf: isUser ? 'flex-end' : 'flex-start',
-        backgroundColor: isUser ? COLORS.primary : COLORS.card,
-        borderWidth: isUser ? 0 : 1, borderColor: COLORS.border,
-        borderBottomRightRadius: isUser ? 4 : 16,
-        borderBottomLeftRadius: isUser ? 16 : 4,
+        backgroundColor: isUser ? colors.primary : colors.card,
+        borderBottomRightRadius: isUser ? 4 : RADIUS.xl,
+        borderBottomLeftRadius: isUser ? RADIUS.xl : 4,
+        ...(!isUser && !isDark ? CARD_SHADOW : {}),
       }}>
         {/* Coach label */}
         {!isUser && (
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', marginBottom: 4 }}>Kochko</Text>
+          <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', marginBottom: 4 }}>Kochko</Text>
         )}
 
         {/* Message content */}
-        <Text style={{ color: isUser ? '#fff' : COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>
+        <Text style={{ color: isUser ? '#fff' : colors.text, fontSize: FONT.md, lineHeight: 22 }}>
           {message.content}
         </Text>
 
@@ -630,7 +715,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         )}
 
         {/* Timestamp */}
-        <Text style={{ color: isUser ? 'rgba(255,255,255,0.6)' : COLORS.textMuted, fontSize: 10, marginTop: 4, alignSelf: 'flex-end' }}>
+        <Text style={{ color: isUser ? 'rgba(255,255,255,0.6)' : colors.textMuted, fontSize: 10, marginTop: 4, alignSelf: 'flex-end' }}>
           {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </View>
@@ -673,8 +758,8 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
             onPress={() => onAskWhy(message.content)}
             style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm }}
           >
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
-              Neden bu oneriyi yaptin?
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
+              Neden bu öneriyi yaptın?
             </Text>
           </TouchableOpacity>
         </View>
@@ -682,24 +767,3 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
     </View>
   );
 }
-
-// --- Styles ---
-const styles = {
-  iconBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: COLORS.inputBg,
-    justifyContent: 'center' as const, alignItems: 'center' as const,
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  textInput: {
-    flex: 1, backgroundColor: COLORS.inputBg, borderRadius: 20,
-    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2,
-    color: COLORS.text, fontSize: FONT.md, maxHeight: 120,
-    borderWidth: 1, borderColor: COLORS.border,
-  },
-  sendBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center' as const, alignItems: 'center' as const,
-  },
-};

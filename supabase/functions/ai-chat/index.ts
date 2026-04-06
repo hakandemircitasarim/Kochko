@@ -359,7 +359,9 @@ serve(async (req: Request) => {
 
     // Async: update Layer 2 if needed
     if (layer2Updates) {
-      processLayer2Updates(userId, layer2Updates).catch(() => {});
+      processLayer2Updates(userId, layer2Updates).catch((err: Error) => {
+        console.error('[Layer2] Memory write failed:', err.message);
+      });
     }
 
     // Async: check onboarding completion

@@ -1,6 +1,6 @@
 /**
  * Theme System
- * Electric Blue + Orange - Sporcu/Enerji paleti
+ * Modern fitness app palette with gradient support
  */
 import { createContext, useContext } from 'react';
 
@@ -31,49 +31,53 @@ export interface ThemeColors {
   divider: string;
   tabBar: string;
   tabBarBorder: string;
+  shadow: string;
+  progressTrack: string;
 }
 
 export const DARK_COLORS: ThemeColors = {
-  primary: '#3B82F6',        // Electric blue
-  primaryDark: '#2563EB',
-  primaryLight: '#60A5FA',
-  secondary: '#F97316',      // Vibrant orange
-  accent: '#A855F7',         // Purple for special
-  background: '#0A0A14',     // Deep navy-black
-  surface: '#13132A',        // Slightly lighter
-  surfaceLight: '#1E1E3D',   // Interactive surfaces
-  card: '#13132A',
-  cardElevated: '#1A1A36',
-  inputBg: '#1E1E3D',
-  text: '#F8FAFC',           // Crisp white
-  textSecondary: '#CBD5E1',  // Slate-300
-  textMuted: '#64748B',      // Slate-500
-  success: '#22C55E',        // Green
+  primary: '#6C63FF',
+  primaryDark: '#5A52E0',
+  primaryLight: '#8B85FF',
+  secondary: '#FF6B6B',
+  accent: '#A855F7',
+  background: '#0F0F1A',
+  surface: '#1A1A2E',
+  surfaceLight: '#252542',
+  card: '#1A1A2E',
+  cardElevated: '#222240',
+  inputBg: '#252542',
+  text: '#F8FAFC',
+  textSecondary: '#CBD5E1',
+  textMuted: '#64748B',
+  success: '#22C55E',
   successLight: '#052E16',
-  warning: '#F59E0B',        // Amber
+  warning: '#F59E0B',
   warningLight: '#451A03',
-  error: '#EF4444',          // Red
+  error: '#EF4444',
   errorLight: '#450A0A',
-  border: '#1E293B',         // Slate-800
-  divider: '#1E1E3D',
-  tabBar: '#0A0A14',
-  tabBarBorder: '#1E293B',
+  border: '#2D2D50',
+  divider: '#252542',
+  tabBar: '#0F0F1A',
+  tabBarBorder: '#2D2D50',
+  shadow: '#000000',
+  progressTrack: '#3A3A5E',
 };
 
 export const LIGHT_COLORS: ThemeColors = {
-  primary: '#2563EB',
-  primaryDark: '#1D4ED8',
-  primaryLight: '#60A5FA',
-  secondary: '#EA580C',
-  accent: '#7C3AED',
-  background: '#F8FAFC',
+  primary: '#6C63FF',
+  primaryDark: '#5A52E0',
+  primaryLight: '#8B85FF',
+  secondary: '#FF6B6B',
+  accent: '#A855F7',
+  background: '#F5F7FA',
   surface: '#FFFFFF',
-  surfaceLight: '#F1F5F9',
+  surfaceLight: '#F0F2F5',
   card: '#FFFFFF',
   cardElevated: '#FFFFFF',
-  inputBg: '#F1F5F9',
-  text: '#0F172A',
-  textSecondary: '#475569',
+  inputBg: '#F0F2F5',
+  text: '#1A1A2E',
+  textSecondary: '#5A6478',
   textMuted: '#94A3B8',
   success: '#16A34A',
   successLight: '#DCFCE7',
@@ -81,10 +85,34 @@ export const LIGHT_COLORS: ThemeColors = {
   warningLight: '#FEF3C7',
   error: '#DC2626',
   errorLight: '#FEE2E2',
-  border: '#E2E8F0',
-  divider: '#F1F5F9',
+  border: '#E8ECF0',
+  divider: '#F0F2F5',
   tabBar: '#FFFFFF',
-  tabBarBorder: '#E2E8F0',
+  tabBarBorder: '#E8ECF0',
+  shadow: '#000000',
+  progressTrack: '#D8DCE4',
+};
+
+/** Gradient pairs for metric cards - same in both themes for vibrancy */
+export const GRADIENTS = {
+  calories: ['#FF6B6B', '#FF8E53'] as [string, string],
+  protein: ['#667EEA', '#764BA2'] as [string, string],
+  water: ['#56CCF2', '#2F80ED'] as [string, string],
+  sleep: ['#A855F7', '#7C3AED'] as [string, string],
+  mood: ['#F97316', '#FACC15'] as [string, string],
+  steps: ['#22C55E', '#16A34A'] as [string, string],
+  weight: ['#EC4899', '#F43F5E'] as [string, string],
+  streak: ['#F97316', '#EF4444'] as [string, string],
+  carbs: ['#F59E0B', '#FBBF24'] as [string, string],
+  fat: ['#EF4444', '#F87171'] as [string, string],
+  primary: ['#6C63FF', '#8B85FF'] as [string, string],
+  success: ['#22C55E', '#16A34A'] as [string, string],
+};
+
+/** Hero section gradient (3-stop for richer effect) */
+export const HERO_GRADIENTS = {
+  light: ['#6C63FF', '#8B85FF', '#A78BFA'] as [string, string, string],
+  dark: ['#4338CA', '#6C63FF', '#8B85FF'] as [string, string, string],
 };
 
 export interface ThemeContextType {
@@ -95,9 +123,9 @@ export interface ThemeContextType {
 }
 
 export const ThemeContext = createContext<ThemeContextType>({
-  mode: 'dark',
-  colors: DARK_COLORS,
-  isDark: true,
+  mode: 'light',
+  colors: LIGHT_COLORS,
+  isDark: false,
   setMode: () => {},
 });
 

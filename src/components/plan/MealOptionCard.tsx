@@ -1,68 +1,55 @@
 /**
- * Meal Option Card - displays a single meal suggestion from the plan.
- * Shows name, description, macros, prep time, and "use this" action.
+ * Meal Option Card - Theme-aware modern design
  */
 import { View, Text, TouchableOpacity } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
 
 interface MealOption {
-  name: string;
-  description: string;
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  prep_time_min?: number;
+  name: string; description: string; calories: number;
+  protein_g: number; carbs_g: number; fat_g: number; prep_time_min?: number;
 }
 
-interface Props {
-  option: MealOption;
-  onSelect?: () => void;
-  selected?: boolean;
-}
+interface Props { option: MealOption; onSelect?: () => void; selected?: boolean; }
 
 export function MealOptionCard({ option, onSelect, selected }: Props) {
+  const { colors, isDark } = useTheme();
   return (
-    <TouchableOpacity
-      onPress={onSelect}
+    <TouchableOpacity onPress={onSelect} activeOpacity={0.7}
       style={{
-        backgroundColor: selected ? COLORS.surfaceLight : COLORS.card,
-        borderRadius: 12,
-        padding: SPACING.md,
-        marginBottom: SPACING.sm,
-        borderWidth: selected ? 2 : 1,
-        borderColor: selected ? COLORS.primary : COLORS.border,
-      }}
-    >
+        backgroundColor: selected ? colors.primary + '08' : colors.card,
+        borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.sm,
+        borderWidth: selected ? 2 : 0, borderColor: selected ? colors.primary : 'transparent',
+        ...(isDark ? (selected ? {} : { borderWidth: 1, borderColor: colors.border }) : CARD_SHADOW),
+      }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <View style={{ flex: 1, marginRight: SPACING.sm }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{option.name}</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 2, lineHeight: 20 }}>{option.description}</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>{option.name}</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2, lineHeight: 20 }}>{option.description}</Text>
         </View>
         {selected && (
-          <View style={{ backgroundColor: COLORS.primary, borderRadius: 12, paddingHorizontal: 8, paddingVertical: 2 }}>
-            <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Secildi</Text>
+          <View style={{ backgroundColor: colors.primary, borderRadius: RADIUS.full, width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="checkmark" size={16} color="#fff" />
           </View>
         )}
       </View>
-
-      {/* Macros row */}
       <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.sm }}>
-        <MacroPill label="Kal" value={`${option.calories}`} color={COLORS.primary} />
-        <MacroPill label="Pro" value={`${option.protein_g}g`} color="#4CAF50" />
-        <MacroPill label="Karb" value={`${option.carbs_g}g`} color="#FF9800" />
-        <MacroPill label="Yag" value={`${option.fat_g}g`} color="#F44336" />
-        {option.prep_time_min && <MacroPill label="" value={`${option.prep_time_min}dk`} color={COLORS.textMuted} />}
+        <MacroPill value={`${option.calories}`} unit="kcal" color={colors.primary} colors={colors} />
+        <MacroPill value={`${option.protein_g}g`} unit="pro" color="#667EEA" colors={colors} />
+        <MacroPill value={`${option.carbs_g}g`} unit="karb" color="#F59E0B" colors={colors} />
+        <MacroPill value={`${option.fat_g}g`} unit="yag" color="#EF4444" colors={colors} />
+        {option.prep_time_min && <MacroPill value={`${option.prep_time_min}`} unit="dk" color={colors.textMuted} colors={colors} />}
       </View>
     </TouchableOpacity>
   );
 }
 
-function MacroPill({ label, value, color }: { label: string; value: string; color: string }) {
+function MacroPill({ value, unit, color, colors }: { value: string; unit: string; color: string; colors: any }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-      {label ? <Text style={{ color: COLORS.textMuted, fontSize: 10 }}>{label}</Text> : null}
-      <Text style={{ color, fontSize: FONT.xs, fontWeight: '600' }}>{value}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
+      <Text style={{ color, fontSize: FONT.sm, fontWeight: '700' }}>{value}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: 9 }}>{unit}</Text>
     </View>
   );
 }

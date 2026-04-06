@@ -1,6 +1,7 @@
 import React from 'react';
-import { TouchableOpacity, Text, ActivityIndicator, StyleSheet, type ViewStyle } from 'react-native';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TouchableOpacity, Text, ActivityIndicator, type ViewStyle } from 'react-native';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
 
 interface Props {
   title: string;
@@ -14,17 +15,18 @@ interface Props {
 }
 
 export function Button({ title, onPress, variant = 'primary', size = 'md', loading, disabled, style, icon }: Props) {
+  const { colors } = useTheme();
   const isOutline = variant === 'outline';
   const isGhost = variant === 'ghost';
   const isDanger = variant === 'danger';
 
   const bgColor = isOutline || isGhost ? 'transparent'
-    : isDanger ? COLORS.error
-    : variant === 'secondary' ? COLORS.secondary
-    : COLORS.primary;
+    : isDanger ? colors.error
+    : variant === 'secondary' ? colors.secondary
+    : colors.primary;
 
-  const textColor = isGhost ? COLORS.primary
-    : isOutline ? COLORS.primary
+  const textColor = isGhost ? colors.primary
+    : isOutline ? colors.primary
     : isDanger ? '#fff'
     : '#fff';
 
@@ -45,7 +47,7 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
         gap: SPACING.sm,
         opacity: disabled || loading ? 0.5 : 1,
         borderWidth: isOutline ? 1.5 : 0,
-        borderColor: isOutline ? COLORS.primary : 'transparent',
+        borderColor: isOutline ? colors.primary : 'transparent',
       }, style]}
       onPress={onPress}
       disabled={disabled || loading}

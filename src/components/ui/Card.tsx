@@ -1,6 +1,7 @@
 import React, { type ReactNode } from 'react';
-import { View, Text, StyleSheet, type ViewStyle } from 'react-native';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { View, Text, type ViewStyle } from 'react-native';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
 
 interface Props {
   title?: string;
@@ -11,49 +12,27 @@ interface Props {
 }
 
 export function Card({ title, subtitle, children, style, accent }: Props) {
+  const { colors, isDark } = useTheme();
+
   return (
-    <View style={[styles.card, style]}>
-      {accent && <View style={[styles.accentBar, { backgroundColor: accent }]} />}
+    <View style={[
+      {
+        backgroundColor: colors.card,
+        borderRadius: RADIUS.xl,
+        marginBottom: SPACING.md,
+        overflow: 'hidden',
+        ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+      },
+      style,
+    ]}>
+      {accent && <View style={{ height: 3, backgroundColor: accent, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl }} />}
       {title && (
-        <View style={styles.header}>
-          <Text style={styles.title}>{title}</Text>
-          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+        <View style={{ paddingHorizontal: SPACING.md, paddingTop: SPACING.md }}>
+          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', letterSpacing: -0.3 }}>{title}</Text>
+          {subtitle && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{subtitle}</Text>}
         </View>
       )}
-      <View style={styles.content}>{children}</View>
+      <View style={{ padding: SPACING.md }}>{children}</View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.card,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACING.md,
-    overflow: 'hidden',
-  },
-  accentBar: {
-    height: 3,
-    borderTopLeftRadius: RADIUS.lg,
-    borderTopRightRadius: RADIUS.lg,
-  },
-  header: {
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.md,
-    paddingBottom: 0,
-  },
-  title: {
-    color: COLORS.text,
-    fontSize: FONT.md,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    color: COLORS.textMuted,
-    fontSize: FONT.xs,
-    marginTop: 2,
-  },
-  content: {
-    padding: SPACING.md,
-  },
-});

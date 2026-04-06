@@ -8,7 +8,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
-import { buildFullContext } from '../shared/memory.ts';
+import { buildFullContext, updateLayer2 } from '../shared/memory.ts';
 import { checkAllergens, validateCalories, sanitizeText } from '../shared/guardrails.ts';
 import { validatePlanOutput } from '../shared/output-validator.ts';
 import { getPeriodicCalorieAdjustment, isIFCompatible, buildPeriodicPlanContext, getSeasonalContext } from '../shared/periodic-config.ts';
@@ -250,6 +250,15 @@ serve(async (req: Request) => {
     let rejectionLine = '';
     if (body.rejection_context) {
       rejectionLine = `\nONCEKI PLAN REDDEDILDI. Sebep: ${body.rejection_context}. Yeni plan buna gore farkli olmali.`;
+      // Persist rejection learning to Layer 2 (coaching_note)
+      const dateStr = new Date().toISOString().split('T')[0];
+      const { data: existingSummary } = await supabaseAdmin
+        .from('ai_summary').select('coaching_notes').eq('user_id', userId).maybeSingle();
+      const existingNotes = (existingSummary?.coaching_notes as string) ?? '';
+      const rejectionNote = `[${dateStr}] Plan reddedildi: ${body.rejection_context}`;
+      updateLayer2(userId, {
+        coaching_notes: existingNotes ? `${existingNotes}\n${rejectionNote}` : rejectionNote,
+      }).catch((err: Error) => console.error('[ai-plan] Layer2 rejection write failed:', err.message));
     }
 
     // Persona + learned context from AI summary (Faz 5a deepening)
