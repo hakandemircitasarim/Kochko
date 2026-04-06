@@ -48,10 +48,10 @@ function MacroBar({ label, value, target, color }: { label: string; value: numbe
 
 function getGreeting(): string {
   const hour = new Date().getHours();
-  if (hour < 6) return 'Iyi geceler';
-  if (hour < 12) return 'Gunaydin';
-  if (hour < 18) return 'Iyi gunler';
-  return 'Iyi aksamlar';
+  if (hour < 6) return 'İyi geceler';
+  if (hour < 12) return 'Günaydın';
+  if (hour < 18) return 'İyi günler';
+  return 'İyi akşamlar';
 }
 
 export function HeroSection({
@@ -63,8 +63,9 @@ export function HeroSection({
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const targetMid = Math.round((targetMin + targetMax) / 2);
-  const pct = targetMax > 0 ? Math.min(1, consumed / targetMax) : 0;
+  const hasTargets = targetMax > 0;
+  const targetMid = hasTargets ? Math.round((targetMin + targetMax) / 2) : 0;
+  const pct = hasTargets ? Math.min(1, consumed / targetMax) : 0;
 
   return (
     <View style={{ paddingTop: insets.top + 8, paddingHorizontal: SPACING.xl }}>
@@ -87,7 +88,7 @@ export function HeroSection({
           borderWidth: 0.5, borderColor: colors.border,
         }}>
           <Ionicons name="cloud-offline-outline" size={14} color={colors.textMuted} />
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Cevrimdisi - kayitlarin senkronize edilecek</Text>
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Çevrimdışı — kayıtların senkronize edilecek</Text>
         </View>
       )}
 
@@ -101,21 +102,33 @@ export function HeroSection({
         alignItems: 'center',
         marginBottom: SPACING.md,
       }}>
-        <CircularProgress
-          progress={pct}
-          size={HERO.RING_SIZE}
-          strokeWidth={HERO.RING_STROKE}
-          color={METRIC_COLORS.calories}
-          value={consumed}
-          label={`/ ${targetMid} kcal`}
-        />
-
-        {/* Macro bars */}
-        <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xl, width: '100%' }}>
-          <MacroBar label="Protein" value={protein} target={proteinTarget} color={METRIC_COLORS.protein} />
-          <MacroBar label="Karbonhidrat" value={carbs} target={carbsTarget} color={METRIC_COLORS.carbs} />
-          <MacroBar label="Yag" value={fat} target={fatTarget} color={METRIC_COLORS.fat} />
-        </View>
+        {hasTargets ? (
+          <>
+            <CircularProgress
+              progress={pct}
+              size={HERO.RING_SIZE}
+              strokeWidth={HERO.RING_STROKE}
+              color={METRIC_COLORS.calories}
+              value={consumed}
+              label={`/ ${targetMid} kcal`}
+            />
+            <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xl, width: '100%' }}>
+              <MacroBar label="Protein" value={protein} target={proteinTarget} color={METRIC_COLORS.protein} />
+              <MacroBar label="Karbonhidrat" value={carbs} target={carbsTarget} color={METRIC_COLORS.carbs} />
+              <MacroBar label="Yağ" value={fat} target={fatTarget} color={METRIC_COLORS.fat} />
+            </View>
+          </>
+        ) : (
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.xxl }}>
+            <Ionicons name="nutrition-outline" size={36} color={colors.textMuted} />
+            <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: SPACING.md, textAlign: 'center' }}>
+              Henüz hedef belirlenmedi
+            </Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+              Koçuna hedeflerini anlat
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* IF Timer */}

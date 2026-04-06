@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { MealOptionCard } from '@/components/plan/MealOptionCard';
 
 const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Kahvalti', lunch: 'Ogle', dinner: 'Aksam', snack: 'Atistirmalik',
+  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Atıştırmalık',
 };
 const MEAL_COLORS: Record<string, string> = {
   breakfast: '#1D9E75', lunch: '#EF9F27', dinner: '#D85A30', snack: '#7F77DD',
@@ -107,7 +107,7 @@ export default function DietPlanScreen() {
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: SPACING.md }}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Diyet Plani</Text>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Diyet Planı</Text>
         </View>
 
         {/* Current Plan */}
@@ -130,7 +130,7 @@ export default function DietPlanScreen() {
               marginBottom: SPACING.md, borderWidth: 0.5, borderColor: colors.border,
             }}>
               <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.md }}>
-                Gunluk hedefler
+                Günlük hedefler
               </Text>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 {[
@@ -169,7 +169,7 @@ export default function DietPlanScreen() {
                 marginBottom: SPACING.md, borderWidth: 0.5, borderColor: colors.border,
               }}>
                 <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
-                  Atistirma stratejisi
+                  Atıştırma stratejisi
                 </Text>
                 <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>{currentPlan.snack_strategy}</Text>
               </View>
@@ -178,7 +178,7 @@ export default function DietPlanScreen() {
             {/* Status */}
             {currentPlan.status === 'approved' && (
               <View style={{ backgroundColor: colors.primary + '18', borderRadius: RADIUS.pill, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl, alignSelf: 'center', marginBottom: SPACING.md }}>
-                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '500' }}>Plan onaylandi</Text>
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '500' }}>Plan onaylandı</Text>
               </View>
             )}
           </>
@@ -187,11 +187,11 @@ export default function DietPlanScreen() {
             backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl,
             alignItems: 'center', borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.md,
           }}>
-            <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>Henuz plan olusturulmamis</Text>
+            <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>Henüz plan oluşturulmamış</Text>
             <Button
-              title="Plan olustur"
+              title="Plan oluştur"
               variant="outline"
-              onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugunku diyet planini olustur' } })}
+              onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugünkü diyet planını oluştur' } })}
             />
           </View>
         )}
@@ -202,7 +202,7 @@ export default function DietPlanScreen() {
           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACING.md }}
         >
           <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            Gecmis planlar ({pastPlans.length})
+            Geçmiş planlar ({pastPlans.length})
           </Text>
           <Ionicons name={showHistory ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
         </TouchableOpacity>
@@ -215,12 +215,12 @@ export default function DietPlanScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ color: colors.text, fontSize: 13, fontWeight: '500' }}>{p.date}</Text>
               <Text style={{ color: p.status === 'approved' ? colors.primary : colors.textMuted, fontSize: 11 }}>
-                {p.status === 'approved' ? 'Onaylandi' : p.status === 'rejected' ? 'Reddedildi' : 'Taslak'}
+                {p.status === 'approved' ? 'Onaylandı' : p.status === 'rejected' ? 'Reddedildi' : 'Taslak'}
               </Text>
             </View>
             <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
               {p.calorie_target_min}-{p.calorie_target_max} kcal
-              {p.meal_suggestions ? ` \u00b7 ${p.meal_suggestions.length} ogun` : ''}
+              {p.meal_suggestions ? ` \u00b7 ${p.meal_suggestions.length} öğün` : ''}
             </Text>
           </View>
         ))}

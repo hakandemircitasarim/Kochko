@@ -21,18 +21,23 @@ function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
 
 function FABButton() {
   return (
-    <TouchableOpacity
-      style={styles.fab}
-      onPress={() => router.push('/log')}
-      activeOpacity={0.8}
-    >
-      <Ionicons name="add" size={28} color="#FFFFFF" />
-    </TouchableOpacity>
+    <View style={styles.fabContainer}>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/log')}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="add" size={28} color="#FFFFFF" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 export default function TabLayout() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const isWeb = Platform.OS === 'web';
+  const tabBarHeight = isWeb ? 60 : 84;
+  const tabBarPaddingBottom = isWeb ? 6 : 28;
 
   return (
     <Tabs screenOptions={{
@@ -40,9 +45,9 @@ export default function TabLayout() {
         backgroundColor: colors.tabBar,
         borderTopColor: colors.tabBarBorder,
         borderTopWidth: 0.5,
-        height: Platform.OS === 'web' ? 64 : 84,
-        paddingBottom: Platform.OS === 'web' ? 8 : 28,
-        paddingTop: 8,
+        height: tabBarHeight,
+        paddingBottom: tabBarPaddingBottom,
+        paddingTop: 6,
         elevation: 0,
       },
       tabBarActiveTintColor: TEAL,
@@ -59,10 +64,9 @@ export default function TabLayout() {
         tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
       }} />
       <Tabs.Screen name="chat" options={{
-        title: 'Koc',
+        title: 'Koç',
         tabBarIcon: ({ focused }) => <TabIcon name="chatbubble-ellipses" focused={focused} />,
       }} />
-      {/* Center FAB — placeholder tab that opens modal */}
       <Tabs.Screen name="plan" options={{
         title: '',
         tabBarIcon: () => null,
@@ -81,13 +85,18 @@ export default function TabLayout() {
 }
 
 const styles = StyleSheet.create({
+  fabContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: TEAL,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -20,
+    marginTop: -16,
   },
 });

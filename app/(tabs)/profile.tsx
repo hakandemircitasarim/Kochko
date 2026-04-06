@@ -19,7 +19,7 @@ import { SPACING, RADIUS } from '@/lib/constants';
 
 const GOAL_LABELS: Record<string, string> = {
   lose_weight: 'Kilo Ver', gain_weight: 'Kilo Al', gain_muscle: 'Kas Kazan',
-  health: 'Saglikli Yasam', maintain: 'Koruma', conditioning: 'Kondisyon',
+  health: 'Sağlıklı Yaşam', maintain: 'Koruma', conditioning: 'Kondisyon',
 };
 
 export default function ProfileScreen() {
@@ -39,7 +39,7 @@ export default function ProfileScreen() {
       .then(({ data }) => { if (data) setGoal(data as typeof goal); });
   }, [user?.id]);
 
-  const displayName = (profile?.display_name as string) || user?.email?.split('@')[0] || 'Kullanici';
+  const displayName = (profile?.display_name as string) || user?.email?.split('@')[0] || 'Kullanıcı';
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
@@ -55,7 +55,7 @@ export default function ProfileScreen() {
         </View>
         <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{displayName}</Text>
         <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
-          {streak > 0 ? `${streak} gundur Kochko'da` : ''}
+          {streak > 0 ? `${streak} gündür Kochko'da` : ''}
         </Text>
         {streak > 0 && <View style={{ marginTop: SPACING.sm }}><StreakBadge days={streak} /></View>}
       </View>
@@ -71,7 +71,7 @@ export default function ProfileScreen() {
       <SectionTitle label="Hedefler" colors={colors} />
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
         <MenuRow icon="flag-outline" color={colors.primary} label={goal ? `${GOAL_LABELS[goal.goal_type] ?? goal.goal_type}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
-        <MenuRow icon="barbell-outline" color={colors.purple} label="Guc hedefi" onPress={() => router.push('/settings/goals')} colors={colors} />
+        <MenuRow icon="barbell-outline" color={colors.purple} label="Güç hedefi" onPress={() => router.push('/settings/goals')} colors={colors} />
         <MenuRow icon="moon-outline" color={colors.purple} label="Uyku hedefi" onPress={() => router.push('/settings/goals')} colors={colors} last />
       </View>
 
@@ -79,22 +79,22 @@ export default function ProfileScreen() {
       <SectionTitle label="Ayarlar" colors={colors} />
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
         <MenuRow icon="notifications-outline" color={colors.carbs} label="Bildirim tercihleri" onPress={() => router.push('/settings/notifications')} colors={colors} />
-        <MenuRow icon="chatbubble-outline" color={colors.primary} label="Koc iletisim tonu" value={(profile?.coach_tone as string) ?? 'Dengeli'} onPress={() => router.push('/settings/coach-tone')} colors={colors} />
-        <MenuRow icon="timer-outline" color={colors.purple} label="IF penceresi" value={profile?.if_eating_start ? `${profile.if_eating_start}-${profile.if_eating_end}` : 'Kapali'} onPress={() => router.push('/settings/if-settings')} colors={colors} />
-        <MenuRow icon="time-outline" color={colors.textSecondary} label="Gun siniri" value={`${(profile?.day_boundary_hour as number) ?? 4}:00`} onPress={() => router.push('/settings/day-boundary')} colors={colors} />
+        <MenuRow icon="chatbubble-outline" color={colors.primary} label="Koç iletişim tonu" value={{ balanced: 'Dengeli', strict: 'Sıkı', friendly: 'Arkadaşça', motivating: 'Motive edici' }[(profile?.coach_tone as string) ?? 'balanced'] ?? (profile?.coach_tone as string) ?? 'Dengeli'} onPress={() => router.push('/settings/coach-tone')} colors={colors} />
+        <MenuRow icon="timer-outline" color={colors.purple} label="IF penceresi" value={profile?.if_eating_start ? `${profile.if_eating_start}-${profile.if_eating_end}` : 'Kapalı'} onPress={() => router.push('/settings/if-settings')} colors={colors} />
+        <MenuRow icon="time-outline" color={colors.textSecondary} label="Gün sınırı" value={`${(profile?.day_boundary_hour as number) ?? 4}:00`} onPress={() => router.push('/settings/day-boundary')} colors={colors} />
         <MenuRow icon="restaurant-outline" color={colors.fat} label="Alerjenler" value={(profile?.food_allergies as string) || 'Yok'} onPress={() => router.push('/settings/food-preferences')} colors={colors} />
-        <MenuRow icon="calendar-outline" color={colors.pink} label="Donemsel durum" value={(profile?.periodic_state as string) ?? 'Normal'} onPress={() => router.push('/settings/periodic-state')} colors={colors} last />
+        <MenuRow icon="calendar-outline" color={colors.pink} label="Dönemsel durum" value={(profile?.periodic_state as string) ?? 'Normal'} onPress={() => router.push('/settings/periodic-state')} colors={colors} last />
       </View>
 
       {/* 5.6 Data & Privacy section */}
       <SectionTitle label="Veri & gizlilik" colors={colors} />
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
-        <MenuRow icon="eye-outline" color={colors.purple} label="AI hakkimda ne biliyor?" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
-        <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi disa aktar" onPress={() => router.push('/settings/export-data')} colors={colors} />
-        <MenuRow icon="create-outline" color={colors.primary} label="Profil duzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
-        <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tum ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} />
-        <MenuRow icon="trash-outline" color={colors.error} label="Hesabi sil" onPress={() => Alert.alert('Hesap Silme', 'Bu islem geri alinamaz. Emin misin?', [
-          { text: 'Iptal' },
+        <MenuRow icon="eye-outline" color={colors.purple} label="AI hakkımda ne biliyor?" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
+        <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi dışa aktar" onPress={() => router.push('/settings/export-data')} colors={colors} />
+        <MenuRow icon="create-outline" color={colors.primary} label="Profil düzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
+        <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tüm ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} />
+        <MenuRow icon="trash-outline" color={colors.error} label="Hesabı sil" onPress={() => Alert.alert('Hesap Silme', 'Bu işlem geri alınamaz. Emin misin?', [
+          { text: 'İptal' },
           { text: 'Sil', style: 'destructive', onPress: () => {} },
         ])} colors={colors} last />
       </View>
@@ -123,10 +123,10 @@ export default function ProfileScreen() {
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, paddingVertical: SPACING.xl }}
         activeOpacity={0.7}
-        onPress={() => Alert.alert('Cikis', 'Emin misin?', [{ text: 'Iptal' }, { text: 'Cikis', style: 'destructive', onPress: signOut }])}
+        onPress={() => Alert.alert('Çıkış', 'Emin misin?', [{ text: 'İptal' }, { text: 'Çıkış', style: 'destructive', onPress: signOut }])}
       >
         <Ionicons name="log-out-outline" size={16} color={colors.textMuted} />
-        <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '500' }}>Cikis Yap</Text>
+        <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '500' }}>Çıkış Yap</Text>
       </TouchableOpacity>
     </ScrollView>
   );

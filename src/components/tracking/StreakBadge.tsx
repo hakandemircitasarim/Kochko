@@ -24,7 +24,7 @@ export function StreakBadge({ days }: Props) {
       backgroundColor: '#1D9E75',
     }}>
       <Ionicons name="flame" size={14} color="#fff" />
-      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{days} gun</Text>
+      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>{days} gün</Text>
     </View>
   );
 }

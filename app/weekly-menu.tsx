@@ -12,7 +12,7 @@ import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
 
 const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Kahvalti', lunch: 'Ogle', dinner: 'Aksam', snack: 'Ara',
+  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Ara',
 };
 const MEAL_COLORS: Record<string, string> = {
   breakfast: '#1D9E75', lunch: '#EF9F27', dinner: '#D85A30', snack: '#7F77DD',
@@ -62,7 +62,7 @@ export default function WeeklyMenuScreen() {
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: SPACING.md }}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Haftalik Menu</Text>
+          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Haftalık Menü</Text>
         </View>
 
         {!plan ? (
@@ -72,19 +72,19 @@ export default function WeeklyMenuScreen() {
           }}>
             <Ionicons name="calendar-outline" size={48} color={colors.textMuted} />
             <Text style={{ color: colors.textMuted, fontSize: 14, marginTop: SPACING.md, textAlign: 'center' }}>
-              Henuz haftalik plan olusturulmamis
+              Henüz haftalık plan oluşturulmamış
             </Text>
             <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center' }}>
-              Kocuna "haftalik menu planla" de
+              Koçuna 'haftalık menü planla' de
             </Text>
             <TouchableOpacity
-              onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bu hafta icin haftalik menu planla' } })}
+              onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bu hafta için haftalık menü planla' } })}
               style={{
                 marginTop: SPACING.xxl, borderWidth: 0.5, borderColor: colors.primary,
                 borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
               }}
             >
-              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan olustur</Text>
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan oluştur</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -127,7 +127,7 @@ export default function WeeklyMenuScreen() {
                 {plan.plan_data[selectedDay].isTrainingDay && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, padding: SPACING.lg, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
                     <Ionicons name="barbell" size={14} color={METRIC_COLORS.workout} />
-                    <Text style={{ color: METRIC_COLORS.workout, fontSize: 11, fontWeight: '500' }}>Antrenman gunu</Text>
+                    <Text style={{ color: METRIC_COLORS.workout, fontSize: 11, fontWeight: '500' }}>Antrenman günü</Text>
                   </View>
                 )}
                 {plan.plan_data[selectedDay].meals.map((meal, idx) => {
@@ -157,7 +157,7 @@ export default function WeeklyMenuScreen() {
                 {/* Daily total */}
                 <View style={{ padding: SPACING.lg, borderTopWidth: 0.5, borderTopColor: colors.border }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Gun toplami</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>Gün toplamı</Text>
                     <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
                       {plan.plan_data[selectedDay].meals.reduce((s, m) => s + m.suggestion.calories, 0)} kcal
                     </Text>
@@ -179,7 +179,7 @@ export default function WeeklyMenuScreen() {
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                     <Ionicons name="cart-outline" size={18} color={colors.primary} />
-                    <Text style={{ color: colors.text, fontSize: 13, fontWeight: '500' }}>Alisveris listesi</Text>
+                    <Text style={{ color: colors.text, fontSize: 13, fontWeight: '500' }}>Alışveriş listesi</Text>
                   </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                     <Text style={{ color: colors.textMuted, fontSize: 12 }}>

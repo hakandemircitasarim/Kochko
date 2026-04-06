@@ -62,16 +62,16 @@ export function StatStrip({ waterLiters, waterTarget, steps, onAddWater }: Props
     <View style={{ flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.xl }}>
       <StatCard
         icon="water"
-        value={`${waterLiters.toFixed(1)} / ${waterTarget.toFixed(1)}L`}
+        value={waterTarget > 0 ? `${waterLiters.toFixed(1)} / ${waterTarget.toFixed(1)}L` : `${waterLiters.toFixed(1)}L`}
         label="Su"
         color={METRIC_COLORS.water}
-        progress={waterPct}
+        progress={waterTarget > 0 ? waterPct : undefined}
         onPress={onAddWater}
       />
       <StatCard
         icon="footsteps"
         value={steps ? steps.toLocaleString('tr-TR') : '-'}
-        label="Adim"
+        label="Adım"
         color={METRIC_COLORS.steps}
       />
     </View>

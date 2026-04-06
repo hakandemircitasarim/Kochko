@@ -35,7 +35,7 @@ const MEAL_COLORS: Record<string, string> = {
   breakfast: '#1D9E75', lunch: '#EF9F27', dinner: '#D85A30', snack: '#7F77DD',
 };
 const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Kahvalti', lunch: 'Ogle', dinner: 'Aksam', snack: 'Ara ogun',
+  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Ara öğün',
 };
 
 export default function TodayScreen() {
@@ -104,8 +104,8 @@ export default function TodayScreen() {
     const newTotal = waterLiters + WATER_INCREMENT;
     const warning = checkSuspiciousInput('water', newTotal);
     if (warning) {
-      Alert.alert('Dogrulama', warning, [
-        { text: 'Iptal', style: 'cancel' },
+      Alert.alert('Doğrulama', warning, [
+        { text: 'İptal', style: 'cancel' },
         { text: 'Evet', onPress: () => addWater(user.id, WATER_INCREMENT, dayBoundaryHour) },
       ]);
     } else {
@@ -154,7 +154,7 @@ export default function TodayScreen() {
             }}>
               <Ionicons name="scale" size={24} color={METRIC_COLORS.weight} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Tarti Kaydi</Text>
+            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Tartı Kaydı</Text>
             <TextInput
               style={{
                 backgroundColor: colors.inputBg, borderRadius: RADIUS.md,
@@ -175,7 +175,7 @@ export default function TodayScreen() {
                 onPress={() => setShowWeightInput(false)}
                 style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
               >
-                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>Iptal</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>İptal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleWeightSave}
@@ -234,10 +234,10 @@ export default function TodayScreen() {
             }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
                 <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Haftalik butce
+                  Haftalık bütçe
                 </Text>
                 <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
-                  {weeklyRemaining.toLocaleString('tr-TR')} kaldi
+                  {weeklyRemaining.toLocaleString('tr-TR')} kaldı
                 </Text>
               </View>
               <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: SPACING.sm }}>
@@ -281,7 +281,7 @@ export default function TodayScreen() {
                     color: isActive ? colors.background : colors.textSecondary,
                     fontSize: 13, fontWeight: '500',
                   }}>
-                    {tab === 'diet' ? 'Diyet Plani' : 'Spor Programi'}
+                    {tab === 'diet' ? 'Diyet Planı' : 'Spor Programı'}
                   </Text>
                 </TouchableOpacity>
               );
@@ -328,22 +328,22 @@ export default function TodayScreen() {
                     onPress={() => router.push('/diet-plan')}
                     style={{ padding: SPACING.lg, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border }}
                   >
-                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detayli goster</Text>
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detaylı göster</Text>
                   </TouchableOpacity>
                 </>
               ) : (
                 <View style={{ padding: SPACING.xxl, alignItems: 'center' }}>
                   <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>
-                    Henuz plan olusturulmamis
+                    Henüz plan oluşturulmamış
                   </Text>
                   <TouchableOpacity
-                    onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugunku diyet planini olustur' } })}
+                    onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugünkü diyet planımı oluştur' } })}
                     style={{
                       borderWidth: 0.5, borderColor: colors.primary, borderRadius: RADIUS.sm,
                       paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
                     }}
                   >
-                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan olustur</Text>
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan oluştur</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -384,23 +384,23 @@ export default function TodayScreen() {
                     onPress={() => router.push('/workout-plan')}
                     style={{ padding: SPACING.lg, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border }}
                   >
-                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detayli goster</Text>
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detaylı göster</Text>
                   </TouchableOpacity>
                 </>
               ) : (
                 <View style={{ padding: SPACING.xxl, alignItems: 'center' }}>
                   <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>
-                    {plan?.plan_type === 'rest' ? 'Bugun dinlenme gunu' : 'Antrenman planlanmamis'}
+                    {plan?.plan_type === 'rest' ? 'Bugün dinlenme günü' : 'Antrenman planlanmamış'}
                   </Text>
                   {plan?.plan_type !== 'rest' && (
                     <TouchableOpacity
-                      onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugunku antrenman planini olustur' } })}
+                      onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugünkü antrenman planımı oluştur' } })}
                       style={{
                         borderWidth: 0.5, borderColor: colors.primary, borderRadius: RADIUS.sm,
                         paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
                       }}
                     >
-                      <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan olustur</Text>
+                      <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan oluştur</Text>
                     </TouchableOpacity>
                   )}
                 </View>
