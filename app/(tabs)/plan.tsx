@@ -1,7 +1,7 @@
 /**
  * Plan Screen - displays today's AI-generated plan.
  * Uses MealOptionCard, WorkoutCard, DayTargets components.
- * Spec 7.1: Günlük beslenme + antrenman planı
+ * Spec 7.1: Gunluk beslenme + antrenman plani
  */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
@@ -14,10 +14,11 @@ import { Card } from '@/components/ui/Card';
 import { MealOptionCard } from '@/components/plan/MealOptionCard';
 import { WorkoutCard } from '@/components/plan/WorkoutCard';
 import { DayTargets } from '@/components/plan/DayTargets';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
 
 const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Kahvalti', lunch: 'Ogle', dinner: 'Aksam', snack: 'Atistirmalik',
+  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Atıştırmalık',
 };
 
 interface MealOption {
@@ -51,6 +52,7 @@ interface PlanData {
 }
 
 export default function PlanScreen() {
+  const { colors, isDark } = useTheme();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const { totalCalories, totalProtein, totalCarbs, totalFat, waterLiters } = useDashboardStore();
@@ -58,6 +60,13 @@ export default function PlanScreen() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const today = new Date().toISOString().split('T')[0];
+
+  const cardStyle = {
+    borderRadius: RADIUS.xxl,
+    ...(isDark
+      ? { borderWidth: 1, borderColor: colors.border }
+      : CARD_SHADOW),
+  };
 
   useEffect(() => {
     if (!user?.id) return;
@@ -78,13 +87,13 @@ export default function PlanScreen() {
 
   const handleReject = () => {
     Alert.alert(
-      'Neden begenmedin?',
-      'Yeni plan olusturmak icin bir sebep sec:',
+      'Neden beğenmedin?',
+      'Yeni plan oluşturmak için bir sebep seç:',
       [
-        { text: 'Ogunler', onPress: () => handleRejectWithReason('Ogun secimleri begenilmedi, farkli yemek onerileri isteniyor') },
-        { text: 'Porsiyonlar', onPress: () => handleRejectWithReason('Porsiyon miktarlari uygun degil, farkli miktarlar isteniyor') },
-        { text: 'Genel yaklasim', onPress: () => handleRejectWithReason('Genel plan yaklasimi begenilmedi, tamamen farkli bir yaklasim isteniyor') },
-        { text: 'Vazgec', style: 'cancel' },
+        { text: 'Öğünler', onPress: () => handleRejectWithReason('Öğün seçimleri beğenilmedi, farklı yemek önerileri isteniyor') },
+        { text: 'Porsiyonlar', onPress: () => handleRejectWithReason('Porsiyon miktarları uygun değil, farklı miktarlar isteniyor') },
+        { text: 'Genel yaklaşım', onPress: () => handleRejectWithReason('Genel plan yaklaşımı beğenilmedi, tamamen farklı bir yaklaşım isteniyor') },
+        { text: 'Vazgeç', style: 'cancel' },
       ]
     );
   };
@@ -128,33 +137,51 @@ export default function PlanScreen() {
   };
 
   if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
-    </View>;
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
   if (!plan) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md }}>
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Gunun Plani</Text>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md }}>
+        <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.text, marginBottom: SPACING.lg }}>
+          Günün Planı
+        </Text>
         <Card>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg, lineHeight: 20 }}>
-            Henuz plan olusturulmamis. Kocundan plan istemek icin butona bas veya sohbette "bugunku planımı olustur" yaz.
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg, lineHeight: 20 }}>
+            Henüz plan oluşturulmamış. Koçundan plan istemek için butona bas veya sohbette "bugünkü planımı oluştur" yaz.
           </Text>
-          <Button title="Plan Olustur" onPress={() => handleGenerate()} loading={generating} size="lg" />
+          <Button title="Plan Oluştur" onPress={() => handleGenerate()} loading={generating} size="lg" />
         </Card>
       </ScrollView>
     );
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Gunun Plani</Text>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+      <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.text, marginBottom: SPACING.sm }}>
+        Günün Planı
+      </Text>
 
-      {/* Focus message */}
-      <Card>
-        <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600', lineHeight: 26 }}>{plan.focus_message}</Text>
-      </Card>
+      {/* Focus message with left accent border */}
+      <View style={{
+        backgroundColor: colors.card,
+        borderRadius: RADIUS.xxl,
+        borderLeftWidth: 4,
+        borderLeftColor: colors.primary,
+        padding: SPACING.md,
+        marginBottom: SPACING.md,
+        ...(isDark
+          ? { borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4, borderLeftColor: colors.primary }
+          : CARD_SHADOW),
+      }}>
+        <Text style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '600', lineHeight: 26 }}>
+          {plan.focus_message}
+        </Text>
+      </View>
 
       {/* Day targets with live progress */}
       <View style={{ marginBottom: SPACING.md }}>
@@ -174,11 +201,17 @@ export default function PlanScreen() {
         />
       </View>
 
-      {/* Weekly budget context */}
+      {/* Weekly budget context with subtle background */}
       {plan.weekly_budget_remaining != null && (
-        <View style={{ backgroundColor: COLORS.surfaceLight, borderRadius: 8, padding: SPACING.sm, marginBottom: SPACING.md }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center' }}>
-            Haftalik butceden kalan: {plan.weekly_budget_remaining} kcal
+        <View style={{
+          backgroundColor: colors.surfaceLight,
+          borderRadius: RADIUS.xxl,
+          padding: SPACING.sm,
+          marginBottom: SPACING.md,
+          ...(isDark ? { borderWidth: 1, borderColor: colors.border } : {}),
+        }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textAlign: 'center' }}>
+            Haftalık bütçeden kalan: {plan.weekly_budget_remaining} kcal
           </Text>
         </View>
       )}
@@ -186,7 +219,7 @@ export default function PlanScreen() {
       {/* Meal suggestions with MealOptionCard */}
       {plan.meal_suggestions?.map((meal, idx) => (
         <View key={idx} style={{ marginBottom: SPACING.md }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>
+          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>
             {MEAL_LABELS[meal.meal_type] ?? meal.meal_type}
           </Text>
           {meal.options?.map((opt, oidx) => (
@@ -197,14 +230,14 @@ export default function PlanScreen() {
 
       {/* Snack strategy */}
       {plan.snack_strategy && (
-        <Card title="Atistirma Stratejisi">
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>{plan.snack_strategy}</Text>
+        <Card title="Atıştırma Stratejisi">
+          <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22 }}>{plan.snack_strategy}</Text>
         </Card>
       )}
 
       {/* Workout with WorkoutCard */}
       <View style={{ marginBottom: SPACING.md }}>
-        <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>Antrenman</Text>
+        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>Antrenman</Text>
         <WorkoutCard plan={plan.workout_plan} />
       </View>
 
@@ -212,7 +245,7 @@ export default function PlanScreen() {
       {plan.status === 'draft' && (
         <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
           <View style={{ flex: 1 }}>
-            <Button title="Plani Onayla" onPress={async () => {
+            <Button title="Planı Onayla" onPress={async () => {
               if (!user?.id) return;
               await supabase.from('daily_plans')
                 .update({ status: 'approved', approved_at: new Date().toISOString() })
@@ -221,22 +254,40 @@ export default function PlanScreen() {
             }} />
           </View>
           <View style={{ flex: 1 }}>
-            <Button title="Begenmem" variant="outline" onPress={handleReject} loading={generating} />
+            <Button title="Beğenmem" variant="outline" onPress={handleReject} loading={generating} />
           </View>
         </View>
       )}
       {plan.status === 'rejected' && (
-        <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.sm, marginBottom: SPACING.md }}>
-          <Text style={{ color: COLORS.warning, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>Plan reddedildi, yeni plan olusturuluyor...</Text>
+        <View style={{
+          backgroundColor: colors.warningLight,
+          borderRadius: RADIUS.full,
+          paddingVertical: SPACING.sm,
+          paddingHorizontal: SPACING.md,
+          marginBottom: SPACING.md,
+          alignSelf: 'center',
+        }}>
+          <Text style={{ color: colors.warning, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>
+            Plan reddedildi, yeni plan oluşturuluyor...
+          </Text>
         </View>
       )}
       {plan.status === 'approved' && (
-        <View style={{ backgroundColor: COLORS.success + '20', borderRadius: 8, padding: SPACING.sm, marginBottom: SPACING.md }}>
-          <Text style={{ color: COLORS.success, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>Plan onaylandi</Text>
+        <View style={{
+          backgroundColor: colors.successLight,
+          borderRadius: RADIUS.full,
+          paddingVertical: SPACING.sm,
+          paddingHorizontal: SPACING.md,
+          marginBottom: SPACING.md,
+          alignSelf: 'center',
+        }}>
+          <Text style={{ color: colors.success, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>
+            Plan onaylandı
+          </Text>
         </View>
       )}
 
-      <Button title="Plani Yeniden Olustur" variant="outline" onPress={() => handleGenerate()} loading={generating} />
+      <Button title="Planı Yeniden Oluştur" variant="outline" onPress={() => handleGenerate()} loading={generating} />
     </ScrollView>
   );
 }

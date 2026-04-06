@@ -10,6 +10,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
+import { updateLayer2 } from '../shared/memory.ts';
 
 // Goal-type-based compliance weights (Spec 8.1 deepening)
 function getComplianceWeights(goalType: string): Record<string, number> {
@@ -241,6 +242,18 @@ Metrikler: ${metrics.map((m: { date: string; weight_kg: number | null; sleep_hou
     plan_revision: report.plan_revision,
     generated_at: new Date().toISOString(),
   }, { onConflict: 'user_id,week_start' });
+
+  // Sync weekly learning to Layer 2 (ai_summary) for long-term memory
+  if (report.ai_learning_note) {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const { data: existingSummary } = await supabaseAdmin
+      .from('ai_summary').select('coaching_notes').eq('user_id', userId).maybeSingle();
+    const existingNotes = (existingSummary?.coaching_notes as string) ?? '';
+    const weeklyNote = `[${dateStr} haftalık] ${report.ai_learning_note}`;
+    updateLayer2(userId, {
+      coaching_notes: existingNotes ? `${existingNotes}\n${weeklyNote}` : weeklyNote,
+    }).catch((err: Error) => console.error('[ai-report] Layer2 weekly learning write failed:', err.message));
+  }
 
   return respond(report);
 }

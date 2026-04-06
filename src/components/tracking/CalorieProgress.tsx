@@ -1,9 +1,11 @@
 /**
- * Calorie Progress Ring / Bar
- * Shows today's calorie consumption vs target with visual progress.
+ * Calorie Progress - Modern circular ring design
+ * Shows today's calorie consumption vs target with visual progress ring + macro bars.
  */
 import { View, Text } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, CARD_SHADOW, RADIUS } from '@/lib/constants';
+import { CircularProgress } from '@/components/ui/CircularProgress';
 
 interface Props {
   consumed: number;
@@ -11,48 +13,65 @@ interface Props {
   targetMax: number;
   protein: number;
   proteinTarget: number;
+  carbs?: number;
+  carbsTarget?: number;
+  fat?: number;
+  fatTarget?: number;
 }
 
-export function CalorieProgress({ consumed, targetMin, targetMax, protein, proteinTarget }: Props) {
-  const targetMid = Math.round((targetMin + targetMax) / 2);
-  const pct = targetMax > 0 ? Math.min(1.3, consumed / targetMax) : 0;
-  const remaining = targetMid - consumed;
-  const inRange = consumed >= targetMin && consumed <= targetMax;
-  const over = consumed > targetMax;
+function MacroBar({ label, value, target, color, colors }: { label: string; value: number; target: number; color: string; colors: any }) {
+  const pct = target > 0 ? Math.min(1, value / target) : 0;
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontSize: FONT.xs, color: colors.textMuted, fontWeight: '500' }}>{label}</Text>
+        <Text style={{ fontSize: FONT.xs, color: colors.text, fontWeight: '700' }}>{value}g</Text>
+      </View>
+      <View style={{ height: 6, backgroundColor: colors.surfaceLight, borderRadius: 3, overflow: 'hidden' }}>
+        <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 3 }} />
+      </View>
+    </View>
+  );
+}
 
-  const barColor = over ? COLORS.error : inRange ? COLORS.success : COLORS.primary;
-  const proteinPct = proteinTarget > 0 ? Math.min(1, protein / proteinTarget) : 0;
+export function CalorieProgress({ consumed, targetMin, targetMax, protein, proteinTarget, carbs = 0, carbsTarget = 200, fat = 0, fatTarget = 70 }: Props) {
+  const { colors, isDark } = useTheme();
+  const targetMid = Math.round((targetMin + targetMax) / 2);
+  const remaining = targetMid - consumed;
+  const pct = targetMax > 0 ? Math.min(1, consumed / targetMax) : 0;
+  const over = consumed > targetMax;
+  const inRange = consumed >= targetMin && consumed <= targetMax;
+
+  const ringColor = over ? colors.error : inRange ? colors.success : '#6C63FF';
 
   return (
-    <View style={{ backgroundColor: COLORS.card, borderRadius: 16, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border }}>
-      {/* Calorie main display */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
-        <View>
-          <Text style={{ color: barColor, fontSize: FONT.xxl, fontWeight: '800' }}>{consumed}</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>/ {targetMin}-{targetMax} kcal</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ color: remaining >= 0 ? COLORS.text : COLORS.error, fontSize: FONT.lg, fontWeight: '700' }}>
-            {remaining >= 0 ? remaining : `+${Math.abs(remaining)}`}
-          </Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{remaining >= 0 ? 'kalan' : 'fazla'}</Text>
-        </View>
+    <View style={{
+      backgroundColor: colors.card,
+      borderRadius: RADIUS.xxl,
+      padding: SPACING.md,
+      borderLeftWidth: 4,
+      borderLeftColor: ringColor,
+      ...(isDark ? { borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4, borderLeftColor: ringColor } : CARD_SHADOW),
+    }}>
+      {/* Ring */}
+      <View style={{ alignItems: 'center', marginBottom: SPACING.sm }}>
+        <CircularProgress
+          progress={pct}
+          size={150}
+          strokeWidth={12}
+          color={ringColor}
+          value={remaining >= 0 ? remaining : `+${Math.abs(remaining)}`}
+          unit="kcal"
+          label={remaining >= 0 ? 'kalan' : 'fazla'}
+          sublabel={`${consumed} / ${targetMin}-${targetMax}`}
+        />
       </View>
 
-      {/* Calorie bar */}
-      <View style={{ height: 10, backgroundColor: COLORS.surfaceLight, borderRadius: 5, overflow: 'hidden', marginBottom: SPACING.md }}>
-        <View style={{ height: '100%', width: `${Math.min(100, pct * 100)}%`, backgroundColor: barColor, borderRadius: 5 }} />
-        {/* Target zone markers */}
-        <View style={{ position: 'absolute', left: `${(targetMin / targetMax) * 100}%`, top: 0, bottom: 0, width: 1, backgroundColor: COLORS.textMuted }} />
-      </View>
-
-      {/* Protein bar */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>Protein</Text>
-        <Text style={{ color: COLORS.text, fontSize: FONT.xs, fontWeight: '600' }}>{protein}g / {proteinTarget}g</Text>
-      </View>
-      <View style={{ height: 6, backgroundColor: COLORS.surfaceLight, borderRadius: 3, overflow: 'hidden' }}>
-        <View style={{ height: '100%', width: `${proteinPct * 100}%`, backgroundColor: proteinPct >= 1 ? COLORS.success : COLORS.primary, borderRadius: 3 }} />
+      {/* Macro bars */}
+      <View style={{ flexDirection: 'row', gap: SPACING.md }}>
+        <MacroBar label="Protein" value={protein} target={proteinTarget} color="#667EEA" colors={colors} />
+        <MacroBar label="Karb" value={carbs} target={carbsTarget} color="#F59E0B" colors={colors} />
+        <MacroBar label="Yag" value={fat} target={fatTarget} color="#EF4444" colors={colors} />
       </View>
     </View>
   );
