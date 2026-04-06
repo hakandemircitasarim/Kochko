@@ -83,6 +83,10 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="log" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="diet-plan" options={{ headerShown: false }} />
+        <Stack.Screen name="workout-plan" options={{ headerShown: false }} />
+        <Stack.Screen name="recipe" options={{ headerShown: false }} />
+        <Stack.Screen name="weekly-menu" options={{ headerShown: false }} />
         <Stack.Screen name="reports" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
       </Stack>

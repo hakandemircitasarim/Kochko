@@ -42,7 +42,7 @@ export function CalorieProgress({ consumed, targetMin, targetMax, protein, prote
   const over = consumed > targetMax;
   const inRange = consumed >= targetMin && consumed <= targetMax;
 
-  const ringColor = over ? colors.error : inRange ? colors.success : '#6C63FF';
+  const ringColor = over ? colors.error : inRange ? colors.success : '#1D9E75';
 
   return (
     <View style={{

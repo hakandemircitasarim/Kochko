@@ -7,8 +7,8 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { useTheme, GRADIENTS } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
 
 interface Props {
   currentHours: number | null;
@@ -74,20 +74,20 @@ export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, on
         onPress={() => setExpanded(true)}
         activeOpacity={0.7}
         style={{
-          flex: 1, backgroundColor: colors.card, borderRadius: RADIUS.xxl,
+          flex: 1, backgroundColor: colors.card, borderRadius: RADIUS.md,
           padding: SPACING.sm + 2, alignItems: 'center',
-          ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+          borderWidth: 0.5, borderColor: colors.border,
         }}
       >
         <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>Uyku</Text>
         <View style={{
           width: 40, height: 40, borderRadius: 12,
-          backgroundColor: GRADIENTS.sleep[0] + '20',
+          backgroundColor: METRIC_COLORS.sleep + '20',
           alignItems: 'center', justifyContent: 'center', marginBottom: 4,
         }}>
-          <Ionicons name="moon" size={20} color={GRADIENTS.sleep[0]} />
+          <Ionicons name="moon" size={20} color={METRIC_COLORS.sleep} />
         </View>
-        <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: currentHours ? GRADIENTS.sleep[0] : colors.textMuted }}>
+        <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: currentHours ? METRIC_COLORS.sleep : colors.textMuted }}>
           {currentHours ? `${currentHours}h` : '-'}
         </Text>
       </TouchableOpacity>
@@ -101,21 +101,21 @@ export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, on
         activeOpacity={0.7}
         style={{
           backgroundColor: colors.card,
-          borderRadius: RADIUS.xxl,
+          borderRadius: RADIUS.md,
           padding: SPACING.md,
           flexDirection: 'row',
           justifyContent: 'space-between',
           alignItems: 'center',
-          ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+          borderWidth: 0.5, borderColor: colors.border,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
           <View style={{
             width: 44, height: 44, borderRadius: 14,
-            backgroundColor: GRADIENTS.sleep[0] + '20',
+            backgroundColor: METRIC_COLORS.sleep + '20',
             alignItems: 'center', justifyContent: 'center',
           }}>
-            <Ionicons name="moon" size={22} color={GRADIENTS.sleep[0]} />
+            <Ionicons name="moon" size={22} color={METRIC_COLORS.sleep} />
           </View>
           <View>
             <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Uyku</Text>
@@ -125,7 +125,7 @@ export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, on
           </View>
         </View>
         {currentHours ? (
-          <Text style={{ color: GRADIENTS.sleep[0], fontSize: FONT.xl, fontWeight: '800' }}>{currentHours}h</Text>
+          <Text style={{ color: METRIC_COLORS.sleep, fontSize: FONT.xl, fontWeight: '800' }}>{currentHours}h</Text>
         ) : (
           <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
         )}
@@ -136,18 +136,18 @@ export function SleepInput({ currentHours, currentSleepTime, currentWakeTime, on
   return (
     <View style={{
       backgroundColor: colors.card,
-      borderRadius: RADIUS.xxl,
+      borderRadius: RADIUS.md,
       padding: SPACING.md,
-      ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+      borderWidth: 0.5, borderColor: colors.border,
     }}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
         <View style={{
           width: 44, height: 44, borderRadius: 14,
-          backgroundColor: GRADIENTS.sleep[0] + '20',
+          backgroundColor: METRIC_COLORS.sleep + '20',
           alignItems: 'center', justifyContent: 'center',
         }}>
-          <Ionicons name="moon" size={22} color={GRADIENTS.sleep[0]} />
+          <Ionicons name="moon" size={22} color={METRIC_COLORS.sleep} />
         </View>
         <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700' }}>Uyku Kaydı</Text>
       </View>

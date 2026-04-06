@@ -1,17 +1,14 @@
 /**
- * Dashboard Hero Section
- * Full-width gradient background with calorie ring, header, macro pills.
- * This is the visual anchor of the dashboard.
+ * Dashboard Hero Section — flat dark design
+ * Full-width card with calorie ring, header, macro bars.
  */
 import React from 'react';
 import { View, Text } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme, HERO_GRADIENTS, GRADIENTS } from '@/lib/theme';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
-import { IFTimerWidget } from '@/components/tracking/IFTimerWidget';
 import { SPACING, FONT, RADIUS, HERO } from '@/lib/constants';
 
 interface Props {
@@ -19,70 +16,64 @@ interface Props {
   streak: number;
   isOffline: boolean;
   focusMessage: string | null;
-  // Calories
   consumed: number;
   targetMin: number;
   targetMax: number;
   protein: number;
   proteinTarget: number;
   carbs: number;
+  carbsTarget?: number;
   fat: number;
-  // IF
+  fatTarget?: number;
   ifActive: boolean;
   ifEatingStart: string | null;
   ifEatingEnd: string | null;
+  userName?: string;
 }
 
-function MacroPill({ label, value, dotColor }: { label: string; value: string; dotColor: string }) {
+function MacroBar({ label, value, target, color }: { label: string; value: number; target: number; color: string }) {
+  const { colors } = useTheme();
+  const pct = target > 0 ? Math.min(1, value / target) : 0;
+
   return (
-    <View style={{
-      flexDirection: 'row', alignItems: 'center', gap: 6,
-      backgroundColor: 'rgba(255,255,255,0.15)',
-      borderRadius: RADIUS.full,
-      paddingVertical: 6, paddingHorizontal: 12,
-    }}>
-      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor }} />
-      <Text style={{ color: '#FFFFFF', fontSize: FONT.xs, fontWeight: '700' }}>{value}</Text>
-      <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10 }}>{label}</Text>
+    <View style={{ flex: 1 }}>
+      <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: 4 }}>{label}</Text>
+      <View style={{ height: 6, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
+        <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 3 }} />
+      </View>
+      <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 3 }}>{value}/{target}g</Text>
     </View>
   );
 }
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 6) return 'Iyi geceler';
+  if (hour < 12) return 'Gunaydin';
+  if (hour < 18) return 'Iyi gunler';
+  return 'Iyi aksamlar';
+}
+
 export function HeroSection({
   today, streak, isOffline, focusMessage,
-  consumed, targetMin, targetMax, protein, proteinTarget, carbs, fat,
-  ifActive, ifEatingStart, ifEatingEnd,
+  consumed, targetMin, targetMax, protein, proteinTarget,
+  carbs, carbsTarget = 200, fat, fatTarget = 65,
+  ifActive, ifEatingStart, ifEatingEnd, userName,
 }: Props) {
-  const { isDark } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   const targetMid = Math.round((targetMin + targetMax) / 2);
-  const remaining = targetMid - consumed;
   const pct = targetMax > 0 ? Math.min(1, consumed / targetMax) : 0;
-  const over = consumed > targetMax;
-  const inRange = consumed >= targetMin && consumed <= targetMax;
-  const ringColor = over ? '#FF6B6B' : inRange ? '#4ADE80' : '#FFFFFF';
 
   return (
-    <LinearGradient
-      colors={isDark ? HERO_GRADIENTS.dark : HERO_GRADIENTS.light}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{
-        paddingTop: insets.top + 8,
-        paddingHorizontal: SPACING.lg,
-        paddingBottom: SPACING.xl + 12,
-        borderBottomLeftRadius: 32,
-        borderBottomRightRadius: 32,
-      }}
-    >
-      {/* Header Row */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
+    <View style={{ paddingTop: insets.top + 8, paddingHorizontal: SPACING.xl }}>
+      {/* Header: Greeting + Streak */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
         <View>
-          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: '#FFFFFF', letterSpacing: -1 }}>
-            Bugün
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>
+            {getGreeting()}{userName ? `, ${userName}` : ''}
           </Text>
-          <Text style={{ fontSize: FONT.sm, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>{today}</Text>
         </View>
         <StreakBadge days={streak} />
       </View>
@@ -91,63 +82,73 @@ export function HeroSection({
       {isOffline && (
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-          backgroundColor: 'rgba(0,0,0,0.25)', borderRadius: RADIUS.md,
-          padding: SPACING.sm, marginBottom: SPACING.sm,
+          backgroundColor: colors.cardElevated, borderRadius: RADIUS.md,
+          padding: SPACING.sm, marginBottom: SPACING.md,
+          borderWidth: 0.5, borderColor: colors.border,
         }}>
-          <Ionicons name="cloud-offline-outline" size={14} color="#fff" />
-          <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '500' }}>Çevrimdışı - kayıtların senkronize edilecek</Text>
+          <Ionicons name="cloud-offline-outline" size={14} color={colors.textMuted} />
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Cevrimdisi - kayitlarin senkronize edilecek</Text>
+        </View>
+      )}
+
+      {/* Calorie Ring Card */}
+      <View style={{
+        backgroundColor: colors.card,
+        borderRadius: RADIUS.md,
+        borderWidth: 0.5,
+        borderColor: colors.border,
+        padding: SPACING.lg,
+        alignItems: 'center',
+        marginBottom: SPACING.md,
+      }}>
+        <CircularProgress
+          progress={pct}
+          size={HERO.RING_SIZE}
+          strokeWidth={HERO.RING_STROKE}
+          color={METRIC_COLORS.calories}
+          value={consumed}
+          label={`/ ${targetMid} kcal`}
+        />
+
+        {/* Macro bars */}
+        <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xl, width: '100%' }}>
+          <MacroBar label="Protein" value={protein} target={proteinTarget} color={METRIC_COLORS.protein} />
+          <MacroBar label="Karbonhidrat" value={carbs} target={carbsTarget} color={METRIC_COLORS.carbs} />
+          <MacroBar label="Yag" value={fat} target={fatTarget} color={METRIC_COLORS.fat} />
+        </View>
+      </View>
+
+      {/* IF Timer */}
+      {ifActive && ifEatingStart && ifEatingEnd && (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
+          backgroundColor: colors.card, borderRadius: RADIUS.pill,
+          paddingVertical: 6, paddingHorizontal: SPACING.xl, marginBottom: SPACING.md,
+          borderWidth: 0.5, borderColor: colors.border,
+          alignSelf: 'center',
+        }}>
+          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary }} />
+          <Text style={{ color: colors.text, fontSize: 11, fontWeight: '500' }}>
+            {ifEatingStart} - {ifEatingEnd}
+          </Text>
         </View>
       )}
 
       {/* Focus Message */}
       {focusMessage && (
         <View style={{
-          flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm,
-          backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.lg,
-          padding: SPACING.sm + 2, marginBottom: SPACING.sm,
-          borderLeftWidth: 3, borderLeftColor: 'rgba(255,255,255,0.4)',
+          backgroundColor: colors.card,
+          borderRadius: RADIUS.md,
+          padding: SPACING.lg,
+          marginBottom: SPACING.md,
+          borderWidth: 0.5,
+          borderColor: colors.border,
+          borderLeftWidth: 3,
+          borderLeftColor: colors.primary,
         }}>
-          <Ionicons name="bulb" size={16} color="rgba(255,255,255,0.9)" />
-          <Text style={{ flex: 1, color: 'rgba(255,255,255,0.9)', fontSize: FONT.xs, lineHeight: 18 }}>{focusMessage}</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 20 }}>{focusMessage}</Text>
         </View>
       )}
-
-      {/* IF Timer (compact on hero) */}
-      {ifActive && ifEatingStart && ifEatingEnd && (
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
-          backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.full,
-          paddingVertical: 6, paddingHorizontal: SPACING.md, marginBottom: SPACING.sm,
-          alignSelf: 'center',
-        }}>
-          <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#4ADE80' }} />
-          <Text style={{ color: '#FFFFFF', fontSize: FONT.xs, fontWeight: '600' }}>
-            {ifEatingStart} - {ifEatingEnd}
-          </Text>
-        </View>
-      )}
-
-      {/* Calorie Ring */}
-      <View style={{ alignItems: 'center', marginVertical: SPACING.md }}>
-        <CircularProgress
-          variant="hero"
-          progress={pct}
-          size={HERO.RING_SIZE}
-          strokeWidth={HERO.RING_STROKE}
-          color={ringColor}
-          value={remaining >= 0 ? remaining : `+${Math.abs(remaining)}`}
-          unit="kcal"
-          label={remaining >= 0 ? 'kalan' : 'fazla'}
-          sublabel={`${consumed} / ${targetMin}-${targetMax}`}
-        />
-      </View>
-
-      {/* Macro Pills */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: SPACING.sm }}>
-        <MacroPill label="P" value={`${protein}g`} dotColor={GRADIENTS.protein[0]} />
-        <MacroPill label="K" value={`${carbs}g`} dotColor={GRADIENTS.carbs[0]} />
-        <MacroPill label="Y" value={`${fat}g`} dotColor={GRADIENTS.fat[0]} />
-      </View>
-    </LinearGradient>
+    </View>
   );
 }

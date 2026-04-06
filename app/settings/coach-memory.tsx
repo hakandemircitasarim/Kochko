@@ -101,8 +101,8 @@ export default function CoachMemoryScreen() {
 
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
-        <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: '#A855F720', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="eye" size={24} color="#A855F7" />
+        <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: '#7F77DD20', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="eye" size={24} color="#7F77DD" />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>Koçun Seni Nasıl Tanıyor</Text>
@@ -126,7 +126,7 @@ export default function CoachMemoryScreen() {
       {/* General Summary */}
       {data?.general ? (
         <View style={cardStyle}>
-          <SectionHeader icon="document-text" color="#6C63FF" title="Genel Özet" colors={colors} />
+          <SectionHeader icon="document-text" color="#1D9E75" title="Genel Özet" colors={colors} />
           <TouchableOpacity onLongPress={() => handleDeleteNote('general_summary', data.general)}>
             <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.general}</Text>
           </TouchableOpacity>
@@ -195,7 +195,7 @@ export default function CoachMemoryScreen() {
       {/* Strength Records */}
       {data && Object.keys(data.strengthRecords).length > 0 && (
         <View style={cardStyle}>
-          <SectionHeader icon="barbell" color="#6C63FF" title="Güç Kayıtları" colors={colors} />
+          <SectionHeader icon="barbell" color="#1D9E75" title="Güç Kayıtları" colors={colors} />
           {Object.entries(data.strengthRecords).map(([exercise, record]) => {
             const r = record as { last_weight?: number; last_reps?: number; '1rm'?: number };
             return (

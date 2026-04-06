@@ -18,7 +18,7 @@ const MOODS = [
   { score: 2, emoji: '\uD83D\uDE1F', label: 'Kötü', color: '#F97316' },
   { score: 3, emoji: '\uD83D\uDE10', label: 'Normal', color: '#F59E0B' },
   { score: 4, emoji: '\uD83D\uDE0A', label: 'İyi', color: '#22C55E' },
-  { score: 5, emoji: '\uD83E\uDD29', label: 'Harika', color: '#6C63FF' },
+  { score: 5, emoji: '\uD83E\uDD29', label: 'Harika', color: '#1D9E75' },
 ];
 
 export function MoodTracker({ currentScore, onSelect, compact }: Props) {

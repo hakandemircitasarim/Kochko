@@ -6,9 +6,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useTheme, GRADIENTS } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
 
 interface UserState {
   mealsLogged: number;
@@ -28,7 +27,7 @@ interface ActionItem {
   icon: string;
   title: string;
   subtitle: string;
-  gradient: [string, string];
+  color: string;
   priority: number;
 }
 
@@ -77,7 +76,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
     icon: time === 'morning' ? 'sunny' : time === 'evening' || time === 'night' ? 'moon' : 'restaurant',
     title: getMealLabel(time),
     subtitle: userState.mealsLogged === 0 ? 'Bugün henüz bir şey kaydetmedin' : `${userState.mealsLogged} öğün kaydedildi`,
-    gradient: GRADIENTS.calories,
+    color: METRIC_COLORS.calories,
     priority: userState.mealsLogged === 0 ? 0 : mealPriority,
   });
 
@@ -88,7 +87,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
       icon: 'calendar',
       title: 'Günün planını gör',
       subtitle: 'Koçunun hazırladığı plan',
-      gradient: GRADIENTS.primary,
+      color: METRIC_COLORS.calories,
       priority: userState.mealsLogged === 0 ? 1 : 4,
     });
   }
@@ -101,7 +100,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
         icon: 'barbell',
         title: userState.hasPlan ? 'Antrenmanını gör' : 'Antrenman kaydet',
         subtitle: userState.hasPlan ? 'Koçunun planladığı antrenman' : 'Ne yaptığını kaydet',
-        gradient: ['#6C63FF', '#A78BFA'] as [string, string],
+        color: METRIC_COLORS.workout,
         priority: (time === 'afternoon' || time === 'evening') ? 2 : 5,
       });
     }
@@ -114,7 +113,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
       icon: 'scale',
       title: 'Tartıl',
       subtitle: time === 'morning' ? 'Sabah tartılmak en doğru sonuç verir' : 'Bugün henüz tartılmadın',
-      gradient: GRADIENTS.weight,
+      color: METRIC_COLORS.weight,
       priority: time === 'morning' ? 0 : 5,
     });
   }
@@ -128,7 +127,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
       icon: 'water',
       title: 'Su iç (+0.25L)',
       subtitle: pct > 0 ? `%${pct} tamamlandı, ${remaining}L kaldı` : `Günlük ${userState.waterTarget}L hedefin var`,
-      gradient: GRADIENTS.water,
+      color: METRIC_COLORS.water,
       priority: pct < 30 ? 2 : 6,
     });
   }
@@ -140,7 +139,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
       icon: 'moon',
       title: 'Uykunu kaydet',
       subtitle: 'Dün gece nasıl uyudun?',
-      gradient: GRADIENTS.sleep,
+      color: METRIC_COLORS.sleep,
       priority: time === 'morning' ? 1 : 4,
     });
   }
@@ -152,7 +151,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
       icon: 'barcode',
       title: 'Barkod tarat',
       subtitle: 'Paketli ürünü hızlıca kaydet',
-      gradient: ['#64748B', '#94A3B8'] as [string, string],
+      color: '#64748B',
       priority: 7,
     });
   }
@@ -164,7 +163,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
       icon: 'help-circle',
       title: 'Şunu yesem ne olur?',
       subtitle: 'Yemeden önce etkisini gör',
-      gradient: GRADIENTS.mood,
+      color: METRIC_COLORS.mood,
       priority: 6,
     });
   }
@@ -176,7 +175,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
       icon: 'happy',
       title: 'Nasıl hissediyorsun?',
       subtitle: 'Günlük ruh halini kaydet',
-      gradient: GRADIENTS.mood,
+      color: METRIC_COLORS.mood,
       priority: 7,
     });
   }
@@ -187,7 +186,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
     icon: 'flash',
     title: 'Hızlı kayıt',
     subtitle: 'Bir şeyi hızlıca not et',
-    gradient: GRADIENTS.success,
+    color: METRIC_COLORS.calories,
     priority: 8,
   });
 
@@ -197,7 +196,7 @@ function generateActions(userState: UserState, time: ReturnType<typeof getTimeOf
     icon: 'chatbubble-ellipses',
     title: 'Koçunla konuş',
     subtitle: 'Bir şey sor, tavsiye al',
-    gradient: ['#6C63FF', '#A78BFA'] as [string, string],
+    color: METRIC_COLORS.workout,
     priority: 9,
   });
 
@@ -241,22 +240,29 @@ export function SmartActions({
 
       {/* Hero action */}
       {heroAction && (
-        <TouchableOpacity onPress={() => handlePress(heroAction.id)} activeOpacity={0.8} style={{ marginBottom: SPACING.sm }}>
-          <LinearGradient
-            colors={heroAction.gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0.8 }}
-            style={{ borderRadius: RADIUS.xxl, padding: SPACING.md, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}
-          >
-            <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name={heroAction.icon as any} size={26} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#fff', fontSize: FONT.lg, fontWeight: '800' }}>{heroAction.title}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: FONT.xs, marginTop: 2 }}>{heroAction.subtitle}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.6)" />
-          </LinearGradient>
+        <TouchableOpacity
+          onPress={() => handlePress(heroAction.id)}
+          activeOpacity={0.8}
+          style={{
+            marginBottom: SPACING.sm,
+            backgroundColor: heroAction.color + '18',
+            borderRadius: RADIUS.md,
+            padding: SPACING.md,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: SPACING.md,
+            borderWidth: 0.5,
+            borderColor: heroAction.color + '30',
+          }}
+        >
+          <View style={{ width: 44, height: 44, borderRadius: RADIUS.sm, backgroundColor: heroAction.color + '25', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name={heroAction.icon as any} size={22} color={heroAction.color} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600' }}>{heroAction.title}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>{heroAction.subtitle}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </TouchableOpacity>
       )}
 
@@ -270,16 +276,16 @@ export function SmartActions({
               activeOpacity={0.7}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-                backgroundColor: colors.card, borderRadius: RADIUS.xl,
+                backgroundColor: colors.card, borderRadius: RADIUS.md,
                 paddingVertical: SPACING.sm + 2, paddingHorizontal: SPACING.md,
-                ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+                borderWidth: 0.5, borderColor: colors.border,
               }}
             >
-              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: action.gradient[0] + '15', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name={action.icon as any} size={18} color={action.gradient[0]} />
+              <View style={{ width: 36, height: 36, borderRadius: RADIUS.sm, backgroundColor: action.color + '15', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name={action.icon as any} size={18} color={action.color} />
               </View>
               <View style={{ maxWidth: 140 }}>
-                <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }} numberOfLines={1}>{action.title}</Text>
+                <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }} numberOfLines={1}>{action.title}</Text>
                 <Text style={{ color: colors.textMuted, fontSize: 10 }} numberOfLines={1}>{action.subtitle}</Text>
               </View>
             </TouchableOpacity>

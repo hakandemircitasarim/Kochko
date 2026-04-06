@@ -1,29 +1,29 @@
+/**
+ * Profil Sekmesi — flat dark design
+ * Avatar, fiziksel bilgiler, hedefler, ayarlar, veri & gizlilik
+ */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { loadInsights } from '@/services/chat.service';
 import { calculateStreak } from '@/services/achievements.service';
 import { supabase } from '@/lib/supabase';
-import { Card } from '@/components/ui/Card';
-import { ProfileCompletion } from '@/components/profile/ProfileCompletion';
 import { InsightCard } from '@/components/profile/InsightCard';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
-import { useTheme, GRADIENTS } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
+import { SPACING, RADIUS } from '@/lib/constants';
 
 const GOAL_LABELS: Record<string, string> = {
   lose_weight: 'Kilo Ver', gain_weight: 'Kilo Al', gain_muscle: 'Kas Kazan',
-  health: 'Sağlıklı Yaşam', maintain: 'Koruma', conditioning: 'Kondisyon',
+  health: 'Saglikli Yasam', maintain: 'Koruma', conditioning: 'Kondisyon',
 };
-const ACTIVITY_LABELS: Record<string, string> = { sedentary: 'Hareketsiz', light: 'Hafif', moderate: 'Orta', active: 'Aktif', very_active: 'Çok Aktif' };
 
 export default function ProfileScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { user, signOut } = useAuthStore();
   const { profile, fetch: fetchProfile } = useProfileStore();
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
@@ -39,96 +39,65 @@ export default function ProfileScreen() {
       .then(({ data }) => { if (data) setGoal(data as typeof goal); });
   }, [user?.id]);
 
-  const age = profile?.birth_year ? new Date().getFullYear() - (profile.birth_year as number) : null;
-  const completionResult = useProfileStore.getState().getCompletion();
-  const cardShadow = isDark ? {} : CARD_SHADOW;
+  const displayName = (profile?.display_name as string) || user?.email?.split('@')[0] || 'Kullanici';
+  const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + 20 }}
-    >
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: SPACING.lg,
-      }}>
-        <View>
-          <Text style={{
-            fontSize: FONT.hero,
-            fontWeight: '800',
-            color: colors.text,
-            letterSpacing: -0.5,
-          }}>
-            Merhaba!
-          </Text>
-          <Text style={{ fontSize: FONT.sm, color: colors.textMuted, marginTop: 2 }}>
-            {user?.email}
-          </Text>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 120 }}>
+      {/* 5.1 User card */}
+      <View style={{ alignItems: 'center', marginBottom: SPACING.xxl, marginTop: 40 }}>
+        <View style={{
+          width: 64, height: 64, borderRadius: 32,
+          backgroundColor: colors.primary + '20',
+          alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
+        }}>
+          <Text style={{ color: colors.primary, fontSize: 22, fontWeight: '700' }}>{initials}</Text>
         </View>
-        {streak > 0 && <StreakBadge days={streak} />}
+        <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{displayName}</Text>
+        <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+          {streak > 0 ? `${streak} gundur Kochko'da` : ''}
+        </Text>
+        {streak > 0 && <View style={{ marginTop: SPACING.sm }}><StreakBadge days={streak} /></View>}
       </View>
 
-      {/* Stats Row */}
-      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
-        <StatBox icon="resize-outline" tintColor="#6C63FF" label="Boy" value={profile?.height_cm ? `${profile.height_cm}` : '-'} unit="cm" />
-        <StatBox icon="scale-outline" tintColor="#EC4899" label="Kilo" value={profile?.weight_kg ? `${profile.weight_kg}` : '-'} unit="kg" />
-        <StatBox icon="calendar-outline" tintColor="#F59E0B" label="Yas" value={age ? `${age}` : '-'} unit="" />
-        <StatBox icon="walk-outline" tintColor="#22C55E" label="Aktivite" value={ACTIVITY_LABELS[String(profile?.activity_level)] ?? '-'} unit="" small />
+      {/* 5.2 Physical info — 3 column grid */}
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xxl }}>
+        <InfoBox label="Mevcut" value={profile?.weight_kg ? `${profile.weight_kg}` : '-'} unit="kg" colors={colors} />
+        <InfoBox label="Hedef" value={goal?.target_weight_kg ? `${goal.target_weight_kg}` : '-'} unit="kg" colors={colors} />
+        <InfoBox label="Hedef" value={goal ? GOAL_LABELS[goal.goal_type] ?? goal.goal_type : '-'} unit="" colors={colors} small />
       </View>
 
-      {/* Goal Card */}
-      {goal && (
-        <Card accent={colors.primary}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-            <LinearGradient
-              colors={GRADIENTS.primary}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons name="flag" size={20} color="#fff" />
-            </LinearGradient>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: FONT.md, fontWeight: '700', color: colors.text }}>
-                {GOAL_LABELS[goal.goal_type] ?? goal.goal_type}
-              </Text>
-              {goal.target_weight_kg && (
-                <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: 2 }}>
-                  Hedef: {goal.target_weight_kg} kg
-                </Text>
-              )}
-            </View>
-            <TouchableOpacity onPress={() => router.push('/settings/goals')} style={{ padding: SPACING.sm }}>
-              <Ionicons name="pencil" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </Card>
-      )}
+      {/* 5.4 Goals section */}
+      <SectionTitle label="Hedefler" colors={colors} />
+      <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
+        <MenuRow icon="flag-outline" color={colors.primary} label={goal ? `${GOAL_LABELS[goal.goal_type] ?? goal.goal_type}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
+        <MenuRow icon="barbell-outline" color={colors.purple} label="Guc hedefi" onPress={() => router.push('/settings/goals')} colors={colors} />
+        <MenuRow icon="moon-outline" color={colors.purple} label="Uyku hedefi" onPress={() => router.push('/settings/goals')} colors={colors} last />
+      </View>
 
-      {/* Profile Completion */}
-      <ProfileCompletion
-        percentage={completionResult?.percentage ?? 0}
-        lowestCategory={completionResult?.lowestCategory ?? undefined}
-        onPress={() => router.push('/settings/edit-profile')}
-      />
+      {/* 5.5 Settings section */}
+      <SectionTitle label="Ayarlar" colors={colors} />
+      <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
+        <MenuRow icon="notifications-outline" color={colors.carbs} label="Bildirim tercihleri" onPress={() => router.push('/settings/notifications')} colors={colors} />
+        <MenuRow icon="chatbubble-outline" color={colors.primary} label="Koc iletisim tonu" value={(profile?.coach_tone as string) ?? 'Dengeli'} onPress={() => router.push('/settings/coach-tone')} colors={colors} />
+        <MenuRow icon="timer-outline" color={colors.purple} label="IF penceresi" value={profile?.if_eating_start ? `${profile.if_eating_start}-${profile.if_eating_end}` : 'Kapali'} onPress={() => router.push('/settings/if-settings')} colors={colors} />
+        <MenuRow icon="time-outline" color={colors.textSecondary} label="Gun siniri" value={`${(profile?.day_boundary_hour as number) ?? 4}:00`} onPress={() => router.push('/settings/day-boundary')} colors={colors} />
+        <MenuRow icon="restaurant-outline" color={colors.fat} label="Alerjenler" value={(profile?.food_allergies as string) || 'Yok'} onPress={() => router.push('/settings/food-preferences')} colors={colors} />
+        <MenuRow icon="calendar-outline" color={colors.pink} label="Donemsel durum" value={(profile?.periodic_state as string) ?? 'Normal'} onPress={() => router.push('/settings/periodic-state')} colors={colors} last />
+      </View>
 
-      {/* Calorie Info */}
-      {profile?.calorie_range_rest_min && (
-        <Card title="Günlük Hedefler">
-          <View style={{ flexDirection: 'row', gap: SPACING.md }}>
-            <TargetItem icon="flame" label="Kalori" value={`${profile.calorie_range_rest_min}-${profile.calorie_range_rest_max}`} unit="kcal" color={colors.secondary} />
-            <TargetItem icon="barbell" label="Protein" value={profile.protein_per_kg ? `${Math.round(Number(profile.weight_kg ?? 0) * Number(profile.protein_per_kg))}` : '-'} unit="g" color={colors.primary} />
-            <TargetItem icon="water" label="Su" value={profile.water_target_liters ? `${profile.water_target_liters}` : '-'} unit="L" color={colors.accent} />
-          </View>
-        </Card>
-      )}
+      {/* 5.6 Data & Privacy section */}
+      <SectionTitle label="Veri & gizlilik" colors={colors} />
+      <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
+        <MenuRow icon="eye-outline" color={colors.purple} label="AI hakkimda ne biliyor?" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
+        <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi disa aktar" onPress={() => router.push('/settings/export-data')} colors={colors} />
+        <MenuRow icon="create-outline" color={colors.primary} label="Profil duzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
+        <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tum ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} />
+        <MenuRow icon="trash-outline" color={colors.error} label="Hesabi sil" onPress={() => Alert.alert('Hesap Silme', 'Bu islem geri alinamaz. Emin misin?', [
+          { text: 'Iptal' },
+          { text: 'Sil', style: 'destructive', onPress: () => {} },
+        ])} colors={colors} last />
+      </View>
 
       {/* AI Summary */}
       {summary?.general_summary && (
@@ -150,129 +119,59 @@ export default function ProfileScreen() {
         />
       )}
 
-      {/* Menu Items */}
-      <View style={{
-        backgroundColor: colors.card,
-        borderRadius: RADIUS.xl,
-        overflow: 'hidden',
-        marginBottom: SPACING.lg,
-        ...cardShadow,
-      }}>
-        <MenuItem icon="create-outline" iconColor="#6C63FF" label="Profil Düzenle" onPress={() => router.push('/settings/edit-profile')} />
-        <MenuItem icon="flag-outline" iconColor="#2F80ED" label="Hedef Ayarları" onPress={() => router.push('/settings/goals')} />
-        <MenuItem icon="restaurant-outline" iconColor="#F97316" label="Yemek Tercihleri" onPress={() => router.push('/settings/food-preferences')} />
-        <MenuItem icon="timer-outline" iconColor="#A855F7" label="IF Ayarları" onPress={() => router.push('/settings/if-settings')} />
-        <MenuItem icon="eye-outline" iconColor="#A855F7" label="Koçun Hafızası" onPress={() => router.push('/settings/coach-memory')} />
-        <MenuItem icon="trophy-outline" iconColor="#F59E0B" label="Başarımlar" onPress={() => router.push('/settings/achievements')} />
-        <MenuItem icon="settings-outline" iconColor="#64748B" label="Tüm Ayarlar" onPress={() => router.push('/settings' as never)} last />
-      </View>
-
       {/* Logout */}
       <TouchableOpacity
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: SPACING.xs,
-          paddingVertical: SPACING.md,
-        }}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, paddingVertical: SPACING.xl }}
         activeOpacity={0.7}
-        onPress={() => Alert.alert('Çıkış', 'Emin misin?', [{ text: 'Iptal' }, { text: 'Çıkış', style: 'destructive', onPress: signOut }])}
+        onPress={() => Alert.alert('Cikis', 'Emin misin?', [{ text: 'Iptal' }, { text: 'Cikis', style: 'destructive', onPress: signOut }])}
       >
         <Ionicons name="log-out-outline" size={16} color={colors.textMuted} />
-        <Text style={{ fontSize: FONT.sm, color: colors.textMuted, fontWeight: '500' }}>Çıkış Yap</Text>
+        <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '500' }}>Cikis Yap</Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
-function StatBox({ icon, tintColor, label, value, unit, small }: { icon: string; tintColor?: string; label: string; value: string; unit: string; small?: boolean }) {
-  const { colors, isDark } = useTheme();
-  const tint = tintColor || colors.textMuted;
+function SectionTitle({ label, colors }: { label: string; colors: any }) {
+  return (
+    <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+      {label}
+    </Text>
+  );
+}
 
+function InfoBox({ label, value, unit, colors, small }: { label: string; value: string; unit: string; colors: any; small?: boolean }) {
   return (
     <View style={{
-      flex: 1,
-      backgroundColor: isDark ? colors.card : tint + '08',
-      borderRadius: RADIUS.xl,
-      padding: SPACING.sm + 2,
-      alignItems: 'center',
-      ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+      flex: 1, backgroundColor: colors.cardElevated, borderRadius: RADIUS.md,
+      padding: SPACING.lg, alignItems: 'center',
     }}>
-      <Ionicons
-        name={icon as keyof typeof Ionicons.glyphMap}
-        size={16}
-        color={tint}
-        style={{ marginBottom: 2 }}
-      />
-      <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginBottom: 2 }}>{label}</Text>
-      <Text style={{
-        fontSize: small ? FONT.sm : FONT.xl,
-        fontWeight: '800',
-        color: colors.text,
-      }}>
-        {value}
-      </Text>
-      {unit ? <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 1 }}>{unit}</Text> : null}
+      <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: SPACING.xs }}>{label}</Text>
+      <Text style={{ color: colors.text, fontSize: small ? 13 : 20, fontWeight: '700' }}>{value}</Text>
+      {unit ? <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>{unit}</Text> : null}
     </View>
   );
 }
 
-function TargetItem({ icon, label, value, unit, color }: { icon: string; label: string; value: string; unit: string; color: string }) {
-  const { colors } = useTheme();
-
-  return (
-    <View style={{ flex: 1, alignItems: 'center', gap: 6 }}>
-      <View style={{
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: color + '18',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={18} color={color} />
-      </View>
-      <Text style={{ fontSize: FONT.xs, color: colors.textMuted }}>{label}</Text>
-      <Text style={{ fontSize: FONT.lg, fontWeight: '700', color: colors.text }}>
-        {value} <Text style={{ fontSize: FONT.xs, fontWeight: '400', color: colors.textMuted }}>{unit}</Text>
-      </Text>
-    </View>
-  );
-}
-
-function MenuItem({ icon, iconColor, label, onPress, last }: { icon: string; iconColor?: string; label: string; onPress: () => void; last?: boolean }) {
-  const { colors } = useTheme();
-  const tint = iconColor || colors.primary;
-
+function MenuRow({ icon, color, label, value, onPress, colors, last }: {
+  icon: string; color: string; label: string; value?: string;
+  onPress: () => void; colors: any; last?: boolean;
+}) {
   return (
     <TouchableOpacity
       style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: SPACING.md,
-        paddingHorizontal: SPACING.md,
-        borderBottomWidth: last ? 0 : 0.5,
-        borderBottomColor: colors.divider,
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        padding: SPACING.lg,
+        borderBottomWidth: last ? 0 : 0.5, borderBottomColor: colors.border,
       }}
-      onPress={onPress}
-      activeOpacity={0.6}
+      onPress={onPress} activeOpacity={0.6}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-        <View style={{
-          width: 34,
-          height: 34,
-          borderRadius: RADIUS.sm + 2,
-          backgroundColor: tint + '15',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={18} color={tint} />
-        </View>
-        <Text style={{ fontSize: FONT.md, color: colors.text, fontWeight: '500' }}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 }}>
+        <Ionicons name={icon as any} size={18} color={color} />
+        <Text style={{ color: label.includes('sil') ? colors.error : colors.text, fontSize: 13, fontWeight: '400' }}>{label}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+      {value && <Text style={{ color: colors.textMuted, fontSize: 12, marginRight: SPACING.sm }}>{value}</Text>}
+      <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
     </TouchableOpacity>
   );
 }

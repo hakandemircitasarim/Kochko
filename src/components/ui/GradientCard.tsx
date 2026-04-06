@@ -1,11 +1,11 @@
 /**
- * Gradient Card Component
- * Modern colored card with gradient background for metric displays
+ * GradientCard → FlatCard migration wrapper
+ * Gradients removed — renders flat colored card with accent background
+ * @deprecated Prefer using Card component with style override instead
  */
 import React, { type ReactNode } from 'react';
 import { View, type ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { RADIUS } from '@/lib/constants';
 
 interface Props {
   gradient: [string, string];
@@ -15,22 +15,21 @@ interface Props {
   padding?: number;
 }
 
-export function GradientCard({ gradient, children, style, borderRadius = RADIUS.xl, padding = 16 }: Props) {
+export function GradientCard({ gradient, children, style, borderRadius = RADIUS.md, padding = 14 }: Props) {
   return (
-    <LinearGradient
-      colors={gradient}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
+    <View
       style={[
         {
           borderRadius,
           padding,
-          ...CARD_SHADOW,
+          backgroundColor: gradient[0] + '18',
+          borderWidth: 0.5,
+          borderColor: gradient[0] + '30',
         },
         style,
       ]}
     >
       {children}
-    </LinearGradient>
+    </View>
   );
 }

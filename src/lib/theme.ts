@@ -1,6 +1,6 @@
 /**
  * Theme System
- * Modern fitness app palette with gradient support
+ * Flat dark design with teal accent — no gradients, no shadows, no glow
  */
 import { createContext, useContext } from 'react';
 
@@ -33,86 +33,126 @@ export interface ThemeColors {
   tabBarBorder: string;
   shadow: string;
   progressTrack: string;
+  // Macro colors
+  protein: string;
+  carbs: string;
+  fat: string;
+  // Utility colors
+  purple: string;
+  pink: string;
+  coral: string;
 }
 
 export const DARK_COLORS: ThemeColors = {
-  primary: '#6C63FF',
-  primaryDark: '#5A52E0',
-  primaryLight: '#8B85FF',
-  secondary: '#FF6B6B',
-  accent: '#A855F7',
-  background: '#0F0F1A',
-  surface: '#1A1A2E',
-  surfaceLight: '#252542',
-  card: '#1A1A2E',
-  cardElevated: '#222240',
-  inputBg: '#252542',
-  text: '#F8FAFC',
-  textSecondary: '#CBD5E1',
-  textMuted: '#64748B',
-  success: '#22C55E',
-  successLight: '#052E16',
-  warning: '#F59E0B',
-  warningLight: '#451A03',
-  error: '#EF4444',
-  errorLight: '#450A0A',
-  border: '#2D2D50',
-  divider: '#252542',
-  tabBar: '#0F0F1A',
-  tabBarBorder: '#2D2D50',
+  primary: '#1D9E75',
+  primaryDark: '#17805E',
+  primaryLight: '#1D9E7520',
+  secondary: '#7F77DD',
+  accent: '#7F77DD',
+  background: '#0D0D12',
+  surface: '#1A1A24',
+  surfaceLight: '#22222E',
+  card: '#1A1A24',
+  cardElevated: '#22222E',
+  inputBg: '#1A1A24',
+  text: '#EEEEF0',
+  textSecondary: '#9999A8',
+  textMuted: '#66667A',
+  success: '#1D9E75',
+  successLight: '#1D9E7520',
+  warning: '#EF9F27',
+  warningLight: '#EF9F2720',
+  error: '#E24B4A',
+  errorLight: '#E24B4A20',
+  border: 'rgba(255,255,255,0.08)',
+  divider: 'rgba(255,255,255,0.08)',
+  tabBar: '#0D0D12',
+  tabBarBorder: 'rgba(255,255,255,0.08)',
   shadow: '#000000',
-  progressTrack: '#3A3A5E',
+  progressTrack: 'rgba(255,255,255,0.08)',
+  // Macro colors
+  protein: '#378ADD',
+  carbs: '#EF9F27',
+  fat: '#D85A30',
+  // Utility
+  purple: '#7F77DD',
+  pink: '#D4537E',
+  coral: '#D85A30',
 };
 
 export const LIGHT_COLORS: ThemeColors = {
-  primary: '#6C63FF',
-  primaryDark: '#5A52E0',
-  primaryLight: '#8B85FF',
-  secondary: '#FF6B6B',
-  accent: '#A855F7',
+  primary: '#1D9E75',
+  primaryDark: '#17805E',
+  primaryLight: '#1D9E7520',
+  secondary: '#7F77DD',
+  accent: '#7F77DD',
   background: '#F5F7FA',
   surface: '#FFFFFF',
   surfaceLight: '#F0F2F5',
   card: '#FFFFFF',
   cardElevated: '#FFFFFF',
   inputBg: '#F0F2F5',
-  text: '#1A1A2E',
+  text: '#1A1A24',
   textSecondary: '#5A6478',
   textMuted: '#94A3B8',
-  success: '#16A34A',
-  successLight: '#DCFCE7',
-  warning: '#D97706',
-  warningLight: '#FEF3C7',
-  error: '#DC2626',
-  errorLight: '#FEE2E2',
+  success: '#1D9E75',
+  successLight: '#1D9E7520',
+  warning: '#EF9F27',
+  warningLight: '#EF9F2720',
+  error: '#E24B4A',
+  errorLight: '#E24B4A20',
   border: '#E8ECF0',
   divider: '#F0F2F5',
   tabBar: '#FFFFFF',
   tabBarBorder: '#E8ECF0',
   shadow: '#000000',
   progressTrack: '#D8DCE4',
+  // Macro colors
+  protein: '#378ADD',
+  carbs: '#EF9F27',
+  fat: '#D85A30',
+  // Utility
+  purple: '#7F77DD',
+  pink: '#D4537E',
+  coral: '#D85A30',
 };
 
-/** Gradient pairs for metric cards - same in both themes for vibrancy */
+/** Flat accent colors for metric cards (replaces gradients) */
+export const METRIC_COLORS = {
+  calories: '#1D9E75',
+  protein: '#378ADD',
+  carbs: '#EF9F27',
+  fat: '#D85A30',
+  water: '#378ADD',
+  sleep: '#7F77DD',
+  mood: '#D4537E',
+  steps: '#7F77DD',
+  weight: '#D4537E',
+  streak: '#EF9F27',
+  workout: '#7F77DD',
+  challenge: '#7F77DD',
+} as const;
+
+/** @deprecated Use METRIC_COLORS instead. Kept for backward compat during migration. */
 export const GRADIENTS = {
-  calories: ['#FF6B6B', '#FF8E53'] as [string, string],
-  protein: ['#667EEA', '#764BA2'] as [string, string],
-  water: ['#56CCF2', '#2F80ED'] as [string, string],
-  sleep: ['#A855F7', '#7C3AED'] as [string, string],
-  mood: ['#F97316', '#FACC15'] as [string, string],
-  steps: ['#22C55E', '#16A34A'] as [string, string],
-  weight: ['#EC4899', '#F43F5E'] as [string, string],
-  streak: ['#F97316', '#EF4444'] as [string, string],
-  carbs: ['#F59E0B', '#FBBF24'] as [string, string],
-  fat: ['#EF4444', '#F87171'] as [string, string],
-  primary: ['#6C63FF', '#8B85FF'] as [string, string],
-  success: ['#22C55E', '#16A34A'] as [string, string],
+  calories: ['#1D9E75', '#1D9E75'] as [string, string],
+  protein: ['#378ADD', '#378ADD'] as [string, string],
+  water: ['#378ADD', '#378ADD'] as [string, string],
+  sleep: ['#7F77DD', '#7F77DD'] as [string, string],
+  mood: ['#D4537E', '#D4537E'] as [string, string],
+  steps: ['#7F77DD', '#7F77DD'] as [string, string],
+  weight: ['#D4537E', '#D4537E'] as [string, string],
+  streak: ['#EF9F27', '#EF9F27'] as [string, string],
+  carbs: ['#EF9F27', '#EF9F27'] as [string, string],
+  fat: ['#D85A30', '#D85A30'] as [string, string],
+  primary: ['#1D9E75', '#1D9E75'] as [string, string],
+  success: ['#1D9E75', '#1D9E75'] as [string, string],
 };
 
-/** Hero section gradient (3-stop for richer effect) */
+/** @deprecated Gradients removed — flat design only */
 export const HERO_GRADIENTS = {
-  light: ['#6C63FF', '#8B85FF', '#A78BFA'] as [string, string, string],
-  dark: ['#4338CA', '#6C63FF', '#8B85FF'] as [string, string, string],
+  light: ['#1D9E75', '#1D9E75', '#1D9E75'] as [string, string, string],
+  dark: ['#1D9E75', '#1D9E75', '#1D9E75'] as [string, string, string],
 };
 
 export interface ThemeContextType {
@@ -123,9 +163,9 @@ export interface ThemeContextType {
 }
 
 export const ThemeContext = createContext<ThemeContextType>({
-  mode: 'light',
-  colors: LIGHT_COLORS,
-  isDark: false,
+  mode: 'dark',
+  colors: DARK_COLORS,
+  isDark: true,
   setMode: () => {},
 });
 

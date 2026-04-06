@@ -4,7 +4,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme, GRADIENTS } from '@/lib/theme';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
 
 interface MealEntry {
@@ -67,7 +67,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
       icon: MEAL_ICONS[m.meal_type] ?? 'restaurant-outline',
       text: m.raw_input,
       detail: `${m.calories} kcal`,
-      color: GRADIENTS.calories[0],
+      color: METRIC_COLORS.calories,
     })),
     ...workouts.map(w => ({
       type: 'workout' as const,
@@ -76,7 +76,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
       icon: 'barbell-outline',
       text: w.raw_input,
       detail: w.duration_min > 0 ? `${w.duration_min} dk` : '',
-      color: GRADIENTS.primary[0],
+      color: METRIC_COLORS.workout,
     })),
   ];
 

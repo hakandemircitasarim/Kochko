@@ -12,8 +12,8 @@ import { getTimelineData } from '@/services/goals.service';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { useTheme, GRADIENTS } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
 
 const chartWidth = Dimensions.get('window').width - SPACING.md * 4;
 
@@ -39,7 +39,7 @@ export default function ProgressScreen() {
     backgroundGradientFrom: colors.card,
     backgroundGradientTo: colors.card,
     decimalPlaces: 1,
-    color: (o = 1) => `rgba(108, 99, 255, ${o})`,
+    color: (o = 1) => `rgba(29, 158, 117, ${o})`,
     labelColor: () => colors.textSecondary,
     propsForDots: { r: '3', strokeWidth: '1.5', stroke: colors.primary },
     propsForBackgroundLines: { stroke: colors.border },
@@ -148,14 +148,14 @@ export default function ProgressScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
-      <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.text, marginBottom: SPACING.md, letterSpacing: -1 }}>İlerleme</Text>
+      <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
 
       {/* Summary */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md, gap: SPACING.sm }}>
         <SummaryBox icon="scale-outline" iconColor="#EC4899" value={latestW ? `${latestW}` : '-'} label="kg" delta={wChange} />
         <SummaryBox icon="checkmark-circle-outline" iconColor="#22C55E" value={avgComp != null ? `${avgComp}` : '-'} label="uyum" />
         <SummaryBox icon="water-outline" iconColor="#56CCF2" value={avgWater ?? '-'} label="L/gun" />
-        <SummaryBox icon="moon-outline" iconColor="#A855F7" value={avgSleep ?? '-'} label="sa/gun" />
+        <SummaryBox icon="moon-outline" iconColor="#7F77DD" value={avgSleep ?? '-'} label="sa/gun" />
       </View>
 
       {/* Weight Chart */}
@@ -254,9 +254,7 @@ export default function ProgressScreen() {
                   borderRadius: RADIUS.xl,
                   padding: SPACING.md,
                   marginBottom: SPACING.sm,
-                  borderWidth: 2,
-                  borderColor: colors.primary,
-                  ...(isDark ? {} : CARD_SHADOW),
+                  borderWidth: 0.5, borderColor: colors.border,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
@@ -277,9 +275,7 @@ export default function ProgressScreen() {
                     backgroundColor: colors.card,
                     borderRadius: RADIUS.xl,
                     padding: SPACING.md,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    ...(isDark ? {} : CARD_SHADOW),
+                    borderWidth: 0.5, borderColor: colors.border,
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
@@ -376,7 +372,7 @@ function SummaryBox({ icon, iconColor, value, label, delta }: { icon: keyof type
       flex: 1,
       minHeight: 95,
       justifyContent: 'center',
-      ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+      borderWidth: 0.5, borderColor: colors.border,
     }}>
       <View style={{
         width: 36, height: 36, borderRadius: 10,
