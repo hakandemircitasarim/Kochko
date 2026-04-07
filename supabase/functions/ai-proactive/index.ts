@@ -11,6 +11,7 @@ import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
 import { isIFCompatible, getSeasonalContext, type PeriodicState } from '../shared/periodic-config.ts';
+import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../shared/service-contexts.ts';
 
 const NUDGE_PROMPT = `Sen Kochko kocusun. Kullanicinin durumunu degerlendir.
 SADECE gercekten gerekli oldugunda mesaj uret. Spam YAPMA.
@@ -503,7 +504,25 @@ ${(() => {
 })()}
 ${snackPatternInfo}
 ${alcoholRiskInfo}
-${motivationDropInfo}`;
+${motivationDropInfo}
+${await (async () => {
+  // Service-level predictive risk (sleep debt, injury risk, compliance fatigue)
+  try {
+    const risk = await getPredictiveRiskContext(profile.id);
+    if (risk.prompt && risk.overallRisk !== 'low') {
+      return `PREDIKTIF RISK (${risk.overallRisk.toUpperCase()}): ${risk.factors.join(', ')}`;
+    }
+  } catch { /* non-critical */ }
+  return '';
+})()}
+${await (async () => {
+  // Service-level adaptive difficulty context
+  try {
+    const adapt = await getAdaptiveDifficultyContext(profile.id);
+    if (adapt) return adapt;
+  } catch { /* non-critical */ }
+  return '';
+})()}`;
 
       interface NudgeResult { send: boolean; message?: string; trigger?: string; priority?: string; }
 

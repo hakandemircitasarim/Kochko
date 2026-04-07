@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { initializeNotifications, savePushToken } from '@/services/notifications.service';
 import { checkAndRunBackup } from '@/services/auto-backup.service';
+import { getWidgetData, serializeForNativeWidget } from '@/services/widget.service';
 import { detectTimezone } from '@/lib/timezone';
 import { ThemeContext, DARK_COLORS, LIGHT_COLORS, type ThemeMode } from '@/lib/theme';
 
@@ -68,6 +69,20 @@ export default function RootLayout() {
         useProfileStore.getState().update(user.id, updates as never);
       }
     }
+  }, [user?.id]);
+
+  // Widget data sync: update AsyncStorage when app goes to background (Spec 23)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      if ((nextState === 'background' || nextState === 'inactive') && user?.id) {
+        try {
+          const widgetData = await getWidgetData(user.id);
+          const serialized = serializeForNativeWidget(widgetData);
+          await AsyncStorage.setItem('@kochko_widget_data', serialized);
+        } catch { /* silent fail for widget */ }
+      }
+    });
+    return () => subscription.remove();
   }, [user?.id]);
 
   return (

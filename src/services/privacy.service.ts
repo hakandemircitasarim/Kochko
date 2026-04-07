@@ -44,15 +44,35 @@ export async function cancelAccountDeletion(userId: string): Promise<void> {
  */
 export async function getAISummaryForReview(userId: string): Promise<{
   general: string;
-  patterns: { type: string; description: string }[];
+  patterns: { type: string; description: string; trigger?: string; intervention?: string; confidence?: number }[];
   portionCalibration: Record<string, unknown>;
   strengthRecords: Record<string, unknown>;
   coachingNotes: string;
   nutritionLiteracy: string;
+  userPersona: string | null;
+  learnedTonePreference: string | null;
+  alcoholPattern: unknown;
+  caffeineSleepNotes: string | null;
+  socialEatingNotes: string | null;
+  recoveryPattern: string | null;
+  weeklyBudgetPattern: string | null;
+  menstrualNotes: string | null;
+  microNutrientRisks: { nutrient: string; risk_level: string }[];
+  habitProgress: { habit: string; status: string; streak?: number }[];
+  learnedMealTimes: Record<string, string> | null;
+  seasonalNotes: string | null;
+  supplementNotes: string | null;
+  featuresIntroduced: string[];
 } | null> {
   const { data } = await supabase
     .from('ai_summary')
-    .select('general_summary, behavioral_patterns, portion_calibration, strength_records, coaching_notes, nutrition_literacy')
+    .select(`
+      general_summary, behavioral_patterns, portion_calibration, strength_records,
+      coaching_notes, nutrition_literacy, user_persona, learned_tone_preference,
+      alcohol_pattern, caffeine_sleep_notes, social_eating_notes, recovery_pattern,
+      weekly_budget_pattern, menstrual_notes, micro_nutrient_risks, habit_progress,
+      learned_meal_times, seasonal_notes, supplement_notes, features_introduced
+    `)
     .eq('user_id', userId)
     .single();
 
@@ -60,11 +80,25 @@ export async function getAISummaryForReview(userId: string): Promise<{
 
   return {
     general: (data.general_summary as string) ?? '',
-    patterns: (data.behavioral_patterns as { type: string; description: string }[]) ?? [],
+    patterns: (data.behavioral_patterns as { type: string; description: string; trigger?: string; intervention?: string; confidence?: number }[]) ?? [],
     portionCalibration: (data.portion_calibration as Record<string, unknown>) ?? {},
     strengthRecords: (data.strength_records as Record<string, unknown>) ?? {},
     coachingNotes: (data.coaching_notes as string) ?? '',
     nutritionLiteracy: (data.nutrition_literacy as string) ?? 'medium',
+    userPersona: (data.user_persona as string) ?? null,
+    learnedTonePreference: (data.learned_tone_preference as string) ?? null,
+    alcoholPattern: data.alcohol_pattern ?? null,
+    caffeineSleepNotes: (data.caffeine_sleep_notes as string) ?? null,
+    socialEatingNotes: (data.social_eating_notes as string) ?? null,
+    recoveryPattern: (data.recovery_pattern as string) ?? null,
+    weeklyBudgetPattern: (data.weekly_budget_pattern as string) ?? null,
+    menstrualNotes: (data.menstrual_notes as string) ?? null,
+    microNutrientRisks: (data.micro_nutrient_risks as { nutrient: string; risk_level: string }[]) ?? [],
+    habitProgress: (data.habit_progress as { habit: string; status: string; streak?: number }[]) ?? [],
+    learnedMealTimes: (data.learned_meal_times as Record<string, string>) ?? null,
+    seasonalNotes: (data.seasonal_notes as string) ?? null,
+    supplementNotes: (data.supplement_notes as string) ?? null,
+    featuresIntroduced: (data.features_introduced as string[]) ?? [],
   };
 }
 

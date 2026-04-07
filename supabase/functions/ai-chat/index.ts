@@ -30,6 +30,7 @@ import {
   shouldDetectPersona, buildPersonaDetectionPrompt, getMessageCount,
   getToneContext, buildKnowledgeSummary, getRepairContext,
 } from '../shared/repair-handler.ts';
+import { getAllServiceContexts, checkHabitFromChat } from '../shared/service-contexts.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -53,7 +54,7 @@ serve(async (req: Request) => {
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
 
-    const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint } = body;
+    const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint, client_timezone } = body;
 
     // GAP 2: STT/Whisper transcription handler
     if (audio_base64 && body.transcribe_only) {
@@ -146,31 +147,7 @@ serve(async (req: Request) => {
       .eq('id', userId).maybeSingle();
     const isOnboarding = !profile?.onboarding_completed;
 
-    // Return-flow detection (Spec 5.16) — check how long the user has been silent
-    let returnFlowContext = '';
-    try {
-      // At this point storeMessages hasn't been called yet, so index 0 is the previous message
-      const { data: lastMsgs } = await supabaseAdmin
-        .from('chat_messages')
-        .select('created_at')
-        .eq('user_id', userId)
-        .eq('role', 'user')
-        .order('created_at', { ascending: false })
-        .limit(1);
-      const prevMsg = lastMsgs && lastMsgs.length > 0 ? lastMsgs[0] : null;
-      if (prevMsg) {
-        const daysSinceLastChat = (Date.now() - new Date(prevMsg.created_at).getTime()) / 86400000;
-        if (daysSinceLastChat >= 180) {
-          returnFlowContext = 'KULLANICI 6+ AYDIR SESSIZ. Seni ozledik tonu. Mini re-onboarding: mevcut kilo, hedef, yasam tarzi guncelle.';
-        } else if (daysSinceLastChat >= 30) {
-          returnFlowContext = 'KULLANICI 1-6 AYDIR SESSIZ. Seni ozledik tonu. Plan %30 hafiflet.';
-        } else if (daysSinceLastChat >= 7) {
-          returnFlowContext = 'KULLANICI 1-4 HAFTADIR SESSIZ. Gecmis basarilarini referans ver. Ilk 3 gun plan hafiflet (%20).';
-        } else if (daysSinceLastChat >= 3) {
-          returnFlowContext = "KULLANICI 3-7 GUNDUR SESSIZ. Yargilamadan karsilamla. 'Hos geldin, nereden devam edelim?'";
-        }
-      }
-    } catch { /* non-critical */ }
+    // Return-flow detection is now handled by service-contexts.ts (richer context with weight, compliance history)
 
     // Detect task mode (Spec 5.2)
     const taskMode = detectTaskMode(message ?? '', isOnboarding);
@@ -250,25 +227,12 @@ serve(async (req: Request) => {
       } catch { /* macro calc non-critical */ }
     }
 
-    // D12: Habits context injection — query ai_summary directly
-    let habitsCtx = '';
-    try {
-      const { data: habitSummary } = await supabaseAdmin
-        .from('ai_summary').select('habit_progress').eq('user_id', userId).maybeSingle();
-      if (habitSummary?.habit_progress) {
-        const habits = habitSummary.habit_progress as { habit: string; status: string; streak: number }[];
-        const active = habits.filter(h => h.status === 'active');
-        const mastered = habits.filter(h => h.status === 'mastered');
-        if (active.length > 0 || mastered.length > 0) {
-          const hParts: string[] = ['## ALISKANLIK DURUMU'];
-          if (active.length > 0) hParts.push(`Aktif: ${active.map(h => `"${h.habit}" (${h.streak} gun seri)`).join(', ')}`);
-          if (mastered.length > 0) hParts.push(`Oturtulmus: ${mastered.map(h => h.habit).join(', ')}`);
-          const almostMastered = active.find(h => h.streak >= 12 && h.streak < 14);
-          if (almostMastered) hParts.push(`"${almostMastered.habit}" 2 gun sonra oturtulmus sayilacak!`);
-          habitsCtx = hParts.join('\n');
-        }
-      }
-    } catch { /* non-critical */ }
+    // D12: Service contexts — habits, progressive disclosure, recovery, return-flow,
+    // eating-out, MVD, predictive risk, caffeine-sleep, adaptive difficulty, conflicts, travel
+    const serviceCtx = await getAllServiceContexts(userId, taskMode, {
+      message: message ?? '',
+      clientTimezone: client_timezone as string | undefined,
+    });
 
     // Task card context: when user taps an onboarding card, inject topic-specific instructions
     let taskCardCtx = '';
@@ -312,8 +276,18 @@ serve(async (req: Request) => {
       toneContext,
       personaPrompt,
       correctionCtx,
-      returnFlowContext,
-      habitsCtx,
+      // Service contexts (11 integrated services)
+      serviceCtx.returnFlow,           // 4. Return flow (richer: weight, compliance, plan lightening)
+      serviceCtx.habits.prompt,        // 1. Habits (active, mastered, streaks, compliance %)
+      serviceCtx.progressiveDisclosure,// 2. Progressive disclosure (features to introduce)
+      serviceCtx.recovery,             // 3. Recovery (only in recovery mode)
+      serviceCtx.eatingOut,            // 5. Eating out (only in eating_out mode)
+      serviceCtx.mvd,                  // 6. MVD (only in mvd mode)
+      serviceCtx.predictiveRisk.prompt,// 7. Predictive risk alerts
+      serviceCtx.caffeineSleep,        // 8. Caffeine-sleep correlation
+      serviceCtx.adaptiveDifficulty,   // 9. Adaptive difficulty suggestions
+      serviceCtx.conflicts,            // 10. Conflict detection (allergen, goal-behavior)
+      serviceCtx.travel,               // 11. Travel/timezone context
       taskCardCtx,
       ctx.layer1 ? `--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}` : '',
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
@@ -392,6 +366,36 @@ serve(async (req: Request) => {
     // Store messages with token count and model version (Spec 5.25)
     const tokenEstimate = Math.round((message?.length ?? 0) / 3.5) + Math.round(assistantMessage.length / 3.5);
     await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions, session_id);
+
+    // Post-response: detect habit completions from user message (service 1)
+    if (message && serviceCtx.habits.activeHabits.length > 0) {
+      const habitMatch = checkHabitFromChat(message, serviceCtx.habits.activeHabits);
+      if (habitMatch) {
+        // Update habit streak in ai_summary (async, non-blocking)
+        (async () => {
+          try {
+            const { data: summaryRow } = await supabaseAdmin
+              .from('ai_summary').select('habit_progress').eq('user_id', userId).maybeSingle();
+            if (summaryRow?.habit_progress) {
+              const habits = summaryRow.habit_progress as { name?: string; habit?: string; status: string; streak: number; completion_log?: string[] }[];
+              const todayStr = new Date().toISOString().split('T')[0];
+              const updated = habits.map(h => {
+                if ((h.name ?? h.habit) === habitMatch.habitName && h.status === 'active') {
+                  const log = h.completion_log ?? [];
+                  if (!log.includes(todayStr)) {
+                    return { ...h, streak: h.streak + 1, completion_log: [...log, todayStr] };
+                  }
+                }
+                return h;
+              });
+              await supabaseAdmin.from('ai_summary').update({
+                habit_progress: updated, updated_at: new Date().toISOString(),
+              }).eq('user_id', userId);
+            }
+          } catch { /* non-critical */ }
+        })();
+      }
+    }
 
     // Async: update Layer 2 if needed
     if (layer2Updates) {
@@ -1140,6 +1144,30 @@ async function checkCaffeineIntake(
   const currentHour = new Date().getHours();
   if (currentHour >= 15) {
     warnings.push('Kafein uyarisi: ogleden sonra kafein uyku kaliteni dusurur');
+  }
+
+  // Enhanced: caffeine-sleep correlation from recent data
+  if (mealCaffeine > 0) {
+    try {
+      const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
+      const { data: sleepData } = await supabaseAdmin
+        .from('daily_metrics').select('sleep_hours')
+        .eq('user_id', userId).gte('date', twoWeeksAgo).not('sleep_hours', 'is', null);
+      if (sleepData && sleepData.length >= 7) {
+        const avgSleep = sleepData.reduce((s, m) => s + (m.sleep_hours as number), 0) / sleepData.length;
+        if (avgSleep < 6 && currentHour >= 14) {
+          warnings.push(`Uyku ortaman ${avgSleep.toFixed(1)}sa — kafein azaltmayi dene`);
+        }
+      }
+    } catch { /* non-critical */ }
+
+    // Water adjustment recommendation
+    if (totalCaffeine >= 200) {
+      const additionalLiters = Math.round((totalCaffeine / 100) * 0.15 * 100) / 100;
+      if (additionalLiters >= 0.3) {
+        warnings.push(`Kafein icin su hedefine +${additionalLiters}L ekle`);
+      }
+    }
   }
 
   return warnings;
