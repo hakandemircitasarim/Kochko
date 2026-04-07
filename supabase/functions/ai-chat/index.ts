@@ -682,14 +682,64 @@ async function executeActions(
         }
         case 'profile_update': {
           const updates: Record<string, unknown> = {};
+          // Core demographics
           if (action.height_cm) updates.height_cm = action.height_cm;
           if (action.weight_kg) updates.weight_kg = action.weight_kg;
           if (action.birth_year) updates.birth_year = action.birth_year;
           if (action.gender) updates.gender = action.gender;
+          if (action.display_name) updates.display_name = action.display_name;
+          // Schedule & lifestyle
+          if (action.occupation) updates.occupation = action.occupation;
+          if (action.work_start) updates.work_start = action.work_start;
+          if (action.work_end) updates.work_end = action.work_end;
+          if (action.sleep_time) updates.sleep_time = action.sleep_time;
+          if (action.wake_time) updates.wake_time = action.wake_time;
+          if (action.activity_level) updates.activity_level = action.activity_level;
+          if (action.meal_count_preference) updates.meal_count_preference = action.meal_count_preference;
+          // Nutrition preferences
+          if (action.cooking_skill) updates.cooking_skill = action.cooking_skill;
+          if (action.budget_level) updates.budget_level = action.budget_level;
+          if (action.dietary_restriction) updates.dietary_restriction = action.dietary_restriction;
+          if (action.diet_mode) updates.diet_mode = action.diet_mode;
+          if (action.eating_out_frequency) updates.eating_out_frequency = action.eating_out_frequency;
+          if (action.fastfood_frequency) updates.fastfood_frequency = action.fastfood_frequency;
+          if (action.skipped_meals) updates.skipped_meals = action.skipped_meals;
+          if (action.night_eating_habit) updates.night_eating_habit = action.night_eating_habit;
+          if (action.emotional_eating) updates.emotional_eating = action.emotional_eating;
+          if (action.snacking_habit) updates.snacking_habit = action.snacking_habit;
+          if (action.caffeine_intake) updates.caffeine_intake = action.caffeine_intake;
+          // Kitchen & logistics
+          if (action.meal_prep_time) updates.meal_prep_time = action.meal_prep_time;
+          if (action.kitchen_equipment) updates.kitchen_equipment = action.kitchen_equipment;
+          if (action.household_cooking) updates.household_cooking = action.household_cooking;
+          if (action.household_diet_challenge) updates.household_diet_challenge = action.household_diet_challenge;
+          // Exercise & training
+          if (action.training_experience) updates.training_experience = action.training_experience;
+          if (action.training_style) updates.training_style = action.training_style;
+          if (action.equipment_access) updates.equipment_access = action.equipment_access;
+          if (action.exercise_history) updates.exercise_history = action.exercise_history;
+          if (action.preferred_exercises) updates.preferred_exercises = action.preferred_exercises;
+          if (action.disliked_exercises) updates.disliked_exercises = action.disliked_exercises;
+          if (action.available_training_times) updates.available_training_times = action.available_training_times;
+          // Health & wellness
+          if (action.stress_level) updates.stress_level = action.stress_level;
+          if (action.stress_sources) updates.stress_sources = action.stress_sources;
+          if (action.sleep_quality) updates.sleep_quality = action.sleep_quality;
+          if (action.digestive_issues) updates.digestive_issues = action.digestive_issues;
+          if (action.hormone_conditions) updates.hormone_conditions = action.hormone_conditions;
+          if (action.previous_diets) updates.previous_diets = action.previous_diets;
+          // Motivation
+          if (action.motivation_source) updates.motivation_source = action.motivation_source;
+          if (action.biggest_challenge) updates.biggest_challenge = action.biggest_challenge;
+          // Body measurements
+          if (action.body_fat_pct) updates.body_fat_pct = action.body_fat_pct;
+          if (action.waist_cm) updates.waist_cm = action.waist_cm;
+          if (action.hip_cm) updates.hip_cm = action.hip_cm;
+
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date().toISOString();
             await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
-            feedback.push('Profil guncellendi');
+            feedback.push('Profil güncellendi');
           }
           if (action.target_weight_kg) {
             await supabaseAdmin.from('goals').insert({
