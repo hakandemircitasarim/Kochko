@@ -17,6 +17,10 @@ export async function getVenues(): Promise<Venue[]> {
   return (data ?? []) as Venue[];
 }
 
+export async function deleteVenue(id: string): Promise<void> {
+  await supabase.from('user_venues').delete().eq('id', id);
+}
+
 export async function addOrUpdateVenue(
   userId: string,
   venueName: string,

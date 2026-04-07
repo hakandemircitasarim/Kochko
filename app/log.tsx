@@ -49,6 +49,12 @@ export default function QuickLogScreen() {
   // Sleep state
   const [sleepTime, setSleepTime] = useState('');
   const [wakeTime, setWakeTime] = useState('');
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const showSuccessAndClose = (msg: string) => {
+    setSuccessMsg(msg);
+    setTimeout(() => { setSuccessMsg(null); router.back(); }, 1200);
+  };
 
   const handleLog = async () => {
     if (!text.trim() || !user?.id) return;
@@ -116,11 +122,11 @@ export default function QuickLogScreen() {
     if (warning) {
       Alert.alert('Doğrulama', warning, [
         { text: 'İptal', style: 'cancel' },
-        { text: 'Evet', onPress: () => { addWater(user.id, WATER_INCREMENT, dayBoundaryHour); router.back(); } },
+        { text: 'Evet', onPress: () => { addWater(user.id, WATER_INCREMENT, dayBoundaryHour); showSuccessAndClose('Su eklendi!'); } },
       ]);
     } else {
       addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
-      router.back();
+      showSuccessAndClose('Su eklendi!');
     }
   };
 
@@ -134,7 +140,7 @@ export default function QuickLogScreen() {
     );
     await supabase.from('weight_logs').insert({ user_id: user.id, weight_kg: w, logged_at: new Date().toISOString() });
     await fetchToday(user.id);
-    router.back();
+    showSuccessAndClose('Kilo kaydedildi!');
   };
 
   const handleSleepSave = async () => {
@@ -154,7 +160,7 @@ export default function QuickLogScreen() {
       { onConflict: 'user_id,date' }
     );
     await fetchToday(user.id);
-    router.back();
+    showSuccessAndClose('Uyku kaydedildi!');
   };
 
   // ====== BARCODE SCREEN ======
@@ -316,6 +322,21 @@ export default function QuickLogScreen() {
           <TouchableOpacity onPress={handleSleepSave} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}>
             <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Kaydet</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ====== SUCCESS TOAST ======
+  if (successMsg) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{
+          backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl,
+          alignItems: 'center', borderWidth: 0.5, borderColor: colors.border,
+        }}>
+          <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
+          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600', marginTop: SPACING.md }}>{successMsg}</Text>
         </View>
       </View>
     );

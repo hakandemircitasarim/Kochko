@@ -55,7 +55,7 @@ export default function PlanScreen() {
   const { colors, isDark } = useTheme();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
-  const { totalCalories, totalProtein, totalCarbs, totalFat, waterLiters } = useDashboardStore();
+  const { totalCalories, totalProtein, totalCarbs, totalFat, waterLiters, fetchToday } = useDashboardStore();
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
@@ -107,7 +107,7 @@ export default function PlanScreen() {
       .order('version', { ascending: false }).limit(1);
     setPlan(prev => prev ? { ...prev, status: 'rejected' } : null);
     // Generate new plan with rejection context
-    handleGenerate(reason);
+    await handleGenerate(reason);
   };
 
   const handleMealSelect = async (mealType: string, option: MealOption) => {
@@ -134,6 +134,9 @@ export default function PlanScreen() {
       carbs_g: option.carbs_g,
       fat_g: option.fat_g,
     });
+
+    // Refresh dashboard so calorie/macro totals update
+    if (user?.id) await fetchToday(user.id);
   };
 
   if (loading) {

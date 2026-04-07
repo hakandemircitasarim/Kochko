@@ -118,7 +118,15 @@ Tercihleri, beceriyi, butceyi, kalan makro hedefini dikkate al.
 Alerjen filtresi MUTLAKA uygula.
 "Elimde sunlar var" modunu destekle.
 Malzeme listesi + adimlar + makro bilgisi ver.
-Malzeme ikamesi oner.`;
+Malzeme ikamesi oner.
+
+ONEMLI: Yanıtının sonuna asagidaki formatta bir <recipe> blogu ekle:
+<recipe>{"title":"Tarif Adi","prepTime":20,"servings":2,"ingredients":[{"name":"malzeme","amount":"miktar"}],"macros":{"calories":350,"protein":25,"carbs":30,"fat":12}}</recipe>
+- title: Tarifin adi
+- prepTime: Dakika cinsinden hazirlanma suresi
+- servings: Porsiyon sayisi
+- ingredients: Malzeme listesi (name ve amount alanlari)
+- macros: Porsiyon basina kalori, protein, karbonhidrat, yag degerleri`;
 
     case 'eating_out':
       return `## MOD: DISARIDA YEMEK

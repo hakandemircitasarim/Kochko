@@ -13,7 +13,7 @@ import { calculateStreak } from '@/services/achievements.service';
 import { supabase } from '@/lib/supabase';
 import { InsightCard } from '@/components/profile/InsightCard';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
-import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
+import { deleteAISummaryNote, resetAISummary, requestAccountDeletion } from '@/services/privacy.service';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
 
@@ -93,10 +93,27 @@ export default function ProfileScreen() {
         <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi dışa aktar" onPress={() => router.push('/settings/health-export')} colors={colors} />
         <MenuRow icon="create-outline" color={colors.primary} label="Profil düzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
         <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tüm ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} />
-        <MenuRow icon="trash-outline" color={colors.error} label="Hesabı sil" onPress={() => Alert.alert('Hesap Silme', 'Bu işlem geri alınamaz. Emin misin?', [
-          { text: 'İptal' },
-          { text: 'Sil', style: 'destructive', onPress: () => {} },
-        ])} colors={colors} last />
+        <MenuRow icon="trash-outline" color={colors.error} label="Hesabı sil" onPress={() => Alert.alert(
+          'Hesap Silme',
+          '30 gün içinde giriş yaparsan silme iptal olur. Bu süre sonunda tüm verilerin kalıcı olarak silinecek.',
+          [
+            { text: 'İptal' },
+            {
+              text: 'Hesabımı sil',
+              style: 'destructive',
+              onPress: async () => {
+                if (!user?.id) return;
+                try {
+                  const { scheduledDate } = await requestAccountDeletion(user.id);
+                  Alert.alert('Hesap Silme Planlandı', `Hesabın ${scheduledDate} tarihinde silinecek. Giriş yaparsan iptal olur.`);
+                  signOut();
+                } catch {
+                  Alert.alert('Hata', 'Hesap silme isteği oluşturulamadı.');
+                }
+              },
+            },
+          ]
+        )} colors={colors} last />
       </View>
 
       {/* AI Summary */}

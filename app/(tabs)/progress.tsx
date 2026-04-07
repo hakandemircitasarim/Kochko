@@ -33,6 +33,7 @@ export default function ProgressScreen() {
   const [maintenanceMsg, setMaintenanceMsg] = useState<string | null>(null);
   const [maintenanceData, setMaintenanceData] = useState<MaintenanceStatus | null>(null);
   const [miniCutOffered, setMiniCutOffered] = useState(false);
+  const [miniCutLoading, setMiniCutLoading] = useState(false);
   const [timelinePhases, setTimelinePhases] = useState<{ phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]; currentWeek: number } | null>(null);
 
   const chartConfig = {
@@ -112,6 +113,7 @@ export default function ProgressScreen() {
   // D6: Activate mini-cut mode
   const handleMiniCut = async () => {
     if (!user?.id || !profile) return;
+    setMiniCutLoading(true);
     const tdee = (profile.tdee_calculated as number) ?? 2000;
     const miniCutCalories = Math.round(tdee * 0.85);
 
@@ -132,6 +134,7 @@ export default function ProgressScreen() {
 
     Alert.alert('Mini-Cut Başlatıldı', `3 haftalık mini-cut: ${miniCutCalories - 100}-${miniCutCalories + 100} kcal. Sonra tekrar bakıma dönersin.`);
     setMiniCutOffered(false);
+    setMiniCutLoading(false);
   };
 
   if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
@@ -309,7 +312,7 @@ export default function ProgressScreen() {
           <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{maintenanceMsg}</Text>
 
           {/* D6: Tolerance band info */}
-          {maintenanceData?.toleranceBand && (
+          {maintenanceData?.toleranceBand && maintenanceData.toleranceBand.min != null && maintenanceData.toleranceBand.max != null && (
             <View style={{ marginTop: SPACING.sm, flexDirection: 'row', justifyContent: 'space-between', backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.sm }}>
               <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                 Band: {maintenanceData.toleranceBand.min.toFixed(1)} - {maintenanceData.toleranceBand.max.toFixed(1)} kg
@@ -335,9 +338,12 @@ export default function ProgressScreen() {
                 Tolerans bandının dışına çıktın. 2-3 haftalık hafif kalori açığı ile dengeye dönebilirsin.
               </Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-                <TouchableOpacity onPress={handleMiniCut}
-                  style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.primary, alignItems: 'center' }}>
-                  <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Mini-Cut Başlat</Text>
+                <TouchableOpacity onPress={handleMiniCut} disabled={miniCutLoading}
+                  style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.primary, alignItems: 'center', opacity: miniCutLoading ? 0.6 : 1 }}>
+                  {miniCutLoading
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Mini-Cut Başlat</Text>
+                  }
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setMiniCutOffered(false)}
                   style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>

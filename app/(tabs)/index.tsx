@@ -140,10 +140,12 @@ export default function TodayScreen() {
     refresh();
   };
 
-  // Weekly budget calculation
+  // Weekly budget calculation — guard against NaN / null / undefined
   const weeklyBudgetTotal = calorieTargetMax > 0 ? calorieTargetMax * 7 : 0;
-  const weeklyConsumed = weeklyBudgetTotal - (weeklyBudgetRemaining ?? weeklyBudgetTotal);
-  const weeklyRemaining = weeklyBudgetRemaining ?? weeklyBudgetTotal;
+  const rawConsumed = weeklyBudgetTotal - (weeklyBudgetRemaining ?? 0);
+  const weeklyConsumed = Math.max(0, isNaN(rawConsumed) ? 0 : rawConsumed);
+  const rawRemaining = weeklyBudgetRemaining ?? 0;
+  const weeklyRemaining = isNaN(rawRemaining) ? 0 : rawRemaining;
   const weeklyPct = weeklyBudgetTotal > 0 ? Math.min(1, weeklyConsumed / weeklyBudgetTotal) : 0;
 
   return (

@@ -45,11 +45,21 @@ interface SimulationData {
   weeklyImpact: string;
 }
 
+// Recipe data parsed from AI responses
+interface RecipeData {
+  title: string;
+  prepTime: number;
+  servings: number;
+  ingredients: { name: string; amount: string }[];
+  macros: { calories: number; protein: number; carbs: number; fat: number };
+}
+
 // Extended message type for UI state
 interface UIMessage extends ChatMessage {
   actions?: { type: string; feedback: string | null }[];
   showFeedback?: boolean;
   simulationData?: SimulationData | null;
+  recipeData?: RecipeData | null;
   quickSelectOptions?: string[] | null;
   hasPlanSuggestion?: boolean;
 }
@@ -75,6 +85,18 @@ function parseQuickSelect(content: string): { cleanContent: string; options: str
     return { cleanContent, options };
   } catch {
     return { cleanContent: content, options: null };
+  }
+}
+
+function parseRecipeData(content: string): { cleanContent: string; data: RecipeData | null } {
+  const match = content.match(/<recipe>([\s\S]*?)<\/recipe>/);
+  if (!match) return { cleanContent: content, data: null };
+  try {
+    const data = JSON.parse(match[1]) as RecipeData;
+    const cleanContent = content.replace(/<recipe>[\s\S]*?<\/recipe>/, '').trim();
+    return { cleanContent, data };
+  } catch {
+    return { cleanContent: content, data: null };
   }
 }
 
@@ -122,16 +144,24 @@ export default function SessionDetailScreen() {
   // Voice recording handler (T4.1 / U1)
   const handleVoiceToggle = async () => {
     if (isRecordingVoice) {
-      setIsRecordingVoice(false);
-      const { text, audioUri } = await stopAndTranscribe();
-      if (text) {
-        setInput(text);
-      } else if (audioUri) {
-        setInput('[Ses kaydedildi ama yazılamadı - metin olarak yazın]');
+      try {
+        setIsRecordingVoice(false);
+        const { text, audioUri } = await stopAndTranscribe();
+        if (text) {
+          setInput(text);
+        } else if (audioUri) {
+          setInput('[Ses kaydedildi ama yazılamadı - metin olarak yazın]');
+        }
+      } catch {
+        setIsRecordingVoice(false);
       }
     } else {
-      const started = await startRecording();
-      if (started) setIsRecordingVoice(true);
+      try {
+        const started = await startRecording();
+        if (started) setIsRecordingVoice(true);
+      } catch {
+        setIsRecordingVoice(false);
+      }
     }
   };
 
@@ -238,14 +268,18 @@ export default function SessionDetailScreen() {
         || data.task_mode === 'recipe' || data.task_mode === 'simulation'
         || data.task_mode === 'eating_out' || data.task_mode === 'plateau';
 
-      // Parse simulation data if in simulation mode
+      // Parse simulation data from AI response
       let messageContent = data.message;
       let simulationData: SimulationData | null = null;
-      if (data.task_mode === 'simulation') {
-        const parsed = parseSimulationData(data.message);
-        messageContent = parsed.cleanContent;
-        simulationData = parsed.data;
-      }
+      const simParsed = parseSimulationData(messageContent);
+      messageContent = simParsed.cleanContent;
+      simulationData = simParsed.data;
+
+      // Parse recipe data from AI response
+      let recipeData: RecipeData | null = null;
+      const recipeParsed = parseRecipeData(messageContent);
+      messageContent = recipeParsed.cleanContent;
+      recipeData = recipeParsed.data;
 
       // Parse quick_select options from AI response
       const quickSelectParsed = parseQuickSelect(messageContent);
@@ -265,6 +299,7 @@ export default function SessionDetailScreen() {
         actions: data.actions,
         showFeedback,
         simulationData,
+        recipeData,
         quickSelectOptions,
         hasPlanSuggestion,
       };
@@ -321,6 +356,10 @@ export default function SessionDetailScreen() {
       const { data, error } = await sendMessageToSession(sessionId, option);
       if (data) {
         let content = data.message;
+        const simParsed = parseSimulationData(content);
+        content = simParsed.cleanContent;
+        const recipeParsed = parseRecipeData(content);
+        content = recipeParsed.cleanContent;
         const qsParsed = parseQuickSelect(content);
         content = qsParsed.cleanContent;
         const hasPlan = hasConfirmRejectIndicator(content, data.task_mode);
@@ -328,6 +367,7 @@ export default function SessionDetailScreen() {
         setMessages(prev => [...prev, {
           id: `a-${Date.now()}`, role: 'assistant', content, task_mode: data.task_mode,
           created_at: new Date().toISOString(), actions: data.actions, showFeedback: false,
+          simulationData: simParsed.data, recipeData: recipeParsed.data,
           quickSelectOptions: qsParsed.options, hasPlanSuggestion: hasPlan,
         }]);
         if (data.actions.some(a => a.feedback) && user?.id) refreshDashboard(user.id);
@@ -709,13 +749,13 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         )}
 
         {/* Recipe card for recipe task_mode */}
-        {!isUser && message.task_mode === 'recipe' && (message as any).recipe && (
+        {!isUser && message.recipeData && (
           <RecipeCard
-            title={(message as any).recipe.title}
-            prepTime={(message as any).recipe.prepTime}
-            servings={(message as any).recipe.servings}
-            ingredients={(message as any).recipe.ingredients}
-            macros={(message as any).recipe.macros}
+            title={message.recipeData.title}
+            prepTime={message.recipeData.prepTime}
+            servings={message.recipeData.servings}
+            ingredients={message.recipeData.ingredients}
+            macros={message.recipeData.macros}
           />
         )}
 

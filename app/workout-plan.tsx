@@ -12,6 +12,7 @@ import { getEffectiveDate } from '@/lib/day-boundary';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
 import { Button } from '@/components/ui/Button';
+import { getExerciseHistory, suggestProgression, shouldDeload } from '@/services/strength.service';
 
 interface StrengthTarget {
   exercise: string;
@@ -50,6 +51,8 @@ export default function WorkoutPlanScreen() {
   const [loading, setLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [completedSets, setCompletedSets] = useState<Set<string>>(new Set());
+  const [progressionMap, setProgressionMap] = useState<Record<string, { weight: number; reps: number; note: string }>>({});
+  const [deloadWarning, setDeloadWarning] = useState<{ needed: boolean; message: string } | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -70,6 +73,34 @@ export default function WorkoutPlanScreen() {
     if (past) setPastPlans(past as unknown as PlanData[]);
     setLoading(false);
   };
+
+  // Load strength progression suggestions for each exercise in the plan
+  useEffect(() => {
+    if (!user?.id || !currentPlan?.workout_plan?.strength_targets?.length) return;
+    const targets = currentPlan.workout_plan.strength_targets;
+    Promise.all(targets.map(async (st) => {
+      const history = await getExerciseHistory(user.id, st.exercise, 8);
+      if (!history) return null;
+      const consecutiveSuccesses = history.history.length >= 2
+        && history.history[history.history.length - 1].reps >= st.reps
+        && history.history[history.history.length - 2].reps >= st.reps ? 2 : 1;
+      const prog = suggestProgression(history.lastWeight, history.lastReps, st.reps, consecutiveSuccesses);
+      const deload = shouldDeload(history.weeksSinceDeload);
+      return { exercise: st.exercise, progression: prog, deload };
+    })).then(results => {
+      const map: Record<string, { weight: number; reps: number; note: string }> = {};
+      let worstDeload: { needed: boolean; message: string } | null = null;
+      for (const r of results) {
+        if (!r) continue;
+        map[r.exercise] = r.progression;
+        if (r.deload.needed || (r.deload.message && !worstDeload)) {
+          worstDeload = r.deload;
+        }
+      }
+      setProgressionMap(map);
+      if (worstDeload) setDeloadWarning(worstDeload);
+    });
+  }, [user?.id, currentPlan]);
 
   const toggleSet = (key: string) => {
     setCompletedSets(prev => {
@@ -148,9 +179,23 @@ export default function WorkoutPlanScreen() {
               ))}
             </SectionCard>
 
+            {/* Deload warning */}
+            {deloadWarning?.message && (
+              <View style={{
+                backgroundColor: deloadWarning.needed ? (METRIC_COLORS.workout + '18') : (colors.card),
+                borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md,
+                borderWidth: 0.5, borderColor: deloadWarning.needed ? METRIC_COLORS.workout : colors.border,
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                  <Ionicons name={deloadWarning.needed ? 'warning' : 'information-circle'} size={18} color={deloadWarning.needed ? METRIC_COLORS.workout : colors.textMuted} />
+                  <Text style={{ color: deloadWarning.needed ? METRIC_COLORS.workout : colors.textSecondary, fontSize: 12, flex: 1 }}>{deloadWarning.message}</Text>
+                </View>
+              </View>
+            )}
+
             {/* Strength targets */}
             {wp.strength_targets && wp.strength_targets.length > 0 && (
-              <SectionCard title="Güç hedefleri" colors={colors}>
+              <SectionCard title="Guc hedefleri" colors={colors}>
                 {/* Table header */}
                 <View style={{ flexDirection: 'row', paddingBottom: SPACING.sm, borderBottomWidth: 0.5, borderBottomColor: colors.border }}>
                   <Text style={{ flex: 2, color: colors.textMuted, fontSize: 11 }}>Egzersiz</Text>
@@ -162,25 +207,38 @@ export default function WorkoutPlanScreen() {
                 {wp.strength_targets.map((st, idx) => {
                   const key = `${st.exercise}-${idx}`;
                   const done = completedSets.has(key);
+                  const prog = progressionMap[st.exercise];
                   return (
-                    <TouchableOpacity
-                      key={idx}
-                      onPress={() => toggleSet(key)}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm,
-                        borderBottomWidth: idx < (wp.strength_targets?.length ?? 0) - 1 ? 0.5 : 0,
-                        borderBottomColor: colors.border,
-                        opacity: done ? 0.5 : 1,
-                      }}
-                    >
-                      <Text style={{ flex: 2, color: colors.text, fontSize: 13, textDecorationLine: done ? 'line-through' : 'none' }}>{st.exercise}</Text>
-                      <Text style={{ flex: 1, color: colors.textSecondary, fontSize: 13, textAlign: 'center' }}>{st.sets}</Text>
-                      <Text style={{ flex: 1, color: colors.textSecondary, fontSize: 13, textAlign: 'center' }}>{st.reps}</Text>
-                      <Text style={{ flex: 1, color: METRIC_COLORS.workout, fontSize: 13, textAlign: 'center', fontWeight: '600' }}>{st.weight_kg}</Text>
-                      <View style={{ width: 28, alignItems: 'center' }}>
-                        <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={done ? colors.primary : colors.textMuted} />
-                      </View>
-                    </TouchableOpacity>
+                    <View key={idx}>
+                      <TouchableOpacity
+                        onPress={() => toggleSet(key)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm,
+                          borderBottomWidth: (!prog && idx < (wp.strength_targets?.length ?? 0) - 1) ? 0.5 : 0,
+                          borderBottomColor: colors.border,
+                          opacity: done ? 0.5 : 1,
+                        }}
+                      >
+                        <Text style={{ flex: 2, color: colors.text, fontSize: 13, textDecorationLine: done ? 'line-through' : 'none' }}>{st.exercise}</Text>
+                        <Text style={{ flex: 1, color: colors.textSecondary, fontSize: 13, textAlign: 'center' }}>{st.sets}</Text>
+                        <Text style={{ flex: 1, color: colors.textSecondary, fontSize: 13, textAlign: 'center' }}>{st.reps}</Text>
+                        <Text style={{ flex: 1, color: METRIC_COLORS.workout, fontSize: 13, textAlign: 'center', fontWeight: '600' }}>{st.weight_kg}</Text>
+                        <View style={{ width: 28, alignItems: 'center' }}>
+                          <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={done ? colors.primary : colors.textMuted} />
+                        </View>
+                      </TouchableOpacity>
+                      {prog && (
+                        <View style={{
+                          paddingHorizontal: SPACING.sm, paddingVertical: 4, marginBottom: SPACING.xs,
+                          borderBottomWidth: idx < (wp.strength_targets?.length ?? 0) - 1 ? 0.5 : 0,
+                          borderBottomColor: colors.border,
+                        }}>
+                          <Text style={{ color: colors.primary, fontSize: 11 }}>
+                            Sonraki: {prog.weight}kg x {prog.reps} - {prog.note}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   );
                 })}
               </SectionCard>

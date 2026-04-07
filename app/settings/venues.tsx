@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getVenues, type Venue } from '@/services/venues.service';
-import { supabase } from '@/lib/supabase';
+import { getVenues, deleteVenue, type Venue } from '@/services/venues.service';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -23,7 +22,7 @@ export default function VenuesScreen() {
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from('user_venues').delete().eq('id', id);
+    await deleteVenue(id);
     setVenues(prev => prev.filter(v => v.id !== id));
   };
 

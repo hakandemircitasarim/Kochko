@@ -139,11 +139,13 @@ function QuickForm() {
 
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
+  const [targetWeightKg, setTargetWeightKg] = useState('');
   const [gender, setGender] = useState<Gender | ''>('');
   const [goalType, setGoalType] = useState<GoalType | ''>('');
   const [activity, setActivity] = useState<ActivityLevel | ''>('');
 
-  const isValid = heightCm && weightKg && gender && goalType && activity;
+  const needsTargetWeight = goalType === 'lose_weight' || goalType === 'gain_muscle';
+  const isValid = heightCm && weightKg && gender && goalType && activity && (!needsTargetWeight || targetWeightKg);
 
   const handleComplete = async () => {
     if (!user?.id || !isValid) return;
@@ -152,9 +154,7 @@ function QuickForm() {
     try {
       // 1. Create goal first
       const w = parseFloat(weightKg);
-      const targetWeight = goalType === 'lose_weight' ? Math.round(w * 0.9 * 10) / 10
-        : goalType === 'gain_weight' || goalType === 'gain_muscle' ? Math.round(w * 1.1 * 10) / 10
-        : w;
+      const targetWeight = targetWeightKg ? parseFloat(targetWeightKg) : w;
       const { error: goalError } = await supabase.from('goals').insert({
         user_id: user.id,
         goal_type: goalType,
@@ -215,7 +215,20 @@ function QuickForm() {
         <ChipSelect label="Cinsiyet" options={GENDER_OPTIONS} selected={gender} onChange={v => setGender(v as Gender)} />
 
         {/* Goal */}
-        <ChipSelect label="Hedefin Ne?" options={GOAL_OPTIONS} selected={goalType} onChange={v => setGoalType(v as GoalType)} />
+        <ChipSelect label="Hedefin Ne?" options={GOAL_OPTIONS} selected={goalType} onChange={v => { setGoalType(v as GoalType); setTargetWeightKg(''); }} />
+
+        {/* Target Weight — shown only for lose_weight / gain_muscle */}
+        {needsTargetWeight && (
+          <View style={{ marginBottom: SPACING.md }}>
+            <Input
+              label="Hedef Kilo (kg)"
+              value={targetWeightKg}
+              onChangeText={setTargetWeightKg}
+              keyboardType="decimal-pad"
+              placeholder={goalType === 'lose_weight' ? '70' : '85'}
+            />
+          </View>
+        )}
 
         {/* Activity */}
         <ChipSelect label="Aktivite Seviyesi" options={ACTIVITY_OPTIONS} selected={activity} onChange={v => setActivity(v as ActivityLevel)} />
