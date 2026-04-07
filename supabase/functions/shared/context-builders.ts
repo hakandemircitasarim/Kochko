@@ -33,12 +33,12 @@ export interface BuiltContext {
  * Build context according to retrieval plan.
  * This replaces the old buildFullContext() with plan-aware fetching.
  */
-export async function buildContextFromPlan(userId: string, plan: RetrievalPlan): Promise<BuiltContext> {
+export async function buildContextFromPlan(userId: string, plan: RetrievalPlan, sessionId?: string): Promise<BuiltContext> {
   const [layer1, layer2, layer3, layer4] = await Promise.all([
     buildLayer1Scoped(userId, plan),
     buildLayer2Scoped(userId, plan),
     buildLayer3Scoped(userId, plan),
-    buildLayer4Scoped(userId, plan),
+    buildLayer4Scoped(userId, plan, sessionId),
   ]);
 
   // Refine context meta based on actual data
@@ -513,16 +513,23 @@ function formatLayer3(
 
 // ─── Layer 4: Scoped Chat History ───
 
-async function buildLayer4Scoped(userId: string, plan: RetrievalPlan): Promise<{ role: string; content: string }[]> {
+async function buildLayer4Scoped(userId: string, plan: RetrievalPlan, sessionId?: string): Promise<{ role: string; content: string }[]> {
   const limit = plan.layer4MaxMessages;
   if (limit === 0) return [];
 
-  const { data } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('chat_messages')
     .select('role, content')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);
+
+  // If session_id provided, scope to that session only
+  if (sessionId) {
+    query = query.eq('session_id', sessionId);
+  }
+
+  const { data } = await query;
 
   if (!data || data.length === 0) return [];
   return (data as { role: string; content: string }[]).reverse();

@@ -53,7 +53,7 @@ serve(async (req: Request) => {
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
 
-    const { message, image_base64, target_date, audio_base64 } = body;
+    const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint } = body;
 
     // GAP 2: STT/Whisper transcription handler
     if (audio_base64 && body.transcribe_only) {
@@ -180,7 +180,7 @@ serve(async (req: Request) => {
     const retrievalPlan = getRetrievalPlan(analysis);
 
     // Build scoped context based on retrieval plan
-    const ctx = await buildContextFromPlan(userId, retrievalPlan);
+    const ctx = await buildContextFromPlan(userId, retrievalPlan, session_id);
 
     // Assemble system prompt = base + mode instructions + confidence note + persona/tone/repair context
     const modeInstructions = getModeInstructions(taskMode);
@@ -355,7 +355,7 @@ serve(async (req: Request) => {
 
     // Store messages with token count and model version (Spec 5.25)
     const tokenEstimate = Math.round((message?.length ?? 0) / 3.5) + Math.round(assistantMessage.length / 3.5);
-    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions);
+    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions, session_id);
 
     // Async: update Layer 2 if needed
     if (layer2Updates) {
@@ -450,43 +450,67 @@ function extractLayer2Updates(text: string): { cleanMessage: string; layer2Updat
   return { cleanMessage: text.replace(/<layer2_update>[\s\S]*?<\/layer2_update>/, '').trim(), layer2Updates: updates };
 }
 
-async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[]) {
-  // Get or create active session
-  let { data: session } = await supabaseAdmin
-    .from('chat_sessions')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .maybeSingle();
+async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string) {
+  // Use provided session_id if valid, otherwise get/create active session
+  let sessionId: string | null = null;
 
-  if (!session) {
-    const { data: newSession } = await supabaseAdmin
+  if (externalSessionId) {
+    // Verify it belongs to this user
+    const { data: existing } = await supabaseAdmin
       .from('chat_sessions')
-      .insert({ user_id: userId, is_active: true })
       .select('id')
+      .eq('id', externalSessionId)
+      .eq('user_id', userId)
       .maybeSingle();
-    session = newSession;
+    if (existing) sessionId = existing.id;
+  }
+
+  if (!sessionId) {
+    let { data: session } = await supabaseAdmin
+      .from('chat_sessions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (!session) {
+      const { data: newSession } = await supabaseAdmin
+        .from('chat_sessions')
+        .insert({ user_id: userId, is_active: true })
+        .select('id')
+        .maybeSingle();
+      session = newSession;
+    }
+    sessionId = session?.id ?? null;
   }
 
   await supabaseAdmin.from('chat_messages').insert([
-    { user_id: userId, session_id: session?.id, role: 'user', content: userMsg, task_mode: taskMode },
+    { user_id: userId, session_id: sessionId, role: 'user', content: userMsg, task_mode: taskMode },
     {
-      user_id: userId, session_id: session?.id, role: 'assistant', content: assistantMsg,
+      user_id: userId, session_id: sessionId, role: 'assistant', content: assistantMsg,
       task_mode: taskMode, model_version: modelUsed ?? null,
       token_count: tokenCount ?? null,
       actions_executed: executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null,
     },
   ]);
 
-  // Auto-generate session title after 4 messages (Spec 5.18)
-  const { count } = await supabaseAdmin
-    .from('chat_messages').select('*', { count: 'exact', head: true })
-    .eq('session_id', session?.id);
-  if (count && count === 4 && session?.id) {
-    const title = assistantMsg.substring(0, 60).replace(/\n/g, ' ');
-    await supabaseAdmin.from('chat_sessions')
-      .update({ title })
-      .eq('id', session.id);
+  // Auto-generate session title from first user message
+  if (sessionId) {
+    const { count } = await supabaseAdmin
+      .from('chat_messages').select('*', { count: 'exact', head: true })
+      .eq('session_id', sessionId);
+    if (count && count <= 2) {
+      // Use first user message as title (more descriptive than AI response)
+      const title = userMsg.substring(0, 60).replace(/\n/g, ' ');
+      await supabaseAdmin.from('chat_sessions')
+        .update({ title, message_count: count })
+        .eq('id', sessionId)
+        .is('title', null); // Only set if title not already set
+    } else if (count) {
+      await supabaseAdmin.from('chat_sessions')
+        .update({ message_count: count })
+        .eq('id', sessionId);
+    }
   }
 }
 
