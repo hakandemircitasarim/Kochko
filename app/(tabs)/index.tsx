@@ -2,9 +2,9 @@
  * Ana Sayfa (Dashboard) — Bilgi odakli, flat dark design
  * Kalori halkasi, hizli istatistikler, haftalik butce, diyet/spor planlari
  */
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/stores/auth.store';
@@ -21,6 +21,8 @@ import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 import NetInfo from '@react-native-community/netinfo';
 import { setupAutoSync } from '@/services/offline-queue.service';
+import { getUnreadCoachingMessages, markMessageRead, type CoachingMessage } from '@/services/coaching-messages.service';
+import { CoachingNudge } from '@/components/dashboard/CoachingNudge';
 
 interface PlanData {
   plan_type: string;
@@ -55,6 +57,7 @@ export default function TodayScreen() {
   const [weightInput, setWeightInput] = useState('');
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [activeTab, setActiveTab] = useState<'diet' | 'workout'>('diet');
+  const [coachingMessages, setCoachingMessages] = useState<CoachingMessage[]>([]);
 
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
   const waterTarget = (profile?.water_target_liters ?? 2.5) as number;
@@ -80,6 +83,8 @@ export default function TodayScreen() {
       .eq('user_id', user.id).eq('date', today)
       .order('version', { ascending: false }).limit(1).single()
       .then(({ data }) => { if (data) setPlan(data as unknown as PlanData); });
+    // Fetch coaching nudges
+    getUnreadCoachingMessages(user.id).then(setCoachingMessages);
   }, [user?.id]);
 
   const refresh = useCallback(() => {
@@ -91,7 +96,15 @@ export default function TodayScreen() {
       .eq('user_id', user.id).eq('date', today)
       .order('version', { ascending: false }).limit(1).single()
       .then(({ data }) => { if (data) setPlan(data as unknown as PlanData); });
+    getUnreadCoachingMessages(user.id).then(setCoachingMessages);
   }, [user?.id, dayBoundaryHour]);
+
+  // Refresh dashboard when tab gets focus (e.g., returning from chat after logging a meal)
+  const hasMounted = useRef(false);
+  useFocusEffect(useCallback(() => {
+    if (!hasMounted.current) { hasMounted.current = true; return; }
+    if (user?.id) refresh();
+  }, [user?.id, refresh]));
 
   useEffect(() => {
     const unsub1 = NetInfo.addEventListener(s => setIsOffline(!s.isConnected));
@@ -212,6 +225,24 @@ export default function TodayScreen() {
           ifEatingEnd={ifEatingEnd}
           userName={userName}
         />
+
+        {/* 1.5 Coaching Nudges */}
+        {coachingMessages.length > 0 && (
+          <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+            <CoachingNudge
+              messages={coachingMessages}
+              onDismiss={(id) => {
+                markMessageRead(id);
+                setCoachingMessages(prev => prev.filter(m => m.id !== id));
+              }}
+              onTap={(msg) => {
+                markMessageRead(msg.id);
+                setCoachingMessages(prev => prev.filter(m => m.id !== msg.id));
+                router.push({ pathname: '/(tabs)/chat', params: { prefill: msg.message } });
+              }}
+            />
+          </View>
+        )}
 
         {/* 2. Quick Stats: Su + Adim */}
         <View style={{ marginTop: SPACING.md }}>

@@ -403,6 +403,19 @@ export async function buildKnowledgeSummary(userId: string): Promise<string> {
   if (s.social_eating_notes) parts.push(`**Sosyal yeme:** ${s.social_eating_notes}`);
   if (s.recovery_pattern) parts.push(`**Toparlanma:** ${s.recovery_pattern}`);
 
+  const habits = s.habit_progress as { habit: string; status: string; streak: number }[] | null;
+  if (habits && habits.length > 0) {
+    parts.push(`\n**Aliskanlik takibi:**`);
+    for (const h of habits) {
+      parts.push(`- ${h.habit}: ${h.status} (${h.streak} gun seri)`);
+    }
+  }
+
+  const strength = s.strength_records as Record<string, { last_weight: number; last_reps: number }> | null;
+  if (strength && Object.keys(strength).length > 0) {
+    parts.push(`\n**Guc kayitlari:** ${Object.entries(strength).map(([k, v]) => `${k}: ${v.last_weight}kg x${v.last_reps}`).join(', ')}`);
+  }
+
   parts.push('\n_Yanlis ogrendigim bir sey varsa soyle, hemen duzelteyim._');
 
   return parts.join('\n');

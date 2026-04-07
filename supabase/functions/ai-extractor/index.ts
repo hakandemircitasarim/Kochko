@@ -11,6 +11,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
+import { evolvePatternConfidence } from '../shared/memory.ts';
 
 const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 
@@ -166,6 +167,13 @@ serve(async (req: Request) => {
 
       // 7. Update checkpoint
       await updateCheckpoint(userId, checkpointKey, messages[messages.length - 1].created_at as string);
+
+      // 8. Evolve pattern confidence (daily, Tier 2 only)
+      if (tier === 2) {
+        await evolvePatternConfidence(userId).catch((err: Error) =>
+          console.error(`[Extractor] Pattern confidence evolution failed for ${userId}:`, err.message)
+        );
+      }
     }
 
     return new Response(JSON.stringify({
