@@ -287,10 +287,13 @@ export async function loadSessionMessages(sessionId: string, limit = 50): Promis
 export async function sendMessageToSession(
   sessionId: string,
   text: string,
+  taskModeHint?: string,
 ): Promise<{ data: ChatResponse | null; error: string | null }> {
   const validation = validateMessage(text);
   if (!validation.valid) return { data: null, error: validation.error };
-  return invokeChat({ message: text, session_id: sessionId });
+  const body: Record<string, unknown> = { message: text, session_id: sessionId };
+  if (taskModeHint) body.task_mode_hint = taskModeHint;
+  return invokeChat(body);
 }
 
 export async function sendPhotoToSession(

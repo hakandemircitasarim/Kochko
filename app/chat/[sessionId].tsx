@@ -143,31 +143,49 @@ export default function SessionDetailScreen() {
     setShowBarcodeScanner(true);
   };
 
-  // Load chat history
+  // Load chat history + handle task card auto-start
   useEffect(() => {
     if (!sessionId) return;
-    loadSessionMessages(sessionId).then(data => {
-      if (data.length === 0 && isOnboarding) {
+    loadSessionMessages(sessionId).then(async (data) => {
+      if (data.length === 0 && taskModeHint) {
+        // Card-triggered session: AI sends first message (not user)
+        // Send a system-level request to get AI's opening message for this topic
+        setLoading(false);
+        setSending(true);
+        const { data: response } = await sendMessageToSession(
+          sessionId,
+          `[SYSTEM_INIT] Bu konu hakkında bildiklerini özetle ve sormak istediğin soruları sor.`,
+          taskModeHint,
+        );
+        if (response) {
+          setMessages([
+            { id: `a-${Date.now()}`, role: 'assistant', content: response.message, task_mode: response.task_mode, created_at: new Date().toISOString() },
+          ]);
+        }
+        setSending(false);
+        setPrefillApplied(true);
+      } else if (data.length === 0 && isOnboarding && !taskModeHint) {
         setMessages([{
           id: 'onboard-intro',
           role: 'assistant',
-          content: 'Merhaba! Ben Kochko, yaşam tarzı koçun.\n\nSeni tanımak istiyorum - biraz kendinden bahseder misin? Kaç yaşındasın, boyun ve kilon ne kadar? Beslenme veya sporla ilgili hedeflerin var mı?',
+          content: 'Merhaba! Ben Kochko, yaşam tarzı koçun.\n\nSeni tanımak istiyorum — biraz kendinden bahseder misin?',
           created_at: new Date().toISOString(),
         }]);
+        setLoading(false);
       } else {
         setMessages(data.map(m => ({ ...m })));
+        setLoading(false);
       }
-      setLoading(false);
     });
-  }, [isOnboarding]);
+  }, [sessionId, isOnboarding]);
 
-  // Pre-fill from dashboard quick actions
+  // Pre-fill from dashboard quick actions (non-card navigation)
   useEffect(() => {
-    if (prefill && !prefillApplied && !loading) {
+    if (prefill && !taskModeHint && !prefillApplied && !loading) {
       setInput(prefill);
       setPrefillApplied(true);
     }
-  }, [prefill, prefillApplied, loading]);
+  }, [prefill, taskModeHint, prefillApplied, loading]);
 
   // Scroll to bottom helper
   const scrollToBottom = useCallback(() => {
@@ -211,7 +229,7 @@ export default function SessionDetailScreen() {
     // Call AI
     const { data, error } = img
       ? await sendPhotoToSession(sessionId, text || 'Bu yemeği analiz et.', img)
-      : await sendMessageToSession(sessionId, text);
+      : await sendMessageToSession(sessionId, text, taskModeHint ?? undefined);
 
     if (data) {
       // Determine if this message type should show feedback buttons
