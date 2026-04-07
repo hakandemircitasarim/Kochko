@@ -23,30 +23,68 @@ serve(async (req: Request) => {
   try {
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, gender, night_eating_risk, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget')
+      .select('id, gender, night_eating_risk, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone')
       .eq('onboarding_completed', true);
 
     if (!profiles?.length) return respond({ processed: 0, sent: 0 });
 
     const now = new Date();
-    const hour = now.getHours();
+    const utcHour = now.getUTCHours();
     const today = now.toISOString().split('T')[0];
     const dayOfWeek = now.getDay(); // 0=Sunday, 1=Monday
     let totalSent = 0;
 
+    /**
+     * Get user's current local hour based on their timezone.
+     * Falls back to UTC+3 (Turkey) if no timezone set.
+     */
+    function getUserLocalHour(profile: { home_timezone?: string; active_timezone?: string }): number {
+      const tz = (profile.active_timezone ?? profile.home_timezone) as string | undefined;
+      if (tz) {
+        try {
+          const localTime = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+          return localTime.getHours();
+        } catch { /* invalid timezone, fall through */ }
+      }
+      return (utcHour + 3) % 24; // default Turkey UTC+3
+    }
+
+    /**
+     * Check if current time is appropriate for this user.
+     * Uses wake_time and sleep_time from profile.
+     * Only sends nudges between wake_time+30min and sleep_time-1h.
+     */
+    function isAppropriateTime(profile: { wake_time?: string; sleep_time?: string }, localHour: number): boolean {
+      const wakeHour = profile.wake_time ? parseInt(profile.wake_time.split(':')[0]) : 7;
+      const sleepHour = profile.sleep_time ? parseInt(profile.sleep_time.split(':')[0]) : 23;
+      // Allow nudges from 30min after wake until 1h before sleep
+      const earliestHour = wakeHour + 1; // +1h safety margin
+      const latestHour = sleepHour - 1;  // -1h before bed
+      return localHour >= earliestHour && localHour <= latestHour;
+    }
+
     // Check if Ramadan is approaching (weekly check)
     const seasonal = getSeasonalContext();
 
-    // --- Adaptive Difficulty (Spec 5.34) - Monday morning check ---
-    if (dayOfWeek === 1 && hour >= 6 && hour <= 8) {
-      for (const profile of profiles as { id: string }[]) {
+    // --- Adaptive Difficulty (Spec 5.34) - Monday morning check (per-user timezone) ---
+    if (dayOfWeek === 1) {
+      for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+        const localH = getUserLocalHour(profile);
+        if (localH < 6 || localH > 8) continue;
         try {
           await adjustAdaptiveDifficulty(profile.id, now);
         } catch { /* non-critical */ }
       }
     }
 
-    for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null; weekly_calorie_budget: number | null }[]) {
+    for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null; weekly_calorie_budget: number | null; wake_time: string | null; sleep_time: string | null; home_timezone: string | null; active_timezone: string | null }[]) {
+      // Per-user local time check — skip if outside their active hours
+      const userLocalHour = getUserLocalHour(profile);
+      if (!isAppropriateTime({ wake_time: profile.wake_time ?? undefined, sleep_time: profile.sleep_time ?? undefined }, userLocalHour)) continue;
+
+      // Use user's local hour for all time-based logic below
+      const hour = userLocalHour;
+
       // Max messages per day check
       const { count } = await supabaseAdmin
         .from('coaching_messages')
