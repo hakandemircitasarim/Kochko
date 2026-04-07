@@ -68,6 +68,13 @@ export default function SettingsScreen() {
         <Button title="Ilerleme Fotograflari" variant="outline" onPress={() => router.push('/settings/progress-photos')} />
       </View>
 
+      {/* Social */}
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Sosyal</Text>
+      <View style={{ gap: SPACING.sm }}>
+        <Button title="Aile Plani" variant="outline" onPress={() => router.push('/settings/household')} />
+        <Button title="Koc Paylasimi" variant="outline" onPress={() => router.push('/settings/coach-sharing')} />
+      </View>
+
       {/* Preferences */}
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Tercihler</Text>
       <View style={{ gap: SPACING.sm }}>

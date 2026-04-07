@@ -8,6 +8,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
+import { calculateDynamicTiming, inferActiveHours } from '@/services/notification-intelligence.service';
 
 export interface NotificationPreferences {
   enabled: boolean;
@@ -146,26 +147,53 @@ export async function updateNotificationPrefs(
 
   const workoutDays = (profile as Record<string, unknown> | null)?.workout_days as number[] | null;
 
-  await scheduleLocalNotifications(updated, ifProfile, workoutDays);
+  await scheduleLocalNotifications(updated, ifProfile, workoutDays, userId);
 }
 
 export async function scheduleLocalNotifications(
   prefs: NotificationPreferences,
   ifProfile?: { if_active: boolean; if_eating_start: string | null; if_eating_end: string | null } | null,
   workoutDays?: number[] | null,
+  userId?: string,
 ): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   if (!prefs.enabled) return;
 
+  // Infer user's active hours for dynamic timing (Spec 10)
+  let activeHours: number[] = [8, 12, 19]; // defaults
+  if (userId) {
+    try {
+      const { data: chatData } = await supabase
+        .from('chat_messages')
+        .select('created_at')
+        .eq('user_id', userId)
+        .eq('role', 'user')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (chatData && chatData.length > 0) {
+        activeHours = inferActiveHours(chatData.map(m => m.created_at));
+      }
+    } catch { /* use defaults */ }
+  }
+
+  // Helper: adjust scheduled hour/minute using dynamic timing
+  const adjustTime = (hour: number, minute: number): { hour: number; minute: number } => {
+    const baseDate = new Date();
+    baseDate.setHours(hour, minute, 0, 0);
+    const adjusted = calculateDynamicTiming(baseDate, activeHours);
+    return { hour: adjusted.getHours(), minute: adjusted.getMinutes() };
+  };
+
   if (prefs.types.morning_plan) {
+    const t = adjustTime(7, 30);
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Gunun Plani Hazir',
         body: 'Bugunun beslenme ve antrenman planina goz at.',
         data: { type: 'morning_plan' },
       },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 7, minute: 30 },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: t.hour, minute: t.minute },
     });
   }
 

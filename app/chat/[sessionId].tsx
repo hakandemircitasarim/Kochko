@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Image,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -28,6 +28,9 @@ import {
 } from '@/services/chat.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
+import { incrementAndCheck, getRemainingMessages } from '@/services/message-counter.service';
+import { speak, stopSpeaking, isSpeaking } from '@/services/tts.service';
+import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import {
@@ -121,10 +124,32 @@ export default function SessionDetailScreen() {
   const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [remainingMsgs, setRemainingMsgs] = useState<number | null>(null);
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
 
   const isOnboarding = profile && !profile.onboarding_completed;
+  const isPremium = !!(profile as Record<string, unknown> | null)?.premium;
+
+  // Fetch remaining messages for free users on mount
+  useEffect(() => {
+    getRemainingMessages(isPremium).then(setRemainingMsgs);
+  }, [isPremium]);
+
+  // TTS toggle handler
+  const handleTTSToggle = useCallback(async (msgId: string, text: string) => {
+    if (speakingMsgId === msgId) {
+      stopSpeaking();
+      setSpeakingMsgId(null);
+    } else {
+      if (speakingMsgId) stopSpeaking();
+      setSpeakingMsgId(msgId);
+      const coachTone = ((profile as Record<string, unknown> | null)?.coach_tone as 'strict' | 'balanced' | 'gentle') ?? 'balanced';
+      await speak(text, { coachTone });
+      setSpeakingMsgId(null);
+    }
+  }, [speakingMsgId, profile]);
 
   // Barcode scan handler (T2.12-T2.13)
   const handleBarcodeScan = async (barcode: string) => {
@@ -242,6 +267,26 @@ export default function SessionDetailScreen() {
     const text = input.trim();
     if ((!text && !photo) || sending) return;
 
+    // Message counter check (Spec 16: free daily limit)
+    if (text && !photo) {
+      const counterResult = await incrementAndCheck(isPremium);
+      setRemainingMsgs(counterResult.remaining);
+      if (!counterResult.allowed) {
+        Alert.alert(
+          'Mesaj Limiti',
+          counterResult.message ?? 'Gunluk mesaj limitine ulastin. Premium\'a gecersen sinirsiz mesaj hakki kazanirsin.',
+          [{ text: 'Tamam' }]
+        );
+        return;
+      }
+    }
+
+    // Repair intent detection (Spec 5.32)
+    let repairContext: RepairDetection | null = null;
+    if (text) {
+      repairContext = detectRepairIntent(text);
+    }
+
     // Add user message optimistically
     const userMsg: UIMessage = {
       id: `u-${Date.now()}`,
@@ -256,10 +301,13 @@ export default function SessionDetailScreen() {
     setSending(true);
     scrollToBottom();
 
-    // Call AI
+    // Call AI — pass repair context if detected
+    const effectiveTaskMode = repairContext && repairContext.type !== 'none'
+      ? `repair:${repairContext.type}`
+      : (taskModeHint ?? undefined);
     const { data, error } = img
       ? await sendPhotoToSession(sessionId, text || 'Bu yemeği analiz et.', img)
-      : await sendMessageToSession(sessionId, text, taskModeHint ?? undefined);
+      : await sendMessageToSession(sessionId, text, effectiveTaskMode);
 
     if (data) {
       // Determine if this message type should show feedback buttons
@@ -487,7 +535,7 @@ export default function SessionDetailScreen() {
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} />}
+          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} />}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
@@ -570,6 +618,15 @@ export default function SessionDetailScreen() {
           >
             <Text style={{ color: '#fff', fontSize: 11, fontWeight: '500' }}>Geri Al (10sn)</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Remaining messages for free users */}
+      {!isPremium && remainingMsgs != null && remainingMsgs <= 3 && (
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: 2 }}>
+          <Text style={{ color: remainingMsgs === 0 ? colors.error : colors.warning, fontSize: 11, textAlign: 'center' }}>
+            {remainingMsgs === 0 ? 'Gunluk mesaj hakkın bitti' : `${remainingMsgs} mesaj hakkın kaldı`}
+          </Text>
         </View>
       )}
 
@@ -706,7 +763,7 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   );
 }
 
-function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, totalCalories, weeklyBudgetRemaining }: {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
@@ -716,6 +773,8 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   onReject: () => void;
   totalCalories: number;
   weeklyBudgetRemaining: number | null;
+  onTTSToggle: (msgId: string, text: string) => void;
+  speakingMsgId: string | null;
 }) {
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
@@ -769,10 +828,21 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
           <ConfirmRejectButtons onConfirm={onConfirm} onReject={onReject} />
         )}
 
-        {/* Timestamp */}
-        <Text style={{ color: isUser ? 'rgba(255,255,255,0.6)' : colors.textMuted, fontSize: 10, marginTop: 4, alignSelf: 'flex-end' }}>
-          {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-        </Text>
+        {/* Timestamp + TTS button */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 6 }}>
+          {!isUser && (
+            <TouchableOpacity onPress={() => onTTSToggle(message.id, message.content)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Ionicons
+                name={speakingMsgId === message.id ? 'stop-circle-outline' : 'volume-medium-outline'}
+                size={14}
+                color={speakingMsgId === message.id ? colors.primary : colors.textMuted}
+              />
+            </TouchableOpacity>
+          )}
+          <Text style={{ color: isUser ? 'rgba(255,255,255,0.6)' : colors.textMuted, fontSize: 10, alignSelf: 'flex-end' }}>
+            {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+          </Text>
+        </View>
       </View>
 
       {/* Simulation card */}

@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { detectPlateau, selectBestStrategy, applyPlateauStrategy, type PlateauStatus, type PlateauStrategy, type StrategyRecommendation } from '@/services/plateau.service';
 import { getMaintenanceStatus, shouldTriggerMiniCut, type MaintenanceStatus } from '@/services/maintenance.service';
 import { getTimelineData } from '@/services/goals.service';
+import { getEngagementMetrics, type EngagementMetrics } from '@/services/analytics.service';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -35,6 +36,7 @@ export default function ProgressScreen() {
   const [miniCutOffered, setMiniCutOffered] = useState(false);
   const [miniCutLoading, setMiniCutLoading] = useState(false);
   const [timelinePhases, setTimelinePhases] = useState<{ phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]; currentWeek: number } | null>(null);
+  const [engagement, setEngagement] = useState<EngagementMetrics | null>(null);
 
   const chartConfig = {
     backgroundGradientFrom: colors.card,
@@ -55,7 +57,8 @@ export default function ProgressScreen() {
       detectPlateau(user.id),
       getMaintenanceStatus(user.id),
       getTimelineData(user.id),
-    ]).then(([m, c, plateau, maintenance, timeline]) => {
+      getEngagementMetrics(user.id),
+    ]).then(([m, c, plateau, maintenance, timeline, engagementData]) => {
       setMetrics((m.data ?? []) as MetricPt[]);
       const compData = (c.data ?? []) as CompPt[];
       setCompliance(compData);
@@ -84,6 +87,8 @@ export default function ProgressScreen() {
       if (timeline.phases.length > 1) {
         setTimelinePhases(timeline);
       }
+
+      setEngagement(engagementData);
 
       setLoading(false);
     });
@@ -352,6 +357,26 @@ export default function ProgressScreen() {
               </View>
             </View>
           )}
+        </Card>
+      )}
+
+      {/* Engagement Metrics (Spec 24) */}
+      {engagement && (
+        <Card title="Etkileşim">
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm }}>
+            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
+              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.avgDailyMeals}</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Ogun/Gun</Text>
+            </View>
+            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
+              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.avgDailyMessages}</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Mesaj/Gun</Text>
+            </View>
+            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
+              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.featureUsage.daily_tracking ?? 0}</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Aktif Gun</Text>
+            </View>
+          </View>
         </Card>
       )}
 
