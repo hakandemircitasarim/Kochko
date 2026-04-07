@@ -57,10 +57,13 @@ serve(async (req: Request) => {
     function isAppropriateTime(profile: { wake_time?: string; sleep_time?: string }, localHour: number): boolean {
       const wakeHour = profile.wake_time ? parseInt(profile.wake_time.split(':')[0]) : 7;
       const sleepHour = profile.sleep_time ? parseInt(profile.sleep_time.split(':')[0]) : 23;
-      // Allow nudges from 30min after wake until 1h before sleep
-      const earliestHour = wakeHour + 1; // +1h safety margin
-      const latestHour = sleepHour - 1;  // -1h before bed
-      return localHour >= earliestHour && localHour <= latestHour;
+      // Allow nudges from wake hour until 1h before sleep
+      return localHour >= wakeHour && localHour <= sleepHour - 1;
+    }
+
+    function isWakeUpHour(profile: { wake_time?: string }, localHour: number): boolean {
+      const wakeHour = profile.wake_time ? parseInt(profile.wake_time.split(':')[0]) : 7;
+      return localHour === wakeHour;
     }
 
     // Check if Ramadan is approaching (weekly check)
@@ -84,6 +87,7 @@ serve(async (req: Request) => {
 
       // Use user's local hour for all time-based logic below
       const hour = userLocalHour;
+      const isWakeUp = isWakeUpHour({ wake_time: profile.wake_time ?? undefined }, hour);
 
       // Max messages per day check
       const { count } = await supabaseAdmin
@@ -395,7 +399,8 @@ serve(async (req: Request) => {
         }
       }
 
-      const context = `Saat: ${hour}:00 | Koc tonu: ${profile.coach_tone ?? 'balanced'}
+      const context = `Saat: ${hour}:00 (kullanicinin yerel saati) | Koc tonu: ${profile.coach_tone ?? 'balanced'}
+${isWakeUp ? 'TETIK: SABAH UYANMA SAATI - Gunaydin mesaji gonder. Bugunun plani, dunku ozet, motivasyon. Kisa ve enerjik ol.' : ''}
 Son ogun: ${hoursSinceMeal < 999 ? `${Math.round(hoursSinceMeal)}sa once` : 'hic yok'}
 Son konusma: ${hoursSinceChat < 999 ? `${Math.round(hoursSinceChat)}sa once` : 'hic yok'}
 Gece riski: ${nightRisk ? 'AKTIF' : 'yok'}
