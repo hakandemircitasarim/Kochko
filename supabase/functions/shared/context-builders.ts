@@ -93,16 +93,56 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
   const demoLine = `Cinsiyet: ${p.gender ?? '?'} | Yas: ${age ?? '?'} | Boy: ${p.height_cm ?? '?'}cm | Kilo: ${p.weight_kg ?? '?'}kg`;
   parts.push(`## PROFIL\n${isOnboarding ? '*** ONBOARDING MODU ***\n' : ''}${demoLine}`);
 
+  // Schedule & lifestyle — always include if available
+  const scheduleItems: string[] = [];
+  if (p.occupation) scheduleItems.push(`Meslek: ${p.occupation}`);
+  if (p.work_start && p.work_end) scheduleItems.push(`Calisma: ${p.work_start}-${p.work_end}`);
+  if (p.sleep_time && p.wake_time) scheduleItems.push(`Uyku: ${p.sleep_time}-${p.wake_time}`);
+  if (p.sleep_quality) scheduleItems.push(`Uyku kalitesi: ${p.sleep_quality}`);
+  if (p.stress_level) scheduleItems.push(`Stres: ${p.stress_level}${p.stress_sources ? ` (${p.stress_sources})` : ''}`);
+  if (scheduleItems.length > 0) parts.push(`\n## GUNLUK RUTIN\n${scheduleItems.join('\n')}`);
+
+  // Motivation & challenges
+  const motivItems: string[] = [];
+  if (p.motivation_source) motivItems.push(`Motivasyon: ${p.motivation_source}`);
+  if (p.biggest_challenge) motivItems.push(`En buyuk zorluk: ${p.biggest_challenge}`);
+  if (p.previous_diets) motivItems.push(`Gecmis diyetler: ${p.previous_diets}`);
+  if (motivItems.length > 0) parts.push(`\n## MOTIVASYON\n${motivItems.join('\n')}`);
+
   // Training details
   if (plan.layer1Focus.includes('training') || plan.layer1 === 'full') {
-    parts.push(`Aktivite: ${p.activity_level ?? '?'} | Ekipman: ${p.equipment_access ?? '?'} | Antrenman: ${p.training_style ?? '?'}`);
+    const trainItems = [`Aktivite: ${p.activity_level ?? '?'} | Ekipman: ${p.equipment_access ?? '?'} | Antrenman: ${p.training_style ?? '?'}`];
+    if (p.training_experience) trainItems.push(`Deneyim: ${p.training_experience}`);
+    if (p.exercise_history) trainItems.push(`Spor gecmisi: ${p.exercise_history}`);
+    if (p.preferred_exercises) trainItems.push(`Tercih ettigi: ${p.preferred_exercises}`);
+    if (p.disliked_exercises) trainItems.push(`Sevmedigi: ${p.disliked_exercises}`);
+    if (p.available_training_times) trainItems.push(`Antrenman saatleri: ${p.available_training_times}`);
+    parts.push(`\n## ANTRENMAN\n${trainItems.join('\n')}`);
   }
 
   // Nutrition details
   if (plan.layer1Focus.includes('nutrition') || plan.layer1 === 'full') {
-    parts.push(`Yemek becerisi: ${p.cooking_skill ?? '?'} | Butce: ${p.budget_level ?? '?'} | Porsiyon dili: ${p.portion_language ?? 'household'}`);
-    parts.push(`Diyet modu: ${p.diet_mode ?? 'standard'}${p.if_active ? ` | IF: ${p.if_window} (${p.if_eating_start}-${p.if_eating_end})` : ''}`);
-    parts.push(`Koc tonu: ${p.coach_tone ?? 'balanced'}`);
+    const nutItems = [`Yemek becerisi: ${p.cooking_skill ?? '?'} | Butce: ${p.budget_level ?? '?'} | Porsiyon dili: ${p.portion_language ?? 'household'}`];
+    nutItems.push(`Diyet modu: ${p.diet_mode ?? 'standard'}${p.dietary_restriction ? ` | Kisitlama: ${p.dietary_restriction}` : ''}${p.if_active ? ` | IF: ${p.if_window} (${p.if_eating_start}-${p.if_eating_end})` : ''}`);
+    nutItems.push(`Koc tonu: ${p.coach_tone ?? 'balanced'}`);
+    if (p.meal_count_preference) nutItems.push(`Ogun sayisi: ${p.meal_count_preference}`);
+    if (p.eating_out_frequency) nutItems.push(`Disarida yeme: ${p.eating_out_frequency}`);
+    if (p.fastfood_frequency) nutItems.push(`Fast food: ${p.fastfood_frequency}`);
+    if (p.skipped_meals) nutItems.push(`Atlanan ogunler: ${p.skipped_meals}`);
+    if (p.night_eating_habit) nutItems.push(`Gece yeme: ${p.night_eating_habit}`);
+    if (p.emotional_eating) nutItems.push(`Duygusal yeme: ${p.emotional_eating}`);
+    if (p.snacking_habit) nutItems.push(`Atistirma: ${p.snacking_habit}`);
+    if (p.caffeine_intake) nutItems.push(`Kafein: ${p.caffeine_intake}`);
+    parts.push(nutItems.join('\n'));
+
+    // Kitchen & logistics
+    const kitchenItems: string[] = [];
+    if (p.meal_prep_time) kitchenItems.push(`Hazirlama suresi: ${p.meal_prep_time}`);
+    if (p.kitchen_equipment) kitchenItems.push(`Ekipman: ${p.kitchen_equipment}`);
+    if (p.household_cooking) kitchenItems.push(`Kim pisiriyor: ${p.household_cooking}`);
+    if (p.household_diet_challenge) kitchenItems.push(`Ev zorluklari: ${p.household_diet_challenge}`);
+    if (p.meal_prep_active) kitchenItems.push(`Meal prep: ${p.meal_prep_days?.join(', ') ?? 'aktif'}`);
+    if (kitchenItems.length > 0) parts.push(`\n## MUTFAK\n${kitchenItems.join('\n')}`);
 
     // Calorie targets
     parts.push(`\n## KALORI\nAntrenman gunu: ${p.calorie_range_training_min ?? '?'}-${p.calorie_range_training_max ?? '?'} kcal`);
@@ -136,10 +176,26 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
   // Health
   if (plan.layer1Focus.includes('health') || plan.layer1 === 'full') {
     const health = (healthRes.data ?? []) as { event_type: string; description: string; is_ongoing: boolean }[];
-    const ongoingHealth = health.filter(h => h.is_ongoing);
-    if (ongoingHealth.length > 0) {
-      parts.push(`\n## SAGLIK GECMISI\n${ongoingHealth.map(h => `- [${h.event_type}] ${h.description}`).join('\n')}`);
+    if (health.length > 0) {
+      const ongoing = health.filter(h => h.is_ongoing);
+      const past = health.filter(h => !h.is_ongoing);
+      const healthParts: string[] = [];
+      if (ongoing.length > 0) healthParts.push(`Aktif:\n${ongoing.map(h => `- [${h.event_type}] ${h.description}`).join('\n')}`);
+      if (past.length > 0) healthParts.push(`Gecmis:\n${past.map(h => `- [${h.event_type}] ${h.description}`).join('\n')}`);
+      parts.push(`\n## SAGLIK GECMISI\n${healthParts.join('\n')}`);
     }
+
+    // Health fields from profile
+    const healthProfile: string[] = [];
+    if (p.digestive_issues) healthProfile.push(`Sindirim: ${p.digestive_issues}`);
+    if (p.hormone_conditions) healthProfile.push(`Hormon: ${p.hormone_conditions}`);
+    if (healthProfile.length > 0) parts.push(healthProfile.join('\n'));
+
+    // Body composition if available
+    const bodyItems: string[] = [];
+    if (p.body_fat_pct) bodyItems.push(`Yag orani: %${p.body_fat_pct}`);
+    if (p.waist_cm) bodyItems.push(`Bel: ${p.waist_cm}cm`);
+    if (bodyItems.length > 0) parts.push(`\n## VUCUT OLCULERI\n${bodyItems.join(' | ')}`);
 
     // Periodic state
     if (p.periodic_state) {
@@ -494,9 +550,22 @@ function formatLayer3(
     parts.push(`\nKilo trendi: ${weights.join(', ')}`);
   }
 
-  // Lab alerts
+  // Lab values → dietary impact
   if (labAlerts.length > 0) {
-    parts.push(`\n## LAB UYARILARI\n${labAlerts.map(l => `${l.parameter_name}: ${l.value} ${l.unit}`).join('\n')}`);
+    const labLines = labAlerts.map((l: { parameter_name: string; value: number; unit: string }) => {
+      const name = l.parameter_name?.toLowerCase() ?? '';
+      let impact = '';
+      if (name.includes('kolesterol') || name.includes('cholesterol') || name.includes('ldl')) impact = ' → Doymus yag azalt, lif artir';
+      else if (name.includes('glukoz') || name.includes('glucose') || name.includes('seker') || name.includes('hba1c')) impact = ' → Karbonhidrat zamanlamasini ayarla, dusuk GI yiyecekler';
+      else if (name.includes('demir') || name.includes('iron') || name.includes('ferritin')) impact = ' → Demir zengin yiyecekler ogle yemegine, C vitamini ile birlikte';
+      else if (name.includes('d vitamini') || name.includes('vitamin d') || name.includes('25-oh')) impact = ' → D vitamini takviyesi oner';
+      else if (name.includes('b12')) impact = ' → B12 kaynaklari: et, yumurta, sut urunleri vurgula';
+      else if (name.includes('trigliserit') || name.includes('triglyceride')) impact = ' → Basit seker ve alkol azalt';
+      else if (name.includes('hemoglobin') || name.includes('hgb')) impact = ' → Demir + C vitamini kombinasyonu';
+      else if (name.includes('tsh') || name.includes('tiroid') || name.includes('thyroid')) impact = ' → Iyot kaynaklari, selenyum';
+      return `- ${l.parameter_name}: ${l.value} ${l.unit}${impact}`;
+    });
+    parts.push(`\n## KAN TAHLILI → DIYET ETKISI\n${labLines.join('\n')}`);
   }
 
   // Commitments

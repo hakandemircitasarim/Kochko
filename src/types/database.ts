@@ -108,6 +108,33 @@ export interface Profile {
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
+  // Comprehensive profile fields (migration 013)
+  display_name: string | null;
+  dietary_restriction: string | null;
+  stress_level: string | null;
+  stress_sources: string | null;
+  sleep_quality: string | null;
+  motivation_source: string | null;
+  biggest_challenge: string | null;
+  digestive_issues: string | null;
+  hormone_conditions: string | null;
+  previous_diets: string | null;
+  eating_out_frequency: string | null;
+  fastfood_frequency: string | null;
+  skipped_meals: string | null;
+  night_eating_habit: string | null;
+  emotional_eating: string | null;
+  snacking_habit: string | null;
+  caffeine_intake: string | null;
+  meal_prep_time: string | null;
+  kitchen_equipment: string | null;
+  household_cooking: string | null;
+  household_diet_challenge: string | null;
+  training_experience: string | null;
+  exercise_history: string | null;
+  preferred_exercises: string | null;
+  disliked_exercises: string | null;
+  available_training_times: string | null;
   [key: string]: unknown;
 }
 
