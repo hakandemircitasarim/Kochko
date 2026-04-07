@@ -37,11 +37,8 @@ async function getAccessToken(): Promise<string | null> {
 }
 
 async function invokeChat(body: Record<string, unknown>): Promise<{ data: ChatResponse | null; error: string | null }> {
-  const token = await getAccessToken();
-  const headers: Record<string, string> = {};
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const { data, error } = await supabase.functions.invoke('ai-chat', { body, headers });
+  // Supabase client automatically attaches auth headers — don't override
+  const { data, error } = await supabase.functions.invoke('ai-chat', { body });
   if (error) return { data: null, error: error.message };
   return { data: data as ChatResponse, error: null };
 }
