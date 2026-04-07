@@ -53,6 +53,8 @@ export default function SessionListScreen() {
           if (openCamera) params.openCamera = openCamera;
           router.replace({ pathname: `/chat/${id}`, params });
         }
+      }).catch(() => {
+        setPrefillHandled(false); // retry on next render
       });
     }
   }, [prefill, openCamera, prefillHandled]);
@@ -70,13 +72,13 @@ export default function SessionListScreen() {
 
     const data = await loadSessions();
 
-    // Auto-close stale sessions (>24h inactive)
+    // Auto-close stale sessions (>24h inactive, use updated_at or started_at as fallback)
     const now = Date.now();
     for (const s of data) {
-      if (s.is_active && s.started_at) {
-        const lastActivity = new Date(s.started_at).getTime();
-        if (now - lastActivity > 24 * 60 * 60 * 1000 && !s.last_message) {
-          await closeSession(s.id);
+      if (s.is_active) {
+        const lastActivity = new Date(s.updated_at ?? s.started_at).getTime();
+        if (now - lastActivity > 24 * 60 * 60 * 1000) {
+          await closeSession(s.id).catch(() => {});
           s.is_active = false;
           s.ended_at = new Date().toISOString();
         }

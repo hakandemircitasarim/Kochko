@@ -7,53 +7,34 @@ import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
-
-interface PrepItem {
-  name: string;
-  quantity: string;
-  storageMethod: string;
-  storageDays: number;
-}
-
-interface MealPrepPlan {
-  items: PrepItem[];
-  prepOrder: string[];
-  totalPrepTimeMin: number;
-}
-
-// Generates a meal prep plan from user's saved recipes and weekly plan
-// In production this would call the AI or a dedicated service
-async function generateMealPrepPlan(): Promise<MealPrepPlan> {
-  // Simulated plan generation - in real implementation this calls the AI backend
-  return {
-    items: [
-      { name: 'Tavuk gogsu (izgara)', quantity: '1 kg', storageMethod: 'Buzdolabi, hava almaz kap', storageDays: 4 },
-      { name: 'Pilav', quantity: '4 porsiyon', storageMethod: 'Buzdolabi, kapali kap', storageDays: 3 },
-      { name: 'Sebze karisimi (brokoli, havuc)', quantity: '500g', storageMethod: 'Buzdolabi, zip torba', storageDays: 5 },
-      { name: 'Yulaf ezmesi porsiyon', quantity: '5 porsiyon', storageMethod: 'Oda sicakligi, kapali kavanoz', storageDays: 7 },
-      { name: 'Yumurta (haslanmis)', quantity: '10 adet', storageMethod: 'Buzdolabi', storageDays: 5 },
-    ],
-    prepOrder: [
-      'Yumurtalari hasla (15 dk)',
-      'Pirinci yika ve pilavi ocaga koy (25 dk)',
-      'Tavuk goguslerini marine et ve izgara yap (20 dk)',
-      'Sebzeleri kes ve buharda pisir (15 dk)',
-      'Yulaf porsiyonlarini hazirla (10 dk)',
-      'Her seyi kaplara bolustrur',
-    ],
-    totalPrepTimeMin: 90,
-  };
-}
+import { useAuthStore } from '@/stores/auth.store';
+import { generateMealPrepPlan, type MealPrepPlan } from '@/services/meal-prep.service';
+import { getCurrentWeeklyPlan } from '@/services/weekly-plan.service';
 
 export default function MealPrepPlanScreen() {
+  const user = useAuthStore(s => s.user);
   const [plan, setPlan] = useState<MealPrepPlan | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGenerate = async () => {
+    if (!user?.id) return;
     setLoading(true);
+    setError(null);
     try {
-      const result = await generateMealPrepPlan();
+      const weeklyPlan = await getCurrentWeeklyPlan();
+      if (!weeklyPlan) {
+        setError('Once haftalik menunu olustur, sonra meal prep plani yapabiliriz.');
+        return;
+      }
+      const result = await generateMealPrepPlan(user.id, weeklyPlan.id);
+      if (!result) {
+        setError('Meal prep plani olusturulamadi. Ayarlardan meal prep tercihini aktif ettiginizden emin olun.');
+        return;
+      }
       setPlan(result);
+    } catch {
+      setError('Bir hata olustu, lutfen tekrar deneyin.');
     } finally {
       setLoading(false);
     }
@@ -72,6 +53,11 @@ export default function MealPrepPlanScreen() {
             <ActivityIndicator size="large" color={COLORS.primary} />
           ) : (
             <>
+              {error && (
+                <Text style={{ color: COLORS.error, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.md }}>
+                  {error}
+                </Text>
+              )}
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
                 Kayitli tariflerine ve haftalik planina gore bir meal prep plani olusturalim.
               </Text>
@@ -84,8 +70,12 @@ export default function MealPrepPlanScreen() {
           {/* Total Prep Time */}
           <Card>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Toplam Hazirlama Suresi</Text>
-              <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>{plan.totalPrepTimeMin} dk</Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Hazirlama</Text>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>{plan.totalPrepTime} dk</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.xs }}>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Pisirme</Text>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700' }}>{plan.totalCookTime} dk</Text>
             </View>
           </Card>
 
@@ -95,14 +85,14 @@ export default function MealPrepPlanScreen() {
             <Card key={i}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{item.name}</Text>
+                  <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{item.recipeName}</Text>
                   <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{item.quantity}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600' }}>{item.storageDays} gun</Text>
                 </View>
               </View>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: SPACING.xs }}>Saklama: {item.storageMethod}</Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: SPACING.xs }}>Saklama: {item.storageInstructions}</Text>
             </Card>
           ))}
 
@@ -112,9 +102,12 @@ export default function MealPrepPlanScreen() {
             {plan.prepOrder.map((step, i) => (
               <View key={i} style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: i < plan.prepOrder.length - 1 ? SPACING.sm : 0, alignItems: 'flex-start' }}>
                 <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '700' }}>{i + 1}</Text>
+                  <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '700' }}>{step.order}</Text>
                 </View>
-                <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1, lineHeight: 22 }}>{step}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 22 }}>{step.action}</Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{step.durationMin} dk — {step.reason_tr}</Text>
+                </View>
               </View>
             ))}
           </Card>

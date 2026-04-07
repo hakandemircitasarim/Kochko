@@ -7,8 +7,9 @@ import { supabase } from '@/lib/supabase';
 import { validateWeeklyRate } from '@/lib/tdee';
 import { calculateGoalProgress, getGoalSummaryText, validateGoalSafety } from '@/lib/goal-progress';
 import {
-  getAIGoalSuggestions, checkGoalCompatibility, calculatePhaseTransition,
-  type GoalSuggestion,
+  getGoalPhases, addPhase, getAIGoalSuggestions, checkGoalCompatibility,
+  calculatePhaseTransition, checkAggressiveGoal,
+  type GoalSuggestion, type GoalPhase,
 } from '@/services/goals.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -34,19 +35,21 @@ export default function GoalsScreen() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [compatWarning, setCompatWarning] = useState<string | null>(null);
   const [phaseTransitionInfo, setPhaseTransitionInfo] = useState<string | null>(null);
+  const [allPhases, setAllPhases] = useState<GoalPhase[]>([]);
+  const [aggressiveWarning, setAggressiveWarning] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
-    supabase.from('goals').select('*').eq('user_id', user.id).eq('is_active', true).single()
-      .then(({ data }) => {
-        if (data) {
-          const g = data as Goal;
-          setExistingGoal(g);
-          setGoalType(g.goal_type as GoalType);
-          setTargetWeight(String(g.target_weight_kg ?? ''));
-          setTargetWeeks(String(g.target_weeks ?? 12));
-        }
-      });
+    getGoalPhases(user.id).then(phases => {
+      setAllPhases(phases);
+      const active = phases.find(p => p.is_active);
+      if (active) {
+        setExistingGoal(active as unknown as Goal);
+        setGoalType(active.goal_type as GoalType);
+        setTargetWeight(String(active.target_weight_kg ?? ''));
+        setTargetWeeks(String(active.target_weeks ?? 12));
+      }
+    });
   }, [user?.id]);
 
   // D19: Check goal compatibility when type changes
@@ -109,6 +112,19 @@ export default function GoalsScreen() {
     : null;
   const summaryText = progress ? getGoalSummaryText(progress, goalType) : null;
 
+  // Check aggressive goal rate when target weight or weeks change
+  useEffect(() => {
+    const tw = parseFloat(targetWeight);
+    const weeks = parseInt(targetWeeks) || 12;
+    if (tw && profile?.weight_kg && (goalType === 'lose_weight' || goalType === 'gain_weight')) {
+      const rate = Math.abs((profile.weight_kg as number) - tw) / weeks;
+      const aggressive = checkAggressiveGoal(rate, profile.weight_kg as number, profile?.gender as string ?? null);
+      setAggressiveWarning(aggressive.warning);
+    } else {
+      setAggressiveWarning(null);
+    }
+  }, [targetWeight, targetWeeks, goalType, profile]);
+
   const handleSave = async () => {
     if (!user?.id) return;
     const tw = parseFloat(targetWeight);
@@ -119,16 +135,25 @@ export default function GoalsScreen() {
       if (!check.valid) { Alert.alert('Dikkat', check.message); return; }
     }
 
+    // Check compatibility with existing active goals
+    if (existingGoal && goalType !== existingGoal.goal_type) {
+      const compat = checkGoalCompatibility(goalType, existingGoal.goal_type as string);
+      if (!compat.compatible) {
+        Alert.alert('Hedef Celiskisi', compat.message_tr);
+        return;
+      }
+    }
+
     setSaving(true);
+    // Deactivate existing active goals before creating new phase
     await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
-    await supabase.from('goals').insert({
-      user_id: user.id, goal_type: goalType,
-      target_weight_kg: tw || null, target_weeks: weeks,
-      start_weight_kg: profile?.weight_kg ?? null,
-      priority: 'sustainable', restriction_mode: 'sustainable',
-      weekly_rate: tw && profile?.weight_kg ? Math.abs(profile.weight_kg - tw) / weeks : null,
-      is_active: true,
-    });
+    const phaseLabel = goalType === 'lose_weight' ? 'Yag Yakim'
+      : goalType === 'gain_weight' ? 'Kilo Alma'
+      : goalType === 'gain_muscle' ? 'Kas Gelistirme'
+      : goalType === 'maintain' ? 'Koruma'
+      : goalType === 'conditioning' ? 'Kondisyon'
+      : 'Saglik';
+    await addPhase(user.id, goalType, tw || null, weeks, phaseLabel);
     setSaving(false);
     Alert.alert('Basarili', 'Hedef kaydedildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
   };
@@ -161,6 +186,31 @@ export default function GoalsScreen() {
           </Card>
         )}
 
+        {/* Phase timeline */}
+        {allPhases.length > 1 && (
+          <Card style={{ marginBottom: SPACING.md }}>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>FAZ PLANI</Text>
+            {allPhases.map((phase, i) => (
+              <View key={phase.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: i < allPhases.length - 1 ? SPACING.sm : 0 }}>
+                <View style={{
+                  width: 24, height: 24, borderRadius: 12, marginRight: SPACING.sm,
+                  backgroundColor: phase.is_active ? COLORS.primary : COLORS.surfaceLight,
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Text style={{ color: phase.is_active ? '#fff' : COLORS.textMuted, fontSize: FONT.xs, fontWeight: '700' }}>{i + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: phase.is_active ? COLORS.text : COLORS.textMuted, fontSize: FONT.sm, fontWeight: phase.is_active ? '600' : '400' }}>
+                    {phase.phase_label ?? phase.goal_type}
+                  </Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{phase.target_weeks ?? '?'} hafta{phase.target_weight_kg ? ` - ${phase.target_weight_kg}kg` : ''}</Text>
+                </View>
+                {phase.is_active && <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700' }}>AKTIF</Text>}
+              </View>
+            ))}
+          </Card>
+        )}
+
         {/* Goal type selector */}
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Hedef Turu</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.lg }}>
@@ -185,6 +235,14 @@ export default function GoalsScreen() {
           <View style={{ backgroundColor: COLORS.primary + '10', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '40' }}>
             <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Kademeli Gecis</Text>
             <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{phaseTransitionInfo}</Text>
+          </View>
+        )}
+
+        {/* Aggressive rate warning from goals service */}
+        {aggressiveWarning && (
+          <View style={{ backgroundColor: COLORS.warning + '15', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.warning }}>
+            <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Agresif Tempo</Text>
+            <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{aggressiveWarning}</Text>
           </View>
         )}
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
-import { getExerciseHistory, estimate1RM, shouldDeload, type ExerciseHistory } from '@/services/strength.service';
+import { getExerciseHistory, estimate1RM, shouldDeload, suggestProgression, detectPlateauByExercise, type ExerciseHistory } from '@/services/strength.service';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
@@ -14,12 +14,22 @@ const EXERCISE_LABELS: Record<string, string> = {
 export default function StrengthScreen() {
   const user = useAuthStore(s => s.user);
   const [exercises, setExercises] = useState<(ExerciseHistory | null)[]>([]);
+  const [plateaus, setPlateaus] = useState<Record<string, { plateau: boolean; weeks: number; maxWeight: number; message: string }>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!user?.id) return;
     Promise.all(CORE_EXERCISES.map(e => getExerciseHistory(user.id, e)))
       .then(results => { setExercises(results); setLoading(false); });
+    // Load plateau detection for each exercise
+    Promise.all(CORE_EXERCISES.map(async e => {
+      const result = await detectPlateauByExercise(user.id, e);
+      return { exercise: e, result };
+    })).then(results => {
+      const map: Record<string, typeof results[0]['result']> = {};
+      for (const r of results) map[r.exercise] = r.result;
+      setPlateaus(map);
+    });
   }, [user?.id]);
 
   const validExercises = exercises.filter((e): e is ExerciseHistory => e !== null);
@@ -38,6 +48,8 @@ export default function StrengthScreen() {
       ) : (
         validExercises.map(ex => {
           const deload = shouldDeload(ex.weeksSinceDeload);
+          const progression = suggestProgression(ex.lastWeight, ex.lastReps, 8, ex.history.length >= 2 && ex.history[ex.history.length - 1].reps >= 8 && ex.history[ex.history.length - 2].reps >= 8 ? 2 : 1);
+          const plateau = plateaus[ex.exercise];
           return (
             <Card key={ex.exercise} title={EXERCISE_LABELS[ex.exercise] ?? ex.exercise}>
               {/* 1RM and current */}
@@ -56,6 +68,12 @@ export default function StrengthScreen() {
                 </View>
               </View>
 
+              {/* Progression suggestion */}
+              <View style={{ marginBottom: SPACING.md, padding: SPACING.sm, backgroundColor: COLORS.primary + '10', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: COLORS.primary }}>
+                <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600', marginBottom: 2 }}>Sonraki hedef: {progression.weight}kg x {progression.reps}</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>{progression.note}</Text>
+              </View>
+
               {/* History */}
               {ex.history.map((h, i) => (
                 <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
@@ -67,12 +85,19 @@ export default function StrengthScreen() {
                 </View>
               ))}
 
-              {/* Deload warning */}
-              {deload.needed && (
-                <View style={{ marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: COLORS.surfaceLight, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: COLORS.warning }}>
-                  <Text style={{ color: COLORS.warning, fontSize: FONT.sm }}>{deload.message}</Text>
+              {/* Plateau warning */}
+              {plateau?.plateau && (
+                <View style={{ marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: COLORS.error + '10', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: COLORS.error }}>
+                  <Text style={{ color: COLORS.error, fontSize: FONT.sm }}>{plateau.message}</Text>
                 </View>
               )}
+
+              {/* Deload warning */}
+              {deload.message ? (
+                <View style={{ marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: COLORS.surfaceLight, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: deload.needed ? COLORS.warning : COLORS.textMuted }}>
+                  <Text style={{ color: deload.needed ? COLORS.warning : COLORS.textMuted, fontSize: FONT.sm }}>{deload.message}</Text>
+                </View>
+              ) : null}
             </Card>
           );
         })
