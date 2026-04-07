@@ -67,7 +67,7 @@ export default function TabLayout() {
         tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
       }} />
       <Tabs.Screen name="chat" options={{
-        title: 'Koç',
+        title: 'Kochko',
         tabBarIcon: ({ focused }) => <TabIcon name="chatbubble-ellipses" focused={focused} />,
       }} />
       <Tabs.Screen name="plan" options={{
