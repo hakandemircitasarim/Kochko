@@ -270,6 +270,41 @@ serve(async (req: Request) => {
       }
     } catch { /* non-critical */ }
 
+    // Task card context: when user taps an onboarding card, inject topic-specific instructions
+    let taskCardCtx = '';
+    if (task_mode_hint && typeof task_mode_hint === 'string' && task_mode_hint.startsWith('onboarding_')) {
+      const topicKey = task_mode_hint.replace('onboarding_', '');
+      const TOPIC_INSTRUCTIONS: Record<string, string> = {
+        intro: 'Bu sohbet kullanicinin kendini tanitmasini icin acildi. Boy, kilo, yas, cinsiyet bilgilerini ogren. Mevcut bilgilerini ozetle ve eksikleri sor.',
+        goal: 'Bu sohbet kullanicinin hedeflerini belirlemek icin acildi. Ne istedigini, neden istedigini, hedef kilosunu ogren. Motivasyon kaynagini da anla.',
+        routine: 'Bu sohbet gunluk rutini ogremek icin acildi. Meslegini, calisma saatlerini, ne kadar aktif oldugunu, uyku duzeni ni ogren.',
+        eating: 'Bu sohbet beslenme aliskanliklarini ogremek icin acildi. Ogun sayisi, saatleri, disarida yeme sikligi, atistirma, atlanan ogunler, duygusal yeme, gece yeme aliskanligini ogren.',
+        allergies: 'Bu sohbet alerji ve hassasiyetleri ogremek icin acildi. Yiyecek alerjileri, intoleranslar, sindirim sorunlari (reflu, IBS, siskinlik) ogren.',
+        kitchen: 'Bu sohbet mutfak imkanlarini ogremek icin acildi. Pisirme becerisi, butce, ekipman, hazirlama suresi, evde kim pisiriyor, evde diyet yapmayan var mi ogren.',
+        exercise: 'Bu sohbet spor gecmisini ogremek icin acildi. Deneyim seviyesi, hangi sporlari yapti/yapiyor, tercih ettigi antrenman turu, sevmedigi egzersizler, antrenman saatleri ogren.',
+        health: 'Bu sohbet saglik gecmisini ogremek icin acildi. Ameliyat gecmisi, kronik hastaliklar, kullanilan ilaclar, hormon durumu (tiroid, PCOS, insulin direnci) ogren.',
+        weight_history: 'Bu sohbet kilo gecmisini ogremek icin acildi. Daha once denenen diyetler, sonuclari, en buyuk zorluklar, neden birakildi ogren.',
+        labs: 'Bu sohbet kan tahlil sonuclarini almak icin acildi. Son tahlil tarihi, anormal degerler, doktor yorumlari ogren.',
+        sleep: 'Bu sohbet uyku duzenini ogremek icin acildi. Yatis/kalkis saatleri, uyku kalitesi, sorunlar (uykusuzluk, gece uyanma, horlama) ogren.',
+        stress: 'Bu sohbet stres ve motivasyonu ogremek icin acildi. Stres seviyesi, kaynaklari, motivasyon kaynagi, en buyuk zorluk ogren.',
+        home: 'Bu sohbet ev ortamini ogremek icin acildi. Evde kim yemek yapiyor, evde diyet yapmayan var mi, sosyal yeme baskisi ogren.',
+      };
+
+      const topicInstruction = TOPIC_INSTRUCTIONS[topicKey] ?? '';
+      taskCardCtx = [
+        '=== ONBOARDING KART OTURUMU ===',
+        topicInstruction,
+        '',
+        'KURALLAR:',
+        '1. ILK MESAJDA: Bu konu hakkinda su ana kadar bildiklerini ozetle (Layer 1 ve Layer 2\'den). Eksik bilgileri sor.',
+        '2. Konusma sirasinda baska konularda da bilgi cikarsa, onlari da <actions> ile kaydet. Sadece ana konuyla sinirli kalma.',
+        '3. Bu konuda YETERLI bilgi topladigina karar verdiginde (kullanici en az 2-3 mesaj yazip ana sorularin cogu cevaplandiysa):',
+        `   <layer2_update>{"onboarding_task_completed": "${topicKey === 'intro' ? 'introduce_yourself' : topicKey === 'goal' ? 'set_goal' : topicKey === 'routine' ? 'daily_routine' : topicKey === 'eating' ? 'eating_habits' : topicKey === 'kitchen' ? 'kitchen_logistics' : topicKey === 'exercise' ? 'exercise_history' : topicKey === 'health' ? 'health_history' : topicKey === 'labs' ? 'lab_values' : topicKey === 'sleep' ? 'sleep_patterns' : topicKey === 'stress' ? 'stress_motivation' : topicKey === 'home' ? 'home_environment' : topicKey}"}</layer2_update>`,
+        '4. Yeterli bilgi topladiginda kullaniciya "Bu konuda simdilik yeterli bilgi aldim, tesekkurler!" de.',
+        '5. Kullanici hazir degilse veya bilmiyor derse zorlama, "Ileride konusuriz" de.',
+      ].join('\n');
+    }
+
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
       modeInstructions,
@@ -279,6 +314,7 @@ serve(async (req: Request) => {
       correctionCtx,
       returnFlowContext,
       habitsCtx,
+      taskCardCtx,
       ctx.layer1 ? `--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}` : '',
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
