@@ -58,13 +58,17 @@ export default function SessionListScreen() {
   }, [prefill, openCamera, prefillHandled]);
 
   const fetchSessions = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) { setLoading(false); return; }
     setLoading(true);
-    const [data, incompleteTasks] = await Promise.all([
-      loadSessions(),
-      getIncompleteTasks(user.id),
-    ]);
+
+    // Load sessions — tasks may fail if migration not run yet, that's ok
+    let incompleteTasks: OnboardingTask[] = [];
+    try {
+      incompleteTasks = await getIncompleteTasks(user.id);
+    } catch { /* migration may not be applied yet */ }
     setTasks(incompleteTasks);
+
+    const data = await loadSessions();
 
     // Auto-close stale sessions (>24h inactive)
     const now = Date.now();
@@ -81,7 +85,7 @@ export default function SessionListScreen() {
 
     setSessions(data);
     setLoading(false);
-  }, []);
+  }, [user?.id]);
 
   // Refresh on focus (coming back from session detail)
   useFocusEffect(
