@@ -30,11 +30,12 @@ export function detectTaskMode(message: string, isOnboarding: boolean): TaskMode
   const lower = message.toLocaleLowerCase('tr');
 
   // Register mode - logging food/workout/metrics
-  if (/yedim|ictim|içtim|kahvalt|ogle|öğle|aksam|akşam|atistir|atıştır|yemek yedim/.test(lower)) return 'register';
-  if (/yaptim|yaptım|kostum|koştum|yurudum|yürüdüm|antrenman|salon|egzersiz|spor yaptim/.test(lower)) return 'register';
-  if (/\d+\s*k(g|ilo)|tartildim|tartıldım/.test(lower)) return 'register';
-  if (/su (ic|iç)|bardak|litre/.test(lower)) return 'register';
-  if (/saat uyudum|gec yattim|geç yattım|erken kalktim/.test(lower)) return 'register';
+  if (/yedim|yuttum|ictim|içtim|aldim|aldım|kahvalt|ogle|öğle|aksam|akşam|atistir|atıştır|yemek yedim|ara ogun|ara öğün/.test(lower)) return 'register';
+  if (/yaptim|yaptım|kostum|koştum|yurudum|yürüdüm|antrenman|salon|egzersiz|spor yaptim|spor yaptım|yuzdum|yüzdüm|bisiklet/.test(lower)) return 'register';
+  if (/\d+\s*k(g|ilo)|tartildim|tartıldım|tartiya ciktim|tartıya çıktım/.test(lower)) return 'register';
+  if (/su (ic|iç)|bardak|litre|su aldim|su aldım|su ictim|su içtim/.test(lower)) return 'register';
+  if (/saat uyudum|gec yattim|geç yattım|erken kalktim|erken kalktım|uyku/.test(lower)) return 'register';
+  if (/ruh hal|mood|keyf|mutsuz|mutlu|stresli|enerjik/.test(lower)) return 'register';
 
   // Periodic state mode
   if (/ramazan|hamile|hastalandim|hastalandım|tatile|seyahate|sakatl|sakatlandim|sakatlandım|emzir|donemsel|dönemsel|yogun is|yoğun iş|sinav|sınav/.test(lower)) return 'periodic';

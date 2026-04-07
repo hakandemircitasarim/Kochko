@@ -146,7 +146,7 @@ serve(async (req: Request) => {
       .eq('id', userId).maybeSingle();
     const isOnboarding = !profile?.onboarding_completed;
 
-    // GAP 1: Return-flow detection — check how long the user has been silent
+    // Return-flow detection (Spec 5.16) — check how long the user has been silent
     let returnFlowContext = '';
     try {
       // At this point storeMessages hasn't been called yet, so index 0 is the previous message
@@ -571,6 +571,28 @@ async function executeActions(
         case 'meal_log': {
           const items = action.items as { name: string; portion: string; calories: number; protein_g: number; carbs_g: number; fat_g: number }[] | undefined;
           const mealType = action.meal_type as string ?? 'snack';
+
+          // Allergen check for register mode (Spec 12.7)
+          if (items?.length) {
+            const { data: allergens } = await supabaseAdmin
+              .from('food_preferences')
+              .select('food_name, allergen_severity')
+              .eq('user_id', userId)
+              .eq('is_allergen', true);
+            if (allergens && allergens.length > 0) {
+              const itemNames = items.map(i => i.name.toLocaleLowerCase('tr'));
+              const matched = allergens.filter(a =>
+                itemNames.some(n => n.includes(a.food_name.toLocaleLowerCase('tr')))
+              );
+              if (matched.length > 0) {
+                const warns = matched.map(m =>
+                  `${m.food_name}${m.allergen_severity === 'severe' ? ' (CIDDI ALERJI!)' : ' (alerjen)'}`
+                );
+                feedback.push(`⚠️ ALERJEN UYARISI: ${warns.join(', ')} — yine de kaydedildi`);
+              }
+            }
+          }
+
           const { data: log } = await supabaseAdmin.from('meal_logs').insert({
             user_id: userId, raw_input: action.raw as string ?? '',
             meal_type: mealType,
@@ -1336,10 +1358,28 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       }
     }
 
+    // Onboarding task completion (Spec 2.3 / 6.1)
+    if (updates.onboarding_task_completed) {
+      const taskKey = updates.onboarding_task_completed as string;
+      const { data: summaryRow } = await supabaseAdmin
+        .from('ai_summary')
+        .select('onboarding_tasks_completed')
+        .eq('user_id', userId)
+        .maybeSingle();
+      const completed = (summaryRow?.onboarding_tasks_completed as string[]) ?? [];
+      if (!completed.includes(taskKey)) {
+        changes.onboarding_tasks_completed = [...completed, taskKey];
+        console.log(`[Layer2] Onboarding task completed: ${taskKey}`);
+      }
+    }
+
     if (Object.keys(changes).length > 0) {
       await updateLayer2(userId, changes);
+      console.log(`[Layer2] Updated fields: ${Object.keys(changes).join(', ')}`);
     }
-  } catch { /* non-critical */ }
+  } catch (err) {
+    console.error('[Layer2] processLayer2Updates failed:', (err as Error).message);
+  }
 }
 
 async function checkOnboardingCompletion(userId: string) {
