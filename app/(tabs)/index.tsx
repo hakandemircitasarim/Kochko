@@ -383,6 +383,25 @@ export default function TodayScreen() {
             </View>
           )}
 
+          {/* Weekly Menu Link — always visible under diet tab */}
+          {activeTab === 'diet' && (
+            <TouchableOpacity
+              onPress={() => router.push('/weekly-menu')}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                backgroundColor: colors.card, borderRadius: RADIUS.md,
+                padding: SPACING.lg, marginTop: SPACING.sm,
+                borderWidth: 0.5, borderColor: colors.border,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '500' }}>Haftalık Menü & Alışveriş Listesi</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
+
           {/* Workout Tab Content */}
           {activeTab === 'workout' && (
             <View style={{
