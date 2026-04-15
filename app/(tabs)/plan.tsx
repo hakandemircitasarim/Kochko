@@ -221,12 +221,12 @@ export default function PlanScreen() {
 
       {/* Meal suggestions with MealOptionCard */}
       {plan.meal_suggestions?.map((meal, idx) => (
-        <View key={idx} style={{ marginBottom: SPACING.md }}>
+        <View key={`${meal.meal_type}-${idx}`} style={{ marginBottom: SPACING.md }}>
           <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>
             {MEAL_LABELS[meal.meal_type] ?? meal.meal_type}
           </Text>
           {meal.options?.map((opt, oidx) => (
-            <MealOptionCard key={oidx} option={opt} onSelect={() => handleMealSelect(meal.meal_type, opt)} />
+            <MealOptionCard key={`${opt.name}-${oidx}`} option={opt} onSelect={() => handleMealSelect(meal.meal_type, opt)} />
           ))}
         </View>
       ))}

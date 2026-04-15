@@ -351,17 +351,17 @@ export default function CoachMemoryScreen() {
                   <TouchableOpacity onLongPress={() => handleClearField('alcohol_pattern', 'Alkol Kalibi')}>
                     {typeof data.alcoholPattern === 'object' && data.alcoholPattern !== null ? (
                       <View style={{ gap: SPACING.xs }}>
-                        {(data.alcoholPattern as Record<string, unknown>).pattern && (
+                        {!!(data.alcoholPattern as Record<string, unknown>).pattern && (
                           <Text style={{ color: colors.text, fontSize: FONT.sm }}>
                             Kalip: <Text style={{ fontWeight: '700' }}>{String((data.alcoholPattern as Record<string, unknown>).pattern)}</Text>
                           </Text>
                         )}
-                        {(data.alcoholPattern as Record<string, unknown>).frequency && (
+                        {!!(data.alcoholPattern as Record<string, unknown>).frequency && (
                           <Text style={{ color: colors.text, fontSize: FONT.sm }}>
                             Siklik: <Text style={{ fontWeight: '700' }}>{String((data.alcoholPattern as Record<string, unknown>).frequency)}</Text>
                           </Text>
                         )}
-                        {(data.alcoholPattern as Record<string, unknown>).impact && (
+                        {!!(data.alcoholPattern as Record<string, unknown>).impact && (
                           <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                             Etki: {String((data.alcoholPattern as Record<string, unknown>).impact)}
                           </Text>

@@ -201,10 +201,11 @@ export default function SessionDetailScreen() {
   // Load chat history + handle task card auto-start
   useEffect(() => {
     if (!sessionId) return;
+    let cancelled = false;
     loadSessionMessages(sessionId).then(async (data) => {
+      if (cancelled) return;
       if (data.length === 0 && taskModeHint) {
         // Card-triggered session: AI sends first message (not user)
-        // Send a system-level request to get AI's opening message for this topic
         setLoading(false);
         setSending(true);
         const { data: response } = await sendMessageToSession(
@@ -212,13 +213,12 @@ export default function SessionDetailScreen() {
           `[SYSTEM_INIT] Bu konu hakkında bildiklerini özetle ve sormak istediğin soruları sor.`,
           taskModeHint,
         );
-        if (response) {
+        if (!cancelled && response) {
           setMessages([
             { id: `a-${Date.now()}`, role: 'assistant', content: response.message, task_mode: response.task_mode, created_at: new Date().toISOString() },
           ]);
         }
-        setSending(false);
-        setPrefillApplied(true);
+        if (!cancelled) { setSending(false); setPrefillApplied(true); }
       } else if (data.length === 0 && isOnboarding && !taskModeHint) {
         setMessages([{
           id: 'onboard-intro',
@@ -228,10 +228,10 @@ export default function SessionDetailScreen() {
         }]);
         setLoading(false);
       } else {
-        setMessages(data.map(m => ({ ...m })));
-        setLoading(false);
+        if (!cancelled) { setMessages(data.map(m => ({ ...m }))); setLoading(false); }
       }
     });
+    return () => { cancelled = true; };
   }, [sessionId, isOnboarding]);
 
   // Pre-fill from dashboard quick actions (non-card navigation)

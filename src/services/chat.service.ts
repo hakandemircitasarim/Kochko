@@ -103,8 +103,8 @@ export async function loadChatHistory(limit = 50): Promise<ChatMessage[]> {
     }
 
     return messages;
-  } catch {
-    // Fallback to cache if network fails
+  } catch (err) {
+    console.warn('loadChatHistory: falling back to cache', err);
     return getCachedHistory();
   }
 }
@@ -132,7 +132,7 @@ export async function queueMessageOffline(text: string, targetDate?: string): Pr
     const queue: QueuedMessage[] = existing ? JSON.parse(existing) : [];
     queue.push({ text, queuedAt: new Date().toISOString(), targetDate });
     await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-  } catch { /* best effort */ }
+  } catch (err) { console.warn('queueMessageOffline failed:', err); }
 }
 
 export async function processOfflineQueue(): Promise<number> {
@@ -157,7 +157,8 @@ export async function processOfflineQueue(): Promise<number> {
     }
 
     return sent;
-  } catch {
+  } catch (err) {
+    console.warn('processOfflineQueue failed:', err);
     return 0;
   }
 }
@@ -166,7 +167,8 @@ export async function getOfflineQueueSize(): Promise<number> {
   try {
     const existing = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
     return existing ? (JSON.parse(existing) as QueuedMessage[]).length : 0;
-  } catch {
+  } catch (err) {
+    console.warn('getOfflineQueueSize failed:', err);
     return 0;
   }
 }
@@ -186,6 +188,7 @@ export interface ChatSessionSummary {
   title: string | null;
   topic_tags: string[];
   started_at: string;
+  updated_at: string | null;
   ended_at: string | null;
   message_count: number;
   is_active: boolean;
@@ -199,7 +202,7 @@ export async function loadSessions(limit = 20): Promise<ChatSessionSummary[]> {
 
     const { data } = await supabase
       .from('chat_sessions')
-      .select('id, title, topic_tags, started_at, ended_at, message_count, is_active')
+      .select('id, title, topic_tags, started_at, updated_at, ended_at, message_count, is_active')
       .eq('user_id', session.user.id)
       .order('started_at', { ascending: false })
       .limit(limit);

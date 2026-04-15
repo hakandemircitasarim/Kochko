@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { getAchievements, type Achievement } from '@/services/achievements.service';
 import { shareMilestone } from '@/services/sharing.service';
 import { Card } from '@/components/ui/Card';
@@ -13,8 +13,13 @@ const TYPE_ICONS: Record<string, string> = {
 
 export default function AchievementsScreen() {
   const [items, setItems] = useState<Achievement[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { getAchievements().then(setItems); }, []);
+  useEffect(() => { getAchievements().then(setItems).finally(() => setLoading(false)); }, []);
+
+  if (loading) {
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>

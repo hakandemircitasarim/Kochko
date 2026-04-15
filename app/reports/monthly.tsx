@@ -219,7 +219,7 @@ export default function MonthlyReportScreen() {
       )}
 
       {/* Goal Progress */}
-      {profile?.target_weight_kg && lastWeight && (
+      {!!(profile?.target_weight_kg) && lastWeight && (
         <Card title="Hedefe Kalan">
           <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>
             {Math.abs(lastWeight - (profile.target_weight_kg as number)).toFixed(1)} kg

@@ -82,7 +82,12 @@ export async function chatCompletion<T = string>(
   const content = data.choices?.[0]?.message?.content ?? '';
 
   if (options?.jsonMode) {
-    return JSON.parse(content) as T;
+    try {
+      return JSON.parse(content) as T;
+    } catch (parseErr) {
+      console.error('OpenAI JSON parse failed. Raw content:', content.substring(0, 200));
+      throw new Error('OpenAI returned invalid JSON');
+    }
   }
 
   return content as T;

@@ -10,6 +10,7 @@ import { checkAndRunBackup } from '@/services/auto-backup.service';
 import { getWidgetData, serializeForNativeWidget } from '@/services/widget.service';
 import { detectTimezone } from '@/lib/timezone';
 import { ThemeContext, DARK_COLORS, LIGHT_COLORS, type ThemeMode } from '@/lib/theme';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 const THEME_KEY = '@kochko_theme_mode';
 
@@ -50,9 +51,9 @@ export default function RootLayout() {
     if (!user?.id) return;
     initializeNotifications().then(token => {
       if (token) savePushToken(user.id, token);
-    }).catch(() => {});
+    }).catch((err) => console.warn('Notification init failed:', err));
     // Auto backup check (Spec 18.2)
-    checkAndRunBackup().catch(() => {});
+    checkAndRunBackup().catch((err) => console.warn('Auto backup check failed:', err));
 
     // Auto-detect timezone (Spec 2.5)
     const profile = useProfileStore.getState().profile;
@@ -79,13 +80,14 @@ export default function RootLayout() {
           const widgetData = await getWidgetData(user.id);
           const serialized = serializeForNativeWidget(widgetData);
           await AsyncStorage.setItem('@kochko_widget_data', serialized);
-        } catch { /* silent fail for widget */ }
+        } catch (err) { console.warn('Widget sync failed:', err); }
       }
     });
     return () => subscription.remove();
   }, [user?.id]);
 
   return (
+    <ErrorBoundary>
     <ThemeContext.Provider value={themeValue}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{
@@ -107,5 +109,6 @@ export default function RootLayout() {
         <Stack.Screen name="settings" options={{ headerShown: false }} />
       </Stack>
     </ThemeContext.Provider>
+    </ErrorBoundary>
   );
 }

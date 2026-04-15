@@ -32,11 +32,13 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!user?.id) return;
+    let cancelled = false;
     fetchProfile(user.id);
-    loadInsights().then(setSummary);
-    calculateStreak(user.id).then(setStreak);
+    loadInsights().then((data) => { if (!cancelled) setSummary(data); });
+    calculateStreak(user.id).then((s) => { if (!cancelled) setStreak(s); });
     supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1).maybeSingle()
-      .then(({ data }) => { if (data) setGoal(data as typeof goal); });
+      .then(({ data }) => { if (!cancelled && data) setGoal(data as typeof goal); });
+    return () => { cancelled = true; };
   }, [user?.id]);
 
   const displayName = (profile?.display_name as string) || user?.email?.split('@')[0] || 'Kullanıcı';
@@ -117,7 +119,7 @@ export default function ProfileScreen() {
       </View>
 
       {/* AI Summary */}
-      {summary?.general_summary && (
+      {!!summary?.general_summary && (
         <InsightCard
           generalSummary={String(summary.general_summary ?? '')}
           patterns={(summary.behavioral_patterns as { type: string; description: string }[]) ?? []}

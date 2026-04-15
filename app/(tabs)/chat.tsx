@@ -53,7 +53,8 @@ export default function SessionListScreen() {
           if (openCamera) params.openCamera = openCamera;
           router.replace({ pathname: `/chat/${id}`, params });
         }
-      }).catch(() => {
+      }).catch((err) => {
+        console.warn('Chat session creation failed:', err);
         setPrefillHandled(false); // retry on next render
       });
     }
@@ -78,7 +79,7 @@ export default function SessionListScreen() {
       if (s.is_active) {
         const lastActivity = new Date(s.updated_at ?? s.started_at).getTime();
         if (now - lastActivity > 24 * 60 * 60 * 1000) {
-          await closeSession(s.id).catch(() => {});
+          await closeSession(s.id).catch((err) => console.warn('Auto-close session failed:', err));
           s.is_active = false;
           s.ended_at = new Date().toISOString();
         }
