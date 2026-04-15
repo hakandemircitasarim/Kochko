@@ -138,8 +138,8 @@ export default function DietPlanScreen() {
                   { label: 'Protein', value: `${currentPlan.protein_target_g}`, unit: 'g', color: METRIC_COLORS.protein },
                   { label: 'Karb', value: `${currentPlan.carbs_target_g}`, unit: 'g', color: METRIC_COLORS.carbs },
                   { label: 'Yag', value: `${currentPlan.fat_target_g}`, unit: 'g', color: METRIC_COLORS.fat },
-                ].map((m, i) => (
-                  <View key={i} style={{ alignItems: 'center' }}>
+                ].map((m) => (
+                  <View key={m.label} style={{ alignItems: 'center' }}>
                     <Text style={{ color: m.color, fontSize: 16, fontWeight: '700' }}>{m.value}</Text>
                     <Text style={{ color: colors.textMuted, fontSize: 11 }}>{m.unit} {m.label}</Text>
                   </View>
@@ -149,7 +149,7 @@ export default function DietPlanScreen() {
 
             {/* Meal suggestions */}
             {currentPlan.meal_suggestions?.map((meal, idx) => (
-              <View key={idx} style={{ marginBottom: SPACING.md }}>
+              <View key={`${meal.meal_type}-${idx}`} style={{ marginBottom: SPACING.md }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm }}>
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: MEAL_COLORS[meal.meal_type] ?? colors.primary }} />
                   <Text style={{ color: colors.text, fontSize: 14, fontWeight: '500' }}>
@@ -157,7 +157,7 @@ export default function DietPlanScreen() {
                   </Text>
                 </View>
                 {meal.options?.map((opt, oidx) => (
-                  <MealOptionCard key={oidx} option={opt} onSelect={() => handleMealSelect(meal.meal_type, opt)} />
+                  <MealOptionCard key={`${opt.name}-${oidx}`} option={opt} onSelect={() => handleMealSelect(meal.meal_type, opt)} />
                 ))}
               </View>
             ))}

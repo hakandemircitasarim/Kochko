@@ -14,12 +14,19 @@ export interface HealthEvent {
 }
 
 export async function getHealthEvents(): Promise<HealthEvent[]> {
-  const { data } = await supabase.from('health_events').select('*').order('event_date', { ascending: false });
-  return (data ?? []) as HealthEvent[];
+  try {
+    const { data, error } = await supabase.from('health_events').select('*').order('event_date', { ascending: false });
+    if (error) { console.error('getHealthEvents error:', error.message); return []; }
+    return (data ?? []) as HealthEvent[];
+  } catch (err) {
+    console.error('getHealthEvents unexpected error:', err);
+    return [];
+  }
 }
 
 export async function addHealthEvent(event: Omit<HealthEvent, 'id'>): Promise<void> {
-  await supabase.from('health_events').insert(event);
+  const { error } = await supabase.from('health_events').insert(event);
+  if (error) console.error('addHealthEvent error:', error.message);
 }
 
 // Lab values
@@ -35,12 +42,19 @@ export interface LabValue {
 }
 
 export async function getLabValues(): Promise<LabValue[]> {
-  const { data } = await supabase.from('lab_values').select('*').order('measured_at', { ascending: false });
-  return (data ?? []) as LabValue[];
+  try {
+    const { data, error } = await supabase.from('lab_values').select('*').order('measured_at', { ascending: false });
+    if (error) { console.error('getLabValues error:', error.message); return []; }
+    return (data ?? []) as LabValue[];
+  } catch (err) {
+    console.error('getLabValues unexpected error:', err);
+    return [];
+  }
 }
 
 export async function addLabValue(entry: Omit<LabValue, 'id' | 'is_out_of_range'>): Promise<void> {
-  await supabase.from('lab_values').insert(entry);
+  const { error } = await supabase.from('lab_values').insert(entry);
+  if (error) console.error('addLabValue error:', error.message);
 }
 
 // Common Turkish lab parameters with reference ranges

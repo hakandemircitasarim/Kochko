@@ -25,7 +25,10 @@ export async function exportJSON(): Promise<void> {
     supabase.from('saved_recipes').select('*'),
     supabase.from('challenges').select('*'),
     supabase.from('achievements').select('*'),
-  ]);
+  ]).catch((err) => {
+    console.error('exportJSON failed:', err);
+    throw err;
+  });
 
   const data = {
     exported_at: new Date().toISOString(),

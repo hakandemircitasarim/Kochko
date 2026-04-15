@@ -84,7 +84,7 @@ export async function learnFromMealLog(
 
   const newVisitCount = (existing?.visit_count ?? 0) + 1;
 
-  await addOrUpdateVenue(venueName, null, merged);
+  await addOrUpdateVenue(userId, venueName, null, merged);
   await supabase
     .from('user_venues')
     .update({ visit_count: newVisitCount })

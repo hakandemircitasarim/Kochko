@@ -12,7 +12,7 @@ interface RateLimitResult {
   message?: string;
 }
 
-const FREE_DAILY_LIMIT = 50; // TODO: Production'da 5 yap
+const FREE_DAILY_LIMIT = 5;
 const PREMIUM_DAILY_LIMIT = 200;
 const PREMIUM_HOURLY_LIMIT = 30;
 

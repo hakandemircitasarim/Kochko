@@ -19,12 +19,18 @@ export interface GoalPhase {
  * Get all phases for user's goal plan.
  */
 export async function getGoalPhases(userId: string): Promise<GoalPhase[]> {
-  const { data } = await supabase
-    .from('goals')
-    .select('*')
-    .eq('user_id', userId)
-    .order('phase_order');
-  return (data ?? []) as GoalPhase[];
+  try {
+    const { data, error } = await supabase
+      .from('goals')
+      .select('*')
+      .eq('user_id', userId)
+      .order('phase_order');
+    if (error) { console.error('getGoalPhases error:', error.message); return []; }
+    return (data ?? []) as GoalPhase[];
+  } catch (err) {
+    console.error('getGoalPhases unexpected error:', err);
+    return [];
+  }
 }
 
 /**
@@ -67,36 +73,42 @@ export async function addPhase(
  * Spec 6.7: Otomatik faz geçişi
  */
 export async function advanceToNextPhase(userId: string): Promise<GoalPhase | null> {
-  // Deactivate current
-  const { data: current } = await supabase
-    .from('goals')
-    .select('phase_order')
-    .eq('user_id', userId)
-    .eq('is_active', true)
-    .single();
+  try {
+    // Deactivate current
+    const { data: current, error: currentError } = await supabase
+      .from('goals')
+      .select('phase_order')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .single();
 
-  if (!current) return null;
+    if (currentError || !current) { console.error('advanceToNextPhase: no active phase', currentError?.message); return null; }
 
-  const currentOrder = current.phase_order as number;
-  await supabase.from('goals').update({ is_active: false }).eq('user_id', userId).eq('phase_order', currentOrder);
+    const currentOrder = current.phase_order as number;
+    await supabase.from('goals').update({ is_active: false }).eq('user_id', userId).eq('phase_order', currentOrder);
 
-  // Activate next
-  const { data: next } = await supabase
-    .from('goals')
-    .update({ is_active: true })
-    .eq('user_id', userId)
-    .eq('phase_order', currentOrder + 1)
-    .select()
-    .single();
+    // Activate next
+    const { data: next } = await supabase
+      .from('goals')
+      .update({ is_active: true })
+      .eq('user_id', userId)
+      .eq('phase_order', currentOrder + 1)
+      .select()
+      .single();
 
-  return next as GoalPhase | null;
+    return next as GoalPhase | null;
+  } catch (err) {
+    console.error('advanceToNextPhase unexpected error:', err);
+    return null;
+  }
 }
 
 /**
  * Delete a phase.
  */
 export async function deletePhase(phaseId: string): Promise<void> {
-  await supabase.from('goals').delete().eq('id', phaseId);
+  const { error } = await supabase.from('goals').delete().eq('id', phaseId);
+  if (error) console.error('deletePhase error:', error.message);
 }
 
 // ─── Phase Transitions (Phase 6) ───

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
@@ -16,6 +16,7 @@ interface FoodPref { id: string; food_name: string; preference: Pref; is_allerge
 export default function FoodPreferencesScreen() {
   const user = useAuthStore(s => s.user);
   const [items, setItems] = useState<FoodPref[]>([]);
+  const [loading, setLoading] = useState(true);
   const [newFood, setNewFood] = useState('');
   const [newPref, setNewPref] = useState<Pref>('never');
   const [isAllergen, setIsAllergen] = useState(false);
@@ -26,6 +27,7 @@ export default function FoodPreferencesScreen() {
     if (!user?.id) return;
     const { data } = await supabase.from('food_preferences').select('*').eq('user_id', user.id).order('food_name');
     setItems((data ?? []) as FoodPref[]);
+    setLoading(false);
   }
 
   const handleAdd = async () => {
@@ -40,6 +42,10 @@ export default function FoodPreferencesScreen() {
     await supabase.from('food_preferences').delete().eq('id', id);
     setItems(prev => prev.filter(i => i.id !== id));
   };
+
+  if (loading) {
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { getActiveChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -8,8 +8,9 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 export default function ChallengesScreen() {
   const [active, setActive] = useState<Challenge[]>([]);
   const [showSystem, setShowSystem] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load().finally(() => setLoading(false)); }, []);
   const load = () => getActiveChallenges().then(setActive);
 
   const handleStart = async (c: typeof SYSTEM_CHALLENGES[0]) => {
@@ -21,6 +22,10 @@ export default function ChallengesScreen() {
       Alert.alert('Hata', (e as Error).message);
     }
   };
+
+  if (loading) {
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>

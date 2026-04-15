@@ -74,22 +74,24 @@ export default function TodayScreen() {
 
   useEffect(() => {
     if (!user?.id || hasFetched) return;
+    let cancelled = false;
     setHasFetched(true);
-    fetchToday(user.id).catch(() => {});
+    fetchToday(user.id).catch((err) => console.warn('fetchToday failed:', err));
     checkForMilestones();
     // Fetch today's plan
     const today = getEffectiveDate(new Date(), dayBoundaryHour);
     supabase.from('daily_plans').select('*')
       .eq('user_id', user.id).eq('date', today)
       .order('version', { ascending: false }).limit(1).single()
-      .then(({ data }) => { if (data) setPlan(data as unknown as PlanData); });
+      .then(({ data }) => { if (!cancelled && data) setPlan(data as unknown as PlanData); });
     // Fetch coaching nudges
-    getUnreadCoachingMessages(user.id).then(setCoachingMessages);
+    getUnreadCoachingMessages(user.id).then((msgs) => { if (!cancelled) setCoachingMessages(msgs); });
+    return () => { cancelled = true; };
   }, [user?.id]);
 
   const refresh = useCallback(() => {
     if (!user?.id) return;
-    fetchToday(user.id).catch(() => {});
+    fetchToday(user.id).catch((err) => console.warn('refresh fetchToday failed:', err));
     checkForMilestones();
     const today = getEffectiveDate(new Date(), dayBoundaryHour);
     supabase.from('daily_plans').select('*')
@@ -333,7 +335,7 @@ export default function TodayScreen() {
                     const mainOption = meal.options?.[0];
                     const dotColor = MEAL_COLORS[meal.meal_type] ?? colors.primary;
                     return (
-                      <View key={idx} style={{
+                      <View key={`${meal.meal_type}-${idx}`} style={{
                         flexDirection: 'row', alignItems: 'center',
                         padding: SPACING.lg,
                         borderBottomWidth: idx < plan.meal_suggestions.length - 1 ? 0.5 : 0,

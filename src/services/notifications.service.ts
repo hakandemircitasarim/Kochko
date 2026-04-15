@@ -58,6 +58,8 @@ export function setupNotificationHandler(): void {
       shouldShowAlert: true as const,
       shouldPlaySound: true as const,
       shouldSetBadge: true as const,
+      shouldShowBanner: true as const,
+      shouldShowList: true as const,
     }),
   });
 }
