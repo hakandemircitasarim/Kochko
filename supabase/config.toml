@@ -64,6 +64,24 @@ enabled = true
 policy = "per_worker"
 inspector_port = 8083
 
+[functions.ai-chat]
+verify_jwt = false
+
+[functions.ai-extractor]
+verify_jwt = false
+
+[functions.ai-plan]
+verify_jwt = false
+
+[functions.ai-proactive]
+verify_jwt = false
+
+[functions.ai-report]
+verify_jwt = false
+
+[functions.cleanup-scheduled]
+verify_jwt = false
+
 [analytics]
 enabled = false
 port = 54327
