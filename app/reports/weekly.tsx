@@ -16,26 +16,71 @@ interface WeeklyReport {
   worst_day: string | null;
   strength_summary: string | null;
   ai_learning_note: string | null;
+  alcohol_total_calories: number | null;
   next_week_strategy: string;
   plan_revision: Record<string, unknown>;
+}
+
+interface AlcoholWeeklyData {
+  thisWeek: number;
+  prevWeek: number;
+  weekdayKcal: number;
+  weekendKcal: number;
 }
 
 export default function WeeklyReportScreen() {
   const user = useAuthStore(s => s.user);
   const [report, setReport] = useState<WeeklyReport | null>(null);
+  const [alcohol, setAlcohol] = useState<AlcoholWeeklyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (!user?.id) return;
-    supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single()
-      .then(({ data }) => { if (data) setReport(data as WeeklyReport); setLoading(false); });
+    (async () => {
+      const { data } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
+      if (data) {
+        setReport(data as WeeklyReport);
+        await loadAlcoholData(user.id, (data as WeeklyReport).week_start);
+      }
+      setLoading(false);
+    })();
   }, [user?.id]);
+
+  const loadAlcoholData = async (userId: string, weekStart: string) => {
+    const ws = new Date(weekStart);
+    const we = new Date(ws); we.setDate(ws.getDate() + 6);
+    const prevWs = new Date(ws); prevWs.setDate(ws.getDate() - 7);
+    const prevWe = new Date(ws); prevWe.setDate(ws.getDate() - 1);
+
+    const [thisWeekRows, prevWeekRows] = await Promise.all([
+      supabase.from('daily_reports').select('date, alcohol_calories').eq('user_id', userId).gte('date', ws.toISOString().split('T')[0]).lte('date', we.toISOString().split('T')[0]),
+      supabase.from('daily_reports').select('alcohol_calories').eq('user_id', userId).gte('date', prevWs.toISOString().split('T')[0]).lte('date', prevWe.toISOString().split('T')[0]),
+    ]);
+
+    let weekdayKcal = 0, weekendKcal = 0, thisWeekTotal = 0;
+    for (const r of (thisWeekRows.data ?? []) as { date: string; alcohol_calories: number | null }[]) {
+      const kcal = r.alcohol_calories ?? 0;
+      thisWeekTotal += kcal;
+      const d = new Date(r.date).getDay();
+      if (d === 0 || d === 5 || d === 6) weekendKcal += kcal;
+      else weekdayKcal += kcal;
+    }
+    const prevWeekTotal = ((prevWeekRows.data ?? []) as { alcohol_calories: number | null }[])
+      .reduce((s, r) => s + (r.alcohol_calories ?? 0), 0);
+
+    setAlcohol({ thisWeek: thisWeekTotal, prevWeek: prevWeekTotal, weekdayKcal, weekendKcal });
+  };
 
   const handleGenerate = async () => {
     setGenerating(true);
     const { data } = await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly' } });
-    if (data) setReport(data as WeeklyReport);
+    if (data) {
+      setReport(data as WeeklyReport);
+      if (user?.id && (data as WeeklyReport).week_start) {
+        await loadAlcoholData(user.id, (data as WeeklyReport).week_start);
+      }
+    }
     setGenerating(false);
   };
 
@@ -116,6 +161,32 @@ export default function WeeklyReportScreen() {
           {report.strength_summary && (
             <Card title="Guc Ozeti">
               <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>{report.strength_summary}</Text>
+            </Card>
+          )}
+
+          {/* Alcohol Summary — Spec 3.1, 8.2 */}
+          {alcohol && alcohol.thisWeek > 0 && (
+            <Card title="Alkol Ozeti">
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Bu hafta toplam</Text>
+                <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{alcohol.thisWeek} kcal</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Hafta ici</Text>
+                <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>{alcohol.weekdayKcal} kcal</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Hafta sonu</Text>
+                <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>{alcohol.weekendKcal} kcal</Text>
+              </View>
+              {alcohol.prevWeek > 0 && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs, marginTop: SPACING.xs, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Gecen hafta</Text>
+                  <Text style={{ color: alcohol.thisWeek < alcohol.prevWeek ? COLORS.success : alcohol.thisWeek > alcohol.prevWeek ? COLORS.warning : COLORS.textMuted, fontSize: FONT.sm, fontWeight: '500' }}>
+                    {alcohol.prevWeek} kcal ({alcohol.thisWeek > alcohol.prevWeek ? '+' : ''}{alcohol.thisWeek - alcohol.prevWeek})
+                  </Text>
+                </View>
+              )}
             </Card>
           )}
 

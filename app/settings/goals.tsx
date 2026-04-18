@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { TempoChart } from '@/components/plan/TempoChart';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import type { Goal } from '@/types/database';
 
@@ -37,10 +38,11 @@ export default function GoalsScreen() {
   const [phaseTransitionInfo, setPhaseTransitionInfo] = useState<string | null>(null);
   const [allPhases, setAllPhases] = useState<GoalPhase[]>([]);
   const [aggressiveWarning, setAggressiveWarning] = useState<string | null>(null);
+  const [tempoData, setTempoData] = useState<{ points: { date: string; kg: number }[]; startWeight: number; goalStartDate: string } | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
-    getGoalPhases(user.id).then(phases => {
+    getGoalPhases(user.id).then(async phases => {
       setAllPhases(phases);
       const active = phases.find(p => p.is_active);
       if (active) {
@@ -48,6 +50,19 @@ export default function GoalsScreen() {
         setGoalType(active.goal_type as GoalType);
         setTargetWeight(String(active.target_weight_kg ?? ''));
         setTargetWeeks(String(active.target_weeks ?? 12));
+
+        // Load tempo data: weight points since goal creation
+        const goalStartDate = (active as unknown as { created_at: string; start_weight_kg: number | null }).created_at.split('T')[0];
+        const { data: weights } = await supabase
+          .from('daily_metrics')
+          .select('date, weight_kg')
+          .eq('user_id', user.id)
+          .not('weight_kg', 'is', null)
+          .gte('date', goalStartDate)
+          .order('date');
+        const startWeight = (active as unknown as { start_weight_kg: number | null }).start_weight_kg ?? (weights?.[0]?.weight_kg as number) ?? (profile?.weight_kg ?? 70);
+        const points = (weights ?? []).map((w: { date: string; weight_kg: number }) => ({ date: w.date, kg: w.weight_kg }));
+        setTempoData({ points, startWeight, goalStartDate });
       }
     });
   }, [user?.id]);
@@ -184,6 +199,19 @@ export default function GoalsScreen() {
               </Text>
             )}
           </Card>
+        )}
+
+        {/* Tempo chart — planned vs actual weight trajectory (Spec 6.3) */}
+        {existingGoal?.target_weight_kg && tempoData && tempoData.points.length >= 1 && (
+          <View style={{ marginBottom: SPACING.md }}>
+            <TempoChart
+              startWeight={tempoData.startWeight}
+              targetWeight={existingGoal.target_weight_kg}
+              targetWeeks={existingGoal.target_weeks ?? 12}
+              actualPoints={tempoData.points}
+              goalStartDate={tempoData.goalStartDate}
+            />
+          </View>
         )}
 
         {/* Phase timeline */}

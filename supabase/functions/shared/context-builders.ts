@@ -290,8 +290,13 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
         score: computePatternScore(p),
       })).sort((a, b) => b.score - a.score);
 
-      // Take top patterns that fit
-      const topPatterns = scored.filter(p => (p.status as string) !== 'resolved').slice(0, 10);
+      // Take top patterns that fit — exclude resolved AND stale (60+ days silent; Spec 5.7)
+      const topPatterns = scored
+        .filter(p => {
+          const st = p.status as string;
+          return st !== 'resolved' && st !== 'stale';
+        })
+        .slice(0, 10);
       if (topPatterns.length > 0) {
         parts.push(`## KALIPLAR\n${topPatterns.map(p => `- [${p.type}] ${p.description} -> ${p.intervention}${p.times_observed ? ` (${p.times_observed}x)` : ''}`).join('\n')}`);
       }
@@ -309,7 +314,32 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
   if (isFull || focuses.includes('preferences')) {
     const portion = s.portion_calibration as Record<string, unknown> | null;
     if (portion && Object.keys(portion).length > 0) {
-      parts.push(`## PORSIYON HAFIZASI\n${Object.entries(portion).map(([k, v]) => `${k}=${v}g`).join(', ')}`);
+      // Split confirmed (3+ user corrections) from tentative estimates
+      const confirmed: string[] = [];
+      const tentative: string[] = [];
+      for (const [food, raw] of Object.entries(portion)) {
+        let grams: number;
+        let isConfirmed = false;
+        if (typeof raw === 'number') {
+          grams = raw;
+        } else if (raw && typeof raw === 'object') {
+          const r = raw as { grams?: number; confirmed?: boolean; count?: number };
+          grams = r.grams ?? 0;
+          isConfirmed = r.confirmed === true || (r.count ?? 0) >= 3;
+        } else {
+          continue;
+        }
+        const label = `${food}=${grams}g`;
+        if (isConfirmed) confirmed.push(label); else tentative.push(label);
+      }
+      const lines: string[] = [];
+      if (confirmed.length > 0) {
+        lines.push(`## PORSIYON HAFIZASI (KESIN — user 3+ kez onayladi, MUTLAKA kullan)\n${confirmed.join(', ')}`);
+      }
+      if (tentative.length > 0) {
+        lines.push(`## PORSIYON HAFIZASI (tahmini)\n${tentative.join(', ')}`);
+      }
+      if (lines.length > 0) parts.push(lines.join('\n\n'));
     }
     if (s.coaching_notes) parts.push(`## KOCLUK NOTLARI\n${s.coaching_notes}`);
     if (s.alcohol_pattern) parts.push(`Alkol kalibi: ${s.alcohol_pattern}`);

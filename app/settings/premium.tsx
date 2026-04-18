@@ -6,6 +6,8 @@ import { usePremium } from '@/hooks/usePremium';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { initiatePurchase, restorePurchases } from '@/services/subscription.service';
+import { supabase } from '@/lib/supabase';
 
 const FREE = [
   'Kayit girisi (ogun, spor, su, tarti)',
@@ -70,27 +72,52 @@ export default function PremiumScreen() {
     );
   };
 
-  const handleRestorePurchases = () => {
-    // Production: RevenueCat restore purchases
+  const handleRestorePurchases = async () => {
+    const result = await restorePurchases();
+    if (result.ok) {
+      Alert.alert('Basarili', 'Satin alimlariniz yuklendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+      return;
+    }
+    // Native SDK wired değil → dev fallback
     Alert.alert(
       'Satin Alimlari Geri Yukle',
-      'Onceki satin aliminiz bulunamadi. Farkli bir hesapla giris yaptiysaniz, o hesabi deneyin.',
+      'Uygulama ici satin alma altyapisi henuz aktif edilmedi. Gelistiriciyle iletisime gecin.',
       [{ text: 'Tamam' }]
     );
   };
 
   const activatePremium = async (months: number) => {
     if (!user?.id) return;
+
+    // Native IAP first (Spec 19.0). Stubbed → dev fallback writes subscription row directly.
+    const productId = months === 1 ? 'monthly' : 'yearly';
+    const result = await initiatePurchase(productId);
+    if (result.ok) {
+      Alert.alert('Tebrikler!', 'Premium aktif.', [{ text: 'Tamam', onPress: () => router.back() }]);
+      return;
+    }
+
+    // DEV fallback — write directly to subscriptions table; trigger syncs profile.premium
     const expiresAt = new Date();
     expiresAt.setMonth(expiresAt.getMonth() + months);
-
+    try {
+      await supabase.from('subscriptions').insert({
+        user_id: user.id,
+        tier: months >= 12 ? 'yearly' : 'monthly',
+        status: 'active',
+        provider: 'manual',
+        product_id: productId,
+        started_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+    } catch { /* non-critical */ }
     await update(user.id, {
       premium: true,
       premium_expires_at: expiresAt.toISOString(),
       trial_used: true,
     } as never);
 
-    Alert.alert('Tebrikler!', `Premium ${months} ay aktif.`, [
+    Alert.alert('Tebrikler!', `Premium ${months} ay aktif (dev).`, [
       { text: 'Tamam', onPress: () => router.back() },
     ]);
   };

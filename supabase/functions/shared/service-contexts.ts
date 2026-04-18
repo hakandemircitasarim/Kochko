@@ -702,12 +702,24 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
     if (!clientTimezone) return '';
 
     const { data: profile } = await supabaseAdmin
-      .from('profiles').select('timezone').eq('id', userId).maybeSingle();
+      .from('profiles')
+      .select('home_timezone, active_timezone, timezone_changed_at')
+      .eq('id', userId).maybeSingle();
 
-    const homeTimezone = (profile?.timezone as string) ?? 'Europe/Istanbul';
+    const homeTimezone = (profile?.home_timezone as string) ?? 'Europe/Istanbul';
+    const lastActive = (profile?.active_timezone as string) ?? homeTimezone;
+
+    // If client reports a different zone than we have on file, update + mark changed
+    if (clientTimezone !== lastActive) {
+      await supabaseAdmin.from('profiles').update({
+        active_timezone: clientTimezone,
+        timezone_changed_at: new Date().toISOString(),
+      }).eq('id', userId).catch(() => {});
+    }
+
     if (clientTimezone === homeTimezone) return '';
 
-    // Calculate offset
+    // Offset from home
     let offset = 0;
     try {
       const now = new Date();
@@ -718,7 +730,12 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
 
     if (offset === 0) return '';
 
-    const jetLagGrace = Math.abs(offset) >= 2;
+    // Grace window: 48h from the timestamp we recorded the change
+    const changedAt = (profile?.timezone_changed_at as string | null) ?? null;
+    const hoursSinceChange = changedAt
+      ? (Date.now() - new Date(changedAt).getTime()) / 3600000
+      : 0;
+    const jetLagGrace = Math.abs(offset) >= 2 && hoursSinceChange <= 48;
 
     const parts: string[] = [
       `## SEYAHAT MODU`,
@@ -726,9 +743,12 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
     ];
 
     if (jetLagGrace) {
-      parts.push(`JET LAG GRACE: 48 saat esnek zamanlama. Kati ogun saatlerine ZORLAMA.`);
+      const remaining = Math.max(0, Math.round(48 - hoursSinceChange));
+      parts.push(`JET LAG GRACE: Aktif (~${remaining} saat kaldi). Ogun/uyku zamanina ZORLAMA, ±1 saat tolerans.`);
+    } else if (Math.abs(offset) >= 2) {
+      parts.push(`Jet lag penceresi kapandi — yerel saate tam uyum.`);
     }
-    parts.push(`Ogun saatleri yerel saate gore ayarla.`);
+    parts.push(`Ogun saatlerini yerel saate gore ayarla.`);
     parts.push(`Bulundugu bolgenin mutfak kulturune uygun oneriler yap.`);
 
     return parts.join('\n');

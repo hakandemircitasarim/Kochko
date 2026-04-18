@@ -10,6 +10,9 @@ export interface WeeklyPlan {
   plan_data: DayPlan[];
   shopping_list: ShoppingItem[];
   generated_at: string;
+  approved_at: string | null;
+  modification_request: string | null;
+  revision_count: number;
 }
 
 export interface DayPlan {
@@ -39,12 +42,22 @@ export async function getCurrentWeeklyPlan(): Promise<WeeklyPlan | null> {
   return data as WeeklyPlan | null;
 }
 
-export async function generateWeeklyPlan(): Promise<{ data: WeeklyPlan | null; error: string | null }> {
-  const { data, error } = await supabase.functions.invoke('ai-plan', {
-    body: { type: 'weekly' },
-  });
+export async function generateWeeklyPlan(modificationRequest?: string): Promise<{ data: WeeklyPlan | null; error: string | null }> {
+  const body: Record<string, unknown> = { type: 'weekly' };
+  if (modificationRequest) body.modification_request = modificationRequest;
+  const { data, error } = await supabase.functions.invoke('ai-plan', { body });
   if (error) return { data: null, error: error.message };
   return { data: data as WeeklyPlan, error: null };
+}
+
+export async function approveWeeklyPlan(planId: string): Promise<void> {
+  await supabase.from('weekly_plans').update({ approved_at: new Date().toISOString() }).eq('id', planId);
+}
+
+export async function requestMenuModification(planId: string, request: string): Promise<{ data: WeeklyPlan | null; error: string | null }> {
+  // Store the modification request, then regenerate
+  await supabase.from('weekly_plans').update({ modification_request: request }).eq('id', planId);
+  return generateWeeklyPlan(request);
 }
 
 export async function toggleShoppingItem(planId: string, itemIndex: number, checked: boolean): Promise<void> {

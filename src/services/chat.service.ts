@@ -19,7 +19,15 @@ export interface ChatResponse {
 const CACHE_KEY = '@kochko_chat_cache';
 const OFFLINE_QUEUE_KEY = '@kochko_chat_offline_queue';
 const MAX_MESSAGE_LENGTH = 2000;
-const MAX_RETRIES = 3;
+const DEFAULT_MAX_RETRIES = 2; // 2 retries = 3 total attempts (1s, 3s backoff)
+
+// Errors that should NOT be retried (user error, policy, etc.)
+function isNonRetryable(errMsg: string): boolean {
+  const m = errMsg.toLowerCase();
+  return m.includes('401') || m.includes('403') || m.includes('unauthor')
+    || m.includes('invalid') || m.includes('validation')
+    || m.includes('rate limit') || m.includes('payload');
+}
 
 // ─── Validation ───
 
@@ -36,11 +44,31 @@ async function getAccessToken(): Promise<string | null> {
   return session?.access_token ?? null;
 }
 
-async function invokeChat(body: Record<string, unknown>): Promise<{ data: ChatResponse | null; error: string | null }> {
-  // Supabase client automatically attaches auth headers — don't override
-  const { data, error } = await supabase.functions.invoke('ai-chat', { body });
-  if (error) return { data: null, error: error.message };
-  return { data: data as ChatResponse, error: null };
+async function invokeChat(
+  body: Record<string, unknown>,
+  maxRetries: number = DEFAULT_MAX_RETRIES,
+): Promise<{ data: ChatResponse | null; error: string | null }> {
+  let lastError = 'Baglanti hatasi. Lutfen tekrar dene.';
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Supabase client automatically attaches auth headers — don't override
+    const { data, error } = await supabase.functions.invoke('ai-chat', { body });
+    if (!error) return { data: data as ChatResponse, error: null };
+
+    lastError = error.message;
+
+    // Non-retryable errors: fail fast
+    if (isNonRetryable(lastError)) return { data: null, error: lastError };
+
+    // Last attempt — don't wait
+    if (attempt === maxRetries) break;
+
+    // Exponential backoff: attempt 0→1s, attempt 1→3s
+    const delayMs = attempt === 0 ? 1000 : 3000;
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+  }
+
+  return { data: null, error: lastError };
 }
 
 // ─── Core Send Functions ───
@@ -52,25 +80,13 @@ export async function sendMessage(text: string): Promise<{ data: ChatResponse | 
   return invokeChat({ message: text });
 }
 
+/**
+ * Deprecated: retry logic moved into invokeChat. Kept for call-site compatibility.
+ */
 export async function sendMessageWithRetry(
   text: string,
-  maxRetries = MAX_RETRIES,
 ): Promise<{ data: ChatResponse | null; error: string | null }> {
-  const validation = validateMessage(text);
-  if (!validation.valid) return { data: null, error: validation.error };
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const result = await invokeChat({ message: text });
-    if (!result.error && result.data) return result;
-
-    // Last attempt — return error
-    if (attempt === maxRetries) return { data: null, error: result.error ?? 'Baglanti hatasi. Lutfen tekrar dene.' };
-
-    // Exponential backoff: 1s, 2s, 4s
-    await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt - 1) * 1000));
-  }
-
-  return { data: null, error: 'Baglanti hatasi.' };
+  return sendMessage(text);
 }
 
 export async function sendMessageWithPhoto(text: string, imageUri: string): Promise<{ data: ChatResponse | null; error: string | null }> {
@@ -288,10 +304,12 @@ export async function sendMessageToSession(
   sessionId: string,
   text: string,
   taskModeHint?: string,
+  targetDate?: string,
 ): Promise<{ data: ChatResponse | null; error: string | null }> {
   const validation = validateMessage(text);
   if (!validation.valid) return { data: null, error: validation.error };
   const body: Record<string, unknown> = { message: text, session_id: sessionId };
+  if (targetDate) body.target_date = targetDate;
   if (taskModeHint) body.task_mode_hint = taskModeHint;
   return invokeChat(body);
 }

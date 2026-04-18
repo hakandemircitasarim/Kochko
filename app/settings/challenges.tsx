@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { getActiveChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -8,7 +8,14 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 export default function ChallengesScreen() {
   const [active, setActive] = useState<Challenge[]>([]);
   const [showSystem, setShowSystem] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Custom challenge form
+  const [customTitle, setCustomTitle] = useState('');
+  const [customDays, setCustomDays] = useState('14');
+  const [customType, setCustomType] = useState<'water' | 'protein' | 'steps' | 'sleep' | 'custom'>('custom');
+  const [customThreshold, setCustomThreshold] = useState('');
 
   useEffect(() => { load().finally(() => setLoading(false)); }, []);
   const load = () => getActiveChallenges().then(setActive);
@@ -17,6 +24,25 @@ export default function ChallengesScreen() {
     try {
       await startChallenge(c.title, null, c.target);
       setShowSystem(false);
+      load();
+    } catch (e) {
+      Alert.alert('Hata', (e as Error).message);
+    }
+  };
+
+  const handleStartCustom = async () => {
+    if (!customTitle.trim()) { Alert.alert('Eksik', 'Challenge başlığını yaz.'); return; }
+    const days = parseInt(customDays) || 14;
+    if (days < 3 || days > 90) { Alert.alert('Geçersiz', 'Süre 3-90 gün arası olmalı.'); return; }
+    const threshold = customThreshold ? parseFloat(customThreshold) : null;
+    try {
+      await startChallenge(customTitle.trim(), null, {
+        type: customType,
+        duration_days: days,
+        daily_threshold: threshold,
+      } as unknown as typeof SYSTEM_CHALLENGES[0]['target']);
+      setShowCustom(false);
+      setCustomTitle(''); setCustomDays('14'); setCustomThreshold(''); setCustomType('custom');
       load();
     } catch (e) {
       Alert.alert('Hata', (e as Error).message);
@@ -66,12 +92,20 @@ export default function ChallengesScreen() {
       )}
 
       {/* Start New */}
-      <Button
-        title={showSystem ? 'Gizle' : 'Yeni Challenge Baslat'}
-        variant={showSystem ? 'ghost' : 'primary'}
-        onPress={() => setShowSystem(!showSystem)}
-        style={{ marginTop: SPACING.md }}
-      />
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
+        <Button
+          title={showSystem ? 'Gizle' : 'Hazir Challenge'}
+          variant={showSystem ? 'ghost' : 'primary'}
+          onPress={() => { setShowSystem(!showSystem); setShowCustom(false); }}
+          style={{ flex: 1 }}
+        />
+        <Button
+          title={showCustom ? 'Gizle' : 'Kendi Challenge\'in'}
+          variant={showCustom ? 'ghost' : 'outline'}
+          onPress={() => { setShowCustom(!showCustom); setShowSystem(false); }}
+          style={{ flex: 1 }}
+        />
+      </View>
 
       {showSystem && (
         <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
@@ -83,6 +117,63 @@ export default function ChallengesScreen() {
             </Card>
           ))}
         </View>
+      )}
+
+      {showCustom && (
+        <Card style={{ marginTop: SPACING.md }}>
+          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginBottom: SPACING.sm }}>
+            Kendi Challenge'ini Tanimla
+          </Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+            Başlık (örn. "10 gün şekersiz")
+          </Text>
+          <TextInput
+            value={customTitle} onChangeText={setCustomTitle}
+            placeholder="Challenge başlığı" placeholderTextColor={COLORS.textMuted}
+            style={{
+              backgroundColor: COLORS.surfaceLight, borderRadius: 8,
+              padding: SPACING.sm, color: COLORS.text, fontSize: FONT.md,
+              marginBottom: SPACING.sm,
+            }}
+          />
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: SPACING.sm }}>Tip</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: SPACING.sm }}>
+            {(['water', 'protein', 'steps', 'sleep', 'custom'] as const).map(t => (
+              <Button
+                key={t}
+                title={t === 'water' ? 'Su' : t === 'protein' ? 'Protein' : t === 'steps' ? 'Adım' : t === 'sleep' ? 'Uyku' : 'Özel'}
+                size="sm"
+                variant={customType === t ? 'primary' : 'outline'}
+                onPress={() => setCustomType(t)}
+              />
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: 4 }}>Süre (gün)</Text>
+              <TextInput
+                value={customDays} onChangeText={setCustomDays} keyboardType="numeric"
+                style={{
+                  backgroundColor: COLORS.surfaceLight, borderRadius: 8,
+                  padding: SPACING.sm, color: COLORS.text, fontSize: FONT.md,
+                }}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: 4 }}>Eşik (ops.)</Text>
+              <TextInput
+                value={customThreshold} onChangeText={setCustomThreshold} keyboardType="numeric"
+                placeholder="örn. 10000"
+                placeholderTextColor={COLORS.textMuted}
+                style={{
+                  backgroundColor: COLORS.surfaceLight, borderRadius: 8,
+                  padding: SPACING.sm, color: COLORS.text, fontSize: FONT.md,
+                }}
+              />
+            </View>
+          </View>
+          <Button title="Baslat" onPress={handleStartCustom} />
+        </Card>
       )}
     </ScrollView>
   );

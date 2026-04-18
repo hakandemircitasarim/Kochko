@@ -214,9 +214,13 @@ async function storeRepairEvent(
     food_item: string | null;
   }
 ): Promise<void> {
+  // Map camelCase/snake_case field names to the actual migration-010 schema
   await supabaseAdmin.from('repair_history').insert({
     user_id: userId,
-    ...event,
+    repair_type: event.repair_type,
+    original_text: event.original_input,
+    corrected_text: event.corrected_input,
+    food_name: event.food_item,
   });
 }
 
@@ -227,19 +231,27 @@ async function storeRepairEvent(
  * Helps AI know which foods it frequently gets wrong.
  */
 export async function getRepairContext(userId: string): Promise<string> {
+  // Last 30 days window keeps memory fresh without dragging old one-offs
+  const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString();
+
   const { data: repairs } = await supabaseAdmin
     .from('repair_history')
-    .select('food_item, repair_type, created_at')
+    .select('food_name, repair_type, original_text, corrected_text, created_at')
     .eq('user_id', userId)
+    .gte('created_at', monthAgo)
     .order('created_at', { ascending: false })
-    .limit(20);
+    .limit(50);
 
   if (!repairs || repairs.length === 0) return '';
 
+  type RepairRow = { food_name: string | null; repair_type: string; original_text: string | null; corrected_text: string | null };
+  const rows = repairs as RepairRow[];
+
   const foodCounts: Record<string, number> = {};
-  for (const r of repairs as { food_item: string | null }[]) {
-    if (r.food_item) {
-      foodCounts[r.food_item] = (foodCounts[r.food_item] ?? 0) + 1;
+  for (const r of rows) {
+    if (r.food_name) {
+      const key = r.food_name.toLocaleLowerCase('tr').trim();
+      foodCounts[key] = (foodCounts[key] ?? 0) + 1;
     }
   }
 
@@ -250,7 +262,7 @@ export async function getRepairContext(userId: string): Promise<string> {
 
   if (frequent.length === 0) return '';
 
-  return `## DUZELTME GECMISI\nSik duzeltilen yiyecekler (dikkatli ol): ${frequent.map(([food, count]) => `${food} (${count}x)`).join(', ')}`;
+  return `## DUZELTME GECMISI (son 30 gun)\nBu yiyecekleri user sik duzeltmis — tahminlerini ona gore ayarla: ${frequent.map(([food, count]) => `${food} (${count}x)`).join(', ')}\nBu yiyecekler icin daha cok soru sor veya onceki duzeltme degerlerini kullan.`;
 }
 
 // ─── Persona Detection ───
@@ -421,67 +433,6 @@ export async function buildKnowledgeSummary(userId: string): Promise<string> {
   return parts.join('\n');
 }
 
-// ─── Pattern Confidence Evolution ───
-
-/**
- * Evolve pattern confidence scores over time.
- * Called periodically (e.g., weekly) to decay stale patterns and boost confirmed ones.
- */
-export async function evolvePatternConfidence(userId: string): Promise<void> {
-  const { data: summary } = await supabaseAdmin
-    .from('ai_summary')
-    .select('behavioral_patterns')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (!summary) return;
-
-  const patterns = (summary.behavioral_patterns as Record<string, unknown>[] | null) ?? [];
-  if (patterns.length === 0) return;
-
-  const now = Date.now();
-  let changed = false;
-
-  for (const pattern of patterns) {
-    const confidence = (pattern.confidence as number) ?? 0.5;
-    const lastOccurred = pattern.last_occurred as string | null;
-    const timesObserved = (pattern.times_observed as number) ?? 1;
-
-    if (lastOccurred) {
-      const daysSince = Math.floor((now - new Date(lastOccurred).getTime()) / 86400000);
-
-      // Decay: if not observed for 14+ days, reduce confidence
-      if (daysSince > 14 && confidence > 0.2) {
-        pattern.confidence = Math.max(0.1, confidence - 0.05);
-        changed = true;
-      }
-    }
-
-    // Boost: patterns with 4+ observations get boosted
-    if (timesObserved >= 4 && confidence < 0.8) {
-      pattern.confidence = Math.min(0.95, confidence + 0.1);
-      changed = true;
-    }
-
-    // Remove very low confidence patterns (< 0.15) that are old
-    if (confidence < 0.15 && (pattern.status as string) === 'candidate') {
-      pattern.status = 'resolved';
-      changed = true;
-    }
-  }
-
-  if (changed) {
-    // Filter out resolved patterns older than 30 days
-    const activePatterns = patterns.filter(p => {
-      if (p.status !== 'resolved') return true;
-      const lastOcc = p.last_occurred as string | null;
-      if (!lastOcc) return false;
-      return (now - new Date(lastOcc).getTime()) < 30 * 86400000;
-    });
-
-    await supabaseAdmin
-      .from('ai_summary')
-      .update({ behavioral_patterns: activePatterns, updated_at: new Date().toISOString() })
-      .eq('user_id', userId);
-  }
-}
+// Pattern confidence evolution lives in shared/memory.ts (single source of truth).
+// Re-exported here for backward compat if any call site still references it.
+export { evolvePatternConfidence } from './memory.ts';

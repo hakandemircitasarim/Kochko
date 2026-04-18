@@ -22,6 +22,8 @@ import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 import NetInfo from '@react-native-community/netinfo';
 import { setupAutoSync } from '@/services/offline-queue.service';
 import { getUnreadCoachingMessages, markMessageRead, type CoachingMessage } from '@/services/coaching-messages.service';
+import { detectReturnLevel, type ReturnStatus } from '@/services/return-flow.service';
+import { syncStepsToDailyMetrics } from '@/services/health-connect.service';
 import { CoachingNudge } from '@/components/dashboard/CoachingNudge';
 
 interface PlanData {
@@ -58,6 +60,7 @@ export default function TodayScreen() {
   const [plan, setPlan] = useState<PlanData | null>(null);
   const [activeTab, setActiveTab] = useState<'diet' | 'workout'>('diet');
   const [coachingMessages, setCoachingMessages] = useState<CoachingMessage[]>([]);
+  const [returnStatus, setReturnStatus] = useState<ReturnStatus | null>(null);
 
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
   const waterTarget = (profile?.water_target_liters ?? 2.5) as number;
@@ -86,6 +89,10 @@ export default function TodayScreen() {
       .then(({ data }) => { if (!cancelled && data) setPlan(data as unknown as PlanData); });
     // Fetch coaching nudges
     getUnreadCoachingMessages(user.id).then((msgs) => { if (!cancelled) setCoachingMessages(msgs); });
+    // Return-flow: detect long break → show re-onboarding banner if 180+ days (Spec 10.6)
+    detectReturnLevel(user.id).then((status) => { if (!cancelled) setReturnStatus(status); }).catch(() => {});
+    // Step counter sync (Spec 19.0 free-tier feature; expo-sensors if installed)
+    syncStepsToDailyMetrics(user.id, dayBoundaryHour).catch(() => {});
     return () => { cancelled = true; };
   }, [user?.id]);
 
@@ -209,6 +216,36 @@ export default function TodayScreen() {
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.primary} />}
       >
+        {/* Welcome back / re-onboarding banner (Spec 10.6) */}
+        {returnStatus && returnStatus.level !== 'active' && (
+          <View style={{
+            backgroundColor: colors.card, borderRadius: RADIUS.md,
+            padding: SPACING.md, marginBottom: SPACING.md,
+            borderLeftWidth: 3, borderLeftColor: colors.primary,
+          }}>
+            <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>
+              {returnStatus.level === 'very_long_break' ? 'TEKRAR HOS GELDIN' : 'HOS GELDIN'}
+            </Text>
+            <Text style={{ color: colors.text, fontSize: 13, lineHeight: 18 }}>
+              {returnStatus.welcomeMessage}
+            </Text>
+            {returnStatus.needsReOnboarding && (
+              <TouchableOpacity
+                onPress={() => router.push('/onboarding?mode=re_onboarding')}
+                style={{
+                  marginTop: SPACING.sm, paddingVertical: SPACING.sm,
+                  borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Guncelleme yap</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setReturnStatus(null)} style={{ position: 'absolute', top: 8, right: 8, padding: 4 }}>
+              <Ionicons name="close" size={14} color={colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* 1. Hero: Greeting + Calorie Ring + Macros */}
         <HeroSection
           today={new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}

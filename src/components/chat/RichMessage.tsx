@@ -2,6 +2,7 @@
  * Rich Message Components for Chat — flat dark design
  */
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { CircularProgress } from '@/components/ui/CircularProgress';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
 
@@ -48,6 +49,44 @@ export function MacroSummary({ protein, carbs, fat, targets }: { protein: number
   );
 }
 
+/**
+ * Macro ring: donut chart for daily macro progress (Spec 5.34 "makro halkasi").
+ * Shows three concentric thin rings — protein, carbs, fat — with current % each.
+ */
+export function MacroRing({ protein, carbs, fat, targets }: { protein: number; carbs: number; fat: number; targets: { protein: number; carbs: number; fat: number } }) {
+  const { colors } = useTheme();
+  const pct = (cur: number, tgt: number) => tgt > 0 ? Math.min(100, Math.round((cur / tgt) * 100)) : 0;
+  return (
+    <View style={{ backgroundColor: colors.cardElevated, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+      <View style={{ alignItems: 'center', justifyContent: 'center', width: 96, height: 96 }}>
+        <View style={{ position: 'absolute' }}>
+          <CircularProgress size={96} strokeWidth={6} progress={pct(protein, targets.protein) / 100} color={METRIC_COLORS.protein} trackColor={colors.progressTrack} value="" />
+        </View>
+        <View style={{ position: 'absolute' }}>
+          <CircularProgress size={76} strokeWidth={6} progress={pct(carbs, targets.carbs) / 100} color={METRIC_COLORS.carbs} trackColor={colors.progressTrack} value="" />
+        </View>
+        <View style={{ position: 'absolute' }}>
+          <CircularProgress size={56} strokeWidth={6} progress={pct(fat, targets.fat) / 100} color={METRIC_COLORS.fat} trackColor={colors.progressTrack} value="" />
+        </View>
+      </View>
+      <View style={{ flex: 1, gap: 4 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: METRIC_COLORS.protein }} />
+          <Text style={{ color: colors.text, fontSize: 12 }}>Protein {protein}/{targets.protein}g · %{pct(protein, targets.protein)}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: METRIC_COLORS.carbs }} />
+          <Text style={{ color: colors.text, fontSize: 12 }}>Karb {carbs}/{targets.carbs}g · %{pct(carbs, targets.carbs)}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: METRIC_COLORS.fat }} />
+          <Text style={{ color: colors.text, fontSize: 12 }}>Yag {fat}/{targets.fat}g · %{pct(fat, targets.fat)}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export function ConfirmRejectButtons({ onConfirm, onReject }: { onConfirm: () => void; onReject: () => void }) {
   const { colors } = useTheme();
   return (
@@ -86,10 +125,12 @@ export function SimulationCard({ foodName, calories, remaining, weeklyImpact }: 
   );
 }
 
-export function RecipeCard({ title, prepTime, servings, ingredients, macros }: {
+export function RecipeCard({ title, prepTime, servings, ingredients, macros, onSave, saved }: {
   title: string; prepTime: number; servings: number;
   ingredients: { name: string; amount: string }[];
   macros: { calories: number; protein: number; carbs: number; fat: number };
+  onSave?: () => void;
+  saved?: boolean;
 }) {
   const { colors } = useTheme();
   return (
@@ -114,6 +155,21 @@ export function RecipeCard({ title, prepTime, servings, ingredients, macros }: {
           </View>
         ))}
       </View>
+      {onSave && (
+        <TouchableOpacity
+          onPress={saved ? undefined : onSave}
+          disabled={saved}
+          style={{
+            marginTop: SPACING.sm, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm,
+            backgroundColor: saved ? colors.surfaceLight : colors.primary,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: saved ? colors.primary : '#fff', fontSize: 13, fontWeight: '500' }}>
+            {saved ? '✓ Kaydedildi' : 'Tarifi Kaydet'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -143,6 +199,54 @@ export function ConfidenceBadge({ level }: { level: 'high' | 'medium' | 'low' })
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 2, paddingHorizontal: 8, borderRadius: RADIUS.pill, backgroundColor: c.color + '15', alignSelf: 'flex-start', marginTop: SPACING.xs }}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.color, marginRight: 4 }} />
       <Text style={{ color: c.color, fontSize: 11, fontWeight: '500' }}>{c.label}</Text>
+    </View>
+  );
+}
+
+/**
+ * Persona detection confirmation card (Spec 5.15).
+ * Shown once, after AI detects user persona at 100-msg mark.
+ */
+export function PersonaCard({
+  persona,
+  onConfirm,
+  onReject,
+}: {
+  persona: string;
+  onConfirm: () => void;
+  onReject: () => void;
+}) {
+  const { colors } = useTheme();
+  const LABELS: Record<string, { title: string; desc: string }> = {
+    weekday_disciplined: { title: 'Hafta içi disiplinli', desc: 'Hafta içi sıkı, hafta sonu esnek yaklaşım' },
+    data_driven: { title: 'Veri odaklı', desc: 'Sayılarla, grafiklerle motive olan tip' },
+    motivation_dependent: { title: 'Motivasyon bağımlısı', desc: 'Destek ve kutlamaya yanıt veren tip' },
+    disciplinli: { title: 'Disiplinli', desc: 'Kesin kurallara uyan, hedef odaklı' },
+    minimalist: { title: 'Minimalist', desc: 'Kısa ve öz açıklama tercih eden' },
+    veri_odakli: { title: 'Veri odaklı', desc: 'Sayılarla, grafiklerle motive olan tip' },
+    motivasyon_bagimlisi: { title: 'Motivasyon bağımlısı', desc: 'Destek ve kutlamaya yanıt veren tip' },
+  };
+  const info = LABELS[persona] ?? { title: persona, desc: 'Koçluk tarzını buna göre ayarladım.' };
+  return (
+    <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, marginTop: SPACING.sm, borderWidth: 0.5, borderColor: colors.primary }}>
+      <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600', letterSpacing: 0.3 }}>SENI TANIDIM</Text>
+      <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600', marginTop: 4 }}>{info.title}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 4, lineHeight: 18 }}>{info.desc}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: SPACING.sm }}>Yanlışsa söyle, ayarlarım.</Text>
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
+        <TouchableOpacity
+          onPress={onConfirm}
+          style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}
+        >
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Doğru</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onReject}
+          style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center' }}
+        >
+          <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>Ben farklıyım</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

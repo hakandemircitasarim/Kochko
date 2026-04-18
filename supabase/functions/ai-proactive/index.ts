@@ -80,6 +80,700 @@ serve(async (req: Request) => {
       }
     }
 
+    // --- Pre-snack-hour nudge (Spec 14.2) — 15-60 min before detected peak ---
+    // Reads ai_summary.snacking_hours (populated weekly by ai-extractor) and
+    // sends a soft "bir bardak su ic" nudge if the user's local hour matches
+    // (peakHour - 1). One nudge per day.
+    for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+      const localH = getUserLocalHour(profile);
+
+      try {
+        const { data: summary } = await supabaseAdmin
+          .from('ai_summary')
+          .select('snacking_hours')
+          .eq('user_id', profile.id)
+          .maybeSingle();
+        const snackHours = (summary?.snacking_hours as number[] | null) ?? [];
+        if (snackHours.length === 0) continue;
+
+        // Fire when current local hour is exactly 1 hour before a peak
+        const match = snackHours.find(h => h - 1 === localH);
+        if (match === undefined) continue;
+
+        // Dedupe: only once per day per peak
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        const { count: alreadySent } = await supabaseAdmin
+          .from('coaching_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('trigger', 'snack_hour_nudge')
+          .gte('created_at', dayStart.toISOString());
+        if ((alreadySent ?? 0) > 0) continue;
+
+        await supabaseAdmin.from('coaching_messages').insert({
+          user_id: profile.id,
+          trigger: 'snack_hour_nudge',
+          priority: 'low',
+          message: `Saat ${match}:00 civarinda atistirma yapma egilimin var. Bir bardak su ic, 5 dakika bekle — istersen o zaman yine degerlendir.`,
+        });
+        totalSent++;
+      } catch { /* non-critical */ }
+    }
+
+    // --- Motivation dip early warning (Spec 5.14, 10.1) — daily evening ---
+    // Last 7 days log frequency < 50% of last 30-day baseline → soft "tek bir şey" nudge.
+    for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+      const localH = getUserLocalHour(profile);
+      if (localH < 18 || localH > 20) continue; // evening check
+
+      try {
+        const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
+        const { count: alreadySent } = await supabaseAdmin
+          .from('coaching_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('trigger', 'motivation_dip')
+          .gte('created_at', threeDaysAgo);
+        if ((alreadySent ?? 0) > 0) continue;
+
+        // Count meal_logs in last 7 vs prior 23 days
+        const sevenAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+        const thirtyAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+        const { count: last7 } = await supabaseAdmin
+          .from('meal_logs')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('is_deleted', false)
+          .gte('logged_for_date', sevenAgo);
+        const { count: last30 } = await supabaseAdmin
+          .from('meal_logs')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('is_deleted', false)
+          .gte('logged_for_date', thirtyAgo);
+
+        const prior23 = (last30 ?? 0) - (last7 ?? 0);
+        if (prior23 < 10) continue; // not enough baseline to compare
+
+        const baselinePerDay = prior23 / 23;
+        const recentPerDay = (last7 ?? 0) / 7;
+        if (recentPerDay >= baselinePerDay * 0.5) continue; // still healthy
+
+        await supabaseAdmin.from('coaching_messages').insert({
+          user_id: profile.id,
+          trigger: 'motivation_dip',
+          priority: 'low',
+          message: `Son haftada biraz yavasladin — olur boyle donemler, hic sorun degil. Bugun sadece tek sey: bir sey ye ve kaydet. O kadar. Yarin devam ederiz.`,
+        });
+        totalSent++;
+      } catch { /* non-critical */ }
+    }
+
+    // --- Alcohol next-day pattern (Spec 5.14) — Saturday morning ---
+    // Detect pattern: Friday alkol → Saturday skip-meal / düşük compliance.
+    // Last 4 weeks. If pattern present, Saturday morning gentle message.
+    if (dayOfWeek === 6) { // Saturday
+      for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+        const localH = getUserLocalHour(profile);
+        if (localH < 8 || localH > 11) continue;
+
+        try {
+          const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+          const { count: alreadySent } = await supabaseAdmin
+            .from('coaching_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id)
+            .eq('trigger', 'alcohol_next_day')
+            .gte('created_at', weekAgo);
+          if ((alreadySent ?? 0) > 0) continue;
+
+          // Last 4 Fridays: did user log alcohol? And what was Saturday's compliance?
+          const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
+          const { data: reports } = await supabaseAdmin
+            .from('daily_reports')
+            .select('date, compliance_score, alcohol_calories')
+            .eq('user_id', profile.id)
+            .gte('date', fourWeeksAgo);
+          if (!reports || reports.length < 10) continue;
+
+          type R = { date: string; compliance_score: number; alcohol_calories: number | null };
+          const byDate: Record<string, R> = {};
+          for (const r of reports as R[]) byDate[r.date] = r;
+
+          let friAlcoholCount = 0;
+          let satDipAfterAlcoholCount = 0;
+          let satDipSum = 0;
+          for (const r of reports as R[]) {
+            const d = new Date(r.date);
+            if (d.getDay() !== 5) continue; // Friday only
+            const hadAlcohol = (r.alcohol_calories ?? 0) >= 50;
+            if (!hadAlcohol) continue;
+            friAlcoholCount++;
+            const satDate = new Date(d.getTime() + 86400000).toISOString().split('T')[0];
+            const sat = byDate[satDate];
+            if (sat && sat.compliance_score < 60) {
+              satDipAfterAlcoholCount++;
+              satDipSum += sat.compliance_score;
+            }
+          }
+
+          // Need 2+ Fridays with alcohol, and 60%+ of them followed by dip
+          if (friAlcoholCount < 2) continue;
+          if (satDipAfterAlcoholCount / friAlcoholCount < 0.6) continue;
+
+          // Was yesterday (Friday) an alcohol day?
+          const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+          const yesterday = byDate[yesterdayStr];
+          const alcoholYesterday = yesterday ? (yesterday.alcohol_calories ?? 0) >= 50 : false;
+          if (!alcoholYesterday) continue;
+
+          await supabaseAdmin.from('coaching_messages').insert({
+            user_id: profile.id,
+            trigger: 'alcohol_next_day',
+            priority: 'low',
+            message: `Gecmiste cuma icki → cumartesi ogun atlama kalibini gorduk. Bugun kahvaltiyi atlamamaya calisalim — protein agirlikli hafif birsey yeter. Su 2 bardak.`,
+          });
+          totalSent++;
+
+          // Persist pattern to ai_summary so future prompts remember
+          await supabaseAdmin.rpc('ai_summary_merge', {
+            p_user_id: profile.id,
+            p_patch: { alcohol_pattern: `Cuma ickili → cumartesi ogle ogun atlama egilimi (${Math.round((satDipAfterAlcoholCount / friAlcoholCount) * 100)}% ornekte gozlendi).` },
+          }).catch(() => {});
+        } catch { /* non-critical */ }
+      }
+    }
+
+    // --- Weekly budget 70% warning (Spec 6.2) — Wednesday evening ---
+    // Pazartesi'den o ana kadar tüketilen kaloriler haftalık bütçenin %70'ini geçmişse uyar.
+    if (dayOfWeek === 3) { // Wednesday
+      for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string; weekly_calorie_budget: number | null }[]) {
+        const localH = getUserLocalHour(profile);
+        if (localH < 19 || localH > 21) continue;
+        const weeklyBudget = profile.weekly_calorie_budget;
+        if (!weeklyBudget || weeklyBudget <= 0) continue;
+
+        try {
+          // Avoid duplicate this week
+          const thisWeekStart = new Date();
+          const dow = thisWeekStart.getDay();
+          const mondayOffset = dow === 0 ? -6 : 1 - dow;
+          thisWeekStart.setDate(thisWeekStart.getDate() + mondayOffset);
+          thisWeekStart.setHours(0, 0, 0, 0);
+
+          const { count: alreadySent } = await supabaseAdmin
+            .from('coaching_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id)
+            .eq('trigger', 'weekly_budget_70')
+            .gte('created_at', thisWeekStart.toISOString());
+          if ((alreadySent ?? 0) > 0) continue;
+
+          // Sum daily_reports.calorie_actual since Monday
+          const { data: weekReports } = await supabaseAdmin
+            .from('daily_reports')
+            .select('calorie_actual')
+            .eq('user_id', profile.id)
+            .gte('date', thisWeekStart.toISOString().split('T')[0]);
+          const consumed = ((weekReports ?? []) as { calorie_actual: number }[])
+            .reduce((s, r) => s + (r.calorie_actual ?? 0), 0);
+          const pct = consumed / weeklyBudget;
+          if (pct < 0.70) continue;
+
+          const remaining = Math.max(0, weeklyBudget - consumed);
+          const daysLeft = 7 - 3; // Thu, Fri, Sat, Sun
+          const perDay = Math.round(remaining / daysLeft);
+          await supabaseAdmin.from('coaching_messages').insert({
+            user_id: profile.id,
+            trigger: 'weekly_budget_70',
+            priority: 'medium',
+            message: `Haftalik butcenin %${Math.round(pct * 100)}'i tukendi (${consumed}/${weeklyBudget} kcal). Kalan 4 gune ${perDay} kcal/gun duserse dengede kalirsin.`,
+          });
+          totalSent++;
+        } catch { /* non-critical */ }
+      }
+    }
+
+    // --- Weekend drift warning (Spec 5.14, 14.1) — Friday morning ---
+    // If last 4 weeks show weekend compliance 15+ points below weekday, send proactive nudge.
+    if (dayOfWeek === 5) { // Friday
+      for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+        const localH = getUserLocalHour(profile);
+        if (localH < 8 || localH > 11) continue;
+
+        try {
+          // Avoid double-sending this week
+          const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+          const { count: alreadySent } = await supabaseAdmin
+            .from('coaching_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id)
+            .eq('trigger', 'weekend_drift')
+            .gte('created_at', weekAgo);
+          if ((alreadySent ?? 0) > 0) continue;
+
+          const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
+          const { data: reports } = await supabaseAdmin
+            .from('daily_reports')
+            .select('date, compliance_score')
+            .eq('user_id', profile.id)
+            .gte('date', fourWeeksAgo);
+          if (!reports || reports.length < 14) continue;
+
+          const weekdayScores: number[] = [];
+          const weekendScores: number[] = [];
+          for (const r of reports as { date: string; compliance_score: number }[]) {
+            const dow = new Date(r.date).getDay();
+            if (dow === 0 || dow === 5 || dow === 6) weekendScores.push(r.compliance_score);
+            else weekdayScores.push(r.compliance_score);
+          }
+          if (weekendScores.length < 4 || weekdayScores.length < 8) continue;
+
+          const avgWeekday = weekdayScores.reduce((s, v) => s + v, 0) / weekdayScores.length;
+          const avgWeekend = weekendScores.reduce((s, v) => s + v, 0) / weekendScores.length;
+          const gap = avgWeekday - avgWeekend;
+          if (gap < 15) continue;
+
+          await supabaseAdmin.from('coaching_messages').insert({
+            user_id: profile.id,
+            trigger: 'weekend_drift',
+            priority: 'medium',
+            message: `Son 4 hafta sonu ortalama %${Math.round(avgWeekend)} uyum, hafta ici %${Math.round(avgWeekday)}. Bu hafta sonu icin kucuk bir plan yapalim mi? Cuma aksami hafif yersen cumartesi ogle daha rahat olur.`,
+          });
+          totalSent++;
+        } catch { /* non-critical */ }
+      }
+    }
+
+    // --- Inactivity re-engagement (Spec 10.1) — 3/7/30-day silent user check ---
+    // Looks at last chat_messages OR meal_log (whichever is more recent) and fires
+    // at exactly 3, 7, 30 days to avoid spamming. Tone escalates by gap length.
+    for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+      const localH = getUserLocalHour(profile);
+      if (localH < 10 || localH > 12) continue;
+
+      try {
+        const [lastChatRes, lastMealRes] = await Promise.all([
+          supabaseAdmin.from('chat_messages')
+            .select('created_at').eq('user_id', profile.id).eq('role', 'user')
+            .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+          supabaseAdmin.from('meal_logs')
+            .select('logged_at').eq('user_id', profile.id).eq('is_deleted', false)
+            .order('logged_at', { ascending: false }).limit(1).maybeSingle(),
+        ]);
+        const lastActivity = Math.max(
+          lastChatRes.data ? new Date(lastChatRes.data.created_at as string).getTime() : 0,
+          lastMealRes.data ? new Date(lastMealRes.data.logged_at as string).getTime() : 0,
+        );
+        if (lastActivity === 0) continue; // brand-new user, skip
+
+        const daysSilent = Math.floor((Date.now() - lastActivity) / 86400000);
+        // Only fire at exactly 3, 7, or 30 — not every day after
+        const tier = daysSilent === 3 ? 'short' : daysSilent === 7 ? 'medium' : daysSilent === 30 ? 'long' : null;
+        if (!tier) continue;
+
+        // Dedupe: one re-engagement per tier per 60d
+        const sixtyAgo = new Date(Date.now() - 60 * 86400000).toISOString();
+        const { count: alreadySent } = await supabaseAdmin
+          .from('coaching_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('trigger', `reengagement_${tier}`)
+          .gte('created_at', sixtyAgo);
+        if ((alreadySent ?? 0) > 0) continue;
+
+        let message = '';
+        if (tier === 'short') {
+          message = '3 gundur yoklar — her sey yolunda mi? Kucuk bir kayit bile ivmeyi tutmaya yeter.';
+        } else if (tier === 'medium') {
+          // Reference past wins if any
+          const { data: achievements } = await supabaseAdmin
+            .from('achievements').select('type').eq('user_id', profile.id).limit(3);
+          const winRef = (achievements?.length ?? 0) > 0 ? ` ${achievements?.length} basari kazanmisin, bunu kaybetme.` : '';
+          message = `Bir haftadir konusmadik.${winRef} Tek bir ogun kaydiyla geri donebiliriz, baski yok.`;
+        } else {
+          message = 'Bir ay oldu. Bugun sadece bir su veya bir kayit. O kadar. Nereden devam edelim?';
+        }
+
+        await supabaseAdmin.from('coaching_messages').insert({
+          user_id: profile.id,
+          trigger: `reengagement_${tier}`,
+          priority: tier === 'long' ? 'medium' : 'low',
+          message,
+        });
+        totalSent++;
+      } catch { /* non-critical */ }
+    }
+
+    // --- Periodic state end transition (Spec 9) — morning check ---
+    // If user's periodic_state_end is 3 days away, send a gentle transition heads-up.
+    // If state has already ended, auto-clear and resume.
+    for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string; periodic_state: string | null; periodic_state_end: string | null }[]) {
+      if (!profile.periodic_state) continue;
+      const localH = getUserLocalHour(profile);
+      if (localH < 8 || localH > 10) continue;
+
+      try {
+        // Auto-end: clear periodic_state when end date has passed
+        if (profile.periodic_state_end && new Date(profile.periodic_state_end) < new Date()) {
+          // Snapshot period summary to ai_summary.seasonal_notes BEFORE clearing state
+          // (Spec 9: gecmis donem hafizasi for reference in next similar period)
+          try {
+            const { data: startProfile } = await supabaseAdmin
+              .from('profiles').select('periodic_state_start, weight_kg').eq('id', profile.id).maybeSingle();
+            const startDate = (startProfile?.periodic_state_start as string | null) ?? null;
+            const currentWeight = (startProfile?.weight_kg as number | null) ?? null;
+
+            if (startDate) {
+              // Average compliance during period
+              const { data: periodReports } = await supabaseAdmin
+                .from('daily_reports').select('compliance_score')
+                .eq('user_id', profile.id)
+                .gte('date', startDate)
+                .lte('date', profile.periodic_state_end);
+              const reports = (periodReports ?? []) as { compliance_score: number }[];
+              const avgCompliance = reports.length > 0
+                ? Math.round(reports.reduce((s, r) => s + r.compliance_score, 0) / reports.length)
+                : null;
+
+              // Start weight
+              const { data: startWeight } = await supabaseAdmin
+                .from('daily_metrics').select('weight_kg').eq('user_id', profile.id)
+                .gte('date', startDate).not('weight_kg', 'is', null)
+                .order('date').limit(1).maybeSingle();
+              const weightDelta = (currentWeight !== null && startWeight?.weight_kg)
+                ? +(currentWeight - (startWeight.weight_kg as number)).toFixed(1)
+                : null;
+
+              const year = new Date().getFullYear();
+              const summary = `[${profile.periodic_state}_${year}] ${startDate}-${profile.periodic_state_end}${weightDelta !== null ? `, kilo degisim ${weightDelta > 0 ? '+' : ''}${weightDelta}kg` : ''}${avgCompliance !== null ? `, ortalama uyum %${avgCompliance}` : ''}.`;
+
+              const { data: existing } = await supabaseAdmin
+                .from('ai_summary').select('seasonal_notes').eq('user_id', profile.id).maybeSingle();
+              const prev = (existing?.seasonal_notes as string) ?? '';
+              await supabaseAdmin.rpc('ai_summary_merge', {
+                p_user_id: profile.id,
+                p_patch: { seasonal_notes: prev ? `${prev}\n${summary}` : summary },
+              }).catch(() => {});
+            }
+          } catch { /* snapshot non-critical */ }
+
+          await supabaseAdmin.from('profiles').update({
+            periodic_state: null,
+            periodic_state_start: null,
+            periodic_state_end: null,
+          }).eq('id', profile.id);
+
+          // Auto-resume paused challenges (mirrors periodic_state_update 'none')
+          await supabaseAdmin.from('challenges').update({
+            status: 'active', paused_at: null,
+          }).eq('user_id', profile.id).eq('status', 'paused').catch(() => {});
+
+          await supabaseAdmin.from('coaching_messages').insert({
+            user_id: profile.id,
+            trigger: 'periodic_end',
+            priority: 'medium',
+            message: `${profile.periodic_state} donemin bitti. Normal plana donuyoruz — duraklatilmis challenge'lar yeniden aktif.`,
+          });
+          totalSent++;
+          continue;
+        }
+
+        // Heads-up: 3 days before end
+        if (profile.periodic_state_end) {
+          const daysUntilEnd = Math.floor((new Date(profile.periodic_state_end).getTime() - Date.now()) / 86400000);
+          if (daysUntilEnd !== 3) continue;
+
+          // Dedupe
+          const { count: alreadySent } = await supabaseAdmin
+            .from('coaching_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id)
+            .eq('trigger', 'periodic_transition_3d')
+            .gte('created_at', new Date(Date.now() - 4 * 86400000).toISOString());
+          if ((alreadySent ?? 0) > 0) continue;
+
+          const stateLabel = profile.periodic_state === 'ramadan' ? 'Ramazan'
+            : profile.periodic_state === 'illness' ? 'Hastalik donemi'
+            : profile.periodic_state === 'pregnancy' ? 'Hamilelik'
+            : profile.periodic_state === 'travel' ? 'Seyahat'
+            : profile.periodic_state === 'holiday' ? 'Tatil'
+            : profile.periodic_state;
+
+          const advice = profile.periodic_state === 'ramadan'
+            ? 'Sonraki 3 gunde normal ogun saatlerine gec, IF yi kademeli yeniden etkinlestirelim.'
+            : profile.periodic_state === 'illness'
+            ? 'Sonraki 3 gunde hafif antrenmanla geri baslayip, kalori hedefine yavas yaklasalim.'
+            : 'Sonraki 3 gunde normal rutine kademeli donus planliyalim.';
+
+          await supabaseAdmin.from('coaching_messages').insert({
+            user_id: profile.id,
+            trigger: 'periodic_transition_3d',
+            priority: 'medium',
+            message: `${stateLabel} 3 gun sonra bitiyor. ${advice}`,
+          });
+          totalSent++;
+        }
+      } catch { /* non-critical */ }
+    }
+
+    // --- Habit introduction + auto-stacking (Spec 5.35) — morning once per day ---
+    // Sequence of habits in order of difficulty. We introduce the first one once
+    // the user has been active for ≥3 days (enough to start tracking). Subsequent
+    // habits are stacked when prior habit hits ≥80% compliance for 2 weeks.
+    const HABIT_SEQUENCE = [
+      { key: 'daily_meal_log', label: 'Gunluk ogun kaydi', anchor: null },
+      { key: 'water_tracking', label: 'Su takibi', anchor: 'Her ogun kaydından sonra su ekle' },
+      { key: 'weight_tracking', label: 'Tarti kaydi (haftada 3x)', anchor: 'Sabah kalktığında tartıl' },
+      { key: 'protein_target', label: 'Protein hedefi', anchor: 'Her ogunde proteini kontrol et' },
+      { key: 'sleep_tracking', label: 'Uyku kaydi', anchor: 'Sabah kalktığında uyku gir' },
+      { key: 'workout_routine', label: 'Antrenman rutini (haftada 3x)', anchor: 'Antrenman gunu sabah plan kontrol' },
+    ];
+    for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+      const localH = getUserLocalHour(profile);
+      if (localH < 8 || localH > 10) continue;
+
+      try {
+        // Check if we already introduced a habit today
+        const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+        const { count: alreadyIntroduced } = await supabaseAdmin
+          .from('coaching_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .in('trigger', ['habit_introduce', 'habit_stack'])
+          .gte('created_at', dayStart.toISOString());
+        if ((alreadyIntroduced ?? 0) > 0) continue;
+
+        const { data: summary } = await supabaseAdmin
+          .from('ai_summary').select('habit_progress').eq('user_id', profile.id).maybeSingle();
+        type HabitEntry = { key?: string; name?: string; status: string; streak: number; completion_log?: string[] };
+        const habits = ((summary?.habit_progress as HabitEntry[] | null) ?? []);
+        const activeHabitKeys = new Set(habits.filter(h => h.status === 'active' || h.status === 'mastered').map(h => h.key ?? h.name));
+
+        // Find next habit in sequence that isn't active yet
+        const nextHabit = HABIT_SEQUENCE.find(h => !activeHabitKeys.has(h.key));
+        if (!nextHabit) continue;
+
+        // If no habits yet: introduce the first one after 3+ active days
+        if (habits.length === 0) {
+          const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0];
+          const { count: recentLogs } = await supabaseAdmin
+            .from('meal_logs').select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id).eq('is_deleted', false)
+            .gte('logged_for_date', threeDaysAgo);
+          if ((recentLogs ?? 0) < 3) continue;
+
+          await supabaseAdmin.from('coaching_messages').insert({
+            user_id: profile.id,
+            trigger: 'habit_introduce',
+            priority: 'medium',
+            message: `Ilk aliskanlik zamani: "${nextHabit.label}". ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Baslayalim mi? Onaylarsan 2 hafta boyunca bu tek sey odagimiz olur.`,
+          });
+          totalSent++;
+          continue;
+        }
+
+        // Auto-stack: if the most recent active habit has ≥80% compliance over last 14 days
+        const latestActive = habits.filter(h => h.status === 'active')
+          .sort((a, b) => (b.completion_log?.length ?? 0) - (a.completion_log?.length ?? 0))[0];
+        if (!latestActive) continue;
+
+        const log = latestActive.completion_log ?? [];
+        const fourteenAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
+        const recent = log.filter(d => d >= fourteenAgo);
+        const compliance = (recent.length / 14) * 100;
+
+        if (compliance < 80) continue;
+
+        await supabaseAdmin.from('coaching_messages').insert({
+          user_id: profile.id,
+          trigger: 'habit_stack',
+          priority: 'medium',
+          message: `"${latestActive.name ?? latestActive.key}" aliskanligini %${Math.round(compliance)} uyumla 2 haftadir tutturuyorsun — harika! Sira "${nextHabit.label}" aliskanligina geldi. ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Eklemek ister misin?`,
+        });
+        totalSent++;
+      } catch { /* non-critical */ }
+    }
+
+    // --- MVD next-day auto-reset (Spec 6.4) — morning check ---
+    // Find any user whose yesterday daily_plan had status='mvd_suspended'. Today's plan
+    // is fresh (normal), so send an acknowledgement + link to new plan.
+    for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+      const localH = getUserLocalHour(profile);
+      if (localH < 7 || localH > 10) continue;
+
+      try {
+        const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const { data: yMvd } = await supabaseAdmin
+          .from('daily_plans')
+          .select('id')
+          .eq('user_id', profile.id)
+          .eq('date', yesterdayStr)
+          .eq('status', 'mvd_suspended')
+          .maybeSingle();
+        if (!yMvd) continue;
+
+        // Dedupe: only once per MVD day
+        const dayAgo = new Date(Date.now() - 86400000).toISOString();
+        const { count: alreadySent } = await supabaseAdmin
+          .from('coaching_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('trigger', 'mvd_reset')
+          .gte('created_at', dayAgo);
+        if ((alreadySent ?? 0) > 0) continue;
+
+        await supabaseAdmin.from('coaching_messages').insert({
+          user_id: profile.id,
+          trigger: 'mvd_reset',
+          priority: 'low',
+          message: `Dun MVD modunu kullandin. Bugun normal plana donuyoruz — yumusak baslayalim, istersen kayitlari ben yaparim.`,
+        });
+        totalSent++;
+      } catch { /* non-critical */ }
+    }
+
+    // --- Weight reminder (Spec 10.1) — 7/14 day inactivity check, morning ---
+    for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+      const localH = getUserLocalHour(profile);
+      if (localH < 8 || localH > 10) continue;
+
+      try {
+        const { data: lastWeight } = await supabaseAdmin
+          .from('daily_metrics')
+          .select('date')
+          .eq('user_id', profile.id)
+          .not('weight_kg', 'is', null)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!lastWeight) continue;
+        const daysSince = Math.floor((Date.now() - new Date(lastWeight.date).getTime()) / 86400000);
+        if (daysSince < 7) continue;
+
+        // Avoid re-nudging within 2 days
+        const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString();
+        const { count: alreadySent } = await supabaseAdmin
+          .from('coaching_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('trigger', 'weight_reminder')
+          .gte('created_at', twoDaysAgo);
+        if ((alreadySent ?? 0) > 0) continue;
+
+        const msg = daysSince >= 14
+          ? `${daysSince} gundur tartıya cikmadin — tempo icin bir kez olsun girsek mi?`
+          : `${daysSince} gundur tarti yok. Iki dakikada tartılıp giriş yapar misin?`;
+
+        await supabaseAdmin.from('coaching_messages').insert({
+          user_id: profile.id,
+          trigger: 'weight_reminder',
+          priority: daysSince >= 14 ? 'medium' : 'low',
+          message: msg,
+        });
+        totalSent++;
+      } catch { /* non-critical */ }
+    }
+
+    // --- Deload recommendation (Spec 7.5) — Monday morning ---
+    // If 5+ weeks of continuous high-intensity training with no deload week,
+    // send a proactive recommendation. User replies "evet" -> ai-plan picks up deload context.
+    if (dayOfWeek === 1) {
+      for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
+        const localH = getUserLocalHour(profile);
+        if (localH < 7 || localH > 10) continue;
+
+        try {
+          // Count heavy workouts in last 35 days (5 weeks)
+          const fiveWeeksAgo = new Date(Date.now() - 35 * 86400000).toISOString().split('T')[0];
+          const { count: heavyCount } = await supabaseAdmin
+            .from('workout_logs')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id)
+            .eq('intensity', 'high')
+            .gte('logged_for_date', fiveWeeksAgo);
+
+          // Heuristic: >=12 high-intensity sessions in 5 weeks = heavy cycle
+          if ((heavyCount ?? 0) < 12) continue;
+
+          // Avoid double-sending: check if we already suggested deload this week
+          const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+          const { count: alreadySent } = await supabaseAdmin
+            .from('coaching_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', profile.id)
+            .eq('trigger', 'deload_suggestion')
+            .gte('created_at', weekAgo);
+          if ((alreadySent ?? 0) > 0) continue;
+
+          await supabaseAdmin.from('coaching_messages').insert({
+            user_id: profile.id,
+            trigger: 'deload_suggestion',
+            priority: 'medium',
+            message: `5+ haftadir yogun calisiyorsun (${heavyCount} agir seans). Bu hafta deload: ayni hareketler %60-70 agirlik, dusuk set. Onaylarsan plani buna gore ayarlayalim.`,
+          });
+          totalSent++;
+        } catch { /* non-critical */ }
+      }
+    }
+
+    // --- Progressive Overload proactive check (Spec 7.5) — Monday morning ---
+    // If user hit target reps in last 2 consecutive compound-lift sessions,
+    // suggest +2.5kg for the next session.
+    const COMPOUND_LIFTS = ['squat', 'bench_press', 'deadlift', 'overhead_press'];
+    const TARGET_REPS = 8;
+    if (dayOfWeek === 1) {
+      for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string; push_token: string | null; notification_prefs: Record<string, unknown> | null }[]) {
+        const localH = getUserLocalHour(profile);
+        if (localH < 7 || localH > 10) continue;
+
+        for (const lift of COMPOUND_LIFTS) {
+          try {
+            const { data: recentSets } = await supabaseAdmin
+              .from('strength_sets')
+              .select('reps, weight_kg, created_at, workout_log_id')
+              .order('created_at', { ascending: false })
+              .limit(6);
+            if (!recentSets || recentSets.length < 2) continue;
+
+            // Filter rows by exercise name via join (exercise_name is in strength_sets directly)
+            const { data: liftSets } = await supabaseAdmin
+              .from('strength_sets')
+              .select('reps, weight_kg, created_at, workout_log_id, exercise_name')
+              .eq('exercise_name', lift)
+              .order('created_at', { ascending: false })
+              .limit(6);
+            if (!liftSets || liftSets.length < 2) continue;
+
+            // Sessions are grouped by workout_log_id; take distinct latest 2
+            const sessions: Record<string, { reps: number; weight: number }> = {};
+            for (const s of liftSets as { reps: number; weight_kg: number; workout_log_id: string }[]) {
+              if (!sessions[s.workout_log_id]) sessions[s.workout_log_id] = { reps: s.reps, weight: s.weight_kg };
+              else if (s.weight_kg > sessions[s.workout_log_id].weight) sessions[s.workout_log_id] = { reps: s.reps, weight: s.weight_kg };
+            }
+            const sessionList = Object.values(sessions).slice(0, 2);
+            if (sessionList.length < 2) continue;
+
+            const bothSuccess = sessionList.every(s => s.reps >= TARGET_REPS);
+            const sameWeight = sessionList[0].weight === sessionList[1].weight;
+            if (bothSuccess && sameWeight) {
+              const nextWeight = sessionList[0].weight + 2.5;
+              await supabaseAdmin.from('coaching_messages').insert({
+                user_id: profile.id,
+                trigger: 'progressive_overload',
+                priority: 'medium',
+                message: `${lift}: 2 seanstir ${TARGET_REPS}+ rep tutturuyorsun. Bir sonraki seans ${sessionList[0].weight}kg -> ${nextWeight}kg deneyelim.`,
+              });
+              totalSent++;
+              break; // only one lift per user per Monday
+            }
+          } catch { /* non-critical */ }
+        }
+      }
+    }
+
     for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null; weekly_calorie_budget: number | null; wake_time: string | null; sleep_time: string | null; home_timezone: string | null; active_timezone: string | null }[]) {
       // Per-user local time check — skip if outside their active hours
       const userLocalHour = getUserLocalHour(profile);
@@ -191,17 +885,18 @@ serve(async (req: Request) => {
                   const newRestMax = tdee + nextCalOffset + 100;
                   const newTrainMin = tdee + nextCalOffset + 100;
                   const newTrainMax = tdee + nextCalOffset + 300;
-                  // Day 1 of 7 interpolation (progress = 1/7)
-                  const progress = 1 / 7;
-                  const transRestMin = Math.round(oldRestMin + (newRestMin - oldRestMin) * progress);
-                  const transRestMax = Math.round(oldRestMax + (newRestMax - oldRestMax) * progress);
-                  const transTrainMin = Math.round(oldTrainMin + (newTrainMin - oldTrainMin) * progress);
-                  const transTrainMax = Math.round(oldTrainMax + (newTrainMax - oldTrainMax) * progress);
+                  // Record transition window so ai-plan can interpolate day-by-day over 7 days
                   await supabaseAdmin.from('profiles').update({
-                    calorie_range_rest_min: transRestMin,
-                    calorie_range_rest_max: transRestMax,
-                    calorie_range_training_min: transTrainMin,
-                    calorie_range_training_max: transTrainMax,
+                    phase_transition_start_date: today,
+                    phase_transition_from_rest_min: oldRestMin,
+                    phase_transition_from_rest_max: oldRestMax,
+                    phase_transition_to_rest_min: newRestMin,
+                    phase_transition_to_rest_max: newRestMax,
+                    // Day-1 step so today's plan already reflects 1/7 nudge
+                    calorie_range_rest_min: Math.round(oldRestMin + (newRestMin - oldRestMin) / 7),
+                    calorie_range_rest_max: Math.round(oldRestMax + (newRestMax - oldRestMax) / 7),
+                    calorie_range_training_min: Math.round(oldTrainMin + (newTrainMin - oldTrainMin) / 7),
+                    calorie_range_training_max: Math.round(oldTrainMax + (newTrainMax - oldTrainMax) / 7),
                     updated_at: new Date().toISOString(),
                   }).eq('id', profile.id);
                 }
@@ -791,12 +1486,12 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
 
   let adjustment: 'increase' | 'decrease' | null = null;
 
-  // 2+ weeks at 85%+ → tighten
+  // 2+ weeks at 85%+ → tighten (Spec 5.34)
   if (reports.length >= 14 && avgAll >= 85) {
     adjustment = 'increase';
   }
-  // 1+ week under 60% → widen
-  else if (recentScores.length >= 7 && avgRecent < 60) {
+  // 1+ week under 70% → revert/widen (Spec 5.34 "Tutturamiyorsan 1 hafta sonra eski seviyeye doner")
+  else if (recentScores.length >= 7 && avgRecent < 70) {
     adjustment = 'decrease';
   }
 

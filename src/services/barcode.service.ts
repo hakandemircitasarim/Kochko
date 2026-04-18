@@ -12,7 +12,43 @@
 // For MVP: use OpenFoodFacts API (free, open source)
 // Future: GS1 Turkey + Market APIs + community data
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+
+// ─── Offline cache (Spec 19.3: "daha once taranan urunler offline da calisir") ───
+
+const CACHE_PREFIX = '@kochko_barcode:';
+const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+interface CachedBarcode {
+  result: BarcodeResult;
+  cachedAt: number;
+}
+
+async function readCache(barcode: string): Promise<BarcodeResult | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CACHE_PREFIX + barcode);
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as CachedBarcode;
+    if (!entry?.cachedAt || Date.now() - entry.cachedAt > CACHE_TTL_MS) {
+      await AsyncStorage.removeItem(CACHE_PREFIX + barcode);
+      return null;
+    }
+    return entry.result;
+  } catch {
+    return null;
+  }
+}
+
+async function writeCache(barcode: string, result: BarcodeResult): Promise<void> {
+  if (!result.found) return; // don't cache misses
+  try {
+    const entry: CachedBarcode = { result, cachedAt: Date.now() };
+    await AsyncStorage.setItem(CACHE_PREFIX + barcode, JSON.stringify(entry));
+  } catch {
+    // best-effort
+  }
+}
 
 export interface BarcodeResult {
   found: boolean;
@@ -41,11 +77,11 @@ export interface UserCorrectionData {
  * Spec 19.1: Barkod veri tabani eslesmesi
  */
 export async function lookupBarcode(barcode: string, userId?: string): Promise<BarcodeResult> {
-  // 1. Check user corrections first
+  // 1. Check user corrections first (most authoritative, always online-preferred)
   if (userId) {
     const correction = await getUserCorrection(userId, barcode);
     if (correction) {
-      return {
+      const result: BarcodeResult = {
         found: true,
         product_name: correction.name,
         brand: null,
@@ -57,16 +93,29 @@ export async function lookupBarcode(barcode: string, userId?: string): Promise<B
         source: 'user_correction',
         confidence: 'high',
       };
+      // refresh cache for offline reuse
+      await writeCache(barcode, result);
+      return result;
     }
   }
 
-  // 2. OpenFoodFacts API
+  // 2. Community-verified barcode (Spec 19.3, 3+ contributors)
+  const community = await getCommunityBarcode(barcode);
+  if (community) {
+    await writeCache(barcode, community);
+    return community;
+  }
+
+  // 3. OpenFoodFacts API
   try {
     const response = await fetch(
       `https://world.openfoodfacts.org/api/v0/product/${barcode}.json`
     );
 
     if (!response.ok) {
+      // API unavailable (network / rate limit): fall through to cache
+      const cached = await readCache(barcode);
+      if (cached) return cached;
       if (userId) await logUnfoundBarcode(userId, barcode);
       return notFound();
     }
@@ -81,7 +130,7 @@ export async function lookupBarcode(barcode: string, userId?: string): Promise<B
     const p = data.product;
     const nutriments = p.nutriments ?? {};
 
-    return {
+    const result: BarcodeResult = {
       found: true,
       product_name: p.product_name_tr ?? p.product_name ?? null,
       brand: p.brands ?? null,
@@ -93,8 +142,27 @@ export async function lookupBarcode(barcode: string, userId?: string): Promise<B
       source: 'openfoodfacts',
       confidence: 'high',
     };
+    await writeCache(barcode, result);
+    return result;
   } catch {
+    // Network error (likely offline): try cache
+    const cached = await readCache(barcode);
+    if (cached) return cached;
     return notFound();
+  }
+}
+
+/**
+ * Clear the entire barcode offline cache. Used when user explicitly resets
+ * or when storage pressure requires eviction. Kept exported for tests/settings.
+ */
+export async function clearBarcodeCache(): Promise<void> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const ours = keys.filter(k => k.startsWith(CACHE_PREFIX));
+    await Promise.all(ours.map(k => AsyncStorage.removeItem(k)));
+  } catch {
+    // best-effort
   }
 }
 
@@ -144,6 +212,36 @@ export async function saveUserCorrection(
     fat_g: correctedData.fat_g,
     portion_g: correctedData.portion_g,
   });
+}
+
+/**
+ * Get community-aggregated barcode data if 3+ distinct users have contributed
+ * (Spec 19.3). Uses median over all verified contributions.
+ */
+async function getCommunityBarcode(barcode: string): Promise<BarcodeResult | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_community_barcode', { p_barcode: barcode });
+    if (error || !data) return null;
+    // RPC returns a row set; take the first row
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row || !row.found || !row.portion_g || Number(row.portion_g) <= 0) return null;
+
+    const portion = Number(row.portion_g);
+    return {
+      found: true,
+      product_name: (row.food_name as string) ?? null,
+      brand: null,
+      calories_per_100g: Math.round((Number(row.calories) / portion) * 100),
+      protein_per_100g: Math.round(((Number(row.protein_g) / portion) * 100) * 10) / 10,
+      carbs_per_100g: Math.round(((Number(row.carbs_g) / portion) * 100) * 10) / 10,
+      fat_per_100g: Math.round(((Number(row.fat_g) / portion) * 100) * 10) / 10,
+      serving_size_g: portion,
+      source: 'community',
+      confidence: 'high',
+    };
+  } catch {
+    return null;
+  }
 }
 
 /**

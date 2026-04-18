@@ -22,11 +22,12 @@ import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
-  sendMessageToSession, sendMessageWithRetry, sendPhotoToSession, loadSessionMessages,
+  sendMessageToSession, sendPhotoToSession, loadSessionMessages,
   reopenSession,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
+import { saveRecipe, type RecipeIngredient } from '@/services/recipes.service';
 import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
 import { incrementAndCheck, getRemainingMessages } from '@/services/message-counter.service';
 import { speak, stopSpeaking, isSpeaking } from '@/services/tts.service';
@@ -34,8 +35,8 @@ import { detectRepairIntent, type RepairDetection } from '@/services/repair.serv
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import {
-  MacroSummary, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
-  RecipeCard, ConfirmRejectButtons,
+  MacroSummary, MacroRing, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
+  RecipeCard, ConfirmRejectButtons, PersonaCard,
 } from '@/components/chat/RichMessage';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
@@ -65,6 +66,9 @@ interface UIMessage extends ChatMessage {
   recipeData?: RecipeData | null;
   quickSelectOptions?: string[] | null;
   hasPlanSuggestion?: boolean;
+  hasLowConfidenceVerification?: boolean;
+  personaDetected?: string | null;
+  recipeSaved?: boolean;
 }
 
 function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
@@ -109,6 +113,15 @@ function hasConfirmRejectIndicator(content: string, taskMode?: string): boolean 
     (taskMode === 'plan' && (content.includes('plan') || content.includes('öneriyorum')));
 }
 
+/**
+ * Detects the low-confidence verification sentence that ai-chat auto-appends
+ * when parsed meal confidence < 0.7. Phrasing: "Dogru anladiysam: X. Bu dogru mu?"
+ */
+function hasLowConfidenceVerificationIndicator(content: string): boolean {
+  const lower = content.toLocaleLowerCase('tr');
+  return lower.includes('dogru anladiysam') || lower.includes('doğru anladıysam');
+}
+
 export default function SessionDetailScreen() {
   const { colors, isDark } = useTheme();
   const { sessionId, prefill, taskModeHint } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string }>();
@@ -124,6 +137,8 @@ export default function SessionDetailScreen() {
   const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [voiceConfirmation, setVoiceConfirmation] = useState<{ text: string; expiresAt: number } | null>(null);
+  const [backdateDate, setBackdateDate] = useState<string | null>(null); // YYYY-MM-DD for manual date override
   const [remainingMsgs, setRemainingMsgs] = useState<number | null>(null);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -167,6 +182,8 @@ export default function SessionDetailScreen() {
   };
 
   // Voice recording handler (T4.1 / U1)
+  // Flow: record → transcribe → drop into input + show "Duydum: X" banner
+  // for 5s so user can review/edit/cancel before sending.
   const handleVoiceToggle = async () => {
     if (isRecordingVoice) {
       try {
@@ -174,6 +191,9 @@ export default function SessionDetailScreen() {
         const { text, audioUri } = await stopAndTranscribe();
         if (text) {
           setInput(text);
+          const expiresAt = Date.now() + 5000;
+          setVoiceConfirmation({ text, expiresAt });
+          setTimeout(() => setVoiceConfirmation(prev => prev?.expiresAt === expiresAt ? null : prev), 5000);
         } else if (audioUri) {
           setInput('[Ses kaydedildi ama yazılamadı - metin olarak yazın]');
         }
@@ -307,7 +327,9 @@ export default function SessionDetailScreen() {
       : (taskModeHint ?? undefined);
     const { data, error } = img
       ? await sendPhotoToSession(sessionId, text || 'Bu yemeği analiz et.', img)
-      : await sendMessageToSession(sessionId, text, effectiveTaskMode);
+      : await sendMessageToSession(sessionId, text, effectiveTaskMode, backdateDate ?? undefined);
+    // Clear backdate after use so subsequent messages are today
+    if (backdateDate) setBackdateDate(null);
 
     if (data) {
       // Determine if this message type should show feedback buttons
@@ -338,6 +360,13 @@ export default function SessionDetailScreen() {
       const hasPlanSuggestion = hasConfirmRejectIndicator(messageContent, data.task_mode);
       messageContent = messageContent.replace(/<confirm_reject\s*\/?>/g, '').trim();
 
+      // Detect low-confidence verification prompt (Spec 5.32, auto-appended by ai-chat)
+      const hasLowConfidenceVerification = hasLowConfidenceVerificationIndicator(messageContent);
+
+      // Extract persona_detected action (Spec 5.15) — server emits after first-time detection
+      const personaAction = data.actions.find(a => a.type === 'persona_detected');
+      const personaDetected = (personaAction?.feedback as string | null) ?? null;
+
       const reply: UIMessage = {
         id: `a-${Date.now()}`,
         role: 'assistant',
@@ -350,6 +379,8 @@ export default function SessionDetailScreen() {
         recipeData,
         quickSelectOptions,
         hasPlanSuggestion,
+        hasLowConfidenceVerification,
+        personaDetected,
       };
       setMessages(prev => [...prev, reply]);
 
@@ -412,11 +443,13 @@ export default function SessionDetailScreen() {
         content = qsParsed.cleanContent;
         const hasPlan = hasConfirmRejectIndicator(content, data.task_mode);
         content = content.replace(/<confirm_reject\s*\/?>/g, '').trim();
+        const hasLowConf = hasLowConfidenceVerificationIndicator(content);
         setMessages(prev => [...prev, {
           id: `a-${Date.now()}`, role: 'assistant', content, task_mode: data.task_mode,
           created_at: new Date().toISOString(), actions: data.actions, showFeedback: false,
           simulationData: simParsed.data, recipeData: recipeParsed.data,
           quickSelectOptions: qsParsed.options, hasPlanSuggestion: hasPlan,
+          hasLowConfidenceVerification: hasLowConf,
         }]);
         if (data.actions.some(a => a.feedback) && user?.id) refreshDashboard(user.id);
       } else {
@@ -432,8 +465,86 @@ export default function SessionDetailScreen() {
     handleQuickSelect('Evet, bu planı onayla');
   }, [handleQuickSelect]);
 
+  // Plan rejection with chip-based reason selection (Spec 7.1 — multi-turn refine)
   const handlePlanReject = useCallback(() => {
-    handleQuickSelect('Hayır, değiştir');
+    Alert.alert(
+      'Neyi değiştirelim?',
+      'Hangi kısmı beğenmedin?',
+      [
+        { text: 'Kahvaltı', onPress: () => handleQuickSelect('Kahvaltı farklı olsun — yeni öneri ver') },
+        { text: 'Öğle', onPress: () => handleQuickSelect('Öğle yemeğini değiştir — yeni öneri ver') },
+        { text: 'Akşam', onPress: () => handleQuickSelect('Akşam yemeğini değiştir — yeni öneri ver') },
+        { text: 'Çok protein', onPress: () => handleQuickSelect('Protein fazla geldi, biraz azalt') },
+        { text: 'Çok karb', onPress: () => handleQuickSelect('Karbonhidrat fazla geldi, biraz azalt') },
+        { text: 'Tamamen değiştir', onPress: () => handleQuickSelect('Planı tamamen farklı bir yaklaşımla yeniden üret') },
+        { text: 'İptal', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
+  }, [handleQuickSelect]);
+
+  // Low-confidence verification handlers (Spec 5.32)
+  // Confirm → AI sees "evet" (confirmation_yes); meal already saved, just acknowledge.
+  // Reject  → AI sees "yanlış" (confirmation_no + correction); triggers repair flow.
+  const handleLowConfConfirm = useCallback(() => {
+    handleQuickSelect('Evet, doğru');
+  }, [handleQuickSelect]);
+
+  const handleLowConfReject = useCallback(() => {
+    handleQuickSelect('Hayır, yanlış anladın — son kaydı sil');
+  }, [handleQuickSelect]);
+
+  // Save AI-generated recipe to library (Spec 7.7)
+  const handleSaveRecipe = useCallback(async (messageId: string, recipe: RecipeData) => {
+    if (!user?.id) return;
+    try {
+      const ingredients: RecipeIngredient[] = recipe.ingredients.map(i => ({
+        name: i.name, amount: i.amount, unit: '',
+      }));
+      await saveRecipe({
+        user_id: user.id,
+        title: recipe.title,
+        category: null,
+        ingredients,
+        instructions: '',
+        total_calories: recipe.macros.calories,
+        total_protein: recipe.macros.protein,
+        prep_time_min: recipe.prepTime,
+        cook_time_min: null,
+        servings: recipe.servings,
+        is_favorite: false,
+      });
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, recipeSaved: true } : m));
+    } catch (err) {
+      Alert.alert('Hata', (err as Error).message);
+    }
+  }, [user?.id]);
+
+  // Backdate picker — quick options: today / yesterday / 2 days ago / reset
+  const handleBackdateButton = useCallback(() => {
+    Alert.alert(
+      'Kayıt tarihi',
+      'Geçmiş bir tarihe kayıt yapacaksan seç.',
+      [
+        { text: 'Bugün (default)', onPress: () => setBackdateDate(null) },
+        { text: 'Dün', onPress: () => setBackdateDate(new Date(Date.now() - 86400000).toISOString().split('T')[0]) },
+        { text: '2 gün önce', onPress: () => setBackdateDate(new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0]) },
+        { text: '3 gün önce', onPress: () => setBackdateDate(new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0]) },
+        { text: 'İptal', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  }, []);
+
+  // Persona detection handlers (Spec 5.15)
+  // Confirm → AI keeps persona; short acknowledgement.
+  // Reject  → clear ai_summary.user_persona via chat; AI re-detects at next milestone.
+  const handlePersonaConfirm = useCallback(() => {
+    handleQuickSelect('Evet, beni doğru tanımladın');
+  }, [handleQuickSelect]);
+
+  const handlePersonaReject = useCallback(() => {
+    handleQuickSelect('Hayır, ben farklıyım — persona tipimi unut');
   }, [handleQuickSelect]);
 
   // Dashboard macros for real-time MacroSummary after meal_log
@@ -535,7 +646,7 @@ export default function SessionDetailScreen() {
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} />}
+          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} />}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
@@ -602,6 +713,36 @@ export default function SessionDetailScreen() {
         </View>
       )}
 
+      {/* Backdate banner — shows when user is logging for a past date */}
+      {backdateDate && (
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.sm, borderWidth: 0.5, borderColor: colors.warning }}>
+            <Ionicons name="calendar" size={14} color={colors.warning} />
+            <Text style={{ color: colors.textSecondary, fontSize: 11, flex: 1 }}>
+              Kayıt tarihi: {new Date(backdateDate).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'short' })}
+            </Text>
+            <TouchableOpacity onPress={() => setBackdateDate(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Bugun</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Voice transcription confirmation banner — user can edit input before sending */}
+      {voiceConfirmation && Date.now() < voiceConfirmation.expiresAt && (
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.sm, borderWidth: 0.5, borderColor: colors.primary }}>
+            <Ionicons name="mic" size={14} color={colors.primary} />
+            <Text style={{ color: colors.textSecondary, fontSize: 11, flex: 1 }} numberOfLines={2}>
+              Duydum: "{voiceConfirmation.text}" — gonder veya duzenle
+            </Text>
+            <TouchableOpacity onPress={() => { setInput(''); setVoiceConfirmation(null); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Iptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Undo banner */}
       {undoAction && Date.now() < undoAction.expiresAt && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
@@ -621,12 +762,31 @@ export default function SessionDetailScreen() {
         </View>
       )}
 
-      {/* Remaining messages for free users */}
-      {!isPremium && remainingMsgs != null && remainingMsgs <= 3 && (
+      {/* Remaining messages badge (Spec 19.0 — Free tier 5 AI msgs/day) */}
+      {!isPremium && remainingMsgs != null && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: 2 }}>
-          <Text style={{ color: remainingMsgs === 0 ? colors.error : colors.warning, fontSize: 11, textAlign: 'center' }}>
-            {remainingMsgs === 0 ? 'Gunluk mesaj hakkın bitti' : `${remainingMsgs} mesaj hakkın kaldı`}
-          </Text>
+          {remainingMsgs === 0 ? (
+            <TouchableOpacity
+              onPress={() => router.push('/settings/premium')}
+              style={{
+                flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                gap: SPACING.xs, paddingVertical: SPACING.xs,
+                backgroundColor: colors.primary + '15', borderRadius: RADIUS.pill,
+              }}
+            >
+              <Ionicons name="lock-closed" size={12} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600' }}>
+                Gunluk 5 mesaj hakkın bitti — Premium'a geç
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={{
+              color: remainingMsgs <= 2 ? colors.warning : colors.textMuted,
+              fontSize: 10, textAlign: 'center',
+            }}>
+              {remainingMsgs}/5 mesaj hakkı
+            </Text>
+          )}
         </View>
       )}
 
@@ -656,23 +816,51 @@ export default function SessionDetailScreen() {
 
           {/* Icon buttons */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
-            <TouchableOpacity onPress={takePhoto} style={{
-              width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
-              justifyContent: 'center', alignItems: 'center',
-            }}>
+            <TouchableOpacity
+              onPress={takePhoto}
+              accessibilityRole="button"
+              accessibilityLabel="Foto çek"
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={{
+                width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
+                justifyContent: 'center', alignItems: 'center',
+              }}>
               <Ionicons name="camera-outline" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={openBarcodeScanner} style={{
-              width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
-              justifyContent: 'center', alignItems: 'center',
-            }}>
+            <TouchableOpacity
+              onPress={openBarcodeScanner}
+              accessibilityRole="button"
+              accessibilityLabel="Barkod okut"
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={{
+                width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
+                justifyContent: 'center', alignItems: 'center',
+              }}>
               <Ionicons name="barcode-outline" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleVoiceToggle} style={{
-              width: 32, height: 32, borderRadius: 16,
-              backgroundColor: isRecordingVoice ? colors.error : colors.cardElevated,
-              justifyContent: 'center', alignItems: 'center',
-            }}>
+            <TouchableOpacity
+              onPress={handleBackdateButton}
+              accessibilityRole="button"
+              accessibilityLabel={backdateDate ? `Kayıt tarihi: ${backdateDate}` : 'Geçmiş tarihe kaydet'}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={{
+                width: 32, height: 32, borderRadius: 16,
+                backgroundColor: backdateDate ? colors.warning : colors.cardElevated,
+                justifyContent: 'center', alignItems: 'center',
+              }}>
+              <Ionicons name="calendar-outline" size={16}
+                color={backdateDate ? '#fff' : colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleVoiceToggle}
+              accessibilityRole="button"
+              accessibilityLabel={isRecordingVoice ? 'Ses kaydını durdur' : 'Sesli giriş başlat'}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={{
+                width: 32, height: 32, borderRadius: 16,
+                backgroundColor: isRecordingVoice ? colors.error : colors.cardElevated,
+                justifyContent: 'center', alignItems: 'center',
+              }}>
               <Ionicons name={isRecordingVoice ? 'stop' : 'mic-outline'} size={16}
                 color={isRecordingVoice ? '#fff' : colors.textSecondary} />
             </TouchableOpacity>
@@ -763,7 +951,7 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   );
 }
 
-function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId }: {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
@@ -771,6 +959,11 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   onQuickSelect: (option: string) => void;
   onConfirm: () => void;
   onReject: () => void;
+  onLowConfConfirm: () => void;
+  onLowConfReject: () => void;
+  onPersonaConfirm: () => void;
+  onPersonaReject: () => void;
+  onSaveRecipe: (messageId: string, recipe: RecipeData) => void;
   totalCalories: number;
   weeklyBudgetRemaining: number | null;
   onTTSToggle: (msgId: string, text: string) => void;
@@ -797,9 +990,9 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
           {message.content}
         </Text>
 
-        {/* Inline rich content for AI responses (Spec 5.20) */}
+        {/* Inline rich content for AI responses (Spec 5.20 + 5.34 macro ring) */}
         {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
-          <MacroSummary
+          <MacroRing
             protein={dashboardMacros.protein}
             carbs={dashboardMacros.carbs}
             fat={dashboardMacros.fat}
@@ -815,6 +1008,8 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
             servings={message.recipeData.servings}
             ingredients={message.recipeData.ingredients}
             macros={message.recipeData.macros}
+            saved={message.recipeSaved}
+            onSave={() => onSaveRecipe(message.id, message.recipeData as RecipeData)}
           />
         )}
 
@@ -826,6 +1021,16 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         {/* Confirm/Reject buttons for plan suggestion (D14) */}
         {!isUser && message.hasPlanSuggestion && (
           <ConfirmRejectButtons onConfirm={onConfirm} onReject={onReject} />
+        )}
+
+        {/* Low-confidence verification buttons (Spec 5.32) */}
+        {!isUser && message.hasLowConfidenceVerification && !message.hasPlanSuggestion && (
+          <ConfirmRejectButtons onConfirm={onLowConfConfirm} onReject={onLowConfReject} />
+        )}
+
+        {/* Persona detection card — shown once after 100+ messages (Spec 5.15) */}
+        {!isUser && message.personaDetected && (
+          <PersonaCard persona={message.personaDetected} onConfirm={onPersonaConfirm} onReject={onPersonaReject} />
         )}
 
         {/* Timestamp + TTS button */}

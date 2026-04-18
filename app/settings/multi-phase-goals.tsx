@@ -5,10 +5,11 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
-import { getGoalPhases, addPhase, deletePhase, advanceToNextPhase, type GoalPhase } from '@/services/goals.service';
+import { getGoalPhases, addPhase, deletePhase, advanceToNextPhase, getTimelineData, type GoalPhase } from '@/services/goals.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 const PHASE_LABELS: Record<string, { label: string; color: string }> = {
@@ -22,13 +23,19 @@ const PHASE_LABELS: Record<string, { label: string; color: string }> = {
 export default function MultiPhaseGoalsScreen() {
   const user = useAuthStore(s => s.user);
   const [phases, setPhases] = useState<GoalPhase[]>([]);
+  const [timelineData, setTimelineData] = useState<{ phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]; currentWeek: number } | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newPhaseLabel, setNewPhaseLabel] = useState('cut');
   const [newTarget, setNewTarget] = useState('');
   const [newWeeks, setNewWeeks] = useState('12');
 
   useEffect(() => { if (user?.id) load(); }, [user?.id]);
-  const load = () => { if (user?.id) getGoalPhases(user.id).then(setPhases); };
+  const load = async () => {
+    if (!user?.id) return;
+    const [p, t] = await Promise.all([getGoalPhases(user.id), getTimelineData(user.id)]);
+    setPhases(p);
+    setTimelineData(t);
+  };
 
   const handleAdd = async () => {
     if (!user?.id) return;
@@ -64,6 +71,13 @@ export default function MultiPhaseGoalsScreen() {
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Sirali fazlar tanimla: ornegin "75kg'a in (cut) → 3 ay bulk 80kg → 77kg'a in (mini cut)". Fazlar sirayla aktif olur.
       </Text>
+
+      {/* Horizontal timeline bar (Spec 6.7) */}
+      {timelineData && timelineData.phases.length > 1 && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <PhaseTimeline phases={timelineData.phases} currentWeek={timelineData.currentWeek} />
+        </View>
+      )}
 
       {/* Phase timeline */}
       {phases.length > 0 && (

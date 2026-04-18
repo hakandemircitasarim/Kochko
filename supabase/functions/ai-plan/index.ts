@@ -9,7 +9,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { buildFullContext, updateLayer2 } from '../shared/memory.ts';
-import { checkAllergens, validateCalories, sanitizeText } from '../shared/guardrails.ts';
+import { checkAllergens, validateCalories, sanitizeText, checkWeightVelocity, validateExercise, MAX_WORKOUT_DURATION_MIN, extractInjuredBodyParts, filterExercisesByInjury, filterExercisesByEquipment } from '../shared/guardrails.ts';
 import { validatePlanOutput } from '../shared/output-validator.ts';
 import { getPeriodicCalorieAdjustment, isIFCompatible, buildPeriodicPlanContext, getSeasonalContext } from '../shared/periodic-config.ts';
 
@@ -93,7 +93,7 @@ serve(async (req: Request) => {
     const today = new Date().toISOString().split('T')[0];
 
     // Parse request body for type and rejection_context
-    let body: { type?: string; rejection_context?: string } = {};
+    let body: { type?: string; rejection_context?: string; modification_request?: string } = {};
     try {
       body = await req.json();
     } catch {
@@ -102,7 +102,7 @@ serve(async (req: Request) => {
 
     // Route to weekly or daily plan generation
     if (body.type === 'weekly') {
-      const result = await generateWeeklyPlan(userId, today);
+      const result = await generateWeeklyPlan(userId, today, body.modification_request);
       return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
     }
 
@@ -110,6 +110,15 @@ serve(async (req: Request) => {
 
     // Build context
     const ctx = await buildFullContext(userId);
+
+    // Yesterday's plan for diff context (Spec 7.1: "Plan degistiyse NE DEGISTI + NEDEN aciklansın")
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const { data: yesterdayPlan } = await supabaseAdmin
+      .from('daily_plans')
+      .select('calorie_target_min, calorie_target_max, protein_target_g, workout_plan, plan_type, focus_message')
+      .eq('user_id', userId)
+      .eq('date', yesterday)
+      .maybeSingle();
 
     // Get allergens for post-validation
     const { data: prefs } = await supabaseAdmin
@@ -122,7 +131,7 @@ serve(async (req: Request) => {
     // Get profile for calorie validation and periodic state
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min')
+      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min, equipment_access, pregnancy_trimester')
       .eq('id', userId).maybeSingle();
 
     // Build periodic + seasonal context
@@ -313,6 +322,99 @@ serve(async (req: Request) => {
       cycleContext = `\nDONGU FAZI: ${phase} (gun ${dayOfCycle}/${cycleLength}) | Kalori: +${adj.cal}kcal | Su: +${adj.water}L | Max antrenman: ${adj.maxIntensity} | ${adj.note}`;
     }
 
+    // Return flow plan lightening (Spec 10.5) — first 3 days after medium+ gap: gentler target
+    // Looks at last user chat_message; if gap was >=8 days, softens today's calorie/protein
+    // targets by ~15-25% depending on gap length. Expires after 3 days of reactivation.
+    let returnLightening = 0; // percentage to reduce deficit
+    try {
+      const { data: recentMsgs } = await supabaseAdmin
+        .from('chat_messages')
+        .select('created_at')
+        .eq('user_id', userId).eq('role', 'user')
+        .order('created_at', { ascending: false })
+        .limit(2);
+      const msgs = (recentMsgs ?? []) as { created_at: string }[];
+      if (msgs.length >= 2) {
+        const gap = Math.floor((new Date(msgs[0].created_at).getTime() - new Date(msgs[1].created_at).getTime()) / 86400000);
+        const daysSinceReturn = Math.floor((Date.now() - new Date(msgs[0].created_at).getTime()) / 86400000);
+        // Active in last 3 days AND came back after 8+ day gap
+        if (gap >= 8 && daysSinceReturn <= 3) {
+          returnLightening = gap > 30 ? 25 : 20;
+        }
+      }
+    } catch { /* non-critical */ }
+
+    // Multi-phase gradual transition (Spec 6.7) — interpolate calorie range day-by-day over 7 days
+    const { data: tProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('phase_transition_start_date, phase_transition_from_rest_min, phase_transition_from_rest_max, phase_transition_to_rest_min, phase_transition_to_rest_max')
+      .eq('id', userId).maybeSingle();
+    if (tProfile?.phase_transition_start_date) {
+      const startDate = new Date(tProfile.phase_transition_start_date as string);
+      const daysSince = Math.floor((Date.now() - startDate.getTime()) / 86400000);
+      if (daysSince >= 0 && daysSince <= 6) {
+        const progress = (daysSince + 1) / 7;
+        const fromMin = tProfile.phase_transition_from_rest_min as number;
+        const fromMax = tProfile.phase_transition_from_rest_max as number;
+        const toMin = tProfile.phase_transition_to_rest_min as number;
+        const toMax = tProfile.phase_transition_to_rest_max as number;
+        const interpMin = Math.round(fromMin + (toMin - fromMin) * progress);
+        const interpMax = Math.round(fromMax + (toMax - fromMax) * progress);
+        await supabaseAdmin.from('profiles').update({
+          calorie_range_rest_min: interpMin,
+          calorie_range_rest_max: interpMax,
+        }).eq('id', userId);
+      } else if (daysSince > 6) {
+        // Transition complete: snap to final and clear transition markers
+        await supabaseAdmin.from('profiles').update({
+          calorie_range_rest_min: tProfile.phase_transition_to_rest_min,
+          calorie_range_rest_max: tProfile.phase_transition_to_rest_max,
+          phase_transition_start_date: null,
+          phase_transition_from_rest_min: null,
+          phase_transition_from_rest_max: null,
+          phase_transition_to_rest_min: null,
+          phase_transition_to_rest_max: null,
+        }).eq('id', userId);
+      }
+    }
+
+    // Equipment access context (Spec 7.2) — home / gym / both
+    let equipmentContext = '';
+    const equipAccess = (profile?.equipment_access as string | null) ?? 'home';
+    if (equipAccess === 'home') {
+      equipmentContext = '\nEKIPMAN: SADECE EV. Barbell/squat rack/bench press/cable machine ONERME. Alternatifler: dumbbell, resistance band, bodyweight, pullup bar. Ornek: barbell squat yerine goblet squat, bench press yerine pushup/band press, deadlift yerine single-leg deadlift.';
+    } else if (equipAccess === 'gym') {
+      equipmentContext = '\nEKIPMAN: SPOR SALONU. Tum makine + free weight kullanilabilir.';
+    } else if (equipAccess === 'both') {
+      equipmentContext = '\nEKIPMAN: Hem ev hem salon mevcut.';
+    }
+
+    // Active injury context (Spec 12.2, 15.7) — health_events with type=injury, is_ongoing=true
+    let injuryContext = '';
+    let injuredBodyParts: string[] = [];
+    const { data: activeInjuries } = await supabaseAdmin
+      .from('health_events')
+      .select('description')
+      .eq('user_id', userId)
+      .eq('event_type', 'injury')
+      .eq('is_ongoing', true);
+    if (activeInjuries && activeInjuries.length > 0) {
+      const descs = activeInjuries.map((e: { description: string }) => e.description);
+      injuredBodyParts = extractInjuredBodyParts(descs);
+      if (injuredBodyParts.length > 0) {
+        injuryContext = `\nSAKATLIK UYARISI: Aktif sakatliklar: ${descs.join('; ')}. Etkilenen bolgeler: ${injuredBodyParts.join(', ')}. BU BOLGELERI yukleyen egzersizler ONERME (squat, deadlift, lunge, koşu vs ilgili bolgeye gore). Alternatif olarak ust vucut izolasyon, yuzme, elips, isometric oner.`;
+      }
+    }
+
+    // Yesterday plan diff context (Spec 7.1)
+    let diffContext = '';
+    if (yesterdayPlan) {
+      const y = yesterdayPlan as { calorie_target_min: number | null; calorie_target_max: number | null; protein_target_g: number | null; workout_plan: { type?: string } | null; plan_type: string | null };
+      const yMid = y.calorie_target_min && y.calorie_target_max ? Math.round((y.calorie_target_min + y.calorie_target_max) / 2) : null;
+      const yWorkoutType = y.workout_plan?.type ?? null;
+      diffContext = `\nDUN PLANI: ${yMid ? `${yMid}kcal` : 'yok'}${y.protein_target_g ? `, ${y.protein_target_g}g protein` : ''}${yWorkoutType ? `, antrenman: ${yWorkoutType}` : ''} (${y.plan_type ?? 'bilinmiyor'}).\nBUGUNKU PLANI DUNDEN FARKLI KILAN HERHANGI BIR SEY varsa (antrenman gunu/dinlenme gunu degismesi, uyku yetersizligi, sakatlik, plateau, hedef ayarlamasi vb.), focus_message icinde NET BICIMDE belirt: "Dun X, bugun Y. Sebep: Z." Fark yoksa genel bir tek-odak ver.`;
+    }
+
     // Plateau context (Phase 3)
     let plateauContext = '';
     const threeWeeksAgo = new Date(Date.now() - 21 * 86400000).toISOString().split('T')[0];
@@ -328,7 +430,7 @@ serve(async (req: Request) => {
       }
     }
 
-    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${goalWorkoutContext}${sleepWarning}${strengthContext}${deloadContext}${personaContext}${cycleContext}${plateauContext}${rejectionLine}\n\nBugunku plani olustur.`;
+    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${goalWorkoutContext}${sleepWarning}${strengthContext}${deloadContext}${personaContext}${cycleContext}${equipmentContext}${injuryContext}${diffContext}${plateauContext}${rejectionLine}\n\nBugunku plani olustur.`;
 
     const plan = await chatCompletion<Record<string, unknown>>(
       [
@@ -343,7 +445,9 @@ serve(async (req: Request) => {
     Object.assign(plan, validated.corrected);
 
     // Guardrail: apply periodic calorie adjustment (code-enforced, not prompt-dependent)
-    const periodicAdj = getPeriodicCalorieAdjustment(profile?.periodic_state);
+    const periodicAdj = getPeriodicCalorieAdjustment(profile?.periodic_state, {
+      pregnancyTrimester: profile?.pregnancy_trimester as number | null,
+    });
     if (periodicAdj !== 0) {
       plan.calorie_target_min = (plan.calorie_target_min as number) + periodicAdj;
       plan.calorie_target_max = (plan.calorie_target_max as number) + periodicAdj;
@@ -354,6 +458,144 @@ serve(async (req: Request) => {
     const calCheck = validateCalories(calMin, profile?.gender);
     if (!calCheck.valid) {
       plan.calorie_target_min = calCheck.corrected;
+    }
+
+    // Guardrail: weight velocity check (Spec 12.1 — max 1kg/week loss)
+    // If user losing too fast, raise calorie floor toward maintenance.
+    const { data: velocityWeights } = await supabaseAdmin
+      .from('daily_metrics')
+      .select('date, weight_kg')
+      .eq('user_id', userId)
+      .not('weight_kg', 'is', null)
+      .gte('date', new Date(Date.now() - 21 * 86400000).toISOString().split('T')[0])
+      .order('date');
+    if (velocityWeights && velocityWeights.length >= 2) {
+      const vel = checkWeightVelocity(
+        velocityWeights.map((w: { date: string; weight_kg: number }) => ({ date: w.date, kg: w.weight_kg }))
+      );
+      if (!vel.safe) {
+        // Raise calorie target toward maintenance to slow loss
+        const maintenanceMin = (profile?.calorie_range_rest_min as number | null) ?? (calCheck.corrected + 300);
+        plan.calorie_target_min = Math.max(plan.calorie_target_min as number, maintenanceMin);
+        plan.calorie_target_max = Math.max(plan.calorie_target_max as number, maintenanceMin + 200);
+        plan._velocity_warning = vel.warning;
+        const existingFocus = (plan.focus_message as string) ?? '';
+        plan.focus_message = `${vel.warning} ${existingFocus}`.trim();
+      }
+    }
+
+    // Guardrail: workout duration cap (Spec 12.2 — max 120 min)
+    const workout = plan.workout_plan as { duration_min?: number; main?: string[]; type?: string; intensity?: string } | undefined;
+    if (workout && typeof workout.duration_min === 'number' && workout.duration_min > MAX_WORKOUT_DURATION_MIN) {
+      workout.duration_min = MAX_WORKOUT_DURATION_MIN;
+      plan._workout_duration_capped = true;
+    }
+
+    // Safety-net diff note: if yesterday differed significantly and AI didn't say so, append
+    if (yesterdayPlan) {
+      const y = yesterdayPlan as { calorie_target_min: number | null; calorie_target_max: number | null; plan_type: string | null; workout_plan: { type?: string } | null };
+      const yMid = y.calorie_target_min && y.calorie_target_max ? Math.round((y.calorie_target_min + y.calorie_target_max) / 2) : null;
+      const tMin = plan.calorie_target_min as number | undefined;
+      const tMax = plan.calorie_target_max as number | undefined;
+      const tMid = tMin && tMax ? Math.round((tMin + tMax) / 2) : null;
+
+      const parts: string[] = [];
+      if (yMid && tMid && Math.abs(yMid - tMid) >= 150) {
+        const dir = tMid > yMid ? 'yukseldi' : 'dustu';
+        parts.push(`Kalori hedefi dun ${yMid} -> bugun ${tMid} (${dir})`);
+      }
+      const yType = y.plan_type;
+      const tType = plan.plan_type as string | undefined;
+      if (yType && tType && yType !== tType) {
+        parts.push(`${yType === 'training' ? 'Dun antrenman' : 'Dun dinlenme'} -> ${tType === 'training' ? 'bugun antrenman' : 'bugun dinlenme'}`);
+      }
+      const yWorkout = y.workout_plan?.type;
+      const tWorkout = workout?.type;
+      if (yWorkout && tWorkout && yWorkout !== tWorkout) {
+        parts.push(`Antrenman tipi: ${yWorkout} -> ${tWorkout}`);
+      }
+
+      const focus = (plan.focus_message as string) ?? '';
+      const mentionsDiff = /dun|dün|-\>|farkli|farklı|degisti|değişti/i.test(focus);
+      if (parts.length > 0 && !mentionsDiff) {
+        plan.focus_message = focus
+          ? `${focus} | ${parts.join(', ')}.`
+          : `${parts.join(', ')}.`;
+        plan._plan_diff = parts;
+      }
+    }
+
+    // Return-flow lightening: soften deficit for first 3 days after long gap (Spec 10.5)
+    if (returnLightening > 0 && profile?.tdee_calculated) {
+      const tdee = profile.tdee_calculated as number;
+      const curMin = plan.calorie_target_min as number;
+      const curMax = plan.calorie_target_max as number;
+      // Move targets 20% of the way back toward TDEE (halves the deficit)
+      const shift = Math.round((tdee - (curMin + curMax) / 2) * (returnLightening / 100));
+      plan.calorie_target_min = curMin + shift;
+      plan.calorie_target_max = curMax + shift;
+      plan._return_lightening = returnLightening;
+      const existingFocus = (plan.focus_message as string) ?? '';
+      plan.focus_message = existingFocus
+        ? `${existingFocus} (Dönüşün ilk günleri — plan bugün biraz daha esnek.)`
+        : 'Hoş geldin! İlk birkaç gün biraz daha esnek bir plan.';
+    }
+
+    // Guardrail: deterministic water target (Spec 2.7, 14.2)
+    // base = weight * 0.033L; +0.75L training day; +0.4L summer (Jun-Aug)
+    if (profile?.weight_kg) {
+      const isTrainingDay = (plan.plan_type as string) === 'training';
+      const month = new Date().getMonth() + 1;
+      const isSummer = month >= 6 && month <= 8;
+      let computed = (profile.weight_kg as number) * 0.033;
+      if (isTrainingDay) computed += 0.75;
+      if (isSummer) computed += 0.4;
+      plan.water_target_liters = Math.round(computed * 10) / 10;
+    }
+
+    // Guardrail: equipment-aware exercise filter (Spec 7.2)
+    if (workout && Array.isArray(workout.main)) {
+      const { safe: equipSafe, excluded: equipExcluded } = filterExercisesByEquipment(workout.main, equipAccess);
+      if (equipExcluded.length > 0) {
+        workout.main = equipSafe;
+        plan._equipment_excluded = equipExcluded;
+        const lines = equipExcluded.map(e => e.alternative ? `${e.exercise} → ${e.alternative}` : e.exercise);
+        const note = `Ev ekipmanıyla yapilamayacak egzersizler cikarildi: ${lines.join(', ')}.`;
+        const existingFocus = (plan.focus_message as string) ?? '';
+        plan.focus_message = existingFocus ? `${existingFocus} ${note}` : note;
+      }
+    }
+
+    // Guardrail: injury-based exercise filter (Spec 12.2, 15.7)
+    if (workout && Array.isArray(workout.main) && injuredBodyParts.length > 0) {
+      const { safe, excluded } = filterExercisesByInjury(workout.main, injuredBodyParts);
+      if (excluded.length > 0) {
+        workout.main = safe;
+        plan._injury_excluded = excluded;
+        const note = `Sakatlik nedeniyle cikarilan: ${excluded.map(e => e.exercise).join(', ')}. Alternatif hafif izolasyon veya yuzme oneriyoruz.`;
+        const existingFocus = (plan.focus_message as string) ?? '';
+        plan.focus_message = existingFocus ? `${existingFocus} ${note}` : note;
+      }
+    }
+
+    // Guardrail: exercise safety (sleep-aware intensity)
+    if (workout) {
+      const sleepHours = (yesterdaySleep?.sleep_hours as number | null) ?? null;
+      const { count: consecutiveHardDays } = await supabaseAdmin
+        .from('workout_logs')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('intensity', 'high')
+        .gte('logged_for_date', new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0]);
+      const exCheck = validateExercise(
+        workout.duration_min ?? 0,
+        workout.type ?? 'mixed',
+        sleepHours,
+        consecutiveHardDays ?? 0
+      );
+      if (!exCheck.safe) {
+        plan._exercise_warnings = exCheck.warnings;
+      }
     }
 
     // Guardrail: IF compatibility check — skip IF validation if periodic state conflicts
@@ -432,7 +674,7 @@ serve(async (req: Request) => {
 /**
  * Generate a 7-day weekly plan with shopping list.
  */
-async function generateWeeklyPlan(userId: string, today: string): Promise<Record<string, unknown>> {
+async function generateWeeklyPlan(userId: string, today: string, modificationRequest?: string): Promise<Record<string, unknown>> {
   const ctx = await buildFullContext(userId);
 
   // Get allergens
@@ -487,7 +729,19 @@ async function generateWeeklyPlan(userId: string, today: string): Promise<Record
     }
   } catch { /* non-critical */ }
 
-  const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${strengthContext}${savedRecipesContext}\n\nHafta baslangici: ${weekStart}. 7 gunluk menu ve alisveris listesi olustur.`;
+  // Fetch existing plan to preserve approval state + increment revision_count
+  const { data: existing } = await supabaseAdmin
+    .from('weekly_plans')
+    .select('id, revision_count, approved_at')
+    .eq('user_id', userId)
+    .eq('week_start', weekStart)
+    .maybeSingle();
+
+  const modLine = modificationRequest
+    ? `\n\nMENU DEGISIKLIK TALEBI: "${modificationRequest}". Bu talebi dikkate alarak sadece ilgili ogun/gunleri degistir, kalanlari koru.`
+    : '';
+
+  const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${strengthContext}${savedRecipesContext}${modLine}\n\nHafta baslangici: ${weekStart}. 7 gunluk menu ve alisveris listesi olustur.`;
 
   const weeklyPlan = await chatCompletion<Record<string, unknown>>(
     [
@@ -508,7 +762,8 @@ async function generateWeeklyPlan(userId: string, today: string): Promise<Record
     }
   }
 
-  // Store in weekly_plans table using plan_data field
+  // Store in weekly_plans table. Regeneration resets approved_at and bumps revision_count.
+  const nextRevision = (existing?.revision_count ?? 0) + (existing ? 1 : 0);
   await supabaseAdmin.from('weekly_plans').upsert(
     {
       user_id: userId,
@@ -516,6 +771,9 @@ async function generateWeeklyPlan(userId: string, today: string): Promise<Record
       plan_data: weeklyPlan.days,
       shopping_list: weeklyPlan.shopping_list ?? [],
       generated_at: new Date().toISOString(),
+      approved_at: null,
+      modification_request: modificationRequest ?? null,
+      revision_count: nextRevision,
     },
     { onConflict: 'user_id,week_start' }
   );
