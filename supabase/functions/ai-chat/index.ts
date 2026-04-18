@@ -188,6 +188,60 @@ serve(async (req: Request) => {
       }
     }
 
+    // Household size for recipe scaling (Spec 7.7)
+    let householdNote = '';
+    if (taskMode === 'recipe') {
+      const { data: pRow } = await supabaseAdmin
+        .from('profiles').select('household_size').eq('id', userId).maybeSingle();
+      const hh = (pRow?.household_size as number | null) ?? 1;
+      if (hh > 1) {
+        householdNote = `HANEHALKI: ${hh} kisi. Tarifi ${hh} porsiyon icin uret, toplam + kisi basi makrolari AYRI goster.`;
+      }
+    }
+
+    // "Elimde X var" — ingredient-based saved recipe match (Spec 7.7)
+    let pantryRecipesNote = '';
+    if (taskMode === 'recipe' && message) {
+      const lower = message.toLocaleLowerCase('tr');
+      const hasPantryCue = /elimde|evde|dolapta|sahip oldug|buzdolab/.test(lower);
+      if (hasPantryCue) {
+        // Extract likely ingredient tokens: strip Turkish cue words, split by commas/spaces
+        const cleaned = lower
+          .replace(/elimde|evde sadece|evde|dolabımda|dolapta|var|sahip oldug[ua]m|buzdolabında|ne yapabilirim|ne yapsam|tarif/g, ' ')
+          .replace(/[.,;:!?]/g, ' ')
+          .trim();
+        const tokens = cleaned.split(/\s+/).filter(t => t.length >= 3).slice(0, 8);
+
+        if (tokens.length > 0) {
+          // Fetch all saved recipes and rank by token overlap
+          const { data: savedRecipes } = await supabaseAdmin
+            .from('saved_recipes')
+            .select('id, title, ingredients, total_calories, total_protein, prep_time_min, servings')
+            .eq('user_id', userId)
+            .limit(50);
+
+          if (savedRecipes && savedRecipes.length > 0) {
+            type RecipeRow = { id: string; title: string; ingredients: { name: string }[]; total_calories: number | null; total_protein: number | null; prep_time_min: number | null; servings: number };
+            const scored = (savedRecipes as RecipeRow[]).map(r => {
+              const names = (r.ingredients ?? []).map(i => i.name?.toLocaleLowerCase('tr') ?? '');
+              const matched = names.filter(n => tokens.some(t => n.includes(t) || t.includes(n.split(' ')[0] ?? '')));
+              const matchPct = names.length > 0 ? Math.round((matched.length / names.length) * 100) : 0;
+              return { r, matchPct, matched: matched.length };
+            });
+            const top = scored
+              .filter(s => s.matchPct >= 40 || s.matched >= 2)
+              .sort((a, b) => b.matchPct - a.matchPct)
+              .slice(0, 3);
+
+            if (top.length > 0) {
+              const lines = top.map(s => `- ${s.r.title} (%${s.matchPct} malzeme eslesmesi, ${s.r.total_calories ?? '?'} kcal, ${s.r.prep_time_min ?? '?'}dk)`);
+              pantryRecipesNote = `\n\nELINDEKI MALZEMELERDEN KUTUPHANEN'DE ESLESEN TARIFLER (oncelik bunlara ver):\n${lines.join('\n')}\nEger bu tarifler yeterli esleserse onlari oner. Yoksa mevcut malzemelerle yeni tarif uret.`;
+            }
+          }
+        }
+      }
+    }
+
     // A7: Remaining macro budget for recipe mode
     let remainingMacrosNote = '';
     if (taskMode === 'recipe') {
@@ -294,6 +348,8 @@ serve(async (req: Request) => {
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
       repairContext,
       remainingMacrosNote,
+      pantryRecipesNote,
+      householdNote,
     ].filter(Boolean).join('\n\n');
 
     // Build messages array
@@ -346,7 +402,9 @@ serve(async (req: Request) => {
     assistantMessage = finalMessage;
 
     // Execute actions (use target_date for batch entry, T1.17)
-    const actionFeedback = await executeActions(userId, actions, profile?.gender, target_date);
+    // Source of log: photo > voice (transcribed) > default text/chat
+    const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
+    const actionFeedback = await executeActions(userId, actions, profile?.gender, target_date, inputSource);
 
     // A8: Low confidence proactive verification — append confirmation question
     const mealActions = actions.filter((a: { type: string }) => a.type === 'meal_log');
@@ -397,6 +455,20 @@ serve(async (req: Request) => {
       }
     }
 
+    // Spec 5.15: First-time persona detection surface signal
+    // If Layer 2 update contains a new persona AND user had none before, signal UI
+    // to show a confirmation card ("You look like type X — correct?").
+    let personaJustDetected: string | null = null;
+    if (layer2Updates?.user_persona && personaNeeded) {
+      const { data: currentSummary } = await supabaseAdmin
+        .from('ai_summary').select('user_persona').eq('user_id', userId).maybeSingle();
+      const existingPersona = currentSummary?.user_persona as string | null;
+      const newPersona = layer2Updates.user_persona as string;
+      if (newPersona && existingPersona !== newPersona) {
+        personaJustDetected = newPersona;
+      }
+    }
+
     // Async: update Layer 2 if needed
     if (layer2Updates) {
       processLayer2Updates(userId, layer2Updates).catch((err: Error) => {
@@ -409,12 +481,20 @@ serve(async (req: Request) => {
       checkOnboardingCompletion(userId).catch(() => {});
     }
 
+    const outActions = actions.map((a: { type: string }, i: number) => ({
+      type: a.type,
+      feedback: actionFeedback[i] ?? null,
+    }));
+    if (personaJustDetected) {
+      outActions.push({
+        type: 'persona_detected',
+        feedback: personaJustDetected,
+      });
+    }
+
     return respond({
       message: assistantMessage,
-      actions: actions.map((a: { type: string }, i: number) => ({
-        type: a.type,
-        feedback: actionFeedback[i] ?? null,
-      })),
+      actions: outActions,
       task_mode: taskMode,
     });
   } catch (err) {
@@ -558,7 +638,8 @@ async function executeActions(
   userId: string,
   actions: Record<string, unknown>[],
   gender: string | null,
-  targetDate?: string
+  targetDate?: string,
+  inputMethod: 'text' | 'photo' | 'barcode' | 'voice' | 'template' | 'ai_chat' = 'ai_chat'
 ): Promise<(string | null)[]> {
   if (!actions || !Array.isArray(actions) || actions.length === 0) return [];
   const today = targetDate ?? new Date().toISOString().split('T')[0];
@@ -573,8 +654,16 @@ async function executeActions(
     try {
       switch (action.type) {
         case 'meal_log': {
-          const items = action.items as { name: string; portion: string; calories: number; protein_g: number; carbs_g: number; fat_g: number }[] | undefined;
+          const items = action.items as { name: string; portion: string; calories: number; protein_g: number; carbs_g: number; fat_g: number; confidence?: number }[] | undefined;
           const mealType = action.meal_type as string ?? 'snack';
+
+          // Aggregate confidence: bucket from min item confidence
+          let mealConfidence: 'high' | 'medium' | 'low' = 'medium';
+          if (items?.length) {
+            const confidences = items.map(i => typeof i.confidence === 'number' ? i.confidence : 0.75);
+            const minConf = Math.min(...confidences);
+            mealConfidence = minConf >= 0.85 ? 'high' : minConf >= 0.65 ? 'medium' : 'low';
+          }
 
           // Allergen check for register mode (Spec 12.7)
           if (items?.length) {
@@ -600,7 +689,9 @@ async function executeActions(
           const { data: log } = await supabaseAdmin.from('meal_logs').insert({
             user_id: userId, raw_input: action.raw as string ?? '',
             meal_type: mealType,
-            input_method: 'ai_chat', logged_for_date: today, synced: true,
+            input_method: inputMethod,
+            confidence: mealConfidence,
+            logged_for_date: today, synced: true,
           }).select('id').maybeSingle();
 
           if (log && items?.length) {
@@ -656,15 +747,65 @@ async function executeActions(
           break;
         }
         case 'workout_log': {
+          const durationMin = (action.duration_min as number) ?? 0;
+          const intensity = (action.intensity as string) ?? 'moderate';
+          const workoutType = (action.workout_type as string) ?? 'mixed';
+
+          // MET-based calories_burned if AI didn't provide or gave zero (Spec 7.5)
+          // MET table for common workout types/intensities
+          const MET_TABLE: Record<string, Record<string, number>> = {
+            cardio:     { low: 5,  moderate: 7,  high: 10 },
+            strength:   { low: 3,  moderate: 5,  high: 6.5 },
+            flexibility:{ low: 2,  moderate: 2.5, high: 3 },
+            sports:     { low: 5,  moderate: 7,  high: 10 },
+            mixed:      { low: 4,  moderate: 6,  high: 8 },
+          };
+          let caloriesBurned = (action.calories_burned as number) ?? 0;
+          if (caloriesBurned <= 0 && durationMin > 0) {
+            const met = MET_TABLE[workoutType]?.[intensity] ?? 5;
+            const { data: pRow } = await supabaseAdmin
+              .from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
+            const bodyWeight = (pRow?.weight_kg as number | null) ?? 70;
+            // kcal = MET * weight_kg * hours
+            caloriesBurned = Math.round(met * bodyWeight * (durationMin / 60));
+          }
+
           await supabaseAdmin.from('workout_logs').insert({
             user_id: userId, raw_input: action.raw as string ?? '',
-            workout_type: action.workout_type as string ?? 'mixed',
-            duration_min: (action.duration_min as number) ?? 0,
-            intensity: action.intensity as string ?? 'moderate',
-            calories_burned: (action.calories_burned as number) ?? 0,
+            workout_type: workoutType,
+            duration_min: durationMin,
+            intensity,
+            calories_burned: caloriesBurned,
             logged_for_date: today, synced: true,
           });
-          feedback.push('Antrenman kaydedildi');
+
+          // Post-workout calorie target bump (Spec 7.5)
+          // Bump today's remaining calorie allowance by ~50% of burned kcal,
+          // so user has flexibility to refuel without overshooting.
+          if (caloriesBurned >= 150) {
+            const bump = Math.round(caloriesBurned * 0.5);
+
+            // Reflect bump on today's daily_plan so dashboard "kalan kalori" updates
+            const { data: todayPlan } = await supabaseAdmin
+              .from('daily_plans')
+              .select('id, calorie_target_min, calorie_target_max')
+              .eq('user_id', userId)
+              .eq('date', today)
+              .maybeSingle();
+            if (todayPlan) {
+              await supabaseAdmin
+                .from('daily_plans')
+                .update({
+                  calorie_target_min: (todayPlan.calorie_target_min as number) + Math.round(bump * 0.5),
+                  calorie_target_max: (todayPlan.calorie_target_max as number) + bump,
+                })
+                .eq('id', todayPlan.id);
+            }
+
+            feedback.push(`Antrenman kaydedildi (~${caloriesBurned} kcal yakim). Bugun icin +${bump} kcal hareket alani acildi.`);
+          } else {
+            feedback.push('Antrenman kaydedildi');
+          }
           break;
         }
         case 'weight_log': {
@@ -901,7 +1042,7 @@ async function executeActions(
           break;
         }
         case 'recovery_plan': {
-          // Spec 6.3: Schedule recovery follow-up
+          // Spec 6.3: Schedule recovery follow-up + distribute excess calories over next 2-3 days
           const recoveryFollowUp = new Date(Date.now() + 86400000);
           recoveryFollowUp.setHours(9, 0, 0, 0);
           await supabaseAdmin.from('user_commitments').insert({
@@ -910,7 +1051,50 @@ async function executeActions(
             follow_up_at: recoveryFollowUp.toISOString(),
             status: 'pending',
           });
-          feedback.push('Kurtarma plani olusturuldu');
+
+          // Spread excess across next 2-3 days
+          // excess_kcal passed by AI; if not, compute from today's intake vs target
+          let excessKcal = (action.excess_kcal as number | undefined) ?? 0;
+          if (excessKcal <= 0) {
+            const { data: todayReport } = await supabaseAdmin
+              .from('daily_reports')
+              .select('calorie_actual')
+              .eq('user_id', userId).eq('date', today).maybeSingle();
+            const { data: todayPlan } = await supabaseAdmin
+              .from('daily_plans')
+              .select('calorie_target_max')
+              .eq('user_id', userId).eq('date', today).maybeSingle();
+            const actual = (todayReport?.calorie_actual as number | null) ?? 0;
+            const target = (todayPlan?.calorie_target_max as number | null) ?? 2000;
+            excessKcal = Math.max(0, actual - target);
+          }
+
+          if (excessKcal >= 200) {
+            // Distribute over next 2 days (spec says 2-3, 2 keeps per-day dip reasonable)
+            const perDayDip = Math.round(excessKcal / 2);
+            const { data: profileFloor } = await supabaseAdmin
+              .from('profiles').select('gender').eq('id', userId).maybeSingle();
+            const floor = profileFloor?.gender === 'female' ? 1200 : 1400;
+
+            for (let offset = 1; offset <= 2; offset++) {
+              const targetDate = new Date(Date.now() + offset * 86400000).toISOString().split('T')[0];
+              const { data: futurePlan } = await supabaseAdmin
+                .from('daily_plans')
+                .select('id, calorie_target_min, calorie_target_max')
+                .eq('user_id', userId).eq('date', targetDate).maybeSingle();
+              if (futurePlan) {
+                const newMin = Math.max(floor, (futurePlan.calorie_target_min as number) - Math.round(perDayDip / 2));
+                const newMax = Math.max(floor + 100, (futurePlan.calorie_target_max as number) - perDayDip);
+                await supabaseAdmin.from('daily_plans').update({
+                  calorie_target_min: newMin,
+                  calorie_target_max: newMax,
+                }).eq('id', futurePlan.id);
+              }
+            }
+            feedback.push(`Kurtarma plani olusturuldu. ~${excessKcal} kcal fazlayi sonraki 2 gune dagittim (gunluk -${perDayDip} kcal).`);
+          } else {
+            feedback.push('Kurtarma plani olusturuldu');
+          }
           break;
         }
         case 'venue_log': {
@@ -961,14 +1145,30 @@ async function executeActions(
             periodic_state_end: endDate ?? null,
             updated_at: new Date().toISOString(),
           };
+
+          // Past period memory: look up last occurrence of same state (Spec 9)
+          if (newState && !['none', 'normal'].includes(newState)) {
+            try {
+              const { data: summary } = await supabaseAdmin
+                .from('ai_summary').select('seasonal_notes').eq('user_id', userId).maybeSingle();
+              const notes = (summary?.seasonal_notes as string) ?? '';
+              const regex = new RegExp(`\\[${newState}_\\d{4}\\][^\\n]*`, 'g');
+              const matches = notes.match(regex);
+              if (matches && matches.length > 0) {
+                // Most recent match (last in list)
+                feedback.push(`Gecen ${newState} doneminden not: ${matches[matches.length - 1]}`);
+              }
+            } catch { /* non-critical */ }
+          }
           // Auto-pause IF if incompatible (illness, pregnancy, breastfeeding)
           if (['illness', 'pregnancy', 'breastfeeding'].includes(newState)) {
             profileUpdates.if_active = false;
           }
           await supabaseAdmin.from('profiles').update(profileUpdates).eq('id', userId);
 
-          // Auto-pause active challenges on illness
-          if (newState === 'illness') {
+          // Auto-pause active challenges on illness/travel/holiday (Spec 6.4)
+          const PAUSE_STATES = ['illness', 'travel', 'holiday'];
+          if (PAUSE_STATES.includes(newState)) {
             try {
               const { data: activeChallenges } = await supabaseAdmin
                 .from('challenges')
@@ -981,9 +1181,29 @@ async function executeActions(
                   .from('challenges')
                   .update({ status: 'paused', paused_at: new Date().toISOString() })
                   .in('id', challengeIds);
-                feedback.push('Hastalik nedeniyle aktif challenge\'lar otomatik duraklatildi.');
+                const stateLabel = newState === 'illness' ? 'Hastalik' : newState === 'travel' ? 'Seyahat' : 'Tatil';
+                feedback.push(`${stateLabel} nedeniyle ${activeChallenges.length} aktif challenge duraklatildi.`);
               }
             } catch { /* challenge pause non-critical */ }
+          }
+
+          // Auto-resume paused challenges when exiting a pause state
+          if (newState === 'none' || newState === 'normal' || !newState) {
+            try {
+              const { data: pausedChallenges } = await supabaseAdmin
+                .from('challenges')
+                .select('id')
+                .eq('user_id', userId)
+                .eq('status', 'paused');
+              if (pausedChallenges && pausedChallenges.length > 0) {
+                const challengeIds = pausedChallenges.map((c: { id: string }) => c.id);
+                await supabaseAdmin
+                  .from('challenges')
+                  .update({ status: 'active', paused_at: null })
+                  .in('id', challengeIds);
+                feedback.push(`${pausedChallenges.length} duraklatilmis challenge tekrar aktif.`);
+              }
+            } catch { /* challenge resume non-critical */ }
           }
 
           // Write seasonal note to Layer 2
@@ -997,6 +1217,135 @@ async function executeActions(
             { onConflict: 'user_id' }
           );
           feedback.push(`Donemsel durum: ${newState}`);
+          break;
+        }
+        case 'plateau_strategy_apply': {
+          // Spec 6.5: User approved a plateau-breaking strategy. Mutate today's plan
+          // and (conservatively) user's maintenance/rest calorie bands for the next
+          // 2 weeks. AI reminds user of start/end — we just store the adjustment.
+          const strategyId = action.strategy_id as string;
+          const { data: pProfile } = await supabaseAdmin
+            .from('profiles').select('calorie_range_rest_min, calorie_range_rest_max, protein_per_kg, weight_kg')
+            .eq('id', userId).maybeSingle();
+          const curMin = (pProfile?.calorie_range_rest_min as number | null) ?? 1600;
+          const curMax = (pProfile?.calorie_range_rest_max as number | null) ?? 2000;
+          const curProtein = Math.round(((pProfile?.weight_kg as number | null) ?? 70) * ((pProfile?.protein_per_kg as number | null) ?? 1.8));
+
+          // Local re-implementation of applyPlateauStrategy to avoid importing client service in edge fn
+          let newMin = curMin, newMax = curMax, newProtein = curProtein, instructions = '';
+          switch (strategyId) {
+            case 'calorie_cycle':
+              newMin = curMin - 200; newMax = curMax + 200;
+              instructions = 'Hafta ici dusuk, hafta sonu yuksek. Ortalama ayni.';
+              break;
+            case 'refeed':
+              instructions = 'Haftada 1 refeed gunu (antrenman gunu), kalori bakim seviyesine cikarilir.';
+              break;
+            case 'tdee_recalc':
+              newMin = Math.round(curMin * 0.95); newMax = Math.round(curMax * 0.95);
+              instructions = 'Kalori araligi %5 dusuruldu. 2 hafta izle.';
+              break;
+            case 'maintenance_break':
+              newMin = curMax; newMax = curMax + 300;
+              instructions = '2 hafta bakim kalorilerinde ye. Acik yok.';
+              break;
+            case 'training_change':
+              newProtein = curProtein + 5;
+              instructions = 'Antrenman programi degisir: farkli split, farkli rep araliklari.';
+              break;
+            default:
+              feedback.push(`Bilinmeyen plateau stratejisi: ${strategyId}`);
+              break;
+          }
+
+          // Mutate today's daily_plan
+          await supabaseAdmin.from('daily_plans').update({
+            calorie_target_min: newMin,
+            calorie_target_max: newMax,
+            protein_target_g: newProtein,
+          }).eq('user_id', userId).eq('date', today);
+
+          // Update profile bands for next 2 weeks (refeed/training_change keep bands)
+          if (strategyId === 'calorie_cycle' || strategyId === 'tdee_recalc' || strategyId === 'maintenance_break') {
+            await supabaseAdmin.from('profiles').update({
+              calorie_range_rest_min: newMin,
+              calorie_range_rest_max: newMax,
+            }).eq('id', userId);
+          }
+
+          // Store as ai_summary coaching_note so follow-up context remembers
+          await updateLayer2(userId, {
+            coaching_notes: `[${today}] Plateau stratejisi: ${strategyId}. ${instructions}`,
+          }).catch(() => {});
+
+          feedback.push(`Plateau stratejisi uygulandi: ${strategyId}. ${instructions}`);
+          break;
+        }
+        case 'maintenance_start': {
+          // Spec 6.3: Reverse diet — user reached goal; begin +125 kcal/week transition.
+          const { data: pProfile } = await supabaseAdmin
+            .from('profiles').select('calorie_range_rest_max, tdee_calculated')
+            .eq('id', userId).maybeSingle();
+          const startCal = (pProfile?.calorie_range_rest_max as number | null) ?? 1800;
+          const tdee = (pProfile?.tdee_calculated as number | null) ?? (startCal + 500);
+          const weeksNeeded = Math.max(2, Math.min(4, Math.ceil((tdee - startCal) / 125)));
+
+          await supabaseAdmin.from('profiles').update({
+            maintenance_mode: true,
+            maintenance_start_date: today,
+            periodic_state: 'maintenance',
+            periodic_state_start: today,
+          }).eq('id', userId);
+
+          await updateLayer2(userId, {
+            coaching_notes: `[${today}] Bakim modu basladi. Hedef TDEE ${tdee} kcal, ${weeksNeeded} hafta boyunca haftalik +125 kcal artis.`,
+          }).catch(() => {});
+
+          feedback.push(`Bakim modu aktif. ${weeksNeeded} hafta boyunca haftalik +125 kcal artirma plani — tolerans bandi ±1.5kg.`);
+          break;
+        }
+        case 'mini_cut_start': {
+          // Spec 6.3: Maintenance band aşıldı — 2-4 haftalık mini cut
+          const weeks = Math.max(2, Math.min(4, (action.weeks as number) ?? 3));
+          const { data: pProfile } = await supabaseAdmin
+            .from('profiles').select('calorie_range_rest_min, calorie_range_rest_max')
+            .eq('id', userId).maybeSingle();
+          const curMax = (pProfile?.calorie_range_rest_max as number | null) ?? 2000;
+          const cutMin = Math.round(curMax - 400);
+          const cutMax = Math.round(curMax - 200);
+
+          await supabaseAdmin.from('profiles').update({
+            calorie_range_rest_min: cutMin,
+            calorie_range_rest_max: cutMax,
+            periodic_state: 'mini_cut',
+            periodic_state_start: today,
+            periodic_state_end: new Date(Date.now() + weeks * 7 * 86400000).toISOString().split('T')[0],
+          }).eq('id', userId);
+
+          await supabaseAdmin.from('daily_plans').update({
+            calorie_target_min: cutMin,
+            calorie_target_max: cutMax,
+          }).eq('user_id', userId).eq('date', today);
+
+          feedback.push(`Mini cut basladi: ${weeks} hafta, kalori hedefi ${cutMin}-${cutMax} kcal.`);
+          break;
+        }
+        case 'goal_suggestion': {
+          // Spec 6.3: User accepted AI-suggested goal — insert into goals.
+          const gType = action.goal_type as string;
+          const targetVal = action.target_value as number | null;
+          const targetWeeks = (action.target_weeks as number) ?? 12;
+
+          await supabaseAdmin.from('goals').insert({
+            user_id: userId,
+            goal_type: gType,
+            target_weight_kg: gType === 'kas_kazanim' || gType === 'kilo_verme' ? targetVal : null,
+            target_weeks: targetWeeks,
+            is_active: true,
+            created_at: new Date().toISOString(),
+          });
+
+          feedback.push(`Hedef olusturuldu: ${gType}${targetVal ? ` → ${targetVal}` : ''} (${targetWeeks} hafta).`);
           break;
         }
         default:
@@ -1161,11 +1510,43 @@ async function checkCaffeineIntake(
       }
     } catch { /* non-critical */ }
 
-    // Water adjustment recommendation
+    // Water adjustment recommendation + actual daily_plans.water_target_liters bump
     if (totalCaffeine >= 200) {
       const additionalLiters = Math.round((totalCaffeine / 100) * 0.15 * 100) / 100;
       if (additionalLiters >= 0.3) {
-        warnings.push(`Kafein icin su hedefine +${additionalLiters}L ekle`);
+        // Read today's water target, bump, write back (only bump once per day to avoid stacking)
+        const { data: todayPlan } = await supabaseAdmin
+          .from('daily_plans')
+          .select('id, water_target_liters')
+          .eq('user_id', userId)
+          .eq('date', today)
+          .maybeSingle();
+        if (todayPlan) {
+          const base = (todayPlan.water_target_liters as number | null) ?? 2.5;
+          // Expect a fresh base each morning; if already bumped (>= base+0.25L), don't double-bump
+          const { data: caffeineLogged } = await supabaseAdmin
+            .from('coaching_messages')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('trigger', 'caffeine_water_bump')
+            .gte('created_at', `${today}T00:00:00`)
+            .limit(1);
+          if (!caffeineLogged || caffeineLogged.length === 0) {
+            await supabaseAdmin
+              .from('daily_plans')
+              .update({ water_target_liters: Math.round((base + additionalLiters) * 10) / 10 })
+              .eq('id', todayPlan.id);
+            await supabaseAdmin.from('coaching_messages').insert({
+              user_id: userId,
+              trigger: 'caffeine_water_bump',
+              priority: 'low',
+              message: `Kafein icin su hedefi +${additionalLiters}L arttirildi (${base}L → ${Math.round((base + additionalLiters) * 10) / 10}L).`,
+            });
+            warnings.push(`Kafein yuksek — su hedefini ${Math.round((base + additionalLiters) * 10) / 10}L'ye cikardim.`);
+          }
+        } else {
+          warnings.push(`Kafein icin su hedefine +${additionalLiters}L ekle`);
+        }
       }
     }
   }
@@ -1261,16 +1642,47 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       }
     }
 
-    // ─── Portion calibration with confidence gate ───
+    // ─── Portion calibration with confidence gate + correction count ───
+    // Spec 5.23: "user 3+ kez aynı yemeği X gram olarak düzelttiyse, AI sonraki parse'ta X kullanır"
+    // New shape: { "pilav": { grams: 200, count: 3, confirmed: true, history: [180, 200, 220] } }
+    // Backward-compat: legacy number values read as single-observation estimate.
     if (updates.portion_update) {
       const pu = updates.portion_update as { food: string; user_portion_grams: number; confidence?: number };
       const portionConfidence = pu.confidence ?? 0.7;
 
-      // Only write if confidence >= 0.7
       if (portionConfidence >= 0.7) {
-        const cal = (existing?.portion_calibration as Record<string, unknown>) ?? {};
-        cal[pu.food] = pu.user_portion_grams;
-        changes.portion_calibration = cal;
+        const raw = (existing?.portion_calibration as Record<string, unknown>) ?? {};
+        const foodKey = pu.food.toLocaleLowerCase('tr').trim();
+        const prior = raw[foodKey];
+
+        type CalEntry = { grams: number; count: number; confirmed: boolean; history: number[] };
+        let entry: CalEntry;
+        if (typeof prior === 'number') {
+          entry = { grams: prior, count: 1, confirmed: false, history: [prior] };
+        } else if (prior && typeof prior === 'object') {
+          const p = prior as Partial<CalEntry>;
+          entry = {
+            grams: p.grams ?? pu.user_portion_grams,
+            count: p.count ?? 1,
+            confirmed: p.confirmed ?? false,
+            history: Array.isArray(p.history) ? p.history : [],
+          };
+        } else {
+          entry = { grams: pu.user_portion_grams, count: 0, confirmed: false, history: [] };
+        }
+
+        // Append the new observation and recompute avg over last 5
+        const nextHistory = [...entry.history, pu.user_portion_grams].slice(-5);
+        const avg = Math.round(nextHistory.reduce((s, v) => s + v, 0) / nextHistory.length);
+        entry = {
+          grams: avg,
+          count: entry.count + 1,
+          confirmed: entry.count + 1 >= 3,
+          history: nextHistory,
+        };
+
+        raw[foodKey] = entry;
+        changes.portion_calibration = raw;
       }
     }
 
@@ -1511,4 +1923,15 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
     weekly_calorie_budget: weeklyBudget,
     updated_at: new Date().toISOString(),
   }).eq('id', userId);
+
+  // Notify user so they know targets shifted
+  const reason = lastWeight
+    ? `Kilon ${lastWeight.toFixed(1)} → ${currentWeight.toFixed(1)}kg degisti`
+    : 'İlk TDEE hesaplamasi';
+  await supabaseAdmin.from('coaching_messages').insert({
+    user_id: userId,
+    trigger: 'tdee_recalculated',
+    priority: 'low',
+    message: `${reason}. Yeni TDEE ${tdee} kcal, kalori araligi ${restMin}-${trainingMax} kcal, protein ${proteinG}g, su ${waterTarget}L.`,
+  }).catch(() => {});
 }

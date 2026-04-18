@@ -22,7 +22,7 @@ export interface SyncState {
 type ChangeCallback = (table: string, payload: Record<string, unknown>) => void;
 
 const SYNC_KEY = '@kochko_last_sync';
-const TABLES_TO_SYNC = ['meal_logs', 'daily_metrics', 'chat_messages', 'daily_plans'];
+const TABLES_TO_SYNC = ['meal_logs', 'daily_metrics', 'chat_messages', 'daily_plans', 'weekly_plans'];
 
 // ─── Subscription Management ───
 
@@ -129,6 +129,73 @@ export function resolveConflict(
 }
 
 // ─── Session Management ───
+
+/**
+ * Register this device/app instance as an active session (Spec 16.4).
+ * Returns the session id; caller stores locally to send heartbeats.
+ * Safe to call repeatedly — reuses the same AsyncStorage-persisted id.
+ */
+const SESSION_ID_KEY = '@kochko_user_session_id';
+
+export async function registerSession(deviceInfo: string, pushToken: string | null): Promise<string | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
+    // Reuse existing id if we already registered on this device
+    const existingId = await AsyncStorage.getItem(SESSION_ID_KEY);
+    if (existingId) {
+      await supabase.from('user_sessions').update({
+        last_active_at: new Date().toISOString(),
+        push_token: pushToken,
+      }).eq('id', existingId);
+      return existingId;
+    }
+
+    const { data, error } = await supabase.from('user_sessions').insert({
+      user_id: user.id,
+      device_info: deviceInfo,
+      push_token: pushToken,
+      last_active_at: new Date().toISOString(),
+    }).select('id').single();
+
+    if (error || !data) return null;
+    await AsyncStorage.setItem(SESSION_ID_KEY, data.id as string);
+    return data.id as string;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Heartbeat: update last_active_at for this session. Call on app foreground.
+ */
+export async function heartbeatSession(): Promise<void> {
+  try {
+    const id = await AsyncStorage.getItem(SESSION_ID_KEY);
+    if (!id) return;
+    await supabase.from('user_sessions').update({
+      last_active_at: new Date().toISOString(),
+    }).eq('id', id);
+  } catch {
+    // best-effort
+  }
+}
+
+/**
+ * Check whether our session row still exists. If missing, another device
+ * remotely terminated us — caller should sign the user out.
+ */
+export async function isSessionStillValid(): Promise<boolean> {
+  try {
+    const id = await AsyncStorage.getItem(SESSION_ID_KEY);
+    if (!id) return true; // first run, will register
+    const { data } = await supabase.from('user_sessions').select('id').eq('id', id).maybeSingle();
+    return !!data;
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Get active sessions for the current user.

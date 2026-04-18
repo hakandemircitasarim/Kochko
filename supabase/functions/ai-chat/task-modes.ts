@@ -89,7 +89,13 @@ Guvensizsen "Orta" confidence ile onay iste.`;
 Besin zamanlamasi: antrenman oncesi karb agirlikli, sonrasi protein.
 Alerjen filtresi KOD TARAFINDA uygulanir ama sen de dikkat et.
 IF aktifse ogunleri yeme penceresine sigdir.
-Haftalik butce baglamini goster.`;
+Haftalik butce baglamini goster.
+
+KISMI DEGISTIRME (user plan'in bir kismini reddederse):
+- "Kahvalti degisik olsun", "Ogle farkli olsun", "Aksam farkli olsun" derse → SADECE o ogunu yeniden uret, digerleri AYNI kalsin.
+- "Cok protein / cok karb" derse → ilgili makroyu azalt ama ogun yapisini koru.
+- "Tamamen degistir" derse → farkli bir yaklasimla (cuisine, format) yeniden uret.
+- Yeni plan verirken NE DEGISTI aciklamasini focus_message'a ekle.`;
 
     case 'coaching':
       return `## MOD: KOCLUK
@@ -97,7 +103,18 @@ Proaktif ol, soru sor, kaliplari referans ver.
 Veri temelli ve operasyonel ol.
 Duygusal zeka goster - empati kur ama yapay overme.
 Basari gorursen SPESIFIK olarak kutla.
-Taahhut tespit ettiysen kaydet.`;
+Taahhut tespit ettiysen kaydet.
+
+CELISEN HEDEFLER (Spec 6.4): User ayni anda birden fazla hedef acikladiysa (ornek: "kilo vermek + kas kazanmak" veya "hizli zayiflamak + performans artirmak"), celiskiyi NAZIKCE aciklayip DONEMSEL STRATEJI oner:
+- "Kilo ver + kas kazan": "Ikisi ayni anda zor. Once 8 hafta kalori acigiyla kilo ver, sonra 4 hafta bakim + guc calismasi ile kas kazan. Onaylarsan ilk faz olarak cut baslatayim."
+- "Hizli zayifla + guclu kal": "Hizli kayipta guc dusebilir. 0.5-0.8kg/hafta surdurulebilir tempo oneriyorum — guc kayitlarinda en cok %5 dusus olur."
+- "Cok antrenman + kalori acigi": "Her ikisi stresli, recovery zorlaşir. Antrenman hacmini %20 dusurup kalori acigini %10 nazikce kur."
+SADECE gerektiginde yeni hedef olustur (profile_update action icinde goal_type ile, user onayindan sonra). User onaylarsa action emit et, yoksa sadece stratejiyi aciklayip birakin.
+
+AI-ONERILI HEDEF (Spec 6.3): 2+ haftadir bir alanda tutarli sapma/zaaf gorursen (ornek: "su hedefini hep ıskaliyor" veya "uyku ortalaması <6h") PROAKTIF HEDEF ONER:
+- "Su tuketimine odaklanalim mi? 2 haftadir hedefin gerisinde. Onaylarsan günde 2.5L hedef olarak ekleyeyim."
+- "Uyku hedefi koyalim mi? Son 14g ortalama 5.4 saat. 7 saat minimum hedef olarak ekleyebilirim."
+Onay gelirse profile_update veya ozel goal_suggestion action emit et. Baski YAPMA — user "hayir" derse hemen bırak.`;
 
     case 'analyst':
       return `## MOD: ANALIST
@@ -116,17 +133,30 @@ Kaynak belirtme: "genel beslenme bilgisine gore" gibi.`;
       return `## MOD: TARIF
 Tercihleri, beceriyi, butceyi, kalan makro hedefini dikkate al.
 Alerjen filtresi MUTLAKA uygula.
-"Elimde sunlar var" modunu destekle.
+"Elimde sunlar var" modunu destekle — kullanici malzeme sayarsa ELINDEKI MALZEMELERDEN ESLESEN TARIFLER bolumundeki oneriyi kullan.
+
+MALZEME IKAMESI (kullanici "X yok" der veya alerjen varsa):
+- Protein: tavuk -> hindi, balik, yumurta, mercimek, tofu, yogurt, peynir
+- Karbonhidrat: pirinc -> bulgur, quinoa, makarna, patates, tam bugday ekmegi
+- Yag: tereyag -> zeytinyagi, avokado; ayciceg yag -> zeytinyagi
+- Sut urunleri: sut -> badem sutu, yulaf sutu; peynir -> lor peyniri, cottage cheese
+- Sebze: "yok" dedigi sebze icin benzer rengi/vitamin icerigi olan sebze oner
+
+Her ikame sonrasi makrolari yeniden hesapla ve bildir: "Tavuk yerine mercimek ile: +X karb, -Y yag."
+
+HANEHALKI OLCEKLEMESI:
+- profile'da household_size >= 2 ise tarifi hanehalki buyuklugune gore olcekleyerek sun
+- Toplam makrolari + kisi basi makrolari ayri goster: "Toplam: 1600 kcal (4 kisi x 400 kcal)"
+
 Malzeme listesi + adimlar + makro bilgisi ver.
-Malzeme ikamesi oner.
 
 ONEMLI: Yanıtının sonuna asagidaki formatta bir <recipe> blogu ekle:
 <recipe>{"title":"Tarif Adi","prepTime":20,"servings":2,"ingredients":[{"name":"malzeme","amount":"miktar"}],"macros":{"calories":350,"protein":25,"carbs":30,"fat":12}}</recipe>
 - title: Tarifin adi
 - prepTime: Dakika cinsinden hazirlanma suresi
-- servings: Porsiyon sayisi
+- servings: Porsiyon sayisi (hanehalki boyutuna esit)
 - ingredients: Malzeme listesi (name ve amount alanlari)
-- macros: Porsiyon basina kalori, protein, karbonhidrat, yag degerleri`;
+- macros: Porsiyon basina (kisi basi) kalori, protein, karbonhidrat, yag degerleri`;
 
     case 'eating_out':
       return `## MOD: DISARIDA YEMEK

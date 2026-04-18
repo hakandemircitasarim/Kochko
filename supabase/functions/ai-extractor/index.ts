@@ -11,7 +11,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
-import { evolvePatternConfidence } from '../shared/memory.ts';
+import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep } from '../shared/memory.ts';
 
 const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 
@@ -172,6 +172,33 @@ serve(async (req: Request) => {
       if (tier === 2) {
         await evolvePatternConfidence(userId).catch((err: Error) =>
           console.error(`[Extractor] Pattern confidence evolution failed for ${userId}:`, err.message)
+        );
+      }
+
+      // 9. Infer tone preference from implicit signals (Spec 5.9, weekly Tier 3)
+      if (tier === 3) {
+        await inferTonePreference(userId).catch((err: Error) =>
+          console.error(`[Extractor] Tone inference failed for ${userId}:`, err.message)
+        );
+
+        // 10. Refresh correction memory (Spec 5.32, weekly Tier 3)
+        await refreshCorrectionMemory(userId).catch((err: Error) =>
+          console.error(`[Extractor] Correction memory refresh failed for ${userId}:`, err.message)
+        );
+
+        // 11. Detect peak snacking hours for preemptive nudges (Spec 14.2)
+        await detectSnackingHours(userId).catch((err: Error) =>
+          console.error(`[Extractor] Snacking hours detection failed for ${userId}:`, err.message)
+        );
+
+        // 12. Calibrate declared vs observed activity level (Spec 2.4)
+        await calibrateActivityMultiplier(userId).catch((err: Error) =>
+          console.error(`[Extractor] Activity calibration failed for ${userId}:`, err.message)
+        );
+
+        // 13. Late-meal → sleep-quality correlation insight (Spec 14.2)
+        await analyzeLateMealSleep(userId).catch((err: Error) =>
+          console.error(`[Extractor] Late meal sleep analysis failed for ${userId}:`, err.message)
         );
       }
     }

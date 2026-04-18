@@ -41,3 +41,7 @@ yarn-error.*
 /ios
 /android
 .claude/
+
+# Supabase local dev artifacts
+supabase/.temp/
+supabase/.branches/

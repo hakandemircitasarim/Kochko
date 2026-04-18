@@ -389,14 +389,199 @@ export function checkWeightVelocity(
   const weeks = daysDiff / 7;
   const weeklyRate = Math.round((totalLoss / weeks) * 100) / 100;
 
-  // Check if losing more than 1.5 kg/week over 2+ weeks
-  if (weeklyRate > 1.5 && weeks >= 2) {
+  // Hard cap: >1.0 kg/week over 2+ weeks is unsafe (Spec 12.1)
+  if (weeklyRate > MAX_WEEKLY_LOSS_KG && weeks >= 2) {
     return {
       safe: false,
-      warning: `Haftada ${weeklyRate}kg kayip cok hizli. Saglikli kayip haftada 0.5-1kg arasi olmalidir. Daha yavas ilerlemenizi oneririz.`,
+      warning: `Haftada ${weeklyRate}kg kayip spec maksimumunu (${MAX_WEEKLY_LOSS_KG}kg/hafta) asiyor. Saglikli kayip 0.5-1kg arasi olmalidir. Kaloriyi bakim seviyesine cikarmani oneririz.`,
       weeklyRate,
     };
   }
 
   return { safe: true, warning: null, weeklyRate };
+}
+
+export { MAX_WEEKLY_LOSS_KG, MAX_WORKOUT_DURATION_MIN };
+
+// ─── Injury-based exercise filtering (Spec 12.2, 15.7) ───
+
+/**
+ * Body parts that an injury may affect, derived from free-text description.
+ * Matches Turkish/English injury descriptions to body_part keys.
+ */
+const INJURY_KEYWORDS: Record<string, string[]> = {
+  knee: ['diz', 'knee', 'menisc', 'menisk', 'acl', 'mcl'],
+  back: ['sirt', 'sırt', 'bel', 'back', 'disc', 'disk', 'lomber', 'lumbar', 'fitik', 'fıtık'],
+  shoulder: ['omuz', 'shoulder', 'rotator'],
+  ankle: ['ayak bilegi', 'ayak bileği', 'bilek', 'ankle'],
+  wrist: ['el bilegi', 'el bileği', 'wrist'],
+  elbow: ['dirsek', 'elbow', 'tennis', 'golf kol'],
+  hip: ['kalca', 'kalça', 'hip'],
+  neck: ['boyun', 'neck', 'servikal'],
+  hamstring: ['arka bacak', 'hamstring'],
+  quad: ['on bacak', 'ön bacak', 'quad'],
+  groin: ['kasik', 'kasık', 'adductor', 'groin'],
+};
+
+/**
+ * Exercises mapped to the body parts they load heavily.
+ * Used to filter out exercises that conflict with an active injury.
+ */
+const EXERCISE_BODY_PART_MAP: Record<string, string[]> = {
+  // Knee-loading
+  squat: ['knee', 'quad', 'hip'],
+  'back squat': ['knee', 'quad', 'hip'],
+  'front squat': ['knee', 'quad'],
+  lunge: ['knee', 'quad', 'hip'],
+  'bulgarian split': ['knee', 'quad'],
+  'leg press': ['knee', 'quad'],
+  'leg extension': ['knee', 'quad'],
+  'leg curl': ['hamstring', 'knee'],
+  'jump squat': ['knee', 'ankle'],
+  'box jump': ['knee', 'ankle'],
+  run: ['knee', 'ankle'],
+  running: ['knee', 'ankle'],
+  sprint: ['knee', 'ankle', 'hamstring'],
+  'hill run': ['knee', 'ankle', 'hamstring'],
+
+  // Back-loading
+  deadlift: ['back', 'hamstring', 'hip'],
+  'romanian deadlift': ['back', 'hamstring'],
+  'good morning': ['back', 'hamstring'],
+  'bent over row': ['back'],
+  'barbell row': ['back'],
+  'overhead press': ['back', 'shoulder'],
+
+  // Shoulder-loading
+  'bench press': ['shoulder', 'elbow'],
+  'incline bench': ['shoulder', 'elbow'],
+  'shoulder press': ['shoulder'],
+  'military press': ['shoulder'],
+  dip: ['shoulder', 'elbow'],
+  'pull up': ['shoulder', 'elbow'],
+  pullup: ['shoulder', 'elbow'],
+  chinup: ['shoulder', 'elbow'],
+  'lateral raise': ['shoulder'],
+
+  // Ankle/wrist
+  plank: ['wrist'],
+  pushup: ['wrist', 'shoulder', 'elbow'],
+  'push up': ['wrist', 'shoulder', 'elbow'],
+  burpee: ['wrist', 'shoulder', 'ankle', 'knee'],
+
+  // Hip/groin
+  'hip thrust': ['hip'],
+  'sumo deadlift': ['hip', 'groin', 'back'],
+};
+
+/**
+ * From free-text injury descriptions, extract affected body parts.
+ */
+export function extractInjuredBodyParts(descriptions: string[]): string[] {
+  const affected = new Set<string>();
+  for (const desc of descriptions) {
+    const lower = desc.toLocaleLowerCase('tr');
+    for (const [part, keywords] of Object.entries(INJURY_KEYWORDS)) {
+      if (keywords.some(kw => lower.includes(kw))) {
+        affected.add(part);
+      }
+    }
+  }
+  return Array.from(affected);
+}
+
+// ─── Equipment-aware exercise filtering (Spec 7.2, 15.1) ───
+
+/**
+ * Exercises that require specific equipment.
+ * If user only has home equipment, we filter out gym-required lifts.
+ */
+const GYM_REQUIRED_EXERCISES: string[] = [
+  'barbell', 'squat rack', 'bench press', 'incline bench', 'decline bench',
+  'deadlift', 'leg press', 'leg curl', 'leg extension', 'cable',
+  'lat pulldown', 'smith machine', 'hack squat', 'pec deck',
+];
+
+const HOME_ALTERNATIVES: Record<string, string> = {
+  'bench press': 'pushup veya resistance band press',
+  'barbell squat': 'goblet squat (dumbbell ile)',
+  'back squat': 'goblet squat',
+  'deadlift': 'single-leg deadlift (dumbbell ile)',
+  'lat pulldown': 'pull-up veya resistance band pulldown',
+  'leg press': 'bulgarian split squat',
+  'leg curl': 'nordic curl veya glute bridge',
+  'leg extension': 'wall sit',
+  'cable row': 'resistance band row',
+};
+
+/**
+ * Check if an exercise requires gym equipment.
+ */
+export function requiresGymEquipment(exerciseName: string): boolean {
+  const lower = exerciseName.toLocaleLowerCase('tr');
+  return GYM_REQUIRED_EXERCISES.some(kw => lower.includes(kw));
+}
+
+/**
+ * Filter exercise list by available equipment.
+ * Returns safe list + excluded-with-alternative suggestions.
+ */
+export function filterExercisesByEquipment(
+  exercises: string[],
+  equipmentAccess: string | null
+): { safe: string[]; excluded: { exercise: string; alternative: string | null }[] } {
+  if (!equipmentAccess || equipmentAccess === 'gym' || equipmentAccess === 'both') {
+    return { safe: exercises, excluded: [] };
+  }
+  // equipment_access === 'home' — filter out gym-required lifts
+  const safe: string[] = [];
+  const excluded: { exercise: string; alternative: string | null }[] = [];
+
+  for (const ex of exercises) {
+    if (requiresGymEquipment(ex)) {
+      const lower = ex.toLocaleLowerCase('tr');
+      const alt = Object.entries(HOME_ALTERNATIVES).find(([k]) => lower.includes(k));
+      excluded.push({ exercise: ex, alternative: alt ? alt[1] : null });
+    } else {
+      safe.push(ex);
+    }
+  }
+
+  return { safe, excluded };
+}
+
+/**
+ * Filter an exercise list to remove ones that load any of the injured body parts.
+ * Returns { safe, excluded } so caller can inform the user what was removed.
+ */
+export function filterExercisesByInjury(
+  exercises: string[],
+  injuredBodyParts: string[]
+): { safe: string[]; excluded: { exercise: string; bodyParts: string[] }[] } {
+  if (injuredBodyParts.length === 0) {
+    return { safe: exercises, excluded: [] };
+  }
+  const safe: string[] = [];
+  const excluded: { exercise: string; bodyParts: string[] }[] = [];
+
+  for (const ex of exercises) {
+    const lower = ex.toLocaleLowerCase('tr');
+    let hit: string[] | null = null;
+    for (const [pattern, bodyParts] of Object.entries(EXERCISE_BODY_PART_MAP)) {
+      if (lower.includes(pattern)) {
+        const conflicts = bodyParts.filter(bp => injuredBodyParts.includes(bp));
+        if (conflicts.length > 0) {
+          hit = conflicts;
+          break;
+        }
+      }
+    }
+    if (hit) {
+      excluded.push({ exercise: ex, bodyParts: hit });
+    } else {
+      safe.push(ex);
+    }
+  }
+
+  return { safe, excluded };
 }

@@ -207,17 +207,40 @@ async function generateWeeklyReport(userId: string) {
   const wsStr = weekStart.toISOString().split('T')[0];
   const weStr = weekEnd.toISOString().split('T')[0];
 
-  const [reportsRes, metricsRes] = await Promise.all([
+  // For alcohol comparison
+  const prevWeekStart = new Date(weekStart); prevWeekStart.setDate(weekStart.getDate() - 7);
+  const prevWeekEnd = new Date(weekStart); prevWeekEnd.setDate(weekStart.getDate() - 1);
+  const pwsStr = prevWeekStart.toISOString().split('T')[0];
+  const pweStr = prevWeekEnd.toISOString().split('T')[0];
+
+  const [reportsRes, metricsRes, prevReportsRes] = await Promise.all([
     supabaseAdmin.from('daily_reports').select('*').eq('user_id', userId).gte('date', wsStr).lte('date', weStr).order('date'),
     supabaseAdmin.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps').eq('user_id', userId).gte('date', wsStr).lte('date', weStr).order('date'),
+    supabaseAdmin.from('daily_reports').select('date, alcohol_calories').eq('user_id', userId).gte('date', pwsStr).lte('date', pweStr),
   ]);
 
   const reports = reportsRes.data ?? [];
   const metrics = metricsRes.data ?? [];
 
+  // Alcohol summary (Spec 3.1, 8.2)
+  const thisWeekAlcRows = reports as { date: string; alcohol_calories: number | null }[];
+  const thisWeekAlcTotal = thisWeekAlcRows.reduce((s, r) => s + (r.alcohol_calories ?? 0), 0);
+  const prevWeekAlcTotal = ((prevReportsRes.data ?? []) as { alcohol_calories: number | null }[])
+    .reduce((s, r) => s + (r.alcohol_calories ?? 0), 0);
+
+  // Classify weekday vs weekend alcohol (0=Sun, 5=Fri, 6=Sat in JS)
+  let weekdayAlc = 0, weekendAlc = 0;
+  for (const r of thisWeekAlcRows) {
+    const d = new Date(r.date).getDay();
+    const isWeekend = d === 0 || d === 5 || d === 6;
+    if (isWeekend) weekendAlc += (r.alcohol_calories ?? 0);
+    else weekdayAlc += (r.alcohol_calories ?? 0);
+  }
+
   const prompt = `Hafta: ${wsStr} - ${weStr}
 Raporlar: ${reports.map((r: { date: string; compliance_score: number; deviation_reason: string }) => `${r.date}: uyum ${r.compliance_score}, sapma: ${r.deviation_reason ?? 'yok'}`).join('\n') || 'rapor yok'}
-Metrikler: ${metrics.map((m: { date: string; weight_kg: number | null; sleep_hours: number | null }) => `${m.date}: ${m.weight_kg ?? '-'}kg, uyku ${m.sleep_hours ?? '-'}sa`).join('\n') || 'veri yok'}`;
+Metrikler: ${metrics.map((m: { date: string; weight_kg: number | null; sleep_hours: number | null }) => `${m.date}: ${m.weight_kg ?? '-'}kg, uyku ${m.sleep_hours ?? '-'}sa`).join('\n') || 'veri yok'}
+Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) | gecen hafta ${prevWeekAlcTotal}kcal`;
 
   const report = await chatCompletion<Record<string, unknown>>(
     [{ role: 'system', content: WEEKLY_REPORT_SYSTEM }, { role: 'user', content: prompt }],
@@ -238,6 +261,7 @@ Metrikler: ${metrics.map((m: { date: string; weight_kg: number | null; sleep_hou
     worst_day: report.worst_day,
     strength_summary: report.strength_summary,
     ai_learning_note: report.ai_learning_note,
+    alcohol_total_calories: thisWeekAlcTotal,
     next_week_strategy: report.next_week_strategy,
     plan_revision: report.plan_revision,
     generated_at: new Date().toISOString(),

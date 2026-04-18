@@ -6,6 +6,7 @@
  * via native share sheet (Instagram, WhatsApp, etc.)
  */
 import { Share, Platform } from 'react-native';
+import * as Sharing from 'expo-sharing';
 
 interface ShareContent {
   title: string;
@@ -72,6 +73,26 @@ async function shareContent(content: ShareContent): Promise<boolean> {
       ...(content.url && Platform.OS === 'ios' ? { url: content.url } : {}),
     });
     return result.action === Share.sharedAction;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Share an image file (e.g., milestone card / tempo chart screenshot) via
+ * native share sheet — Instagram Stories, WhatsApp, etc.
+ * Requires expo-sharing which is already a dependency.
+ */
+export async function shareImage(fileUri: string, dialogTitle?: string): Promise<boolean> {
+  try {
+    if (!(await Sharing.isAvailableAsync())) {
+      return false;
+    }
+    await Sharing.shareAsync(fileUri, {
+      dialogTitle: dialogTitle ?? 'Kochko ile paylas',
+      mimeType: 'image/png',
+    });
+    return true;
   } catch {
     return false;
   }

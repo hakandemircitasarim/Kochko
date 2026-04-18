@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { detectTimezone } from '@/lib/timezone';
+import { startTrialIfEligible } from '@/services/subscription.service';
 import type { GoalType, ActivityLevel, Gender } from '@/types/database';
 
 const { width } = Dimensions.get('window');
@@ -186,7 +187,10 @@ function QuickForm() {
         onboarding_completed: true,
       } as never);
 
-      // 3. Navigate to chat
+      // 3. Start 7-day free trial if eligible (Spec 19.0)
+      await startTrialIfEligible(user.id).catch(() => {});
+
+      // 4. Navigate to chat
       router.replace('/(tabs)/chat');
     } catch {
       Alert.alert('Hata', 'Bir sorun oluştu. Tekrar deneyin.');

@@ -133,8 +133,18 @@ export const PERIODIC_STATE_CONFIG: Record<PeriodicState, PeriodicStateConfig> =
 
 // ─── Utility Functions ───
 
-export function getPeriodicCalorieAdjustment(state: PeriodicState | null | undefined): number {
+export function getPeriodicCalorieAdjustment(
+  state: PeriodicState | null | undefined,
+  options?: { pregnancyTrimester?: number | null },
+): number {
   if (!state) return 0;
+  // Pregnancy: trimester-specific adjustment per ACOG (Spec 9.3)
+  // T1: +0 kcal, T2: +340 kcal, T3: +450 kcal. Fallback to state average if unknown.
+  if (state === 'pregnancy' && options?.pregnancyTrimester) {
+    if (options.pregnancyTrimester === 1) return 0;
+    if (options.pregnancyTrimester === 2) return 340;
+    if (options.pregnancyTrimester === 3) return 450;
+  }
   return PERIODIC_STATE_CONFIG[state]?.calorieAdjustment ?? 0;
 }
 
@@ -191,6 +201,13 @@ export function buildPeriodicPlanContext(profile: {
   }
   if (config.waterMultiplier !== 1.0) {
     parts.push(`Su: x${config.waterMultiplier}`);
+  }
+
+  // Exam / busy_work: brain food emphasis (Spec 9.4)
+  if (state === 'exam' || state === 'busy_work') {
+    parts.push('BEYIN BESINLERI: Omega-3 (yumurta, somon, ceviz), B vitamini (yesil yaprakli, bakliyat), magnezyum (badem, kabak cekirdegi), yulaf/tam tahilli karb (stabil enerji). Kafein ogleden once, gec saatlerde yok.');
+    parts.push('HAZIRLIK HIZI: Ogunler 15 dakikada hazirlanabilir, tek-tava/meal-prep odakli oneriler.');
+    parts.push('STRES YEME UYARISI: Atistirma saatlerinde bos kaloriler yerine protein+lifli ara ogun (yoğurt+ceviz, elma+fistik ezmesi).');
   }
 
   // Transition info

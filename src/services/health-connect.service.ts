@@ -22,38 +22,76 @@ export interface HealthDataPoint {
   source: 'apple_health' | 'google_fit' | 'wearable';
 }
 
-/**
- * Check if health platform is available on this device.
- * Returns true as placeholder on both iOS/Android.
- * TODO: Replace with actual expo-health / Health Connect availability check.
- */
-export async function isHealthAvailable(): Promise<boolean> {
-  // Placeholder: Both platforms support health APIs in principle.
-  // Real implementation will check for HealthKit (iOS) or Health Connect (Android).
-  return true;
+// Dynamic Pedometer import — runtime require so TS/metro bundle doesn't fail if
+// expo-sensors hasn't been installed yet. After `expo install expo-sensors` +
+// native rebuild, step tracking becomes live automatically.
+interface PedometerModule {
+  isAvailableAsync: () => Promise<boolean>;
+  requestPermissionsAsync: () => Promise<{ granted: boolean; status: string }>;
+  getStepCountAsync: (start: Date, end: Date) => Promise<{ steps: number }>;
+}
+function loadPedometer(): PedometerModule | null {
+  try {
+    // Metro/RN resolve at runtime; try/catch avoids hard dependency at build time.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('expo-sensors') as { Pedometer?: PedometerModule };
+    return mod?.Pedometer ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Request permissions for health data access.
- * Returns true as placeholder until real SDK is integrated.
+ * Check if a step-counter is available on this device.
+ * True when expo-sensors Pedometer is installed AND device supports it.
+ */
+export async function isHealthAvailable(): Promise<boolean> {
+  const pedometer = loadPedometer();
+  if (!pedometer) return false;
+  try {
+    return await pedometer.isAvailableAsync();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Request permissions for health data access. Only pedometer is wired right
+ * now; HRV/sleep will be added when HealthKit / Health Connect SDKs ship.
  */
 export async function requestHealthPermissions(
   _types: HealthDataType[]
 ): Promise<boolean> {
-  // TODO: Implement with expo-health or react-native-health
-  // iOS: Request HealthKit read permissions for specified types
-  // Android: Request Health Connect read permissions for specified types
-  return true;
+  const pedometer = loadPedometer();
+  if (!pedometer) return false;
+  try {
+    const res = await pedometer.requestPermissionsAsync();
+    return res.granted === true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Fetch today's step count from health platform.
+ * Fetch today's step count from the platform pedometer.
+ * Returns null if module unavailable or permission denied.
  */
 export async function getTodaySteps(): Promise<number | null> {
-  // TODO: Replace with real HealthKit/Health Connect query:
-  // iOS: HKQuantityType.quantityType(forIdentifier: .stepCount)
-  // Android: StepsRecord via Health Connect client
-  return null;
+  const pedometer = loadPedometer();
+  if (!pedometer) return null;
+  try {
+    const available = await pedometer.isAvailableAsync();
+    if (!available) return null;
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+
+    const result = await pedometer.getStepCountAsync(start, now);
+    return result?.steps ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -89,6 +127,39 @@ export async function getLatestWeight(): Promise<number | null> {
   // iOS: HKQuantityType.quantityType(forIdentifier: .bodyMass)
   // Android: WeightRecord via Health Connect
   return null;
+}
+
+/**
+ * Syncs today's pedometer step count to daily_metrics.steps.
+ * Idempotent: only writes if the platform reading is higher than stored value.
+ * Safe to call on dashboard mount / app foreground.
+ */
+import { supabase } from '@/lib/supabase';
+
+export async function syncStepsToDailyMetrics(userId: string, dayBoundaryHour: number = 4): Promise<number | null> {
+  const steps = await getTodaySteps();
+  if (steps === null) return null;
+
+  // Use day-boundary-aware date
+  const now = new Date();
+  const effective = new Date(now);
+  if (now.getHours() < dayBoundaryHour) effective.setDate(effective.getDate() - 1);
+  const date = effective.toISOString().split('T')[0];
+
+  const { data: existing } = await supabase
+    .from('daily_metrics').select('steps').eq('user_id', userId).eq('date', date).maybeSingle();
+  const current = (existing?.steps as number | null) ?? 0;
+
+  // Only update if pedometer reading is larger (e.g., manual entry might be ahead mid-day; rare)
+  if (steps > current) {
+    await supabase.from('daily_metrics').upsert({
+      user_id: userId,
+      date,
+      steps,
+      steps_source: 'phone',
+    }, { onConflict: 'user_id,date' });
+  }
+  return steps;
 }
 
 export type RecoveryScore = 'good' | 'moderate' | 'poor' | 'unknown';

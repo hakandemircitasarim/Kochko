@@ -137,7 +137,7 @@ export async function updateNotificationPrefs(
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('if_active, if_eating_start, if_eating_end, workout_days')
+    .select('if_active, if_eating_start, if_eating_end, workout_days, sleep_time')
     .eq('id', userId)
     .single();
 
@@ -148,8 +148,9 @@ export async function updateNotificationPrefs(
   } : null;
 
   const workoutDays = (profile as Record<string, unknown> | null)?.workout_days as number[] | null;
+  const sleepTime = (profile as Record<string, unknown> | null)?.sleep_time as string | null;
 
-  await scheduleLocalNotifications(updated, ifProfile, workoutDays, userId);
+  await scheduleLocalNotifications(updated, ifProfile, workoutDays, userId, sleepTime);
 }
 
 export async function scheduleLocalNotifications(
@@ -157,6 +158,7 @@ export async function scheduleLocalNotifications(
   ifProfile?: { if_active: boolean; if_eating_start: string | null; if_eating_end: string | null } | null,
   workoutDays?: number[] | null,
   userId?: string,
+  sleepTime?: string | null,
 ): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 
@@ -306,6 +308,26 @@ export async function scheduleLocalNotifications(
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 22, minute: 30 },
     });
+  }
+
+  // Bedtime wind-down (Spec 14.2): sleep_time - 30 minutes → soft "screen off" reminder.
+  // Uses profile.sleep_time (HH:MM). Falls back silent if not set.
+  if (sleepTime) {
+    const [sh, sm] = sleepTime.split(':').map(Number);
+    if (Number.isFinite(sh) && Number.isFinite(sm)) {
+      let totalMin = sh * 60 + sm - 30;
+      if (totalMin < 0) totalMin += 24 * 60;
+      const windHour = Math.floor(totalMin / 60) % 24;
+      const windMin = totalMin % 60;
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Uyku Yaklasiyor',
+          body: 'Yatis saatinden 30 dakika kaldi. Ekrani kapat, bi su ic, ertesi gun icin guzel bir uyku al.',
+          data: { type: 'bedtime_wind_down' },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: windHour, minute: windMin },
+      });
+    }
   }
 }
 

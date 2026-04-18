@@ -7,6 +7,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { initializeNotifications, savePushToken } from '@/services/notifications.service';
 import { checkAndRunBackup } from '@/services/auto-backup.service';
+import { registerSession, heartbeatSession, isSessionStillValid } from '@/services/realtime-sync.service';
+import * as Device from 'expo-device';
 import { getWidgetData, serializeForNativeWidget } from '@/services/widget.service';
 import { detectTimezone } from '@/lib/timezone';
 import { ThemeContext, DARK_COLORS, LIGHT_COLORS, type ThemeMode } from '@/lib/theme';
@@ -49,9 +51,12 @@ export default function RootLayout() {
   // Initialize push notifications when user is authenticated (Spec 10.1)
   useEffect(() => {
     if (!user?.id) return;
-    initializeNotifications().then(token => {
+    initializeNotifications().then(async token => {
       if (token) savePushToken(user.id, token);
-    }).catch((err) => console.warn('Notification init failed:', err));
+      // Register this device/app instance as an active session (Spec 16.4)
+      const deviceInfo = `${Device.modelName ?? 'Unknown'} · ${Device.osName ?? ''} ${Device.osVersion ?? ''}`.trim();
+      await registerSession(deviceInfo, token ?? null);
+    }).catch((err) => console.warn('Notification/session init failed:', err));
     // Auto backup check (Spec 18.2)
     checkAndRunBackup().catch((err) => console.warn('Auto backup check failed:', err));
 
@@ -81,6 +86,17 @@ export default function RootLayout() {
           const serialized = serializeForNativeWidget(widgetData);
           await AsyncStorage.setItem('@kochko_widget_data', serialized);
         } catch (err) { console.warn('Widget sync failed:', err); }
+      }
+      // On foreground: heartbeat + check if our session was remotely terminated (Spec 16.4)
+      if (nextState === 'active' && user?.id) {
+        try {
+          const valid = await isSessionStillValid();
+          if (!valid) {
+            await useAuthStore.getState().signOut();
+          } else {
+            await heartbeatSession();
+          }
+        } catch { /* non-critical */ }
       }
     });
     return () => subscription.remove();
