@@ -13,9 +13,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useProfileStore } from '@/stores/profile.store';
@@ -124,6 +125,13 @@ function hasLowConfidenceVerificationIndicator(content: string): boolean {
 
 export default function SessionDetailScreen() {
   const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
   const { sessionId, prefill, taskModeHint } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string }>();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
@@ -623,8 +631,8 @@ export default function SessionDetailScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {/* Header */}
       <View style={{ paddingHorizontal: SPACING.xl, paddingTop: Platform.OS === 'web' ? 16 : 60, paddingBottom: SPACING.md, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
@@ -792,7 +800,8 @@ export default function SessionDetailScreen() {
 
       {/* Input bar */}
       <View style={{
-        paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm, paddingBottom: SPACING.sm,
+        paddingHorizontal: SPACING.xl, paddingTop: SPACING.sm,
+        paddingBottom: SPACING.sm + (Platform.OS === 'web' || keyboardVisible ? 0 : insets.bottom),
         borderTopWidth: 0.5, borderTopColor: colors.border, backgroundColor: colors.background,
       }}>
         <View style={{

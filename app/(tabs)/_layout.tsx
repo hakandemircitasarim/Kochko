@@ -1,6 +1,7 @@
 import { Tabs, router } from 'expo-router';
 import { View, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 
 const TEAL = '#1D9E75';
@@ -35,9 +36,10 @@ function FABButton() {
 
 export default function TabLayout() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
-  const tabBarHeight = isWeb ? 56 : 84;
-  const tabBarPaddingBottom = isWeb ? 4 : 28;
+  const tabBarPaddingBottom = isWeb ? 4 : Math.max(insets.bottom, 12);
+  const tabBarHeight = isWeb ? 56 : 56 + tabBarPaddingBottom;
 
   return (
     <Tabs screenOptions={{
