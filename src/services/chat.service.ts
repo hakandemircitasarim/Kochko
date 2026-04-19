@@ -8,6 +8,7 @@ export interface ChatMessage {
   content: string;
   task_mode?: string;
   created_at: string;
+  actions_executed?: { type: string }[] | null;
 }
 
 export interface ChatResponse {
@@ -107,7 +108,7 @@ export async function loadChatHistory(limit = 50): Promise<ChatMessage[]> {
 
     const { data } = await supabase
       .from('chat_messages')
-      .select('id, role, content, task_mode, created_at')
+      .select('id, role, content, task_mode, created_at, actions_executed')
       .eq('user_id', session.user.id)
       .order('created_at', { ascending: true })
       .limit(limit);
@@ -290,7 +291,7 @@ export async function loadSessionMessages(sessionId: string, limit = 50): Promis
   try {
     const { data } = await supabase
       .from('chat_messages')
-      .select('id, role, content, task_mode, created_at')
+      .select('id, role, content, task_mode, created_at, actions_executed')
       .eq('session_id', sessionId)
       .order('created_at', { ascending: true })
       .limit(limit);
