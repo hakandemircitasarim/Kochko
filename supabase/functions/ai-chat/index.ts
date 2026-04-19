@@ -431,7 +431,7 @@ serve(async (req: Request) => {
     // the model might have skipped (target_weight_kg, goal_type, motivation_source
     // are the common misses). Existing action fields take precedence.
     if (message) {
-      const regexExtracted = extractProfileFromMessage(message);
+      const regexExtracted = extractProfileFromMessage(message, task_mode_hint as string | undefined);
       if (regexExtracted) {
         const existingProfileAction = actions.find(a => a.type === 'profile_update') as Record<string, unknown> | undefined;
         if (existingProfileAction) {
@@ -665,9 +665,21 @@ function extractActions(text: string): { cleanMessage: string; actions: Record<s
 }
 
 /** Fallback: extract profile data from user message if AI didn't produce actions */
-function extractProfileFromMessage(msg: string): Record<string, unknown> | null {
+function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<string, unknown> | null {
   const result: Record<string, unknown> = {};
   const lower = msg.toLocaleLowerCase('tr');
+
+  // Context-aware: in the "Hedefini belirle" chat, a bare number reply (30-300)
+  // is almost always the target weight — the AI just asked "hedeflediğin kilo?"
+  // and the user shorthand-answers. Without this, regex below requires the
+  // "hedef" keyword and misses the most common phrasing.
+  if (taskModeHint === 'onboarding_goal') {
+    const bare = msg.trim();
+    if (/^\d{2,3}(?:[.,]\d)?$/.test(bare)) {
+      const n = parseFloat(bare.replace(',', '.'));
+      if (n >= 30 && n <= 300) result.target_weight_kg = n;
+    }
+  }
 
   // Height: "boyum 175", "175 cm", "boy: 180"
   const heightMatch = lower.match(/boy\w*\s*[:=]?\s*(\d{2,3})\s*(cm)?|(\d{2,3})\s*cm/);
