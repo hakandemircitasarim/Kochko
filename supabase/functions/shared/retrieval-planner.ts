@@ -333,7 +333,12 @@ export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
     case 'recovery':
       return makePlan('full', ['health', 'nutrition', 'demographics'], 'full', ['patterns', 'persona'], 7, ['meals', 'metrics'], 'summary', 10);
     case 'onboarding':
-      return makePlan('minimal', ['demographics'], 'none', [], 0, [], 'reference', 10);
+      // Full layer1 is critical: task-card chats persist into profiles/goals/food_preferences,
+      // and other onboarding sessions MUST see that data so they don't re-ask what's already
+      // been answered. Includes motivation, goal, nutrition prefs, training background.
+      // Layer2 still 'none' since onboarding is primarily populating, not reasoning from,
+      // learned insights. Layer4 reference keeps the immediate chat turn context intact.
+      return makePlan('full', ['health', 'nutrition', 'training', 'demographics'], 'minimal', ['preferences'], 0, [], 'reference', 10);
     case 'periodic':
       return makePlan('full', ['health', 'nutrition', 'training', 'demographics'], 'full', ['patterns', 'persona', 'preferences', 'strength', 'habits'], 7, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 10);
     default:
