@@ -288,39 +288,56 @@ serve(async (req: Request) => {
       clientTimezone: client_timezone as string | undefined,
     });
 
-    // Task card context: when user taps an onboarding card, inject topic-specific instructions
+    // Task card context: when user taps an onboarding card, inject topic-specific instructions.
+    // Each topic has a MINIMUM CHECKLIST — as soon as those fields are collected (via conversation
+    // or already in Layer 1), the AI MUST emit <layer2_update> to mark the task complete and tell
+    // the user to return to the dashboard for the next task. No plan making, no open-ended chat.
     let taskCardCtx = '';
     if (task_mode_hint && typeof task_mode_hint === 'string' && task_mode_hint.startsWith('onboarding_')) {
       const topicKey = task_mode_hint.replace('onboarding_', '');
-      const TOPIC_INSTRUCTIONS: Record<string, string> = {
-        intro: 'Bu sohbet kullanicinin kendini tanitmasini icin acildi. Boy, kilo, yas, cinsiyet bilgilerini ogren. Mevcut bilgilerini ozetle ve eksikleri sor.',
-        goal: 'Bu sohbet kullanicinin hedeflerini belirlemek icin acildi. Ne istedigini, neden istedigini, hedef kilosunu ogren. Motivasyon kaynagini da anla.',
-        routine: 'Bu sohbet gunluk rutini ogremek icin acildi. Meslegini, calisma saatlerini, ne kadar aktif oldugunu, uyku duzeni ni ogren.',
-        eating: 'Bu sohbet beslenme aliskanliklarini ogremek icin acildi. Ogun sayisi, saatleri, disarida yeme sikligi, atistirma, atlanan ogunler, duygusal yeme, gece yeme aliskanligini ogren.',
-        allergies: 'Bu sohbet alerji ve hassasiyetleri ogremek icin acildi. Yiyecek alerjileri, intoleranslar, sindirim sorunlari (reflu, IBS, siskinlik) ogren.',
-        kitchen: 'Bu sohbet mutfak imkanlarini ogremek icin acildi. Pisirme becerisi, butce, ekipman, hazirlama suresi, evde kim pisiriyor, evde diyet yapmayan var mi ogren.',
-        exercise: 'Bu sohbet spor gecmisini ogremek icin acildi. Deneyim seviyesi, hangi sporlari yapti/yapiyor, tercih ettigi antrenman turu, sevmedigi egzersizler, antrenman saatleri ogren.',
-        health: 'Bu sohbet saglik gecmisini ogremek icin acildi. Ameliyat gecmisi, kronik hastaliklar, kullanilan ilaclar, hormon durumu (tiroid, PCOS, insulin direnci) ogren.',
-        weight_history: 'Bu sohbet kilo gecmisini ogremek icin acildi. Daha once denenen diyetler, sonuclari, en buyuk zorluklar, neden birakildi ogren.',
-        labs: 'Bu sohbet kan tahlil sonuclarini almak icin acildi. Son tahlil tarihi, anormal degerler, doktor yorumlari ogren.',
-        sleep: 'Bu sohbet uyku duzenini ogremek icin acildi. Yatis/kalkis saatleri, uyku kalitesi, sorunlar (uykusuzluk, gece uyanma, horlama) ogren.',
-        stress: 'Bu sohbet stres ve motivasyonu ogremek icin acildi. Stres seviyesi, kaynaklari, motivasyon kaynagi, en buyuk zorluk ogren.',
-        home: 'Bu sohbet ev ortamini ogremek icin acildi. Evde kim yemek yapiyor, evde diyet yapmayan var mi, sosyal yeme baskisi ogren.',
+      type Topic = { title: string; taskKey: string; fields: string[]; brief: string };
+      const TOPICS: Record<string, Topic> = {
+        intro:          { title: 'Kendini tanitma',           taskKey: 'introduce_yourself', fields: ['boy (cm)', 'kilo (kg)', 'yas', 'cinsiyet'], brief: 'Dort temel: boy, kilo, yas, cinsiyet.' },
+        goal:           { title: 'Hedef belirleme',           taskKey: 'set_goal',           fields: ['ana hedef (kilo ver / kas kazan / saglikli kal)', 'hedef kilo', 'neden'], brief: 'Ana hedef + hedef kilo + motivasyon.' },
+        routine:        { title: 'Gunluk rutin',              taskKey: 'daily_routine',      fields: ['meslek', 'calisma saatleri', 'aktivite duzeyi'], brief: 'Meslek + calisma saati + aktivite.' },
+        eating:         { title: 'Beslenme aliskanliklari',   taskKey: 'eating_habits',      fields: ['ogun sayisi', 'yeme saatleri', 'disarida yeme sikligi', 'atistirma aliskanligi'], brief: 'Ogun sayisi + saatler + disarida yeme.' },
+        allergies:      { title: 'Alerji ve hassasiyetler',   taskKey: 'allergies',          fields: ['alerjik yiyecekler', 'intoleranslar', 'sindirim sorunlari'], brief: 'Alerji + intolerans + sindirim.' },
+        kitchen:        { title: 'Mutfak imkanlari',          taskKey: 'kitchen_logistics',  fields: ['pisirme becerisi', 'butce', 'ekipman', 'hazirlama suresi'], brief: 'Beceri + butce + ekipman + sure.' },
+        exercise:       { title: 'Spor gecmisi',              taskKey: 'exercise_history',   fields: ['deneyim seviyesi', 'hangi sporlar', 'tercih edilen tur', 'antrenman saatleri'], brief: 'Deneyim + tercih + saatler.' },
+        health:         { title: 'Saglik gecmisi',            taskKey: 'health_history',     fields: ['ameliyatlar', 'kronik hastaliklar', 'ilaclar', 'hormon durumu'], brief: 'Ameliyat + hastalik + ilac + hormon.' },
+        weight_history: { title: 'Kilo gecmisi',              taskKey: 'weight_history',     fields: ['denenmis diyetler', 'sonuclari', 'neden birakildi'], brief: 'Diyet gecmisi + sonuc + birakma sebebi.' },
+        labs:           { title: 'Kan tahlilleri',            taskKey: 'lab_values',         fields: ['son tahlil tarihi', 'anormal degerler', 'doktor yorumu'], brief: 'Son tahlil + anormaller + yorum.' },
+        sleep:          { title: 'Uyku duzeni',               taskKey: 'sleep_patterns',     fields: ['yatis saati', 'kalkis saati', 'uyku kalitesi', 'uyku sorunlari'], brief: 'Yatis + kalkis + kalite.' },
+        stress:         { title: 'Stres ve motivasyon',       taskKey: 'stress_motivation',  fields: ['stres seviyesi', 'stres kaynagi', 'motivasyon kaynagi', 'en buyuk zorluk'], brief: 'Stres + motivasyon + zorluk.' },
+        home:           { title: 'Ev ve cevre faktorleri',    taskKey: 'home_environment',   fields: ['evde yemek yapan kim', 'evde diyet yapmayan var mi', 'sosyal yeme baskisi'], brief: 'Evdeki yemek + sosyal baski.' },
       };
-
-      const topicInstruction = TOPIC_INSTRUCTIONS[topicKey] ?? '';
-      taskCardCtx = [
-        '=== ONBOARDING KART OTURUMU ===',
-        topicInstruction,
-        '',
-        'KURALLAR:',
-        '1. ILK MESAJDA: Bu konu hakkinda su ana kadar bildiklerini ozetle (Layer 1 ve Layer 2\'den). Eksik bilgileri sor.',
-        '2. Konusma sirasinda baska konularda da bilgi cikarsa, onlari da <actions> ile kaydet. Sadece ana konuyla sinirli kalma.',
-        '3. Bu konuda YETERLI bilgi topladigina karar verdiginde (kullanici en az 2-3 mesaj yazip ana sorularin cogu cevaplandiysa):',
-        `   <layer2_update>{"onboarding_task_completed": "${topicKey === 'intro' ? 'introduce_yourself' : topicKey === 'goal' ? 'set_goal' : topicKey === 'routine' ? 'daily_routine' : topicKey === 'eating' ? 'eating_habits' : topicKey === 'kitchen' ? 'kitchen_logistics' : topicKey === 'exercise' ? 'exercise_history' : topicKey === 'health' ? 'health_history' : topicKey === 'labs' ? 'lab_values' : topicKey === 'sleep' ? 'sleep_patterns' : topicKey === 'stress' ? 'stress_motivation' : topicKey === 'home' ? 'home_environment' : topicKey}"}</layer2_update>`,
-        '4. Yeterli bilgi topladiginda kullaniciya "Bu konuda simdilik yeterli bilgi aldim, tesekkurler!" de.',
-        '5. Kullanici hazir degilse veya bilmiyor derse zorlama, "Ileride konusuriz" de.',
-      ].join('\n');
+      const topic = TOPICS[topicKey];
+      if (topic) {
+        taskCardCtx = [
+          '=== ONBOARDING GOREV: ' + topic.title.toUpperCase() + ' ===',
+          'Bu sohbet SADECE bu gorev icin acildi. Ana sayfadaki kartindan girildi.',
+          '',
+          'TOPLAMAN GEREKEN BILGILER (kontrol listesi):',
+          ...topic.fields.map((f, i) => `  ${i + 1}. ${f}`),
+          '',
+          'AKIS:',
+          '1. ILK MESAJDA: Layer 1/2\'de mevcut olanlari KISACA ozetle, eksikleri tek mesajda (tek soru kuralina uyarak) sormaya basla.',
+          '2. Eksik kaldigi her alani SIRAYLA sor — tek mesajda tek soru. Kullanici bilmiyor derse "gec" de, zorla takilma.',
+          '3. TUM kontrol listesi alanlari cevaplandiginda (veya kullanici "bilmiyorum/gec" dediginde) HEMEN su adimlari at:',
+          '   a) Kisa bir kapanis mesaji yaz (1 cumle, ornek: "Bu konuda yeterli bilgiyi aldim, tesekkurler.")',
+          '   b) Mesajin SONUNA SU BLOGU EKLE (bu zorunlu, atlarsan gorev kapali gorunmez):',
+          `      <layer2_update>{"onboarding_task_completed": "${topic.taskKey}"}</layer2_update>`,
+          '   c) Kullaniciyi dashboard\'a yonlendir: "Ana sayfadaki diger kartlardan devam edebilirsin, profilini tamamladikca sana daha iyi yardimci olabilirim."',
+          '4. Gorev tamamlandiktan sonra ayni konuda uzatma, plan/oneri yapma — kullanici baska sohbete gecsin.',
+          '',
+          'KESIN YASAKLAR:',
+          '- PLAN YAPMA. Antrenman programi, supplement listesi, kalori hedefi YOK.',
+          '- "Sana bir plan hazirlayabilirim" / "Ne dersin, plan olusturayim mi?" YASAK.',
+          '- Bilgileri topladiktan sonra uzatma — kisaca kapat, diger kartlara yonlendir.',
+          '- "Kaydettim", "Profiline ekledim", "Profilini guncelledim" ifadelerini kullanma — bunlar UI rozetiyle zaten gosteriliyor.',
+          `- Bu gorev "${topic.title}" ile ilgili — KONU DISINA cikma. Baska konuda bilgi gelirse <actions> ile kaydet ama sohbeti geri bu goreve getir.`,
+        ].join('\n');
+      }
     }
 
     const systemPrompt = [
