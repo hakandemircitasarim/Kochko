@@ -9,6 +9,7 @@ import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
 import { getAISummaryForReview, deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
 import { logAuditEvent, logAISummaryAccess } from '@/services/audit-log.service';
 import { supabase } from '@/lib/supabase';
@@ -42,9 +43,11 @@ export default function CoachMemoryScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const user = useAuthStore(s => s.user);
+  const { profile, fetch: fetchProfile } = useProfileStore();
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [menstrualTracking, setMenstrualTracking] = useState(false);
+  const [activeGoal, setActiveGoal] = useState<{ goal_type?: string; target_weight_kg?: number; weekly_rate?: number } | null>(null);
 
   const cardStyle = {
     backgroundColor: colors.card, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.md,
@@ -55,14 +58,18 @@ export default function CoachMemoryScreen() {
     if (!user?.id) return;
     setLoading(true);
 
-    // Fetch AI summary + profile menstrual_tracking in parallel
-    const [result, profileResult] = await Promise.all([
+    // Fetch AI summary + profile menstrual_tracking + active goal in parallel
+    const [result, profileResult, goalResult] = await Promise.all([
       getAISummaryForReview(user.id),
-      supabase.from('profiles').select('menstrual_tracking').eq('id', user.id).single(),
+      supabase.from('profiles').select('menstrual_tracking').eq('id', user.id).maybeSingle(),
+      supabase.from('goals').select('goal_type, target_weight_kg, weekly_rate').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
     ]);
 
     setData(result);
     setMenstrualTracking(Boolean(profileResult.data?.menstrual_tracking));
+    setActiveGoal(goalResult.data as typeof activeGoal);
+    // Make sure profile store is loaded too
+    if (!profile) await fetchProfile(user.id);
 
     // KVKK audit: log that user viewed their AI summary
     await logAISummaryAccess(user.id, 'view');
@@ -141,7 +148,7 @@ export default function CoachMemoryScreen() {
     );
   }
 
-  const isEmpty = !data || (
+  const isAiEmpty = !data || (
     !data.general && data.patterns.length === 0 && !data.coachingNotes &&
     Object.keys(data.portionCalibration).length === 0 &&
     !data.userPersona && !data.learnedTonePreference && !data.alcoholPattern &&
@@ -151,6 +158,47 @@ export default function CoachMemoryScreen() {
     !data.learnedMealTimes && !data.seasonalNotes && !data.supplementNotes &&
     data.featuresIntroduced.length === 0
   );
+
+  // Build profile info rows (Layer 1 — static data from onboarding)
+  const age = profile?.birth_year ? new Date().getFullYear() - (profile.birth_year as number) : null;
+  const goalLabels: Record<string, string> = {
+    lose_weight: 'Kilo vermek', gain_weight: 'Kilo almak', gain_muscle: 'Kas kazanmak',
+    health: 'Sağlıklı yaşam', maintain: 'Koruma', conditioning: 'Kondisyon',
+  };
+  const genderLabels: Record<string, string> = { male: 'Erkek', female: 'Kadın', other: 'Diğer' };
+  const activityLabels: Record<string, string> = {
+    sedentary: 'Hareketsiz', light: 'Hafif', moderate: 'Orta', active: 'Aktif', very_active: 'Çok aktif',
+  };
+  const dietLabels: Record<string, string> = {
+    standard: 'Standart', low_carb: 'Düşük karb', keto: 'Keto', high_protein: 'Yüksek protein',
+  };
+  const toneLabels: Record<string, string> = {
+    strict: 'Sıkı', balanced: 'Dengeli', gentle: 'Nazik',
+  };
+
+  const profileRows: { label: string; value: string }[] = [];
+  if (profile?.display_name) profileRows.push({ label: 'İsim', value: String(profile.display_name) });
+  else if (user?.email) profileRows.push({ label: 'E-posta', value: user.email });
+  if (age) profileRows.push({ label: 'Yaş', value: `${age}` });
+  if (profile?.gender) profileRows.push({ label: 'Cinsiyet', value: genderLabels[profile.gender as string] ?? String(profile.gender) });
+  if (profile?.height_cm) profileRows.push({ label: 'Boy', value: `${profile.height_cm} cm` });
+  if (profile?.weight_kg) profileRows.push({ label: 'Mevcut kilo', value: `${profile.weight_kg} kg` });
+  if (activeGoal?.target_weight_kg) profileRows.push({ label: 'Hedef kilo', value: `${activeGoal.target_weight_kg} kg` });
+  if (activeGoal?.goal_type) profileRows.push({ label: 'Hedef', value: goalLabels[activeGoal.goal_type] ?? activeGoal.goal_type });
+  if (activeGoal?.weekly_rate) profileRows.push({ label: 'Haftalık tempo', value: `${activeGoal.weekly_rate} kg/hafta` });
+  if (profile?.activity_level) profileRows.push({ label: 'Aktivite', value: activityLabels[profile.activity_level as string] ?? String(profile.activity_level) });
+  if (profile?.diet_mode) profileRows.push({ label: 'Beslenme', value: dietLabels[profile.diet_mode as string] ?? String(profile.diet_mode) });
+  if (profile?.coach_tone) profileRows.push({ label: 'Koç tonu', value: toneLabels[profile.coach_tone as string] ?? String(profile.coach_tone) });
+  if (profile?.tdee_calculated) profileRows.push({ label: 'Günlük kalori (TDEE)', value: `${profile.tdee_calculated} kcal` });
+  if (profile?.water_target_liters) profileRows.push({ label: 'Su hedefi', value: `${profile.water_target_liters} L` });
+  if (profile?.home_timezone) profileRows.push({ label: 'Zaman dilimi', value: String(profile.home_timezone) });
+  if (profile?.if_active && profile?.if_eating_start && profile?.if_eating_end) {
+    profileRows.push({ label: 'IF penceresi', value: `${profile.if_eating_start}-${profile.if_eating_end}` });
+  }
+  if (profile?.food_allergies) profileRows.push({ label: 'Alerjenler', value: String(profile.food_allergies) });
+  if (profile?.periodic_state) profileRows.push({ label: 'Dönemsel durum', value: String(profile.periodic_state) });
+
+  const isEmpty = isAiEmpty && profileRows.length === 0;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
@@ -180,7 +228,38 @@ export default function CoachMemoryScreen() {
         </View>
       )}
 
-      {!isEmpty && data && (
+      {/* ═══════════════════════════════════════════
+          SECTION: Profil Bilgileri (Layer 1 — static)
+          Onboarding ve profil ekranından gelen temel bilgiler
+          ═══════════════════════════════════════════ */}
+      {profileRows.length > 0 && (
+        <>
+          <CategoryTitle title="Profil Bilgileri" icon="person" color="#1D9E75" colors={colors} />
+          <View style={cardStyle}>
+            <SectionHeader icon="id-card" color="#1D9E75" title="Koç Senin Hakkında Bunları Biliyor" colors={colors} badge={`${profileRows.length}`} />
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+              Profilinde kayıtlı bilgiler — plan ve önerilerde kullanılıyor
+            </Text>
+            <View>
+              {profileRows.map((row, i) => (
+                <View
+                  key={row.label}
+                  style={{
+                    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+                    paddingVertical: SPACING.sm,
+                    ...(i < profileRows.length - 1 ? { borderBottomWidth: 0.5, borderBottomColor: colors.divider } : {}),
+                  }}
+                >
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{row.label}</Text>
+                  <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{row.value}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </>
+      )}
+
+      {!isAiEmpty && data && (
         <>
           {/* ═══════════════════════════════════════════
               SECTION: Kochko Seni Nasil Taniyor
@@ -593,8 +672,97 @@ export default function CoachMemoryScreen() {
           </TouchableOpacity>
         </>
       )}
+
+      {/* ═══════════════════════════════════════════
+          SECTION: Tüm Hafıza Alanları (Transparency + Debug)
+          Her kategoriyi her zaman göster — AI'nın hangi alanda ne öğrendiğini
+          veya henüz öğrenmediğini şeffafça görmek için.
+          ═══════════════════════════════════════════ */}
+      <CategoryTitle title="Tum Hafiza Alanlari (Seffaflik)" icon="list" color="#6366F1" colors={colors} />
+      <View style={cardStyle}>
+        <SectionHeader icon="eye-outline" color="#6366F1" title="Kocun Takip Ettigi Her Sey" colors={colors} />
+        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+          AI bu alanlari konusmalardan takip ediyor. Dolu olanlar: ogrendigi seyler. Bos olanlar: henuz yeterli veri yok.
+        </Text>
+        <View>
+          {AI_SUMMARY_FIELDS.map((f, i) => {
+            const rawValue = data ? (data as any)[f.key] : null;
+            const display = formatFieldValue(rawValue);
+            const isFilled = display !== null;
+            return (
+              <View
+                key={f.key}
+                style={{
+                  flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+                  paddingVertical: SPACING.sm, gap: SPACING.md,
+                  ...(i < AI_SUMMARY_FIELDS.length - 1 ? { borderBottomWidth: 0.5, borderBottomColor: colors.divider } : {}),
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500' }}>{f.label}</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }}>{f.desc}</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  {isFilled ? (
+                    <Text style={{ color: '#22C55E', fontSize: FONT.xs, fontWeight: '600', textAlign: 'right' }} numberOfLines={3}>
+                      {display}
+                    </Text>
+                  ) : (
+                    <View style={{
+                      backgroundColor: colors.surfaceLight, borderRadius: RADIUS.full,
+                      paddingHorizontal: SPACING.sm, paddingVertical: 2,
+                    }}>
+                      <Text style={{ color: colors.textMuted, fontSize: 10 }}>Henuz ogrenilmedi</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
     </ScrollView>
   );
+}
+
+// ─── All ai_summary fields schema for transparency/debug view ───
+
+const AI_SUMMARY_FIELDS: { key: string; label: string; desc: string }[] = [
+  { key: 'general', label: 'Genel Ozet', desc: 'Senin hakkindaki serbest metin notu' },
+  { key: 'userPersona', label: 'Kisilik Tipi', desc: 'Iletisim ve motivasyon stili' },
+  { key: 'learnedTonePreference', label: 'Iletisim Tercihi', desc: 'Nasil konusulmasini sevdigin' },
+  { key: 'nutritionLiteracy', label: 'Beslenme Bilgi Duzeyi', desc: 'low / medium / high' },
+  { key: 'patterns', label: 'Davranis Kaliplari', desc: 'Gece yeme, stres atistirmasi vb.' },
+  { key: 'portionCalibration', label: 'Porsiyon Kalibrasyonu', desc: 'Senin "1 porsiyon"un kac gram' },
+  { key: 'learnedMealTimes', label: 'Ogrenilen Ogun Saatleri', desc: 'Genelde ne zaman yediginn' },
+  { key: 'caffeineSleepNotes', label: 'Kafein-Uyku Notu', desc: 'Kafein uykunu nasil etkiliyor' },
+  { key: 'alcoholPattern', label: 'Alkol Kalibi', desc: 'Siklik, miktar, ertesi gun etkisi' },
+  { key: 'socialEatingNotes', label: 'Sosyal Yeme', desc: 'Arkadas/aile yemeklerinde kalip' },
+  { key: 'recoveryPattern', label: 'Toparlanma Deseni', desc: 'Antrenman sonrasi yorgunluk/enerji' },
+  { key: 'menstrualNotes', label: 'Regl Donemi Notlari', desc: 'Sadece takip aciksa' },
+  { key: 'microNutrientRisks', label: 'Mikro Besin Riskleri', desc: 'Eksik olabilecek vitamin/mineraller' },
+  { key: 'supplementNotes', label: 'Supplement Notlari', desc: 'Aldigin/almadigin takviyeler' },
+  { key: 'habitProgress', label: 'Aliskanlik Ilerlemesi', desc: 'Olusturdugun/takip eden rutinler' },
+  { key: 'strengthRecords', label: 'Guc Kayitlari', desc: 'Egzersiz PRlari' },
+  { key: 'weeklyBudgetPattern', label: 'Haftalik Butce Kalibi', desc: 'Kalori butcesini nasil dagittigin' },
+  { key: 'seasonalNotes', label: 'Mevsimsel Notlar', desc: 'Yaz/kis yeme aliskanliklari' },
+  { key: 'featuresIntroduced', label: 'Tanitilan Ozellikler', desc: 'Sana hangi ozellikler anlatildi' },
+  { key: 'coachingNotes', label: 'Kocluk Notlari', desc: 'Ic gorusme gozlemi (sistem)' },
+];
+
+function formatFieldValue(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === 'string') return v.trim() === '' ? null : v;
+  if (Array.isArray(v)) {
+    if (v.length === 0) return null;
+    return `${v.length} kayit`;
+  }
+  if (typeof v === 'object') {
+    const keys = Object.keys(v as Record<string, unknown>);
+    if (keys.length === 0) return null;
+    return `${keys.length} kayit`;
+  }
+  return String(v);
 }
 
 // ─── Helper: map field name to SummaryData key ───
