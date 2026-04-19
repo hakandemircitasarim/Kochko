@@ -5,12 +5,14 @@
  */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function DebugModeScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
@@ -41,7 +43,7 @@ export default function DebugModeScreen() {
   }, [user?.id]);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Gelistirici Modu</Text>
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.lg }}>AI sisteminin iç yapısı ve performans metrikleri.</Text>
 

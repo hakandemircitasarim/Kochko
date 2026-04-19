@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +15,7 @@ const PREF_COLORS: Record<Pref, string> = { love: COLORS.success, like: '#8BC34A
 interface FoodPref { id: string; food_name: string; preference: Pref; is_allergen: boolean; }
 
 export default function FoodPreferencesScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [items, setItems] = useState<FoodPref[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +50,7 @@ export default function FoodPreferencesScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Yemek Tercihleri</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Sevdigin ve sevmedigin yemekleri ekle. AI bunlari dikkate alir.</Text>
 

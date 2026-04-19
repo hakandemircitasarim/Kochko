@@ -4,6 +4,7 @@
  */
 import { useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -12,6 +13,7 @@ import { generateMealPrepPlan, type MealPrepPlan } from '@/services/meal-prep.se
 import { getCurrentWeeklyPlan } from '@/services/weekly-plan.service';
 
 export default function MealPrepPlanScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [plan, setPlan] = useState<MealPrepPlan | null>(null);
   const [loading, setLoading] = useState(false);
@@ -41,7 +43,7 @@ export default function MealPrepPlanScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Meal Prep Plani</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
         Haftanin yemeklerini onceden hazirla, zamandan ve paradan tasarruf et.

@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { getActiveSessions, terminateSession } from '@/services/realtime-sync.service';
@@ -14,6 +15,7 @@ import { SectionHeader } from '@/components/settings/SectionHeader';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function AccountSecurityScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -158,7 +160,7 @@ export default function AccountSecurityScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Hesap Guvenligi</Text>
 
       {/* Account Info */}

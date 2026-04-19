@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { getCurrentWeeklyPlan, approveWeeklyPlan, requestMenuModification, type WeeklyPlan, type ShoppingItem } from '@/services/weekly-plan.service';
@@ -21,6 +22,7 @@ const MEAL_COLORS: Record<string, string> = {
 
 export default function WeeklyMenuScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [plan, setPlan] = useState<WeeklyPlan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,7 +107,7 @@ export default function WeeklyMenuScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.xxl }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>

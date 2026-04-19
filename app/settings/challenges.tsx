@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TextInput } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getActiveChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function ChallengesScreen() {
+  const insets = useSafeAreaInsets();
   const [active, setActive] = useState<Challenge[]>([]);
   const [showSystem, setShowSystem] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
@@ -54,7 +56,7 @@ export default function ChallengesScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Challenge'lar</Text>
 
       {/* Active Challenges */}

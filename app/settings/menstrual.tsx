@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { calculateCycleStatus, updateMenstrualSettings, type CyclePhase } from '@/services/menstrual.service';
@@ -22,6 +23,7 @@ const PHASE_COLORS: Record<CyclePhase, string> = {
 };
 
 export default function MenstrualScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const [tracking, setTracking] = useState(Boolean(profile?.menstrual_tracking));
@@ -41,7 +43,7 @@ export default function MenstrualScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Regl Dongusu</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Dongu takibi aktif oldugunda kocun beslenme ve antrenman planlarini dongu fazina gore otomatik ayarlar.

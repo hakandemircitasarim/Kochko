@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
@@ -22,6 +23,7 @@ interface MetricPt { date: string; weight_kg: number | null; water_liters: numbe
 interface CompPt { date: string; compliance_score: number; }
 
 export default function ProgressScreen() {
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
@@ -155,7 +157,7 @@ export default function ProgressScreen() {
   const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1) : null;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
 
       {/* Summary */}

@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { getRecipes, type SavedRecipe } from '@/services/recipes.service';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
@@ -13,6 +14,7 @@ import { SPACING, RADIUS } from '@/lib/constants';
 
 export default function RecipeScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const user = useAuthStore(s => s.user);
   const [recipes, setRecipes] = useState<SavedRecipe[]>([]);
@@ -46,7 +48,7 @@ export default function RecipeScreen() {
   if (selected) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <ScrollView contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 100 }}>
+        <ScrollView contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }}>
           {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xxl }}>
             <TouchableOpacity onPress={() => setSelected(null)} style={{ marginRight: SPACING.md }}>
@@ -117,7 +119,7 @@ export default function RecipeScreen() {
   // Recipe list view
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View style={{ padding: SPACING.xl, paddingTop: 60 }}>
+      <View style={{ padding: SPACING.xl, paddingTop: insets.top + 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xxl }}>
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: SPACING.md }}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
@@ -140,7 +142,7 @@ export default function RecipeScreen() {
         <FlatList
           data={recipes}
           keyExtractor={r => r.id}
-          contentContainerStyle={{ paddingHorizontal: SPACING.xl, paddingBottom: 100 }}
+          contentContainerStyle={{ paddingHorizontal: SPACING.xl, paddingBottom: 40 + insets.bottom }}
           renderItem={({ item }) => (
             <TouchableOpacity
               onPress={() => setSelected(item)}

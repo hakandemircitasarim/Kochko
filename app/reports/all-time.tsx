@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useStreak } from '@/hooks/useStreak';
 import { supabase } from '@/lib/supabase';
@@ -11,6 +12,7 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function AllTimeReportScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { streak } = useStreak();
   const [loading, setLoading] = useState(true);
@@ -93,7 +95,7 @@ export default function AllTimeReportScreen() {
     ? stats.currentWeight - stats.startWeight : null;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Tum Zamanlar</Text>
 
       {/* Total Progress */}

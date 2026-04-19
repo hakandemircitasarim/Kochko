@@ -7,6 +7,7 @@ import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityInd
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sendMessage } from '@/services/chat.service';
 import { lookupBarcode } from '@/services/barcode.service';
 import { startRecording, stopRecording, transcribeAudio } from '@/services/voice.service';
@@ -23,6 +24,7 @@ type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep';
 
 export default function QuickLogScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const { fetchToday, addWater, waterLiters } = useDashboardStore();
@@ -187,7 +189,7 @@ export default function QuickLogScreen() {
         />
         {/* Overlay */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'space-between' }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl, paddingTop: 60 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl, paddingTop: insets.top + 12 }}>
             <TouchableOpacity onPress={() => { setScreen('main'); setScannedBarcode(null); setBarcodeResult(null); }}>
               <Ionicons name="close" size={28} color="#fff" />
             </TouchableOpacity>
@@ -195,7 +197,7 @@ export default function QuickLogScreen() {
             <View style={{ width: 28 }} />
           </View>
           {/* Result banner */}
-          <View style={{ padding: SPACING.xl, paddingBottom: 60 }}>
+          <View style={{ padding: SPACING.xl, paddingBottom: insets.bottom + 24 }}>
             {barcodeLoading && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center' }}>
                 <ActivityIndicator color="#fff" />
@@ -217,7 +219,7 @@ export default function QuickLogScreen() {
   if (screen === 'voice') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity onPress={() => { setScreen('main'); setIsRecording(false); }} style={{ position: 'absolute', top: 60, left: SPACING.xl }}>
+        <TouchableOpacity onPress={() => { setScreen('main'); setIsRecording(false); }} style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
 
@@ -255,7 +257,7 @@ export default function QuickLogScreen() {
   if (screen === 'weight') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity onPress={() => setScreen('main')} style={{ position: 'absolute', top: 60, left: SPACING.xl }}>
+        <TouchableOpacity onPress={() => setScreen('main')} style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.pink + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
@@ -290,7 +292,7 @@ export default function QuickLogScreen() {
   if (screen === 'sleep') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity onPress={() => setScreen('main')} style={{ position: 'absolute', top: 60, left: SPACING.xl }}>
+        <TouchableOpacity onPress={() => setScreen('main')} style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.purple + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
@@ -344,7 +346,7 @@ export default function QuickLogScreen() {
 
   // ====== MAIN SCREEN ======
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 40 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }}>
       {/* Header */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xxl }}>
         <TouchableOpacity onPress={() => router.back()}>

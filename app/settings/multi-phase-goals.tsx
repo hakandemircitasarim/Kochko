@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { getGoalPhases, addPhase, deletePhase, advanceToNextPhase, getTimelineData, type GoalPhase } from '@/services/goals.service';
 import { Button } from '@/components/ui/Button';
@@ -21,6 +22,7 @@ const PHASE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function MultiPhaseGoalsScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [phases, setPhases] = useState<GoalPhase[]>([]);
   const [timelineData, setTimelineData] = useState<{ phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]; currentWeek: number } | null>(null);
@@ -66,7 +68,7 @@ export default function MultiPhaseGoalsScreen() {
   const activePhase = phases.find(p => p.is_active);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Cok Fazli Hedef</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Sirali fazlar tanimla: ornegin "75kg'a in (cut) → 3 ay bulk 80kg → 77kg'a in (mini cut)". Fazlar sirayla aktif olur.

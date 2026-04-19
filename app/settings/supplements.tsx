@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTodaySupplements, logSupplement, type SupplementLog } from '@/services/supplements.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -18,6 +19,7 @@ const QUICK_SUPPS = [
 ];
 
 export default function SupplementsScreen() {
+  const insets = useSafeAreaInsets();
   const [logs, setLogs] = useState<SupplementLog[]>([]);
   const [customName, setCustomName] = useState('');
   const [customAmount, setCustomAmount] = useState('');
@@ -37,7 +39,7 @@ export default function SupplementsScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Supplement Takibi</Text>
 
       {/* Quick Add */}

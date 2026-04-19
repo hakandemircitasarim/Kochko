@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { Stack } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
 import { getAISummaryForReview, deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
@@ -38,6 +39,7 @@ const MEAL_TIME_LABELS: Record<string, string> = {
 };
 
 export default function CoachMemoryScreen() {
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const user = useAuthStore(s => s.user);
   const [data, setData] = useState<SummaryData | null>(null);
@@ -151,7 +153,7 @@ export default function CoachMemoryScreen() {
   );
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Stack.Screen options={{ title: 'Kocun Hafizasi', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
 
       {/* Header */}
