@@ -6,6 +6,8 @@
 > work completes. Add notes at the bottom for quirks, blockers, or open
 > questions so context survives across sessions.
 
+**Revision:** rev2 (2026-04-19) — incorporates second-opinion review feedback.
+
 ---
 
 ## 1. Vision (why we are rebuilding)
@@ -16,6 +18,7 @@ KOCHKO is a **conversation-first** lifestyle coach. It is NOT a form-filling app
 - **Plan creation** happens in **two dedicated screens** (diet, workout) that are NOT generic chat. Each has a purpose-built UI where Kochko builds a draft plan, the user negotiates with it like a real dietitian consultation, preferences feed back into the profile, and the final plan is saved/archived with a history.
 - **Kochko's knowledge of the user** is transparent: the user can always see what Kochko thinks it knows, and correct it.
 - **Natural rhythm**: post-onboarding, daily flow is conversational (log meals, request cheat-meal permission, get proactive nudges). Not a dashboard of form fields.
+- **Value-first, detail-later.** The user should be able to get a first usable plan after answering 5 core questions (height, weight, age, gender, main goal). Richer answers improve the plan progressively; they are never peşin prerequisites.
 
 Current state is **far from this vision**. Standing issues:
 
@@ -33,15 +36,18 @@ Current state is **far from this vision**. Standing issues:
 
 **In scope:**
 - Onboarding handoff UX (task completion cards, next-task suggestions)
-- Task chat improvements (checklist, silent saves, cross-topic opportunistic saving)
+- Task chat improvements (checklist, silent saves, cross-topic opportunistic saving, server-validated completion)
 - Diet plan screen (brand-new, specialized)
 - Workout plan screen (brand-new, specialized)
-- Plan versioning (draft / active / archived)
-- Plan preferences feedback loop (dislike → profile write)
-- Home screen redesign to surface the two plans
-- "Kochko'nun Hakkında Bildikleri" rename + enriched view
-- Free-tier quota rework (1 diet + 1 workout plan lifetime, then weekly subscription)
+- Plan versioning (draft / active / archived, with discarded-draft preservation)
+- Plan drift detection (profile changes invalidate active plans)
+- Plan preferences feedback loop (dislike → structured JSONB in profile)
+- Home screen redesign to surface the two plans + profile completion gauge
+- "Kochko'nun Senin Hakkında Bildikleri" rename + enriched view
+- Free-tier quota rework (1 diet + 1 workout plan lifetime **approved**, daily message cap on plan chats)
 - Post-onboarding daily flow (logging chat, proactive nudges, cheat-meal permission)
+- General-chat → plan-screen routing (intent detection + deep link)
+- Robust XML/JSON parsing with retry + fallback in all structured protocols
 
 **Out of scope** for this plan (may be follow-up projects):
 - Native push notification delivery infrastructure (uses existing expo-notifications)
@@ -56,15 +62,17 @@ Current state is **far from this vision**. Standing issues:
 These are **the rules** for every decision. Violating them means reconsidering the design.
 
 1. **Chat is primary, forms are fallback.** Every piece of user data has a conversational capture path. Forms exist only for quick edits.
-2. **Kochko never verbally acknowledges saves.** The UI shows what was saved via badges. Model says "tamam" and moves on.
+2. **Kochko never verbally acknowledges saves, but the UI is assertive.** The model says "tamam" and moves on. The UI confirms via badge + short haptic + 200ms bounce-in animation. No toast. No chat text pollution.
 3. **Each chat session has ONE job.** Specialized task chats don't drift. If info outside their scope is volunteered, they save it silently and gently redirect.
-4. **Every save is visible and editable.** User can always find what Kochko knows and change it ("Kochko'nun Hakkında Bildikleri" screen).
+4. **Every save is visible and editable.** User can always find what Kochko knows and change it ("Kochko'nun Senin Hakkında Bildikleri" screen).
 5. **Plan screens are NOT chat.** They have custom UI with chat as one component, not the whole screen.
-6. **Drafts are fluid; published plans are immutable.** Once active, a plan becomes a historical record. Edits create a new draft.
+6. **Drafts are fluid; published plans are immutable.** Once active, a plan becomes a historical record. Edits create a new draft. Discarded drafts are archived, not deleted.
 7. **Every recommendation is explainable.** "Nasıl yaptın?" button on any plan returns AI's reasoning (TDEE calc → macro split → meal choice → ingredient sourcing).
-8. **Free tier is generous enough to experience value.** User must be able to complete onboarding and produce both plans before hitting a paywall.
+8. **Value-first free tier.** Minimum-viable plan after 5 questions. Users must be able to complete onboarding + approve 1 diet + 1 workout plan before any paywall.
 9. **No visual clutter.** Badges are small. Cards don't dominate. Plan preview is a card, not a half-screen takeover.
 10. **Android edge-to-edge + safe area is mandatory.** Every new screen uses `useSafeAreaInsets`.
+11. **Defensive parsing.** Every structured protocol (XML/JSON) has validate → 1 retry → drop + log. Never crash on a bad AI response.
+12. **Full snapshot, not diff.** Plan updates from the model are always complete draft snapshots (never patches). Client diffs visually but trusts the server's single source of truth.
 
 ---
 
@@ -84,12 +92,31 @@ When a task chat completes its checklist, the AI emits a structured block at the
 </task_completion>
 ```
 
-Client parses, strips from display, and renders:
+**Server-side validation (critical — prevents false positives):**
+
+Before trusting `task_completion`, the edge function checks that the task's required fields are actually persisted in `profiles` / `goals` / etc. Each task has a `requiredFields` map:
+
+```ts
+const TASK_REQUIREMENTS = {
+  introduce_yourself: (p) => p?.height_cm && p?.weight_kg && p?.birth_year && p?.gender,
+  set_goal: (p, g) => g?.goal_type, // target_weight_kg optional
+  // ... per task
+};
+```
+
+If requirements unmet → `task_completion` is dropped from the response, the model receives a tool-response-style follow-up ("Eksik: height_cm. Kullanıcıdan al.") and continues the conversation. This prevents the model from closing a task it only *thinks* it finished.
+
+**Next-suggestions validation (client side):**
+
+Client whitelists `next_suggestions` against the active task registry. Invalid keys are dropped. If the result is empty, client falls back to `getIncompleteTasks()[:3]`.
+
+**Rendering:**
 
 - A small completion chip: `✓ Kochko seni tanıdı — 25 yaş, erkek, 130 kg, 191 cm`
 - A row of up to 3 **next-task cards**. Each card: icon + title + one-line desc + `Başla →`.
 - If fewer than 3 incomplete tasks remain, render however many are left.
 - Tap → `createSession({ title, topicTags: [taskKey] })` → `router.push('/chat/[sessionId]?taskModeHint=onboarding_X')`.
+- Completion chip appears with brief haptic + 200ms fade-in.
 
 Existing DB writes (`ai_summary.onboarding_tasks_completed`) continue to flag tasks as done, so `getIncompleteTasks` excludes them on reload.
 
@@ -99,12 +126,14 @@ Routes (new):
 - `/plan/diet` — diet plan home
 - `/plan/workout` — workout plan home
 
-Each screen has three sub-states, switched by reading current plan state from DB:
+**Transitional navigation (phases 2-3 only):** the existing `(tabs)/plan.tsx` becomes a bridge screen showing two big cards ("Diyet Planı" / "Spor Planı") that route to the new screens. This bridge stays until Phase 4 removes the tab entirely and promotes the cards to the home screen.
+
+Each plan screen has three sub-states, switched by reading current plan state from DB:
 
 **(a) Empty state** — user has never created a plan of this type.
 - Big illustration + short explainer.
 - "Plan oluştur" CTA.
-- If prerequisites unmet → CTA is disabled, shows what's missing + "Tamamla" button routes to relevant onboarding task chat.
+- If MVP prerequisites unmet → CTA is disabled, shows exactly what's missing + "Tamamla" buttons routing to relevant onboarding task chats.
 
 **(b) Draft-in-progress state** — there is a `status='draft'` plan, user is building it.
 - Top: sticky **plan preview card** (25% of screen max height).
@@ -115,15 +144,18 @@ Each screen has three sub-states, switched by reading current plan state from DB
   - Task mode: `plan_diet` or `plan_workout`.
   - AI introduces self, explains what it's about to do using user profile.
   - Generates initial draft, asks for feedback.
-  - User negotiates: "yumurta sevmem" → AI patches plan in-place + writes preference to `profiles.disliked_foods` (new column) or similar.
-  - Chat composer has **quick action chips**: `Nasıl yaptın?`, `Onayla ve kaydet`, `Baştan başla`.
+  - User negotiates: "yumurta sevmem" → AI re-emits **full updated draft snapshot** + writes structured preference to `profiles.disliked_foods` JSONB.
+  - Chat composer has **quick action chips**: `Nasıl yaptın?`, `Onayla ve kaydet`, `Alternatif gör`, `Baştan başla`.
+  - **`Alternatif gör`**: AI produces a 2nd draft using same inputs but a different approach. Client shows side-by-side comparison modal; user picks one, the other is discarded (archived).
+  - **`Onayla` is gated**: disabled until `hasViewedFullPlan === true`. The full-plan modal sets this flag when user has scrolled past the last day. Tooltip on disabled button: "Önce tüm haftaya bak".
 - When user taps **Onayla**: draft promoted to active, previous active (if any) archived, then screen switches to (c).
 
 **(c) Active plan state** — user has an approved plan.
 - Full plan view front and center (no sticky card needed since plan is primary).
 - A "Kochko ile konuş" button opens a chat overlay for revisions (creates a new draft from active).
-- "Geçmiş planlar" link opens history list.
+- "Geçmiş planlar" link opens history list (includes archived discarded drafts, marked with reason).
 - Progress indicators if user logs meals/workouts against the plan.
+- **Plan drift banner:** if profile has changed significantly since the plan was approved (TDEE delta >5% OR weight delta >3kg OR goal changed), a passive yellow banner: "Verilerinde önemli değişiklik var, planı güncelleyelim mi?" with a "Güncelle" button that creates a new draft prefilled from current profile.
 
 ### 4.3 Plan versioning
 
@@ -134,79 +166,149 @@ ALTER TABLE weekly_plans ADD COLUMN status TEXT CHECK (status IN ('draft', 'acti
 ALTER TABLE weekly_plans ADD COLUMN plan_type TEXT CHECK (plan_type IN ('diet', 'workout')) DEFAULT 'diet';
 ALTER TABLE weekly_plans ADD COLUMN superseded_by UUID REFERENCES weekly_plans(id);
 ALTER TABLE weekly_plans ADD COLUMN approved_at TIMESTAMPTZ;
+ALTER TABLE weekly_plans ADD COLUMN archived_reason TEXT; -- 'superseded', 'user_discarded', 'alternative_rejected', 'plan_drift'
 ALTER TABLE weekly_plans ADD COLUMN user_revisions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE weekly_plans ADD COLUMN approval_snapshot JSONB; -- copy of profile at approve time (for drift detection)
+
 CREATE UNIQUE INDEX uniq_active_plan_per_type ON weekly_plans(user_id, plan_type) WHERE status = 'active';
 CREATE UNIQUE INDEX uniq_draft_plan_per_type ON weekly_plans(user_id, plan_type) WHERE status = 'draft';
 ```
 
 Rules:
-- Only ONE `draft` per (user, plan_type) at a time. Creating a new draft fails if one exists → user must approve/discard.
-- Only ONE `active` per (user, plan_type). Approving a draft archives the previous active.
-- `archived` are read-only history.
-- `user_revisions` logs each negotiation turn: `[{ at: ISO, from: "sabah:yumurta", to: "sabah:yulaf", reason: "yumurta sevmiyorum", saved_preference: "disliked_foods:yumurta" }]`.
+- Only ONE `draft` per (user, plan_type) at a time. `Alternatif gör` temporarily creates a second candidate; picking one archives the other immediately (keeps invariant).
+- Only ONE `active` per (user, plan_type). Approving a draft archives the previous active (`archived_reason='superseded'`).
+- `archived` are read-only history. Discarded drafts go here with `archived_reason='user_discarded'`, so users can still review past negotiations.
+- `user_revisions` logs each negotiation turn: `[{ at: ISO, from: "sabah:yumurta", to: "sabah:yulaf", reason: "yumurta sevmiyorum", saved_preference: {"field":"disliked_foods","value":"yumurta"} }]`.
+- `approval_snapshot` stores key profile fields at approval time so we can compute drift later (TDEE-relevant: weight_kg, height_cm, activity_level, goal_type, target_weight_kg).
 
-### 4.4 Plan chat system prompts
+### 4.4 Plan chat system prompts & protocol
 
-Separate prompts (in addition to BASE_SYSTEM_PROMPT):
+Separate task modes (in addition to BASE_SYSTEM_PROMPT):
 
 **`plan_diet` mode:**
 - Access to full profile + goals + preferences + dislikes + budget + kitchen.
-- First message: explain what it will do, ask for final confirmation on any critical gaps.
-- Emit initial draft via `<plan_draft>{...7-day JSON...}</plan_draft>`.
-- On user feedback, emit `<plan_patch>{...targeted diff...}</plan_patch>` + optionally `<actions>[{"type":"profile_update","dietary_restriction":"no_dairy"}]</actions>`.
+- First message: introduces self ("Kochko diyet uzmanıyım"), references known profile in 1 sentence, announces the plan about to be produced.
+- Emits initial full draft via `<plan_snapshot>{...7-day JSON...}</plan_snapshot>`.
+- **Every subsequent change re-emits a full `<plan_snapshot>`, never a patch.** Model instruction: "Her öğün değişikliğinde bile tam haftalık JSON'u yeniden yaz. Patch gönderme."
+- Alongside snapshot, optionally emits `<actions>[{"type":"profile_update","disliked_foods":[{"item":"yumurta","context":"breakfast","severity":"strong","learned_at":"ISO"}]}]</actions>`.
 - Never acknowledges verbally ("Kaydettim, güncelledim") — the UI shows plan changes + preference badges.
-- Explainability: when user asks "Nasıl yaptın?", emit `<reasoning>...</reasoning>` with structured explanation.
+- Explainability: when user asks "Nasıl yaptın?", emit `<reasoning>{...structured explanation...}</reasoning>` with TDEE calc, macro split rationale, meal choice logic.
+- When user taps "Onayla" (client emits a `user_approved: true` signal in next request), AI emits `<plan_finalize>{}</plan_finalize>` and the server promotes draft → active.
 
-**`plan_workout` mode:** parallel structure, schema differs (exercises, sets, reps, rest, progression).
+**`plan_workout` mode:** parallel structure, schema differs.
+
+**Structured protocol error handling (applies to all modes):**
+
+Every structured block in an AI response is parsed via:
+1. Regex extract between tags.
+2. `JSON.parse`.
+3. Zod schema validate.
+4. On failure: edge function immediately re-prompts the model ("Önceki JSON bozuktu: <error>. Sadece JSON'u yeniden gönder.") with a budget of **1 retry**.
+5. Still bad → strip the block from response, log the failure, send user-facing message: "Plan güncellenemedi, tekrar dene." Client shows a retry chip.
+6. Client validates all known blocks defensively before rendering.
 
 ### 4.5 Plan prerequisites enforcement
 
-Single helper: `isPlanReady(profile, goal, planType): { ready: boolean, missing: string[] }`
+Two tiers: **MVP minimum** (required to generate any plan at all) + **Enrichment** (fields that, if present, make the plan better — surfaced as gentle prompts in chat but never block plan generation).
 
-**Diet plan requires (all present):**
-- profile: height_cm, weight_kg, birth_year, gender, activity_level, cooking_skill, budget_level, meal_count_preference
-- goal: goal_type (+ target_weight_kg ideally)
-- food_preferences: allergies checked (can be empty, just confirm user was asked)
-- health_events: confirmed "no condition" or list
-- ANY of: diet_mode, or explicit "standart beslenme" flag
+**MVP minimum (all required to unlock plan creation):**
+- profile: height_cm, weight_kg, birth_year, gender
+- goal: goal_type (target_weight_kg optional)
 
-**Workout plan requires:**
-- profile: height_cm, weight_kg, birth_year, gender, training_experience, equipment_access, training_style, available_training_times
-- goal: goal_type
-- health_events: checked for injury history
+Just 5 fields total. Everything else gets **sane defaults** if missing:
+- activity_level → `sedentary`
+- budget_level → `medium`
+- cooking_skill → `basic`
+- meal_count_preference → `3`
+- diet_mode → `standard`
+- disliked_foods → `[]`
+- food allergies → fetched from `food_preferences` table; empty is valid
+- training_experience → `beginner` (workout plan only)
+- equipment_access → `home` (workout plan only)
+- training_style → `mixed` (workout plan only)
+- available_training_times → `['evening']` (workout plan only)
 
-Each missing field maps to a task card → user can tap "Tamamla" and route to onboarding chat for that task.
+Single helper: `src/lib/plan-readiness.ts` exports:
+```ts
+isPlanReady(profile, goal, planType): { ready: boolean, missingCore: Field[], weakSpots: Field[] }
+```
+
+`missingCore` blocks generation (CTA disabled). `weakSpots` surface as "Plan daha iyi olabilir — bize {X} konusunu da anlat" chips on the plan screen, each chip routes to the relevant onboarding chat.
 
 ### 4.6 Preferences feedback schema
 
-New columns on `profiles`:
+New columns on `profiles` (structured, not flat arrays):
 ```sql
-ALTER TABLE profiles ADD COLUMN disliked_foods TEXT[];      -- ["yumurta", "süt ürünleri"]
-ALTER TABLE profiles ADD COLUMN preferred_foods TEXT[];     -- user-volunteered favorites
-ALTER TABLE profiles ADD COLUMN budget_constraints JSONB;   -- { "seafood": "too_expensive", "imported": "avoid" }
-ALTER TABLE profiles ADD COLUMN plan_feedback_notes TEXT;   -- free-form notes AI writes over time
+ALTER TABLE profiles ADD COLUMN disliked_foods JSONB DEFAULT '[]'::jsonb;
+-- [{ "item": "yumurta", "context": "breakfast"|null, "severity": "mild"|"strong", "learned_at": ISO }]
+
+ALTER TABLE profiles ADD COLUMN preferred_foods JSONB DEFAULT '[]'::jsonb;
+-- same shape
+
+ALTER TABLE profiles ADD COLUMN budget_constraints JSONB DEFAULT '{}'::jsonb;
+-- { "seafood": "too_expensive", "imported": "avoid", "organic": "unaffordable" }
+
+ALTER TABLE profiles ADD COLUMN plan_feedback_notes TEXT; -- free-form notes AI writes over time
 ```
 
-When user negotiates during plan creation, `profile_update` actions are emitted with these fields. Kochko'nun Hakkında Bildikleri screen shows them in editable rows.
+Handler for `profile_update` action merges incoming JSONB with existing array/object (doesn't overwrite). "Kochko'nun Senin Hakkında Bildikleri" screen shows these in editable rows, grouped by category.
 
-### 4.7 Subscription / gating
+### 4.7 Subscription / gating (option C — message-based)
 
 Free tier:
-- **Unlimited** chat messages during onboarding (no cap while `profile_completion_pct < X` and `ai_summary.onboarding_tasks_completed.length < 5`).
-- **1 active diet plan** + **1 active workout plan** produced lifetime for free.
-- After both plans approved → free tier locked. UI shows "Yeni plan oluşturmak için premium'a geç" paywall.
+- **Unlimited** chat messages during onboarding (no cap while any of the 13 onboarding tasks is incomplete).
+- **Daily message cap on non-onboarding chats** (plan chats, general chats, daily-log chats): 50 messages/day free. Premium: unlimited.
+- **Plan approval cap:** 1 lifetime approved diet plan + 1 lifetime approved workout plan. Unlimited draft generation and regeneration for both — the user can try as many alternatives as they want within the daily message cap.
+- Once both plans are approved → creating a NEW plan (regeneration after the fact) requires premium.
 - Premium (weekly subscription via RevenueCat):
-  - Unlimited plan regeneration.
+  - Unlimited plan regeneration and replacement.
   - Unlimited chat messages.
-  - Advanced features as they ship (voice, photo vision, progress photos, etc.).
+  - Advanced features as they ship.
 
-Existing `subscriptions` table + trigger stays; new column `plans_used_free` counts (user_id, diet_count, workout_count). Incremented when a plan is approved (status → active).
+Rationale: The draft/message cap prevents AI cost abuse without punishing legitimate negotiation. Users who want to keep iterating pay for it via the subscription.
 
-### 4.8 Renaming
+Existing `subscriptions` table + trigger stays. New fields:
+```sql
+ALTER TABLE profiles ADD COLUMN plans_used_free JSONB DEFAULT '{"diet": 0, "workout": 0}'::jsonb;
+ALTER TABLE profiles ADD COLUMN daily_msg_count JSONB DEFAULT '{"date": null, "count": 0}'::jsonb;
+```
 
-- Settings entry: "Koçun Hafızası" → **"Kochko'nun Hakkında Bildikleri"**
-- Screen title + i18n strings (already in Turkish, just update literal).
+`plans_used_free.{type}` increments when a plan is approved (status → active). Existing active plans at migration time → increment accordingly.
+
+Rate limit helper already exists at `supabase/functions/shared/rate-limit.ts`; extend to read the onboarding-completion flag + daily_msg_count.
+
+### 4.8 Plan drift detection
+
+When user's profile changes in a way that would materially affect an active plan, show a passive banner on the plan screen prompting "Güncelle". Triggers:
+
+- Weight delta > 3 kg from `approval_snapshot.weight_kg`
+- Height change (rare, but happens with underage users measured again)
+- Activity level change
+- Goal type change
+- Target weight change
+
+Computed client-side using `approval_snapshot` vs current profile. No backend polling needed.
+
+Action: banner button "Yeni plan oluştur" → creates a new draft based on fresh profile, existing active plan stays until approved.
+
+### 4.9 General chat → plan routing
+
+In the default non-task general chat, if the user expresses plan intent ("diyet listesi istiyorum", "spor programı lazım"), AI runs intent detection and responds with:
+
+```xml
+<navigate_to>{"route": "/plan/diet"}</navigate_to>
+```
+
+Client parses and either auto-navigates (with user confirmation chip) or shows a "Diyet planı oluştur →" button in the AI message.
+
+If prerequisites are unmet, the AI first continues the conversation to gather the remaining core fields (boy/kilo/yaş/cinsiyet/hedef), emits relevant `profile_update` actions, then navigates.
+
+### 4.10 Renaming
+
+- Settings entry: "Koçun Hafızası" → **"Kochko'nun Senin Hakkında Bildikleri"**
+- Screen title matches.
 - Navigation icon stays (eye).
+- Deep-link any references in chat/UI that say the old name.
 
 ---
 
@@ -221,58 +323,59 @@ Existing `subscriptions` table + trigger stays; new column `plans_used_free` cou
 **Goal:** DB + naming + utility groundwork for everything else.
 
 **DB migrations:**
-- `030_plan_versioning.sql` — extend `weekly_plans` with status, plan_type, superseded_by, approved_at, user_revisions + unique indexes.
-- `031_profile_preferences.sql` — add `disliked_foods`, `preferred_foods`, `budget_constraints`, `plan_feedback_notes` to `profiles`.
-- `032_plans_used_free.sql` — add `plans_used_free` JSONB to `profiles` (`{"diet": 0, "workout": 0}`).
+- `030_plan_versioning.sql` — extend `weekly_plans`: status, plan_type, superseded_by, approved_at, archived_reason, user_revisions, approval_snapshot + 2 unique indexes.
+- `031_profile_preferences.sql` — add `disliked_foods` (JSONB), `preferred_foods` (JSONB), `budget_constraints` (JSONB), `plan_feedback_notes` (TEXT) to `profiles`.
+- `032_plans_used_free.sql` — add `plans_used_free` JSONB + `daily_msg_count` JSONB to `profiles`. Backfill `plans_used_free` from existing `weekly_plans.status='active'` counts (group by user_id, plan_type).
 
 **Code:**
-- `src/lib/plan-readiness.ts` — new file, exports `isDietPlanReady`, `isWorkoutPlanReady`, `getMissingFields(planType, profile, goal)`. Returns `{ ready, missing: Array<{ field, taskKey, label }> }`.
-- Rename "Koçun Hafızası" → "Kochko'nun Hakkında Bildikleri" in:
-  - `app/settings/coach-memory.tsx` title
-  - `app/settings/index.tsx` menu entry
-  - `app/(tabs)/profile.tsx` if it links there
-  - Any i18n dict (none for TR currently — inline strings).
+- `src/lib/plan-readiness.ts` — new file exporting `isPlanReady`, `getMissingCore`, `getWeakSpots`.
+- Rename "Koçun Hafızası" → "Kochko'nun Senin Hakkında Bildikleri":
+  - `app/settings/coach-memory.tsx` screen header + any visible labels.
+  - `app/settings/index.tsx` menu row.
+  - Any other references (grep literal).
+- No UI changes yet beyond the rename. Phases 1-7 consume the new schema and utility.
 
 **Acceptance:**
-- `supabase db push` applies cleanly.
-- `supabase migration list` shows 030, 031, 032 on remote.
-- Grep for "Koçun Hafızası" returns 0 matches in code (may remain in markdown docs).
-- `plan-readiness.ts` has unit-safe logic (no runtime errors when profile/goal null).
+- `supabase db push` applies 030, 031, 032 cleanly on remote.
+- `plans_used_free` is correctly backfilled for existing users (verify one sample manually).
+- `plan-readiness.ts` has a quick unit-style test function that runs without errors on a null profile.
+- `grep -r "Koçun Hafızası"` returns 0 in source (markdown docs OK to keep).
 
 ---
 
 ### Phase 1 — Onboarding handoff UX  ⬜ not started
 
-**Goal:** Task chats close cleanly with next-task suggestions. Silent saves via badges only.
+**Goal:** Task chats close cleanly with next-task suggestions. Silent saves via badges + haptic. Server validates completion.
 
 **Edge function changes:**
 - `supabase/functions/ai-chat/index.ts`:
-  - On outbound message, parse `<task_completion>` block like we parse `<layer2_update>`.
-  - If present, strip from message body, include in response JSON:
-    ```ts
-    { message, actions, task_mode, task_completion: { completed, summary, next_suggestions: string[] } | null }
-    ```
-- `supabase/functions/ai-chat/index.ts` task card ctx: instruct AI to emit `<task_completion>` on the FINAL message of a completed task, with `next_suggestions` pulled from remaining tasks (pass list into prompt).
-- Include: "list of remaining tasks" in the task card context so AI can choose meaningful next_suggestions (top 3 that relate to current context).
+  - Parse `<task_completion>` block (mirrors `<layer2_update>` handling).
+  - **Server-side requirement validation:** for the claimed task, check profile/goals contain the required fields. If not, drop the block, append a re-prompt to the model ("Eksik: X. Kullanıcıdan al."), and do NOT write `onboarding_tasks_completed`.
+  - Validated completion is returned as `task_completion` field in response JSON.
+- Prompt updates:
+  - Provide the model with remaining incomplete task keys (for `next_suggestions`).
+  - Include examples of valid `<task_completion>` blocks.
+  - Reinforce existing "no verbal save acknowledgement" rules.
 
 **Client changes:**
-- `src/services/chat.service.ts`: add `task_completion` to `ChatResponse` interface.
+- `src/services/chat.service.ts`: add `task_completion` to `ChatResponse`. Whitelist `next_suggestions` against active task registry.
 - `app/chat/[sessionId].tsx`:
-  - New `TaskCompletionCard` component at end of message bubble.
-  - Shows summary chip + up to 3 next-task cards.
-  - Tap → `createSession` + `router.push('/chat/...')`.
-- Strip verbal save acknowledgements via stronger prompt rules (already started — verify).
-- Remove the `<task_completion>` XML from displayed message text.
+  - New `TaskCompletionCard` component (summary chip + up to 3 next-task cards).
+  - Haptic feedback on render (`expo-haptics` — already installed or add to package).
+  - Existing `<task_completion>` XML stripped from rendered text.
+  - Tap card → `createSession` + navigate.
+- Strip structured XML tags from displayed message content (update the message renderer's content sanitizer).
 
 **Acceptance:**
-- Complete a test task (e.g., tap "Kendini tanıt", answer 4 fields).
+- Complete a test task (Kendini tanıt) by providing all 4 fields.
 - Final AI message shows:
-  - Brief human-language closer (1 sentence).
-  - Summary chip (green, "✓ Kochko seni tanıdı: ...").
-  - 3 task cards.
+  - 1-sentence human closer.
+  - Summary chip with brief haptic.
+  - Up to 3 next-task cards.
 - Tapping a card opens a new chat with correct `taskModeHint`.
-- Old chat's "Kendini tanıt" card vanishes from Kochko tab list (was already working via layer2_update).
-- No verbal "Kaydettim/Profilini güncelledim" in any response.
+- Old task's card vanishes from Kochko tab list.
+- Server-side validation: artificially block one field (e.g., remove gender from DB write), verify task completion is **rejected** and AI continues asking.
+- No verbal "Kaydettim/Profilini güncelledim" in any response (grep chat history).
 
 ---
 
@@ -280,48 +383,45 @@ Existing `subscriptions` table + trigger stays; new column `plans_used_free` cou
 
 **Goal:** Fully functional diet plan creation, negotiation, and activation flow.
 
-**Routes:**
-- Create `app/plan/diet.tsx` (screen component).
-- Keep existing `app/(tabs)/plan.tsx` stub for now (maybe redirect or remove in Phase 4).
+**Routes & bridge:**
+- Create `app/plan/diet.tsx`.
+- Update `app/(tabs)/plan.tsx` as **bridge**: two big cards (Diyet | Spor) linking to new routes. Bridge stays until Phase 4 removes the tab.
 
 **New components:**
-- `src/components/plan/PlanPreviewCard.tsx` — collapsed card (4-tile day strip + macro ring + calorie label).
-- `src/components/plan/FullPlanModal.tsx` — full-screen plan view, 7-day scrollable.
-- `src/components/plan/MealCard.tsx` — single meal display with macros + alternatives.
-- `src/components/plan/PlanChatComposer.tsx` — chat composer with quick-action chips (`Nasıl yaptın?`, `Onayla`, `Baştan başla`).
-- `src/services/plan.service.ts` — CRUD for `weekly_plans`: `createDraft`, `getActiveDiet`, `getDraftDiet`, `approveDraft`, `archivePlan`, `patchDraft(planId, patch)`, `loadHistory(planType)`.
+- `src/components/plan/PlanPreviewCard.tsx` — collapsed card (day strip + macro ring + calorie label).
+- `src/components/plan/FullPlanModal.tsx` — full-screen 7-day view. **Tracks `hasViewedFullPlan`** via scroll position: last day fully in viewport → flag true, stored in screen state.
+- `src/components/plan/MealCard.tsx` — single meal display with macros + inline edit affordance.
+- `src/components/plan/PlanChatComposer.tsx` — chat composer with quick-action chips.
+- `src/components/plan/AlternativeComparisonModal.tsx` — side-by-side compare of two drafts (for "Alternatif gör").
+- `src/services/plan.service.ts` — full CRUD: `getActive`, `getDraft`, `getHistory`, `createDraft`, `approveDraft`, `discardDraft`, `requestAlternative`, `applySnapshot`, `logRevision`.
 
 **Edge function:**
-- New task mode `plan_diet`:
-  - `supabase/functions/ai-chat/task-modes.ts` — add case, mode instructions.
-  - Model emits `<plan_draft>{full JSON}</plan_draft>` on first message.
-  - Subsequent messages: `<plan_patch>{targeted diff}</plan_patch>` + optional `<actions>[{profile_update}]</actions>`.
-  - Model explicitly told: NO verbal "Kaydettim" confirmations; the UI shows everything.
+- New task mode `plan_diet` in `task-modes.ts` with structured output contract (plan_snapshot, reasoning, plan_finalize, actions).
+- Parse `<plan_snapshot>`, `<reasoning>`, `<plan_finalize>` with validate+retry+drop pattern.
+- When request body contains `user_approved: true`, expect `<plan_finalize>`; on receive, promote draft status in DB.
 
 **State machine:**
 ```
-No plan          → render EmptyState
-                   [Plan oluştur] CTA
-                       ↓ (if ready)
-                   createDraft() + initial AI message
+No plan          → EmptyState  [Plan oluştur] CTA (disabled if missingCore)
                        ↓
-Draft in progress → render PreviewCard + PlanChatComposer
-                   User chats, AI patches draft
-                       ↓ (user taps Onayla)
-                   approveDraft() archives previous, activates this
+Draft in progress → PreviewCard + PlanChatComposer
+                       ↓ (Alternatif gör) → AlternativeComparisonModal → pick one
+                       ↓ (Onayla — gated by hasViewedFullPlan) → approve
                        ↓
-Active           → render FullPlanView + [Kochko ile konuş] + [Geçmiş]
-                   Tapping chat opens revision draft (back to "Draft in progress")
+Active           → FullPlanView + [Kochko ile konuş] + [Geçmiş] + drift banner (if applicable)
 ```
 
 **Acceptance:**
-- Empty state works, CTA disabled if prerequisites missing.
-- Missing prerequisites show as clickable cards routing to correct onboarding task chats.
-- "Plan oluştur" creates a draft, opens chat, AI produces a 7-day menu.
-- User can say "yumurta yerine yulaf" → card updates in place.
-- "süt ürünlerini sevmem" → AI updates all dairy meals + saves `disliked_foods: ['süt ürünleri']` to profile.
-- Approving finalizes plan, archives previous (if any).
-- Past plans visible in history.
+- Empty state works, CTA disabled when `missingCore.length > 0`.
+- Missing core fields show as clickable cards routing to onboarding tasks.
+- Weak spots show as gentle suggestion chips, not blockers.
+- "Plan oluştur" creates a draft, opens chat, AI produces a 7-day menu via `<plan_snapshot>`.
+- User says "yumurta yerine yulaf" → AI emits new full snapshot, preview card re-renders, the changed meal cell gets a 500ms green highlight.
+- User says "süt ürünleri sevmem" → AI updates all dairy meals + emits `profile_update` with `disliked_foods` structured entry.
+- "Alternatif gör" produces a 2nd draft; comparison modal shows both; picking one archives the other.
+- "Onayla" is disabled until user has scrolled the full plan modal to end.
+- Approving activates the plan, archives previous (if any), switches screen to state (c).
+- Past plans (including discarded drafts) visible in history with `archived_reason`.
 
 ---
 
@@ -331,77 +431,91 @@ Active           → render FullPlanView + [Kochko ile konuş] + [Geçmiş]
 
 **Routes:**
 - Create `app/plan/workout.tsx`.
+- Bridge tab gets the second card active (was already linking).
 
-**New/adapted components:**
-- `PlanPreviewCard` — reused, variant for workout (weekly split strip: M/T/W/T/F/S/S with exercise count per day).
-- `FullPlanModal` — different layout (per day: exercise list with sets/reps/rest).
-- `ExerciseCard` — single exercise display with sets, reps, weight, rest, video link placeholder.
-- `plan.service.ts` — extended with workout variants (`getActiveWorkout`, etc.).
+**Components:**
+- Reuse `PlanPreviewCard`, `FullPlanModal`, `AlternativeComparisonModal` with plan_type variant props.
+- New `ExerciseCard.tsx` — name, sets × reps, weight/RPE, rest, video link placeholder.
+- `plan.service.ts` extended with workout variants.
 
 **Edge function:**
-- `plan_workout` task mode (parallel to `plan_diet`).
-- Structured plan schema: `{ week: [{ day_index, rest_day?, exercises: [{ name, sets, reps, weight_kg?, rest_sec, notes }] }] }`
+- New task mode `plan_workout` with analogous structured contract.
+- Plan schema: `{ week: [{ day_index, rest_day?, exercises: [{ name, sets, reps, weight_kg?|rpe?, rest_sec, notes }] }] }`
 
-**Acceptance criteria:** parallel to Phase 2 but for workouts. User can negotiate: "diz sakatlığım var, squat yapamam" → AI swaps squats for leg press/bridges, saves injury note.
+**Acceptance:** parallel to Phase 2 but workout-shaped. "Diz sakatlığım var, squat yapamam" → AI swaps squats for leg press/bridges, saves injury note to profile.
 
 ---
 
 ### Phase 4 — Home screen redesign  ⬜ not started
 
-**Goal:** Dashboard shows two big plan cards + onboarding progress + daily focus.
+**Goal:** Dashboard surfaces the two plans and profile completion. Plan tab removed.
 
 **Changes:**
 - `app/(tabs)/index.tsx`:
   - New hero order:
-    1. Profile completion gauge (donut ring with %). Taps → onboarding task list.
-    2. Two big cards: "Bu haftaki diyetin" (with mini meal strip) + "Bu haftaki sporun" (with mini exercise strip). Tap → plan screen.
-    3. Today's focus: next meal / next workout / streak / active proactive nudges.
-    4. Quick actions (log meal, log weight, etc.).
+    1. **Profile completion donut** with weighted score (see Principle 8 and formula below). Taps → scrolls to the incomplete-tasks section.
+    2. **Two big plan cards:** "Bu haftaki diyetin" + "Bu haftaki sporun". Empty state renders if no active plan, with "Plan oluştur →" CTA. Active state shows today's highlight (today's meals count / today's workout name). Tap → respective plan screen.
+    3. Today's focus: next meal / next workout / streak / proactive nudges.
+    4. Onboarding task row (if any incomplete tasks).
+    5. Quick actions (log meal, log weight).
+- `app/(tabs)/plan.tsx`: delete. Remove from tab layout.
+- `app/(tabs)/_layout.tsx`: update to 4 tabs + FAB + profile.
 
-- Remove the floating FAB "+" tab center button if it's redundant? (Decide: keep for quick actions but behavior is `/log` which stays.)
-
-- `app/(tabs)/plan.tsx`: either delete (update tab layout to remove "plan" tab) OR keep as a combined view. Decision: **remove the plan tab**, since diet + workout are first-class dashboard cards now. Update `app/(tabs)/_layout.tsx` accordingly (4 tabs + FAB + profile = still 5 slots).
+**Profile completion scoring (formula):**
+```
+critical_fields = [height_cm, weight_kg, birth_year, gender, goal_type]   // 12% each → 60%
+important_fields = [activity_level, food_allergies_acknowledged, diet_mode, health_checked, budget_level, cooking_skill]  // 5% each → 30%
+enrichment_fields = [sleep_quality, stress_level, training_experience, previous_diets, social_eating_notes, ...]  // cap 10% total
+completion_pct = sum(critical) + sum(important) + min(10, sum(enrichment))
+```
+Implementation lives in `src/lib/profile-completion.ts` (already exists, needs extension).
 
 **Acceptance:**
-- Ana sayfa shows profile completion donut prominently.
-- Two plan cards visible, empty state if no plan.
+- Ana sayfa shows profile donut prominently.
+- Two plan cards visible, correct empty/active state.
 - Tapping a plan card opens respective plan screen.
-- Removed plan tab doesn't break navigation.
+- Tab layout has 4 tabs + FAB (no "plan" tab).
+- Deep link `/plan` (if any old one exists) redirects to home or diet screen.
 
 ---
 
 ### Phase 5 — Daily flow + proactive nudges  ⬜ not started
 
-**Goal:** Post-onboarding experience — conversational logging, cheat-meal permission flow, nudges when user skips logs.
+**Goal:** Post-onboarding experience — conversational logging, cheat-meal flow, proactive nudges. General chat intent routing.
 
 **Changes:**
-- New task mode `daily_log` (default after onboarding, replaces `general` for most sessions).
-- AI greets proactively on open if >4h since last message: "Bugünkü öğünleri konuşalım mı?".
-- Cheat meal permission: user says "bu akşam düğün var"; AI advises how to navigate, creates a `commitment` action.
-- Proactive nudges via `ai-proactive` edge function (already exists):
-  - If no meal logged by 14:00 → notification ("Öğle yemeğini henüz konuşmadık").
-  - If no workout on scheduled day → light reminder, not push.
-  - These use existing notification plumbing; just add the triggers.
+- New task mode `daily_log` for post-onboarding general chats. System prompt references today's active plan if present.
+- AI greets proactively on open if >4h since last message.
+- Cheat-meal permission: user says "bu akşam düğün var, tatlı yiyeceğim"; AI gives advice + emits `<actions>[{"type":"commitment", ...}]</actions>`.
+  - `commitment` handler already exists (`user_commitments` table insert). No schema change needed.
+- Proactive nudges via `ai-proactive` (already exists):
+  - If no meal logged by 14:00 → notification.
+  - If no workout on scheduled day → light reminder.
+- **General-chat intent detection:** if user mentions diet/workout plan in general chat, AI emits `<navigate_to>` block. Client renders an inline "Plana git →" button in the AI message. If prerequisites missing, AI continues gathering first, then navigates.
 
-**Acceptance:** user can log 3 meals conversationally; AI remembers. Next-day chat references yesterday's pattern.
+**Acceptance:** user logs 3 meals conversationally; next-day chat references yesterday. "Diyet planı istiyorum" in general chat → either prompts for missing fields or surfaces a navigate button.
 
 ---
 
 ### Phase 6 — Subscription / quotas  ⬜ not started
 
-**Goal:** Free tier lets user complete onboarding + produce both plans; then paywall.
+**Goal:** Onboarding unlimited; daily message cap post-onboarding; 1+1 lifetime approved plans free; paywall after.
 
 **Changes:**
-- `src/lib/premium-gate.ts`: new `canCreatePlan(planType, profile): { allowed: boolean, reason?: string }` based on `plans_used_free`.
-- `src/services/plan.service.ts`: `createDraft` checks gate, throws `PREMIUM_REQUIRED` if blocked.
-- Rate limit edge function: onboarding mode → no cap; `daily_log` / `plan_*` modes → 50 msg/day free, unlimited premium.
-- `plans_used_free.diet` and `.workout` incremented on `approveDraft`. Once a plan is active, creating a NEW draft for same type counts as "already used" unless premium.
-- Paywall screen: when gate blocks, navigate to `app/settings/premium.tsx` (already exists, needs wiring).
+- `src/lib/premium-gate.ts`: new `canApprovePlan(planType, profile): { allowed: boolean, reason? }` based on `plans_used_free` and active premium.
+- `src/services/plan.service.ts`: `approveDraft` checks gate, returns `PREMIUM_REQUIRED` error if blocked. UI shows paywall prompt.
+- Rate limit edge function (`shared/rate-limit.ts`):
+  - If user has any incomplete onboarding task → no cap.
+  - Otherwise: 50 msg/day free (any non-onboarding chat type). Unlimited premium.
+  - Resets at UTC midnight (or user's day_boundary_hour if set).
+- `plans_used_free` increments on `approveDraft`.
+- Paywall screen (`app/settings/premium.tsx` already exists, needs wiring to RevenueCat stubs).
 
 **Acceptance:**
-- Fresh user: creates 1 diet + 1 workout plan without paywall.
-- 3rd plan attempt → paywall.
-- Premium trial or subscription unlocks.
+- Fresh user: can approve 1 diet + 1 workout plan, no paywall.
+- Subsequent "Onayla" for a 2nd plan of the same type → paywall modal.
+- Daily message cap hits at 50 for general/daily_log chats (simulate with repeated messages); onboarding unaffected.
+- Premium mock unlock via `subscriptions` table clears all gates.
 
 ---
 
@@ -410,11 +524,12 @@ Active           → render FullPlanView + [Kochko ile konuş] + [Geçmiş]
 **Goal:** Small but meaningful UX wins.
 
 **Changes:**
-- Task completion confetti/animation (lightweight, Reanimated).
+- Task completion mini-confetti/celebration (lightweight, Reanimated).
 - Profile completion donut animates on change.
-- Empty state illustrations (SVG placeholders fine).
-- Sound effects for approving a plan (optional, off by default).
+- Empty state illustrations (SVG placeholders).
+- Optional approval sound effect (off by default).
 - Accessibility pass on new screens.
+- Final visual polish on plan preview card, meal card, exercise card.
 
 **Acceptance:** feels fluid, not empty.
 
@@ -422,16 +537,36 @@ Active           → render FullPlanView + [Kochko ile konuş] + [Geçmiş]
 
 ## 6. Risk & rollback
 
-- **Plan versioning DB changes are non-destructive**: new columns + indexes, no drops. Safe to roll forward; rollback means dropping the unique indexes + columns.
-- **Edge function changes are backward compatible**: new task modes don't break existing ones. The old plan page (if kept) continues to work during phases 2-3.
-- **Client route changes** (Phase 4 tab removal): test navigation thoroughly; keep old route as redirect for 1 release in case deep links exist.
-- **Quota changes** (Phase 6): make sure users mid-plan aren't locked out by a premature gate flip. Migration must set `plans_used_free` based on existing `weekly_plans.status='active'` count.
+- **DB changes** (030, 031, 032): all additive. Rollback = drop the new columns/indexes. Safe.
+- **Edge function changes**: all new task modes. Old ones continue to work. Safe to roll forward partially.
+- **Client route changes** (Phase 4): test navigation thoroughly. The bridge tab (phases 2-3) minimizes discovery risk.
+- **Quota changes** (Phase 6): the backfill query for `plans_used_free` must run BEFORE gating is enabled, to avoid locking out existing users with active plans. Migration handles this atomically.
+- **Protocol parsing** (all phases): with retry+drop pattern, bad AI responses degrade gracefully; worst case is "plan güncellenemedi, tekrar dene" for a single turn.
+- **Drift detection**: passive banner only, never auto-changes an active plan. User always in control.
 
 ---
 
-## 7. Open questions (update as they come up)
+## 7. Open decisions & their resolutions
 
-- None currently. Will log here as work progresses.
+Record every material design decision here so the next session has context.
+
+| # | Decision | Resolved | Rationale |
+|---|---|---|---|
+| 1 | Rename of "Koçun Hafızası" | "Kochko'nun Senin Hakkında Bildikleri" (2026-04-19) | User preference; more natural than earlier draft. |
+| 2 | Draft quota strategy | Option C — daily message cap during plan chats, unlimited draft regeneration, 1+1 approved plans lifetime free (2026-04-19) | Least punitive to legitimate negotiation; caps AI cost via message count. |
+| 3 | Plan update protocol | Full snapshot every turn, no patches (2026-04-19, rev2) | Diff semantics are fragile; snapshot is robust and token cost is bounded. |
+| 4 | XML/JSON parse failures | 1 retry with error feedback, then drop+log (2026-04-19, rev2) | Production-grade; prevents crashes on malformed model output. |
+| 5 | `task_completion` server validation | Required, reject if profile fields not actually written (2026-04-19, rev2) | Prevents false positives from model mid-conversation. |
+| 6 | Minimum plan prerequisites | 5 core fields (boy/kilo/yaş/cinsiyet/hedef), rest defaulted (2026-04-19, rev2) | Value-first principle; heavy prereqs delay value delivery. |
+| 7 | Parallel drafts | MVP = single draft + "Alternatif gör" produces a 2nd temp draft → pick one (2026-04-19, rev2) | Consultation feel without UX complexity of managing N drafts. |
+| 8 | `disliked_foods` schema | JSONB with `{item, context, severity, learned_at}` (2026-04-19, rev2) | Nuance capture (e.g. "sabahları yumurta sevmem"). |
+| 9 | Plan drift response | Passive banner + manual "Güncelle" button (2026-04-19, rev2) | User in control; no silent plan changes. |
+| 10 | Approval guardrail | `hasViewedFullPlan` flag via scroll tracking gates Onayla button (2026-04-19, rev2) | Prevents blind approvals and later complaints. |
+| 11 | Discarded drafts | Archived with `archived_reason='user_discarded'`, NOT deleted (2026-04-19, rev2) | Preserves negotiation history; users can review past ideas. |
+| 12 | General chat → plan navigation | AI emits `<navigate_to>` when intent detected (2026-04-19, rev2) | Avoids dead-end chats; routes user to correct tool. |
+| 13 | Silent save feedback | Badge + haptic + 200ms bounce animation; no toast (2026-04-19, rev2) | Noticeable without cluttering chat. |
+
+**Still open (will be added here as they arise):** —
 
 ---
 
@@ -441,7 +576,7 @@ Active           → render FullPlanView + [Kochko ile konuş] + [Geçmiş]
 2. Find the first `⬜ not started` or `🟡 in progress` phase in section 5.
 3. Follow the phase's Goal + Changes + Acceptance.
 4. Work phase-by-phase. After completing, update the checkbox (✅) and commit with message `Phase N: <short summary>`.
-5. Log any quirks/blockers in section 7 so they persist.
+5. Log any quirks/blockers in section 7 or below in the Notes section.
 
 **Commit convention:** one commit per phase (possibly split into 2-3 if a phase has natural sub-steps). Branch: `claude/KOCHKO` (current). Push after each phase to keep origin in sync.
 
@@ -449,4 +584,19 @@ Active           → render FullPlanView + [Kochko ile konuş] + [Geçmiş]
 
 ---
 
-_Last updated: 2026-04-19 by Claude (initial draft, awaiting user approval)._
+## 9. Session notes
+
+Use this section to log session-by-session observations: what was completed, what surprised you, what broke, what the next session needs to know. Newest entry on top.
+
+### 2026-04-19 — rev2 review integrated
+- Received second-opinion review, integrated 13 decisions (see table above).
+- No code changes yet; plan document updated and ready for Phase 0.
+- Ready to begin execution on user confirmation.
+
+### 2026-04-19 — rev1 initial draft
+- Master plan first written after user clarifications (A–F answers).
+- Pre-review version. Superseded by rev2.
+
+---
+
+_Last updated: 2026-04-19 by Claude (rev2 post-review)._
