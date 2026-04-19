@@ -314,34 +314,43 @@ serve(async (req: Request) => {
       const topic = TOPICS[topicKey];
       if (topic) {
         taskCardCtx = [
-          '=== ONBOARDING GOREV: ' + topic.title.toUpperCase() + ' ===',
-          'Bu sohbet SADECE bu gorev icin acildi. Ana sayfadaki kartindan girildi.',
+          '### BU SOHBETIN TEK AMACI: ' + topic.title.toUpperCase(),
+          '(Kullanici ana sayfadaki "' + topic.title + '" kartina basarak bu sohbeti acti. Baska hicbir amac YOK.)',
           '',
-          'TOPLAMAN GEREKEN BILGILER (kontrol listesi):',
-          ...topic.fields.map((f, i) => `  ${i + 1}. ${f}`),
+          'BU GOREVIN KONTROL LISTESI — SADECE bu ' + topic.fields.length + ' alan:',
+          ...topic.fields.map((f, i) => `  [${i + 1}] ${f}`),
+          '',
+          'BU ALANLAR DISINDAKI HERHANGI BIR SEYI SORMA. ORNEKLER:',
+          (topic.taskKey === 'introduce_yourself'
+            ? '  - Hedef sorma (bu "set_goal" gorevi, AYRI kart). Kullaniciya "Hedefini Hedefini Belirle kartindan konusalim" de, asla bu sohbette sorma.\n  - Beslenme aliskanligi sorma (ayri kart). Aktivite/rutin sorma (ayri kart).'
+            : topic.taskKey === 'set_goal'
+            ? '  - Boy/kilo/yas sorma (Kendini Tanit kartinda sorulur). Sadece hedef ve motivasyon.'
+            : '  - Kendi konusunun disinda kalan her sey AYRI bir kart/gorev — bu sohbette ele ALMA.'),
           '',
           'AKIS:',
-          '1. ILK MESAJDA: Layer 1/2\'de mevcut olanlari KISACA ozetle, eksikleri tek mesajda (tek soru kuralina uyarak) sormaya basla.',
-          '2. Eksik kaldigi her alani SIRAYLA sor — tek mesajda tek soru. Kullanici bilmiyor derse "gec" de, zorla takilma.',
-          '3. TUM kontrol listesi alanlari cevaplandiginda (veya kullanici "bilmiyorum/gec" dediginde) HEMEN su adimlari at:',
-          '   a) Kisa bir kapanis mesaji yaz (1 cumle, ornek: "Bu konuda yeterli bilgiyi aldim, tesekkurler.")',
-          '   b) Mesajin SONUNA SU BLOGU EKLE (bu zorunlu, atlarsan gorev kapali gorunmez):',
-          `      <layer2_update>{"onboarding_task_completed": "${topic.taskKey}"}</layer2_update>`,
-          '   c) Kullaniciyi dashboard\'a yonlendir: "Ana sayfadaki diger kartlardan devam edebilirsin, profilini tamamladikca sana daha iyi yardimci olabilirim."',
-          '4. Gorev tamamlandiktan sonra ayni konuda uzatma, plan/oneri yapma — kullanici baska sohbete gecsin.',
+          '1. ILK MESAJDA: Layer 1 verisinden hangi alanlarin zaten dolu oldugunu tespit et, TEKRAR SORMA. Sadece ekisikleri SIRAYLA sor (tek soru kuralina uy).',
+          '2. Yeni bilgi gelince <actions> ile kaydet. Kullanicinin verdigi bilgiyi tekrar etme, liste yapma, "Su ana kadar bildiklerim: ..." ASLA DEME.',
+          '3. Tum ' + topic.fields.length + ' alan tamam olunca veya kullanici "bilmiyorum/gec" dediginde DERHAL su uc seyi ayni mesajda yap:',
+          '   (a) Kisa 1-cumle kapanis: "Bu konuda yeterli bilgi aldim, tesekkurler."',
+          '   (b) Yonlendirme: "Ana sayfadan diger kartlara gecerek profilini tamamlayabilirsin."',
+          '   (c) Mesajin SONUNA bu blogu ekle (ATLAMA, aksi halde gorev kartta kapanmaz):',
+          `       <layer2_update>{"onboarding_task_completed": "${topic.taskKey}"}</layer2_update>`,
+          '4. Kapanistan sonra baska soru SORMA, ayni konuyu uzatma.',
           '',
           'KESIN YASAKLAR:',
-          '- PLAN YAPMA. Antrenman programi, supplement listesi, kalori hedefi YOK.',
-          '- "Sana bir plan hazirlayabilirim" / "Ne dersin, plan olusturayim mi?" YASAK.',
-          '- Bilgileri topladiktan sonra uzatma — kisaca kapat, diger kartlara yonlendir.',
-          '- "Kaydettim", "Profiline ekledim", "Profilini guncelledim" ifadelerini kullanma — bunlar UI rozetiyle zaten gosteriliyor.',
-          `- Bu gorev "${topic.title}" ile ilgili — KONU DISINA cikma. Baska konuda bilgi gelirse <actions> ile kaydet ama sohbeti geri bu goreve getir.`,
+          '- Kullanicinin verdigi bilgiyi geri okuma/listelekme. "25 yasindasin, 130 kg, 191 cm, erkek" gibi rapor yazma. Kullanici ne soyledigini biliyor.',
+          '- "Kaydettim", "Profiline ekledim", "Profilini guncelledim", "Not aldim", "Bilgilerini aldim" ifadelerini KULLANMA. UI rozeti zaten gosteriyor.',
+          '- Plan/supplement/kalori/antrenman onerisi YOK — bu sohbet bilgi toplama icin.',
+          '- Kontrol listesi disindaki alani SORMA, ONERME, TARTISMA.',
         ].join('\n');
       }
     }
 
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
+      // Task card instructions come right after BASE so they are prominent — they override
+      // default onboarding-mode ambition and keep the session narrowly scoped.
+      taskCardCtx,
       modeInstructions,
       confidenceNote,
       toneContext,
@@ -359,7 +368,6 @@ serve(async (req: Request) => {
       serviceCtx.adaptiveDifficulty,   // 9. Adaptive difficulty suggestions
       serviceCtx.conflicts,            // 10. Conflict detection (allergen, goal-behavior)
       serviceCtx.travel,               // 11. Travel/timezone context
-      taskCardCtx,
       ctx.layer1 ? `--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}` : '',
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
