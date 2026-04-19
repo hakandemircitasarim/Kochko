@@ -341,7 +341,7 @@ serve(async (req: Request) => {
           (topic.taskKey === 'introduce_yourself'
             ? 'Kullanici "191 boyundayim, 130 kilo, 25 yas, erkegim" derse son mesajin SONUNA SU BLOGU EKLE:\n<actions>[{"type":"profile_update","height_cm":191,"weight_kg":130,"birth_year":2001,"gender":"male"}]</actions>\nEksik alanlari o an gelenleri kaydet, hepsi topland\u0131g\u0131nda kapanis+<layer2_update> emit et.'
             : topic.taskKey === 'set_goal'
-            ? 'Kullanici "kilo vermek ve kas kazanmak" derse (birinin goal_type\'i: genelde ana olani sec — kilo>kas ise "lose_weight"):\n<actions>[{"type":"profile_update","goal_type":"lose_weight"}]</actions>\nKullanici sonra "100 kilo hedefim" derse:\n<actions>[{"type":"profile_update","target_weight_kg":100}]</actions>\nMotivasyon verirse ("saglikli olmak, iyi gozukmek"):\n<actions>[{"type":"profile_update","motivation_source":"saglik_ve_gorunum"}]</actions>\nHEPSI tamamlandiginda son mesajda yine <actions>...</actions> yazmali; yalniz metin yazmak YETERSIZ.'
+            ? '\u00d6RNEK 1 — Hedef tipi: Kullanici "kilo vermek ve kas kazanmak" derse (ikisi birden istenirse ana olani sec — 100kg+ birinde lose_weight olmali):\n<actions>[{"type":"profile_update","goal_type":"lose_weight"}]</actions>\n\n\u00d6RNEK 2 — Hedef kilo: Sen "hedeflediginiz kilo nedir?" diye sordun. Kullanici "100" veya "90 kg" veya "90 kilo" dedi. Bu MUTLAKA target_weight_kg\'dir, weight_kg DEGILDIR — kullanicinin mevcut kilosu zaten Layer 1\'de var.\n<actions>[{"type":"profile_update","target_weight_kg":100}]</actions>\n\n\u00d6RNEK 3 — Motivasyon: "saglikli olmak, iyi gozukmek":\n<actions>[{"type":"profile_update","motivation_source":"saglik_ve_gorunum"}]</actions>\n\nHEPSI tamamlandiginda son mesajda <layer2_update>{"onboarding_task_completed":"set_goal"}</layer2_update> EKLE. Tam olarak bu yazimla — "set_goal" string\'i AYNEN.\n\n\u26a0 DIKKAT: Bu sohbette weight_kg\'a ASLA yazma. Kullanicinin mevcut kilosu zaten Layer 1\'de, "Kendini Tanit" kartinda kaydedildi. Burada SADECE target_weight_kg yazarsin.'
             : topic.taskKey === 'eating_habits'
             ? 'Ornek: "gunde 3 ogun, disarda haftada 2 kere yerim":\n<actions>[{"type":"profile_update","meal_count_preference":3,"eating_out_frequency":"weekly"}]</actions>'
             : topic.taskKey === 'exercise_history'
@@ -717,9 +717,12 @@ async function validateTaskCompletion(
       if (!profile.gender)     return { valid: false, missingReason: 'gender' };
       return { valid: true };
     case 'set_goal': {
-      const { data: g } = await supabaseAdmin
-        .from('goals').select('goal_type').eq('user_id', userId).eq('is_active', true).maybeSingle();
-      if (!g?.goal_type) return { valid: false, missingReason: 'goal_type' };
+      // limit(1) instead of maybeSingle(): if multiple active goals exist (legacy
+      // before migration 033), maybeSingle throws and validation fails silently.
+      const { data: gs } = await supabaseAdmin
+        .from('goals').select('goal_type').eq('user_id', userId).eq('is_active', true).limit(1);
+      const goalType = gs?.[0]?.goal_type;
+      if (!goalType) return { valid: false, missingReason: 'goal_type' };
       return { valid: true };
     }
     case 'daily_routine':
@@ -1147,19 +1150,23 @@ async function executeActions(
           }
           // Goal persistence: save even without target_weight_kg — user may give goal type
           // ("kilo vermek istiyorum") before specifying a target. Upsert on active goal so
-          // adding the target later just updates the same row.
+          // adding the target later just updates the same row. Uses limit(1) instead of
+          // maybeSingle() to survive the legacy "multiple active goals" case before
+          // migration 033. A partial unique index now prevents new duplicates.
           if (action.goal_type || action.target_weight_kg) {
-            const { data: existing } = await supabaseAdmin
+            const { data: existingRows } = await supabaseAdmin
               .from('goals')
               .select('id')
               .eq('user_id', userId)
               .eq('is_active', true)
-              .maybeSingle();
+              .limit(1);
+            const existing = existingRows?.[0] ?? null;
             const goalPatch: Record<string, unknown> = {
               user_id: userId,
-              goal_type: (action.goal_type as string) ?? 'lose_weight',
               is_active: true,
             };
+            if (action.goal_type) goalPatch.goal_type = action.goal_type;
+            else if (!existing) goalPatch.goal_type = 'lose_weight'; // only set default on brand-new row
             if (action.target_weight_kg) goalPatch.target_weight_kg = action.target_weight_kg;
             if (!existing) {
               goalPatch.target_weeks = 12;
