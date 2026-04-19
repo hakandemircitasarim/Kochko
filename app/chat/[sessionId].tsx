@@ -1142,12 +1142,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         </View>
       )}
 
-      {/* Action feedback (below the bubble) */}
-      {!isUser && message.actions && message.actions.length > 0 && (
-        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs }}>
-          <ActionFeedback actions={message.actions} />
-        </View>
-      )}
+      {/* (Old outer ActionFeedback removed — replaced by colorful savedBadges inside bubble) */}
 
       {/* Feedback buttons for coaching/plan/recipe messages */}
       {!isUser && message.showFeedback && (
