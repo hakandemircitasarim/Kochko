@@ -148,6 +148,7 @@ Each plan screen has three sub-states, switched by reading current plan state fr
   - Chat composer has **quick action chips**: `Nasıl yaptın?`, `Onayla ve kaydet`, `Alternatif gör`, `Baştan başla`.
   - **`Alternatif gör`**: AI produces a 2nd draft using same inputs but a different approach. Client shows side-by-side comparison modal; user picks one, the other is discarded (archived).
   - **`Onayla` is gated**: disabled until `hasViewedFullPlan === true`. The full-plan modal sets this flag when user has scrolled past the last day. Tooltip on disabled button: "Önce tüm haftaya bak".
+  - **Flag is reset to `false` every time a new `<plan_snapshot>` arrives** (user could have approved-scrolled v1 and AI then patched to v2; they must re-view). Preview card shows a small "v2 · az önce güncellendi" badge next to the week label so the user sees which snapshot they are about to approve.
 - When user taps **Onayla**: draft promoted to active, previous active (if any) archived, then screen switches to (c).
 
 **(c) Active plan state** — user has an approved plan.
@@ -193,7 +194,7 @@ Separate task modes (in addition to BASE_SYSTEM_PROMPT):
 - Alongside snapshot, optionally emits `<actions>[{"type":"profile_update","disliked_foods":[{"item":"yumurta","context":"breakfast","severity":"strong","learned_at":"ISO"}]}]</actions>`.
 - Never acknowledges verbally ("Kaydettim, güncelledim") — the UI shows plan changes + preference badges.
 - Explainability: when user asks "Nasıl yaptın?", emit `<reasoning>{...structured explanation...}</reasoning>` with TDEE calc, macro split rationale, meal choice logic.
-- When user taps "Onayla" (client emits a `user_approved: true` signal in next request), AI emits `<plan_finalize>{}</plan_finalize>` and the server promotes draft → active.
+- When user taps "Onayla", client emits `user_approved: true` in the next request. **Approval is authoritative on the server side**: the edge function promotes the current `status='draft'` row for `(user, plan_type)` to `status='active'` regardless of what the AI's text response contains. If the AI emits `<plan_finalize>{}` that's fine (nice closing line), but its absence, corruption, or even an accidental new `<plan_snapshot>` does NOT block promotion. This prevents a finalize-race where a user's approval fails because the model "forgot" the tag. User approval is a user action, not a model action.
 
 **`plan_workout` mode:** parallel structure, schema differs.
 
@@ -277,19 +278,29 @@ ALTER TABLE profiles ADD COLUMN daily_msg_count JSONB DEFAULT '{"date": null, "c
 
 Rate limit helper already exists at `supabase/functions/shared/rate-limit.ts`; extend to read the onboarding-completion flag + daily_msg_count.
 
+**Daily cap timezone:** the "day" for counting resets at **user's local midnight**, using `profiles.home_timezone` + `profiles.day_boundary_hour` (default 4). UTC is only a fallback if the user has no timezone set. Rationale: Turkish users at UTC midnight (03:00 local) would otherwise be told "resets in the morning" — confusing. The existing `src/lib/day-boundary.ts` helper already handles this for meal logs; reuse it so cap and meals use the same day definition.
+
 ### 4.8 Plan drift detection
 
-When user's profile changes in a way that would materially affect an active plan, show a passive banner on the plan screen prompting "Güncelle". Triggers:
+When user's profile changes in a way that would materially affect an active plan, flag it on the plan screen. Two severities:
 
+**Soft drift (passive yellow banner — user decides when to act):**
 - Weight delta > 3 kg from `approval_snapshot.weight_kg`
-- Height change (rare, but happens with underage users measured again)
+- Height change
 - Activity level change
 - Goal type change
 - Target weight change
+- `disliked_foods` or `budget_constraints` significantly expanded (≥2 new entries since approval)
+- `diet_mode` changed (e.g. standart → vegan)
 
-Computed client-side using `approval_snapshot` vs current profile. No backend polling needed.
+**Hard drift (red banner + plan items hidden/flagged until user resolves):**
+- New food allergy added to `food_preferences` (even one) — meals that contain the allergen are dimmed and marked "⚠ Alerjen içeriyor" until user regenerates the plan
+- New medical condition that changes dietary safety (diabetes added, kidney condition, pregnancy) — full plan locked behind "Güvenliğin için planı güncelleyelim" modal
 
-Action: banner button "Yeni plan oluştur" → creates a new draft based on fresh profile, existing active plan stays until approved.
+Computed client-side using `approval_snapshot` vs current profile (soft) and real-time against `food_preferences` / `health_events` (hard). No backend polling.
+
+Action on soft: banner button "Yeni plan oluştur" → creates a new draft based on fresh profile, existing active plan stays until approved.
+Action on hard: modal blocks meal viewing, CTA "Planı güncelle" is mandatory to dismiss (still doesn't auto-change the plan — user approves the new draft).
 
 ### 4.9 General chat → plan routing
 
@@ -565,8 +576,21 @@ Record every material design decision here so the next session has context.
 | 11 | Discarded drafts | Archived with `archived_reason='user_discarded'`, NOT deleted (2026-04-19, rev2) | Preserves negotiation history; users can review past ideas. |
 | 12 | General chat → plan navigation | AI emits `<navigate_to>` when intent detected (2026-04-19, rev2) | Avoids dead-end chats; routes user to correct tool. |
 | 13 | Silent save feedback | Badge + haptic + 200ms bounce animation; no toast (2026-04-19, rev2) | Noticeable without cluttering chat. |
+| 14 | `hasViewedFullPlan` reset | Resets to false on every new `<plan_snapshot>`; preview shows version badge (2026-04-19, rev2.1) | Prevents approving a plan version user hasn't seen. |
+| 15 | `plan_finalize` authority | Server promotes draft→active on `user_approved: true` regardless of AI output (2026-04-19, rev2.1) | User action must be reliable; model tag is cosmetic. |
+| 16 | Drift severity tiers | Soft banner (weight/goal/etc.) vs hard block (new allergy / medical condition) (2026-04-19, rev2.1) | Allergens and new conditions are safety issues, not preferences. |
+| 17 | Daily cap timezone | User's local midnight via `day_boundary_hour`, UTC fallback only (2026-04-19, rev2.1) | UTC midnight ≠ Turkey midnight; cap resetting at 03:00 local is bad UX. |
 
-**Still open (will be added here as they arise):** —
+**Deferred to implementation phases (will be resolved in code, logged here when done):**
+
+- **Alternative-of-alternative:** When "Alternatif gör" produces 2 drafts and user rejects both, a "Yeni iki alternatif daha" button should be available inside the comparison modal. Decided in Phase 2 while building the modal.
+- **Snapshot diff highlighting:** Client must keep `previousSnapshot` in state and compute a shallow diff to highlight changed meal cells for 500ms. Implementer's choice whether to ship a small `deepDiff` util or use `lodash.isEqual` per cell. Phase 2 decision.
+- **"Nasıl yaptın?" UX:** Free or premium? Inline reasoning bubble vs modal? Default: free, inline bubble that is collapsible. Revisit if it drowns the chat visually.
+- **Subscription lapse behavior:** When premium expires and user has >1 active plan, read access stays, write is locked. Active plans remain viewable; creating/approving new plans requires resubscription. Decided per industry pattern; formalize in Phase 6.
+- **`preferred_foods` usage:** Either wire into `plan_diet` prompt (mirror of `disliked_foods`) or remove the column. Decide in Phase 2 when writing the prompt — if it doesn't earn its cost in prompt tokens, drop it.
+- **`navigate_to` rejection handling:** General-chat prompt instructs "kullanıcı yönlendirmeyi reddederse `<navigate_to>` tekrar gönderme, burada konuşmaya devam et." Simple prompt rule, verify in Phase 5.
+- **Profile completion `health_checked` definition:** Counts as "checked" if user has submitted any `health_events` row (including explicit "no condition" entry via a new onboarding action) or has explicitly skipped the health task. Phase 4 implementation detail.
+- **Snapshot token cost audit:** Post-launch metric. Log plan-chat output token counts in `chat_messages.token_count` (already captured) and review after 2 weeks. If free-tier users average >200K tokens/day, consider tightening plan-chat cap (20/day) or introducing server-side semantic edit (AI says "change day 3 breakfast to oats" → server mutates canonical JSON). Not a launch blocker.
 
 ---
 
@@ -593,10 +617,46 @@ Use this section to log session-by-session observations: what was completed, wha
 - No code changes yet; plan document updated and ready for Phase 0.
 - Ready to begin execution on user confirmation.
 
+### 2026-04-19 — rev2.1 second-review patch
+- Applied 5 critical pre-implementation fixes from independent review:
+  1. `hasViewedFullPlan` resets on every new snapshot (4.2)
+  2. `plan_finalize` is cosmetic; server authoritatively promotes on user action (4.4)
+  3. Drift detection has soft/hard tiers; allergies are hard-stop (4.8)
+  4. Daily cap uses user's local midnight, not UTC (4.7)
+  5. Added Appendix A — authoritative 13 onboarding task registry
+- Remaining review items logged as "Deferred to implementation phases" in Section 7. These are implementation decisions, not design decisions — will be resolved in code.
+- Reviewer's meta-advice accepted: no rev3. Moving to Phase 0.
+
 ### 2026-04-19 — rev1 initial draft
 - Master plan first written after user clarifications (A–F answers).
 - Pre-review version. Superseded by rev2.
 
 ---
 
-_Last updated: 2026-04-19 by Claude (rev2 post-review)._
+## Appendix A — Onboarding task registry
+
+Canonical list. Phases reference this when building `TASK_REQUIREMENTS`, the handoff cards, and the prerequisites checker. Keys match `src/services/onboarding-tasks.service.ts`.
+
+| Key | Title (TR) | Required fields (server validates completion) | Critical for plan? |
+|---|---|---|---|
+| `introduce_yourself` | Kendini tanıt | `profiles.height_cm`, `weight_kg`, `birth_year`, `gender` | ✅ (diet + workout) |
+| `set_goal` | Hedefini belirle | `goals.goal_type` (active row); `target_weight_kg` optional | ✅ (diet + workout) |
+| `daily_routine` | Günlük rutin | `profiles.occupation` OR `work_start` | ⬜ enrichment |
+| `eating_habits` | Beslenme alışkanlıkları | `profiles.eating_out_frequency` OR `meal_count_preference` | ⬜ enrichment (diet) |
+| `allergies` | Alerji ve hassasiyetler | `food_preferences` has ≥1 row with `is_allergen=true` OR explicit "no allergy" flag | ✅ (diet — safety) |
+| `kitchen_logistics` | Mutfak imkânları | `profiles.kitchen_equipment` OR `meal_prep_time` | ⬜ enrichment (diet) |
+| `exercise_history` | Spor geçmişi | `profiles.training_experience` OR `exercise_history` | ✅ (workout) |
+| `health_history` | Sağlık geçmişi | `health_events` has ≥1 row (including explicit "no condition") | ✅ (both — safety) |
+| `weight_history` | Kilo geçmişi | `profiles.previous_diets` non-null | ⬜ enrichment |
+| `lab_values` | Kan tahlilleri | `lab_values` has ≥1 row OR user dismissed | ⬜ enrichment |
+| `sleep_patterns` | Uyku düzeni | `profiles.sleep_time` AND `sleep_quality` | ⬜ enrichment |
+| `stress_motivation` | Stres ve motivasyon | `profiles.stress_level` OR `motivation_source` | ⬜ enrichment |
+| `home_environment` | Ev ve çevre | `profiles.household_cooking` | ⬜ enrichment |
+
+"Critical for plan?" column drives the CTA-disabled state on plan screens. MVP (as decided in §4.5) is just `introduce_yourself` + `set_goal`. The other ✅ tasks are strongly-recommended weak spots surfaced as suggestion chips.
+
+Any task not in this table is invalid — server-side `task_completion` validation must reject unknown keys, and client-side `next_suggestions` whitelist must drop them.
+
+---
+
+_Last updated: 2026-04-19 by Claude (rev2.1 patch, heading to Phase 0)._
