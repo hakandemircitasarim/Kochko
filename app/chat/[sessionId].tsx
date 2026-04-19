@@ -1008,6 +1008,23 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
 
+  // Detect which silent actions this message triggered (for visual badges)
+  const allActions = [...(message.actions ?? []), ...(message.actions_executed ?? [])];
+  const savedBadges: { icon: string; label: string; color: string }[] = [];
+  const seen = new Set<string>();
+  for (const a of allActions) {
+    if (seen.has(a.type)) continue;
+    seen.add(a.type);
+    if (a.type === 'profile_update') savedBadges.push({ icon: 'person-circle-outline', label: 'Profil güncellendi', color: '#1D9E75' });
+    else if (a.type === 'meal_log') savedBadges.push({ icon: 'restaurant-outline', label: 'Öğün kaydedildi', color: '#EF9F27' });
+    else if (a.type === 'weight_log') savedBadges.push({ icon: 'scale-outline', label: 'Tartı kaydedildi', color: '#E91E63' });
+    else if (a.type === 'water_log') savedBadges.push({ icon: 'water-outline', label: 'Su kaydedildi', color: '#2F80ED' });
+    else if (a.type === 'sleep_log') savedBadges.push({ icon: 'moon-outline', label: 'Uyku kaydedildi', color: '#7F77DD' });
+    else if (a.type === 'workout_log') savedBadges.push({ icon: 'fitness-outline', label: 'Antrenman kaydedildi', color: '#22C55E' });
+    else if (a.type === 'supplement_log') savedBadges.push({ icon: 'medical-outline', label: 'Takviye kaydedildi', color: '#14B8A6' });
+    else if (a.type === 'goal_suggestion') savedBadges.push({ icon: 'flag-outline', label: 'Hedef eklendi', color: '#F59E0B' });
+  }
+
   return (
     <View style={{ marginBottom: SPACING.sm }}>
       <View style={{
@@ -1025,6 +1042,26 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         <Text style={{ color: isUser ? '#fff' : colors.text, fontSize: 13, lineHeight: 20 }}>
           {message.content}
         </Text>
+
+        {/* Silent action badges (profile update, meal log, etc.) — replaces verbal "Kaydettim" */}
+        {!isUser && savedBadges.length > 0 && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm }}>
+            {savedBadges.map((b) => (
+              <View
+                key={b.label}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 4,
+                  backgroundColor: b.color + '18',
+                  borderRadius: 999,
+                  paddingHorizontal: 8, paddingVertical: 3,
+                }}
+              >
+                <Ionicons name={b.icon as any} size={12} color={b.color} />
+                <Text style={{ color: b.color, fontSize: 10, fontWeight: '600' }}>{b.label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Inline rich content for AI responses (Spec 5.20 + 5.34 macro ring) */}
         {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
