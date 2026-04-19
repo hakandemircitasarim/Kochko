@@ -62,12 +62,12 @@ export default function CoachMemoryScreen() {
     const [result, profileResult, goalResult] = await Promise.all([
       getAISummaryForReview(user.id),
       supabase.from('profiles').select('menstrual_tracking').eq('id', user.id).maybeSingle(),
-      supabase.from('goals').select('goal_type, target_weight_kg, weekly_rate').eq('user_id', user.id).eq('is_active', true).maybeSingle(),
+      supabase.from('goals').select('goal_type, target_weight_kg, weekly_rate').eq('user_id', user.id).eq('is_active', true).limit(1),
     ]);
 
     setData(result);
     setMenstrualTracking(Boolean(profileResult.data?.menstrual_tracking));
-    setActiveGoal(goalResult.data as typeof activeGoal);
+    setActiveGoal((goalResult.data as { goal_type?: string; target_weight_kg?: number; weekly_rate?: number }[] | null)?.[0] ?? null);
     // Make sure profile store is loaded too
     if (!profile) await fetchProfile(user.id);
 

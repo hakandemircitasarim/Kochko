@@ -427,6 +427,12 @@ serve(async (req: Request) => {
     assistantMessage = cleanMessage;
 
     // Fallback: if AI didn't produce actions but user gave profile info, extract manually
+    // Post-process: strip verbal save acknowledgements that keep slipping past the
+    // prompt rules. These phrases are explicitly banned; we find and remove them
+    // deterministically so the user never sees them even when the model ignores
+    // instructions. Matches at sentence boundaries to avoid mid-word damage.
+    assistantMessage = stripVerbalAcknowledgements(assistantMessage);
+
     // Regex fallback: always run, even when AI emitted actions, to fill in fields
     // the model might have skipped (target_weight_kg, goal_type, motivation_source
     // are the common misses). Existing action fields take precedence.
@@ -665,6 +671,34 @@ function extractActions(text: string): { cleanMessage: string; actions: Record<s
 }
 
 /** Fallback: extract profile data from user message if AI didn't produce actions */
+/**
+ * Strip verbal "I saved X" acknowledgements the model keeps emitting despite
+ * prompt rules. The UI shows save badges; saying them in text is clutter.
+ * Works by removing whole sentences that match any of the banned phrases.
+ * Conservative: only strips when the phrase starts a sentence fragment or
+ * follows a sentence boundary, to avoid nuking unrelated text.
+ */
+function stripVerbalAcknowledgements(text: string): string {
+  const patterns: RegExp[] = [
+    // "Hedef kilonu kaydettim.", "Boyunu kaydettim." (X'ini/ni/nu/u kaydettim)
+    /(?:^|(?<=[.!?\n]\s*))[A-Za-zÇĞİÖŞÜçğıöşü][^.!?\n]*?kaydett(?:i|i[mk]|ik)\.?\s*/gi,
+    // "Aktivite seviyeni öğrendim.", "Yaşını öğrendim, teşekkürler."
+    /(?:^|(?<=[.!?\n]\s*))[A-Za-zÇĞİÖŞÜçğıöşü][^.!?\n]*?öğren(?:di|dim|dik)[^.!?\n]*?(?:\.|,\s*teşekkür[^.!?\n]*?\.)\s*/gi,
+    // "Profilini güncelledim."
+    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?profili[^.!?\n]*?güncell[^.!?\n]*?\.\s*/gi,
+    // "Not aldım.", "Not ettim."
+    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?not\s*(?:aldı[mk]|etti[mk])[^.!?\n]*?\.\s*/gi,
+    // "Hedefini anladım."
+    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?anladı[mk][^.!?\n]*?\.\s*/gi,
+    // "Bilgilerini aldım."
+    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?bilgi(?:leri|ni)[^.!?\n]*?aldı[mk][^.!?\n]*?\.\s*/gi,
+  ];
+  let out = text;
+  for (const p of patterns) out = out.replace(p, '');
+  // Collapse excessive whitespace left by removals.
+  return out.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<string, unknown> | null {
   const result: Record<string, unknown> = {};
   const lower = msg.toLocaleLowerCase('tr');

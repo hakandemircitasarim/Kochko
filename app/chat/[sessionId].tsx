@@ -663,7 +663,13 @@ export default function SessionDetailScreen() {
     );
   }
 
-  const sendDisabled = (!input.trim() && !photo) || sending;
+  // Task chat lock: once the server-validated task_completion arrives on any
+  // message in this session, the chat is "closed". Composer locks, user can
+  // only proceed by tapping a next-task card. Prevents the model from drifting
+  // into other topics after the session has logically ended.
+  const taskSessionClosed = !!taskModeHint && messages.some(m => (m as UIMessage).taskCompletion?.completed);
+
+  const sendDisabled = (!input.trim() && !photo) || sending || taskSessionClosed;
 
   return (
     <KeyboardAvoidingView
@@ -696,7 +702,7 @@ export default function SessionDetailScreen() {
       ) : (
         <FlatList
           ref={listRef}
-          data={messages}
+          data={messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]')))}
           keyExtractor={m => m.id}
           renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} />}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
@@ -858,13 +864,13 @@ export default function SessionDetailScreen() {
           {/* Text input */}
           <TextInput
             style={{
-              flex: 1, color: colors.text, fontSize: 13,
+              flex: 1, color: taskSessionClosed ? colors.textMuted : colors.text, fontSize: 13,
               paddingVertical: 6, maxHeight: 120,
             }}
-            placeholder="Mesajını yaz..."
+            placeholder={taskSessionClosed ? 'Bu konu tamamlandı — yukarıdaki karta dokun' : 'Mesajını yaz...'}
             placeholderTextColor={colors.textMuted}
             value={input} onChangeText={setInput}
-            multiline maxLength={2000} editable={!sending}
+            multiline maxLength={2000} editable={!sending && !taskSessionClosed}
           />
 
           {/* Icon buttons */}
