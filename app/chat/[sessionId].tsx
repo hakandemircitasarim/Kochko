@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -428,6 +428,26 @@ export default function SessionDetailScreen() {
     setInput(text);
   };
 
+  const handleCopyConversation = async () => {
+    if (messages.length === 0) {
+      Alert.alert('Bos sohbet', 'Henuz mesaj yok.');
+      return;
+    }
+    const transcript = messages
+      .map((m) => {
+        const who = m.role === 'user' ? 'BEN' : 'KOCHKO';
+        const text = (m.content ?? '').trim();
+        return text ? `${who}: ${text}` : null;
+      })
+      .filter(Boolean)
+      .join('\n\n');
+    try {
+      await Share.share({ message: transcript });
+    } catch (e) {
+      Alert.alert('Paylasilamadi', 'Sohbet kopyalanirken bir hata olustu.');
+    }
+  };
+
   // QuickSelectButtons handler — user picks an option from AI's inline choices
   const handleQuickSelect = useCallback((option: string) => {
     setInput(option);
@@ -635,11 +655,18 @@ export default function SessionDetailScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {/* Header */}
-      <View style={{ paddingHorizontal: SPACING.xl, paddingTop: Platform.OS === 'web' ? 16 : 60, paddingBottom: SPACING.md, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+      <View style={{ paddingHorizontal: SPACING.xl, paddingTop: Platform.OS === 'web' ? 12 : Math.max(insets.top, 12), paddingBottom: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Kochko</Text>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, flex: 1 }}>Kochko</Text>
+        <TouchableOpacity
+          onPress={handleCopyConversation}
+          style={{ padding: 6, borderRadius: 999, backgroundColor: colors.surfaceLight }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       {/* Messages or empty state */}
@@ -801,7 +828,7 @@ export default function SessionDetailScreen() {
       {/* Input bar */}
       <View style={{
         paddingHorizontal: SPACING.xl, paddingTop: SPACING.sm,
-        paddingBottom: SPACING.sm + (Platform.OS === 'web' || keyboardVisible ? 0 : insets.bottom),
+        paddingBottom: keyboardVisible || Platform.OS === 'web' ? SPACING.sm : Math.max(insets.bottom, SPACING.sm),
         borderTopWidth: 0.5, borderTopColor: colors.border, backgroundColor: colors.background,
       }}>
         <View style={{
