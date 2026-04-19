@@ -427,10 +427,23 @@ serve(async (req: Request) => {
     assistantMessage = cleanMessage;
 
     // Fallback: if AI didn't produce actions but user gave profile info, extract manually
-    if (actions.length === 0 && message) {
-      const profileUpdate = extractProfileFromMessage(message);
-      if (profileUpdate && Object.keys(profileUpdate).length > 0) {
-        actions.push({ type: 'profile_update', ...profileUpdate });
+    // Regex fallback: always run, even when AI emitted actions, to fill in fields
+    // the model might have skipped (target_weight_kg, goal_type, motivation_source
+    // are the common misses). Existing action fields take precedence.
+    if (message) {
+      const regexExtracted = extractProfileFromMessage(message);
+      if (regexExtracted) {
+        const existingProfileAction = actions.find(a => a.type === 'profile_update') as Record<string, unknown> | undefined;
+        if (existingProfileAction) {
+          // Merge: only fill in fields the AI didn't set.
+          for (const [k, v] of Object.entries(regexExtracted)) {
+            if (!(k in existingProfileAction) || existingProfileAction[k] == null) {
+              existingProfileAction[k] = v;
+            }
+          }
+        } else if (Object.keys(regexExtracted).length > 0) {
+          actions.push({ type: 'profile_update', ...regexExtracted });
+        }
       }
     }
 
@@ -447,11 +460,42 @@ serve(async (req: Request) => {
     const { cleanMessage: afterTaskCompletion, completion: rawCompletion } = extractTaskCompletion(assistantMessage);
     assistantMessage = afterTaskCompletion;
 
-    const claimedTaskKey: string | null =
+    let claimedTaskKey: string | null =
       rawCompletion?.completed
       ?? (typeof layer2Updates?.onboarding_task_completed === 'string'
             ? layer2Updates.onboarding_task_completed as string
             : null);
+
+    // Safety net: if the AI forgot to emit the closing tag but clearly produced
+    // a closing statement AND we're in an onboarding task chat, auto-claim
+    // completion. validateTaskCompletion below still gates it on real DB state,
+    // so a premature auto-close can't get through without the fields present.
+    if (!claimedTaskKey && task_mode_hint && typeof task_mode_hint === 'string' && task_mode_hint.startsWith('onboarding_')) {
+      const lowerMsg = assistantMessage.toLocaleLowerCase('tr');
+      const closingSignals = [
+        'yeterli bilgi',
+        'diger kartlar', 'diğer kartlar',
+        'ana sayfa',
+        'profilini tamamla',
+        'bu konuda bilgi aldim', 'bu konuda bilgi aldım',
+      ];
+      const closingDetected = closingSignals.some(s => lowerMsg.includes(s));
+      if (closingDetected) {
+        const topicToTaskKey: Record<string, string> = {
+          intro: 'introduce_yourself', goal: 'set_goal', routine: 'daily_routine',
+          eating: 'eating_habits', allergies: 'allergies', kitchen: 'kitchen_logistics',
+          exercise: 'exercise_history', health: 'health_history', weight_history: 'weight_history',
+          labs: 'lab_values', sleep: 'sleep_patterns', stress: 'stress_motivation',
+          home: 'home_environment',
+        };
+        const topicKey = (task_mode_hint as string).replace('onboarding_', '');
+        const mappedTaskKey = topicToTaskKey[topicKey];
+        if (mappedTaskKey) {
+          claimedTaskKey = mappedTaskKey;
+          console.log(`[task_completion] safety-net auto-claim: ${mappedTaskKey} (AI forgot tag but closing phrase detected)`);
+        }
+      }
+    }
 
     // Debug log for Phase 1 QA — track whether AI emitted task_completion, which path,
     // and what actions were in the response. Helps diagnose missing badges / cards.
@@ -632,11 +676,22 @@ function extractProfileFromMessage(msg: string): Record<string, unknown> | null 
     if (h >= 100 && h <= 250) result.height_cm = h;
   }
 
-  // Weight: "kilom 72", "72 kg", "72 kiloyum"
-  const weightMatch = lower.match(/kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)/);
-  if (weightMatch) {
-    const w = parseFloat(weightMatch[1] ?? weightMatch[2]);
-    if (w >= 30 && w <= 300) result.weight_kg = w;
+  // Target weight: "hedef kilo 90", "hedef kilom 90", "90 kg hedef" — checked BEFORE
+  // plain weight so "hedef kilo 100" isn't misread as current weight.
+  const targetMatch = lower.match(/hedef\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)\s*hedef/);
+  if (targetMatch) {
+    const t = parseFloat(targetMatch[1] ?? targetMatch[2]);
+    if (t >= 30 && t <= 300) result.target_weight_kg = t;
+  }
+
+  // Current weight: "kilom 72", "72 kg", "72 kiloyum" — but not if we just matched it as target.
+  // Prefer "mevcut kilo X" disambiguation when both appear in the same line.
+  const currentMatch = lower.match(/mevcut\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)/);
+  if (currentMatch) {
+    const w = parseFloat(currentMatch[1] ?? currentMatch[2] ?? currentMatch[3]);
+    // Skip if the value matches the target we already extracted, to avoid
+    // double-assigning a single number to both fields.
+    if (w >= 30 && w <= 300 && result.target_weight_kg !== w) result.weight_kg = w;
   }
 
   // Age/birth year: "25 yaşındayım", "yasim 25", "1998 doğumluyum"
@@ -651,9 +706,30 @@ function extractProfileFromMessage(msg: string): Record<string, unknown> | null 
     }
   }
 
-  // Gender: "erkeğim", "kadınım"
+  // Gender
   if (/erkek|male/.test(lower)) result.gender = 'male';
   else if (/kadin|kadın|female/.test(lower)) result.gender = 'female';
+
+  // Goal type from Turkish phrases. Priority: explicit wins; combos (weight AND muscle)
+  // resolve to lose_weight if body mass suggests deficit is the first move.
+  const wantsLose = /kilo\s*(verme|ver\w*)|zayiflama|zayıflama/.test(lower);
+  const wantsMuscle = /kas\s*(kazan|yapma|yapım)|kasl[iı]/.test(lower);
+  const wantsGain = /kilo\s*(alma|al\w*)\s/.test(lower);
+  const wantsHealth = /sagl[iı]kl[iı]\s*(ol|yasa|yaşa|kal)/.test(lower) && !wantsLose && !wantsGain;
+  const wantsCondition = /kondisyon|dayanikl[iı]/.test(lower);
+  if (wantsLose) result.goal_type = 'lose_weight';
+  else if (wantsMuscle && !wantsLose) result.goal_type = 'gain_muscle';
+  else if (wantsGain) result.goal_type = 'gain_weight';
+  else if (wantsHealth) result.goal_type = 'health';
+  else if (wantsCondition) result.goal_type = 'conditioning';
+
+  // Motivation source keywords — captured as free text for motivation_source column.
+  const motivationBits: string[] = [];
+  if (/sagl[iı]k/.test(lower)) motivationBits.push('saglik');
+  if (/gor[uü]n[uü]m|iyi\s*g[oö]z[uü]k/.test(lower)) motivationBits.push('gorunum');
+  if (/enerj/.test(lower)) motivationBits.push('enerji');
+  if (/ozguven|özgüven|kendime\s*g[uü]ven/.test(lower)) motivationBits.push('ozguven');
+  if (motivationBits.length > 0) result.motivation_source = motivationBits.join('_');
 
   return Object.keys(result).length > 0 ? result : null;
 }
