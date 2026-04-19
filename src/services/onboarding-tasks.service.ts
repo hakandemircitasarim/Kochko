@@ -225,3 +225,15 @@ export async function getIncompleteTasks(userId: string, maxCount = 3): Promise<
     return [];
   }
 }
+
+/**
+ * Lookup a single task's display metadata by key. Used by TaskCompletionCard
+ * to render next-suggestion cards after the AI finishes a task.
+ * Returns null for unknown keys (silently drops invalid next_suggestions).
+ */
+export function getTaskByKey(key: string): OnboardingTask | null {
+  const def = ONBOARDING_TASKS.find(t => t.key === key);
+  if (!def) return null;
+  const { checkCompletion, ...rest } = def;
+  return rest;
+}

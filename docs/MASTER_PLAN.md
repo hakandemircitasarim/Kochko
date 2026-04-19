@@ -354,7 +354,7 @@ If prerequisites are unmet, the AI first continues the conversation to gather th
 
 ---
 
-### Phase 1 — Onboarding handoff UX  ⬜ not started
+### Phase 1 — Onboarding handoff UX  ✅ done (2026-04-19)
 
 **Goal:** Task chats close cleanly with next-task suggestions. Silent saves via badges + haptic. Server validates completion.
 
@@ -616,6 +616,18 @@ Use this section to log session-by-session observations: what was completed, wha
 - Received second-opinion review, integrated 13 decisions (see table above).
 - No code changes yet; plan document updated and ready for Phase 0.
 - Ready to begin execution on user confirmation.
+
+### 2026-04-19 — Phase 1 complete
+- Edge function parses `<task_completion>` and also treats `<layer2_update>{onboarding_task_completed}` as equivalent. Either path is validated server-side against the task's required fields via `validateTaskCompletion(userId, taskKey)`.
+- Removed the old unvalidated writer in `processLayer2Updates` — the validated handler in the main request flow is now the only code path that writes `ai_summary.onboarding_tasks_completed`.
+- Response body now carries `task_completion: { completed, summary, next_suggestions[] } | null`. Suggestions are whitelisted against `VALID_TASK_KEYS`; if empty, server computes fallback from incomplete tasks.
+- `src/services/chat.service.ts`: `ChatResponse` extended with `task_completion`. New `TaskCompletion` type exported.
+- `src/services/onboarding-tasks.service.ts`: new `getTaskByKey(key)` lookup so the card renders task metadata.
+- `UIMessage.taskCompletion` field set when a server-validated completion arrives in the assistant reply.
+- `TaskCompletionCard` component (end of `[sessionId].tsx`) renders: green summary chip ("Kochko seni tanıdı — ...") + up to 3 tappable next-task cards. Tap creates a new session via `createSession({ title, topicTags })` and navigates with the right `taskModeHint`.
+- Brief `Vibration.vibrate(30)` on card mount (RN core, no native rebuild). Full haptic via expo-haptics deferred (noted in Section 7 deferred list).
+- `sanitizeAssistantText` belt-and-suspenders stripper added for `<actions>`, `<layer2_update>`, `<task_completion>`, `<plan_snapshot>`, `<plan_finalize>`, `<reasoning>`, `<navigate_to>` — even if server forgets, user never sees raw XML.
+- **Next session: Phase 2** — diet plan screen. See §5 Phase 2.
 
 ### 2026-04-19 — Phase 0 complete
 - Migrations 030 (plan versioning), 031 (profile preferences), 032 (free-tier counters) applied to remote.
