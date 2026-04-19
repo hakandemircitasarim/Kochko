@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAchievements, type Achievement } from '@/services/achievements.service';
 import { shareMilestone } from '@/services/sharing.service';
 import { Card } from '@/components/ui/Card';
@@ -12,6 +13,7 @@ const TYPE_ICONS: Record<string, string> = {
 };
 
 export default function AchievementsScreen() {
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Achievement[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +24,7 @@ export default function AchievementsScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Basarimlar</Text>
 
       {items.length === 0 ? (

@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
@@ -25,6 +26,7 @@ interface MonthlyAIReport {
 }
 
 export default function MonthlyReportScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [loading, setLoading] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState<Record<string, unknown>[]>([]);
@@ -99,7 +101,7 @@ export default function MonthlyReportScreen() {
   const weightChange: number | null = firstWeight && lastWeight ? lastWeight - firstWeight : null;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Aylik Rapor</Text>
 
       {/* Overall Compliance */}

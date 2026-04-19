@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getHealthEvents, addHealthEvent, type HealthEvent } from '@/services/health.service';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -11,6 +12,7 @@ const EVENT_TYPES = ['surgery', 'injury', 'illness', 'medication', 'allergy', 'o
 const EVENT_LABELS: Record<string, string> = { surgery: 'Ameliyat', injury: 'Sakatlik', illness: 'Hastalik', medication: 'Ilac', allergy: 'Alerji', other: 'Diger' };
 
 export default function HealthEventsScreen() {
+  const insets = useSafeAreaInsets();
   const [events, setEvents] = useState<HealthEvent[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [type, setType] = useState('surgery');
@@ -33,7 +35,7 @@ export default function HealthEventsScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Saglik Gecmisi</Text>
 
       <Button title={showAdd ? 'Iptal' : 'Yeni Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />

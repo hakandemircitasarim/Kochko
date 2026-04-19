@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import {
   loadSessions, createSession, deleteSession, closeSession,
@@ -35,6 +36,7 @@ function formatRelativeDate(dateStr: string): string {
 
 export default function SessionListScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { prefill, openCamera } = useLocalSearchParams<{ prefill?: string; openCamera?: string }>();
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
@@ -139,7 +141,7 @@ export default function SessionListScreen() {
       {/* Header */}
       <View style={{
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: SPACING.xl, paddingTop: Platform.OS === 'web' ? 16 : 60, paddingBottom: SPACING.md,
+        paddingHorizontal: SPACING.xl, paddingTop: Platform.OS === 'web' ? 16 : insets.top + 12, paddingBottom: SPACING.md,
       }}>
         <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Kochko</Text>
         <TouchableOpacity
@@ -184,7 +186,7 @@ export default function SessionListScreen() {
           data={sessions}
           keyExtractor={s => s.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchSessions} tintColor={colors.primary} />}
-          contentContainerStyle={{ paddingHorizontal: SPACING.xl, paddingBottom: 100 }}
+          contentContainerStyle={{ paddingHorizontal: SPACING.xl, paddingBottom: 100 + insets.bottom }}
           ListHeaderComponent={tasks.length > 0 ? (
             <View style={{ marginBottom: SPACING.xxl }}>
               <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>

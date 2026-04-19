@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { loadInsights } from '@/services/chat.service';
@@ -24,6 +25,7 @@ const GOAL_LABELS: Record<string, string> = {
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
   const { profile, fetch: fetchProfile } = useProfileStore();
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
@@ -45,9 +47,9 @@ export default function ProfileScreen() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 120 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 120 + insets.bottom }}>
       {/* 5.1 User card */}
-      <View style={{ alignItems: 'center', marginBottom: SPACING.xxl, marginTop: Platform.OS === 'web' ? 16 : 40 }}>
+      <View style={{ alignItems: 'center', marginBottom: SPACING.xxl, marginTop: Platform.OS === 'web' ? 16 : 20 }}>
         <View style={{
           width: 64, height: 64, borderRadius: 32,
           backgroundColor: colors.primary + '20',

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { getLabValues, addLabValue, COMMON_LAB_PARAMS, type LabValue } from '@/services/health.service';
 import { Button } from '@/components/ui/Button';
@@ -8,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function LabValuesScreen() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [entries, setEntries] = useState<LabValue[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -42,7 +44,7 @@ export default function LabValuesScreen() {
   }, {});
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Lab Degerleri</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yasam tarzi takibi icindir. Tibbi yorum icin doktorunuza danisin.</Text>
 

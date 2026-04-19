@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
@@ -44,6 +45,7 @@ interface PlanData {
 
 export default function DietPlanScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
@@ -101,7 +103,7 @@ export default function DietPlanScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={{ padding: SPACING.xl, paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }}>
         {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xxl }}>
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: SPACING.md }}>
