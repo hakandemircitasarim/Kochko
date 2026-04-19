@@ -86,7 +86,45 @@ Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylas
  {"type": "mood_log", "score": 1-5, "note": "metin"},
  {"type": "supplement_log", "name": "supplement adi", "amount": "miktar"},
  {"type": "commitment", "text": "taahhut", "follow_up_days": sayi},
- {"type": "profile_update", "height_cm": sayi, "weight_kg": sayi, "birth_year": sayi, "gender": "male|female|other", "target_weight_kg": sayi, "goal_type": "lose_weight|gain_weight|gain_muscle|health|maintain"},
+ {"type": "profile_update",
+   // Temel demografi
+   "height_cm": sayi, "weight_kg": sayi, "birth_year": sayi, "gender": "male|female|other", "display_name": "adi",
+   // Hedef (goal_type her zaman kaydedilir — target_weight_kg opsiyonel, kullanici sonra soyler)
+   "goal_type": "lose_weight|gain_weight|gain_muscle|health|maintain|conditioning", "target_weight_kg": sayi,
+   // Program / yasam tarzi
+   "occupation": "meslek", "work_start": "HH:MM", "work_end": "HH:MM",
+   "sleep_time": "HH:MM", "wake_time": "HH:MM",
+   "activity_level": "sedentary|light|moderate|active|very_active",
+   "meal_count_preference": sayi,
+   // Beslenme
+   "cooking_skill": "none|basic|good", "budget_level": "low|medium|high",
+   "diet_mode": "standard|low_carb|keto|high_protein",
+   "dietary_restriction": "vegan|vegetarian|pescatarian|halal|kosher|gluten_free|lactose_free",
+   "eating_out_frequency": "never|rare|weekly|frequent",
+   "fastfood_frequency": "never|rare|weekly|frequent",
+   "skipped_meals": true, "night_eating_habit": true, "emotional_eating": true, "snacking_habit": true,
+   "caffeine_intake": "none|low|moderate|high",
+   // Mutfak
+   "meal_prep_time": "short|medium|long", "kitchen_equipment": ["oven","airfryer","blender","stove"],
+   "household_cooking": "self|partner|parent|shared", "household_diet_challenge": "aciklama",
+   // Antrenman
+   "training_experience": "none|beginner|intermediate|advanced",
+   "training_style": "cardio|strength|mixed",
+   "equipment_access": "home|gym|both",
+   "exercise_history": "kullanici kendi sozleriyle gecmisi (serbest metin)",
+   "preferred_exercises": ["yuzme","fitness","kosu"],
+   "disliked_exercises": ["burpees"],
+   "available_training_times": ["sabah","aksam"],
+   // Saglik / yasam
+   "stress_level": "low|moderate|high", "stress_sources": "aciklama",
+   "sleep_quality": "poor|ok|good",
+   "digestive_issues": "reflu/ibs/siskinlik vb",
+   "hormone_conditions": "tiroid/PCOS/insulin_direnci vb",
+   "previous_diets": "daha once denenenler (serbest metin)",
+   "motivation_source": "saglik/gorunum/enerji/..", "biggest_challenge": "aciklama",
+   // Vucut olculeri (opsiyonel)
+   "body_fat_pct": sayi, "waist_cm": sayi, "hip_cm": sayi
+ },
  {"type": "venue_log", "venue_name": "mekan", "items": [{"name": "yemek", "calories": sayi}]},
  {"type": "plateau_strategy_apply", "strategy_id": "calorie_cycle|refeed|tdee_recalc|maintenance_break|training_change"},
  {"type": "maintenance_start"},
