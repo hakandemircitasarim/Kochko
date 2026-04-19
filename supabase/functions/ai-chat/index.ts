@@ -969,14 +969,32 @@ async function executeActions(
             await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
             feedback.push('Profil güncellendi');
           }
-          if (action.target_weight_kg) {
-            await supabaseAdmin.from('goals').insert({
-              user_id: userId, goal_type: (action.goal_type as string) ?? 'lose_weight',
-              target_weight_kg: action.target_weight_kg as number,
-              target_weeks: 12, priority: 'sustainable', restriction_mode: 'sustainable',
-              weekly_rate: 0.5, is_active: true,
-            });
-            feedback.push('Hedef belirlendi');
+          // Goal persistence: save even without target_weight_kg — user may give goal type
+          // ("kilo vermek istiyorum") before specifying a target. Upsert on active goal so
+          // adding the target later just updates the same row.
+          if (action.goal_type || action.target_weight_kg) {
+            const { data: existing } = await supabaseAdmin
+              .from('goals')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('is_active', true)
+              .maybeSingle();
+            const goalPatch: Record<string, unknown> = {
+              user_id: userId,
+              goal_type: (action.goal_type as string) ?? 'lose_weight',
+              is_active: true,
+            };
+            if (action.target_weight_kg) goalPatch.target_weight_kg = action.target_weight_kg;
+            if (!existing) {
+              goalPatch.target_weeks = 12;
+              goalPatch.priority = 'sustainable';
+              goalPatch.restriction_mode = 'sustainable';
+              goalPatch.weekly_rate = 0.5;
+              await supabaseAdmin.from('goals').insert(goalPatch);
+            } else {
+              await supabaseAdmin.from('goals').update(goalPatch).eq('id', existing.id);
+            }
+            feedback.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
           }
           break;
         }
