@@ -38,8 +38,13 @@ export default function ProfileScreen() {
     fetchProfile(user.id);
     loadInsights().then((data) => { if (!cancelled) setSummary(data); });
     calculateStreak(user.id).then((s) => { if (!cancelled) setStreak(s); });
-    supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1).maybeSingle()
-      .then(({ data }) => { if (!cancelled && data) setGoal(data as typeof goal); });
+    supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1)
+      .then(({ data }) => {
+        if (!cancelled) {
+          const row = (data as { goal_type: string; target_weight_kg: number | null }[] | null)?.[0] ?? null;
+          setGoal(row);
+        }
+      });
     return () => { cancelled = true; };
   }, [user?.id]);
 
