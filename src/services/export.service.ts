@@ -21,7 +21,7 @@ export async function exportJSON(): Promise<void> {
     supabase.from('daily_reports').select('*').order('date'),
     supabase.from('lab_values').select('*').order('measured_at'),
     supabase.from('food_preferences').select('*'),
-    supabase.from('ai_summary').select('*').single(),
+    supabase.from('ai_summary').select('*').maybeSingle(),
     supabase.from('saved_recipes').select('*'),
     supabase.from('challenges').select('*'),
     supabase.from('achievements').select('*'),

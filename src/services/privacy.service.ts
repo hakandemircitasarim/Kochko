@@ -74,7 +74,7 @@ export async function getAISummaryForReview(userId: string): Promise<{
       learned_meal_times, seasonal_notes, supplement_notes, features_introduced
     `)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!data) return null;
 
@@ -115,7 +115,7 @@ export async function deleteAISummaryNote(
     .from('ai_summary')
     .select(field)
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   if (!data) return;
 
