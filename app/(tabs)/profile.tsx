@@ -93,7 +93,7 @@ export default function ProfileScreen() {
       {/* 5.6 Data & Privacy section */}
       <SectionTitle label="Veri & gizlilik" colors={colors} />
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
-        <MenuRow icon="eye-outline" color={colors.purple} label="AI hakkımda ne biliyor?" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
+        <MenuRow icon="eye-outline" color={colors.purple} label="Kochko'nun Senin Hakkında Bildikleri" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
         <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi dışa aktar" onPress={() => router.push('/settings/health-export')} colors={colors} />
         <MenuRow icon="create-outline" color={colors.primary} label="Profil düzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
         <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tüm ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} />
