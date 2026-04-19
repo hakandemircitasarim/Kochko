@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Vibration,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,9 +24,10 @@ import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
   sendMessageToSession, sendPhotoToSession, loadSessionMessages,
-  reopenSession,
+  reopenSession, createSession,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
+import { getTaskByKey } from '@/services/onboarding-tasks.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { saveRecipe, type RecipeIngredient } from '@/services/recipes.service';
 import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
@@ -70,6 +71,7 @@ interface UIMessage extends ChatMessage {
   hasLowConfidenceVerification?: boolean;
   personaDetected?: string | null;
   recipeSaved?: boolean;
+  taskCompletion?: { completed: string; summary: string; next_suggestions: string[] } | null;
 }
 
 function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
@@ -82,6 +84,20 @@ function parseSimulationData(content: string): { cleanContent: string; data: Sim
   } catch {
     return { cleanContent: content, data: null };
   }
+}
+
+// Defensive sanitizer — belt-and-suspenders for any structured XML block that somehow
+// slipped through server-side stripping. Never render these in the user-facing bubble.
+function sanitizeAssistantText(text: string): string {
+  return text
+    .replace(/<actions>[\s\S]*?<\/actions>/g, '')
+    .replace(/<layer2_update>[\s\S]*?<\/layer2_update>/g, '')
+    .replace(/<task_completion>[\s\S]*?<\/task_completion>/g, '')
+    .replace(/<plan_snapshot>[\s\S]*?<\/plan_snapshot>/g, '')
+    .replace(/<plan_finalize>[\s\S]*?<\/plan_finalize>/g, '')
+    .replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '')
+    .replace(/<navigate_to>[\s\S]*?<\/navigate_to>/g, '')
+    .trim();
 }
 
 function parseQuickSelect(content: string): { cleanContent: string; options: string[] | null } {
@@ -389,6 +405,7 @@ export default function SessionDetailScreen() {
         hasPlanSuggestion,
         hasLowConfidenceVerification,
         personaDetected,
+        taskCompletion: data.task_completion ?? null,
       };
       setMessages(prev => [...prev, reply]);
 
@@ -1038,9 +1055,9 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         borderBottomLeftRadius: isUser ? 16 : 4,
         ...(isUser ? {} : { borderWidth: 0.5, borderColor: colors.border }),
       }}>
-        {/* Message content */}
+        {/* Message content (strip any leaked structured XML tags defensively) */}
         <Text style={{ color: isUser ? '#fff' : colors.text, fontSize: 13, lineHeight: 20 }}>
-          {message.content}
+          {sanitizeAssistantText(message.content)}
         </Text>
 
         {/* Silent action badges (profile update, meal log, etc.) — replaces verbal "Kaydettim" */}
@@ -1061,6 +1078,14 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
               </View>
             ))}
           </View>
+        )}
+
+        {/* Onboarding task handoff — MASTER_PLAN §4.1 */}
+        {!isUser && message.taskCompletion && (
+          <TaskCompletionCard
+            taskCompletion={message.taskCompletion}
+            colors={colors}
+          />
         )}
 
         {/* Inline rich content for AI responses (Spec 5.20 + 5.34 macro ring) */}
@@ -1160,6 +1185,97 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
               Neden bu öneriyi yaptın?
             </Text>
           </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// TaskCompletionCard — MASTER_PLAN §4.1
+// Shows the summary chip + up to 3 next-task cards after a task chat
+// completes its checklist (server-validated task_completion).
+// ═══════════════════════════════════════════════════════════════════
+
+function TaskCompletionCard({
+  taskCompletion,
+  colors,
+}: {
+  taskCompletion: { completed: string; summary: string; next_suggestions: string[] };
+  colors: any;
+}) {
+  // Brief vibration on mount — subtle cue that the task is done (per §4.2 principle 2).
+  // Uses RN core Vibration (no native rebuild needed).
+  useEffect(() => {
+    try { Vibration.vibrate(30); } catch { /* some devices lack vibrator, silent */ }
+  }, []);
+
+  const suggestionTasks = taskCompletion.next_suggestions
+    .map(getTaskByKey)
+    .filter((t): t is NonNullable<ReturnType<typeof getTaskByKey>> => t !== null)
+    .slice(0, 3);
+
+  const handleTap = async (task: NonNullable<ReturnType<typeof getTaskByKey>>) => {
+    const id = await createSession({ title: task.title, topicTags: [task.key] });
+    if (id) {
+      router.push({
+        pathname: `/chat/${id}`,
+        params: { prefill: task.prefillMessage, taskModeHint: task.taskModeHint },
+      });
+    }
+  };
+
+  return (
+    <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
+      {/* Summary chip */}
+      <View style={{
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        alignSelf: 'flex-start',
+        backgroundColor: '#1D9E7518',
+        borderRadius: 999,
+        paddingHorizontal: 10, paddingVertical: 5,
+      }}>
+        <Ionicons name="checkmark-circle" size={14} color="#1D9E75" />
+        <Text style={{ color: '#1D9E75', fontSize: 11, fontWeight: '700' }}>
+          {taskCompletion.summary ? `Kochko seni tanıdı — ${taskCompletion.summary}` : 'Bu konu tamamlandı'}
+        </Text>
+      </View>
+
+      {/* Next-task suggestion cards */}
+      {suggestionTasks.length > 0 && (
+        <View style={{ gap: 6, marginTop: 4 }}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+            Devam edebileceğin konular
+          </Text>
+          {suggestionTasks.map((task) => (
+            <TouchableOpacity
+              key={task.key}
+              onPress={() => handleTap(task)}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+                backgroundColor: colors.background,
+                borderWidth: 0.5, borderColor: colors.border,
+                borderRadius: 12,
+                paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+              }}
+            >
+              <View style={{
+                width: 28, height: 28, borderRadius: 8,
+                backgroundColor: task.color + '20',
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Ionicons name={task.icon as any} size={14} color={task.color} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>{task.title}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }} numberOfLines={1}>
+                  {task.description}
+                </Text>
+              </View>
+              <Ionicons name="arrow-forward" size={14} color={colors.textMuted} />
+            </TouchableOpacity>
+          ))}
         </View>
       )}
     </View>

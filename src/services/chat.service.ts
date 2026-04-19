@@ -11,10 +11,17 @@ export interface ChatMessage {
   actions_executed?: { type: string }[] | null;
 }
 
+export interface TaskCompletion {
+  completed: string;
+  summary: string;
+  next_suggestions: string[];
+}
+
 export interface ChatResponse {
   message: string;
   actions: { type: string; feedback: string | null }[];
   task_mode: string;
+  task_completion?: TaskCompletion | null;
 }
 
 const CACHE_KEY = '@kochko_chat_cache';

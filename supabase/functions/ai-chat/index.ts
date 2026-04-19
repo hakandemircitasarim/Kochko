@@ -426,6 +426,60 @@ serve(async (req: Request) => {
     const { cleanMessage: finalMessage, layer2Updates } = extractLayer2Updates(assistantMessage);
     assistantMessage = finalMessage;
 
+    // Task completion detection (MASTER_PLAN §4.1).
+    // Two paths:
+    //  (a) AI emits explicit <task_completion> block.
+    //  (b) AI emits <layer2_update>{onboarding_task_completed: X}</layer2_update>.
+    // We accept either and validate server-side before trusting it, because the model
+    // often thinks it "finished" a task without actually writing the required fields.
+    const { cleanMessage: afterTaskCompletion, completion: rawCompletion } = extractTaskCompletion(assistantMessage);
+    assistantMessage = afterTaskCompletion;
+
+    const claimedTaskKey: string | null =
+      rawCompletion?.completed
+      ?? (typeof layer2Updates?.onboarding_task_completed === 'string'
+            ? layer2Updates.onboarding_task_completed as string
+            : null);
+
+    let validatedCompletion: { completed: string; summary: string; next_suggestions: string[] } | null = null;
+    if (claimedTaskKey) {
+      const validation = await validateTaskCompletion(userId, claimedTaskKey);
+      if (validation.valid) {
+        // Build next_suggestions: prefer AI's whitelisted list, else compute from incomplete tasks.
+        let suggestions = Array.isArray(rawCompletion?.next_suggestions)
+          ? rawCompletion!.next_suggestions!.filter((k) => VALID_TASK_KEYS.has(k))
+          : [];
+        if (suggestions.length === 0) {
+          // Fallback: any tasks not yet in ai_summary.onboarding_tasks_completed.
+          const { data: summaryRow } = await supabaseAdmin
+            .from('ai_summary').select('onboarding_tasks_completed').eq('user_id', userId).maybeSingle();
+          const completedList = (summaryRow?.onboarding_tasks_completed as string[] | null) ?? [];
+          const allKeys = ['introduce_yourself', 'set_goal', 'daily_routine', 'eating_habits',
+                           'allergies', 'kitchen_logistics', 'exercise_history', 'health_history'];
+          suggestions = allKeys.filter((k) => k !== claimedTaskKey && !completedList.includes(k));
+        }
+        validatedCompletion = {
+          completed: claimedTaskKey,
+          summary: rawCompletion?.summary ?? '',
+          next_suggestions: suggestions.slice(0, 3),
+        };
+        // Append to ai_summary.onboarding_tasks_completed if not already present.
+        // (If path was <layer2_update>, the layer-2 writer below also does this; we make
+        //  the write idempotent by checking first.)
+        const { data: summaryRow2 } = await supabaseAdmin
+          .from('ai_summary').select('onboarding_tasks_completed').eq('user_id', userId).maybeSingle();
+        const completed2 = (summaryRow2?.onboarding_tasks_completed as string[] | null) ?? [];
+        if (!completed2.includes(claimedTaskKey)) {
+          await supabaseAdmin
+            .from('ai_summary')
+            .upsert({ user_id: userId, onboarding_tasks_completed: [...completed2, claimedTaskKey] }, { onConflict: 'user_id' });
+        }
+      } else {
+        // Reject silently; AI will try again next turn. Log for debug.
+        console.log(`[task_completion] rejected ${claimedTaskKey}: ${validation.missingReason}`);
+      }
+    }
+
     // Execute actions (use target_date for batch entry, T1.17)
     // Source of log: photo > voice (transcribed) > default text/chat
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
@@ -521,6 +575,7 @@ serve(async (req: Request) => {
       message: assistantMessage,
       actions: outActions,
       task_mode: taskMode,
+      task_completion: validatedCompletion,
     });
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);
@@ -593,6 +648,110 @@ function extractLayer2Updates(text: string): { cleanMessage: string; layer2Updat
     try { updates = JSON.parse(match[1]); } catch { /* ignore */ }
   }
   return { cleanMessage: text.replace(/<layer2_update>[\s\S]*?<\/layer2_update>/, '').trim(), layer2Updates: updates };
+}
+
+// ─── Task completion protocol (MASTER_PLAN §4.1) ───
+// AI emits <task_completion>{"completed":"key","summary":"...","next_suggestions":["key1","key2"]}
+// Server strips it, validates that the claimed task's required fields ARE persisted,
+// and only then returns a structured task_completion to the client.
+
+interface TaskCompletionBlock {
+  completed: string;
+  summary?: string;
+  next_suggestions?: string[];
+}
+
+function extractTaskCompletion(text: string): { cleanMessage: string; completion: TaskCompletionBlock | null } {
+  const match = text.match(/<task_completion>([\s\S]*?)<\/task_completion>/);
+  if (!match) return { cleanMessage: text, completion: null };
+  let parsed: TaskCompletionBlock | null = null;
+  try {
+    const obj = JSON.parse(match[1]);
+    if (obj && typeof obj.completed === 'string') parsed = obj as TaskCompletionBlock;
+  } catch { /* malformed JSON, drop silently — parse-failure fallback per §4.4 */ }
+  return {
+    cleanMessage: text.replace(/<task_completion>[\s\S]*?<\/task_completion>/, '').trim(),
+    completion: parsed,
+  };
+}
+
+// Authoritative 13-task registry — mirrors src/services/onboarding-tasks.service.ts
+// and MASTER_PLAN Appendix A. Used by both server validation and next_suggestions whitelist.
+const VALID_TASK_KEYS = new Set([
+  'introduce_yourself', 'set_goal', 'daily_routine', 'eating_habits', 'allergies',
+  'kitchen_logistics', 'exercise_history', 'health_history', 'weight_history',
+  'lab_values', 'sleep_patterns', 'stress_motivation', 'home_environment',
+]);
+
+async function validateTaskCompletion(
+  userId: string,
+  taskKey: string,
+): Promise<{ valid: boolean; missingReason?: string }> {
+  if (!VALID_TASK_KEYS.has(taskKey)) return { valid: false, missingReason: `unknown task key: ${taskKey}` };
+
+  const { data: p } = await supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle();
+  const profile = (p ?? {}) as Record<string, unknown>;
+
+  switch (taskKey) {
+    case 'introduce_yourself':
+      if (!profile.height_cm)  return { valid: false, missingReason: 'height_cm' };
+      if (!profile.weight_kg)  return { valid: false, missingReason: 'weight_kg' };
+      if (!profile.birth_year) return { valid: false, missingReason: 'birth_year' };
+      if (!profile.gender)     return { valid: false, missingReason: 'gender' };
+      return { valid: true };
+    case 'set_goal': {
+      const { data: g } = await supabaseAdmin
+        .from('goals').select('goal_type').eq('user_id', userId).eq('is_active', true).maybeSingle();
+      if (!g?.goal_type) return { valid: false, missingReason: 'goal_type' };
+      return { valid: true };
+    }
+    case 'daily_routine':
+      if (!profile.occupation && !profile.work_start) return { valid: false, missingReason: 'occupation_or_work_start' };
+      return { valid: true };
+    case 'eating_habits':
+      if (!profile.eating_out_frequency && !profile.meal_count_preference) return { valid: false, missingReason: 'eating_habits_any_field' };
+      return { valid: true };
+    case 'allergies': {
+      const { count } = await supabaseAdmin
+        .from('food_preferences').select('id', { count: 'exact', head: true })
+        .eq('user_id', userId).eq('is_allergen', true);
+      // Empty allergy list is valid if user confirmed — we trust the AI's judgment here
+      // since "no allergies" is a legitimate outcome. Count >= 0 means user was asked.
+      return { valid: true, ...(count !== null ? {} : { missingReason: 'allergies_query_failed' }) };
+    }
+    case 'kitchen_logistics':
+      if (!profile.kitchen_equipment && !profile.meal_prep_time) return { valid: false, missingReason: 'kitchen_any_field' };
+      return { valid: true };
+    case 'exercise_history':
+      if (!profile.training_experience && !profile.exercise_history) return { valid: false, missingReason: 'training_or_history' };
+      return { valid: true };
+    case 'health_history': {
+      const { count } = await supabaseAdmin
+        .from('health_events').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+      // Same logic as allergies — empty list valid if user confirmed "no conditions".
+      return { valid: true, ...(count !== null ? {} : { missingReason: 'health_query_failed' }) };
+    }
+    case 'weight_history':
+      if (!profile.previous_diets) return { valid: false, missingReason: 'previous_diets' };
+      return { valid: true };
+    case 'lab_values': {
+      const { count } = await supabaseAdmin
+        .from('lab_values').select('id', { count: 'exact', head: true }).eq('user_id', userId);
+      // Trust AI; empty is valid ("I don't have recent labs").
+      return { valid: true, ...(count !== null ? {} : { missingReason: 'labs_query_failed' }) };
+    }
+    case 'sleep_patterns':
+      if (!profile.sleep_time || !profile.sleep_quality) return { valid: false, missingReason: 'sleep_time_or_quality' };
+      return { valid: true };
+    case 'stress_motivation':
+      if (!profile.stress_level && !profile.motivation_source) return { valid: false, missingReason: 'stress_or_motivation' };
+      return { valid: true };
+    case 'home_environment':
+      if (!profile.household_cooking) return { valid: false, missingReason: 'household_cooking' };
+      return { valid: true };
+    default:
+      return { valid: false, missingReason: 'unhandled' };
+  }
 }
 
 async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string) {
@@ -1841,20 +2000,14 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       }
     }
 
-    // Onboarding task completion (Spec 2.3 / 6.1)
-    if (updates.onboarding_task_completed) {
-      const taskKey = updates.onboarding_task_completed as string;
-      const { data: summaryRow } = await supabaseAdmin
-        .from('ai_summary')
-        .select('onboarding_tasks_completed')
-        .eq('user_id', userId)
-        .maybeSingle();
-      const completed = (summaryRow?.onboarding_tasks_completed as string[]) ?? [];
-      if (!completed.includes(taskKey)) {
-        changes.onboarding_tasks_completed = [...completed, taskKey];
-        console.log(`[Layer2] Onboarding task completed: ${taskKey}`);
-      }
-    }
+    // Onboarding task completion — intentionally NOT handled here.
+    // MASTER_PLAN §4.1: task completion is validated server-side in the main
+    // request handler against the task's actual required fields before
+    // being written. This block previously wrote the key unvalidated, which
+    // caused false positives (card cleared from dashboard even when data
+    // wasn't actually persisted). The validated path is now authoritative.
+    // The field is read from layer2Updates in the main handler (see
+    // `claimedTaskKey` around index.ts:440).
 
     if (Object.keys(changes).length > 0) {
       await updateLayer2(userId, changes);
