@@ -329,7 +329,7 @@ If prerequisites are unmet, the AI first continues the conversation to gather th
 > **Do not batch phases.** Complete one, commit, update status, then move on.
 > The next Claude session starts by reading this section to find the first non-completed phase.
 
-### Phase 0 — Foundation & cleanup  ⬜ not started
+### Phase 0 — Foundation & cleanup  ✅ done (2026-04-19)
 
 **Goal:** DB + naming + utility groundwork for everything else.
 
@@ -616,6 +616,15 @@ Use this section to log session-by-session observations: what was completed, wha
 - Received second-opinion review, integrated 13 decisions (see table above).
 - No code changes yet; plan document updated and ready for Phase 0.
 - Ready to begin execution on user confirmation.
+
+### 2026-04-19 — Phase 0 complete
+- Migrations 030 (plan versioning), 031 (profile preferences), 032 (free-tier counters) applied to remote.
+- Old `UNIQUE(user_id, week_start)` constraint dropped; replaced with partial indexes per `(user_id, plan_type)` for draft/active. Pre-existing rows backfilled: approved→'active', unapproved→'archived' (avoids partial-index collisions).
+- `plans_used_free` backfill ran via subquery on active `weekly_plans` rows.
+- `src/lib/plan-readiness.ts` created with `isPlanReady`, `getMissingCore`, `getWeakSpots`, `canAttemptPlan`.
+- "Koçun Hafızası" → "Kochkonun Senin Hakkinda Bildikleri" across coach-memory.tsx (3 titles + 2 alert texts) and the profile tab menu row.
+- Profile type has an index signature, new JSONB columns accessible via that — no breaking type changes.
+- **Next session: Phase 1** — onboarding handoff UX. See §5 Phase 1.
 
 ### 2026-04-19 — rev2.1 second-review patch
 - Applied 5 critical pre-implementation fixes from independent review:

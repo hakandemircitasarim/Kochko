@@ -82,7 +82,7 @@ export default function CoachMemoryScreen() {
   const handleDeleteNote = (field: string, note: string) => {
     Alert.alert(
       'Notu Sil',
-      'Bu bilgiyi kocun hafizasindan silmek istedigine emin misin?\n\nBu KVKK Madde 17 kapsaminda hakkindir.',
+      'Bu bilgiyi Kochkonun hafizasindan silmek istedigine emin misin?\n\nBu KVKK Madde 17 kapsaminda hakkindir.',
       [
         { text: 'Iptal' },
         {
@@ -101,7 +101,7 @@ export default function CoachMemoryScreen() {
   const handleClearField = (field: string, label: string) => {
     Alert.alert(
       `${label} Sil`,
-      `"${label}" bilgisini kocun hafizasindan tamamen silmek istedigine emin misin?\n\nKVKK Madde 17 kapsaminda hakkindir.`,
+      `"${label}" bilgisini Kochkonun hafizasindan tamamen silmek istedigine emin misin?\n\nKVKK Madde 17 kapsaminda hakkindir.`,
       [
         { text: 'Iptal' },
         {
@@ -142,7 +142,7 @@ export default function CoachMemoryScreen() {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <Stack.Screen options={{ title: 'Kocun Hafizasi', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
+        <Stack.Screen options={{ title: 'Kochkonun Senin Hakkinda Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -202,7 +202,7 @@ export default function CoachMemoryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Stack.Screen options={{ title: 'Kocun Hafizasi', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
+      <Stack.Screen options={{ title: 'Kochkonun Senin Hakkinda Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
 
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
@@ -210,7 +210,7 @@ export default function CoachMemoryScreen() {
           <Ionicons name="eye" size={24} color="#7F77DD" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>Kocun Seni Nasil Taniyor</Text>
+          <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>Kochko Senin Hakkinda Ne Biliyor</Text>
           <Text style={{ fontSize: FONT.xs, color: colors.textMuted }}>Her konusmadan ogrenilenler. Uzun basarak silebilirsin.</Text>
         </View>
       </View>
