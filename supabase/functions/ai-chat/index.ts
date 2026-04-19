@@ -329,7 +329,7 @@ serve(async (req: Request) => {
           '',
           'AKIS:',
           '1. ILK MESAJDA: Layer 1 verisinden hangi alanlarin zaten dolu oldugunu tespit et, TEKRAR SORMA. Sadece ekisikleri SIRAYLA sor (tek soru kuralina uy).',
-          '2. Yeni bilgi gelince <actions> ile kaydet. Kullanicinin verdigi bilgiyi tekrar etme, liste yapma, "Su ana kadar bildiklerim: ..." ASLA DEME.',
+          '2. Yeni bilgi gelince MUTLAKA <actions> ile kaydet — bu ZORUNLU. Kullanicinin verdigi bilgiyi tekrar etme, liste yapma, "Su ana kadar bildiklerim: ..." ASLA DEME.',
           '3. Tum ' + topic.fields.length + ' alan tamam olunca veya kullanici "bilmiyorum/gec" dediginde DERHAL su uc seyi ayni mesajda yap:',
           '   (a) Kisa 1-cumle kapanis: "Bu konuda yeterli bilgi aldim, tesekkurler."',
           '   (b) Yonlendirme: "Ana sayfadan diger kartlara gecerek profilini tamamlayabilirsin."',
@@ -337,11 +337,23 @@ serve(async (req: Request) => {
           `       <layer2_update>{"onboarding_task_completed": "${topic.taskKey}"}</layer2_update>`,
           '4. Kapanistan sonra baska soru SORMA, ayni konuyu uzatma.',
           '',
+          '### <actions> EMIT ZORUNLU — ORNEK SENARYOLAR:',
+          (topic.taskKey === 'introduce_yourself'
+            ? 'Kullanici "191 boyundayim, 130 kilo, 25 yas, erkegim" derse son mesajin SONUNA SU BLOGU EKLE:\n<actions>[{"type":"profile_update","height_cm":191,"weight_kg":130,"birth_year":2001,"gender":"male"}]</actions>\nEksik alanlari o an gelenleri kaydet, hepsi topland\u0131g\u0131nda kapanis+<layer2_update> emit et.'
+            : topic.taskKey === 'set_goal'
+            ? 'Kullanici "kilo vermek ve kas kazanmak" derse (birinin goal_type\'i: genelde ana olani sec — kilo>kas ise "lose_weight"):\n<actions>[{"type":"profile_update","goal_type":"lose_weight"}]</actions>\nKullanici sonra "100 kilo hedefim" derse:\n<actions>[{"type":"profile_update","target_weight_kg":100}]</actions>\nMotivasyon verirse ("saglikli olmak, iyi gozukmek"):\n<actions>[{"type":"profile_update","motivation_source":"saglik_ve_gorunum"}]</actions>\nHEPSI tamamlandiginda son mesajda yine <actions>...</actions> yazmali; yalniz metin yazmak YETERSIZ.'
+            : topic.taskKey === 'eating_habits'
+            ? 'Ornek: "gunde 3 ogun, disarda haftada 2 kere yerim":\n<actions>[{"type":"profile_update","meal_count_preference":3,"eating_out_frequency":"weekly"}]</actions>'
+            : topic.taskKey === 'exercise_history'
+            ? 'Ornek: "2 yildir fitness yapiyorum, ev de gym de gidebilirim":\n<actions>[{"type":"profile_update","training_experience":"intermediate","equipment_access":"both"}]</actions>'
+            : 'Kullanici yeni bilgi verdiginde uygun profile_update alanlari ile <actions> emit et. Kaydetme BU SOHBETIN EN ONEMLI GOREVI.'),
+          '',
           'KESIN YASAKLAR:',
           '- Kullanicinin verdigi bilgiyi geri okuma/listelekme. "25 yasindasin, 130 kg, 191 cm, erkek" gibi rapor yazma. Kullanici ne soyledigini biliyor.',
           '- "Kaydettim", "Profiline ekledim", "Profilini guncelledim", "Not aldim", "Bilgilerini aldim" ifadelerini KULLANMA. UI rozeti zaten gosteriyor.',
           '- Plan/supplement/kalori/antrenman onerisi YOK — bu sohbet bilgi toplama icin.',
           '- Kontrol listesi disindaki alani SORMA, ONERME, TARTISMA.',
+          '- <actions> blogu olmadan kapanis yapma — veri kaydedilmez, gorev bosa gider.',
         ].join('\n');
       }
     }
@@ -441,9 +453,14 @@ serve(async (req: Request) => {
             ? layer2Updates.onboarding_task_completed as string
             : null);
 
+    // Debug log for Phase 1 QA — track whether AI emitted task_completion, which path,
+    // and what actions were in the response. Helps diagnose missing badges / cards.
+    console.log(`[task_completion] claimed=${claimedTaskKey ?? 'none'} actions=${JSON.stringify(actions.map(a => a.type))} path=${rawCompletion ? 'task_completion_block' : layer2Updates?.onboarding_task_completed ? 'layer2_update' : 'none'}`);
+
     let validatedCompletion: { completed: string; summary: string; next_suggestions: string[] } | null = null;
     if (claimedTaskKey) {
       const validation = await validateTaskCompletion(userId, claimedTaskKey);
+      console.log(`[task_completion] validation for ${claimedTaskKey}: ${validation.valid ? 'PASSED' : 'FAILED (' + validation.missingReason + ')'}`);
       if (validation.valid) {
         // Build next_suggestions: prefer AI's whitelisted list, else compute from incomplete tasks.
         let suggestions = Array.isArray(rawCompletion?.next_suggestions)
