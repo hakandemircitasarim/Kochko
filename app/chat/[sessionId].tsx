@@ -34,7 +34,6 @@ import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } fr
 import { incrementAndCheck, getRemainingMessages } from '@/services/message-counter.service';
 import { speak, stopSpeaking, isSpeaking } from '@/services/tts.service';
 import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
-import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import {
