@@ -39,10 +39,10 @@ export default function PeriodicStateScreen() {
       const conflict = detectIFConflict(selected, true);
       if (conflict.conflict) {
         Alert.alert(
-          'IF Cakismasi',
+          'IF Çakışması',
           conflict.message_tr,
           [
-            { text: 'Iptal', style: 'cancel' },
+            { text: 'İptal', style: 'cancel' },
             { text: 'Devam Et (IF Durdurulacak)', onPress: () => doActivate() },
           ]
         );
@@ -60,8 +60,8 @@ export default function PeriodicStateScreen() {
       await fetchProfile(user.id);
       const label = PERIODIC_STATE_CONFIG[selected].label_tr;
       const msg = ifPaused
-        ? `${label} donemi baslatildi. IF otomatik durduruldu.`
-        : `${label} donemi baslatildi.`;
+        ? `${label} dönemi başlatıldı. IF otomatik durduruldu.`
+        : `${label} dönemi başlatıldı.`;
       Alert.alert('Aktif', msg, [{ text: 'Tamam', onPress: () => router.back() }]);
     } catch (err) {
       Alert.alert('Hata', (err as Error).message);
