@@ -62,7 +62,7 @@ export async function incrementAndCheck(isPremium: boolean): Promise<{
     return {
       allowed: false,
       remaining: 0,
-      message: `Gunluk ${FREE_DAILY_LIMIT} mesaj hakkini kullandin. Premium'a gecersen sinirsiz mesaj hakki kazanirsin.`,
+      message: `Günlük ${FREE_DAILY_LIMIT} mesaj hakkını kullandın. Premium'a geçersen sınırsız mesaj hakkı kazanırsın.`,
     };
   }
 
@@ -70,7 +70,7 @@ export async function incrementAndCheck(isPremium: boolean): Promise<{
     return {
       allowed: true,
       remaining,
-      message: `${remaining} mesaj hakkin kaldi.`,
+      message: `${remaining} mesaj hakkın kaldı.`,
     };
   }
 
