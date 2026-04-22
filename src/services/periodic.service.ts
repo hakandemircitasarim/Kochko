@@ -28,52 +28,52 @@ export const PERIODIC_STATE_CONFIG: Record<PeriodicState, PeriodicStateConfig> =
   ramadan: {
     calorieAdjustment: -150, proteinMultiplier: 1.0, workoutIntensityMax: 'moderate',
     ifCompatible: false, waterMultiplier: 1.3, requiresEndDate: true, maxDurationDays: 30,
-    label_tr: 'Ramazan', description_tr: 'Ogunler iftar-sahur penceresine sigdirilir, antrenman yogunlugu dusurulur.',
+    label_tr: 'Ramazan', description_tr: 'Öğünler iftar-sahur penceresine sığdırılır, antrenman yoğunluğu düşürülür.',
   },
   holiday: {
     calorieAdjustment: 0, proteinMultiplier: 1.0, workoutIntensityMax: 'high',
     ifCompatible: true, waterMultiplier: 1.0, requiresEndDate: true, maxDurationDays: 30,
-    label_tr: 'Tatil', description_tr: 'Esneklik modu: kalori araligi genisler, guilt-free yaklasim.',
+    label_tr: 'Tatil', description_tr: 'Esneklik modu: kalori aralığı genişler, guilt-free yaklaşım.',
   },
   illness: {
     calorieAdjustment: 0, proteinMultiplier: 1.0, workoutIntensityMax: 'low',
     ifCompatible: false, waterMultiplier: 1.2, requiresEndDate: false, maxDurationDays: 30,
-    label_tr: 'Hastalik', description_tr: 'Kalori acigi kaldirilir, IF durdurulur, sadece hafif aktivite.',
+    label_tr: 'Hastalık', description_tr: 'Kalori açığı kaldırılır, IF durdurulur, sadece hafif aktivite.',
   },
   busy_work: {
     calorieAdjustment: 0, proteinMultiplier: 1.0, workoutIntensityMax: 'moderate',
     ifCompatible: true, waterMultiplier: 1.0, requiresEndDate: true, maxDurationDays: 60,
-    label_tr: 'Yogun Is Donemi', description_tr: 'Basit ve hizli ogunler onerilir, kisa antrenmanlar.',
+    label_tr: 'Yoğun İş Dönemi', description_tr: 'Basit ve hızlı öğünler önerilir, kısa antrenmanlar.',
   },
   exam: {
     calorieAdjustment: 0, proteinMultiplier: 1.0, workoutIntensityMax: 'moderate',
     ifCompatible: true, waterMultiplier: 1.0, requiresEndDate: true, maxDurationDays: 60,
-    label_tr: 'Sinav Donemi', description_tr: 'Beyin besinleri on planda, stres yeme uyarisi aktif.',
+    label_tr: 'Sınav Dönemi', description_tr: 'Beyin besinleri ön planda, stres yeme uyarısı aktif.',
   },
   pregnancy: {
     calorieAdjustment: 300, proteinMultiplier: 1.1, workoutIntensityMax: 'moderate',
     ifCompatible: false, waterMultiplier: 1.1, requiresEndDate: true, maxDurationDays: 280,
-    label_tr: 'Hamilelik', description_tr: 'IF durdurulur, kalori artirilir, yasak besinler filtrelenir.',
+    label_tr: 'Hamilelik', description_tr: 'IF durdurulur, kalori artırılır, yasak besinler filtrelenir.',
   },
   breastfeeding: {
     calorieAdjustment: 500, proteinMultiplier: 1.2, workoutIntensityMax: 'moderate',
     ifCompatible: false, waterMultiplier: 1.3, requiresEndDate: false, maxDurationDays: null,
-    label_tr: 'Emzirme', description_tr: 'Kalori +500, IF durdurulur, su hedefi artirilir.',
+    label_tr: 'Emzirme', description_tr: 'Kalori +500, IF durdurulur, su hedefi artırılır.',
   },
   injury: {
     calorieAdjustment: -100, proteinMultiplier: 1.1, workoutIntensityMax: 'low',
     ifCompatible: true, waterMultiplier: 1.0, requiresEndDate: false, maxDurationDays: 90,
-    label_tr: 'Sakatlik', description_tr: 'Etkilenen bolge antrenman disi, protein artirilir.',
+    label_tr: 'Sakatlık', description_tr: 'Etkilenen bölge antrenman dışı, protein artırılır.',
   },
   travel: {
     calorieAdjustment: 0, proteinMultiplier: 1.0, workoutIntensityMax: 'high',
     ifCompatible: true, waterMultiplier: 1.1, requiresEndDate: true, maxDurationDays: 90,
-    label_tr: 'Seyahat', description_tr: 'Esneklik modu, lokal yiyecek kesfetme, donus plani.',
+    label_tr: 'Seyahat', description_tr: 'Esneklik modu, lokal yiyecek keşfetme, dönüş planı.',
   },
   custom: {
     calorieAdjustment: 0, proteinMultiplier: 1.0, workoutIntensityMax: 'high',
     ifCompatible: true, waterMultiplier: 1.0, requiresEndDate: false, maxDurationDays: null,
-    label_tr: 'Ozel Durum', description_tr: 'Kullanici tanimli ozel donem.',
+    label_tr: 'Özel Durum', description_tr: 'Kullanıcı tanımlı özel dönem.',
   },
 };
 
@@ -92,17 +92,17 @@ export function validatePeriodicState(
   const config = PERIODIC_STATE_CONFIG[state];
 
   if (config.requiresEndDate && !endDate) {
-    errors.push(`${config.label_tr} icin bitis tarihi gerekli.`);
+    errors.push(`${config.label_tr} için bitiş tarihi gerekli.`);
   }
 
   if (startDate && endDate) {
     if (new Date(endDate) < new Date(startDate)) {
-      errors.push('Bitis tarihi baslangictan once olamaz.');
+      errors.push('Bitiş tarihi başlangıçtan önce olamaz.');
     }
     if (config.maxDurationDays) {
       const days = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
       if (days > config.maxDurationDays) {
-        errors.push(`Maksimum sure: ${config.maxDurationDays} gun.`);
+        errors.push(`Maksimum süre: ${config.maxDurationDays} gün.`);
       }
     }
   }
@@ -123,7 +123,7 @@ export function detectIFConflict(
     return {
       conflict: true,
       action: 'pause_if',
-      message_tr: `${config.label_tr} doneminde IF uygun degil. IF otomatik durdurulacak.`,
+      message_tr: `${config.label_tr} döneminde IF uygun değil. IF otomatik durdurulacak.`,
     };
   }
 
