@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 const EVENT_TYPES = ['surgery', 'injury', 'illness', 'medication', 'allergy', 'other'];
-const EVENT_LABELS: Record<string, string> = { surgery: 'Ameliyat', injury: 'Sakatlik', illness: 'Hastalik', medication: 'Ilac', allergy: 'Alerji', other: 'Diger' };
+const EVENT_LABELS: Record<string, string> = { surgery: 'Ameliyat', injury: 'Sakatlık', illness: 'Hastalık', medication: 'İlaç', allergy: 'Alerji', other: 'Diğer' };
 
 export default function HealthEventsScreen() {
   const insets = useSafeAreaInsets();
@@ -36,9 +36,9 @@ export default function HealthEventsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Saglik Gecmisi</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Sağlık Geçmişi</Text>
 
-      <Button title={showAdd ? 'Iptal' : 'Yeni Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
+      <Button title={showAdd ? 'İptal' : 'Yeni Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
 
       {showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
@@ -52,7 +52,7 @@ export default function HealthEventsScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <Input label="Aciklama" placeholder="Diz ameliyati, 2022" value={desc} onChangeText={setDesc} multiline />
+          <Input label="Açıklama" placeholder="Diz ameliyatı, 2022" value={desc} onChangeText={setDesc} multiline />
           <Input label="Tarih (opsiyonel)" placeholder="2022-06-15" value={date} onChangeText={setDate} />
           <TouchableOpacity onPress={() => setOngoing(!ongoing)} style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Text style={{ color: COLORS.primary }}>{ongoing ? '[x]' : '[ ]'}</Text>

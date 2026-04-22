@@ -17,33 +17,33 @@ import type {
 
 const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
   { value: 'sedentary', label: 'Hareketsiz' }, { value: 'light', label: 'Hafif' },
-  { value: 'moderate', label: 'Orta' }, { value: 'active', label: 'Aktif' }, { value: 'very_active', label: 'Cok Aktif' },
+  { value: 'moderate', label: 'Orta' }, { value: 'active', label: 'Aktif' }, { value: 'very_active', label: 'Çok Aktif' },
 ];
 const EQUIP_OPTIONS: { value: Equipment; label: string }[] = [
-  { value: 'home', label: 'Ev' }, { value: 'gym', label: 'Salon' }, { value: 'both', label: 'Ikisi' },
+  { value: 'home', label: 'Ev' }, { value: 'gym', label: 'Salon' }, { value: 'both', label: 'İkisi' },
 ];
 const COOK_OPTIONS: { value: CookingSkill; label: string }[] = [
-  { value: 'none', label: 'Hic' }, { value: 'basic', label: 'Basit' }, { value: 'good', label: 'Iyi' },
+  { value: 'none', label: 'Hiç' }, { value: 'basic', label: 'Basit' }, { value: 'good', label: 'İyi' },
 ];
 const BUDGET_OPTIONS: { value: BudgetLevel; label: string }[] = [
-  { value: 'low', label: 'Dusuk' }, { value: 'medium', label: 'Orta' }, { value: 'high', label: 'Yuksek' },
+  { value: 'low', label: 'Düşük' }, { value: 'medium', label: 'Orta' }, { value: 'high', label: 'Yüksek' },
 ];
 const STYLE_OPTIONS: { value: TrainingStyle; label: string }[] = [
-  { value: 'cardio', label: 'Kardiyo' }, { value: 'strength', label: 'Agirlik' }, { value: 'mixed', label: 'Karma' },
+  { value: 'cardio', label: 'Kardiyo' }, { value: 'strength', label: 'Ağırlık' }, { value: 'mixed', label: 'Karma' },
 ];
 const DIET_OPTIONS: { value: DietMode; label: string }[] = [
-  { value: 'standard', label: 'Standart' }, { value: 'low_carb', label: 'Dusuk Karb' },
-  { value: 'keto', label: 'Keto' }, { value: 'high_protein', label: 'Yuksek Protein' },
+  { value: 'standard', label: 'Standart' }, { value: 'low_carb', label: 'Düşük Karb' },
+  { value: 'keto', label: 'Keto' }, { value: 'high_protein', label: 'Yüksek Protein' },
 ];
 const ALCOHOL_OPTIONS: { value: AlcoholFrequency; label: string }[] = [
-  { value: 'never', label: 'Hic' }, { value: 'rare', label: 'Nadir' },
-  { value: 'weekly', label: 'Haftalik' }, { value: 'frequent', label: 'Sik' },
+  { value: 'never', label: 'Hiç' }, { value: 'rare', label: 'Nadiren' },
+  { value: 'weekly', label: 'Haftalık' }, { value: 'frequent', label: 'Sık' },
 ];
 const UNIT_OPTIONS: { value: UnitSystem; label: string }[] = [
-  { value: 'metric', label: 'Metrik (kg/cm)' }, { value: 'imperial', label: 'Imperial (lb/ft)' },
+  { value: 'metric', label: 'Metrik (kg/cm)' }, { value: 'imperial', label: 'İmperial (lb/ft)' },
 ];
 const PORTION_OPTIONS: { value: PortionLanguage; label: string }[] = [
-  { value: 'grams', label: 'Gram' }, { value: 'household', label: 'Kaseyle (ev olcusu)' },
+  { value: 'grams', label: 'Gram' }, { value: 'household', label: 'Kaseyle (ev ölçüsü)' },
 ];
 const MEAL_COUNT_OPTIONS = [
   { value: '2', label: '2' }, { value: '3', label: '3' },
@@ -161,62 +161,62 @@ export default function EditProfileScreen() {
       thigh_cm: thigh ? parseFloat(thigh) : null,
     } as never);
     setSaving(false);
-    Alert.alert('Kaydedildi', 'Profil guncellendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+    Alert.alert('Kaydedildi', 'Profil güncellendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
   };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 12, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Profil Duzenle</Text>
+        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Profil Düzenle</Text>
 
         {/* Fiziksel */}
         <Card title="Fiziksel">
           <Input label="Boy (cm)" value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" placeholder="175" />
           <Input label="Kilo (kg)" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="80" />
-          <Input label="Dogum Yili" value={birthYear} onChangeText={setBirthYear} keyboardType="numeric" placeholder="1990" />
-          <ChipSelect label="Cinsiyet" options={[{ value: 'male', label: 'Erkek' }, { value: 'female', label: 'Kadin' }, { value: 'other', label: 'Diger' }]} selected={gender} onChange={setGender} />
+          <Input label="Doğum Yılı" value={birthYear} onChangeText={setBirthYear} keyboardType="numeric" placeholder="1990" />
+          <ChipSelect label="Cinsiyet" options={[{ value: 'male', label: 'Erkek' }, { value: 'female', label: 'Kadın' }, { value: 'other', label: 'Diğer' }]} selected={gender} onChange={setGender} />
         </Card>
 
         {/* Yasam Tarzi */}
-        <Card title="Yasam Tarzi">
+        <Card title="Yaşam Tarzı">
           <ChipSelect label="Aktivite Seviyesi" options={ACTIVITY_OPTIONS} selected={activity} onChange={setActivity} />
           <ChipSelect label="Ekipman" options={EQUIP_OPTIONS} selected={equipment} onChange={setEquipment} />
           <ChipSelect label="Yemek Becerisi" options={COOK_OPTIONS} selected={cookingSkill} onChange={setCookingSkill} />
-          <ChipSelect label="Butce" options={BUDGET_OPTIONS} selected={budget} onChange={setBudget} />
+          <ChipSelect label="Bütçe" options={BUDGET_OPTIONS} selected={budget} onChange={setBudget} />
         </Card>
 
         {/* Antrenman ve Beslenme */}
         <Card title="Antrenman ve Beslenme">
           <ChipSelect label="Antrenman Stili" options={STYLE_OPTIONS} selected={trainingStyle} onChange={setTrainingStyle} />
           <ChipSelect label="Diyet Modu" options={DIET_OPTIONS} selected={dietMode} onChange={setDietMode} />
-          <ChipSelect label="Ogun Sayisi" options={MEAL_COUNT_OPTIONS} selected={mealCount} onChange={setMealCount} />
+          <ChipSelect label="Öğün Sayısı" options={MEAL_COUNT_OPTIONS} selected={mealCount} onChange={setMealCount} />
         </Card>
 
         {/* Program */}
         <Card title="Program">
-          <Input label="Uyku Saati (ornek: 23:00)" value={sleepTime} onChangeText={setSleepTime} placeholder="23:00" />
-          <Input label="Uyanma Saati (ornek: 07:00)" value={wakeTime} onChangeText={setWakeTime} placeholder="07:00" />
-          <Input label="Is Baslangici (ornek: 09:00)" value={workStart} onChangeText={setWorkStart} placeholder="09:00" />
-          <Input label="Is Bitisi (ornek: 18:00)" value={workEnd} onChangeText={setWorkEnd} placeholder="18:00" />
-          <Input label="Meslek" value={occupation} onChangeText={setOccupation} placeholder="Yazilimci, ogrenci, vb." />
+          <Input label="Uyku Saati (örn: 23:00)" value={sleepTime} onChangeText={setSleepTime} placeholder="23:00" />
+          <Input label="Uyanma Saati (örn: 07:00)" value={wakeTime} onChangeText={setWakeTime} placeholder="07:00" />
+          <Input label="İş Başlangıcı (örn: 09:00)" value={workStart} onChangeText={setWorkStart} placeholder="09:00" />
+          <Input label="İş Bitişi (örn: 18:00)" value={workEnd} onChangeText={setWorkEnd} placeholder="18:00" />
+          <Input label="Meslek" value={occupation} onChangeText={setOccupation} placeholder="Yazılımcı, öğrenci, vb." />
         </Card>
 
         {/* Tercihler */}
         <Card title="Tercihler">
-          <ChipSelect label="Olcu Birimi" options={UNIT_OPTIONS} selected={unitSystem} onChange={setUnitSystem} />
+          <ChipSelect label="Ölçü Birimi" options={UNIT_OPTIONS} selected={unitSystem} onChange={setUnitSystem} />
           <ChipSelect label="Porsiyon Dili" options={PORTION_OPTIONS} selected={portionLang} onChange={setPortionLang} />
-          <ChipSelect label="Alkol Tuketimi" options={ALCOHOL_OPTIONS} selected={alcoholFreq} onChange={setAlcoholFreq} />
-          <ChipSelect label="Gun Siniri" options={DAY_BOUNDARY_OPTIONS} selected={dayBoundary} onChange={setDayBoundary} />
+          <ChipSelect label="Alkol Tüketimi" options={ALCOHOL_OPTIONS} selected={alcoholFreq} onChange={setAlcoholFreq} />
+          <ChipSelect label="Gün Sınırı" options={DAY_BOUNDARY_OPTIONS} selected={dayBoundary} onChange={setDayBoundary} />
         </Card>
 
         {/* Vucut Olculeri */}
-        <Card title="Vucut Olculeri (Opsiyonel)">
-          <Input label="Yag Orani (%)" value={bodyFat} onChangeText={setBodyFat} keyboardType="decimal-pad" placeholder="20" />
-          <Input label="Kas Orani (%)" value={muscleMass} onChangeText={setMuscleMass} keyboardType="decimal-pad" placeholder="35" />
-          <Input label="Bel Cevresi (cm)" value={waist} onChangeText={setWaist} keyboardType="decimal-pad" placeholder="85" />
-          <Input label="Kalca Cevresi (cm)" value={hip} onChangeText={setHip} keyboardType="decimal-pad" placeholder="100" />
-          <Input label="Gogus Cevresi (cm)" value={chest} onChangeText={setChest} keyboardType="decimal-pad" placeholder="95" />
-          <Input label="Uyluk Cevresi (cm)" value={thigh} onChangeText={setThigh} keyboardType="decimal-pad" placeholder="55" />
+        <Card title="Vücut Ölçüleri (Opsiyonel)">
+          <Input label="Yağ Oranı (%)" value={bodyFat} onChangeText={setBodyFat} keyboardType="decimal-pad" placeholder="20" />
+          <Input label="Kas Oranı (%)" value={muscleMass} onChangeText={setMuscleMass} keyboardType="decimal-pad" placeholder="35" />
+          <Input label="Bel Çevresi (cm)" value={waist} onChangeText={setWaist} keyboardType="decimal-pad" placeholder="85" />
+          <Input label="Kalça Çevresi (cm)" value={hip} onChangeText={setHip} keyboardType="decimal-pad" placeholder="100" />
+          <Input label="Göğüs Çevresi (cm)" value={chest} onChangeText={setChest} keyboardType="decimal-pad" placeholder="95" />
+          <Input label="Uyluk Çevresi (cm)" value={thigh} onChangeText={setThigh} keyboardType="decimal-pad" placeholder="55" />
         </Card>
 
         <Button title="Kaydet" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.md }} />
