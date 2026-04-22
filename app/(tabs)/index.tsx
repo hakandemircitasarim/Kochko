@@ -14,6 +14,8 @@ import { useStreak } from '@/hooks/useStreak';
 import { HeroSection } from '@/components/dashboard/HeroSection';
 import { StatStrip } from '@/components/dashboard/StatStrip';
 import { ActivityTimeline } from '@/components/dashboard/ActivityTimeline';
+import { ProfileCompletionDonut } from '@/components/dashboard/ProfileCompletionDonut';
+import { PlanOverviewCards } from '@/components/dashboard/PlanOverviewCards';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
@@ -325,8 +327,18 @@ export default function TodayScreen() {
           </View>
         )}
 
-        {/* 4. Diyet / Spor Plan Tablari */}
+        {/* 4. Profile completion donut (Phase 4) */}
         <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
+          <ProfileCompletionDonut profile={profile as Record<string, unknown> | null} />
+        </View>
+
+        {/* 5. Plan overview cards (Phase 4) — replaces the old diet/workout tab selector */}
+        <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+          <PlanOverviewCards userId={user?.id} />
+        </View>
+
+        {/* 6. LEGACY: Diyet / Spor Plan Tablari — kept for rollback; remove after Phase 4 is proven */}
+        <View style={{ display: 'none', paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
           {/* Tab selector */}
           <View style={{
             flexDirection: 'row',
@@ -397,10 +409,10 @@ export default function TodayScreen() {
                   })}
                   {/* Detail link */}
                   <TouchableOpacity
-                    onPress={() => router.push('/diet-plan')}
+                    onPress={() => router.push('/plan/diet' as never)}
                     style={{ padding: SPACING.lg, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border }}
                   >
-                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detaylı göster</Text>
+                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Diyet planını aç</Text>
                   </TouchableOpacity>
                 </>
               ) : (
@@ -409,7 +421,7 @@ export default function TodayScreen() {
                     Henüz plan oluşturulmamış
                   </Text>
                   <TouchableOpacity
-                    onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugünkü diyet planımı oluştur' } })}
+                    onPress={() => router.push('/plan/diet' as never)}
                     style={{
                       borderWidth: 0.5, borderColor: colors.primary, borderRadius: RADIUS.sm,
                       paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
@@ -450,7 +462,7 @@ export default function TodayScreen() {
               {plan?.workout_plan ? (
                 <>
                   <TouchableOpacity
-                    onPress={() => router.push('/workout-plan')}
+                    onPress={() => router.push('/plan/workout' as never)}
                     style={{ flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, gap: SPACING.md }}
                   >
                     <View style={{
@@ -472,7 +484,7 @@ export default function TodayScreen() {
                     <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => router.push('/workout-plan')}
+                    onPress={() => router.push('/plan/workout' as never)}
                     style={{ padding: SPACING.lg, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border }}
                   >
                     <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detaylı göster</Text>
@@ -485,7 +497,7 @@ export default function TodayScreen() {
                   </Text>
                   {plan?.plan_type !== 'rest' && (
                     <TouchableOpacity
-                      onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugünkü antrenman planımı oluştur' } })}
+                      onPress={() => router.push('/plan/workout' as never)}
                       style={{
                         borderWidth: 0.5, borderColor: colors.primary, borderRadius: RADIUS.sm,
                         paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
