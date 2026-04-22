@@ -12,7 +12,7 @@ export default function LoginScreen() {
   const { signIn, signInWithGoogle, signInWithApple, resetPassword, loading } = useAuthStore();
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) { Alert.alert('Hata', 'E-posta ve sifre gerekli.'); return; }
+    if (!email.trim() || !password.trim()) { Alert.alert('Hata', 'E-posta ve şifre gerekli.'); return; }
     const { error } = await signIn(email.trim(), password);
     if (error) Alert.alert('Hata', error);
     else router.replace('/');
@@ -32,15 +32,15 @@ export default function LoginScreen() {
 
   const handleForgotPassword = () => {
     if (!email.trim()) {
-      Alert.alert('E-posta Gerekli', 'Sifre sifirlama linki icin e-posta adresinizi girin.');
+      Alert.alert('E-posta Gerekli', 'Şifre sıfırlama linki için e-posta adresinizi girin.');
       return;
     }
-    Alert.alert('Sifre Sifirlama', `${email.trim()} adresine sifirlama linki gonderilsin mi?`, [
-      { text: 'Iptal', style: 'cancel' },
-      { text: 'Gonder', onPress: async () => {
+    Alert.alert('Şifre Sıfırlama', `${email.trim()} adresine sıfırlama linki gönderilsin mi?`, [
+      { text: 'İptal', style: 'cancel' },
+      { text: 'Gönder', onPress: async () => {
         const { error } = await resetPassword(email.trim());
         if (error) Alert.alert('Hata', error);
-        else Alert.alert('Basarili', 'Sifre sifirlama linki e-posta adresinize gonderildi. Link 1 saat gecerlidir.');
+        else Alert.alert('Başarılı', 'Şifre sıfırlama linki e-posta adresinize gönderildi. Link 1 saat geçerlidir.');
       }},
     ]);
   };
@@ -50,15 +50,15 @@ export default function LoginScreen() {
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: SPACING.lg }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
           <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary, letterSpacing: 2 }}>Kochko</Text>
-          <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary, marginTop: SPACING.xs }}>Yasam Tarzi Kocun</Text>
+          <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
         </View>
 
         {/* Social Login Buttons (Spec 1.1) */}
-        <Button title="Google ile Giris Yap" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
+        <Button title="Google ile Giriş Yap" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
         <View style={{ height: SPACING.sm }} />
         {Platform.OS === 'ios' && (
           <>
-            <Button title="Apple ile Giris Yap" onPress={handleApple} loading={loading} variant="outline" size="lg" />
+            <Button title="Apple ile Giriş Yap" onPress={handleApple} loading={loading} variant="outline" size="lg" />
             <View style={{ height: SPACING.sm }} />
           </>
         )}
@@ -71,17 +71,17 @@ export default function LoginScreen() {
         </View>
 
         <Input label="E-posta" placeholder="ornek@email.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-        <Input label="Sifre" placeholder="Sifreniz" value={password} onChangeText={setPassword} secureTextEntry />
+        <Input label="Şifre" placeholder="Şifreniz" value={password} onChangeText={setPassword} secureTextEntry />
 
         {/* Forgot Password (Spec 1.2) */}
         <TouchableOpacity onPress={handleForgotPassword} style={{ alignSelf: 'flex-end', marginBottom: SPACING.md }}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.sm }}>Sifremi Unuttum</Text>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.sm }}>Şifremi Unuttum</Text>
         </TouchableOpacity>
 
-        <Button title="Giris Yap" onPress={handleLogin} loading={loading} size="lg" />
+        <Button title="Giriş Yap" onPress={handleLogin} loading={loading} size="lg" />
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.lg }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Hesabin yok mu? </Text>
-          <Link href="/(auth)/register" style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>Kayit Ol</Link>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Hesabın yok mu? </Text>
+          <Link href="/(auth)/register" style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>Kayıt Ol</Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
