@@ -20,29 +20,13 @@ import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
+import { SPACING, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 import NetInfo from '@react-native-community/netinfo';
 import { setupAutoSync } from '@/services/offline-queue.service';
 import { getUnreadCoachingMessages, markMessageRead, type CoachingMessage } from '@/services/coaching-messages.service';
 import { detectReturnLevel, type ReturnStatus } from '@/services/return-flow.service';
 import { syncStepsToDailyMetrics } from '@/services/health-connect.service';
 import { CoachingNudge } from '@/components/dashboard/CoachingNudge';
-
-interface PlanData {
-  plan_type: string;
-  focus_message: string;
-  meal_suggestions: { meal_type: string; options: { name: string; calories: number }[] }[];
-  workout_plan: { type: string; duration_min: number; main: string[] } | null;
-  weekly_budget_remaining: number | null;
-  status: string;
-}
-
-const MEAL_COLORS: Record<string, string> = {
-  breakfast: '#1D9E75', lunch: '#EF9F27', dinner: '#D85A30', snack: '#7F77DD',
-};
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Ara öğün',
-};
 
 export default function TodayScreen() {
   const { colors } = useTheme();
@@ -59,8 +43,6 @@ export default function TodayScreen() {
   const [hasFetched, setHasFetched] = useState(false);
   const [showWeightInput, setShowWeightInput] = useState(false);
   const [weightInput, setWeightInput] = useState('');
-  const [plan, setPlan] = useState<PlanData | null>(null);
-  const [activeTab, setActiveTab] = useState<'diet' | 'workout'>('diet');
   const [coachingMessages, setCoachingMessages] = useState<CoachingMessage[]>([]);
   const [returnStatus, setReturnStatus] = useState<ReturnStatus | null>(null);
 
@@ -83,12 +65,6 @@ export default function TodayScreen() {
     setHasFetched(true);
     fetchToday(user.id).catch((err) => console.warn('fetchToday failed:', err));
     checkForMilestones();
-    // Fetch today's plan
-    const today = getEffectiveDate(new Date(), dayBoundaryHour);
-    supabase.from('daily_plans').select('*')
-      .eq('user_id', user.id).eq('date', today)
-      .order('version', { ascending: false }).limit(1).single()
-      .then(({ data }) => { if (!cancelled && data) setPlan(data as unknown as PlanData); });
     // Fetch coaching nudges
     getUnreadCoachingMessages(user.id).then((msgs) => { if (!cancelled) setCoachingMessages(msgs); });
     // Return-flow: detect long break → show re-onboarding banner if 180+ days (Spec 10.6)
@@ -102,11 +78,6 @@ export default function TodayScreen() {
     if (!user?.id) return;
     fetchToday(user.id).catch((err) => console.warn('refresh fetchToday failed:', err));
     checkForMilestones();
-    const today = getEffectiveDate(new Date(), dayBoundaryHour);
-    supabase.from('daily_plans').select('*')
-      .eq('user_id', user.id).eq('date', today)
-      .order('version', { ascending: false }).limit(1).single()
-      .then(({ data }) => { if (data) setPlan(data as unknown as PlanData); });
     getUnreadCoachingMessages(user.id).then(setCoachingMessages);
   }, [user?.id, dayBoundaryHour]);
 
@@ -337,182 +308,7 @@ export default function TodayScreen() {
           <PlanOverviewCards userId={user?.id} />
         </View>
 
-        {/* 6. LEGACY: Diyet / Spor Plan Tablari — kept for rollback; remove after Phase 4 is proven */}
-        <View style={{ display: 'none', paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
-          {/* Tab selector */}
-          <View style={{
-            flexDirection: 'row',
-            backgroundColor: colors.cardElevated,
-            borderRadius: RADIUS.sm,
-            padding: 3,
-            marginBottom: SPACING.md,
-          }}>
-            {(['diet', 'workout'] as const).map(tab => {
-              const isActive = activeTab === tab;
-              return (
-                <TouchableOpacity
-                  key={tab}
-                  onPress={() => setActiveTab(tab)}
-                  style={{
-                    flex: 1,
-                    paddingVertical: SPACING.sm,
-                    borderRadius: RADIUS.sm - 2,
-                    backgroundColor: isActive ? colors.text : 'transparent',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{
-                    color: isActive ? colors.background : colors.textSecondary,
-                    fontSize: 13, fontWeight: '500',
-                  }}>
-                    {tab === 'diet' ? 'Diyet Planı' : 'Spor Programı'}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          {/* Diet Tab Content */}
-          {activeTab === 'diet' && (
-            <View style={{
-              backgroundColor: colors.card, borderRadius: RADIUS.md,
-              borderWidth: 0.5, borderColor: colors.border,
-            }}>
-              {plan?.meal_suggestions && plan.meal_suggestions.length > 0 ? (
-                <>
-                  {plan.meal_suggestions.map((meal, idx) => {
-                    const mainOption = meal.options?.[0];
-                    const dotColor = MEAL_COLORS[meal.meal_type] ?? colors.primary;
-                    return (
-                      <View key={`${meal.meal_type}-${idx}`} style={{
-                        flexDirection: 'row', alignItems: 'center',
-                        padding: SPACING.lg,
-                        borderBottomWidth: idx < plan.meal_suggestions.length - 1 ? 0.5 : 0,
-                        borderBottomColor: colors.border,
-                      }}>
-                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor, marginRight: SPACING.md }} />
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
-                            {MEAL_LABELS[meal.meal_type] ?? meal.meal_type}
-                          </Text>
-                          {mainOption && (
-                            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2, paddingLeft: SPACING.xl }}>
-                              {mainOption.name}
-                            </Text>
-                          )}
-                        </View>
-                        {mainOption && (
-                          <Text style={{ color: colors.textMuted, fontSize: 12 }}>{mainOption.calories} kcal</Text>
-                        )}
-                      </View>
-                    );
-                  })}
-                  {/* Detail link */}
-                  <TouchableOpacity
-                    onPress={() => router.push('/plan/diet' as never)}
-                    style={{ padding: SPACING.lg, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border }}
-                  >
-                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Diyet planını aç</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <View style={{ padding: SPACING.xxl, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>
-                    Henüz plan oluşturulmamış
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => router.push('/plan/diet' as never)}
-                    style={{
-                      borderWidth: 0.5, borderColor: colors.primary, borderRadius: RADIUS.sm,
-                      paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
-                    }}
-                  >
-                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan oluştur</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* Weekly Menu Link — always visible under diet tab */}
-          {activeTab === 'diet' && (
-            <TouchableOpacity
-              onPress={() => router.push('/weekly-menu')}
-              style={{
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                backgroundColor: colors.card, borderRadius: RADIUS.md,
-                padding: SPACING.lg, marginTop: SPACING.sm,
-                borderWidth: 0.5, borderColor: colors.border,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '500' }}>Haftalık Menü & Alışveriş Listesi</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-
-          {/* Workout Tab Content */}
-          {activeTab === 'workout' && (
-            <View style={{
-              backgroundColor: colors.card, borderRadius: RADIUS.md,
-              borderWidth: 0.5, borderColor: colors.border,
-            }}>
-              {plan?.workout_plan ? (
-                <>
-                  <TouchableOpacity
-                    onPress={() => router.push('/plan/workout' as never)}
-                    style={{ flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, gap: SPACING.md }}
-                  >
-                    <View style={{
-                      width: 40, height: 40, borderRadius: RADIUS.sm,
-                      backgroundColor: METRIC_COLORS.workout + '18',
-                      alignItems: 'center', justifyContent: 'center',
-                    }}>
-                      <Ionicons name="barbell" size={20} color={METRIC_COLORS.workout} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>
-                        {plan.workout_plan.type}
-                      </Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
-                        {plan.workout_plan.duration_min} dk
-                        {plan.workout_plan.main?.length > 0 ? ` \u00b7 ${plan.workout_plan.main.length} egzersiz` : ''}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => router.push('/plan/workout' as never)}
-                    style={{ padding: SPACING.lg, alignItems: 'center', borderTopWidth: 0.5, borderTopColor: colors.border }}
-                  >
-                    <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Detaylı göster</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <View style={{ padding: SPACING.xxl, alignItems: 'center' }}>
-                  <Text style={{ color: colors.textMuted, fontSize: 13, marginBottom: SPACING.md }}>
-                    {plan?.plan_type === 'rest' ? 'Bugün dinlenme günü' : 'Antrenman planlanmamış'}
-                  </Text>
-                  {plan?.plan_type !== 'rest' && (
-                    <TouchableOpacity
-                      onPress={() => router.push('/plan/workout' as never)}
-                      style={{
-                        borderWidth: 0.5, borderColor: colors.primary, borderRadius: RADIUS.sm,
-                        paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
-                      }}
-                    >
-                      <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '500' }}>Plan oluştur</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* 5. Activity Timeline (meals + workouts logged today) */}
+        {/* Activity Timeline (meals + workouts logged today) */}
         <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
           <ActivityTimeline
             meals={meals}

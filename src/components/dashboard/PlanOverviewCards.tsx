@@ -122,6 +122,9 @@ function PlanCard({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}. ${primary}. ${secondary}`}
+      accessibilityHint={plan ? 'Plan detayları için aç' : 'Yeni plan oluştur'}
       style={{
         backgroundColor: colors.card,
         borderRadius: RADIUS.xl,

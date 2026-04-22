@@ -5,6 +5,7 @@
  */
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
@@ -33,26 +34,52 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
     }
   };
 
+  const accent = planType === 'diet' ? '#22C55E' : '#6366F1';
+
   return (
     <ScrollView contentContainerStyle={{ padding: SPACING.lg, gap: SPACING.md }}>
-      <View style={{ alignItems: 'center', marginTop: SPACING.lg }}>
+      <View style={{ alignItems: 'center', marginTop: SPACING.xl }}>
+        {/* Decorative radial-gradient halo behind the icon */}
         <View
-          style={{
-            width: 80,
-            height: 80,
-            borderRadius: 24,
-            backgroundColor: planType === 'diet' ? '#22C55E18' : '#6366F118',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+          style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center' }}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
         >
-          <Ionicons
-            name={planType === 'diet' ? 'restaurant-outline' : 'barbell-outline'}
-            size={40}
-            color={planType === 'diet' ? '#22C55E' : '#6366F1'}
-          />
+          <Svg width={180} height={180} style={{ position: 'absolute' }}>
+            <Defs>
+              <RadialGradient id="halo" cx="50%" cy="50%" rx="50%" ry="50%">
+                <Stop offset="0%" stopColor={accent} stopOpacity={0.32} />
+                <Stop offset="60%" stopColor={accent} stopOpacity={0.08} />
+                <Stop offset="100%" stopColor={accent} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx={90} cy={90} r={90} fill="url(#halo)" />
+            <Circle cx={90} cy={90} r={60} fill="none" stroke={accent} strokeOpacity={0.18} strokeWidth={1.5} />
+            <Circle cx={90} cy={90} r={75} fill="none" stroke={accent} strokeOpacity={0.10} strokeWidth={1} strokeDasharray="3,4" />
+          </Svg>
+          <View
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: 28,
+              backgroundColor: accent + '22',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: accent + '44',
+            }}
+          >
+            <Ionicons
+              name={planType === 'diet' ? 'restaurant' : 'barbell'}
+              size={44}
+              color={accent}
+            />
+          </View>
         </View>
-        <Text style={{ color: colors.text, fontSize: 20, fontWeight: '800', marginTop: SPACING.md }}>
+        <Text
+          accessibilityRole="header"
+          style={{ color: colors.text, fontSize: 20, fontWeight: '800', marginTop: SPACING.md }}
+        >
           {planType === 'diet' ? 'Diyet planın yok' : 'Spor planın yok'}
         </Text>
         <Text
@@ -96,6 +123,8 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
               <TouchableOpacity
                 key={i}
                 onPress={() => openTaskChat(f.taskKey, f.taskTitle)}
+                accessibilityRole="button"
+                accessibilityLabel={`${f.field} bilgisi eksik, ${f.taskTitle} kartından tamamla`}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
@@ -125,6 +154,9 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
       <TouchableOpacity
         onPress={onCreate}
         disabled={!ready || creating}
+        accessibilityRole="button"
+        accessibilityLabel={ready ? `${planType === 'diet' ? 'Diyet' : 'Spor'} planı oluştur` : 'Önce eksik bilgileri tamamla'}
+        accessibilityState={{ disabled: !ready || !!creating, busy: !!creating }}
         style={{
           marginTop: SPACING.md,
           backgroundColor: ready && !creating ? colors.primary : colors.surfaceLight,
@@ -167,6 +199,8 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
               <TouchableOpacity
                 key={i}
                 onPress={() => openTaskChat(f.taskKey, f.taskTitle)}
+                accessibilityRole="button"
+                accessibilityLabel={`${f.field} ekle: ${f.taskTitle}`}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',

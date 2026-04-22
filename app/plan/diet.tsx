@@ -47,7 +47,7 @@ import { AlternativeComparisonModal } from '@/components/plan/AlternativeCompari
 import { PlanChatComposer } from '@/components/plan/PlanChatComposer';
 import type { PlanData } from '@/services/plan.service';
 
-type View = 'loading' | 'empty' | 'draft' | 'active';
+type ViewState = 'loading' | 'empty' | 'draft' | 'active';
 
 interface ChatMsg {
   id: string;
@@ -64,7 +64,7 @@ export default function DietPlanScreen() {
   const profile = useProfileStore(s => s.profile);
   const fetchProfile = useProfileStore(s => s.fetch);
 
-  const [view, setView] = useState<View>('loading');
+  const [view, setView] = useState<ViewState>('loading');
   const [active, setActive] = useState<PlanRow | null>(null);
   const [draft, setDraft] = useState<PlanRow | null>(null);
   const [goal, setGoal] = useState<{ goal_type?: string; target_weight_kg?: number } | null>(null);
@@ -167,7 +167,7 @@ export default function DietPlanScreen() {
     });
     setSending(false);
     if (data?.plan_snapshot) {
-      setAltCandidate(data.plan_snapshot as DietPlanData);
+      setAltCandidate(data.plan_snapshot as unknown as DietPlanData);
       setShowAltModal(true);
     }
     await load();
@@ -263,8 +263,7 @@ export default function DietPlanScreen() {
   };
 
   const handleHistory = () => {
-    // Placeholder — history screen not yet built. Would navigate to /plan/history.
-    router.push('/plan/history' as never);
+    router.push('/plan/history?type=diet' as never);
   };
 
   // ─── Render ───

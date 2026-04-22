@@ -73,6 +73,9 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
     <TouchableOpacity
       onPress={() => router.push('/(tabs)/chat' as never)}
       activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={`Profil tamamlama yüzdesi ${pct}. ${hintLine}`}
+      accessibilityHint="Görevleri açmak için dokun"
       style={{
         backgroundColor: colors.card,
         borderRadius: RADIUS.xl,
