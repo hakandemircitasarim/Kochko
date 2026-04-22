@@ -68,7 +68,7 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
       level: 'short_break',
       daysSinceLastActivity: daysSince,
       lastActivityDate: lastMessage.created_at as string,
-      welcomeMessage: 'Hos geldin! Seni ozledim. Nereden devam edelim?',
+      welcomeMessage: 'Hoş geldin! Seni özledim. Nereden devam edelim?',
       planLightening: 0,
       needsReOnboarding: false,
     };
@@ -79,7 +79,7 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
       level: 'medium_break',
       daysSinceLastActivity: daysSince,
       lastActivityDate: lastMessage.created_at as string,
-      welcomeMessage: `${daysSince} gundur gorusmuyorduk. Hos geldin! Ilk 3 gun hafif bir planla baslayalim, yavasyavas eski ritme doneriz.`,
+      welcomeMessage: `${daysSince} gündür görüşmüyorduk. Hoş geldin! İlk 3 gün hafif bir planla başlayalım, yavaş yavaş eski ritme döneriz.`,
       planLightening: 20,
       needsReOnboarding: false,
     };
@@ -90,7 +90,7 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
       level: 'long_break',
       daysSinceLastActivity: daysSince,
       lastActivityDate: lastMessage.created_at as string,
-      welcomeMessage: `Uzun bir aradan sonra tekrar buradasin — harika! Hedeflerini ve durumunu guncelleyelim, sonra sana yeni bir plan yaparim.`,
+      welcomeMessage: `Uzun bir aradan sonra tekrar buradasın — harika! Hedeflerini ve durumunu güncelleyelim, sonra sana yeni bir plan yaparım.`,
       planLightening: 30,
       needsReOnboarding: false,
     };
@@ -101,7 +101,7 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
     level: 'very_long_break',
     daysSinceLastActivity: daysSince,
     lastActivityDate: lastMessage.created_at as string,
-    welcomeMessage: 'Tekrar hosgeldin! Cok sey degismis olabilir. Seni yeniden taniyalim — kilo, hedef ve yasam tarzin guncellenmis olabilir.',
+    welcomeMessage: 'Tekrar hoş geldin! Çok şey değişmiş olabilir. Seni yeniden tanıyalım — kilo, hedef ve yaşam tarzın güncellenmiş olabilir.',
     planLightening: 30,
     needsReOnboarding: true,
   };
@@ -126,7 +126,7 @@ export async function generateWelcomeBack(userId: string, status: ReturnStatus):
 
   let achievementRef = '';
   if (goodDays > 0 && reports.length > 0) {
-    achievementRef = `\n\nDaha once ${goodDays}/${reports.length} gun hedeflerini tutturmusstun. O gucun hala sende.`;
+    achievementRef = `\n\nDaha önce ${goodDays}/${reports.length} gün hedeflerini tutturmuştun. O güç hâlâ sende.`;
   }
 
   return status.welcomeMessage + achievementRef;
