@@ -66,7 +66,7 @@ export default function ChallengesScreen() {
         active.map(c => (
           <Card key={c.id} title={c.title}>
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
-              {c.target.duration_days} gun | {c.status === 'paused' ? 'Duraklatildi' : 'Aktif'}
+              {c.target.duration_days} gün · {c.status === 'paused' ? 'Duraklatıldı' : 'Aktif'}
             </Text>
             {/* Progress bar */}
             <View style={{ height: 6, backgroundColor: COLORS.surfaceLight, borderRadius: 3, overflow: 'hidden', marginBottom: SPACING.sm }}>
@@ -77,15 +77,15 @@ export default function ChallengesScreen() {
               }} />
             </View>
             <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
-              {c.progress.filter(p => p.met).length} / {c.target.duration_days} gun tamamlandi
+              {c.progress.filter(p => p.met).length} / {c.target.duration_days} gün tamamlandı
             </Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               {c.status === 'active' && <Button title="Duraklat" variant="outline" size="sm" onPress={() => { pauseChallenge(c.id); load(); }} />}
               {c.status === 'paused' && <Button title="Devam Et" variant="primary" size="sm" onPress={() => { resumeChallenge(c.id); load(); }} />}
-              <Button title="Birak" variant="ghost" size="sm" onPress={() => {
-                Alert.alert('Birak', 'Challenge\'i birakmak istediginize emin misiniz?', [
-                  { text: 'Iptal' },
-                  { text: 'Birak', style: 'destructive', onPress: () => { abandonChallenge(c.id); load(); } },
+              <Button title="Bırak" variant="ghost" size="sm" onPress={() => {
+                Alert.alert('Bırak', 'Challenge\'ı bırakmak istediğine emin misin?', [
+                  { text: 'İptal' },
+                  { text: 'Bırak', style: 'destructive', onPress: () => { abandonChallenge(c.id); load(); } },
                 ]);
               }} />
             </View>
@@ -96,7 +96,7 @@ export default function ChallengesScreen() {
       {/* Start New */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
         <Button
-          title={showSystem ? 'Gizle' : 'Hazir Challenge'}
+          title={showSystem ? 'Gizle' : 'Hazır Challenge'}
           variant={showSystem ? 'ghost' : 'primary'}
           onPress={() => { setShowSystem(!showSystem); setShowCustom(false); }}
           style={{ flex: 1 }}
@@ -114,8 +114,8 @@ export default function ChallengesScreen() {
           {SYSTEM_CHALLENGES.map((c, i) => (
             <Card key={i}>
               <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{c.title}</Text>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 4 }}>{c.target.duration_days} gun</Text>
-              <Button title="Baslat" size="sm" onPress={() => handleStart(c)} style={{ marginTop: SPACING.sm }} />
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 4 }}>{c.target.duration_days} gün</Text>
+              <Button title="Başlat" size="sm" onPress={() => handleStart(c)} style={{ marginTop: SPACING.sm }} />
             </Card>
           ))}
         </View>
@@ -124,7 +124,7 @@ export default function ChallengesScreen() {
       {showCustom && (
         <Card style={{ marginTop: SPACING.md }}>
           <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginBottom: SPACING.sm }}>
-            Kendi Challenge'ini Tanimla
+            Kendi Challenge'ını Tanımla
           </Text>
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
             Başlık (örn. "10 gün şekersiz")
@@ -174,7 +174,7 @@ export default function ChallengesScreen() {
               />
             </View>
           </View>
-          <Button title="Baslat" onPress={handleStartCustom} />
+          <Button title="Başlat" onPress={handleStartCustom} />
         </Card>
       )}
     </ScrollView>
