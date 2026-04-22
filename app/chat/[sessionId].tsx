@@ -12,7 +12,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
-  View, Text, FlatList, TextInput, TouchableOpacity,
+  View, Text, FlatList, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Vibration, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,6 +36,7 @@ import { speak, stopSpeaking, isSpeaking } from '@/services/tts.service';
 import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
 import { ActionFeedback } from '@/components/chat/ActionFeedback';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
+import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import {
   MacroSummary, MacroRing, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
   RecipeCard, ConfirmRejectButtons, PersonaCard,
@@ -747,21 +748,7 @@ export default function SessionDetailScreen() {
       {/* Typing indicator */}
       {sending && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
-          <View style={{
-            backgroundColor: colors.card,
-            borderRadius: 16,
-            borderBottomLeftRadius: 4,
-            padding: SPACING.md,
-            alignSelf: 'flex-start',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: SPACING.sm,
-            borderWidth: 0.5,
-            borderColor: colors.border,
-          }}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={{ color: colors.textMuted, fontSize: 13 }}>Kochko yazıyor...</Text>
-          </View>
+          <TypingIndicator />
         </View>
       )}
 
@@ -854,8 +841,8 @@ export default function SessionDetailScreen() {
         </View>
       )}
 
-      {/* Remaining messages badge (Spec 19.0 — Free tier 5 AI msgs/day) */}
-      {!isPremium && remainingMsgs != null && (
+      {/* Remaining messages badge — onboarding bypass means unlimited; show only when ≤10 left */}
+      {!isPremium && remainingMsgs != null && remainingMsgs <= 10 && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: 2 }}>
           {remainingMsgs === 0 ? (
             <TouchableOpacity
@@ -868,15 +855,15 @@ export default function SessionDetailScreen() {
             >
               <Ionicons name="lock-closed" size={12} color={colors.primary} />
               <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600' }}>
-                Gunluk 5 mesaj hakkın bitti — Premium'a geç
+                Günlük 50 mesaj hakkın bitti — Premium'a geç
               </Text>
             </TouchableOpacity>
           ) : (
             <Text style={{
-              color: remainingMsgs <= 2 ? colors.warning : colors.textMuted,
+              color: remainingMsgs <= 5 ? colors.warning : colors.textMuted,
               fontSize: 10, textAlign: 'center',
             }}>
-              {remainingMsgs}/5 mesaj hakkı
+              {remainingMsgs} mesaj hakkı kaldı
             </Text>
           )}
         </View>
@@ -891,15 +878,15 @@ export default function SessionDetailScreen() {
         <View style={{
           flexDirection: 'row', alignItems: 'flex-end',
           backgroundColor: colors.card, borderRadius: 24,
-          borderWidth: 0.5, borderColor: colors.border,
+          borderWidth: 0.5, borderColor: input.length > 0 ? colors.primary + '66' : colors.border,
           paddingHorizontal: SPACING.md, paddingVertical: 6,
           gap: 4,
         }}>
           {/* Text input */}
           <TextInput
             style={{
-              flex: 1, color: taskSessionClosed ? colors.textMuted : colors.text, fontSize: 13,
-              paddingVertical: 6, maxHeight: 120,
+              flex: 1, color: taskSessionClosed ? colors.textMuted : colors.text, fontSize: 14,
+              paddingVertical: 8, maxHeight: 120, lineHeight: 20,
             }}
             placeholder={taskSessionClosed ? 'Bu konu tamamlandı — yukarıdaki karta dokun' : 'Mesajını yaz...'}
             placeholderTextColor={colors.textMuted}
@@ -987,60 +974,139 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
   const { colors, isDark } = useTheme();
 
   const onboardingSuggestions = [
-    '30 yaşında, 80 kilo, 175 boy erkeğim',
-    'Kilo vermek istiyorum',
-    'Kendimi tanıtmak istiyorum',
+    { text: '30 yaşında, 80 kilo, 175 boy erkeğim', icon: 'person-outline' as const, color: '#22C55E' },
+    { text: 'Kilo vermek istiyorum', icon: 'trending-down-outline' as const, color: '#EF4444' },
+    { text: 'Kendimi tanıtmak istiyorum', icon: 'chatbubbles-outline' as const, color: '#6366F1' },
   ];
   const regularSuggestions = [
-    'Bugün kahvaltıda 2 yumurta yedim',
-    'Bugünkü planımı oluştur',
-    'Kilo vermek istiyorum, nereden başlayalım?',
-    'Evde yapabileceğim antrenman öner',
+    { text: 'Bugün kahvaltıda 2 yumurta yedim', icon: 'restaurant-outline' as const, color: '#EF9F27' },
+    { text: 'Bugünkü planımı oluştur', icon: 'calendar-outline' as const, color: '#1D9E75' },
+    { text: 'Nereden başlayalım?', icon: 'compass-outline' as const, color: '#6366F1' },
+    { text: 'Evde yapabileceğim antrenman öner', icon: 'barbell-outline' as const, color: '#EC4899' },
   ];
   const suggestions = isOnboarding ? onboardingSuggestions : regularSuggestions;
 
   return (
-    <View style={{ flex: 1, justifyContent: 'center', padding: SPACING.xl }}>
-      {/* Onboarding intro */}
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ padding: SPACING.xl, paddingTop: SPACING.xxl, flexGrow: 1 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      {/* Onboarding intro bubble */}
       {messages.length === 1 && messages[0].role === 'assistant' && (
         <View style={{
-          maxWidth: '90%',
           backgroundColor: colors.card,
-          borderRadius: 16, borderBottomLeftRadius: 4,
-          padding: SPACING.lg, marginBottom: SPACING.xxl,
-          borderWidth: 0.5, borderColor: colors.border,
+          borderRadius: 18,
+          borderBottomLeftRadius: 4,
+          padding: SPACING.lg,
+          marginBottom: SPACING.xxl,
+          borderWidth: 0.5,
+          borderColor: colors.border,
+          ...(isDark ? {} : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 }),
         }}>
-          <Text style={{ color: colors.text, fontSize: 13, lineHeight: 20 }}>{messages[0].content}</Text>
+          <Text style={{ color: colors.text, fontSize: 14, lineHeight: 21 }}>
+            {messages[0].content}
+          </Text>
         </View>
       )}
 
-      {/* Empty state */}
+      {/* Fresh chat header — only when there are zero messages */}
       {messages.length === 0 && (
-        <>
-          <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.sm }}>Kochko</Text>
-          <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 20, marginBottom: SPACING.md }}>
-            Beslenme, antrenman, uyku — her konuda yardımcı olabilirim.
+        <View style={{ marginBottom: SPACING.lg }}>
+          <View
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 18,
+              backgroundColor: colors.primary + '22',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: SPACING.md,
+            }}
+          >
+            <Ionicons name="chatbubbles" size={26} color={colors.primary} />
+          </View>
+          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
+            Kochko ile konuş
           </Text>
-        </>
+          <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 20 }}>
+            Beslenme, antrenman, uyku — ne yedin, nasıl gidiyor, bir sonraki hamle ne olsun.
+          </Text>
+        </View>
       )}
 
-      {/* Suggestion pills */}
-      <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
+      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm }}>
+        ÖRNEK BAŞLANGIÇLAR
+      </Text>
+
+      <View style={{ gap: SPACING.sm }}>
         {suggestions.map((s, i) => (
           <TouchableOpacity
             key={i}
+            accessibilityRole="button"
+            accessibilityLabel={s.text}
             style={{
-              backgroundColor: colors.card, borderRadius: RADIUS.pill,
-              paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl,
-              borderWidth: 0.5, borderColor: colors.border,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: SPACING.md,
+              backgroundColor: colors.card,
+              borderRadius: RADIUS.lg,
+              paddingVertical: SPACING.md,
+              paddingHorizontal: SPACING.lg,
+              borderWidth: 0.5,
+              borderColor: colors.border,
             }}
-            onPress={() => onSuggestion(s)}
+            onPress={() => onSuggestion(s.text)}
           >
-            <Text style={{ color: colors.primary, fontSize: 13 }}>{s}</Text>
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 10,
+                backgroundColor: s.color + '18',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name={s.icon} size={16} color={s.color} />
+            </View>
+            <Text style={{ color: colors.text, fontSize: 13, flex: 1 }}>{s.text}</Text>
+            <Ionicons name="arrow-forward" size={14} color={colors.textMuted} />
           </TouchableOpacity>
         ))}
       </View>
-    </View>
+    </ScrollView>
+  );
+}
+
+/**
+ * Thin wrapper around each message that fades + slides in on mount.
+ * Pulled out of MessageBubble so hooks can live in a child component without
+ * adding an effect per render to the main body.
+ */
+function MessageBubbleFrame({ isUser, children }: { isUser: boolean; children: React.ReactNode }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, {
+      toValue: 1,
+      friction: 8,
+      tension: 90,
+      useNativeDriver: true,
+    }).start();
+  }, [anim]);
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
+  const opacity = anim;
+  return (
+    <Animated.View
+      style={{
+        marginBottom: SPACING.sm,
+        opacity,
+        transform: [{ translateY }],
+        alignItems: isUser ? 'flex-end' : 'stretch',
+      }}
+    >
+      {children}
+    </Animated.View>
   );
 }
 
@@ -1083,20 +1149,31 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   }
 
   return (
-    <View style={{ marginBottom: SPACING.sm }}>
+    <MessageBubbleFrame isUser={isUser}>
       <View style={{
-        maxWidth: '85%',
-        padding: SPACING.lg,
+        maxWidth: '86%',
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
         alignSelf: isUser ? 'flex-end' : 'flex-start',
         backgroundColor: isUser ? colors.primary : colors.card,
-        borderTopLeftRadius: 16,
-        borderTopRightRadius: 16,
-        borderBottomRightRadius: isUser ? 4 : 16,
-        borderBottomLeftRadius: isUser ? 16 : 4,
+        borderTopLeftRadius: 18,
+        borderTopRightRadius: 18,
+        borderBottomRightRadius: isUser ? 4 : 18,
+        borderBottomLeftRadius: isUser ? 18 : 4,
         ...(isUser ? {} : { borderWidth: 0.5, borderColor: colors.border }),
+        ...(isDark
+          ? {}
+          : { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isUser ? 0.12 : 0.04, shadowRadius: 2, elevation: 0 }),
       }}>
         {/* Message content (strip any leaked structured XML tags defensively) */}
-        <Text style={{ color: isUser ? '#fff' : colors.text, fontSize: 13, lineHeight: 20 }}>
+        <Text
+          selectable
+          style={{
+            color: isUser ? '#fff' : colors.text,
+            fontSize: 14,
+            lineHeight: 21,
+          }}
+        >
           {sanitizeAssistantText(message.content)}
         </Text>
 
@@ -1250,7 +1327,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
           </TouchableOpacity>
         </View>
       )}
-    </View>
+    </MessageBubbleFrame>
   );
 }
 
