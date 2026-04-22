@@ -112,12 +112,12 @@ export default function CoachSharingScreen() {
   const handleRevoke = () => {
     if (!userId) return;
     Alert.alert(
-      'Koc Erisimini Kaldir',
-      'Kocinizin tum verilerinize erisimi kaldirilacak. Emin misiniz?',
+      'Koç Erişimini Kaldır',
+      'Koçunun tüm verilerine erişimi kaldırılacak. Emin misin?',
       [
-        { text: 'Iptal', style: 'cancel' },
+        { text: 'İptal', style: 'cancel' },
         {
-          text: 'Erisimi Kaldir',
+          text: 'Erişimi Kaldır',
           style: 'destructive',
           onPress: async () => {
             setBusy(true);

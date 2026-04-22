@@ -51,9 +51,9 @@ export default function AccountSecurityScreen() {
   const handleTerminateSession = async (sessionId: string) => {
     Alert.alert(
       'Oturumu Kapat',
-      'Bu oturumu kapatmak istediginize emin misiniz?',
+      'Bu oturumu kapatmak istediğine emin misin?',
       [
-        { text: 'Iptal', style: 'cancel' },
+        { text: 'İptal', style: 'cancel' },
         {
           text: 'Kapat',
           style: 'destructive',
@@ -86,7 +86,7 @@ export default function AccountSecurityScreen() {
     setLoading(false);
     if (error) Alert.alert('Hata', error.message);
     else {
-      Alert.alert('Basarili', 'Sifreniz degistirildi.');
+      Alert.alert('Başarılı', 'Sifreniz degistirildi.');
       setNewPassword('');
       setConfirmNewPassword('');
     }
@@ -104,7 +104,7 @@ export default function AccountSecurityScreen() {
     setEmailLoading(false);
     if (error) Alert.alert('Hata', error.message);
     else {
-      Alert.alert('Basarili', 'Dogrulama e-postasi gonderildi. Yeni adresinizi onaylayin.');
+      Alert.alert('Başarılı', 'Dogrulama e-postasi gonderildi. Yeni adresinizi onaylayin.');
       setNewEmail('');
     }
   };
@@ -115,14 +115,14 @@ export default function AccountSecurityScreen() {
     const { signInWithGoogle } = useAuthStore.getState();
     const { error } = await signInWithGoogle();
     if (error) Alert.alert('Hata', error);
-    else Alert.alert('Basarili', 'Google hesabi baglandi.');
+    else Alert.alert('Başarılı', 'Google hesabi baglandi.');
   };
 
   const handleLinkApple = async () => {
     const { signInWithApple } = useAuthStore.getState();
     const { error } = await signInWithApple();
     if (error) Alert.alert('Hata', error);
-    else Alert.alert('Basarili', 'Apple hesabi baglandi.');
+    else Alert.alert('Başarılı', 'Apple hesabı bağlandı.');
   };
 
   // ─── Provider Unlinking ───
@@ -130,29 +130,29 @@ export default function AccountSecurityScreen() {
   const handleUnlinkProvider = async (provider: string) => {
     // At least 1 provider must remain active
     if (providers.length <= 1) {
-      Alert.alert('Hata', 'En az bir giris yontemi aktif olmali.');
+      Alert.alert('Hata', 'En az bir giriş yöntemi aktif olmalı.');
       return;
     }
 
     Alert.alert(
-      'Baglanti Kaldir',
-      `${provider} giris yontemini kaldirmak istediginize emin misiniz?`,
+      'Bağlantı Kaldır',
+      `${provider} giriş yöntemini kaldırmak istediğine emin misin?`,
       [
-        { text: 'Iptal', style: 'cancel' },
+        { text: 'İptal', style: 'cancel' },
         {
-          text: 'Kaldir',
+          text: 'Kaldır',
           style: 'destructive',
           onPress: async () => {
             const identity = identities.find(
               (i: { provider: string }) => i.provider === provider,
             );
             if (!identity) {
-              Alert.alert('Hata', 'Giris yontemi bulunamadi.');
+              Alert.alert('Hata', 'Giriş yöntemi bulunamadı.');
               return;
             }
             const { error } = await supabase.auth.unlinkIdentity(identity as never);
             if (error) Alert.alert('Hata', error.message);
-            else Alert.alert('Basarili', `${provider} baglantisi kaldirildi.`);
+            else Alert.alert('Başarılı', `${provider} bağlantısı kaldırıldı.`);
           },
         },
       ],
@@ -161,7 +161,7 @@ export default function AccountSecurityScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Hesap Guvenligi</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Hesap Güvenliği</Text>
 
       {/* Account Info */}
       <Card title="Hesap Bilgileri">
