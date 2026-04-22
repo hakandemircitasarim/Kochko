@@ -32,20 +32,44 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
   }
 
   return (
-    <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
+    <View style={{ flexDirection: 'row', gap: SPACING.xs, marginTop: SPACING.sm }}>
       <TouchableOpacity
         onPress={() => handleFeedback('helpful')}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.success + '12' }}
+        accessibilityRole="button"
+        accessibilityLabel="Bu öneri işe yaradı"
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 4,
+          paddingVertical: 5,
+          paddingHorizontal: SPACING.sm + 2,
+          borderRadius: RADIUS.full,
+          backgroundColor: colors.success + '15',
+          borderWidth: 0.5,
+          borderColor: colors.success + '33',
+        }}
       >
-        <Ionicons name="thumbs-up-outline" size={14} color={colors.success} />
-        <Text style={{ color: colors.success, fontSize: FONT.xs, fontWeight: '600' }}>İşe yaradı</Text>
+        <Ionicons name="thumbs-up" size={12} color={colors.success} />
+        <Text style={{ color: colors.success, fontSize: FONT.xs, fontWeight: '700' }}>İşe yaradı</Text>
       </TouchableOpacity>
       <TouchableOpacity
         onPress={() => handleFeedback('not_for_me')}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight }}
+        accessibilityRole="button"
+        accessibilityLabel="Bu öneri bana göre değil"
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 4,
+          paddingVertical: 5,
+          paddingHorizontal: SPACING.sm + 2,
+          borderRadius: RADIUS.full,
+          backgroundColor: colors.surfaceLight,
+          borderWidth: 0.5,
+          borderColor: colors.border,
+        }}
       >
-        <Ionicons name="thumbs-down-outline" size={14} color={colors.textMuted} />
-        <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Bana göre değil</Text>
+        <Ionicons name="thumbs-down-outline" size={12} color={colors.textMuted} />
+        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>Bana göre değil</Text>
       </TouchableOpacity>
     </View>
   );
