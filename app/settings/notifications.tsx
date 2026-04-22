@@ -9,18 +9,18 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 const TYPE_LABELS: Record<string, string> = {
-  morning_plan: 'Sabah plani',
-  meal_reminder: 'Ogun hatirlatma',
-  workout_reminder: 'Antrenman hatirlatma',
-  water_reminder: 'Su hatirlatma',
-  night_risk: 'Gece atistirma uyarisi',
-  daily_report: 'Gun sonu raporu',
-  weekly_report: 'Haftalik rapor',
-  weight_reminder: 'Tarti hatirlatma',
-  commitment_followup: 'Taahhut takibi',
-  achievement: 'Basarim bildirimi',
-  challenge: 'Challenge hatirlatma',
-  reengagement: 'Geri donus daveti',
+  morning_plan: 'Sabah planı',
+  meal_reminder: 'Öğün hatırlatma',
+  workout_reminder: 'Antrenman hatırlatma',
+  water_reminder: 'Su hatırlatma',
+  night_risk: 'Gece atıştırma uyarısı',
+  daily_report: 'Gün sonu raporu',
+  weekly_report: 'Haftalık rapor',
+  weight_reminder: 'Tartı hatırlatma',
+  commitment_followup: 'Taahhüt takibi',
+  achievement: 'Başarım bildirimi',
+  challenge: 'Challenge hatırlatma',
+  reengagement: 'Geri dönüş daveti',
 };
 
 export default function NotificationsScreen() {
@@ -49,7 +49,7 @@ export default function NotificationsScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Bildirimler</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Kocunun sana ne zaman, ne siklikta mesaj gondereceğini ayarla.
+        Koçunun sana ne zaman, ne sıklıkta mesaj göndereceğini ayarla.
       </Text>
 
       {/* Main toggle */}
@@ -57,14 +57,14 @@ export default function NotificationsScreen() {
         <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: prefs.enabled ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
           <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: prefs.enabled ? 'flex-end' : 'flex-start' }} />
         </View>
-        <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>Bildirimler {prefs.enabled ? 'Acik' : 'Kapali'}</Text>
+        <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>Bildirimler {prefs.enabled ? 'Açık' : 'Kapalı'}</Text>
       </TouchableOpacity>
 
       {prefs.enabled && (
         <>
           {/* Daily limit */}
-          <Card title="Gunluk Sinir">
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Gunde en fazla kac bildirim almak istiyorsun?</Text>
+          <Card title="Günlük Sınır">
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Günde en fazla kaç bildirim almak istiyorsun?</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               {[3, 5, 7, 10].map(n => (
                 <TouchableOpacity key={n} onPress={() => { setPrefs(p => p ? { ...p, dailyLimit: n } : p); }}
@@ -79,15 +79,15 @@ export default function NotificationsScreen() {
 
           {/* Quiet hours */}
           <Card title="Sessiz Saatler">
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Bu saatler arasinda bildirim gonderilmez.</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Bu saatler arasında bildirim gönderilmez.</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.md }}>
-              <View style={{ flex: 1 }}><Input label="Baslangic" value={prefs.quietStart} onChangeText={v => setPrefs(p => p ? { ...p, quietStart: v } : p)} placeholder="23:00" /></View>
-              <View style={{ flex: 1 }}><Input label="Bitis" value={prefs.quietEnd} onChangeText={v => setPrefs(p => p ? { ...p, quietEnd: v } : p)} placeholder="07:00" /></View>
+              <View style={{ flex: 1 }}><Input label="Başlangıç" value={prefs.quietStart} onChangeText={v => setPrefs(p => p ? { ...p, quietStart: v } : p)} placeholder="23:00" /></View>
+              <View style={{ flex: 1 }}><Input label="Bitiş" value={prefs.quietEnd} onChangeText={v => setPrefs(p => p ? { ...p, quietEnd: v } : p)} placeholder="07:00" /></View>
             </View>
           </Card>
 
           {/* Type toggles */}
-          <Card title="Bildirim Turleri">
+          <Card title="Bildirim Türleri">
             {Object.entries(TYPE_LABELS).map(([key, label]) => (
               <TouchableOpacity key={key} onPress={() => toggleType(key)}
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
