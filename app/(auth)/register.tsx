@@ -14,15 +14,17 @@ export default function RegisterScreen() {
   const { signUp, signInWithGoogle, signInWithApple, loading } = useAuthStore();
 
   const handleRegister = async () => {
-    if (!email.trim() || !password.trim()) { Alert.alert('Hata', 'Tum alanlari doldurun.'); return; }
-    if (password !== confirmPassword) { Alert.alert('Hata', 'Sifreler eslesmiyor.'); return; }
-    if (password.length < 6) { Alert.alert('Hata', 'Sifre en az 6 karakter olmali.'); return; }
+    if (!email.trim() || !password.trim()) { Alert.alert('Hata', 'Tüm alanları doldurun.'); return; }
+    if (password !== confirmPassword) { Alert.alert('Hata', 'Şifreler eşleşmiyor.'); return; }
+    if (password.length < 6) { Alert.alert('Hata', 'Şifre en az 6 karakter olmalı.'); return; }
     const year = parseInt(birthYear);
-    if (!year || year < 1920 || year > new Date().getFullYear()) { Alert.alert('Hata', 'Gecerli dogum yili girin.'); return; }
+    const currentYear = new Date().getFullYear();
+    if (!year || year < 1920 || year > currentYear) { Alert.alert('Hata', 'Geçerli doğum yılı girin.'); return; }
+    if (currentYear - year < 18) { Alert.alert('Yaş Sınırı', 'Bu uygulama 18 yaş ve üzeri içindir.'); return; }
 
     const { error } = await signUp(email.trim(), password, year);
     if (error) Alert.alert('Hata', error);
-    else Alert.alert('E-posta Dogrulamasi', 'Hesabiniz olusturuldu. Lutfen e-posta adresinize gonderilen dogrulama linkine tiklayin.', [
+    else Alert.alert('E-posta Doğrulaması', 'Hesabın oluşturuldu. Lütfen e-posta adresine gönderilen doğrulama linkine tıkla.', [
       { text: 'Tamam', onPress: () => router.replace('/(auth)/login') },
     ]);
   };
@@ -44,15 +46,15 @@ export default function RegisterScreen() {
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: SPACING.lg }} keyboardShouldPersistTaps="handled">
         <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
           <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary }}>Kochko</Text>
-          <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary }}>Hesap Olustur</Text>
+          <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary }}>Hesap Oluştur</Text>
         </View>
 
         {/* Social Register Buttons (Spec 1.1) */}
-        <Button title="Google ile Kayit Ol" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
+        <Button title="Google ile Kayıt Ol" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
         <View style={{ height: SPACING.sm }} />
         {Platform.OS === 'ios' && (
           <>
-            <Button title="Apple ile Kayit Ol" onPress={handleApple} loading={loading} variant="outline" size="lg" />
+            <Button title="Apple ile Kayıt Ol" onPress={handleApple} loading={loading} variant="outline" size="lg" />
             <View style={{ height: SPACING.sm }} />
           </>
         )}
@@ -65,13 +67,13 @@ export default function RegisterScreen() {
         </View>
 
         <Input label="E-posta" placeholder="ornek@email.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-        <Input label="Dogum Yili" placeholder="1990" value={birthYear} onChangeText={setBirthYear} keyboardType="numeric" />
-        <Input label="Sifre" placeholder="En az 6 karakter" value={password} onChangeText={setPassword} secureTextEntry />
-        <Input label="Sifre Tekrar" placeholder="Tekrar girin" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
-        <Button title="Kayit Ol" onPress={handleRegister} loading={loading} size="lg" />
+        <Input label="Doğum Yılı" placeholder="1990" value={birthYear} onChangeText={setBirthYear} keyboardType="numeric" />
+        <Input label="Şifre" placeholder="En az 6 karakter" value={password} onChangeText={setPassword} secureTextEntry />
+        <Input label="Şifre Tekrar" placeholder="Tekrar girin" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry />
+        <Button title="Kayıt Ol" onPress={handleRegister} loading={loading} size="lg" />
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.lg }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Zaten hesabin var mi? </Text>
-          <Link href="/(auth)/login" style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>Giris Yap</Link>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Zaten hesabın var mı? </Text>
+          <Link href="/(auth)/login" style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>Giriş Yap</Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
