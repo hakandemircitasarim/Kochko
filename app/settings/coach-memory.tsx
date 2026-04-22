@@ -36,7 +36,7 @@ const HABIT_STATUS_ICON: Record<string, { icon: string; color: string }> = {
 };
 
 const MEAL_TIME_LABELS: Record<string, string> = {
-  breakfast: 'Kahvalti', lunch: 'Ogle', dinner: 'Aksam', snack: 'Ara ogun',
+  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Ara öğün',
 };
 
 export default function CoachMemoryScreen() {
@@ -82,9 +82,9 @@ export default function CoachMemoryScreen() {
   const handleDeleteNote = (field: string, note: string) => {
     Alert.alert(
       'Notu Sil',
-      'Bu bilgiyi Kochkonun hafizasindan silmek istedigine emin misin?\n\nBu KVKK Madde 17 kapsaminda hakkindir.',
+      'Bu bilgiyi Kochko\'nun hafızasından silmek istediğine emin misin?\n\nBu KVKK Madde 17 kapsamında hakkındır.',
       [
-        { text: 'Iptal' },
+        { text: 'İptal' },
         {
           text: 'Sil', style: 'destructive',
           onPress: async () => {
@@ -101,9 +101,9 @@ export default function CoachMemoryScreen() {
   const handleClearField = (field: string, label: string) => {
     Alert.alert(
       `${label} Sil`,
-      `"${label}" bilgisini Kochkonun hafizasindan tamamen silmek istedigine emin misin?\n\nKVKK Madde 17 kapsaminda hakkindir.`,
+      `"${label}" bilgisini Kochko'nun hafızasından tamamen silmek istediğine emin misin?\n\nKVKK Madde 17 kapsamında hakkındır.`,
       [
-        { text: 'Iptal' },
+        { text: 'İptal' },
         {
           text: 'Sil', style: 'destructive',
           onPress: async () => {
@@ -122,12 +122,12 @@ export default function CoachMemoryScreen() {
 
   const handleResetAll = () => {
     Alert.alert(
-      'Tum Hafizayi Sifirla',
-      'Kocun senin hakkinda ogrendigi TUM bilgiler silinecek. Sifirdan ogrenmeye baslayacak.\n\nBu islem geri alinamaz.',
+      'Tüm Hafızayı Sıfırla',
+      'Koçun senin hakkında öğrendiği TÜM bilgiler silinecek. Sıfırdan öğrenmeye başlayacak.\n\nBu işlem geri alınamaz.',
       [
-        { text: 'Iptal' },
+        { text: 'İptal' },
         {
-          text: 'Hepsini Sifirla', style: 'destructive',
+          text: 'Hepsini Sıfırla', style: 'destructive',
           onPress: async () => {
             if (!user?.id) return;
             await resetAISummary(user.id);
@@ -364,13 +364,13 @@ export default function CoachMemoryScreen() {
           )}
 
           {/* ═══════════════════════════════════════════
-              SECTION: Beslenme Hafizasi
+              SECTION: Beslenme Hafızası
               (portion, meal_times, caffeine, alcohol, social_eating)
               ═══════════════════════════════════════════ */}
           {(Object.keys(data.portionCalibration).length > 0 || data.learnedMealTimes ||
             data.caffeineSleepNotes || data.alcoholPattern || data.socialEatingNotes) && (
             <>
-              <CategoryTitle title="Beslenme Hafizasi" icon="nutrition" color="#22C55E" colors={colors} />
+              <CategoryTitle title="Beslenme Hafızası" icon="nutrition" color="#22C55E" colors={colors} />
 
               {/* Portion Calibration */}
               {Object.keys(data.portionCalibration).length > 0 && (
@@ -667,7 +667,7 @@ export default function CoachMemoryScreen() {
             onPress={handleResetAll}
             style={{ alignItems: 'center', paddingVertical: SPACING.md, marginTop: SPACING.md }}
           >
-            <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '500' }}>Tum hafizayi sifirla</Text>
+            <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '500' }}>Tüm hafızayı sıfırla</Text>
             <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>KVKK Madde 17 - Veri silme hakki</Text>
           </TouchableOpacity>
         </>
@@ -678,7 +678,7 @@ export default function CoachMemoryScreen() {
           Her kategoriyi her zaman göster — AI'nın hangi alanda ne öğrendiğini
           veya henüz öğrenmediğini şeffafça görmek için.
           ═══════════════════════════════════════════ */}
-      <CategoryTitle title="Tum Hafiza Alanlari (Seffaflik)" icon="list" color="#6366F1" colors={colors} />
+      <CategoryTitle title="Tüm Hafıza Alanları (Şeffaflık)" icon="list" color="#6366F1" colors={colors} />
       <View style={cardStyle}>
         <SectionHeader icon="eye-outline" color="#6366F1" title="Kocun Takip Ettigi Her Sey" colors={colors} />
         <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
