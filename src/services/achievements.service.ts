@@ -76,19 +76,19 @@ export async function checkMilestones(
   // Weight milestones
   if (currentWeight && startWeight) {
     const lost = startWeight - currentWeight;
-    if (lost >= 1 && !types.has('first_kg')) newAchievement = { type: 'first_kg', title: 'Ilk Kilo!', desc: '1 kg verdin.' };
-    else if (lost >= 5 && !types.has('five_kg')) newAchievement = { type: 'five_kg', title: '5 Kilo!', desc: '5 kg verdin, harika is!' };
+    if (lost >= 1 && !types.has('first_kg')) newAchievement = { type: 'first_kg', title: 'İlk Kilo!', desc: '1 kg verdin.' };
+    else if (lost >= 5 && !types.has('five_kg')) newAchievement = { type: 'five_kg', title: '5 Kilo!', desc: '5 kg verdin, harika iş!' };
     else if (targetWeight && lost >= (startWeight - targetWeight) / 2 && !types.has('half_goal'))
-      newAchievement = { type: 'half_goal', title: 'Yari Yolda!', desc: 'Hedefe yarisina ulastin.' };
+      newAchievement = { type: 'half_goal', title: 'Yarı Yolda!', desc: 'Hedefin yarısına ulaştın.' };
     else if (targetWeight && currentWeight <= targetWeight && !types.has('goal_reached'))
-      newAchievement = { type: 'goal_reached', title: 'HEDEFE ULASTIN!', desc: 'Tebrikler, hedef kilona ulastin!' };
+      newAchievement = { type: 'goal_reached', title: 'HEDEFE ULAŞTIN!', desc: 'Tebrikler, hedef kilona ulaştın!' };
   }
 
   // Streak milestones
   if (!newAchievement) {
-    if (streak >= 7 && !types.has('streak_7')) newAchievement = { type: 'streak_7', title: '7 Gun Seri!', desc: '1 hafta kesintisiz kayit.' };
-    else if (streak >= 30 && !types.has('streak_30')) newAchievement = { type: 'streak_30', title: '30 Gun!', desc: '1 ay kesintisiz, muhtesem disiplin.' };
-    else if (streak >= 100 && !types.has('streak_100')) newAchievement = { type: 'streak_100', title: '100 GUN!', desc: 'Inanilmaz. 100 gun arka arkaya.' };
+    if (streak >= 7 && !types.has('streak_7')) newAchievement = { type: 'streak_7', title: '7 Gün Seri!', desc: '1 hafta kesintisiz kayıt.' };
+    else if (streak >= 30 && !types.has('streak_30')) newAchievement = { type: 'streak_30', title: '30 Gün!', desc: '1 ay kesintisiz, muhteşem disiplin.' };
+    else if (streak >= 100 && !types.has('streak_100')) newAchievement = { type: 'streak_100', title: '100 GÜN!', desc: 'İnanılmaz. 100 gün arka arkaya.' };
   }
 
   // Maintenance milestones (Spec 13.2)
@@ -102,11 +102,11 @@ export async function checkMilestones(
       if (goalReachedAch) {
         const daysSinceGoal = Math.floor((Date.now() - new Date(goalReachedAch.achieved_at).getTime()) / 86400000);
         if (daysSinceGoal >= 30 && !types.has('maintenance_1m'))
-          newAchievement = { type: 'maintenance_1m', title: '1 Ay Bakimda!', desc: 'Hedef kilonda 1 aydir tutunuyorsun.' };
+          newAchievement = { type: 'maintenance_1m', title: '1 Ay Bakımda!', desc: 'Hedef kilonda 1 aydır tutunuyorsun.' };
         else if (daysSinceGoal >= 90 && !types.has('maintenance_3m'))
-          newAchievement = { type: 'maintenance_3m', title: '3 Ay Bakimda!', desc: 'Hedef kilonda 3 aydir devam ediyorsun, muhtesem.' };
+          newAchievement = { type: 'maintenance_3m', title: '3 Ay Bakımda!', desc: 'Hedef kilonda 3 aydır devam ediyorsun, muhteşem.' };
         else if (daysSinceGoal >= 180 && !types.has('maintenance_6m'))
-          newAchievement = { type: 'maintenance_6m', title: '6 Ay Bakimda!', desc: 'Yari yil hedef kilonda. Aliskanligin oturmus.' };
+          newAchievement = { type: 'maintenance_6m', title: '6 Ay Bakımda!', desc: 'Yarım yıl hedef kilonda. Alışkanlığın oturmuş.' };
       }
     }
   }
