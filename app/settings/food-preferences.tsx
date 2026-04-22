@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 type Pref = 'love' | 'like' | 'can_cook' | 'dislike' | 'never';
-const PREF_LABELS: Record<Pref, string> = { love: 'Bayilirim', like: 'Severim', can_cook: 'Yapabilirim', dislike: 'Sevmem', never: 'Asla' };
+const PREF_LABELS: Record<Pref, string> = { love: 'Bayılırım', like: 'Severim', can_cook: 'Yapabilirim', dislike: 'Sevmem', never: 'Asla' };
 const PREF_COLORS: Record<Pref, string> = { love: COLORS.success, like: '#8BC34A', can_cook: COLORS.primary, dislike: COLORS.warning, never: COLORS.error };
 
 interface FoodPref { id: string; food_name: string; preference: Pref; is_allergen: boolean; }
@@ -52,10 +52,10 @@ export default function FoodPreferencesScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Yemek Tercihleri</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Sevdigin ve sevmedigin yemekleri ekle. AI bunlari dikkate alir.</Text>
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Sevdiğin ve sevmediğin yemekleri ekle. AI bunları dikkate alır.</Text>
 
       <Card>
-        <Input label="Yiyecek adi" placeholder="brokoli, sut, balik..." value={newFood} onChangeText={setNewFood} />
+        <Input label="Yiyecek adı" placeholder="brokoli, süt, balık..." value={newFood} onChangeText={setNewFood} />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
           {(Object.keys(PREF_LABELS) as Pref[]).map(p => (
             <TouchableOpacity key={p} onPress={() => setNewPref(p)}
@@ -68,7 +68,7 @@ export default function FoodPreferencesScreen() {
         </View>
         <TouchableOpacity onPress={() => setIsAllergen(!isAllergen)} style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
           <Text style={{ color: COLORS.primary, fontSize: FONT.md }}>{isAllergen ? '[x]' : '[ ]'}</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Alerjen / Intolerans</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Alerjen / İntolerans</Text>
         </TouchableOpacity>
         <Button title="Ekle" onPress={handleAdd} size="sm" />
       </Card>

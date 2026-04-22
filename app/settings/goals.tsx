@@ -22,7 +22,7 @@ import type { Goal } from '@/types/database';
 type GoalType = 'lose_weight' | 'gain_weight' | 'gain_muscle' | 'health' | 'maintain' | 'conditioning';
 const GOAL_LABELS: Record<GoalType, string> = {
   lose_weight: 'Kilo Ver', gain_weight: 'Kilo Al', gain_muscle: 'Kas Kazan',
-  health: 'Saglik', maintain: 'Koru', conditioning: 'Kondisyon',
+  health: 'Sağlık', maintain: 'Koru', conditioning: 'Kondisyon',
 };
 
 export default function GoalsScreen() {
@@ -156,7 +156,7 @@ export default function GoalsScreen() {
     if (existingGoal && goalType !== existingGoal.goal_type) {
       const compat = checkGoalCompatibility(goalType, existingGoal.goal_type as string);
       if (!compat.compatible) {
-        Alert.alert('Hedef Celiskisi', compat.message_tr);
+        Alert.alert('Hedef Çelişkisi', compat.message_tr);
         return;
       }
     }
@@ -164,21 +164,21 @@ export default function GoalsScreen() {
     setSaving(true);
     // Deactivate existing active goals before creating new phase
     await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
-    const phaseLabel = goalType === 'lose_weight' ? 'Yag Yakim'
+    const phaseLabel = goalType === 'lose_weight' ? 'Yağ Yakım'
       : goalType === 'gain_weight' ? 'Kilo Alma'
-      : goalType === 'gain_muscle' ? 'Kas Gelistirme'
+      : goalType === 'gain_muscle' ? 'Kas Geliştirme'
       : goalType === 'maintain' ? 'Koruma'
       : goalType === 'conditioning' ? 'Kondisyon'
-      : 'Saglik';
+      : 'Sağlık';
     await addPhase(user.id, goalType, tw || null, weeks, phaseLabel);
     setSaving(false);
-    Alert.alert('Basarili', 'Hedef kaydedildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+    Alert.alert('Başarılı', 'Hedef kaydedildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
   };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Hedef Ayarlari</Text>
+        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Hedef Ayarları</Text>
 
         {profile?.weight_kg && (
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600', marginBottom: SPACING.md }}>Mevcut: {profile.weight_kg} kg</Text>
@@ -235,14 +235,14 @@ export default function GoalsScreen() {
                   </Text>
                   <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{phase.target_weeks ?? '?'} hafta{phase.target_weight_kg ? ` - ${phase.target_weight_kg}kg` : ''}</Text>
                 </View>
-                {phase.is_active && <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700' }}>AKTIF</Text>}
+                {phase.is_active && <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700' }}>AKTİF</Text>}
               </View>
             ))}
           </Card>
         )}
 
         {/* Goal type selector */}
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Hedef Turu</Text>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Hedef Türü</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.lg }}>
           {(Object.keys(GOAL_LABELS) as GoalType[]).map(g => (
             <Button key={g} title={GOAL_LABELS[g]} variant={goalType === g ? 'primary' : 'outline'} size="sm" onPress={() => setGoalType(g)} />
@@ -250,12 +250,12 @@ export default function GoalsScreen() {
         </View>
 
         <Input label="Hedef Kilo (kg)" placeholder="70" value={targetWeight} onChangeText={setTargetWeight} keyboardType="decimal-pad" />
-        <Input label="Hedef Sure (hafta)" placeholder="12" value={targetWeeks} onChangeText={setTargetWeeks} keyboardType="numeric" />
+        <Input label="Hedef Süre (hafta)" placeholder="12" value={targetWeeks} onChangeText={setTargetWeeks} keyboardType="numeric" />
 
         {/* D19: Goal compatibility warning */}
         {compatWarning && (
           <View style={{ backgroundColor: COLORS.warning + '15', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.warning }}>
-            <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Hedef Uyumsuzlugu</Text>
+            <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Hedef Uyumsuzluğu</Text>
             <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{compatWarning}</Text>
           </View>
         )}
@@ -263,7 +263,7 @@ export default function GoalsScreen() {
         {/* D5: Phase transition info */}
         {phaseTransitionInfo && (
           <View style={{ backgroundColor: COLORS.primary + '10', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '40' }}>
-            <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Kademeli Gecis</Text>
+            <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Kademeli Geçiş</Text>
             <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>{phaseTransitionInfo}</Text>
           </View>
         )}
@@ -288,7 +288,7 @@ export default function GoalsScreen() {
         {/* Weekly rate display */}
         {weeklyRate > 0 && (
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.md }}>
-            Haftalik tempo: {weeklyRate.toFixed(2)} kg/hafta
+            Haftalık tempo: {weeklyRate.toFixed(2)} kg/hafta
           </Text>
         )}
 
@@ -296,7 +296,7 @@ export default function GoalsScreen() {
 
         {/* D18: AI Goal Suggestions */}
         <Button
-          title={loadingSuggestions ? 'Yukleniyor...' : 'AI Hedef Onerisi Al'}
+          title={loadingSuggestions ? 'Yükleniyor...' : 'AI Hedef Önerisi Al'}
           variant="outline"
           onPress={handleFetchAISuggestions}
           style={{ marginTop: SPACING.md }}
@@ -306,7 +306,7 @@ export default function GoalsScreen() {
         {/* AI Suggestion results */}
         {aiSuggestions.length > 0 && (
           <View style={{ marginTop: SPACING.md }}>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>AI ONERILERI</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>AI ÖNERİLERİ</Text>
             {aiSuggestions.map((s, i) => (
               <TouchableOpacity key={i}
                 onPress={() => {
