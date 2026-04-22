@@ -25,7 +25,7 @@ interface Props {
   onRequestMore?: () => void; // "Hiçbiri olmadı, 2 tane daha göster"
 }
 
-function DietSummary({ plan, label, onPick, colors }: { plan: DietPlanData; label: string; onPick: () => void; colors: any }) {
+function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanData; label: string; accent: string; onPick: () => void; colors: any }) {
   const totalKcal = plan.days.reduce((s, d) => s + d.total_kcal, 0);
   const activeDays = plan.days.filter(d => d.meals.length > 0).length;
   const avgKcal = Math.round(totalKcal / Math.max(1, activeDays));
@@ -38,14 +38,24 @@ function DietSummary({ plan, label, onPick, colors }: { plan: DietPlanData; labe
         backgroundColor: colors.card,
         borderRadius: RADIUS.xl,
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: accent + '44',
         padding: SPACING.md,
       }}
     >
-      <Text style={{ color: '#22C55E', fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
-        {label}
-      </Text>
-      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: 4 }}>
+      <View
+        style={{
+          alignSelf: 'flex-start',
+          backgroundColor: accent + '22',
+          paddingHorizontal: 9,
+          paddingVertical: 3,
+          borderRadius: 999,
+        }}
+      >
+        <Text style={{ color: accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 }}>
+          PLAN {label}
+        </Text>
+      </View>
+      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: SPACING.sm }}>
         {avgKcal} kcal/gün
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
@@ -67,9 +77,11 @@ function DietSummary({ plan, label, onPick, colors }: { plan: DietPlanData; labe
 
       <TouchableOpacity
         onPress={onPick}
+        accessibilityRole="button"
+        accessibilityLabel={`Plan ${label}'yı seç`}
         style={{
           marginTop: SPACING.md,
-          backgroundColor: colors.primary,
+          backgroundColor: accent,
           borderRadius: RADIUS.md,
           paddingVertical: SPACING.sm,
           alignItems: 'center',
@@ -81,7 +93,7 @@ function DietSummary({ plan, label, onPick, colors }: { plan: DietPlanData; labe
   );
 }
 
-function WorkoutSummary({ plan, label, onPick, colors }: { plan: WorkoutPlanData; label: string; onPick: () => void; colors: any }) {
+function WorkoutSummary({ plan, label, accent, onPick, colors }: { plan: WorkoutPlanData; label: string; accent: string; onPick: () => void; colors: any }) {
   const active = plan.days.filter(d => !d.rest_day);
   const total = active.reduce((s, d) => s + d.exercises.length, 0);
 
@@ -92,14 +104,24 @@ function WorkoutSummary({ plan, label, onPick, colors }: { plan: WorkoutPlanData
         backgroundColor: colors.card,
         borderRadius: RADIUS.xl,
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: accent + '44',
         padding: SPACING.md,
       }}
     >
-      <Text style={{ color: '#6366F1', fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
-        {label}
-      </Text>
-      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: 4 }}>
+      <View
+        style={{
+          alignSelf: 'flex-start',
+          backgroundColor: accent + '22',
+          paddingHorizontal: 9,
+          paddingVertical: 3,
+          borderRadius: 999,
+        }}
+      >
+        <Text style={{ color: accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 }}>
+          PLAN {label}
+        </Text>
+      </View>
+      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: SPACING.sm }}>
         {active.length} aktif gün
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
@@ -119,9 +141,11 @@ function WorkoutSummary({ plan, label, onPick, colors }: { plan: WorkoutPlanData
 
       <TouchableOpacity
         onPress={onPick}
+        accessibilityRole="button"
+        accessibilityLabel={`Plan ${label}'yı seç`}
         style={{
           marginTop: SPACING.md,
-          backgroundColor: colors.primary,
+          backgroundColor: accent,
           borderRadius: RADIUS.md,
           paddingVertical: SPACING.sm,
           alignItems: 'center',
@@ -188,13 +212,13 @@ export function AlternativeComparisonModal({
           <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
             {isDiet ? (
               <>
-                <DietSummary plan={planA as DietPlanData} label="A" onPick={onPickA} colors={colors} />
-                <DietSummary plan={planB as DietPlanData} label="B" onPick={onPickB} colors={colors} />
+                <DietSummary plan={planA as DietPlanData} label="A" accent="#22C55E" onPick={onPickA} colors={colors} />
+                <DietSummary plan={planB as DietPlanData} label="B" accent="#3B82F6" onPick={onPickB} colors={colors} />
               </>
             ) : (
               <>
-                <WorkoutSummary plan={planA as WorkoutPlanData} label="A" onPick={onPickA} colors={colors} />
-                <WorkoutSummary plan={planB as WorkoutPlanData} label="B" onPick={onPickB} colors={colors} />
+                <WorkoutSummary plan={planA as WorkoutPlanData} label="A" accent="#6366F1" onPick={onPickA} colors={colors} />
+                <WorkoutSummary plan={planB as WorkoutPlanData} label="B" accent="#EC4899" onPick={onPickB} colors={colors} />
               </>
             )}
           </View>
