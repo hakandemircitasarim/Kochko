@@ -197,7 +197,7 @@ export default function TodayScreen() {
             borderLeftWidth: 3, borderLeftColor: colors.primary,
           }}>
             <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>
-              {returnStatus.level === 'very_long_break' ? 'TEKRAR HOS GELDIN' : 'HOS GELDIN'}
+              {returnStatus.level === 'very_long_break' ? 'TEKRAR HOŞ GELDİN' : 'HOŞ GELDİN'}
             </Text>
             <Text style={{ color: colors.text, fontSize: 13, lineHeight: 18 }}>
               {returnStatus.welcomeMessage}
@@ -210,7 +210,7 @@ export default function TodayScreen() {
                   borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Guncelleme yap</Text>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Güncelleme yap</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={() => setReturnStatus(null)} style={{ position: 'absolute', top: 8, right: 8, padding: 4 }}>
