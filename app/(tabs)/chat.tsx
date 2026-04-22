@@ -140,18 +140,43 @@ export default function SessionListScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header */}
       <View style={{
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: SPACING.xl, paddingTop: Platform.OS === 'web' ? 16 : insets.top + 12, paddingBottom: SPACING.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.sm,
+        paddingHorizontal: SPACING.xl,
+        paddingTop: Platform.OS === 'web' ? 16 : insets.top + 12,
+        paddingBottom: SPACING.md,
       }}>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text }}>Kochko</Text>
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 12,
+            backgroundColor: colors.primary + '22',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: colors.primary + '44',
+          }}
+        >
+          <Ionicons name="sparkles" size={17} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Kochko</Text>
+          <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: -1 }}>
+            {sessions.filter(s => s.is_active).length > 0 ? 'Aktif sohbetin var' : 'Yeni bir sohbet başlat'}
+          </Text>
+        </View>
         <TouchableOpacity
           onPress={handleNewSession}
+          accessibilityRole="button"
+          accessibilityLabel="Yeni sohbet"
           style={{
-            width: 36, height: 36, borderRadius: 18,
+            width: 38, height: 38, borderRadius: 19,
             backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <Ionicons name="add" size={20} color="#fff" />
+          <Ionicons name="add" size={22} color="#fff" />
         </TouchableOpacity>
       </View>
 

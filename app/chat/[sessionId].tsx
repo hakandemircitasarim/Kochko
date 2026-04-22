@@ -88,6 +88,26 @@ function parseSimulationData(content: string): { cleanContent: string; data: Sim
   }
 }
 
+/**
+ * Split a text into plain/bold segments for rendering in Text nodes.
+ * Supports only `**bold**` — the most common markdown AI produces. Any other
+ * markup (italic, links, headers) is passed through verbatim to avoid surprise
+ * renders.
+ */
+function splitBoldSegments(text: string): Array<{ text: string; bold: boolean }> {
+  const parts: Array<{ text: string; bold: boolean }> = [];
+  const re = /\*\*([^*\n]+?)\*\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push({ text: text.slice(lastIndex, match.index), bold: false });
+    parts.push({ text: match[1], bold: true });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) parts.push({ text: text.slice(lastIndex), bold: false });
+  return parts.length === 0 ? [{ text, bold: false }] : parts;
+}
+
 // Defensive sanitizer — belt-and-suspenders for any structured XML block that somehow
 // slipped through server-side stripping. Never render these in the user-facing bubble.
 function sanitizeAssistantText(text: string): string {
@@ -713,14 +733,52 @@ export default function SessionDetailScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {/* Header */}
-      <View style={{ paddingHorizontal: SPACING.xl, paddingTop: Platform.OS === 'web' ? 12 : Math.max(insets.top, 12), paddingBottom: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-        <TouchableOpacity onPress={() => router.back()}>
+      <View style={{
+        paddingHorizontal: SPACING.xl,
+        paddingTop: Platform.OS === 'web' ? 12 : Math.max(insets.top, 12),
+        paddingBottom: SPACING.sm,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: SPACING.sm,
+        borderBottomWidth: 0.5,
+        borderBottomColor: colors.divider,
+      }}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Geri"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, flex: 1 }}>Kochko</Text>
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 12,
+            backgroundColor: colors.primary + '22',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: colors.primary + '44',
+          }}
+        >
+          <Ionicons name="sparkles" size={17} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Kochko</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: sending ? '#F59E0B' : '#22C55E' }} />
+            <Text style={{ fontSize: 10, color: colors.textMuted }}>
+              {sending ? 'yazıyor…' : 'aktif'}
+            </Text>
+          </View>
+        </View>
         <TouchableOpacity
           onPress={handleCopyConversation}
           style={{ padding: 6, borderRadius: 999, backgroundColor: colors.surfaceLight }}
+          accessibilityRole="button"
+          accessibilityLabel="Sohbeti kopyala"
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
@@ -1165,16 +1223,26 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
           ? {}
           : { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isUser ? 0.12 : 0.04, shadowRadius: 2, elevation: 0 }),
       }}>
-        {/* Message content (strip any leaked structured XML tags defensively) */}
+        {/* Message content (strip leaked XML, support **bold** inline formatting) */}
         <Text
           selectable
+          onLongPress={() => {
+            // No clipboard module in this repo; surface the native share sheet
+            // so user can copy/forward through the OS UI.
+            Share.share({ message: sanitizeAssistantText(message.content) }).catch(() => {});
+            Vibration.vibrate(20);
+          }}
           style={{
             color: isUser ? '#fff' : colors.text,
             fontSize: 14,
             lineHeight: 21,
           }}
         >
-          {sanitizeAssistantText(message.content)}
+          {splitBoldSegments(sanitizeAssistantText(message.content)).map((seg, i) => (
+            <Text key={i} style={seg.bold ? { fontWeight: '700' } : undefined}>
+              {seg.text}
+            </Text>
+          ))}
         </Text>
 
         {/* Navigate-to chip — AI hints the user to a plan screen (Phase 5) */}
