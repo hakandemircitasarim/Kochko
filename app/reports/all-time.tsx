@@ -96,11 +96,11 @@ export default function AllTimeReportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Tum Zamanlar</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Tüm Zamanlar</Text>
 
       {/* Total Progress */}
       {totalWeightChange !== null && (
-        <Card title="Toplam Ilerleme">
+        <Card title="Toplam İlerleme">
           <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
             <Text style={{ color: totalWeightChange < 0 ? COLORS.success : COLORS.error, fontSize: FONT.hero, fontWeight: '800' }}>
               {totalWeightChange > 0 ? '+' : ''}{totalWeightChange.toFixed(1)} kg
@@ -114,28 +114,28 @@ export default function AllTimeReportScreen() {
 
       {/* Key Stats Grid */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md }}>
-        <StatCard label="Aktif Gun" value={`${stats.daysActive}`} />
-        <StatCard label="Toplam Ogun" value={`${stats.totalMeals}`} />
+        <StatCard label="Aktif Gün" value={`${stats.daysActive}`} />
+        <StatCard label="Toplam Öğün" value={`${stats.totalMeals}`} />
         <StatCard label="Toplam Antrenman" value={`${stats.totalWorkouts}`} />
         <StatCard label="Streak" value={`${stats.longestStreak}`} />
         <StatCard label="Ort. Uyum" value={`%${stats.avgCompliance}`} />
-        <StatCard label="Basarimlar" value={`${stats.achievements}`} />
+        <StatCard label="Başarımlar" value={`${stats.achievements}`} />
       </View>
 
       {/* Milestones */}
-      <Card title="Kilometre Taslari">
+      <Card title="Kilometre Taşları">
         {totalWeightChange !== null && totalWeightChange < 0 && (
           <>
-            {Math.abs(totalWeightChange) >= 1 && <MilestoneRow text="Ilk 1 kg" done />}
+            {Math.abs(totalWeightChange) >= 1 && <MilestoneRow text="İlk 1 kg" done />}
             {Math.abs(totalWeightChange) >= 5 && <MilestoneRow text="5 kg" done />}
             {Math.abs(totalWeightChange) >= 10 && <MilestoneRow text="10 kg" done />}
           </>
         )}
-        {stats.longestStreak >= 7 && <MilestoneRow text="7 gun streak" done />}
-        {stats.longestStreak >= 30 && <MilestoneRow text="30 gun streak" done />}
-        {stats.longestStreak >= 100 && <MilestoneRow text="100 gun streak" done />}
+        {stats.longestStreak >= 7 && <MilestoneRow text="7 gün streak" done />}
+        {stats.longestStreak >= 30 && <MilestoneRow text="30 gün streak" done />}
+        {stats.longestStreak >= 100 && <MilestoneRow text="100 gün streak" done />}
         {stats.totalMeals === 0 && stats.longestStreak < 7 && (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>Henuz kilometre tasi yok. Devam et!</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
         )}
       </Card>
     </ScrollView>

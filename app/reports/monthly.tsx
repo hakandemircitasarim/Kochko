@@ -102,7 +102,7 @@ export default function MonthlyReportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Aylik Rapor</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Aylık Rapor</Text>
 
       {/* Overall Compliance */}
       <Card title="Ortalama Uyum">
@@ -121,11 +121,11 @@ export default function MonthlyReportScreen() {
         <Card title="Kilo Trendi">
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View>
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Ay basi</Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Ay başı</Text>
               <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{firstWeight} kg</Text>
             </View>
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Degisim</Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Değişim</Text>
               <Text style={{ color: weightChange < 0 ? COLORS.success : weightChange > 0 ? COLORS.error : COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>
                 {weightChange > 0 ? '+' : ''}{weightChange.toFixed(1)} kg
               </Text>
@@ -140,12 +140,12 @@ export default function MonthlyReportScreen() {
 
       {/* AI Report Section */}
       {!aiReport && (
-        <Card title="AI Aylik Analiz">
+        <Card title="AI Aylık Analiz">
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.md }}>
-            Yapay zeka ile aylik performans analizinizi olusturun.
+            Yapay zeka ile aylık performans analizini oluştur.
           </Text>
           <Button
-            title="Rapor Olustur"
+            title="Rapor Oluştur"
             onPress={handleGenerateReport}
             loading={generating}
             disabled={generating}
@@ -157,13 +157,13 @@ export default function MonthlyReportScreen() {
         <>
           {/* Monthly Summary */}
           {aiReport.monthly_summary && (
-            <Card title="Aylik Ozet">
+            <Card title="Aylık Özet">
               <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 22 }}>{aiReport.monthly_summary}</Text>
               {aiReport.trend_direction && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm }}>
                   <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Trend: </Text>
                   <Text style={{ color: trendColor(aiReport.trend_direction), fontSize: FONT.sm, fontWeight: '700' }}>
-                    {aiReport.trend_direction === 'yukselis' ? 'Yukselis' : aiReport.trend_direction === 'dusus' ? 'Dusus' : 'Stabil'}
+                    {aiReport.trend_direction === 'yukselis' ? 'Yükseliş' : aiReport.trend_direction === 'dusus' ? 'Düşüş' : 'Stabil'}
                   </Text>
                 </View>
               )}
@@ -172,7 +172,7 @@ export default function MonthlyReportScreen() {
 
           {/* Top Achievement */}
           {aiReport.top_achievement && (
-            <Card title="Ayin Basarisi">
+            <Card title="Ayın Başarısı">
               <Text style={{ color: COLORS.success, fontSize: FONT.md, fontWeight: '600' }}>{aiReport.top_achievement}</Text>
             </Card>
           )}
@@ -191,7 +191,7 @@ export default function MonthlyReportScreen() {
 
           {/* Behavioral Patterns */}
           {aiReport.behavioral_patterns && aiReport.behavioral_patterns.length > 0 && (
-            <Card title="Davranis Kaliplari">
+            <Card title="Davranış Kalıpları">
               {aiReport.behavioral_patterns.map((pattern, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < aiReport.behavioral_patterns!.length - 1 ? SPACING.xs : 0 }}>
                   <Text style={{ color: COLORS.primary, fontSize: FONT.sm, marginRight: SPACING.xs }}>-</Text>
@@ -233,7 +233,7 @@ export default function MonthlyReportScreen() {
       )}
 
       {/* Weekly Summaries */}
-      <Card title="Haftalik Ozetler">
+      <Card title="Haftalık Özetler">
         {weeklyReports.map((wr, i) => (
           <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.sm, borderBottomWidth: i < weeklyReports.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{wr.week_start as string}</Text>
@@ -242,7 +242,7 @@ export default function MonthlyReportScreen() {
           </View>
         ))}
         {weeklyReports.length === 0 && (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>Henuz haftalik rapor yok.</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>Henüz haftalık rapor yok.</Text>
         )}
       </Card>
     </ScrollView>

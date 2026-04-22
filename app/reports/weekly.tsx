@@ -92,13 +92,13 @@ export default function WeeklyReportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Haftalik Rapor</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Haftalık Rapor</Text>
       {report && <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Hafta: {report.week_start}</Text>}
 
       {!report ? (
         <Card>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Henuz haftalik rapor yok.</Text>
-          <Button title="Rapor Olustur" onPress={handleGenerate} loading={generating} size="lg" />
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Henüz haftalık rapor yok.</Text>
+          <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
         </Card>
       ) : (
         <>
@@ -109,7 +109,7 @@ export default function WeeklyReportScreen() {
               <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary }}>Ortalama Uyum</Text>
               {report.weekly_budget_compliance != null && (
                 <Text style={{ color: report.weekly_budget_compliance ? COLORS.success : COLORS.warning, fontSize: FONT.sm, marginTop: SPACING.xs }}>
-                  Haftalik butce: {report.weekly_budget_compliance ? 'Tutturuldu' : 'Asildi'}
+                  Haftalık bütçe: {report.weekly_budget_compliance ? 'Tutturuldu' : 'Aşıldı'}
                 </Text>
               )}
             </View>
@@ -136,16 +136,16 @@ export default function WeeklyReportScreen() {
 
           {/* Best/Worst Day */}
           {(report.best_day || report.worst_day) && (
-            <Card title="Haftanin Gunleri">
+            <Card title="Haftanın Günleri">
               {report.best_day && (
                 <View style={{ flexDirection: 'row', gap: SPACING.md, paddingVertical: SPACING.xs }}>
-                  <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600', width: 50 }}>En Iyi</Text>
+                  <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600', width: 50 }}>En İyi</Text>
                   <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{new Date(report.best_day).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric' })}</Text>
                 </View>
               )}
               {report.worst_day && (
                 <View style={{ flexDirection: 'row', gap: SPACING.md, paddingVertical: SPACING.xs }}>
-                  <Text style={{ color: COLORS.error, fontSize: FONT.sm, fontWeight: '600', width: 50 }}>En Kotu</Text>
+                  <Text style={{ color: COLORS.error, fontSize: FONT.sm, fontWeight: '600', width: 50 }}>En Kötü</Text>
                   <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{new Date(report.worst_day).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric' })}</Text>
                 </View>
               )}
@@ -154,27 +154,27 @@ export default function WeeklyReportScreen() {
 
           {/* Top Deviation */}
           {report.top_deviation && (
-            <Card title="En Cok Sapilan Konu">
+            <Card title="En Çok Sapılan Konu">
               <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '500' }}>{report.top_deviation}</Text>
             </Card>
           )}
 
           {/* Strength Summary */}
           {report.strength_summary && (
-            <Card title="Guc Ozeti">
+            <Card title="Güç Özeti">
               <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>{report.strength_summary}</Text>
             </Card>
           )}
 
           {/* Alcohol Summary — Spec 3.1, 8.2 */}
           {alcohol && alcohol.thisWeek > 0 && (
-            <Card title="Alkol Ozeti">
+            <Card title="Alkol Özeti">
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Bu hafta toplam</Text>
                 <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{alcohol.thisWeek} kcal</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Hafta ici</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Hafta içi</Text>
                 <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>{alcohol.weekdayKcal} kcal</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
@@ -183,7 +183,7 @@ export default function WeeklyReportScreen() {
               </View>
               {alcohol.prevWeek > 0 && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs, marginTop: SPACING.xs, borderTopWidth: 1, borderTopColor: COLORS.border }}>
-                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Gecen hafta</Text>
+                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Geçen hafta</Text>
                   <Text style={{ color: alcohol.thisWeek < alcohol.prevWeek ? COLORS.success : alcohol.thisWeek > alcohol.prevWeek ? COLORS.warning : COLORS.textMuted, fontSize: FONT.sm, fontWeight: '500' }}>
                     {alcohol.prevWeek} kcal ({alcohol.thisWeek > alcohol.prevWeek ? '+' : ''}{alcohol.thisWeek - alcohol.prevWeek})
                   </Text>
@@ -194,7 +194,7 @@ export default function WeeklyReportScreen() {
 
           {/* AI Learning Note */}
           {report.ai_learning_note && (
-            <Card title="Bu Hafta Seni Daha Iyi Tanidim">
+            <Card title="Bu Hafta Seni Daha İyi Tanıdım">
               <Text style={{ color: COLORS.primary, fontSize: FONT.md, lineHeight: 22, fontStyle: 'italic' }}>{report.ai_learning_note}</Text>
             </Card>
           )}
@@ -218,7 +218,7 @@ export default function WeeklyReportScreen() {
             </Card>
           )}
 
-          <Button title="Yeniden Olustur" variant="outline" onPress={handleGenerate} loading={generating} />
+          <Button title="Yeniden Oluştur" variant="outline" onPress={handleGenerate} loading={generating} />
         </>
       )}
     </ScrollView>
