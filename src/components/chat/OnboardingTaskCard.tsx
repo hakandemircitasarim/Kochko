@@ -19,28 +19,50 @@ export function OnboardingTaskCard({ task, onPress }: Props) {
   return (
     <TouchableOpacity
       onPress={() => onPress(task)}
-      activeOpacity={0.7}
+      activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={`${task.title}: ${task.description}`}
       style={{
         backgroundColor: colors.card,
-        borderRadius: RADIUS.md,
-        padding: SPACING.lg,
-        borderWidth: 0.5,
-        borderColor: colors.border,
-        width: 200,
+        borderRadius: RADIUS.lg,
+        padding: SPACING.md,
+        borderWidth: 1,
+        borderColor: task.color + '33',
+        width: 220,
         gap: SPACING.sm,
       }}
     >
-      <View style={{
-        width: 36, height: 36, borderRadius: RADIUS.sm,
-        backgroundColor: task.color + '18',
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        <Ionicons name={task.icon as any} size={18} color={task.color} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 11,
+            backgroundColor: task.color + '22',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={task.icon as keyof typeof Ionicons.glyphMap} size={17} color={task.color} />
+        </View>
+        <View
+          style={{
+            marginLeft: 'auto',
+            backgroundColor: task.color + '15',
+            paddingHorizontal: 7,
+            paddingVertical: 2,
+            borderRadius: 999,
+          }}
+        >
+          <Text style={{ color: task.color, fontSize: 9, fontWeight: '700', letterSpacing: 0.5 }}>
+            BAŞLA
+          </Text>
+        </View>
       </View>
-      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '500' }} numberOfLines={1}>
+      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
         {task.title}
       </Text>
-      <Text style={{ color: colors.textMuted, fontSize: 11 }} numberOfLines={2}>
+      <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 15 }} numberOfLines={2}>
         {task.description}
       </Text>
     </TouchableOpacity>
