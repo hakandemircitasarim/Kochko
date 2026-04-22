@@ -105,9 +105,9 @@ export default function ChatHistoryScreen() {
   const handleDeleteSession = (sessionId: string) => {
     Alert.alert(
       'Sohbet Sil',
-      'Bu sohbet oturumunu silmek istediginize emin misiniz? Not: Kocun seni tanima notlari (Katman 2) silinmez, sadece sohbet kaydi kaldirilir.',
+      'Bu sohbet oturumunu silmek istediğine emin misin? Not: Koçun seni tanıma notları (Katman 2) silinmez, sadece sohbet kaydı kaldırılır.',
       [
-        { text: 'Iptal' },
+        { text: 'İptal' },
         {
           text: 'Sil', style: 'destructive',
           onPress: async () => {
@@ -122,10 +122,10 @@ export default function ChatHistoryScreen() {
 
   const handleClearAll = () => {
     Alert.alert(
-      'Tum Sohbetleri Sil',
-      'Tum sohbet gecmisiniz silinecek. Kocun seni tanima notlari (Katman 2) korunur. Bu islemi geri alamazsiniz.',
+      'Tüm Sohbetleri Sil',
+      'Tüm sohbet geçmişin silinecek. Koçun seni tanıma notları (Katman 2) korunur. Bu işlemi geri alamazsın.',
       [
-        { text: 'Iptal' },
+        { text: 'İptal' },
         {
           text: 'Hepsini Sil', style: 'destructive',
           onPress: async () => {
@@ -142,7 +142,7 @@ export default function ChatHistoryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Sohbet Gecmisi</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Sohbet Geçmişi</Text>
 
       {/* Search */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
@@ -155,10 +155,10 @@ export default function ChatHistoryScreen() {
       {/* Date range filters */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
         <View style={{ flex: 1 }}>
-          <Input placeholder="Baslangic (GG.AA.YYYY)" value={dateFrom} onChangeText={setDateFrom} />
+          <Input placeholder="Başlangıç (GG.AA.YYYY)" value={dateFrom} onChangeText={setDateFrom} />
         </View>
         <View style={{ flex: 1 }}>
-          <Input placeholder="Bitis (GG.AA.YYYY)" value={dateTo} onChangeText={setDateTo} />
+          <Input placeholder="Bitiş (GG.AA.YYYY)" value={dateTo} onChangeText={setDateTo} />
         </View>
       </View>
 
@@ -186,7 +186,7 @@ export default function ChatHistoryScreen() {
 
       {/* Search Results */}
       {searchResults.length > 0 && (
-        <Card title={`Sonuclar (${searchResults.length})`}>
+        <Card title={`Sonuçlar (${searchResults.length})`}>
           {searchResults.map(r => (
             <View key={r.id} style={{ paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
@@ -205,12 +205,12 @@ export default function ChatHistoryScreen() {
 
       {/* Session List */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.sm }}>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase' }}>Sohbet Oturumlari</Text>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase' }}>Sohbet Oturumları</Text>
         {filteredSessions.length > 0 && <Button title="Hepsini Sil" variant="ghost" size="sm" onPress={handleClearAll} />}
       </View>
 
       {filteredSessions.length === 0 ? (
-        <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Henuz sohbet gecmisi yok.</Text></Card>
+        <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Henüz sohbet geçmişi yok.</Text></Card>
       ) : (
         filteredSessions.map(s => (
           <TouchableOpacity key={s.id} onLongPress={() => handleDeleteSession(s.id)}>
@@ -235,6 +235,7 @@ export default function ChatHistoryScreen() {
       )}
 
       <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Uzun bas: sohbet oturumunu sil</Text>
+      {/* Spec note: Sohbet silme Katman 2'yi etkilemez */}
     </ScrollView>
   );
 }
