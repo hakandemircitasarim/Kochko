@@ -9,7 +9,9 @@ import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const COUNTER_KEY = '@kochko_daily_msg_count';
-const FREE_DAILY_LIMIT = 5;
+// Mirrors supabase/functions/shared/rate-limit.ts FREE_DAILY_LIMIT (server-authoritative).
+// Onboarding-only users get unlimited; this client cap surfaces remaining for the rest.
+const FREE_DAILY_LIMIT = 50;
 
 interface DailyCount {
   date: string;
@@ -64,7 +66,7 @@ export async function incrementAndCheck(isPremium: boolean): Promise<{
     };
   }
 
-  if (remaining <= 3) {
+  if (remaining <= 5) {
     return {
       allowed: true,
       remaining,
