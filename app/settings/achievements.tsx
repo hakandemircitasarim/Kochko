@@ -25,10 +25,10 @@ export default function AchievementsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Basarimlar</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Başarımlar</Text>
 
       {items.length === 0 ? (
-        <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henuz basarim yok. Kayit girmeye devam et!</Text></Card>
+        <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henüz başarım yok. Kayıt girmeye devam et!</Text></Card>
       ) : (
         items.map(a => (
           <View key={a.id} style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
@@ -50,7 +50,7 @@ export default function AchievementsScreen() {
                     backgroundColor: COLORS.primary + '15', borderWidth: 1, borderColor: COLORS.primary + '40',
                   }}
                 >
-                  <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>Paylas</Text>
+                  <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>Paylaş</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -66,7 +66,7 @@ export default function RecipeScreen() {
               {[
                 { label: 'Kalori', value: selected.total_calories ?? '-', color: METRIC_COLORS.calories, unit: 'kcal' },
                 { label: 'Protein', value: selected.total_protein ?? '-', color: METRIC_COLORS.protein, unit: 'g' },
-                { label: 'Sure', value: selected.prep_time_min ?? '-', color: colors.textSecondary, unit: 'dk' },
+                { label: 'Süre', value: selected.prep_time_min ?? '-', color: colors.textSecondary, unit: 'dk' },
                 { label: 'Porsiyon', value: selected.servings, color: colors.textSecondary, unit: '' },
               ].map((m, i) => (
                 <View key={i} style={{ alignItems: 'center', flex: 1 }}>
