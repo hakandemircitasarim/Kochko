@@ -1,6 +1,16 @@
 import { Stack } from 'expo-router';
-import { COLORS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 
 export default function ReportsLayout() {
-  return <Stack screenOptions={{ headerStyle: { backgroundColor: COLORS.background }, headerTintColor: COLORS.text, headerShadowVisible: false }} />;
+  const { colors } = useTheme();
+  return (
+    <Stack
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.background },
+        headerTintColor: colors.text,
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: colors.background },
+      }}
+    />
+  );
 }
