@@ -28,6 +28,7 @@ import {
   getActive,
   getDraft,
   discardDraft,
+  applySnapshot,
   type PlanRow,
   type WorkoutPlanData,
 } from '@/services/plan.service';
@@ -163,10 +164,18 @@ export default function WorkoutPlanScreen() {
   };
   const pickAlternative = async () => {
     if (!altCandidate || !draft || !user?.id) return;
-    await supabase
-      .from('weekly_plans')
-      .update({ plan_data: { ...altCandidate, version: ((altCandidate.version ?? 0) + 1) } })
-      .eq('id', draft.id);
+    const updated = await applySnapshot(draft.id, altCandidate, {
+      from: 'draft v' + ((draft.plan_data as WorkoutPlanData).version ?? 1),
+      to: 'alternative',
+      reason: 'Kullanıcı alternatifi seçti',
+    });
+    if (!updated) {
+      setMessages(prev => [
+        ...prev,
+        { id: 'err-' + Date.now(), role: 'assistant', content: 'Alternatif uygulanamadı, tekrar dene.' },
+      ]);
+      return;
+    }
     setAltCandidate(null);
     setShowAltModal(false);
     await load();

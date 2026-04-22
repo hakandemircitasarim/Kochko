@@ -27,6 +27,8 @@ function FABButton() {
         style={styles.fab}
         onPress={() => router.push('/log')}
         activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Hızlı kayıt — öğün, su, tartı, antrenman"
       >
         <Ionicons name="add" size={28} color="#FFFFFF" />
       </TouchableOpacity>
