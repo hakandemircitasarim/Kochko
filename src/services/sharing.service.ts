@@ -59,8 +59,8 @@ export async function shareStreak(days: number): Promise<boolean> {
  */
 export async function inviteFriend(): Promise<boolean> {
   return shareContent({
-    title: 'Kochko - AI Yasam Tarzi Kocun',
-    message: 'Beslenme ve antrenman planlarimi AI koc ile yonetiyorum. Sen de dene!',
+    title: 'Kochko — AI Yaşam Tarzı Koçun',
+    message: 'Beslenme ve antrenman planlarımı AI koç ile yönetiyorum. Sen de dene!',
     // url: 'https://kochko.app/invite' // uncomment when URL is ready
   });
 }

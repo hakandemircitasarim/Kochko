@@ -88,7 +88,7 @@ export async function checkAdaptiveDifficulty(userId: string): Promise<Difficult
         workout_intensity_bump: -1,
         water_increase: -0.2,
       },
-      message: 'Bu hafta zorlandin, hedefleri eski seviyeye geri aliyorum. Rahat ol.',
+      message: 'Bu hafta zorlandın, hedefleri eski seviyeye geri alıyorum. Rahat ol.',
     };
   }
 

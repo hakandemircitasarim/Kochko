@@ -59,7 +59,7 @@ export async function addLabValue(entry: Omit<LabValue, 'id' | 'is_out_of_range'
 
 // Common Turkish lab parameters with reference ranges
 export const COMMON_LAB_PARAMS = [
-  { name: 'Aclik Kan Sekeri', unit: 'mg/dL', refMin: 70, refMax: 100 },
+  { name: 'Açlık Kan Şekeri', unit: 'mg/dL', refMin: 70, refMax: 100 },
   { name: 'HbA1c', unit: '%', refMin: 4.0, refMax: 5.6 },
   { name: 'Total Kolesterol', unit: 'mg/dL', refMin: 0, refMax: 200 },
   { name: 'LDL', unit: 'mg/dL', refMin: 0, refMax: 130 },
