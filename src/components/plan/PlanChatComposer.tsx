@@ -51,6 +51,9 @@ const Chip = ({
     <TouchableOpacity
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -188,6 +191,9 @@ export function PlanChatComposer({
         <TouchableOpacity
           onPress={handleSend}
           disabled={!text.trim() || disabled || sending}
+          accessibilityRole="button"
+          accessibilityLabel="Mesajı gönder"
+          accessibilityState={{ disabled: !text.trim() || !!disabled || !!sending, busy: !!sending }}
           style={{
             width: 32,
             height: 32,

@@ -40,7 +40,7 @@ import { FullPlanModal } from '@/components/plan/FullPlanModal';
 import { AlternativeComparisonModal } from '@/components/plan/AlternativeComparisonModal';
 import { PlanChatComposer } from '@/components/plan/PlanChatComposer';
 
-type View = 'loading' | 'empty' | 'draft' | 'active';
+type ViewState = 'loading' | 'empty' | 'draft' | 'active';
 interface ChatMsg {
   id: string;
   role: 'user' | 'assistant';
@@ -55,7 +55,7 @@ export default function WorkoutPlanScreen() {
   const profile = useProfileStore(s => s.profile);
   const fetchProfile = useProfileStore(s => s.fetch);
 
-  const [view, setView] = useState<View>('loading');
+  const [view, setView] = useState<ViewState>('loading');
   const [active, setActive] = useState<PlanRow | null>(null);
   const [draft, setDraft] = useState<PlanRow | null>(null);
   const [goal, setGoal] = useState<{ goal_type?: string; target_weight_kg?: number } | null>(null);
@@ -147,7 +147,7 @@ export default function WorkoutPlanScreen() {
     });
     setSending(false);
     if (data?.plan_snapshot) {
-      setAltCandidate(data.plan_snapshot as WorkoutPlanData);
+      setAltCandidate(data.plan_snapshot as unknown as WorkoutPlanData);
       setShowAltModal(true);
     }
     await load();
@@ -235,7 +235,7 @@ export default function WorkoutPlanScreen() {
     await load();
   };
 
-  const handleHistory = () => router.push('/plan/history' as never);
+  const handleHistory = () => router.push('/plan/history?type=workout' as never);
 
   if (view === 'loading') {
     return (

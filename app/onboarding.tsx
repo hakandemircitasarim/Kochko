@@ -136,6 +136,7 @@ function WelcomeSlide({
 // ─── Quick Form (Katman 1) ───
 
 function QuickForm() {
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { update } = useProfileStore();
   const [saving, setSaving] = useState(false);

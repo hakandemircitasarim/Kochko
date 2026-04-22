@@ -91,7 +91,12 @@ export function FullPlanModal({
             borderBottomColor: colors.divider,
           }}
         >
-          <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+          <TouchableOpacity
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Kapat"
+            style={{ padding: 4 }}
+          >
             <Ionicons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
@@ -137,6 +142,9 @@ export function FullPlanModal({
                 <TouchableOpacity
                   onPress={() => setExpandedDay(isOpen ? -1 : day.day_index)}
                   activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${day.day_label}, ${isOpen ? 'kapat' : 'aç'}`}
+                  accessibilityState={{ expanded: isOpen }}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
