@@ -16,15 +16,19 @@ export default function SettingsScreen() {
 
   const handleDelete = () => {
     Alert.alert(
-      'Hesabi Sil',
-      'Hesabiniz silinmek uzere isaretlenecek. 30 gun icinde tekrar giris yaparsaniz hesabiniz otomatik olarak yeniden aktif olur. 30 gun sonra tum verileriniz kalici olarak silinecektir.',
+      'Hesabı Sil',
+      'Hesabın silinmek üzere işaretlenecek. 30 gün içinde tekrar giriş yaparsan hesabın otomatik olarak yeniden aktif olur. 30 gün sonra tüm verilerin kalıcı olarak silinecek.',
       [
-        { text: 'Iptal', style: 'cancel' },
-        { text: 'Hesabimi Sil', style: 'destructive', onPress: async () => {
+        { text: 'İptal', style: 'cancel' },
+        { text: 'Hesabımı Sil', style: 'destructive', onPress: async () => {
           if (user?.id) {
-            // T1.8: Soft delete - set deleted_at, don't actually delete
+            // Mark for the 30-day cron grace period (Spec 1.4 + migration 023).
+            // Both columns set: deletion_requested_at drives the hard-delete cron;
+            // deleted_at is the legacy soft-delete flag still read elsewhere in the app.
+            const now = new Date().toISOString();
             await supabase.from('profiles').update({
-              deleted_at: new Date().toISOString(),
+              deletion_requested_at: now,
+              deleted_at: now,
             }).eq('id', user.id);
             await signOut();
           }
@@ -41,7 +45,7 @@ export default function SettingsScreen() {
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600' }}>
-            {profile?.premium ? 'Premium Aktif' : 'Ucretsiz Plan'}
+            {profile?.premium ? 'Premium Aktif' : 'Ücretsiz Plan'}
           </Text>
           {!profile?.premium && <Button title="Premium" size="sm" onPress={() => router.push('/settings/premium')} />}
         </View>
@@ -50,39 +54,39 @@ export default function SettingsScreen() {
       {/* Profile & Goals */}
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Profil ve Hedefler</Text>
       <View style={{ gap: SPACING.sm }}>
-        <Button title="Hedef Ayarlari" variant="outline" onPress={() => router.push('/settings/goals')} />
+        <Button title="Hedef Ayarları" variant="outline" onPress={() => router.push('/settings/goals')} />
         <Button title="Yemek Tercihleri" variant="outline" onPress={() => router.push('/settings/food-preferences')} />
-        <Button title="Favori Ogunler" variant="outline" onPress={() => router.push('/settings/meal-templates')} />
-        <Button title="Saglik Gecmisi" variant="outline" onPress={() => router.push('/settings/health-events')} />
-        <Button title="Lab Degerleri" variant="outline" onPress={() => router.push('/settings/lab-values')} />
+        <Button title="Favori Öğünler" variant="outline" onPress={() => router.push('/settings/meal-templates')} />
+        <Button title="Sağlık Geçmişi" variant="outline" onPress={() => router.push('/settings/health-events')} />
+        <Button title="Lab Değerleri" variant="outline" onPress={() => router.push('/settings/lab-values')} />
         <Button title="Supplement Takibi" variant="outline" onPress={() => router.push('/settings/supplements')} />
         <Button title="Mekanlar" variant="outline" onPress={() => router.push('/settings/venues')} />
       </View>
 
       {/* Tracking & Progress */}
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Takip ve Ilerleme</Text>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Takip ve İlerleme</Text>
       <View style={{ gap: SPACING.sm }}>
-        <Button title="Guc Progresyon" variant="outline" onPress={() => router.push('/settings/strength')} />
+        <Button title="Güç Progresyon" variant="outline" onPress={() => router.push('/settings/strength')} />
         <Button title="Challenge'lar" variant="outline" onPress={() => router.push('/settings/challenges')} />
-        <Button title="Basarimlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
-        <Button title="Tarif Kutuphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
-        <Button title="Haftalik Menu" variant="outline" onPress={() => router.push('/settings/weekly-menu')} />
-        <Button title="Ilerleme Fotograflari" variant="outline" onPress={() => router.push('/settings/progress-photos')} />
+        <Button title="Başarımlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
+        <Button title="Tarif Kütüphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
+        <Button title="Haftalık Menü" variant="outline" onPress={() => router.push('/settings/weekly-menu')} />
+        <Button title="İlerleme Fotoğrafları" variant="outline" onPress={() => router.push('/settings/progress-photos')} />
       </View>
 
       {/* Social */}
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Sosyal</Text>
       <View style={{ gap: SPACING.sm }}>
-        <Button title="Aile Plani" variant="outline" onPress={() => router.push('/settings/household')} />
-        <Button title="Koc Paylasimi" variant="outline" onPress={() => router.push('/settings/coach-sharing')} />
+        <Button title="Aile Planı" variant="outline" onPress={() => router.push('/settings/household')} />
+        <Button title="Koç Paylaşımı" variant="outline" onPress={() => router.push('/settings/coach-sharing')} />
       </View>
 
       {/* Preferences */}
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Tercihler</Text>
       <View style={{ gap: SPACING.sm }}>
-        <Button title="Koc Tonu" variant="outline" onPress={() => router.push('/settings/coach-tone')} />
+        <Button title="Koç Tonu" variant="outline" onPress={() => router.push('/settings/coach-tone')} />
         <Button title="Bildirimler" variant="outline" onPress={() => router.push('/settings/notifications')} />
-        <Button title="Donemsel Durum" variant="outline" onPress={() => router.push('/settings/periodic-state')} />
+        <Button title="Dönemsel Durum" variant="outline" onPress={() => router.push('/settings/periodic-state')} />
         <Button title="Tema" variant="outline" onPress={() => router.push('/settings/theme')} />
         <Button title="Premium" variant="outline" onPress={() => router.push('/settings/premium')} />
       </View>
@@ -92,38 +96,47 @@ export default function SettingsScreen() {
       <View style={{ gap: SPACING.sm }}>
         <Button title="JSON Export" variant="outline" onPress={exportJSON} />
         <Button title="CSV Export" variant="outline" onPress={exportCSV} />
-        <Button title="Saglik Profesyoneli Raporu" variant="outline" onPress={() => router.push('/settings/health-export')} />
-        <Button title="Veri Iceri Aktar" variant="outline" onPress={() => router.push('/settings/data-import')} />
-        <Button title="Sohbet Gecmisi" variant="outline" onPress={() => router.push('/settings/chat-history')} />
+        <Button title="Sağlık Profesyoneli Raporu" variant="outline" onPress={() => router.push('/settings/health-export')} />
+        <Button title="Veri İçeri Aktar" variant="outline" onPress={() => router.push('/settings/data-import')} />
+        <Button title="Sohbet Geçmişi" variant="outline" onPress={() => router.push('/settings/chat-history')} />
       </View>
 
       {/* Privacy & Security */}
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Guvenlik</Text>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Güvenlik</Text>
       <View style={{ gap: SPACING.sm }}>
-        <Button title="Hesap Guvenligi" variant="outline" onPress={() => router.push('/settings/account-security')} />
-        <Button title="Cok Fazli Hedefler" variant="outline" onPress={() => router.push('/settings/multi-phase-goals')} />
-        <Button title="IF Ayarlari" variant="outline" onPress={() => router.push('/settings/if-settings')} />
-        <Button title="Adet Dongusu" variant="outline" onPress={() => router.push('/settings/menstrual')} />
-        <Button title="Profil Duzenle" variant="outline" onPress={() => router.push('/settings/edit-profile')} />
+        <Button title="Hesap Güvenliği" variant="outline" onPress={() => router.push('/settings/account-security')} />
+        <Button title="Çok Fazlı Hedefler" variant="outline" onPress={() => router.push('/settings/multi-phase-goals')} />
+        <Button title="IF Ayarları" variant="outline" onPress={() => router.push('/settings/if-settings')} />
+        <Button title="Adet Döngüsü" variant="outline" onPress={() => router.push('/settings/menstrual')} />
+        <Button title="Profil Düzenle" variant="outline" onPress={() => router.push('/settings/edit-profile')} />
       </View>
 
       {/* Privacy */}
-      <Card title="Gizlilik ve Guvenlik" style={{ marginTop: SPACING.lg }}>
+      <Card title="Gizlilik ve Güvenlik" style={{ marginTop: SPACING.lg }}>
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
-          Verileriniz sifrelenerek saklanir. Tum verilerinizi export alabilir veya hesabinizi silebilirsiniz. AI'in hakkınızda bildiklerini Profil {'>'} "Kocun Seni Nasil Taniyor" bolumunden gorebilir, duzeltebilir veya silebilirsiniz.
+          Verilerin şifrelenerek saklanır. Tüm verilerini export alabilir veya hesabını silebilirsin. Kochko'nun senin hakkında bildiklerini Profil {'>'} "Kochko'nun Senin Hakkında Bildikleri" bölümünden görebilir, düzeltebilir veya silebilirsin.
         </Text>
       </Card>
 
       {/* Developer */}
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Gelistirici</Text>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Geliştirici</Text>
       <View style={{ gap: SPACING.sm }}>
         <Button title="Debug Modu" variant="outline" onPress={() => router.push('/settings/debug-mode')} />
       </View>
 
       {/* Danger */}
       <View style={{ marginTop: SPACING.xl, gap: SPACING.sm }}>
-        <Button title="Cikis Yap" variant="ghost" onPress={() => Alert.alert('Cikis', 'Emin misin?', [{ text: 'Iptal' }, { text: 'Cikis', style: 'destructive', onPress: signOut }])} />
-        <Button title="Hesabimi Sil" variant="ghost" onPress={handleDelete} />
+        <Button
+          title="Çıkış Yap"
+          variant="ghost"
+          onPress={() =>
+            Alert.alert('Çıkış', 'Emin misin?', [
+              { text: 'İptal' },
+              { text: 'Çıkış', style: 'destructive', onPress: signOut },
+            ])
+          }
+        />
+        <Button title="Hesabımı Sil" variant="ghost" onPress={handleDelete} />
       </View>
 
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xxl }}>Kochko v1.0.0</Text>
