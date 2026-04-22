@@ -473,7 +473,35 @@ serve(async (req: Request) => {
     let planPersistError: string | null = null;
     if (planSnapshot && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
       const expectedType = task_mode_hint === 'plan_diet' ? 'diet' : 'workout';
-      if (planSnapshot.plan_type === expectedType) {
+      // Allergen guardrail (Spec 12.4): for diet snapshots, scan every meal name + items
+      // against the user's allergen list. If any allergen is present, refuse to persist
+      // and tell the AI to regenerate. The model's snapshot is never written to DB until
+      // it passes the safety check — preserves the "AI cannot bypass guardrails" invariant.
+      if (expectedType === 'diet') {
+        const { data: prefRows } = await supabaseAdmin
+          .from('food_preferences')
+          .select('food_name, allergen_severity')
+          .eq('user_id', userId)
+          .eq('is_allergen', true);
+        const allergens = (prefRows ?? []).map((p: { food_name: string }) => p.food_name);
+        if (allergens.length > 0) {
+          const days = (planSnapshot.days as Array<Record<string, unknown>> | undefined) ?? [];
+          const violations: string[] = [];
+          for (const d of days) {
+            const meals = (d.meals as Array<Record<string, unknown>> | undefined) ?? [];
+            for (const m of meals) {
+              const text = `${m.name ?? ''} ${(m.items as Array<{ name?: string }> | undefined)?.map(i => i.name).join(' ') ?? ''}`;
+              const check = checkAllergens(text, allergens);
+              if (!check.passed) violations.push(`${d.day_label ?? ''} ${m.meal_type ?? ''}: ${check.violations.join(', ')}`);
+            }
+          }
+          if (violations.length > 0) {
+            planPersistError = `allergen_violation: ${violations.slice(0, 3).join('; ')}`;
+            console.warn('[plan_snapshot] blocked by allergen guardrail', { count: violations.length });
+          }
+        }
+      }
+      if (planSnapshot.plan_type === expectedType && !planPersistError) {
         // Find or create the draft.
         const { data: existingRows } = await supabaseAdmin
           .from('weekly_plans')
@@ -509,7 +537,7 @@ serve(async (req: Request) => {
           if (error) planPersistError = error.message;
           else persistedPlan = (inserted?.[0] as { plan_data: Record<string, unknown> })?.plan_data ?? null;
         }
-      } else {
+      } else if (!planPersistError) {
         planPersistError = `plan_type mismatch: expected ${expectedType}, got ${planSnapshot.plan_type}`;
       }
     } else if (snapshotParseError) {
