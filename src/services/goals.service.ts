@@ -174,10 +174,10 @@ const COMPATIBILITY_MATRIX: Record<string, Record<string, 'compatible' | 'confli
 };
 
 const CONFLICT_MESSAGES: Record<string, string> = {
-  'lose_weight+gain_weight': 'Kilo vermek ve kilo almak ayni anda mumkun degil.',
-  'lose_weight+maintain': 'Kilo vermek ve kilo korumak celisiyor. Birini sec.',
-  'gain_weight+maintain': 'Kilo almak ve kilo korumak celisiyor.',
-  'lose_weight+gain_muscle': 'Kilo verirken kas kazanmak zor ama mumkun (body recomp). Yeni baslayanlar icin uygun, ileri seviyede cok zor.',
+  'lose_weight+gain_weight': 'Kilo vermek ve kilo almak aynı anda mümkün değil.',
+  'lose_weight+maintain': 'Kilo vermek ve kilo korumak çelişiyor. Birini seç.',
+  'gain_weight+maintain': 'Kilo almak ve kilo korumak çelişiyor.',
+  'lose_weight+gain_muscle': 'Kilo verirken kas kazanmak zor ama mümkün (body recomp). Yeni başlayanlar için uygun, ileri seviyede çok zor.',
 };
 
 // ─── AI Goal Suggestions (Phase 4) ───
@@ -297,8 +297,8 @@ export function checkGoalCompatibility(
   return {
     compatible: compatibility !== 'conflict',
     level: compatibility,
-    message_tr: compatibility === 'conflict' ? message || 'Bu hedefler birbiriyle celisiyor.'
-      : compatibility === 'warning' ? message || 'Bu hedefler birlikte zor ama mumkun.'
+    message_tr: compatibility === 'conflict' ? message || 'Bu hedefler birbiriyle çelişiyor.'
+      : compatibility === 'warning' ? message || 'Bu hedefler birlikte zor ama mümkün.'
       : '',
   };
 }
