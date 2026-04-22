@@ -48,8 +48,8 @@ export default function MultiPhaseGoalsScreen() {
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Sil', 'Bu fazi silmek istediginize emin misiniz?', [
-      { text: 'Iptal' },
+    Alert.alert('Sil', 'Bu fazı silmek istediğine emin misin?', [
+      { text: 'İptal' },
       { text: 'Sil', style: 'destructive', onPress: () => { deletePhase(id); load(); } },
     ]);
   };
@@ -58,10 +58,10 @@ export default function MultiPhaseGoalsScreen() {
     if (!user?.id) return;
     const next = await advanceToNextPhase(user.id);
     if (next) {
-      Alert.alert('Faz Gecisi', `"${next.phase_label}" fazina gecildi.`);
+      Alert.alert('Faz Geçişi', `"${next.phase_label}" fazına geçildi.`);
       load();
     } else {
-      Alert.alert('Bitti', 'Tum fazlar tamamlandi!');
+      Alert.alert('Bitti', 'Tüm fazlar tamamlandı!');
     }
   };
 
@@ -69,9 +69,9 @@ export default function MultiPhaseGoalsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Cok Fazli Hedef</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Çok Fazlı Hedef</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Sirali fazlar tanimla: ornegin "75kg'a in (cut) → 3 ay bulk 80kg → 77kg'a in (mini cut)". Fazlar sirayla aktif olur.
+        Sıralı fazlar tanımla: örneğin "75 kg'a in (cut) → 3 ay bulk 80 kg → 77 kg'a in (mini cut)". Fazlar sırayla aktif olur.
       </Text>
 
       {/* Horizontal timeline bar (Spec 6.7) */}
@@ -83,7 +83,7 @@ export default function MultiPhaseGoalsScreen() {
 
       {/* Phase timeline */}
       {phases.length > 0 && (
-        <Card title="Faz Zaman Cizelgesi">
+        <Card title="Faz Zaman Çizelgesi">
           {phases.map((phase, i) => {
             const info = PHASE_LABELS[phase.phase_label ?? ''] ?? { label: phase.phase_label ?? phase.goal_type, color: COLORS.textMuted };
             return (
@@ -100,12 +100,12 @@ export default function MultiPhaseGoalsScreen() {
                     <Text style={{ color: phase.is_active ? info.color : COLORS.text, fontSize: FONT.md, fontWeight: phase.is_active ? '700' : '400' }}>{info.label}</Text>
                     {phase.is_active && (
                       <View style={{ backgroundColor: info.color, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 }}>
-                        <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>AKTIF</Text>
+                        <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>AKTİF</Text>
                       </View>
                     )}
                   </View>
                   <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 1 }}>
-                    {phase.target_weight_kg ? `Hedef: ${phase.target_weight_kg}kg` : 'Koru'} | {phase.target_weeks ?? '?'} hafta
+                    {phase.target_weight_kg ? `Hedef: ${phase.target_weight_kg}kg` : 'Koru'} · {phase.target_weeks ?? '?'} hafta
                   </Text>
                 </View>
                 <Text style={{ color: COLORS.textMuted, fontSize: FONT.md }}>#{phase.phase_order}</Text>
@@ -117,11 +117,11 @@ export default function MultiPhaseGoalsScreen() {
 
       {/* Advance to next phase */}
       {activePhase && phases.length > 1 && (
-        <Button title="Sonraki Faza Gec" variant="outline" onPress={handleAdvance} style={{ marginBottom: SPACING.md }} />
+        <Button title="Sonraki Faza Geç" variant="outline" onPress={handleAdvance} style={{ marginBottom: SPACING.md }} />
       )}
 
       {/* Add new phase */}
-      <Button title={showAdd ? 'Iptal' : 'Yeni Faz Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
+      <Button title={showAdd ? 'İptal' : 'Yeni Faz Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
 
       {showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
