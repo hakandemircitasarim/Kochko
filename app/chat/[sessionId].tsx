@@ -13,7 +13,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Vibration,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Vibration, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -72,6 +72,7 @@ interface UIMessage extends ChatMessage {
   personaDetected?: string | null;
   recipeSaved?: boolean;
   taskCompletion?: { completed: string; summary: string; next_suggestions: string[] } | null;
+  navigateTo?: string | null;
 }
 
 function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
@@ -272,11 +273,37 @@ export default function SessionDetailScreen() {
         }]);
         setLoading(false);
       } else {
-        if (!cancelled) { setMessages(data.map(m => ({ ...m }))); setLoading(false); }
+        if (!cancelled) {
+          setMessages(data.map(m => ({ ...m })));
+          setLoading(false);
+
+          // Phase 5: proactive greet — if it's been >4h since the last assistant
+          // message AND the chat is non-task (general/daily_log), inject a gentle
+          // "merhaba tekrar" starter. Silent no-op otherwise.
+          if (!taskModeHint && data.length > 0) {
+            const last = [...data].reverse().find(m => m.role === 'assistant');
+            if (last) {
+              const ageMs = Date.now() - new Date(last.created_at).getTime();
+              if (ageMs > 4 * 60 * 60 * 1000) {
+                // Fire-and-forget: add a small client-only bubble; doesn't hit the DB
+                // until user replies, so no noise if they just leave the screen.
+                setMessages(prev => [
+                  ...prev,
+                  {
+                    id: 'greet-' + Date.now(),
+                    role: 'assistant',
+                    content: 'Uzun zamandır konuşmadık. Bugünü konuşalım mı — ne yediğin, enerjin nasıldı?',
+                    created_at: new Date().toISOString(),
+                  },
+                ]);
+              }
+            }
+          }
+        }
       }
     });
     return () => { cancelled = true; };
-  }, [sessionId, isOnboarding]);
+  }, [sessionId, isOnboarding, taskModeHint]);
 
   // Pre-fill from dashboard quick actions (non-card navigation)
   useEffect(() => {
@@ -406,6 +433,7 @@ export default function SessionDetailScreen() {
         hasLowConfidenceVerification,
         personaDetected,
         taskCompletion: data.task_completion ?? null,
+        navigateTo: data.navigate_to ?? null,
       };
       setMessages(prev => [...prev, reply]);
 
@@ -1066,22 +1094,45 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
           {sanitizeAssistantText(message.content)}
         </Text>
 
+        {/* Navigate-to chip — AI hints the user to a plan screen (Phase 5) */}
+        {!isUser && message.navigateTo && (
+          <TouchableOpacity
+            onPress={() => router.push(message.navigateTo as never)}
+            activeOpacity={0.8}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              marginTop: SPACING.sm,
+              alignSelf: 'flex-start',
+              backgroundColor: '#1D9E7518',
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderWidth: 0.5,
+              borderColor: '#1D9E7544',
+            }}
+          >
+            <Ionicons
+              name={message.navigateTo.includes('diet') ? 'restaurant-outline' : message.navigateTo.includes('workout') ? 'barbell-outline' : 'open-outline'}
+              size={12}
+              color="#1D9E75"
+            />
+            <Text style={{ color: '#1D9E75', fontSize: 11, fontWeight: '700' }}>
+              {message.navigateTo === '/plan/diet'
+                ? 'Diyet planına git'
+                : message.navigateTo === '/plan/workout'
+                  ? 'Spor planına git'
+                  : 'Aç →'}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Silent action badges (profile update, meal log, etc.) — replaces verbal "Kaydettim" */}
         {!isUser && savedBadges.length > 0 && (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm }}>
             {savedBadges.map((b) => (
-              <View
-                key={b.label}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 4,
-                  backgroundColor: b.color + '18',
-                  borderRadius: 999,
-                  paddingHorizontal: 8, paddingVertical: 3,
-                }}
-              >
-                <Ionicons name={b.icon as any} size={12} color={b.color} />
-                <Text style={{ color: b.color, fontSize: 10, fontWeight: '600' }}>{b.label}</Text>
-              </View>
+              <SavedBadge key={b.label} icon={b.icon} label={b.label} color={b.color} />
             ))}
           </View>
         )}
@@ -1210,11 +1261,18 @@ function TaskCompletionCard({
   taskCompletion: { completed: string; summary: string; next_suggestions: string[] };
   colors: any;
 }) {
-  // Brief vibration on mount — subtle cue that the task is done (per §4.2 principle 2).
-  // Uses RN core Vibration (no native rebuild needed).
+  // Phase 7: mini celebration on mount — scale-in bounce on the summary chip +
+  // a light vibration pulse. No confetti library (would need native rebuild);
+  // Animated.spring is enough to feel rewarding without being noisy.
+  const chipScale = useRef(new Animated.Value(0.6)).current;
+  const chipOpacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    try { Vibration.vibrate(30); } catch { /* some devices lack vibrator, silent */ }
-  }, []);
+    try { Vibration.vibrate([0, 40, 40, 30]); } catch { /* silent on devices without vibrator */ }
+    Animated.parallel([
+      Animated.spring(chipScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
+      Animated.timing(chipOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, [chipScale, chipOpacity]);
 
   const suggestionTasks = taskCompletion.next_suggestions
     .map(getTaskByKey)
@@ -1233,19 +1291,23 @@ function TaskCompletionCard({
 
   return (
     <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
-      {/* Summary chip */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        alignSelf: 'flex-start',
-        backgroundColor: '#1D9E7518',
-        borderRadius: 999,
-        paddingHorizontal: 10, paddingVertical: 5,
-      }}>
+      {/* Summary chip — animated celebration entrance */}
+      <Animated.View
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 6,
+          alignSelf: 'flex-start',
+          backgroundColor: '#1D9E7518',
+          borderRadius: 999,
+          paddingHorizontal: 10, paddingVertical: 5,
+          transform: [{ scale: chipScale }],
+          opacity: chipOpacity,
+        }}
+      >
         <Ionicons name="checkmark-circle" size={14} color="#1D9E75" />
         <Text style={{ color: '#1D9E75', fontSize: 11, fontWeight: '700' }}>
           {taskCompletion.summary ? `Kochko seni tanıdı — ${taskCompletion.summary}` : 'Bu konu tamamlandı'}
         </Text>
-      </View>
+      </Animated.View>
 
       {/* Next-task suggestion cards */}
       {suggestionTasks.length > 0 && (
@@ -1285,5 +1347,38 @@ function TaskCompletionCard({
         </View>
       )}
     </View>
+  );
+}
+
+/**
+ * SavedBadge — small pill that bounces in on mount.
+ * Makes silent saves (principle 2) noticeable without adding chat text noise.
+ */
+function SavedBadge({ icon, label, color }: { icon: string; label: string; color: string }) {
+  const scale = useRef(new Animated.Value(0.5)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scale, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
+    ]).start();
+  }, [scale, opacity]);
+  return (
+    <Animated.View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: color + '18',
+        borderRadius: 999,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        transform: [{ scale }],
+        opacity,
+      }}
+    >
+      <Ionicons name={icon as any} size={12} color={color} />
+      <Text style={{ color, fontSize: 10, fontWeight: '600' }}>{label}</Text>
+    </Animated.View>
   );
 }

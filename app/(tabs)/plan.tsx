@@ -1,298 +1,187 @@
 /**
- * Plan Screen - displays today's AI-generated plan.
- * Uses MealOptionCard, WorkoutCard, DayTargets components.
- * Spec 7.1: Gunluk beslenme + antrenman plani
+ * Plan tab — TRANSITIONAL BRIDGE (MASTER_PLAN Phase 2/3).
+ * Surfaces two cards that route to the two dedicated plan screens
+ * (/plan/diet and /plan/workout). Phase 4 removes this tab entirely;
+ * the cards become first-class on the home screen.
+ *
+ * Previous implementation (daily_plans table, ai-plan edge function) is
+ * superseded by the new weekly_plans draft→active flow. That data is
+ * still in the DB and can be read from the active plan screen if needed.
  */
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { useEffect, useState, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@/lib/theme';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
-import { useDashboardStore } from '@/stores/dashboard.store';
 import { supabase } from '@/lib/supabase';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { MealOptionCard } from '@/components/plan/MealOptionCard';
-import { WorkoutCard } from '@/components/plan/WorkoutCard';
-import { DayTargets } from '@/components/plan/DayTargets';
-import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getActive, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
+import { isPlanReady } from '@/lib/plan-readiness';
 
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Atıştırmalık',
-};
-
-interface MealOption {
-  name: string;
-  description: string;
-  calories: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  prep_time_min?: number;
-}
-
-interface PlanData {
-  plan_type: string;
-  calorie_target_min: number;
-  calorie_target_max: number;
-  protein_target_g: number;
-  carbs_target_g: number;
-  fat_target_g: number;
-  water_target_liters: number;
-  focus_message: string;
-  meal_suggestions: { meal_type: string; options: MealOption[] }[];
-  snack_strategy: string | null;
-  workout_plan: {
-    type: string; warmup: string; main: string[]; cooldown: string;
-    duration_min: number; rpe: number; heart_rate_zone?: string;
-    strength_targets?: { exercise: string; sets: number; reps: number; weight_kg: number }[];
-  };
-  weekly_budget_remaining: number | null;
-  status: string;
-}
-
-export default function PlanScreen() {
+export default function PlanTab() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
-  const { totalCalories, totalProtein, totalCarbs, totalFat, waterLiters, fetchToday } = useDashboardStore();
-  const [plan, setPlan] = useState<PlanData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const today = new Date().toISOString().split('T')[0];
+  const [dietActive, setDietActive] = useState<PlanRow | null>(null);
+  const [workoutActive, setWorkoutActive] = useState<PlanRow | null>(null);
+  const [goal, setGoal] = useState<{ goal_type?: string; target_weight_kg?: number } | null>(null);
 
-  const cardStyle = {
-    borderRadius: RADIUS.xxl,
-    ...(isDark
-      ? { borderWidth: 1, borderColor: colors.border }
-      : CARD_SHADOW),
-  };
-
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!user?.id) return;
-    supabase.from('daily_plans').select('*')
-      .eq('user_id', user.id).eq('date', today)
-      .order('version', { ascending: false }).limit(1).single()
-      .then(({ data }) => { if (data) setPlan(data as unknown as PlanData); setLoading(false); });
-  }, [user?.id, today]);
+    const [diet, workout, goalRes] = await Promise.all([
+      getActive(user.id, 'diet'),
+      getActive(user.id, 'workout'),
+      supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1),
+    ]);
+    setDietActive(diet);
+    setWorkoutActive(workout);
+    setGoal((goalRes.data as { goal_type?: string; target_weight_kg?: number }[] | null)?.[0] ?? null);
+  }, [user?.id]);
 
-  const handleGenerate = async (rejectionContext?: string) => {
-    setGenerating(true);
-    const { data } = await supabase.functions.invoke('ai-plan', {
-      body: rejectionContext ? { rejection_context: rejectionContext } : {},
-    });
-    if (data) setPlan(data as PlanData);
-    setGenerating(false);
-  };
+  useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const handleReject = () => {
-    Alert.alert(
-      'Neden beğenmedin?',
-      'Yeni plan oluşturmak için bir sebep seç:',
-      [
-        { text: 'Öğünler', onPress: () => handleRejectWithReason('Öğün seçimleri beğenilmedi, farklı yemek önerileri isteniyor') },
-        { text: 'Porsiyonlar', onPress: () => handleRejectWithReason('Porsiyon miktarları uygun değil, farklı miktarlar isteniyor') },
-        { text: 'Genel yaklaşım', onPress: () => handleRejectWithReason('Genel plan yaklaşımı beğenilmedi, tamamen farklı bir yaklaşım isteniyor') },
-        { text: 'Vazgeç', style: 'cancel' },
-      ]
-    );
-  };
-
-  const handleRejectWithReason = async (reason: string) => {
-    if (!user?.id) return;
-    // Update current plan status to rejected
-    await supabase.from('daily_plans')
-      .update({ status: 'rejected' })
-      .eq('user_id', user.id).eq('date', today)
-      .order('version', { ascending: false }).limit(1);
-    setPlan(prev => prev ? { ...prev, status: 'rejected' } : null);
-    // Generate new plan with rejection context
-    await handleGenerate(reason);
-  };
-
-  const handleMealSelect = async (mealType: string, option: MealOption) => {
-    if (!user?.id) return;
-    // Insert into meal_logs
-    const { data: mealLog } = await supabase.from('meal_logs').insert({
-      user_id: user.id,
-      raw_input: `${option.name} (plan secimi)`,
-      meal_type: mealType,
-      logged_for_date: today,
-      logged_at: new Date().toISOString(),
-      source: 'plan',
-    }).select('id').single();
-
-    if (!mealLog?.id) return;
-
-    // Insert into meal_log_items
-    await supabase.from('meal_log_items').insert({
-      meal_log_id: mealLog.id,
-      name: option.name,
-      portion: option.description,
-      calories: option.calories,
-      protein_g: option.protein_g,
-      carbs_g: option.carbs_g,
-      fat_g: option.fat_g,
-    });
-
-    // Refresh dashboard so calorie/macro totals update
-    if (user?.id) await fetchToday(user.id);
-  };
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
-  if (!plan) {
-    return (
-      <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md }}>
-        <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.text, marginBottom: SPACING.lg }}>
-          Günün Planı
-        </Text>
-        <Card>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg, lineHeight: 20 }}>
-            Henüz plan oluşturulmamış. Koçundan plan istemek için butona bas veya sohbette "bugünkü planımı oluştur" yaz.
-          </Text>
-          <Button title="Plan Oluştur" onPress={() => handleGenerate()} loading={generating} size="lg" />
-        </Card>
-      </ScrollView>
-    );
-  }
+  const dietReady = isPlanReady(profile, goal, 'diet');
+  const workoutReady = isPlanReady(profile, goal, 'workout');
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.text, marginBottom: SPACING.sm }}>
-        Günün Planı
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{
+        padding: SPACING.md,
+        paddingTop: Math.max(insets.top, SPACING.md),
+        paddingBottom: Math.max(insets.bottom, SPACING.xxl) + SPACING.lg,
+      }}
+    >
+      <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
+        Planlarım
+      </Text>
+      <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>
+        Diyet ve antrenman programlarını burada yönet.
       </Text>
 
-      {/* Focus message with left accent border */}
-      <View style={{
-        backgroundColor: colors.card,
-        borderRadius: RADIUS.xxl,
-        borderLeftWidth: 4,
-        borderLeftColor: colors.primary,
-        padding: SPACING.md,
-        marginBottom: SPACING.md,
-        ...(isDark
-          ? { borderWidth: 1, borderColor: colors.border, borderLeftWidth: 4, borderLeftColor: colors.primary }
-          : CARD_SHADOW),
-      }}>
-        <Text style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '600', lineHeight: 26 }}>
-          {plan.focus_message}
-        </Text>
-      </View>
+      <PlanHubCard
+        title="Diyet planı"
+        subtitle={dietActive ? 'Aktif plan var — açmak için dokun' : dietReady.ready ? 'Henüz plan yok — oluşturmaya hazır' : 'Önce profili tamamla'}
+        icon="restaurant-outline"
+        color="#22C55E"
+        plan={dietActive}
+        missingCount={dietReady.missingCore.length}
+        onPress={() => router.push('/plan/diet' as never)}
+      />
 
-      {/* Day targets with live progress */}
-      <View style={{ marginBottom: SPACING.md }}>
-        <DayTargets
-          calorieMin={plan.calorie_target_min}
-          calorieMax={plan.calorie_target_max}
-          calorieConsumed={totalCalories}
-          proteinTarget={plan.protein_target_g}
-          proteinConsumed={totalProtein}
-          carbsTarget={plan.carbs_target_g}
-          carbsConsumed={totalCarbs}
-          fatTarget={plan.fat_target_g}
-          fatConsumed={totalFat}
-          waterTarget={plan.water_target_liters ?? 2.5}
-          waterConsumed={waterLiters}
-          isTrainingDay={plan.plan_type === 'training'}
-        />
-      </View>
+      <View style={{ height: SPACING.md }} />
 
-      {/* Weekly budget context with subtle background */}
-      {plan.weekly_budget_remaining != null && (
-        <View style={{
-          backgroundColor: colors.surfaceLight,
-          borderRadius: RADIUS.xxl,
-          padding: SPACING.sm,
-          marginBottom: SPACING.md,
-          ...(isDark ? { borderWidth: 1, borderColor: colors.border } : {}),
-        }}>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textAlign: 'center' }}>
-            Haftalık bütçeden kalan: {plan.weekly_budget_remaining} kcal
-          </Text>
-        </View>
-      )}
-
-      {/* Meal suggestions with MealOptionCard */}
-      {plan.meal_suggestions?.map((meal, idx) => (
-        <View key={`${meal.meal_type}-${idx}`} style={{ marginBottom: SPACING.md }}>
-          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>
-            {MEAL_LABELS[meal.meal_type] ?? meal.meal_type}
-          </Text>
-          {meal.options?.map((opt, oidx) => (
-            <MealOptionCard key={`${opt.name}-${oidx}`} option={opt} onSelect={() => handleMealSelect(meal.meal_type, opt)} />
-          ))}
-        </View>
-      ))}
-
-      {/* Snack strategy */}
-      {plan.snack_strategy && (
-        <Card title="Atıştırma Stratejisi">
-          <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22 }}>{plan.snack_strategy}</Text>
-        </Card>
-      )}
-
-      {/* Workout with WorkoutCard */}
-      <View style={{ marginBottom: SPACING.md }}>
-        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.sm }}>Antrenman</Text>
-        <WorkoutCard plan={plan.workout_plan} />
-      </View>
-
-      {/* Plan approval (Spec 7.2) */}
-      {plan.status === 'draft' && (
-        <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
-          <View style={{ flex: 1 }}>
-            <Button title="Planı Onayla" onPress={async () => {
-              if (!user?.id) return;
-              await supabase.from('daily_plans')
-                .update({ status: 'approved', approved_at: new Date().toISOString() })
-                .eq('user_id', user.id).eq('date', today).order('version', { ascending: false }).limit(1);
-              setPlan({ ...plan, status: 'approved' });
-            }} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button title="Beğenmem" variant="outline" onPress={handleReject} loading={generating} />
-          </View>
-        </View>
-      )}
-      {plan.status === 'rejected' && (
-        <View style={{
-          backgroundColor: colors.warningLight,
-          borderRadius: RADIUS.full,
-          paddingVertical: SPACING.sm,
-          paddingHorizontal: SPACING.md,
-          marginBottom: SPACING.md,
-          alignSelf: 'center',
-        }}>
-          <Text style={{ color: colors.warning, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>
-            Plan reddedildi, yeni plan oluşturuluyor...
-          </Text>
-        </View>
-      )}
-      {plan.status === 'approved' && (
-        <View style={{
-          backgroundColor: colors.successLight,
-          borderRadius: RADIUS.full,
-          paddingVertical: SPACING.sm,
-          paddingHorizontal: SPACING.md,
-          marginBottom: SPACING.md,
-          alignSelf: 'center',
-        }}>
-          <Text style={{ color: colors.success, fontSize: FONT.sm, textAlign: 'center', fontWeight: '600' }}>
-            Plan onaylandı
-          </Text>
-        </View>
-      )}
-
-      <Button title="Planı Yeniden Oluştur" variant="outline" onPress={() => handleGenerate()} loading={generating} />
+      <PlanHubCard
+        title="Antrenman planı"
+        subtitle={workoutActive ? 'Aktif plan var — açmak için dokun' : workoutReady.ready ? 'Henüz plan yok — oluşturmaya hazır' : 'Önce profili tamamla'}
+        icon="barbell-outline"
+        color="#6366F1"
+        plan={workoutActive}
+        missingCount={workoutReady.missingCore.length}
+        onPress={() => router.push('/plan/workout' as never)}
+      />
     </ScrollView>
+  );
+}
+
+function PlanHubCard({
+  title,
+  subtitle,
+  icon,
+  color,
+  plan,
+  missingCount,
+  onPress,
+}: {
+  title: string;
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  plan: PlanRow | null;
+  missingCount: number;
+  onPress: () => void;
+}) {
+  const { colors, isDark } = useTheme();
+
+  const summary = (() => {
+    if (!plan) return null;
+    if (plan.plan_type === 'diet') {
+      const d = plan.plan_data as DietPlanData;
+      const avg = Math.round(d.days.reduce((s, x) => s + x.total_kcal, 0) / Math.max(1, d.days.length));
+      return `${avg} kcal/gün · P ${d.targets.protein}g`;
+    }
+    const w = plan.plan_data as WorkoutPlanData;
+    const active = w.days.filter(x => !x.rest_day).length;
+    const ex = w.days.reduce((s, x) => s + x.exercises.length, 0);
+    return `${active} aktif gün · ${ex} egzersiz`;
+  })();
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.85}
+      style={{
+        backgroundColor: colors.card,
+        borderRadius: RADIUS.xl,
+        padding: SPACING.md,
+        borderWidth: 1,
+        borderColor: colors.border,
+        ...(isDark ? {} : { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2 }),
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 18,
+            backgroundColor: color + '18',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={icon} size={28} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '800' }}>
+            {title}
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
+            {subtitle}
+          </Text>
+          {summary ? (
+            <Text style={{ color: color, fontSize: FONT.xs, fontWeight: '700', marginTop: 4 }}>
+              {summary}
+            </Text>
+          ) : null}
+          {missingCount > 0 ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                marginTop: 6,
+                alignSelf: 'flex-start',
+                backgroundColor: '#F59E0B18',
+                borderRadius: RADIUS.full,
+                paddingHorizontal: 8,
+                paddingVertical: 2,
+              }}
+            >
+              <Ionicons name="alert-circle-outline" size={11} color="#F59E0B" />
+              <Text style={{ color: '#F59E0B', fontSize: 10, fontWeight: '700' }}>
+                {missingCount} eksik bilgi
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+      </View>
+    </TouchableOpacity>
   );
 }

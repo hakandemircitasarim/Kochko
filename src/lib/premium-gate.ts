@@ -113,3 +113,38 @@ export function useFeatureAccess(key: FeatureKey): FeatureAccess {
 export function requirePremium(key: FeatureKey): boolean {
   return checkFeature(key).allowed;
 }
+
+/**
+ * Plan approval gate (MASTER_PLAN §4.7, Phase 6).
+ *
+ * Free tier: 1 lifetime approved diet plan + 1 lifetime approved workout plan.
+ * Additional approvals require premium. Draft creation/regeneration is free;
+ * only the moment a draft becomes active (plans_used_free incremented server-side)
+ * consumes a quota slot.
+ *
+ * Returns { allowed, reason } — caller shows paywall when allowed=false.
+ */
+export interface PlanApprovalGate {
+  allowed: boolean;
+  reason: 'free_tier_available' | 'premium_active' | 'free_quota_used';
+  usedCount: number;
+  freeLimit: 1;
+}
+
+export function canApprovePlan(planType: 'diet' | 'workout'): PlanApprovalGate {
+  const profile = useProfileStore.getState().profile as
+    | { premium?: boolean; plans_used_free?: { diet?: number; workout?: number } | null }
+    | null;
+  const isPremium = !!profile?.premium;
+  const used = profile?.plans_used_free?.[planType] ?? 0;
+
+  if (isPremium) {
+    return { allowed: true, reason: 'premium_active', usedCount: used, freeLimit: 1 };
+  }
+
+  if (used < 1) {
+    return { allowed: true, reason: 'free_tier_available', usedCount: used, freeLimit: 1 };
+  }
+
+  return { allowed: false, reason: 'free_quota_used', usedCount: used, freeLimit: 1 };
+}

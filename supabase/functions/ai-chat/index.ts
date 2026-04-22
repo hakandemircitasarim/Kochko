@@ -54,7 +54,7 @@ serve(async (req: Request) => {
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
 
-    const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint, client_timezone } = body;
+    const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id } = body;
 
     // GAP 2: STT/Whisper transcription handler
     if (audio_base64 && body.transcribe_only) {
@@ -457,6 +457,118 @@ serve(async (req: Request) => {
     const { cleanMessage: finalMessage, layer2Updates } = extractLayer2Updates(assistantMessage);
     assistantMessage = finalMessage;
 
+    // Plan snapshot + reasoning extraction (MASTER_PLAN §4.4, Phase 2/3).
+    // AI in plan_diet/plan_workout modes re-emits a full snapshot every turn.
+    // Server persists the snapshot to the current draft row.
+    const { cleanMessage: afterSnapshot, snapshot: planSnapshot, parseError: snapshotParseError } = extractPlanSnapshot(assistantMessage);
+    assistantMessage = afterSnapshot;
+    const { cleanMessage: afterReasoning, reasoning: planReasoning } = extractReasoning(assistantMessage);
+    assistantMessage = afterReasoning;
+
+    // <navigate_to> — route hint for daily_log chats (Phase 5).
+    const { cleanMessage: afterNav, navigateTo } = extractNavigateTo(assistantMessage);
+    assistantMessage = afterNav;
+
+    let persistedPlan: Record<string, unknown> | null = null;
+    let planPersistError: string | null = null;
+    if (planSnapshot && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
+      const expectedType = task_mode_hint === 'plan_diet' ? 'diet' : 'workout';
+      if (planSnapshot.plan_type === expectedType) {
+        // Find or create the draft.
+        const { data: existingRows } = await supabaseAdmin
+          .from('weekly_plans')
+          .select('id, plan_data, user_revisions')
+          .eq('user_id', userId)
+          .eq('plan_type', expectedType)
+          .eq('status', 'draft')
+          .limit(1);
+        const existing = existingRows?.[0];
+
+        if (existing) {
+          const prevVersion = ((existing.plan_data as Record<string, unknown>)?.version as number | undefined) ?? 0;
+          const nextSnapshot = { ...planSnapshot, version: prevVersion + 1 };
+          const { error } = await supabaseAdmin
+            .from('weekly_plans')
+            .update({ plan_data: nextSnapshot })
+            .eq('id', existing.id);
+          if (error) planPersistError = error.message;
+          else persistedPlan = nextSnapshot;
+        } else {
+          const { data: inserted, error } = await supabaseAdmin
+            .from('weekly_plans')
+            .insert({
+              user_id: userId,
+              plan_type: expectedType,
+              status: 'draft',
+              week_start: (planSnapshot.week_start as string) || new Date().toISOString().split('T')[0],
+              plan_data: { ...planSnapshot, version: 1 },
+              user_revisions: [],
+            })
+            .select('id, plan_data')
+            .limit(1);
+          if (error) planPersistError = error.message;
+          else persistedPlan = (inserted?.[0] as { plan_data: Record<string, unknown> })?.plan_data ?? null;
+        }
+      } else {
+        planPersistError = `plan_type mismatch: expected ${expectedType}, got ${planSnapshot.plan_type}`;
+      }
+    } else if (snapshotParseError) {
+      console.log(`[plan_snapshot] parse error: ${snapshotParseError}`);
+    }
+
+    // Authoritative approval path (MASTER_PLAN §4.4 rev2.1): when client signals
+    // user_approved, promote the draft to active regardless of AI output.
+    let planApproved: { id: string } | null = null;
+    if (user_approved === true && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
+      const expectedType = task_mode_hint === 'plan_diet' ? 'diet' : 'workout';
+      const { data: draftRow } = await supabaseAdmin
+        .from('weekly_plans')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('plan_type', expectedType)
+        .eq('status', 'draft')
+        .limit(1);
+      const draft = draftRow?.[0];
+      if (draft) {
+        // Archive the previous active if present.
+        await supabaseAdmin
+          .from('weekly_plans')
+          .update({ status: 'archived', archived_reason: 'superseded', superseded_by: draft.id })
+          .eq('user_id', userId)
+          .eq('plan_type', expectedType)
+          .eq('status', 'active');
+        // Snapshot profile for drift detection.
+        const { data: profSnap } = await supabaseAdmin
+          .from('profiles')
+          .select('weight_kg, height_cm, activity_level, diet_mode')
+          .eq('id', userId)
+          .maybeSingle();
+        const { data: goalSnap } = await supabaseAdmin
+          .from('goals')
+          .select('goal_type, target_weight_kg')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .limit(1);
+        const approval_snapshot = { ...(profSnap ?? {}), goal: goalSnap?.[0] ?? null };
+        const { data: activated } = await supabaseAdmin
+          .from('weekly_plans')
+          .update({ status: 'active', approved_at: new Date().toISOString(), approval_snapshot })
+          .eq('id', draft.id)
+          .select('id')
+          .limit(1);
+        planApproved = (activated?.[0] as { id: string } | undefined) ?? null;
+        // Increment plans_used_free counter for free-tier gating (MASTER_PLAN §4.7).
+        const { data: profUsed } = await supabaseAdmin
+          .from('profiles')
+          .select('plans_used_free')
+          .eq('id', userId)
+          .maybeSingle();
+        const used = (profUsed?.plans_used_free as { diet?: number; workout?: number } | null) ?? { diet: 0, workout: 0 };
+        const nextUsed = { ...used, [expectedType]: (used[expectedType] ?? 0) + 1 };
+        await supabaseAdmin.from('profiles').update({ plans_used_free: nextUsed }).eq('id', userId);
+      }
+    }
+
     // Task completion detection (MASTER_PLAN §4.1).
     // Two paths:
     //  (a) AI emits explicit <task_completion> block.
@@ -643,6 +755,11 @@ serve(async (req: Request) => {
       actions: outActions,
       task_mode: taskMode,
       task_completion: validatedCompletion,
+      plan_snapshot: persistedPlan,
+      plan_reasoning: planReasoning,
+      plan_persist_error: planPersistError,
+      plan_approved: planApproved,
+      navigate_to: navigateTo,
     });
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);
@@ -778,6 +895,66 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<s
   if (motivationBits.length > 0) result.motivation_source = motivationBits.join('_');
 
   return Object.keys(result).length > 0 ? result : null;
+}
+
+/**
+ * Plan snapshot parser — MASTER_PLAN §4.4.
+ * Every plan chat turn is expected to re-emit the FULL plan, not a patch.
+ * This extracts it, strips the tag from the displayed message, and returns
+ * the parsed object so the caller can persist it via plan.service.applySnapshot.
+ */
+function extractPlanSnapshot(text: string): { cleanMessage: string; snapshot: Record<string, unknown> | null; parseError?: string } {
+  const match = text.match(/<plan_snapshot>([\s\S]*?)<\/plan_snapshot>/);
+  if (!match) return { cleanMessage: text, snapshot: null };
+  let parsed: Record<string, unknown> | null = null;
+  let parseError: string | undefined;
+  try {
+    parsed = JSON.parse(match[1]) as Record<string, unknown>;
+  } catch (e) {
+    parseError = (e as Error).message;
+  }
+  return {
+    cleanMessage: text.replace(/<plan_snapshot>[\s\S]*?<\/plan_snapshot>/, '').trim(),
+    snapshot: parsed,
+    parseError,
+  };
+}
+
+/** Parse <reasoning> block — AI's explanation for a plan decision. */
+function extractReasoning(text: string): { cleanMessage: string; reasoning: string | null } {
+  const match = text.match(/<reasoning>([\s\S]*?)<\/reasoning>/);
+  if (!match) return { cleanMessage: text, reasoning: null };
+  return {
+    cleanMessage: text.replace(/<reasoning>[\s\S]*?<\/reasoning>/, '').trim(),
+    reasoning: match[1].trim(),
+  };
+}
+
+/**
+ * Parse <navigate_to> block (MASTER_PLAN §4.9).
+ * AI emits this in general/daily_log chats when the user expresses plan intent.
+ * Client renders a "Plana git →" button on the message; if user ignores it,
+ * the prompt instructs the model not to re-emit.
+ */
+const VALID_NAVIGATE_ROUTES = new Set([
+  '/plan/diet', '/plan/workout', '/(tabs)/index', '/(tabs)/chat', '/(tabs)/profile',
+  '/settings/coach-memory', '/settings/goals', '/settings/premium',
+]);
+
+function extractNavigateTo(text: string): { cleanMessage: string; navigateTo: string | null } {
+  const match = text.match(/<navigate_to>([\s\S]*?)<\/navigate_to>/);
+  if (!match) return { cleanMessage: text, navigateTo: null };
+  let route: string | null = null;
+  try {
+    const obj = JSON.parse(match[1]);
+    if (typeof obj?.route === 'string' && VALID_NAVIGATE_ROUTES.has(obj.route)) {
+      route = obj.route;
+    }
+  } catch { /* drop malformed */ }
+  return {
+    cleanMessage: text.replace(/<navigate_to>[\s\S]*?<\/navigate_to>/, '').trim(),
+    navigateTo: route,
+  };
 }
 
 function extractLayer2Updates(text: string): { cleanMessage: string; layer2Updates: Record<string, unknown> | null } {

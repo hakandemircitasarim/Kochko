@@ -339,6 +339,19 @@ export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
       // Layer2 still 'none' since onboarding is primarily populating, not reasoning from,
       // learned insights. Layer4 reference keeps the immediate chat turn context intact.
       return makePlan('full', ['health', 'nutrition', 'training', 'demographics'], 'minimal', ['preferences'], 0, [], 'reference', 10);
+    case 'plan_diet':
+      // Full profile + rich layer2 (food preferences, portion calibration, alcohol pattern,
+      // micro-nutrient risks) so the plan chat has everything needed to negotiate.
+      return makePlan('full', ['health', 'nutrition', 'demographics'], 'full', ['preferences', 'patterns'], 14, ['meals', 'metrics'], 'reference', 10);
+    case 'plan_workout':
+      // Same idea but training-focused. Layer3 includes recent workouts so AI respects
+      // existing intensity/frequency.
+      return makePlan('full', ['health', 'training', 'demographics'], 'full', ['strength', 'habits', 'preferences'], 14, ['workouts', 'metrics'], 'reference', 10);
+    case 'daily_log':
+      // Day-to-day conversational logging. Needs profile for TDEE context, recent meals
+      // and workouts (7 days) for pattern continuity, and layer2 patterns to recognize
+      // habits. Layer4 full so the chat thread stays coherent.
+      return makePlan('focused', ['nutrition', 'training'], 'minimal', ['patterns', 'preferences'], 7, ['meals', 'workouts', 'metrics'], 'full', 15);
     case 'periodic':
       return makePlan('full', ['health', 'nutrition', 'training', 'demographics'], 'full', ['patterns', 'persona', 'preferences', 'strength', 'habits'], 7, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 10);
     default:

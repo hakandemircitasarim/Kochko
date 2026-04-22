@@ -390,7 +390,7 @@ If prerequisites are unmet, the AI first continues the conversation to gather th
 
 ---
 
-### Phase 2 — Diet plan screen  ⬜ not started
+### Phase 2 — Diet plan screen  🟡 implemented, awaiting test (2026-04-19)
 
 **Goal:** Fully functional diet plan creation, negotiation, and activation flow.
 
@@ -436,7 +436,7 @@ Active           → FullPlanView + [Kochko ile konuş] + [Geçmiş] + drift ban
 
 ---
 
-### Phase 3 — Workout plan screen  ⬜ not started
+### Phase 3 — Workout plan screen  🟡 implemented, awaiting test (2026-04-19)
 
 **Goal:** Parallel of Phase 2 for workouts.
 
@@ -457,7 +457,7 @@ Active           → FullPlanView + [Kochko ile konuş] + [Geçmiş] + drift ban
 
 ---
 
-### Phase 4 — Home screen redesign  ⬜ not started
+### Phase 4 — Home screen redesign  🟡 implemented, awaiting test (2026-04-22)
 
 **Goal:** Dashboard surfaces the two plans and profile completion. Plan tab removed.
 
@@ -490,7 +490,7 @@ Implementation lives in `src/lib/profile-completion.ts` (already exists, needs e
 
 ---
 
-### Phase 5 — Daily flow + proactive nudges  ⬜ not started
+### Phase 5 — Daily flow + proactive nudges  🟡 implemented, awaiting test (2026-04-22)
 
 **Goal:** Post-onboarding experience — conversational logging, cheat-meal flow, proactive nudges. General chat intent routing.
 
@@ -508,7 +508,7 @@ Implementation lives in `src/lib/profile-completion.ts` (already exists, needs e
 
 ---
 
-### Phase 6 — Subscription / quotas  ⬜ not started
+### Phase 6 — Subscription / quotas  🟡 implemented, awaiting test (2026-04-22)
 
 **Goal:** Onboarding unlimited; daily message cap post-onboarding; 1+1 lifetime approved plans free; paywall after.
 
@@ -530,7 +530,7 @@ Implementation lives in `src/lib/profile-completion.ts` (already exists, needs e
 
 ---
 
-### Phase 7 — Polish & celebrations  ⬜ not started
+### Phase 7 — Polish & celebrations  🟡 partial (2026-04-22) — animations done, illustrations deferred
 
 **Goal:** Small but meaningful UX wins.
 
@@ -628,6 +628,88 @@ Use this section to log session-by-session observations: what was completed, wha
 - Brief `Vibration.vibrate(30)` on card mount (RN core, no native rebuild). Full haptic via expo-haptics deferred (noted in Section 7 deferred list).
 - `sanitizeAssistantText` belt-and-suspenders stripper added for `<actions>`, `<layer2_update>`, `<task_completion>`, `<plan_snapshot>`, `<plan_finalize>`, `<reasoning>`, `<navigate_to>` — even if server forgets, user never sees raw XML.
 - **Next session: Phase 2** — diet plan screen. See §5 Phase 2.
+
+### 2026-04-22 — Phases 5, 6, 7 implemented (uncommitted, all autonomous)
+User deployed ai-chat edge function, then asked to power through 5→6→7 without stopping for tests. Worst-case recovery acceptable to them.
+
+**Phase 5 — Daily flow + nudges:**
+- `task-modes.ts`: new `daily_log` mode. Post-onboarding conversational layer — records logs via `<actions>`, handles cheat-meal intents via `commitment` action (existing handler), respects active plan, suggests MVD mode when motivation is low. Explicit bans on verbal save acknowledgements and judgmental tone.
+- Same file: `<navigate_to>` contract — AI in daily_log emits `<navigate_to>{"route":"/plan/diet"}</navigate_to>` when user expresses plan intent, server validates against whitelist, client renders a pill button.
+- `retrieval-planner.ts`: `daily_log` case with focused nutrition+training layer1, minimal layer2 patterns, 7-day layer3 meals+workouts+metrics, full 15-turn layer4.
+- `ai-chat/index.ts`: new `extractNavigateTo` parser with route whitelist (`VALID_NAVIGATE_ROUTES`). Parses and strips the tag; response now includes `navigate_to: string | null`.
+- `chat.service.ts`: `ChatResponse.navigate_to` added.
+- `app/chat/[sessionId].tsx`: `UIMessage.navigateTo` field; pill button rendered below assistant message content when set; taps `router.push(navigateTo)`. Proactive greeting: on chat reopen with >4h since last assistant message in a non-task chat, a gentle "Uzun zamandır konuşmadık…" starter is injected client-only (no DB write until user replies).
+
+**Phase 6 — Subscription / quotas:**
+- `premium-gate.ts`: new `canApprovePlan(planType): PlanApprovalGate` — free tier allows 1 lifetime approved plan per type, premium bypasses. Reads `plans_used_free` JSONB from profile.
+- `app/plan/diet.tsx` + `app/plan/workout.tsx`: `handleApprove` now gates — if blocked, pushes a paywall message into the chat stream and routes to `/settings/premium` for upgrade.
+- `shared/rate-limit.ts` rewritten:
+  - Onboarding bypass — users with any unfinished onboarding task get unlimited messages.
+  - Free daily cap raised 5 → 50 messages.
+  - Premium stays 200/day + 30/hour.
+  - "Day" resets at user's local midnight (honors `home_timezone` + `day_boundary_hour`, UTC fallback). Uses `Intl.DateTimeFormat` inside an inline helper so no new dependencies.
+
+**Phase 7 — Polish:**
+- `TaskCompletionCard`: summary chip now scale-in bounces on mount (spring friction 4, tension 120) + vibration pulse pattern `[0, 40, 40, 30]`. Replaces the prior single-shot vibration.
+- `SavedBadge` component extracted: each silent-save pill bounces in with spring + fade. Feels rewarding without being loud.
+- Empty-state illustrations, sound effects, accessibility pass — **deferred** (each is a small independent follow-up and not blocking).
+
+**Nothing committed this session.** User can't test right now but approved the autonomous push; recovery via `git checkout -- .` if anything regresses.
+
+**Remaining open items:**
+- Full user test of phases 2-7 end-to-end.
+- If approved: single big commit across all uncommitted work (all phases 2-7).
+- Phase 4 leftover: delete the `display:none` legacy diet/workout tab code + remove `(tabs)/plan.tsx` entirely once the new cards are proven. Plan tab is still a live bridge.
+- Phase 7 deferred items (illustrations + sounds + a11y) in a focused polish pass.
+- Snapshot token cost audit (logged as deferred decision in §7) after 2 weeks of real usage.
+
+### 2026-04-22 — Phase 4 full implementation (uncommitted)
+User returned after a few days. Asked to continue with Phase 4 while they deploy edge functions.
+
+Full home redesign implemented:
+- `src/components/dashboard/ProfileCompletionDonut.tsx` — animated SVG donut, red/amber/green scale, one-line hint about biggest gap, tap routes to Kochko tab. Consumes existing `src/lib/profile-completion.ts` weighted formula (unchanged).
+- `src/components/dashboard/PlanOverviewCards.tsx` — two large cards (diet + workout) with today's focus (meal count / workout focus / rest-day label). Empty state with "Oluşturmak için dokun". Self-fetches active plans via plan.service, re-fetches on focus.
+- `app/(tabs)/index.tsx` — new hero order: profile completion donut → plan overview cards → activity timeline. The legacy diet/workout tab selector block is wrapped in `display: 'none'` View (code preserved for rollback, ~170 lines). If the new layout proves itself after user testing, the legacy block can be deleted in a small follow-up.
+- Plan tab (`app/(tabs)/plan.tsx`) still exists as bridge; removal deferred until home cards are validated in production.
+
+### 2026-04-19 — Phases 2/3/4 implemented (uncommitted)
+User authorized an autonomous push to implement as far as possible while they were away. Committed nothing (per user request); code lives on disk ready for review/merge.
+
+**Phase 2 — Diet plan screen (complete):**
+- `src/services/plan.service.ts`: CRUD + full plan_data type definitions (DietPlanData, WorkoutPlanData, DietMeal, DietDay, WorkoutExercise, WorkoutDay), lifecycle helpers (createDraft, applySnapshot, approveDraft, discardDraft, getActive, getDraft, getHistory), helpers (isoDateMondayOfWeek, computeDayTotals, dietPlanDiff, emptyDietPlan, emptyWorkoutPlan).
+- `src/components/plan/MealCard.tsx`: expandable meal card with items list, macros, edit affordance, 600ms green-glow on highlighted change.
+- `src/components/plan/ExerciseCard.tsx`: workout analogue.
+- `src/components/plan/PlanPreviewCard.tsx`: sticky compact card with 7-day strip + version badge + "az önce güncellendi" label.
+- `src/components/plan/FullPlanModal.tsx`: full-screen 7-day view, day-by-day accordion, `onFullyViewed` callback tied to scroll-to-bottom → enables Onayla button.
+- `src/components/plan/AlternativeComparisonModal.tsx`: side-by-side summary of two drafts with "Bunu seç" + "Hiçbiri olmadı, 2 alternatif daha göster".
+- `src/components/plan/PlanChatComposer.tsx`: chat composer with Nasıl yaptın? / Alternatif gör / Baştan başla / Onayla chips.
+- `src/components/plan/PlanEmptyState.tsx`: empty + CTA with missingCore blocking and weakSpots as suggestion chips.
+- `src/components/plan/PlanActiveView.tsx`: active plan view with Kochko ile konuş, Geçmiş, soft + hard drift banners.
+- `app/plan/diet.tsx`: three-state screen (loading / empty / draft / active) wired to plan.service, invokePlanChat, FullPlanModal, AlternativeComparisonModal, PlanChatComposer. Handles approve → load() to switch state.
+- Edge function (`supabase/functions/ai-chat/index.ts`): new body params `plan_type`, `user_approved`, `draft_id`. `extractPlanSnapshot` + `extractReasoning` parsers. Plan snapshot persistence (upsert on draft). Approval path: archive previous active, promote draft, write `approval_snapshot`, increment `plans_used_free`. Response exposes `plan_snapshot`, `plan_reasoning`, `plan_persist_error`, `plan_approved`.
+- `supabase/functions/shared/retrieval-planner.ts`: `plan_diet` / `plan_workout` cases with full layer1 + layer2 preferences + 14-day layer3 + 10-turn layer4.
+- `supabase/functions/ai-chat/task-modes.ts`: TaskMode extended with `plan_diet` and `plan_workout`; full prompt instructions for each including the structured output contract, negotiation flow, bans list.
+- `src/services/chat.service.ts`: added `TaskCompletion`, `invokePlanChat(params)` helper, response fields.
+
+**Phase 3 — Workout plan screen (complete):**
+- Edge fn done in Phase 2 commit above.
+- `app/plan/workout.tsx`: parallel of diet.tsx with plan_type='workout', WorkoutPlanData, purple accent.
+- Components reused across both plans.
+
+**Phase 4 — Home redesign (partial):**
+- Full redesign deferred (risky without tests). Instead:
+- `app/(tabs)/plan.tsx`: bridge replacing old `daily_plans` screen. Two hub cards (Diyet / Antrenman) routing to `/plan/diet` and `/plan/workout`. Summarizes active plan if present, shows missing-field count otherwise.
+- `app/(tabs)/index.tsx`: legacy `/diet-plan` and `/workout-plan` links retargeted to new `/plan/diet` and `/plan/workout`. Existing card structure left intact.
+- Plan tab removal (full Phase 4 scope) deferred pending test of phases 2/3.
+
+**Nothing committed in this session.** All changes live on working tree; user will review and commit when back.
+
+**Next session priorities:**
+1. User tests phases 2/3 end-to-end.
+2. Fix issues that emerge.
+3. Commit staged phases.
+4. Phase 4 full redesign (home cards + remove plan tab) after 2/3 proven.
+5. Phase 5 (daily logging flow), Phase 6 (quota gates), Phase 7 (polish) remain.
 
 ### 2026-04-19 — Phase 0 complete
 - Migrations 030 (plan versioning), 031 (profile preferences), 032 (free-tier counters) applied to remote.

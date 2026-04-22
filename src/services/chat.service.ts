@@ -22,6 +22,36 @@ export interface ChatResponse {
   actions: { type: string; feedback: string | null }[];
   task_mode: string;
   task_completion?: TaskCompletion | null;
+  plan_snapshot?: Record<string, unknown> | null;
+  plan_reasoning?: string | null;
+  plan_persist_error?: string | null;
+  plan_approved?: { id: string } | null;
+  navigate_to?: string | null;
+}
+
+// Plan chat invocation — used by plan/diet.tsx and plan/workout.tsx screens.
+export async function invokePlanChat(params: {
+  sessionId: string;
+  message: string;
+  planType: 'diet' | 'workout';
+  userApproved?: boolean;
+  draftId?: string;
+}): Promise<{ data: ChatResponse | null; error: string | null }> {
+  const body: Record<string, unknown> = {
+    message: params.message,
+    session_id: params.sessionId,
+    task_mode_hint: params.planType === 'diet' ? 'plan_diet' : 'plan_workout',
+    plan_type: params.planType,
+  };
+  if (params.userApproved) body.user_approved = true;
+  if (params.draftId) body.draft_id = params.draftId;
+  try {
+    const { data, error } = await supabase.functions.invoke('ai-chat', { body });
+    if (error) return { data: null, error: error.message };
+    return { data: data as ChatResponse, error: null };
+  } catch (e) {
+    return { data: null, error: (e as Error).message };
+  }
 }
 
 const CACHE_KEY = '@kochko_chat_cache';
