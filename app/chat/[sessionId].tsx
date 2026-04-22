@@ -89,6 +89,56 @@ function parseSimulationData(content: string): { cleanContent: string; data: Sim
 }
 
 /**
+ * Turn a flat message list into a list of {kind: 'separator' | 'message'} items,
+ * inserting a date label before each new calendar day. Today's date is labeled
+ * "Bugün", yesterday "Dün", older days get a short human date.
+ */
+type Row = { kind: 'separator'; key: string; label: string } | { kind: 'message'; msg: UIMessage };
+
+function withDateSeparators(messages: UIMessage[]): Row[] {
+  const rows: Row[] = [];
+  let currentDay = '';
+  const today = new Date();
+  const todayKey = today.toDateString();
+  const yesterday = new Date(today.getTime() - 86400000);
+  const yesterdayKey = yesterday.toDateString();
+  for (const m of messages) {
+    const d = new Date(m.created_at);
+    const dayKey = d.toDateString();
+    if (dayKey !== currentDay) {
+      currentDay = dayKey;
+      let label: string;
+      if (dayKey === todayKey) label = 'Bugün';
+      else if (dayKey === yesterdayKey) label = 'Dün';
+      else label = d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' });
+      rows.push({ kind: 'separator', key: dayKey, label });
+    }
+    rows.push({ kind: 'message', msg: m });
+  }
+  return rows;
+}
+
+function DateSeparator({ label }: { label: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: SPACING.sm }}>
+      <View
+        style={{
+          paddingHorizontal: SPACING.md,
+          paddingVertical: 3,
+          borderRadius: 999,
+          backgroundColor: colors.surfaceLight,
+        }}
+      >
+        <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
+          {label}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/**
  * Split a text into plain/bold segments for rendering in Text nodes.
  * Supports only `**bold**` — the most common markdown AI produces. Any other
  * markup (italic, links, headers) is passed through verbatim to avoid surprise
@@ -795,9 +845,13 @@ export default function SessionDetailScreen() {
       ) : (
         <FlatList
           ref={listRef}
-          data={messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]')))}
-          keyExtractor={m => m.id}
-          renderItem={({ item }) => <MessageBubble message={item} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} />}
+          data={withDateSeparators(messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]'))))}
+          keyExtractor={item => item.kind === 'separator' ? `sep-${item.key}` : (item.msg as UIMessage).id}
+          renderItem={({ item }) => {
+            if (item.kind === 'separator') return <DateSeparator label={item.label} />;
+            const m = item.msg as UIMessage;
+            return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} />;
+          }}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
         />
