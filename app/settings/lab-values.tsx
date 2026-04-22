@@ -45,14 +45,14 @@ export default function LabValuesScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Lab Degerleri</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yasam tarzi takibi icindir. Tibbi yorum icin doktorunuza danisin.</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Lab Değerleri</Text>
+      <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yaşam tarzı takibi içindir. Tıbbi yorum için doktoruna danış.</Text>
 
-      <Button title={showAdd ? 'Iptal' : 'Yeni Deger Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
+      <Button title={showAdd ? 'İptal' : 'Yeni Değer Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
 
       {showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>Hizli Secim</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>Hızlı Seçim</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
             {COMMON_LAB_PARAMS.map(p => (
               <TouchableOpacity key={p.name} onPress={() => selectParam(p)}
@@ -65,7 +65,7 @@ export default function LabValuesScreen() {
           </View>
           <Input label="Parametre" value={paramName} onChangeText={setParamName} placeholder="Vitamin D" />
           <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-            <View style={{ flex: 2 }}><Input label="Deger" value={value} onChangeText={setValue} keyboardType="decimal-pad" placeholder="45" /></View>
+            <View style={{ flex: 2 }}><Input label="Değer" value={value} onChangeText={setValue} keyboardType="decimal-pad" placeholder="45" /></View>
             <View style={{ flex: 1 }}><Input label="Birim" value={unit} onChangeText={setUnit} placeholder="ng/mL" /></View>
           </View>
           <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
@@ -88,7 +88,7 @@ export default function LabValuesScreen() {
             </View>
           ))}
           {values.some(v => v.is_out_of_range) && (
-            <Text style={{ color: COLORS.warning, fontSize: FONT.xs, marginTop: SPACING.sm }}>Referans disi deger var. Saglik profesyoneline danisin.</Text>
+            <Text style={{ color: COLORS.warning, fontSize: FONT.xs, marginTop: SPACING.sm }}>Referans dışı değer var. Sağlık profesyoneline danış.</Text>
           )}
         </Card>
       ))}
