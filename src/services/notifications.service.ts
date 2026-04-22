@@ -193,8 +193,8 @@ export async function scheduleLocalNotifications(
     const t = adjustTime(7, 30);
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Gunun Plani Hazir',
-        body: 'Bugunun beslenme ve antrenman planina goz at.',
+        title: 'Günün Planı Hazır',
+        body: 'Bugünün beslenme ve antrenman planına göz at.',
         data: { type: 'morning_plan' },
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: t.hour, minute: t.minute },
@@ -216,15 +216,15 @@ export async function scheduleLocalNotifications(
       const midM = (startH * 60 + startM + halfWindow) % 60;
 
       mealTimes = [
-        { label: 'ilk_ogun', title: 'Ilk Ogun', body: 'IF pencereniz acildi, ilk ogununu kaydet.', meal: 'kahvalti', hour: startH, minute: startM },
-        { label: 'ara_ogun', title: 'Ara Ogun', body: 'IF pencerenizde ikinci ogun zamani.', meal: 'ogle', hour: midH, minute: midM },
-        { label: 'son_ogun', title: 'Son Ogun', body: 'IF penceresi kapanmadan son ogununu planla.', meal: 'aksam', hour: endH > 0 ? endH - 1 : 23, minute: endM },
+        { label: 'ilk_ogun', title: 'İlk Öğün', body: 'IF pencereni açtın, ilk öğününü kaydet.', meal: 'kahvalti', hour: startH, minute: startM },
+        { label: 'ara_ogun', title: 'Ara Öğün', body: 'IF pencerende ikinci öğün zamanı.', meal: 'ogle', hour: midH, minute: midM },
+        { label: 'son_ogun', title: 'Son Öğün', body: 'IF penceresi kapanmadan son öğününü planla.', meal: 'aksam', hour: endH > 0 ? endH - 1 : 23, minute: endM },
       ];
     } else {
       mealTimes = [
-        { label: 'kahvalti', title: 'Kahvalti Zamani', body: 'Gune saglikli bir kahvalti ile basla.', meal: 'kahvalti', hour: 8, minute: 0 },
-        { label: 'ogle', title: 'Ogle Yemegi', body: 'Ogle yemegi vakti geldi, dengeli bir ogun sec.', meal: 'ogle', hour: 12, minute: 30 },
-        { label: 'aksam', title: 'Aksam Yemegi', body: 'Aksam yemegi icin hafif ve doyurucu bir sey hazirla.', meal: 'aksam', hour: 19, minute: 0 },
+        { label: 'kahvalti', title: 'Kahvaltı Zamanı', body: 'Güne sağlıklı bir kahvaltı ile başla.', meal: 'kahvalti', hour: 8, minute: 0 },
+        { label: 'ogle', title: 'Öğle Yemeği', body: 'Öğle yemeği vakti geldi, dengeli bir öğün seç.', meal: 'ogle', hour: 12, minute: 30 },
+        { label: 'aksam', title: 'Akşam Yemeği', body: 'Akşam yemeği için hafif ve doyurucu bir şey hazırla.', meal: 'aksam', hour: 19, minute: 0 },
       ];
     }
 
@@ -244,8 +244,8 @@ export async function scheduleLocalNotifications(
     for (const weekday of workoutDays) {
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Antrenman Zamani',
-          body: 'Bugun antrenman gunun. Planini kontrol et ve hazirliklara basla!',
+          title: 'Antrenman Zamanı',
+          body: 'Bugün antrenman günün. Planını kontrol et ve hazırlıklara başla!',
           data: { type: 'workout_reminder', weekday },
         },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday, hour: 9, minute: 0 },
@@ -257,8 +257,8 @@ export async function scheduleLocalNotifications(
     for (let hour = 9; hour <= 20; hour += 2) {
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Su Hatirlatma',
-          body: 'Su icmeyi unutma!',
+          title: 'Su Hatırlatma',
+          body: 'Su içmeyi unutma!',
           data: { type: 'water_reminder' },
         },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute: 0 },
@@ -269,8 +269,8 @@ export async function scheduleLocalNotifications(
   if (prefs.types.weight_reminder) {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Tarti Hatirlatma',
-        body: 'Bu hafta tartilmayi unutma.',
+        title: 'Tartı Hatırlatma',
+        body: 'Bu hafta tartılmayı unutma.',
         data: { type: 'weight_reminder' },
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 2, hour: 8, minute: 0 },
@@ -280,8 +280,8 @@ export async function scheduleLocalNotifications(
   if (prefs.types.daily_report) {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Gun Sonu',
-        body: 'Gunun nasil gecti? Raporuna bak.',
+        title: 'Gün Sonu',
+        body: 'Günün nasıl geçti? Raporuna bak.',
         data: { type: 'daily_report' },
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 21, minute: 0 },
@@ -291,8 +291,8 @@ export async function scheduleLocalNotifications(
   if (prefs.types.weekly_report) {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Haftalik Rapor',
-        body: 'Bu haftanin raporu hazir.',
+        title: 'Haftalık Rapor',
+        body: 'Bu haftanın raporu hazır.',
         data: { type: 'weekly_report' },
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 1, hour: 19, minute: 0 },
@@ -302,8 +302,8 @@ export async function scheduleLocalNotifications(
   if (prefs.types.night_risk) {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Gece Hatirlatma',
-        body: 'Uykudan once mutfaktan uzak dur. Yarin icin planin hazir.',
+        title: 'Gece Hatırlatma',
+        body: 'Uykudan önce mutfaktan uzak dur. Yarın için planın hazır.',
         data: { type: 'night_risk' },
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 22, minute: 30 },
@@ -321,8 +321,8 @@ export async function scheduleLocalNotifications(
       const windMin = totalMin % 60;
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Uyku Yaklasiyor',
-          body: 'Yatis saatinden 30 dakika kaldi. Ekrani kapat, bi su ic, ertesi gun icin guzel bir uyku al.',
+          title: 'Uyku Yaklaşıyor',
+          body: 'Yatış saatine 30 dakika kaldı. Ekranı kapat, bir su iç, ertesi gün için güzel bir uyku al.',
           data: { type: 'bedtime_wind_down' },
         },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: windHour, minute: windMin },
@@ -343,8 +343,8 @@ export async function scheduleTrialReminder(trialDaysLeft: number): Promise<void
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: 'Deneme Sureniz Bitiyor',
-      body: "Deneme sureniz 2 gun sonra bitiyor. Premium'a gecin!",
+      title: 'Deneme Süren Bitiyor',
+      body: "Deneme süren 2 gün sonra bitiyor. Premium'a geç!",
       data: { type: 'trial_reminder' },
     },
     trigger: {
