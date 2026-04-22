@@ -98,6 +98,12 @@ function sanitizeAssistantText(text: string): string {
     .replace(/<plan_finalize>[\s\S]*?<\/plan_finalize>/g, '')
     .replace(/<reasoning>[\s\S]*?<\/reasoning>/g, '')
     .replace(/<navigate_to>[\s\S]*?<\/navigate_to>/g, '')
+    .replace(/<simulation>[\s\S]*?<\/simulation>/g, '')
+    .replace(/<quick_select>[\s\S]*?<\/quick_select>/g, '')
+    .replace(/<recipe>[\s\S]*?<\/recipe>/g, '')
+    .replace(/<confirm_reject\s*\/?>/g, '')
+    .replace(/<commitment>[\s\S]*?<\/commitment>/g, '')
+    .replace(/<persona_detected>[\s\S]*?<\/persona_detected>/g, '')
     .trim();
 }
 
