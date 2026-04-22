@@ -87,7 +87,7 @@ export default function ProgressPhotosScreen() {
 
   const deletePhoto = (id: string) => {
     Alert.alert('Sil', 'Bu fotoğrafı silmek istiyor musun?', [
-      { text: 'Iptal', style: 'cancel' },
+      { text: 'İptal', style: 'cancel' },
       { text: 'Sil', style: 'destructive', onPress: async () => {
         await supabase.from('progress_photos').delete().eq('id', id);
         setPhotos(prev => prev.filter(p => p.id !== id));

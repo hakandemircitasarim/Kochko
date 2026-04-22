@@ -31,8 +31,8 @@ export default function RecipesScreen() {
   const load = () => getRecipes(filter ?? undefined).then(setRecipes);
 
   const handleDelete = (id: string) => {
-    Alert.alert('Sil', 'Tarifi silmek istediginize emin misiniz?', [
-      { text: 'Iptal' },
+    Alert.alert('Sil', 'Tarifi silmek istediğine emin misin?', [
+      { text: 'İptal' },
       { text: 'Sil', style: 'destructive', onPress: () => { deleteRecipe(id); setRecipes(prev => prev.filter(r => r.id !== id)); } },
     ]);
   };
