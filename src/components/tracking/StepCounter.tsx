@@ -142,7 +142,7 @@ export function StepCounter({ steps, target = DEFAULT_TARGET, source, onManualEn
                 onPress={() => { setManualInput(''); setShowManualModal(false); }}
                 style={{ flex: 1, padding: SPACING.sm, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: COLORS.border }}
               >
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Iptal</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>İptal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleManualSubmit}

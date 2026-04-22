@@ -7,13 +7,13 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 const LABELS: Record<string, { text: string; color: string }> = {
   stres: { text: 'Stres', color: '#E91E63' },
-  aclik: { text: 'Aclik Yonetimi', color: '#FF5722' },
-  disarida_yemek: { text: 'Disarida Yemek', color: '#FF9800' },
-  plansiz_atistirma: { text: 'Plansiz Atistirma', color: '#FFC107' },
+  aclik: { text: 'Açlık Yönetimi', color: '#FF5722' },
+  disarida_yemek: { text: 'Dışarıda Yemek', color: '#FF9800' },
+  plansiz_atistirma: { text: 'Plansız Atıştırma', color: '#FFC107' },
   sosyal: { text: 'Sosyal Ortam', color: '#9C27B0' },
   alkol: { text: 'Alkol', color: '#673AB7' },
   yorgunluk: { text: 'Yorgunluk', color: '#607D8B' },
-  hastalik: { text: 'Hastalik', color: '#795548' },
+  hastalik: { text: 'Hastalık', color: '#795548' },
   yok: { text: 'Sapma Yok', color: COLORS.success },
 };
 

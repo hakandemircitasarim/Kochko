@@ -71,7 +71,7 @@ export function CalorieProgress({ consumed, targetMin, targetMax, protein, prote
       <View style={{ flexDirection: 'row', gap: SPACING.md }}>
         <MacroBar label="Protein" value={protein} target={proteinTarget} color="#667EEA" colors={colors} />
         <MacroBar label="Karb" value={carbs} target={carbsTarget} color="#F59E0B" colors={colors} />
-        <MacroBar label="Yag" value={fat} target={fatTarget} color="#EF4444" colors={colors} />
+        <MacroBar label="Yağ" value={fat} target={fatTarget} color="#EF4444" colors={colors} />
       </View>
     </View>
   );
