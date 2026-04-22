@@ -30,8 +30,8 @@ interface DailyReport {
 }
 
 const DEVIATION_LABELS: Record<string, string> = {
-  stres: 'Stres', aclik: 'Aclik yonetimi', disarida_yemek: 'Disarida yemek',
-  plansiz_atistirma: 'Plansiz atistirma', sosyal: 'Sosyal ortam', alkol: 'Alkol', yok: '-',
+  stres: 'Stres', aclik: 'Açlık yönetimi', disarida_yemek: 'Dışarıda yemek',
+  plansiz_atistirma: 'Plansız atıştırma', sosyal: 'Sosyal ortam', alkol: 'Alkol', yok: '-',
 };
 
 export default function DailyReportScreen() {
@@ -61,15 +61,15 @@ export default function DailyReportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Gun Sonu Raporu</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Gün Sonu Raporu</Text>
       <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
         {new Date(today).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
       </Text>
 
       {!report ? (
         <Card>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henuz olusturulmamis.</Text>
-          <Button title="Rapor Olustur" onPress={handleGenerate} loading={generating} size="lg" />
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
+          <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
         </Card>
       ) : (
         <>
@@ -79,7 +79,7 @@ export default function DailyReportScreen() {
           </Card>
 
           {/* Checklist */}
-          <Card title="Hedef Kontrolu">
+          <Card title="Hedef Kontrolü">
             <CheckItem label="Kalori" met={report.calorie_target_met} detail={`${report.calorie_actual} kcal`} />
             <CheckItem label="Protein" met={report.protein_target_met} detail={`${report.protein_actual}g`} />
             <CheckItem label="Antrenman" met={report.workout_completed} />
@@ -87,11 +87,11 @@ export default function DailyReportScreen() {
           </Card>
 
           {/* Macros */}
-          <Card title="Makro Dagilimi">
+          <Card title="Makro Dağılımı">
             <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
               <MacroCircle label="Protein" value={report.protein_actual} unit="g" color={COLORS.primary} />
               <MacroCircle label="Karb" value={report.carbs_actual} unit="g" color={COLORS.success} />
-              <MacroCircle label="Yag" value={report.fat_actual} unit="g" color={COLORS.warning} />
+              <MacroCircle label="Yağ" value={report.fat_actual} unit="g" color={COLORS.warning} />
               {report.alcohol_calories > 0 && <MacroCircle label="Alkol" value={report.alcohol_calories} unit="kcal" color={COLORS.error} />}
             </View>
           </Card>
@@ -113,18 +113,18 @@ export default function DailyReportScreen() {
 
           {/* Weekly Budget */}
           {report.weekly_budget_status && (
-            <Card title="Haftalik Butce">
+            <Card title="Haftalık Bütçe">
               <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>{report.weekly_budget_status}</Text>
             </Card>
           )}
 
           {/* Full Report */}
-          <Card title="Degerlendirme">
+          <Card title="Değerlendirme">
             <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 24 }}>{report.full_report}</Text>
           </Card>
 
           {/* Tomorrow */}
-          <Card title="Yarin Icin Tek Aksiyon">
+          <Card title="Yarın İçin Tek Aksiyon">
             <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600', lineHeight: 26 }}>{report.tomorrow_action}</Text>
           </Card>
         </>
