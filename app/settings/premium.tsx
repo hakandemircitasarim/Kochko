@@ -11,37 +11,38 @@ import { initiatePurchase, restorePurchases } from '@/services/subscription.serv
 import { supabase } from '@/lib/supabase';
 
 const FREE = [
-  'Kayit girisi (ogun, spor, su, tarti)',
+  'Kayıt girişi (öğün, spor, su, tartı)',
   'Barkod okuma',
   'Basit grafikler',
   'Temel hedef takibi',
-  'Telefon adim sayaci',
-  'Gunluk 5 AI mesaj hakki',
+  'Telefon adım sayacı',
+  'Günlük 50 AI mesaj hakkı',
+  '1 diyet + 1 antrenman planı',
 ];
 
 const PREMIUM = [
-  'Sinirsiz AI sohbet',
-  'Kisisellestirilmis gunluk plan',
-  'Haftalik/aylik revizyon',
-  'Gun sonu raporu',
-  'Haftalik koc raporu',
-  'Fotograf / sesli giris',
-  'Lab modulu',
-  'Gelismis raporlar ve export',
-  'Alisveris listesi',
-  'Haftalik menu',
-  'Meal prep plani',
-  'Tarif kutuphanesi',
+  'Sınırsız AI sohbet',
+  'Kişiselleştirilmiş günlük plan',
+  'Haftalık / aylık revizyon',
+  'Gün sonu raporu',
+  'Haftalık koç raporu',
+  'Fotoğraf / sesli giriş',
+  'Lab modülü',
+  'Gelişmiş raporlar ve export',
+  'Alışveriş listesi',
+  'Haftalık menü',
+  'Meal prep planı',
+  'Tarif kütüphanesi',
   'Proaktif bildirimler',
-  'Donemsel ayarlama',
-  'Guc progresyon takibi',
-  'Challenge modulu',
-  'Bakim modu',
+  'Dönemsel ayarlama',
+  'Güç progresyon takibi',
+  'Challenge modülü',
+  'Bakım modu',
   'Prediktif analitik',
-  'Simulasyon modu',
-  'Haftalik kalori butcesi',
+  'Simülasyon modu',
+  'Haftalık kalori bütçesi',
   'Porsiyon kalibrasyonu',
-  'Cok fazli hedefler',
+  'Çok fazlı hedefler',
 ];
 
 export default function PremiumScreen() {
@@ -57,19 +58,19 @@ export default function PremiumScreen() {
 
     Alert.alert(
       'Premium Abonelik',
-      'Aylik ($9.99) veya yillik ($79.99, %33 indirim) secin.',
+      'Aylık ($9.99) veya yıllık ($79.99, %33 indirim) seçin.',
       [
-        { text: 'Iptal', style: 'cancel' },
-        { text: 'Aylik - $9.99', onPress: () => activatePremium(1) },
-        { text: 'Yillik - $79.99', onPress: () => activatePremium(12) },
+        { text: 'İptal', style: 'cancel' },
+        { text: 'Aylık - $9.99', onPress: () => activatePremium(1) },
+        { text: 'Yıllık - $79.99', onPress: () => activatePremium(12) },
       ]
     );
   };
 
   const handleBuy = () => {
     Alert.alert(
-      'Gelistirici Modu',
-      'Uygulama icin satin alma (IAP) henuz baglantili degil. Gercek odeme altyapisi App Store / Google Play entegrasyonu ile aktif olacaktir. Simdilik test icin "Abone Ol" butonunu kullanabilirsiniz.',
+      'Geliştirici Modu',
+      'Uygulama içi satın alma (IAP) henüz bağlantılı değil. Gerçek ödeme altyapısı App Store / Google Play entegrasyonu ile aktif olacak. Şimdilik test için "Abone Ol" butonunu kullanabilirsin.',
       [{ text: 'Tamam' }]
     );
   };
@@ -77,13 +78,13 @@ export default function PremiumScreen() {
   const handleRestorePurchases = async () => {
     const result = await restorePurchases();
     if (result.ok) {
-      Alert.alert('Basarili', 'Satin alimlariniz yuklendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+      Alert.alert('Başarılı', 'Satın alımların yüklendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
       return;
     }
     // Native SDK wired değil → dev fallback
     Alert.alert(
-      'Satin Alimlari Geri Yukle',
-      'Uygulama ici satin alma altyapisi henuz aktif edilmedi. Gelistiriciyle iletisime gecin.',
+      'Satın Alımları Geri Yükle',
+      'Uygulama içi satın alma altyapısı henüz aktif edilmedi. Geliştiriciyle iletişime geç.',
       [{ text: 'Tamam' }]
     );
   };
@@ -125,12 +126,12 @@ export default function PremiumScreen() {
   };
 
   const handleCancel = () => {
-    Alert.alert('Iptal', 'Premium aboneliginizi iptal etmek istiyor musunuz? Mevcut donem sonuna kadar erisim devam eder.', [
-      { text: 'Vazgec', style: 'cancel' },
-      { text: 'Iptal Et', style: 'destructive', onPress: async () => {
+    Alert.alert('İptal', 'Premium aboneliğini iptal etmek istiyor musun? Mevcut dönem sonuna kadar erişim devam eder.', [
+      { text: 'Vazgeç', style: 'cancel' },
+      { text: 'İptal Et', style: 'destructive', onPress: async () => {
         // In production: cancel via RevenueCat/IAP
         // Premium remains until premium_expires_at
-        Alert.alert('Iptal Edildi', 'Mevcut donem sonuna kadar Premium devam eder.');
+        Alert.alert('İptal Edildi', 'Mevcut dönem sonuna kadar Premium devam eder.');
       }},
     ]);
   };
@@ -145,13 +146,13 @@ export default function PremiumScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, justifyContent: 'center' }}>
         <Card>
           <Text style={{ color: COLORS.success, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Premium Aktif</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>Tum ozelliklere erisin var.</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>Tüm özelliklere erişimin var.</Text>
           {expiresDate && (
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>Gecerlilik: {expiresDate}</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>Geçerlilik: {expiresDate}</Text>
           )}
         </Card>
         <View style={{ marginTop: SPACING.lg }}>
-          <Button title="Aboneligi Iptal Et" variant="ghost" onPress={handleCancel} />
+          <Button title="Aboneliği İptal Et" variant="ghost" onPress={handleCancel} />
         </View>
       </ScrollView>
     );
@@ -164,21 +165,21 @@ export default function PremiumScreen() {
         {/* Trial expiry countdown banner */}
         <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md }}>
           <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>
-            Deneme sureniz {trialDaysLeft} gun sonra bitiyor
+            Deneme süren {trialDaysLeft} gün sonra bitiyor
           </Text>
         </View>
 
         <Card>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Deneme Suresi</Text>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Deneme Süresi</Text>
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>
-            {trialDaysLeft} gun kaldi. Tum Premium ozellikler acik.
+            {trialDaysLeft} gün kaldı. Tüm Premium özellikler açık.
           </Text>
         </Card>
 
         {/* Feature comparison */}
         <View style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', marginBottom: SPACING.sm }}>Ucretsiz vs Premium</Text>
-          <Card title="Ucretsiz">
+          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', marginBottom: SPACING.sm }}>Ücretsiz vs Premium</Text>
+          <Card title="Ücretsiz">
             {FREE.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.success} />)}
           </Card>
           <Card title="Premium" style={{ borderColor: COLORS.primary, borderWidth: 2 }}>
@@ -190,12 +191,12 @@ export default function PremiumScreen() {
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
             Deneme bitmeden abone olarak kesintisiz devam et.
           </Text>
-          <Button title="Satin Al" onPress={handleBuy} size="lg" />
+          <Button title="Satın Al" onPress={handleBuy} size="lg" />
           <View style={{ marginTop: SPACING.sm }}>
-            <Button title="Simdi Abone Ol (Test)" onPress={handleSubscribe} size="lg" variant="ghost" />
+            <Button title="Şimdi Abone Ol (Test)" onPress={handleSubscribe} size="lg" variant="ghost" />
           </View>
           <View style={{ marginTop: SPACING.sm }}>
-            <Button title="Satin Alimlari Geri Yukle" variant="ghost" onPress={handleRestorePurchases} />
+            <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />
           </View>
         </View>
       </ScrollView>
@@ -205,15 +206,15 @@ export default function PremiumScreen() {
   // Expired or never subscribed
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Premium'a Gec</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Premium'a Geç</Text>
       {isExpired && (
         <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.sm, marginTop: SPACING.sm }}>
-          <Text style={{ color: COLORS.warning, fontSize: FONT.sm, textAlign: 'center' }}>Premium sureniz doldu. Yenileyin.</Text>
+          <Text style={{ color: COLORS.warning, fontSize: FONT.sm, textAlign: 'center' }}>Premium süren doldu. Yenile.</Text>
         </View>
       )}
-      <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yasam tarzi kocunun tam gucunu ac.</Text>
+      <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yaşam tarzı koçunun tam gücünü aç.</Text>
 
-      <Card title="Ucretsiz">
+      <Card title="Ücretsiz">
         {FREE.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.success} />)}
       </Card>
 
@@ -224,27 +225,27 @@ export default function PremiumScreen() {
       {/* Pricing */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
         <Card style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Aylik</Text>
+          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Aylık</Text>
           <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$9.99</Text>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center' }}>/ay</Text>
         </Card>
         <Card style={{ flex: 1, borderColor: COLORS.primary, borderWidth: 1 }}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>%33 INDIRIM</Text>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Yillik</Text>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>%33 İNDİRİM</Text>
+          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Yıllık</Text>
           <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$79.99</Text>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center' }}>$6.67/ay</Text>
         </Card>
       </View>
 
-      <Button title="Satin Al" onPress={handleBuy} size="lg" />
+      <Button title="Satın Al" onPress={handleBuy} size="lg" />
       <View style={{ marginTop: SPACING.sm }}>
-        <Button title="Premium'u Baslat (Test)" onPress={handleSubscribe} size="lg" variant="ghost" />
+        <Button title="Premium'u Başlat (Test)" onPress={handleSubscribe} size="lg" variant="ghost" />
       </View>
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
-        7 gun ucretsiz deneme. Istedigin zaman iptal et.
+        7 gün ücretsiz deneme. İstediğin zaman iptal et.
       </Text>
       <View style={{ marginTop: SPACING.md }}>
-        <Button title="Satin Alimlari Geri Yukle" variant="ghost" onPress={handleRestorePurchases} />
+        <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />
       </View>
     </ScrollView>
   );
