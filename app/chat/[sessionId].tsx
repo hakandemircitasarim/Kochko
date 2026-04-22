@@ -1516,37 +1516,52 @@ function TaskCompletionCard({
 
       {/* Next-task suggestion cards */}
       {suggestionTasks.length > 0 && (
-        <View style={{ gap: 6, marginTop: 4 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
-            Devam edebileceğin konular
+        <View style={{ gap: 6, marginTop: SPACING.xs }}>
+          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>
+            DEVAM EDEBİLECEĞİN KONULAR
           </Text>
           {suggestionTasks.map((task) => (
             <TouchableOpacity
               key={task.key}
               onPress={() => handleTap(task)}
-              activeOpacity={0.7}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={`${task.title}: ${task.description}`}
               style={{
                 flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
                 backgroundColor: colors.background,
-                borderWidth: 0.5, borderColor: colors.border,
-                borderRadius: 12,
-                paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+                borderWidth: 1,
+                borderColor: task.color + '33',
+                borderRadius: 14,
+                paddingHorizontal: SPACING.md,
+                paddingVertical: SPACING.sm + 2,
               }}
             >
               <View style={{
-                width: 28, height: 28, borderRadius: 8,
+                width: 32, height: 32, borderRadius: 10,
                 backgroundColor: task.color + '20',
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Ionicons name={task.icon as any} size={14} color={task.color} />
+                <Ionicons name={task.icon as keyof typeof Ionicons.glyphMap} size={15} color={task.color} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>{task.title}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }} numberOfLines={1}>
+                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{task.title}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
                   {task.description}
                 </Text>
               </View>
-              <Ionicons name="arrow-forward" size={14} color={colors.textMuted} />
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  backgroundColor: task.color + '15',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="arrow-forward" size={12} color={task.color} />
+              </View>
             </TouchableOpacity>
           ))}
         </View>
