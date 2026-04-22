@@ -138,8 +138,8 @@ export async function checkRateLimit(
       allowed: false,
       remaining: 0,
       message: isPremium
-        ? `Bugun cok calistik, gunluk ${PREMIUM_DAILY_LIMIT} mesaj limitine ulastik. Yaklasik ${hoursLeft} saat sonra yenilenecek.`
-        : `Bugunluk ${FREE_DAILY_LIMIT} ucretsiz mesaj hakkini kullandin. Yaklasik ${hoursLeft} saat sonra yenilenecek. Sinirsiz sohbet icin premium paketi deneyebilirsin.`,
+        ? `Bugün çok çalıştık, günlük ${PREMIUM_DAILY_LIMIT} mesaj limitine ulaştık. Yaklaşık ${hoursLeft} saat sonra yenilenecek.`
+        : `Bugünlük ${FREE_DAILY_LIMIT} ücretsiz mesaj hakkını kullandın. Yaklaşık ${hoursLeft} saat sonra yenilenecek. Sınırsız sohbet için premium paketi deneyebilirsin.`,
     };
   }
 
@@ -156,7 +156,7 @@ export async function checkRateLimit(
       return {
         allowed: false,
         remaining: 0,
-        message: `Saatlik ${PREMIUM_HOURLY_LIMIT} mesaj limitine ulastik. Birkaç dakika sonra tekrar dene.`,
+        message: `Saatlik ${PREMIUM_HOURLY_LIMIT} mesaj limitine ulaştık. Birkaç dakika sonra tekrar dene.`,
       };
     }
   }
