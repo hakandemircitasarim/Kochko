@@ -457,7 +457,7 @@ Active           → FullPlanView + [Kochko ile konuş] + [Geçmiş] + drift ban
 
 ---
 
-### Phase 4 — Home screen redesign  🟡 implemented, awaiting test (2026-04-22)
+### Phase 4 — Home screen redesign  ✅ done (2026-04-23) — legacy display:none block removed, plan tab now Redirect
 
 **Goal:** Dashboard surfaces the two plans and profile completion. Plan tab removed.
 
@@ -530,7 +530,7 @@ Implementation lives in `src/lib/profile-completion.ts` (already exists, needs e
 
 ---
 
-### Phase 7 — Polish & celebrations  🟡 partial (2026-04-22) — animations done, illustrations deferred
+### Phase 7 — Polish & celebrations  ✅ done (2026-04-23) — illustrations, a11y, sanitizers, typography sweep across 40+ files
 
 **Goal:** Small but meaningful UX wins.
 
@@ -611,6 +611,76 @@ Record every material design decision here so the next session has context.
 ## 9. Session notes
 
 Use this section to log session-by-session observations: what was completed, what surprised you, what broke, what the next session needs to know. Newest entry on top.
+
+### 2026-04-23 — overnight session: Phase 4 finish, Phase 7 polish, general debug + spec gap + chat overhaul + Turkish typography sweep
+
+Autonomous ~12-hour session while user slept. Took the app from "phases implemented but awaiting test" to "polished + stable + user-facing text actually in Turkish".
+
+**Phase 4 leftover — done:**
+- Deleted the ~170-line `display: 'none'` legacy diet/workout tab selector block from `app/(tabs)/index.tsx`. Ripped out stale `PlanData` interface, `MEAL_COLORS`/`MEAL_LABELS`, `activeTab` state, `daily_plans` fetches in `useEffect`/`refresh` that were dead since Phase 4's donut+cards layout landed.
+- `app/(tabs)/plan.tsx` converted to a `<Redirect href="/(tabs)" />` — the FAB still anchors to the tab slot but direct navigation no longer lands on the old bridge card.
+- Deleted `app/diet-plan.tsx` and `app/workout-plan.tsx` (old `daily_plans`-backed screens, zero references left). Removed their `Stack.Screen` entries from `app/_layout.tsx`; added `plan` stack entry since the directory is new.
+- Built the missing `app/plan/history.tsx` screen the diet/workout screens were already linking to. Type switcher (diet ↔ workout), expandable rows with reason pill (`superseded` / `user_discarded` / etc.), read-only snapshot summary.
+- Wired `handleHistory` in diet + workout to pass `?type=diet|workout` query param.
+
+**Phase 7 polish:**
+- `PlanEmptyState`: replaced flat icon-in-box with a proper SVG halo illustration (radial gradient + 2 concentric rings, 180px) behind the icon. Reads as intentional empty state rather than "asset missing".
+- Accessibility sweep: role+label on PlanOverviewCards, ProfileCompletionDonut, PlanChatComposer chips, FullPlanModal day toggles + close button, PlanEmptyState CTA + task cards + weak-spot chips, FAB button, alternative-comparison "Bunu seç" buttons, history row, FeedbackButtons, SavedBadge, TypingIndicator.
+
+**General debug pass (big batch of real bugs caught):**
+- `app/plan/workout.tsx`: `handleStartRevision` was firing a supabase insert with no error check and no `.select('id')`. Matched to diet.tsx — now destructures `{ data, error }`, checks insert succeeded, surfaces failure as an assistant chat message.
+- `app/plan/diet.tsx` + `app/plan/workout.tsx`: `pickAlternative` was writing the candidate snapshot directly to the draft row, bypassing `plan.service.applySnapshot`. Lost the version bump and the revision audit trail. Now both route through `applySnapshot` with a revision entry (`from: draft vN → alternative`).
+- diet + workout `load()`: added `mountedRef` so the async Promise.all can't setState after unmount. Both screens mount `useEffect` + `useFocusEffect` that fire concurrently.
+- `ai-chat` approval path: archive + promote were silently failing under RLS or races. Added per-step error check — if archive fails, skip promote (prevents 0-active races); if promote fails, `planPersistError` surfaces to client. `plans_used_free` increment only fires on clean promote.
+- `chat/[sessionId]`: `sanitizeAssistantText` extended to strip `<simulation>`, `<quick_select>`, `<recipe>`, `<confirm_reject>`, `<commitment>`, `<persona_detected>` — belt-and-suspenders if the server's dedicated parsers ever miss.
+- `supabase/functions/shared/rate-limit.ts`: clamped `remaining` to `Math.max(0, ...)` to avoid negative values surfacing to the client in race windows.
+- `app/onboarding.tsx`: QuickForm was reading `insets` without ever pulling `useSafeAreaInsets()` in that subcomponent. Fixed.
+
+**Spec v10 gap analysis:**
+- Most gaps the Explore agent claimed were already implemented (monthly reports, all-time reports, account deletion cron, caffeine-sleep correlation, MacroRing wiring, low-confidence verification, conflict detection). All confirmed intact.
+- Real gap found + fixed: `ai-chat/index.ts` plan_diet flow was persisting snapshots with no allergen filter. Now, before writing to `weekly_plans`, every meal name + item name is scanned against `food_preferences.is_allergen=true` list; if anything hits, the snapshot is rejected with `planPersistError: allergen_violation: <details>` so the AI must regenerate.
+- Client `message-counter.service.ts` was still hardcoded to `FREE_DAILY_LIMIT = 5` while server was 50. Synced. Badge copy updated and threshold moved to ≤10 remaining (was showing for everyone).
+- `app/settings/index.tsx` delete-account flow was writing `deleted_at` only — but the 30-day hard-delete cron (migration 023) reads `deletion_requested_at`. Real GDPR bug: users were marked deleted but never actually purged. Now writes both columns.
+- `register.tsx`: added spec'd 18+ guard that was missing.
+
+**Chat messaging UI overhaul:**
+- New `src/components/chat/TypingIndicator.tsx` — 3-dot bounce animation with staggered delays (0/160/320ms), 900ms cycle. Replaces the "spinner + Kochko yazıyor..." which read as loading, not typing.
+- Message bubbles: typography bumped 13→14px / 20→21 line-height, corners asymmetric (4px on speaker's side), `selectable`, subtle shadow on light theme, **bold** markdown now actually renders bold via inline segment splitter. Long-press → OS share sheet (no clipboard dep in the repo).
+- New `MessageBubbleFrame` wrapper animates each message in with a 6px spring slide + fade on mount. The conversation feels live instead of snapping in.
+- Date separators: `withDateSeparators` preprocessor injects `{kind:'separator'}` pills between messages from different calendar days. "Bugün / Dün / 3 Mart" rendering.
+- Chat detail header + Kochko tab header: matching avatar pill + online dot ("aktif" / "yazıyor…").
+- `EmptyState`: replaced line list with icon'd suggestion cards, each tinted by action category. Header copy rewritten.
+- `OnboardingTaskCard`: coloured border tinted by task, bold title, small "BAŞLA" chip top-right, forward arrow in a coloured circle — card now reads actionable at a glance.
+- `TaskCompletionCard` next-task cards: matching look, coloured border + arrow circle.
+- Plan draft chat bubbles (`plan/diet.tsx`, `plan/workout.tsx`): asymmetric tail radius, 14px font, GEREKÇE pill colours adapt to user/assistant background.
+- `AlternativeComparisonModal`: A/B get distinct accent colours + "PLAN A" / "PLAN B" coloured label pills so they're visually distinct, not identical.
+- `FeedbackButtons`: solid pills with border, filled thumb-up, a11y labels.
+- `SavedBadge`: bordered pill, bigger padding, a11y.
+- Remaining-message badge only shows when ≤10 remain; 0 remaining → tap-to-premium pill.
+
+**Real bug: drift detection.** PlanActiveView.detectDrift was reading `(profile as any).__goal_type` — a field that doesn't exist. Goal-change drift was never firing. Now accepts an explicit `goal` prop, compares against `approval_snapshot.goal.goal_type`, and also flags target_weight_kg delta >1kg. diet + workout screens thread their already-fetched goal through.
+
+**Typography sweep (40+ files).** The app was shipping user-facing ASCII fallbacks everywhere (Iptal, Sifre, Kayit, Bugun, Hos Geldin, Guncelleme, Olustur, Yag, Aclik, Saglik, Hatirlatma, Ogun, etc). Converted to proper Turkish across:
+- auth: login.tsx, register.tsx
+- home: (tabs)/index.tsx, (tabs)/progress.tsx
+- chat: (tabs)/chat.tsx
+- settings: index, coach-memory, coach-tone, notifications, goals, food-preferences, chat-history, achievements, challenges, health-events, edit-profile, lab-values, account-security, coach-sharing, household, meal-templates, multi-phase-goals, periodic-state, progress-photos, recipes, premium
+- reports: daily, weekly, monthly, all-time
+- recipe.tsx
+- services: notifications, goals, periodic, achievements, message-counter, return-flow, adaptive-difficulty, maintenance, menstrual, notification-intelligence, strength, sharing, health
+- shared/rate-limit (edge function user-facing quota messages)
+- components: DeviationTag, CalorieProgress, StepCounter
+
+**Theme fixes:**
+- `reports/_layout.tsx` and `(auth)/_layout.tsx` were importing DARK_COLORS directly via `lib/constants`. Both switched to `useTheme()` so a future light-mode toggle actually works on these routes.
+
+**Commit chain is linear, small, per-subject.** 40 commits across the session, each reviewable in isolation. No force-push, no amends. Plan-phase status in §5 updated to ✅ for phases 4 and 7.
+
+**What's still open:**
+- Real end-to-end user test (I don't have a device to run the app).
+- Spec 5.27 streaming responses — still not wired, high-effort gap, not touched this session.
+- Optional: ripple out the ChipSelect typography fix in onboarding to the rest of the flow (I only did the gender labels, not the full 20-option grid — the other forms still have ASCII fallbacks in a few places).
+- Snapshot token cost audit (logged as deferred §7 item) — needs 2 weeks of real usage to measure.
 
 ### 2026-04-19 — rev2 review integrated
 - Received second-opinion review, integrated 13 decisions (see table above).
