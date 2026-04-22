@@ -1570,20 +1570,24 @@ function SavedBadge({ icon, label, color }: { icon: string; label: string; color
   }, [scale, opacity]);
   return (
     <Animated.View
+      accessibilityRole="text"
+      accessibilityLabel={label}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        backgroundColor: color + '18',
+        backgroundColor: color + '20',
         borderRadius: 999,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
+        paddingHorizontal: 9,
+        paddingVertical: 4,
+        borderWidth: 0.5,
+        borderColor: color + '44',
         transform: [{ scale }],
         opacity,
       }}
     >
-      <Ionicons name={icon as any} size={12} color={color} />
-      <Text style={{ color, fontSize: 10, fontWeight: '600' }}>{label}</Text>
+      <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={12} color={color} />
+      <Text style={{ color, fontSize: 10, fontWeight: '700' }}>{label}</Text>
     </Animated.View>
   );
 }
