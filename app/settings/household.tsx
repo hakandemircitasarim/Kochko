@@ -86,14 +86,14 @@ export default function HouseholdScreen() {
     if (!userId || !household) return;
     const isOwner = household.ownerId === userId;
     Alert.alert(
-      'Aileden Ayril',
+      'Aileden Ayrıl',
       isOwner
-        ? 'Aile reisi olarak ayrilirsan aile tamamen silinir. Emin misin?'
-        : 'Bu aileden ayrilmak istediginize emin misiniz?',
+        ? 'Aile reisi olarak ayrılırsan aile tamamen silinir. Emin misin?'
+        : 'Bu aileden ayrılmak istediğine emin misin?',
       [
-        { text: 'Iptal', style: 'cancel' },
+        { text: 'İptal', style: 'cancel' },
         {
-          text: 'Ayril',
+          text: 'Ayrıl',
           style: 'destructive',
           onPress: async () => {
             setBusy(true);

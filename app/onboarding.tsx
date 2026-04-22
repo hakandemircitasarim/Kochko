@@ -24,7 +24,7 @@ const SLIDES = [
     icon: 'heart-circle' as const,
   },
   {
-    title: 'Sohbet Et, Kayit Tut',
+    title: 'Sohbet Et, Kayıt Tut',
     body: 'Sohbet ederek seni tanır, plan yapar. Yediğini yaz, fotoğraf çek veya sesli anlat — gerisini Kochko halletsin.',
     icon: 'chatbubble-ellipses' as const,
   },

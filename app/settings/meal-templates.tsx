@@ -49,31 +49,31 @@ export default function MealTemplatesScreen() {
     await useTemplate(t.id);
     // In a real flow, this would add the template items to today's meal log
     // For now we just increment usage and show confirmation
-    Alert.alert('Kullanildi', `"${t.name}" sablonu kullanildi. Kocuna yazarak da hizlica girebilirsin.`);
+    Alert.alert('Kullanıldı', `"${t.name}" şablonu kullanıldı. Koçuna yazarak da hızlıca girebilirsin.`);
     load();
   };
 
   const handleDelete = (id: string) => {
-    Alert.alert('Sil', 'Sablonu silmek istediginize emin misiniz?', [
-      { text: 'Iptal' },
+    Alert.alert('Sil', 'Şablonu silmek istediğine emin misin?', [
+      { text: 'İptal' },
       { text: 'Sil', style: 'destructive', onPress: () => { deleteTemplate(id); setTemplates(prev => prev.filter(t => t.id !== id)); } },
     ]);
   };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Favori Ogunler</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Favori Öğünler</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Sik yedigin kombinasyonlari kaydet, tek dokunusla tekrar gir.
+        Sık yediğin kombinasyonları kaydet, tek dokunuşla tekrar gir.
       </Text>
 
-      <Button title={showAdd ? 'Iptal' : 'Yeni Sablon Olustur'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
+      <Button title={showAdd ? 'İptal' : 'Yeni Şablon Oluştur'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
 
       {showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
-          <Input label="Sablon Adi" placeholder="Kahvalti klasigim" value={name} onChangeText={setName} />
+          <Input label="Şablon Adı" placeholder="Kahvaltı klasiğim" value={name} onChangeText={setName} />
           <Input
-            label="Icerik (virgul ile ayir)"
+            label="İçerik (virgül ile ayır)"
             placeholder="2 yumurta 155kcal 13g pro, 1 ekmek 80kcal 3g pro"
             value={itemsText}
             onChangeText={setItemsText}
