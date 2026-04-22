@@ -134,7 +134,7 @@ export function isWaterRetentionPhase(phase: CyclePhase): { isRetention: boolean
   if (phase === 'luteal') {
     return {
       isRetention: true,
-      message: 'Luteal fazdasin — su tutulumu nedeniyle tarti artisi normal. Bu yag degil, adet baslayinca duser.',
+      message: 'Luteal fazdasın — su tutulumu nedeniyle tartı artışı normal. Bu yağ değil, adet başlayınca düşer.',
     };
   }
   return { isRetention: false, message: null };

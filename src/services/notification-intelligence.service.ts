@@ -138,8 +138,8 @@ export function bundleNotifications(
   return {
     id: `bundle_${Date.now()}`,
     type: 'bundled',
-    title: 'Kochko Hatirlatma',
-    body: largestGroup.map(n => n.title).join(' | '),
+    title: 'Kochko Hatırlatma',
+    body: largestGroup.map(n => n.title).join(' · '),
     priority: highestPriority.priority,
     scheduledAt: highestPriority.scheduledAt,
     category: 'bundled',

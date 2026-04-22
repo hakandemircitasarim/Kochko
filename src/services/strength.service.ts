@@ -129,10 +129,10 @@ export function suggestProgression(
  */
 export function shouldDeload(weeksSinceDeload: number): { needed: boolean; message: string } {
   if (weeksSinceDeload >= 6) {
-    return { needed: true, message: '6+ haftadir agir calisiyorsun. Deload haftasi zamanı - ayni hareketler, %60-70 agirlik, dusuk set.' };
+    return { needed: true, message: '6+ haftadır ağır çalışıyorsun. Deload haftası zamanı — aynı hareketler, %60-70 ağırlık, düşük set.' };
   }
   if (weeksSinceDeload >= 4) {
-    return { needed: false, message: '4 hafta oldu, 1-2 hafta sonra deload dusunebiliriz.' };
+    return { needed: false, message: '4 hafta oldu, 1-2 hafta sonra deload düşünebiliriz.' };
   }
   return { needed: false, message: '' };
 }

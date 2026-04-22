@@ -235,22 +235,22 @@ export function getRetentionStrategy(
   if (bandStatus === 'approaching_limit') {
     return {
       strategy: 'proactive_warning',
-      message: 'Hedef kilonun sinirina yaklasiyorsun. Mini-cut\'a gerek kalmadan onlem alalim - bu hafta su ve protein hedeflerine odaklan.',
+      message: 'Hedef kilonun sınırına yaklaşıyorsun. Mini-cut\'a gerek kalmadan önlem alalım — bu hafta su ve protein hedeflerine odaklan.',
     };
   }
 
   if (bandStatus === 'exceeded') {
     return {
       strategy: 'mini_cut_suggestion',
-      message: 'Tolerans bandini astin. Tam diyete donus degil, 2-4 haftalik hafif kalori acigi ile dengeye donebilirsin.',
+      message: 'Tolerans bandını aştın. Tam diyete dönüş değil, 2-4 haftalık hafif kalori açığı ile dengeye dönebilirsin.',
     };
   }
 
   const microGoals = [
-    'Bu hafta her gun su hedefini tut.',
-    'Bu hafta 3 gun protein hedefini tuttur.',
-    'Bu hafta yeni bir saglikli tarif dene.',
-    'Bu hafta uyku duzulune odaklan -- her gece ayni saatte yat.',
+    'Bu hafta her gün su hedefini tut.',
+    'Bu hafta 3 gün protein hedefini tuttur.',
+    'Bu hafta yeni bir sağlıklı tarif dene.',
+    'Bu hafta uyku düzenine odaklan — her gece aynı saatte yat.',
   ];
 
   return {
