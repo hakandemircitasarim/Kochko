@@ -371,32 +371,49 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
   return (
     <View
       style={{
-        maxWidth: '85%',
+        maxWidth: '86%',
         alignSelf: isUser ? 'flex-end' : 'flex-start',
         backgroundColor: isUser ? '#6366F1' : colors.card,
-        borderRadius: 12,
-        paddingHorizontal: SPACING.md,
-        paddingVertical: SPACING.sm,
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        borderBottomRightRadius: isUser ? 4 : 16,
+        borderBottomLeftRadius: isUser ? 16 : 4,
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.md,
         borderWidth: isUser ? 0 : 0.5,
         borderColor: colors.border,
       }}
     >
-      <Text style={{ color: isUser ? '#fff' : colors.text, fontSize: 13, lineHeight: 19 }}>
+      <Text selectable style={{ color: isUser ? '#fff' : colors.text, fontSize: 14, lineHeight: 20 }}>
         {msg.content}
       </Text>
       {msg.reasoning ? (
         <View
           style={{
-            marginTop: 6,
-            paddingTop: 6,
+            marginTop: SPACING.sm,
+            paddingTop: SPACING.sm,
             borderTopWidth: 0.5,
-            borderTopColor: colors.divider,
+            borderTopColor: isUser ? 'rgba(255,255,255,0.3)' : colors.divider,
           }}
         >
-          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>
+          <Text
+            style={{
+              color: isUser ? 'rgba(255,255,255,0.75)' : colors.textMuted,
+              fontSize: 10,
+              fontWeight: '700',
+              letterSpacing: 1,
+            }}
+          >
             GEREKÇE
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2, lineHeight: 16 }}>
+          <Text
+            style={{
+              color: isUser ? 'rgba(255,255,255,0.85)' : colors.textSecondary,
+              fontSize: 12,
+              marginTop: 3,
+              lineHeight: 17,
+            }}
+          >
             {msg.reasoning}
           </Text>
         </View>
