@@ -68,6 +68,9 @@ export default function WorkoutPlanScreen() {
   const [showAltModal, setShowAltModal] = useState(false);
   const listRef = useRef<FlatList>(null);
 
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const load = useCallback(async () => {
     if (!user?.id) return;
     if (!profile) await fetchProfile(user.id);
@@ -76,6 +79,7 @@ export default function WorkoutPlanScreen() {
       getDraft(user.id, 'workout'),
       supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1),
     ]);
+    if (!mountedRef.current) return;
     setActive(activeRow);
     setDraft(draftRow);
     setGoal((goalRes.data as { goal_type?: string; target_weight_kg?: number }[] | null)?.[0] ?? null);
@@ -219,7 +223,7 @@ export default function WorkoutPlanScreen() {
 
   const handleStartRevision = async () => {
     if (!user?.id || !active) return;
-    await supabase
+    const { data: inserted, error } = await supabase
       .from('weekly_plans')
       .insert({
         user_id: user.id,
@@ -228,7 +232,16 @@ export default function WorkoutPlanScreen() {
         week_start: active.week_start,
         plan_data: { ...active.plan_data, version: 1 },
         user_revisions: [],
-      });
+      })
+      .select('id')
+      .limit(1);
+    if (error || !inserted?.[0]) {
+      setMessages(prev => [
+        ...prev,
+        { id: 'err-' + Date.now(), role: 'assistant', content: error?.message ?? 'Revizyon başlatılamadı, tekrar dene.' },
+      ]);
+      return;
+    }
     const sid = await createSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
     if (sid) setChatSessionId(sid);
     setMessages([]);

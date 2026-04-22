@@ -531,41 +531,51 @@ serve(async (req: Request) => {
       const draft = draftRow?.[0];
       if (draft) {
         // Archive the previous active if present.
-        await supabaseAdmin
+        const { error: archiveErr } = await supabaseAdmin
           .from('weekly_plans')
           .update({ status: 'archived', archived_reason: 'superseded', superseded_by: draft.id })
           .eq('user_id', userId)
           .eq('plan_type', expectedType)
           .eq('status', 'active');
-        // Snapshot profile for drift detection.
-        const { data: profSnap } = await supabaseAdmin
-          .from('profiles')
-          .select('weight_kg, height_cm, activity_level, diet_mode')
-          .eq('id', userId)
-          .maybeSingle();
-        const { data: goalSnap } = await supabaseAdmin
-          .from('goals')
-          .select('goal_type, target_weight_kg')
-          .eq('user_id', userId)
-          .eq('is_active', true)
-          .limit(1);
-        const approval_snapshot = { ...(profSnap ?? {}), goal: goalSnap?.[0] ?? null };
-        const { data: activated } = await supabaseAdmin
-          .from('weekly_plans')
-          .update({ status: 'active', approved_at: new Date().toISOString(), approval_snapshot })
-          .eq('id', draft.id)
-          .select('id')
-          .limit(1);
-        planApproved = (activated?.[0] as { id: string } | undefined) ?? null;
-        // Increment plans_used_free counter for free-tier gating (MASTER_PLAN §4.7).
-        const { data: profUsed } = await supabaseAdmin
-          .from('profiles')
-          .select('plans_used_free')
-          .eq('id', userId)
-          .maybeSingle();
-        const used = (profUsed?.plans_used_free as { diet?: number; workout?: number } | null) ?? { diet: 0, workout: 0 };
-        const nextUsed = { ...used, [expectedType]: (used[expectedType] ?? 0) + 1 };
-        await supabaseAdmin.from('profiles').update({ plans_used_free: nextUsed }).eq('id', userId);
+        if (archiveErr) {
+          console.warn('[approve] archive previous active failed', archiveErr);
+          planPersistError = `archive failed: ${archiveErr.message}`;
+        } else {
+          // Snapshot profile for drift detection.
+          const { data: profSnap } = await supabaseAdmin
+            .from('profiles')
+            .select('weight_kg, height_cm, activity_level, diet_mode')
+            .eq('id', userId)
+            .maybeSingle();
+          const { data: goalSnap } = await supabaseAdmin
+            .from('goals')
+            .select('goal_type, target_weight_kg')
+            .eq('user_id', userId)
+            .eq('is_active', true)
+            .limit(1);
+          const approval_snapshot = { ...(profSnap ?? {}), goal: goalSnap?.[0] ?? null };
+          const { data: activated, error: promoteErr } = await supabaseAdmin
+            .from('weekly_plans')
+            .update({ status: 'active', approved_at: new Date().toISOString(), approval_snapshot })
+            .eq('id', draft.id)
+            .select('id')
+            .limit(1);
+          if (promoteErr) {
+            console.warn('[approve] promote draft failed', promoteErr);
+            planPersistError = `promote failed: ${promoteErr.message}`;
+          } else {
+            planApproved = (activated?.[0] as { id: string } | undefined) ?? null;
+            // Increment plans_used_free counter for free-tier gating (MASTER_PLAN §4.7).
+            const { data: profUsed } = await supabaseAdmin
+              .from('profiles')
+              .select('plans_used_free')
+              .eq('id', userId)
+              .maybeSingle();
+            const used = (profUsed?.plans_used_free as { diet?: number; workout?: number } | null) ?? { diet: 0, workout: 0 };
+            const nextUsed = { ...used, [expectedType]: (used[expectedType] ?? 0) + 1 };
+            await supabaseAdmin.from('profiles').update({ plans_used_free: nextUsed }).eq('id', userId);
+          }
+        }
       }
     }
 

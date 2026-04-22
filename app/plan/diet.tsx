@@ -34,6 +34,7 @@ import {
   getActive,
   getDraft,
   discardDraft,
+  applySnapshot,
   type PlanRow,
   type DietPlanData,
 } from '@/services/plan.service';
@@ -80,6 +81,9 @@ export default function DietPlanScreen() {
   const listRef = useRef<FlatList>(null);
 
   // ─── Data load ───
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const load = useCallback(async () => {
     if (!user?.id) return;
     if (!profile) await fetchProfile(user.id);
@@ -88,6 +92,7 @@ export default function DietPlanScreen() {
       getDraft(user.id, 'diet'),
       supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1),
     ]);
+    if (!mountedRef.current) return;
     setActive(activeRow);
     setDraft(draftRow);
     setGoal((goalRes.data as { goal_type?: string; target_weight_kg?: number }[] | null)?.[0] ?? null);
@@ -178,13 +183,19 @@ export default function DietPlanScreen() {
     setShowAltModal(false);
   };
   const pickAlternative = async () => {
-    // Replace draft with alternative by sending back to AI as authoritative snapshot.
-    // Simpler path: write directly via service then reload.
     if (!altCandidate || !draft || !user?.id) return;
-    await supabase
-      .from('weekly_plans')
-      .update({ plan_data: { ...altCandidate, version: ((altCandidate.version ?? 0) + 1) } })
-      .eq('id', draft.id);
+    const updated = await applySnapshot(draft.id, altCandidate, {
+      from: 'draft v' + ((draft.plan_data as DietPlanData).version ?? 1),
+      to: 'alternative',
+      reason: 'Kullanıcı alternatifi seçti',
+    });
+    if (!updated) {
+      setMessages(prev => [
+        ...prev,
+        { id: 'err-' + Date.now(), role: 'assistant', content: 'Alternatif uygulanamadı, tekrar dene.' },
+      ]);
+      return;
+    }
     setAltCandidate(null);
     setShowAltModal(false);
     await load();
@@ -242,8 +253,7 @@ export default function DietPlanScreen() {
 
   const handleStartRevision = async () => {
     if (!user?.id || !active) return;
-    // Create a new draft initialized from the active plan, then start a chat.
-    const { data: inserted } = await supabase
+    const { data: inserted, error } = await supabase
       .from('weekly_plans')
       .insert({
         user_id: user.id,
@@ -255,7 +265,13 @@ export default function DietPlanScreen() {
       })
       .select('id')
       .limit(1);
-    if (!inserted?.[0]) return;
+    if (error || !inserted?.[0]) {
+      setMessages(prev => [
+        ...prev,
+        { id: 'err-' + Date.now(), role: 'assistant', content: error?.message ?? 'Revizyon başlatılamadı, tekrar dene.' },
+      ]);
+      return;
+    }
     const sid = await createSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
     if (sid) setChatSessionId(sid);
     setMessages([]);

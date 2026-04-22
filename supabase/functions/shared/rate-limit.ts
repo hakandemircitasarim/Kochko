@@ -161,5 +161,5 @@ export async function checkRateLimit(
     }
   }
 
-  return { allowed: true, remaining: dailyLimit - daily - 1 };
+  return { allowed: true, remaining: Math.max(0, dailyLimit - daily - 1) };
 }
