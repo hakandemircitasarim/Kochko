@@ -315,6 +315,7 @@ export default function DietPlanScreen() {
         <PlanActiveView
           plan={active}
           profile={profile}
+          goal={goal}
           onStartRevision={handleStartRevision}
           onOpenHistory={handleHistory}
           creatingRevision={sending}

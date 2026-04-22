@@ -16,6 +16,7 @@ import type { Profile } from '@/types/database';
 interface Props {
   plan: PlanRow;
   profile: Profile | null;
+  goal?: { goal_type?: string; target_weight_kg?: number } | null;
   onStartRevision: () => void;
   onOpenHistory: () => void;
   creatingRevision?: boolean;
@@ -25,6 +26,7 @@ interface Props {
 function detectDrift(
   plan: PlanRow,
   profile: Profile | null,
+  currentGoal: { goal_type?: string; target_weight_kg?: number } | null | undefined,
 ): { soft: string[]; hard: string[] } {
   const soft: string[] = [];
   const hard: string[] = [];
@@ -49,18 +51,24 @@ function detectDrift(
   if (snapDietMode && profile.diet_mode && profile.diet_mode !== snapDietMode) {
     hard.push('Beslenme modun değişmiş — planı gözden geçirelim');
   }
-  if (snapGoal?.goal_type && (profile as any).__goal_type && snapGoal.goal_type !== (profile as any).__goal_type) {
+  if (snapGoal?.goal_type && currentGoal?.goal_type && snapGoal.goal_type !== currentGoal.goal_type) {
     soft.push('Hedefin değişmiş');
+  }
+  if (
+    snapGoal?.target_weight_kg && currentGoal?.target_weight_kg
+    && Math.abs(currentGoal.target_weight_kg - snapGoal.target_weight_kg) > 1
+  ) {
+    soft.push(`Hedef kilon ${snapGoal.target_weight_kg}kg → ${currentGoal.target_weight_kg}kg`);
   }
   return { soft, hard };
 }
 
-export function PlanActiveView({ plan, profile, onStartRevision, onOpenHistory, creatingRevision }: Props) {
+export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, creatingRevision }: Props) {
   const { colors } = useTheme();
   const [expandedDay, setExpandedDay] = useState(0);
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
 
-  const drift = useMemo(() => detectDrift(plan, profile), [plan, profile]);
+  const drift = useMemo(() => detectDrift(plan, profile, goal ?? null), [plan, profile, goal]);
 
   const data = plan.plan_data;
   const isDiet = data.plan_type === 'diet';
