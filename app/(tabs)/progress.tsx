@@ -368,15 +368,15 @@ export default function ProgressScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm }}>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
               <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.avgDailyMeals}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Ogun/Gun</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Öğün/Gün</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
               <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.avgDailyMessages}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Mesaj/Gun</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Mesaj/Gün</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
               <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.featureUsage.daily_tracking ?? 0}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Aktif Gun</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Aktif Gün</Text>
             </View>
           </View>
         </Card>
