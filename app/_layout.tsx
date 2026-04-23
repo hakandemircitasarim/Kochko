@@ -117,7 +117,9 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="log" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="chat" options={{ headerShown: false }} />
-        <Stack.Screen name="plan" options={{ headerShown: false }} />
+        {/* app/plan/* — header is managed per-page via inline <Stack.Screen> in
+            diet.tsx/workout.tsx/history.tsx (each sets its own title). No
+            grouped layout file, so no parent declaration needed here. */}
         <Stack.Screen name="recipe" options={{ headerShown: false }} />
         <Stack.Screen name="weekly-menu" options={{ headerShown: false }} />
         <Stack.Screen name="reports" options={{ headerShown: false }} />
