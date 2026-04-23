@@ -1172,12 +1172,28 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
     if (session) {
       sessionId = session.id;
     } else {
-      const { data: newSession } = await supabaseAdmin
+      const { data: newSession, error: insertErr } = await supabaseAdmin
         .from('chat_sessions')
         .insert({ user_id: userId, is_active: true })
         .select('id')
         .maybeSingle();
-      sessionId = newSession?.id ?? null;
+      if (insertErr) {
+        // Most likely cause: a concurrent device just created an active
+        // session; the unique partial index (migration 035) rejected this
+        // INSERT. Re-select and reuse that session instead of failing.
+        const isUniqueViolation = insertErr.code === '23505'
+          || /duplicate key|uniq_chat_sessions_one_active_per_user/i.test(insertErr.message ?? '');
+        if (!isUniqueViolation) throw insertErr;
+        const { data: retry } = await supabaseAdmin
+          .from('chat_sessions')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .maybeSingle();
+        sessionId = retry?.id ?? null;
+      } else {
+        sessionId = newSession?.id ?? null;
+      }
     }
   }
 

@@ -52,6 +52,9 @@ export default function QuickLogScreen() {
   const [sleepTime, setSleepTime] = useState('');
   const [wakeTime, setWakeTime] = useState('');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  // Single shared mutex — prevents two handlers firing at once (e.g. double-tap
+  // the FAB, or tapping Save + Water before the first finishes).
+  const submittingRef = useRef(false);
 
   const showSuccessAndClose = (msg: string) => {
     setSuccessMsg(msg);
@@ -59,14 +62,15 @@ export default function QuickLogScreen() {
   };
 
   const handleLog = async () => {
-    if (!text.trim() || !user?.id) return;
+    if (!text.trim() || !user?.id || submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     try {
       const { error } = await sendMessage(text.trim());
       if (error) Alert.alert('Hata', error);
       else { await fetchToday(user.id); router.back(); }
     } catch { Alert.alert('Hata', 'Bir sorun oluştu.'); }
-    finally { setLoading(false); }
+    finally { submittingRef.current = false; setLoading(false); }
   };
 
   const handlePhoto = () => {
@@ -76,14 +80,17 @@ export default function QuickLogScreen() {
   };
 
   const handleBarcodeScan = async (barcode: string) => {
-    if (barcodeLoading || scannedBarcode === barcode) return;
+    // Ref gate: CameraView fires onBarcodeScanned many times per second; the
+    // state-based scannedBarcode check has a brief race window on the first
+    // frame. Ref is synchronous.
+    if (submittingRef.current || scannedBarcode === barcode) return;
+    submittingRef.current = true;
     setScannedBarcode(barcode);
     setBarcodeLoading(true);
     try {
       const result = await lookupBarcode(barcode, user?.id);
       if (result.found && result.product_name) {
         setBarcodeResult(`${result.product_name} (${result.calories_per_100g} kcal/100g)`);
-        // Send to AI coach for logging
         const msg = `Barkod: ${barcode} - ${result.product_name}, ${result.calories_per_100g} kcal/100g, P:${result.protein_per_100g}g K:${result.carbs_per_100g}g Y:${result.fat_per_100g}g (porsiyon: ${result.serving_size_g}g)`;
         await sendMessage(msg);
         if (user?.id) await fetchToday(user.id);
@@ -92,7 +99,7 @@ export default function QuickLogScreen() {
         setBarcodeResult('Ürün bulunamadı. Koçuna yazarak bildir.');
       }
     } catch { setBarcodeResult('Barkod okunamadı.'); }
-    finally { setBarcodeLoading(false); }
+    finally { submittingRef.current = false; setBarcodeLoading(false); }
   };
 
   const handleVoiceToggle = async () => {
@@ -118,51 +125,85 @@ export default function QuickLogScreen() {
   };
 
   const handleWaterAdd = () => {
-    if (!user?.id) return;
+    if (!user?.id || submittingRef.current) return;
     const newTotal = waterLiters + WATER_INCREMENT;
     const warning = checkSuspiciousInput('water', newTotal);
+    const doAdd = async () => {
+      submittingRef.current = true;
+      try {
+        await addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
+        showSuccessAndClose('Su eklendi!');
+      } catch {
+        Alert.alert('Hata', 'Su eklenemedi. Tekrar dene.');
+      } finally {
+        submittingRef.current = false;
+      }
+    };
     if (warning) {
       Alert.alert('Doğrulama', warning, [
         { text: 'İptal', style: 'cancel' },
-        { text: 'Evet', onPress: () => { addWater(user.id, WATER_INCREMENT, dayBoundaryHour); showSuccessAndClose('Su eklendi!'); } },
+        { text: 'Evet', onPress: () => { void doAdd(); } },
       ]);
     } else {
-      addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
-      showSuccessAndClose('Su eklendi!');
+      void doAdd();
     }
   };
 
   const handleWeightSave = async () => {
+    if (submittingRef.current) return;
     const w = parseFloat(weightInput.replace(',', '.'));
     if (!w || w < 20 || w > 300 || !user?.id) return;
-    const date = getEffectiveDate(new Date(), dayBoundaryHour);
-    await supabase.from('daily_metrics').upsert(
-      { user_id: user.id, date, weight_kg: w, synced: true },
-      { onConflict: 'user_id,date' }
-    );
-    await supabase.from('weight_logs').insert({ user_id: user.id, weight_kg: w, logged_at: new Date().toISOString() });
-    await fetchToday(user.id);
-    showSuccessAndClose('Kilo kaydedildi!');
+    submittingRef.current = true;
+    setLoading(true);
+    try {
+      const date = getEffectiveDate(new Date(), dayBoundaryHour);
+      const { error: metricsErr } = await supabase.from('daily_metrics').upsert(
+        { user_id: user.id, date, weight_kg: w, synced: true },
+        { onConflict: 'user_id,date' }
+      );
+      if (metricsErr) throw metricsErr;
+      await supabase.from('weight_logs').insert({ user_id: user.id, weight_kg: w, logged_at: new Date().toISOString() });
+      await fetchToday(user.id);
+      showSuccessAndClose('Kilo kaydedildi!');
+    } catch {
+      Alert.alert('Hata', 'Kilo kaydedilemedi. Tekrar dene.');
+    } finally {
+      submittingRef.current = false;
+      setLoading(false);
+    }
   };
 
   const handleSleepSave = async () => {
+    if (submittingRef.current) return;
     if (!sleepTime || !wakeTime || !user?.id) return;
-    // Calculate hours
     const [sh, sm] = sleepTime.split(':').map(Number);
     const [wh, wm] = wakeTime.split(':').map(Number);
+    if (!Number.isFinite(sh) || !Number.isFinite(sm) || !Number.isFinite(wh) || !Number.isFinite(wm)) {
+      return Alert.alert('Hata', 'Saat formati gecersiz. Örnek: 23:00');
+    }
     let sleepMin = sh * 60 + sm;
     let wakeMin = wh * 60 + wm;
     if (wakeMin <= sleepMin) wakeMin += 24 * 60;
     const hours = Math.round(((wakeMin - sleepMin) / 60) * 10) / 10;
     if (hours < 0.5 || hours > 18) return Alert.alert('Hata', 'Geçersiz uyku süresi.');
 
-    const date = getEffectiveDate(new Date(), dayBoundaryHour);
-    await supabase.from('daily_metrics').upsert(
-      { user_id: user.id, date, sleep_hours: hours, sleep_time: sleepTime, wake_time: wakeTime, synced: true },
-      { onConflict: 'user_id,date' }
-    );
-    await fetchToday(user.id);
-    showSuccessAndClose('Uyku kaydedildi!');
+    submittingRef.current = true;
+    setLoading(true);
+    try {
+      const date = getEffectiveDate(new Date(), dayBoundaryHour);
+      const { error } = await supabase.from('daily_metrics').upsert(
+        { user_id: user.id, date, sleep_hours: hours, sleep_time: sleepTime, wake_time: wakeTime, synced: true },
+        { onConflict: 'user_id,date' }
+      );
+      if (error) throw error;
+      await fetchToday(user.id);
+      showSuccessAndClose('Uyku kaydedildi!');
+    } catch {
+      Alert.alert('Hata', 'Uyku kaydedilemedi. Tekrar dene.');
+    } finally {
+      submittingRef.current = false;
+      setLoading(false);
+    }
   };
 
   // ====== BARCODE SCREEN ======

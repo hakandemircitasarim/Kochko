@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/stores/auth.store';
 
 export interface ChatMessage {
   id: string;
@@ -27,6 +28,8 @@ export interface ChatResponse {
   plan_persist_error?: string | null;
   plan_approved?: { id: string } | null;
   navigate_to?: string | null;
+  rate_limited?: boolean;
+  remaining?: number;
 }
 
 // Plan chat invocation — used by plan/diet.tsx and plan/workout.tsx screens.
@@ -58,6 +61,10 @@ const CACHE_KEY = '@kochko_chat_cache';
 const OFFLINE_QUEUE_KEY = '@kochko_chat_offline_queue';
 const MAX_MESSAGE_LENGTH = 2000;
 const DEFAULT_MAX_RETRIES = 2; // 2 retries = 3 total attempts (1s, 3s backoff)
+// Hard timeout per attempt. The edge function rarely takes >20s; if we're
+// still waiting at 60s something is wrong (edge cold start that bounced, lost
+// socket, etc.) — fail so the UI can surface an error instead of hanging.
+const REQUEST_TIMEOUT_MS = 60_000;
 
 // Errors that should NOT be retried (user error, policy, etc.)
 function isNonRetryable(errMsg: string): boolean {
@@ -65,6 +72,33 @@ function isNonRetryable(errMsg: string): boolean {
   return m.includes('401') || m.includes('403') || m.includes('unauthor')
     || m.includes('invalid') || m.includes('validation')
     || m.includes('rate limit') || m.includes('payload');
+}
+
+function isAuthError(errMsg: string): boolean {
+  const m = errMsg.toLowerCase();
+  return m.includes('401') || m.includes('unauthor') || m.includes('jwt')
+    || m.includes('invalid_grant') || m.includes('session_not_found');
+}
+
+let signingOut = false;
+async function handleAuthFailure(): Promise<void> {
+  // One-shot guard — if many queued requests fail with 401 at once we don't
+  // want N signOut calls fighting each other.
+  if (signingOut) return;
+  signingOut = true;
+  try {
+    // Give Supabase a chance to refresh silently before we nuke the session.
+    const { error: refreshErr } = await supabase.auth.refreshSession();
+    if (refreshErr) {
+      await useAuthStore.getState().signOut();
+    }
+  } catch {
+    try { await useAuthStore.getState().signOut(); } catch { /* already gone */ }
+  } finally {
+    // Reset after a tick so a legitimately-new session can trigger this path
+    // again later (e.g. user signs in, token expires hours later).
+    setTimeout(() => { signingOut = false; }, 2000);
+  }
 }
 
 // ─── Validation ───
@@ -89,11 +123,37 @@ async function invokeChat(
   let lastError = 'Baglanti hatasi. Lutfen tekrar dene.';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // Supabase client automatically attaches auth headers — don't override
-    const { data, error } = await supabase.functions.invoke('ai-chat', { body });
+    // Promise.race gives us a hard upper bound on wait time. Supabase client
+    // doesn't expose AbortSignal on functions.invoke, so the underlying
+    // request may continue, but the UI unblocks — and a second attempt won't
+    // be queued past the retry loop below.
+    let timedOut = false;
+    const result = await Promise.race([
+      supabase.functions.invoke('ai-chat', { body }),
+      new Promise<{ data: unknown; error: { message: string } }>((resolve) =>
+        setTimeout(() => {
+          timedOut = true;
+          resolve({ data: null, error: { message: 'REQUEST_TIMEOUT: istek zaman asimina ugradi' } });
+        }, REQUEST_TIMEOUT_MS),
+      ),
+    ]);
+    const { data, error } = result as { data: unknown; error: { message: string } | null };
     if (!error) return { data: data as ChatResponse, error: null };
 
     lastError = error.message;
+
+    // Timeout: retry a second time unless we're on the last attempt. The
+    // retry loop will hit the same timeout again if the server really is down.
+    if (timedOut && attempt < maxRetries) {
+      continue;
+    }
+
+    if (isAuthError(lastError)) {
+      // Fire-and-forget — handleAuthFailure tries a silent refresh and falls
+      // back to signOut. UI gets a friendly message either way.
+      void handleAuthFailure();
+      return { data: null, error: 'Oturum suresi doldu. Lutfen tekrar giris yap.' };
+    }
 
     // Non-retryable errors: fail fast
     if (isNonRetryable(lastError)) return { data: null, error: lastError };
@@ -127,13 +187,26 @@ export async function sendMessageWithRetry(
   return sendMessage(text);
 }
 
-export async function sendMessageWithPhoto(text: string, imageUri: string): Promise<{ data: ChatResponse | null; error: string | null }> {
+// ~3.5 MB of base64 (~2.6 MB raw) — well under the Supabase edge function 5 MB
+// body cap, leaving headroom for the message text and auth headers.
+const MAX_IMAGE_BASE64_BYTES = 3_500_000;
+
+async function readImageAsBase64(imageUri: string): Promise<{ base64: string | null; error: string | null }> {
   try {
     const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' as const });
-    return invokeChat({ message: text, image_base64: base64 });
+    if (base64.length > MAX_IMAGE_BASE64_BYTES) {
+      return { base64: null, error: 'Foto cok buyuk. Daha dusuk cozunurluklu bir foto sec veya tekrar cek.' };
+    }
+    return { base64, error: null };
   } catch (err) {
-    return { data: null, error: (err as Error).message };
+    return { base64: null, error: (err as Error).message };
   }
+}
+
+export async function sendMessageWithPhoto(text: string, imageUri: string): Promise<{ data: ChatResponse | null; error: string | null }> {
+  const { base64, error } = await readImageAsBase64(imageUri);
+  if (!base64) return { data: null, error };
+  return invokeChat({ message: text, image_base64: base64 });
 }
 
 // ─── History with Cache ───
@@ -317,8 +390,33 @@ export async function createSession(options?: { title?: string; topicTags?: stri
       .select('id')
       .single();
 
-    if (error || !data) return null;
-    return data.id;
+    if (error) {
+      // If another device won the "close+insert" race we'll get a unique
+      // violation from migration 035's partial index. Close whoever they
+      // are and retry once so the user ends up with a fresh session.
+      const code = (error as { code?: string }).code;
+      const isUniqueViolation = code === '23505' || /duplicate key|uniq_chat_sessions_one_active_per_user/i.test(error.message ?? '');
+      if (isUniqueViolation) {
+        await supabase
+          .from('chat_sessions')
+          .update({ is_active: false, ended_at: new Date().toISOString() })
+          .eq('user_id', userId)
+          .eq('is_active', true);
+        const { data: retryData } = await supabase
+          .from('chat_sessions')
+          .insert({
+            user_id: userId,
+            title: options?.title ?? null,
+            topic_tags: options?.topicTags ?? [],
+            is_active: true,
+          })
+          .select('id')
+          .single();
+        return retryData?.id ?? null;
+      }
+      return null;
+    }
+    return data?.id ?? null;
   } catch {
     return null;
   }
@@ -357,12 +455,9 @@ export async function sendPhotoToSession(
   text: string,
   imageUri: string,
 ): Promise<{ data: ChatResponse | null; error: string | null }> {
-  try {
-    const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' as const });
-    return invokeChat({ message: text, session_id: sessionId, image_base64: base64 });
-  } catch (err) {
-    return { data: null, error: (err as Error).message };
-  }
+  const { base64, error } = await readImageAsBase64(imageUri);
+  if (!base64) return { data: null, error };
+  return invokeChat({ message: text, session_id: sessionId, image_base64: base64 });
 }
 
 export async function closeSession(sessionId: string): Promise<void> {

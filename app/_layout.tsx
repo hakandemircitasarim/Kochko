@@ -2,10 +2,10 @@ import { useEffect, useState, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuthenticatedAppInit, useAppStateSync } from '@/services/app-init.service';
 import { installGlobalErrorHandlers } from '@/services/error-handler.service';
+import { safeGetString, safeSetString } from '@/lib/safe-storage';
 import { ThemeContext, DARK_COLORS, LIGHT_COLORS, type ThemeMode } from '@/lib/theme';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 
@@ -23,14 +23,14 @@ export default function RootLayout() {
   useEffect(() => { initialize(); }, [initialize]);
 
   useEffect(() => {
-    AsyncStorage.getItem(THEME_KEY).then(saved => {
+    safeGetString(THEME_KEY).then(saved => {
       if (saved === 'dark' || saved === 'light' || saved === 'system') setThemeMode(saved);
     });
   }, []);
 
   const handleSetMode = (mode: ThemeMode) => {
     setThemeMode(mode);
-    AsyncStorage.setItem(THEME_KEY, mode);
+    safeSetString(THEME_KEY, mode);
   };
 
   const isDark = themeMode === 'system' ? systemScheme !== 'light' : themeMode === 'dark';

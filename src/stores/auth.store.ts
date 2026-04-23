@@ -4,6 +4,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
+import { clearOnboardingDraft } from '@/services/onboarding-draft.service';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -28,8 +29,21 @@ export const useAuthStore = create<AuthState>((set) => ({
   initialized: false,
 
   initialize: async () => {
-    const { data } = await supabase.auth.getSession();
-    set({ session: data.session, user: data.session?.user ?? null, initialized: true });
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        // getSession only fails when local storage is corrupt or the keychain
+        // is locked — treat as logged out, don't leave the app in "initialized
+        // but with stale session" limbo.
+        console.warn('auth.initialize: getSession failed', error);
+        set({ session: null, user: null, initialized: true });
+      } else {
+        set({ session: data.session, user: data.session?.user ?? null, initialized: true });
+      }
+    } catch (err) {
+      console.warn('auth.initialize: unexpected error', err);
+      set({ session: null, user: null, initialized: true });
+    }
     supabase.auth.onAuthStateChange((_event, session) => {
       set({ session, user: session?.user ?? null });
     });
@@ -127,7 +141,17 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signOut: async () => {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      // Even if the network call fails we still want to clear local state,
+      // otherwise the user is stuck on a screen that requires auth with a
+      // token the server has already revoked.
+      console.warn('auth.signOut: remote call failed, clearing local state', err);
+    }
+    // Wipe per-user device state that would otherwise leak into the next
+    // account on the same device.
+    await clearOnboardingDraft().catch(() => {});
     set({ session: null, user: null });
   },
 }));

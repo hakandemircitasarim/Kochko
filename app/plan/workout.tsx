@@ -207,9 +207,16 @@ export default function WorkoutPlanScreen() {
     });
     setSending(false);
     if (error || !data?.plan_approved) {
+      let reason = error ?? 'Plan onaylanamadi. Yeni bir taslak olustur ve tekrar dene.';
+      const persistErr = data?.plan_persist_error;
+      if (persistErr?.includes('plan_type mismatch')) {
+        reason = 'Plan turu uyusmadi. Koc ekranindan tekrar dene.';
+      } else if (persistErr) {
+        reason = `Plan kaydedilemedi: ${persistErr}`;
+      }
       setMessages(prev => [
         ...prev,
-        { id: 'err-' + Date.now(), role: 'assistant', content: error ?? 'Onaylanamadı.' },
+        { id: 'err-' + Date.now(), role: 'assistant', content: reason },
       ]);
       return;
     }
