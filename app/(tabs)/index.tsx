@@ -79,7 +79,7 @@ export default function TodayScreen() {
     fetchToday(user.id).catch((err) => console.warn('refresh fetchToday failed:', err));
     checkForMilestones();
     getUnreadCoachingMessages(user.id).then(setCoachingMessages);
-  }, [user?.id, dayBoundaryHour]);
+  }, [user?.id]);
 
   // Refresh dashboard when tab gets focus (e.g., returning from chat after logging a meal)
   const hasMounted = useRef(false);
