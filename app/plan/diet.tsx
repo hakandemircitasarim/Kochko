@@ -227,9 +227,20 @@ export default function DietPlanScreen() {
     });
     setSending(false);
     if (error || !data?.plan_approved) {
+      // Surface a specific reason when we have one — e.g. the draft now
+      // contains an allergen the user added after the draft was generated.
+      let reason = error ?? 'Plan onaylanamadi. Yeni bir taslak olustur ve tekrar dene.';
+      const persistErr = data?.plan_persist_error;
+      if (persistErr?.startsWith('allergen_violation')) {
+        reason = 'Bu plan alerjen listenle cakisiyor. Kocuna tekrar yazip plani yenileyelim.';
+      } else if (persistErr?.includes('plan_type mismatch')) {
+        reason = 'Plan turu uyusmadi. Koc ekranindan tekrar dene.';
+      } else if (persistErr) {
+        reason = `Plan kaydedilemedi: ${persistErr}`;
+      }
       setMessages(prev => [
         ...prev,
-        { id: 'err-' + Date.now(), role: 'assistant', content: error ?? 'Onaylanamadı.' },
+        { id: 'err-' + Date.now(), role: 'assistant', content: reason },
       ]);
       return;
     }

@@ -40,6 +40,8 @@ import {
   MacroSummary, MacroRing, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
   RecipeCard, ConfirmRejectButtons, PersonaCard,
 } from '@/components/chat/RichMessage';
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 
@@ -73,6 +75,9 @@ interface UIMessage extends ChatMessage {
   recipeSaved?: boolean;
   taskCompletion?: { completed: string; summary: string; next_suggestions: string[] } | null;
   navigateTo?: string | null;
+  failed?: boolean;
+  errorMessage?: string;
+  retryPayload?: { text: string; photoUri: string | null; taskMode?: string; backdate?: string | null };
 }
 
 function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
@@ -241,6 +246,23 @@ export default function SessionDetailScreen() {
   const [voiceConfirmation, setVoiceConfirmation] = useState<{ text: string; expiresAt: number } | null>(null);
   const [backdateDate, setBackdateDate] = useState<string | null>(null); // YYYY-MM-DD for manual date override
   const [remainingMsgs, setRemainingMsgs] = useState<number | null>(null);
+  // When the edge function signals rate_limited we disable input for 60s. The
+  // backend gates, so this is purely UX — stops the user from hammering Send.
+  const [rateLimitedUntil, setRateLimitedUntil] = useState<number | null>(null);
+  const [rateLimitCountdown, setRateLimitCountdown] = useState(0);
+  const { isOnline } = useNetworkStatus();
+
+  useEffect(() => {
+    if (!rateLimitedUntil) { setRateLimitCountdown(0); return; }
+    const tick = () => {
+      const remain = Math.max(0, Math.ceil((rateLimitedUntil - Date.now()) / 1000));
+      setRateLimitCountdown(remain);
+      if (remain === 0) setRateLimitedUntil(null);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [rateLimitedUntil]);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
@@ -394,71 +416,110 @@ export default function SessionDetailScreen() {
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 150);
   }, []);
 
-  // Image pickers
+  // Image pickers. Quality is aggressive (0.5) because the image is base64-
+  // encoded and sent in the edge-function body; we can't afford to eat into
+  // the ~5MB payload cap with a raw 48MP JPEG. Vision quality at 0.5 is still
+  // fine for food recognition.
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return;
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+    if (status !== 'granted') {
+      Alert.alert('Izin gerekli', 'Galeriye erisim izni vermen gerek.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5 });
     if (!result.canceled) setPhoto(result.assets[0].uri);
   };
 
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') return;
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (status !== 'granted') {
+      Alert.alert('Izin gerekli', 'Kameraya erisim izni vermen gerek.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.5 });
     if (!result.canceled) setPhoto(result.assets[0].uri);
   };
 
-  // Send message
-  const handleSend = async () => {
-    const text = input.trim();
-    if ((!text && !photo) || sending) return;
+  // Send message. When retryFrom is supplied we re-run the send for a message
+  // that previously failed, without pushing a new optimistic user bubble —
+  // the existing one flips back from the failed state.
+  const handleSend = async (retryFrom?: UIMessage) => {
+    if (sending) return;
+    if (rateLimitedUntil && Date.now() < rateLimitedUntil) return;
+    if (!isOnline) {
+      Alert.alert('Internet yok', 'Bagli oldugundan emin olup tekrar dene.');
+      return;
+    }
 
-    // Message counter check (Spec 16: free daily limit)
-    if (text && !photo) {
-      const counterResult = await incrementAndCheck(isPremium);
-      setRemainingMsgs(counterResult.remaining);
-      if (!counterResult.allowed) {
-        Alert.alert(
-          'Mesaj Limiti',
-          counterResult.message ?? 'Gunluk mesaj limitine ulastin. Premium\'a gecersen sinirsiz mesaj hakki kazanirsin.',
-          [{ text: 'Tamam' }]
-        );
-        return;
+    let text: string;
+    let img: string | null;
+    let effectiveTaskMode: string | undefined;
+    let backdate: string | null;
+    let userMsgId: string;
+
+    if (retryFrom && retryFrom.retryPayload) {
+      text = retryFrom.retryPayload.text;
+      img = retryFrom.retryPayload.photoUri;
+      effectiveTaskMode = retryFrom.retryPayload.taskMode;
+      backdate = retryFrom.retryPayload.backdate ?? null;
+      userMsgId = retryFrom.id;
+      // Clear the failed state on this message while we retry.
+      setMessages(prev => prev.map(m =>
+        m.id === userMsgId ? { ...m, failed: false, errorMessage: undefined } : m
+      ));
+    } else {
+      text = input.trim();
+      if (!text && !photo) return;
+
+      // Message counter check (Spec 16: free daily limit)
+      if (text && !photo) {
+        const counterResult = await incrementAndCheck(isPremium);
+        setRemainingMsgs(counterResult.remaining);
+        if (!counterResult.allowed) {
+          Alert.alert(
+            'Mesaj Limiti',
+            counterResult.message ?? 'Gunluk mesaj limitine ulastin. Premium\'a gecersen sinirsiz mesaj hakki kazanirsin.',
+            [{ text: 'Tamam' }]
+          );
+          return;
+        }
       }
+
+      // Repair intent detection (Spec 5.32)
+      const repairContext: RepairDetection | null = text ? detectRepairIntent(text) : null;
+      effectiveTaskMode = repairContext && repairContext.type !== 'none'
+        ? `repair:${repairContext.type}`
+        : (taskModeHint ?? undefined);
+
+      img = photo;
+      backdate = backdateDate ?? null;
+      userMsgId = `u-${Date.now()}`;
+
+      const userMsg: UIMessage = {
+        id: userMsgId,
+        role: 'user',
+        content: photo ? (text ? `[Foto] ${text}` : '[Foto gönderildi]') : text,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setInput('');
+      setPhoto(null);
     }
 
-    // Repair intent detection (Spec 5.32)
-    let repairContext: RepairDetection | null = null;
-    if (text) {
-      repairContext = detectRepairIntent(text);
-    }
-
-    // Add user message optimistically
-    const userMsg: UIMessage = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: photo ? (text ? `[Foto] ${text}` : '[Foto gönderildi]') : text,
-      created_at: new Date().toISOString(),
-    };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    const img = photo;
-    setPhoto(null);
     setSending(true);
     scrollToBottom();
 
-    // Call AI — pass repair context if detected
-    const effectiveTaskMode = repairContext && repairContext.type !== 'none'
-      ? `repair:${repairContext.type}`
-      : (taskModeHint ?? undefined);
     const { data, error } = img
       ? await sendPhotoToSession(sessionId, text || 'Bu yemeği analiz et.', img)
-      : await sendMessageToSession(sessionId, text, effectiveTaskMode, backdateDate ?? undefined);
+      : await sendMessageToSession(sessionId, text, effectiveTaskMode, backdate ?? undefined);
     // Clear backdate after use so subsequent messages are today
-    if (backdateDate) setBackdateDate(null);
+    if (backdate && !retryFrom) setBackdateDate(null);
 
     if (data) {
+      if (data.rate_limited) {
+        // Cool down for 60s; the backend will re-check on the next send anyway.
+        setRateLimitedUntil(Date.now() + 60_000);
+      }
       // Determine if this message type should show feedback buttons
       // Show feedback for: plan suggestions, coaching advice, recipes (not for simple confirmations)
       const showFeedback = data.task_mode === 'plan' || data.task_mode === 'coaching'
@@ -532,12 +593,18 @@ export default function SessionDetailScreen() {
         }
       }
     } else {
-      setMessages(prev => [...prev, {
-        id: `e-${Date.now()}`,
-        role: 'assistant',
-        content: error ?? 'Bağlantı hatası. Tekrar dene.',
-        created_at: new Date().toISOString(),
-      }]);
+      // Flag the user's message as failed with a retry payload. The bubble
+      // renders a "Yeniden dene" button that re-invokes handleSend(retryFrom).
+      const errMsg = error ?? 'Bağlantı hatası. Tekrar dene.';
+      setMessages(prev => prev.map(m => m.id === userMsgId
+        ? {
+            ...m,
+            failed: true,
+            errorMessage: errMsg,
+            retryPayload: { text, photoUri: img, taskMode: effectiveTaskMode, backdate },
+          }
+        : m
+      ));
     }
 
     setSending(false);
@@ -834,6 +901,8 @@ export default function SessionDetailScreen() {
         </TouchableOpacity>
       </View>
 
+      <OfflineBanner />
+
       {/* Messages or empty state */}
       {messages.length <= 1 && !sending ? (
         <EmptyState
@@ -849,7 +918,7 @@ export default function SessionDetailScreen() {
           renderItem={({ item }) => {
             if (item.kind === 'separator') return <DateSeparator label={item.label} />;
             const m = item.msg as UIMessage;
-            return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} />;
+            return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} />;
           }}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
@@ -980,18 +1049,46 @@ export default function SessionDetailScreen() {
         </View>
       )}
 
+      {/* Rate-limit banner */}
+      {rateLimitCountdown > 0 && (
+        <View style={{
+          paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm,
+          backgroundColor: colors.warning + '22',
+          borderTopWidth: 0.5, borderTopColor: colors.warning + '66',
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+        }}>
+          <Ionicons name="time-outline" size={14} color={colors.warning} />
+          <Text style={{ color: colors.warning, fontSize: 12, flex: 1 }}>
+            Mesaj limiti. {rateLimitCountdown} saniye sonra tekrar deneyebilirsin.
+          </Text>
+        </View>
+      )}
+
       {/* Input bar */}
       <View style={{
         paddingHorizontal: SPACING.xl, paddingTop: SPACING.sm,
         paddingBottom: keyboardVisible || Platform.OS === 'web' ? SPACING.sm : Math.max(insets.bottom, SPACING.sm),
         borderTopWidth: 0.5, borderTopColor: colors.border, backgroundColor: colors.background,
       }}>
+        {/* Char counter — surfaces only when the user is approaching the cap,
+            so it doesn't add noise for 99% of messages. */}
+        {input.length > 1800 && (
+          <Text style={{
+            alignSelf: 'flex-end',
+            marginBottom: 4,
+            fontSize: 11,
+            color: input.length >= 2000 ? colors.error : colors.textMuted,
+          }}>
+            {input.length}/2000
+          </Text>
+        )}
         <View style={{
           flexDirection: 'row', alignItems: 'flex-end',
           backgroundColor: colors.card, borderRadius: 24,
           borderWidth: 0.5, borderColor: input.length > 0 ? colors.primary + '66' : colors.border,
           paddingHorizontal: SPACING.md, paddingVertical: 6,
           gap: 4,
+          opacity: rateLimitCountdown > 0 ? 0.6 : 1,
         }}>
           {/* Text input */}
           <TextInput
@@ -999,10 +1096,14 @@ export default function SessionDetailScreen() {
               flex: 1, color: taskSessionClosed ? colors.textMuted : colors.text, fontSize: 14,
               paddingVertical: 8, maxHeight: 120, lineHeight: 20,
             }}
-            placeholder={taskSessionClosed ? 'Bu konu tamamlandı — yukarıdaki karta dokun' : 'Mesajını yaz...'}
+            placeholder={
+              rateLimitCountdown > 0 ? `Limit doldu — ${rateLimitCountdown}s sonra` :
+              taskSessionClosed ? 'Bu konu tamamlandı — yukarıdaki karta dokun' : 'Mesajını yaz...'
+            }
             placeholderTextColor={colors.textMuted}
             value={input} onChangeText={setInput}
-            multiline maxLength={2000} editable={!sending && !taskSessionClosed}
+            multiline maxLength={2000}
+            editable={!sending && !taskSessionClosed && rateLimitCountdown === 0}
           />
 
           {/* Icon buttons */}
@@ -1062,7 +1163,7 @@ export default function SessionDetailScreen() {
                 justifyContent: 'center', alignItems: 'center',
                 opacity: sendDisabled ? 0.4 : 1,
               }}
-              onPress={handleSend} disabled={sendDisabled}
+              onPress={() => { void handleSend(); }} disabled={sendDisabled}
             >
               {sending
                 ? <ActivityIndicator size="small" color="#fff" />
@@ -1221,7 +1322,7 @@ function MessageBubbleFrame({ isUser, children }: { isUser: boolean; children: R
   );
 }
 
-function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId }: {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
@@ -1238,6 +1339,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   weeklyBudgetRemaining: number | null;
   onTTSToggle: (msgId: string, text: string) => void;
   speakingMsgId: string | null;
+  onRetry: (message: UIMessage) => void;
 }) {
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
@@ -1445,6 +1547,26 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
             <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
               Neden bu öneriyi yaptın?
             </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {isUser && message.failed && message.retryPayload && (
+        <View style={{ alignSelf: 'flex-end', marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name="alert-circle" size={14} color={colors.error} />
+          <Text style={{ color: colors.error, fontSize: FONT.xs, maxWidth: 200 }} numberOfLines={2}>
+            {message.errorMessage ?? 'Gönderilemedi.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => onRetry(message)}
+            style={{
+              paddingVertical: 4, paddingHorizontal: 10,
+              borderRadius: 14, backgroundColor: colors.primary,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Mesaji yeniden gonder"
+          >
+            <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Yeniden dene</Text>
           </TouchableOpacity>
         </View>
       )}

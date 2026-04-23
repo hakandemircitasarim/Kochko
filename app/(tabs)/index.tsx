@@ -27,6 +27,7 @@ import { getUnreadCoachingMessages, markMessageRead, type CoachingMessage } from
 import { detectReturnLevel, type ReturnStatus } from '@/services/return-flow.service';
 import { syncStepsToDailyMetrics } from '@/services/health-connect.service';
 import { CoachingNudge } from '@/components/dashboard/CoachingNudge';
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
 
 export default function TodayScreen() {
   const { colors } = useTheme();
@@ -177,6 +178,7 @@ export default function TodayScreen() {
         </TouchableOpacity>
       </Modal>
 
+      <OfflineBanner />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 120 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.primary} />}

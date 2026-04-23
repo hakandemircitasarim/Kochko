@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { supabase } from '@/lib/supabase';
 import { detectTimezone } from '@/lib/timezone';
 import { startTrialIfEligible } from '@/services/subscription.service';
+import { loadOnboardingDraft, saveOnboardingDraft, clearOnboardingDraft, type OnboardingDraft } from '@/services/onboarding-draft.service';
 import type { GoalType, ActivityLevel, Gender } from '@/types/database';
 
 const { width } = Dimensions.get('window');
@@ -62,7 +63,28 @@ const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
-  const totalSteps = SLIDES.length + 1; // slides + form
+  const [initialDraft, setInitialDraft] = useState<OnboardingDraft | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    loadOnboardingDraft().then((draft) => {
+      if (draft) {
+        setStep(draft.step);
+        setInitialDraft(draft);
+      }
+      setHydrated(true);
+    });
+  }, []);
+
+  // Persist step as the user advances so the slide position survives a kill.
+  useEffect(() => {
+    if (!hydrated) return;
+    saveOnboardingDraft({ ...(initialDraft ?? { step: 0 }), step });
+  }, [step, hydrated, initialDraft]);
+
+  if (!hydrated) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
 
   if (step < SLIDES.length) {
     return (
@@ -76,7 +98,7 @@ export default function OnboardingScreen() {
     );
   }
 
-  return <QuickForm />;
+  return <QuickForm initialDraft={initialDraft} />;
 }
 
 // ─── Welcome Slide ───
@@ -135,18 +157,32 @@ function WelcomeSlide({
 
 // ─── Quick Form (Katman 1) ───
 
-function QuickForm() {
+function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { update } = useProfileStore();
   const [saving, setSaving] = useState(false);
 
-  const [heightCm, setHeightCm] = useState('');
-  const [weightKg, setWeightKg] = useState('');
-  const [targetWeightKg, setTargetWeightKg] = useState('');
-  const [gender, setGender] = useState<Gender | ''>('');
-  const [goalType, setGoalType] = useState<GoalType | ''>('');
-  const [activity, setActivity] = useState<ActivityLevel | ''>('');
+  const [heightCm, setHeightCm] = useState(initialDraft?.heightCm ?? '');
+  const [weightKg, setWeightKg] = useState(initialDraft?.weightKg ?? '');
+  const [targetWeightKg, setTargetWeightKg] = useState(initialDraft?.targetWeightKg ?? '');
+  const [gender, setGender] = useState<Gender | ''>((initialDraft?.gender as Gender) ?? '');
+  const [goalType, setGoalType] = useState<GoalType | ''>((initialDraft?.goalType as GoalType) ?? '');
+  const [activity, setActivity] = useState<ActivityLevel | ''>((initialDraft?.activity as ActivityLevel) ?? '');
+
+  // Debounced save of form fields — every keystroke would be overkill, but
+  // flushing at most once per 500ms survives a crash without churn.
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      saveOnboardingDraft({
+        step: (initialDraft?.step ?? SLIDES.length),
+        heightCm, weightKg, targetWeightKg, gender, goalType, activity,
+      });
+    }, 500);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [heightCm, weightKg, targetWeightKg, gender, goalType, activity, initialDraft?.step]);
 
   const needsTargetWeight = goalType === 'lose_weight' || goalType === 'gain_muscle';
   const isValid = heightCm && weightKg && gender && goalType && activity && (!needsTargetWeight || targetWeightKg);
@@ -193,7 +229,10 @@ function QuickForm() {
       // 3. Start 7-day free trial if eligible (Spec 19.0)
       await startTrialIfEligible(user.id).catch(() => {});
 
-      // 4. Navigate to chat
+      // 4. Clear the resume draft — onboarding is done.
+      await clearOnboardingDraft();
+
+      // 5. Navigate to chat
       router.replace('/(tabs)/chat');
     } catch {
       Alert.alert('Hata', 'Bir sorun oluştu. Tekrar deneyin.');
