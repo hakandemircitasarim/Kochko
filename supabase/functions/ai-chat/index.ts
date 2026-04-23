@@ -83,7 +83,7 @@ serve(async (req: Request) => {
       injectionDetected = injection.injectionDetected;
       if (injectionDetected) {
         const rejectMsg = 'Ben Kochko, beslenme ve antrenman kocunum. Bu konuda sana yardimci olamam ama beslenme veya sporla ilgili sorun varsa konusalim.';
-        await storeMessages(userId, message, rejectMsg);
+        await storeMessages(userId, message, rejectMsg, undefined, undefined, undefined, undefined, session_id);
         return respond({ message: rejectMsg, actions: [], task_mode: 'coaching' });
       }
     }
@@ -106,7 +106,7 @@ serve(async (req: Request) => {
     if (message) {
       const emergency = detectEmergency(message);
       if (emergency.isEmergency) {
-        await storeMessages(userId, message, emergency.message);
+        await storeMessages(userId, message, emergency.message, undefined, undefined, undefined, undefined, session_id);
         return respond({ message: emergency.message, actions: [], task_mode: 'emergency' });
       }
     }
@@ -115,7 +115,7 @@ serve(async (req: Request) => {
     if (message) {
       const edRisk = detectEDRisk(message);
       if (edRisk.isRisk && edRisk.severity === 'high') {
-        await storeMessages(userId, message, edRisk.message);
+        await storeMessages(userId, message, edRisk.message, undefined, undefined, undefined, undefined, session_id);
         return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
       }
       // Medium severity: continue normal flow but AI will see ED_REFERRAL in sanitized output
@@ -128,7 +128,7 @@ serve(async (req: Request) => {
       // Handle direct undo requests
       if (repairIntent.type === 'undo') {
         const undoResult = await handleUndo(userId);
-        await storeMessages(userId, message, undoResult.response ?? '');
+        await storeMessages(userId, message, undoResult.response ?? '', undefined, undefined, undefined, undefined, session_id);
         return respond({ message: undoResult.response, actions: [], task_mode: 'repair' });
       }
 
@@ -136,7 +136,7 @@ serve(async (req: Request) => {
       const knowledgePatterns = /benim hakkimda|beni tan[iı]|ne [oö]grendin|ne biliyorsun|beni ne kadar/i;
       if (knowledgePatterns.test(message)) {
         const summary = await buildKnowledgeSummary(userId);
-        await storeMessages(userId, message, summary);
+        await storeMessages(userId, message, summary, undefined, undefined, undefined, undefined, session_id);
         return respond({ message: summary, actions: [], task_mode: 'knowledge' });
       }
     }
@@ -551,13 +551,42 @@ serve(async (req: Request) => {
       const expectedType = task_mode_hint === 'plan_diet' ? 'diet' : 'workout';
       const { data: draftRow } = await supabaseAdmin
         .from('weekly_plans')
-        .select('id')
+        .select('id, plan_data')
         .eq('user_id', userId)
         .eq('plan_type', expectedType)
         .eq('status', 'draft')
         .limit(1);
-      const draft = draftRow?.[0];
-      if (draft) {
+      const draft = draftRow?.[0] as { id: string; plan_data: Record<string, unknown> } | undefined;
+
+      // Re-run the allergen guardrail on the draft before promoting — the
+      // draft may have been persisted before the user added an allergen, or
+      // produced by an earlier snapshot that slipped through.
+      if (draft && expectedType === 'diet') {
+        const { data: prefRows } = await supabaseAdmin
+          .from('food_preferences')
+          .select('food_name')
+          .eq('user_id', userId)
+          .eq('is_allergen', true);
+        const allergens = (prefRows ?? []).map((p: { food_name: string }) => p.food_name);
+        if (allergens.length > 0) {
+          const days = (draft.plan_data?.days as Array<Record<string, unknown>> | undefined) ?? [];
+          const violations: string[] = [];
+          for (const d of days) {
+            const meals = (d.meals as Array<Record<string, unknown>> | undefined) ?? [];
+            for (const m of meals) {
+              const text = `${m.name ?? ''} ${(m.items as Array<{ name?: string }> | undefined)?.map(i => i.name).join(' ') ?? ''}`;
+              const check = checkAllergens(text, allergens);
+              if (!check.passed) violations.push(`${d.day_label ?? ''} ${m.meal_type ?? ''}: ${check.violations.join(', ')}`);
+            }
+          }
+          if (violations.length > 0) {
+            planPersistError = `allergen_violation: ${violations.slice(0, 3).join('; ')}`;
+            console.warn('[approve] blocked by allergen guardrail', { count: violations.length });
+          }
+        }
+      }
+
+      if (draft && !planPersistError) {
         // Archive the previous active if present.
         const { error: archiveErr } = await supabaseAdmin
           .from('weekly_plans')
@@ -800,7 +829,11 @@ serve(async (req: Request) => {
       navigate_to: navigateTo,
     });
   } catch (err) {
-    return respond({ error: (err as Error).message }, 500);
+    const msg = (err as Error).message;
+    if (msg.startsWith('SESSION_NOT_FOUND')) {
+      return respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404);
+    }
+    return respond({ error: msg }, 500);
   }
 });
 
@@ -1112,37 +1145,40 @@ async function validateTaskCompletion(
 }
 
 async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string) {
-  // Use provided session_id if valid, otherwise get/create active session
   let sessionId: string | null = null;
 
   if (externalSessionId) {
-    // Verify it belongs to this user
     const { data: existing } = await supabaseAdmin
       .from('chat_sessions')
       .select('id')
       .eq('id', externalSessionId)
       .eq('user_id', userId)
       .maybeSingle();
-    if (existing) sessionId = existing.id;
-  }
-
-  if (!sessionId) {
-    let { data: session } = await supabaseAdmin
+    if (!existing) {
+      // Fail closed — silent fallback to the active session would write the
+      // user's message into a different conversation than the one they're
+      // viewing. Surface the mismatch instead.
+      throw new Error(`SESSION_NOT_FOUND: ${externalSessionId}`);
+    }
+    sessionId = existing.id;
+  } else {
+    const { data: session } = await supabaseAdmin
       .from('chat_sessions')
       .select('id')
       .eq('user_id', userId)
       .eq('is_active', true)
       .maybeSingle();
 
-    if (!session) {
+    if (session) {
+      sessionId = session.id;
+    } else {
       const { data: newSession } = await supabaseAdmin
         .from('chat_sessions')
         .insert({ user_id: userId, is_active: true })
         .select('id')
         .maybeSingle();
-      session = newSession;
+      sessionId = newSession?.id ?? null;
     }
-    sessionId = session?.id ?? null;
   }
 
   await supabaseAdmin.from('chat_messages').insert([

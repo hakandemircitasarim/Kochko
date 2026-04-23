@@ -2,7 +2,7 @@
  * Ana Sayfa (Dashboard) — Bilgi odakli, flat dark design
  * Kalori halkasi, hizli istatistikler, haftalik butce, diyet/spor planlari
  */
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,7 +40,6 @@ export default function TodayScreen() {
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
   const [isOffline, setIsOffline] = useState(false);
-  const [hasFetched, setHasFetched] = useState(false);
   const [showWeightInput, setShowWeightInput] = useState(false);
   const [weightInput, setWeightInput] = useState('');
   const [coachingMessages, setCoachingMessages] = useState<CoachingMessage[]>([]);
@@ -59,34 +58,27 @@ export default function TodayScreen() {
   const fatTarget = (profile?.fat_target_g as number) ?? 65;
   const userName = profile?.display_name as string | undefined;
 
+  // Mount-only setup that shouldn't re-run on every focus.
   useEffect(() => {
-    if (!user?.id || hasFetched) return;
+    if (!user?.id) return;
     let cancelled = false;
-    setHasFetched(true);
-    fetchToday(user.id).catch((err) => console.warn('fetchToday failed:', err));
-    checkForMilestones();
-    // Fetch coaching nudges
-    getUnreadCoachingMessages(user.id).then((msgs) => { if (!cancelled) setCoachingMessages(msgs); });
-    // Return-flow: detect long break → show re-onboarding banner if 180+ days (Spec 10.6)
     detectReturnLevel(user.id).then((status) => { if (!cancelled) setReturnStatus(status); }).catch(() => {});
-    // Step counter sync (Spec 19.0 free-tier feature; expo-sensors if installed)
     syncStepsToDailyMetrics(user.id, dayBoundaryHour).catch(() => {});
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [user?.id, dayBoundaryHour]);
 
+  // useFocusEffect runs on first focus too, so it doubles as initial load.
+  // Previously a hasMounted ref skipped the first run to avoid a duplicate
+  // fetch against a parallel useEffect — now only this effect fetches, so no
+  // ref gymnastics are needed.
   const refresh = useCallback(() => {
     if (!user?.id) return;
-    fetchToday(user.id).catch((err) => console.warn('refresh fetchToday failed:', err));
+    fetchToday(user.id).catch((err) => console.warn('fetchToday failed:', err));
     checkForMilestones();
-    getUnreadCoachingMessages(user.id).then(setCoachingMessages);
-  }, [user?.id]);
+    getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {});
+  }, [user?.id, fetchToday, checkForMilestones]);
 
-  // Refresh dashboard when tab gets focus (e.g., returning from chat after logging a meal)
-  const hasMounted = useRef(false);
-  useFocusEffect(useCallback(() => {
-    if (!hasMounted.current) { hasMounted.current = true; return; }
-    if (user?.id) refresh();
-  }, [user?.id, refresh]));
+  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
   useEffect(() => {
     const unsub1 = NetInfo.addEventListener(s => setIsOffline(!s.isConnected));

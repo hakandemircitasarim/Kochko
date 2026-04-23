@@ -69,10 +69,10 @@ export default function QuickLogScreen() {
     finally { setLoading(false); }
   };
 
-  const handlePhoto = async () => {
-    // Navigate to chat with camera — chat.tsx handles photo capture + send
-    router.back();
-    setTimeout(() => router.push({ pathname: '/(tabs)/chat', params: { openCamera: 'true' } }), 100);
+  const handlePhoto = () => {
+    // Dismiss this modal and jump to the chat tab in one router intent — two
+    // separate calls race with the modal dismissal animation on slower devices.
+    router.dismissTo({ pathname: '/(tabs)/chat', params: { openCamera: 'true' } });
   };
 
   const handleBarcodeScan = async (barcode: string) => {
@@ -359,7 +359,7 @@ export default function QuickLogScreen() {
       {/* Input methods card */}
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
         {[
-          { icon: 'create-outline' as const, title: 'Yazarak gir', desc: '2 yumurta, peynir, ekmek yedim', color: colors.primary, onPress: () => { router.back(); setTimeout(() => router.push('/(tabs)/chat'), 100); } },
+          { icon: 'create-outline' as const, title: 'Yazarak gir', desc: '2 yumurta, peynir, ekmek yedim', color: colors.primary, onPress: () => router.dismissTo('/(tabs)/chat') },
           { icon: 'camera-outline' as const, title: 'Fotoğraf çek', desc: 'Tabağını fotoğrafla, AI tanısın', color: colors.protein, onPress: handlePhoto },
           { icon: 'barcode-outline' as const, title: 'Barkod okut', desc: 'Paketli ürünü tara', color: colors.carbs, onPress: () => setScreen('barcode') },
           { icon: 'mic-outline' as const, title: 'Sesli giriş', desc: 'Konuşarak kayıt gir', color: colors.pink, onPress: () => setScreen('voice') },
@@ -408,7 +408,7 @@ export default function QuickLogScreen() {
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
         {[
-          { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, onPress: () => { router.back(); setTimeout(() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }), 100); } },
+          { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
           { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, onPress: () => setScreen('weight') },
           { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, onPress: () => setScreen('sleep') },
           { icon: 'water-outline' as const, label: 'Su (+0.25L)', color: colors.protein, onPress: handleWaterAdd },
