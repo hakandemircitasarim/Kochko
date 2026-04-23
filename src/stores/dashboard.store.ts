@@ -93,17 +93,32 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         .eq('id', userId).maybeSingle(),
     ]);
 
-    // Get calories for each meal
-    const meals: MealEntry[] = [];
-    for (const meal of (mealsRes.data ?? []) as { id: string; raw_input: string; meal_type: string; logged_at: string }[]) {
-      const { data: items } = await supabase
-        .from('meal_log_items').select('calories, protein_g, carbs_g, fat_g').eq('meal_log_id', meal.id);
-      const cal = (items ?? []).reduce((s: number, i: { calories: number }) => s + i.calories, 0);
-      const pro = (items ?? []).reduce((s: number, i: { protein_g: number }) => s + i.protein_g, 0);
-      const carbs = (items ?? []).reduce((s: number, i: { carbs_g: number }) => s + (i.carbs_g ?? 0), 0);
-      const fat = (items ?? []).reduce((s: number, i: { fat_g: number }) => s + (i.fat_g ?? 0), 0);
-      meals.push({ ...meal, calories: cal, protein_g: pro, carbs_g: carbs, fat_g: fat });
+    // Single IN query instead of N+1 — for 5 meals this is 1 round-trip instead of 5.
+    const mealRows = (mealsRes.data ?? []) as { id: string; raw_input: string; meal_type: string; logged_at: string }[];
+    const mealIds = mealRows.map(m => m.id);
+    type ItemRow = { meal_log_id: string; calories: number; protein_g: number; carbs_g: number | null; fat_g: number | null };
+    const itemsByMeal = new Map<string, ItemRow[]>();
+    if (mealIds.length > 0) {
+      const { data: allItems } = await supabase
+        .from('meal_log_items')
+        .select('meal_log_id, calories, protein_g, carbs_g, fat_g')
+        .in('meal_log_id', mealIds);
+      for (const item of (allItems ?? []) as ItemRow[]) {
+        const bucket = itemsByMeal.get(item.meal_log_id) ?? [];
+        bucket.push(item);
+        itemsByMeal.set(item.meal_log_id, bucket);
+      }
     }
+    const meals: MealEntry[] = mealRows.map(meal => {
+      const items = itemsByMeal.get(meal.id) ?? [];
+      return {
+        ...meal,
+        calories: items.reduce((s, i) => s + i.calories, 0),
+        protein_g: items.reduce((s, i) => s + i.protein_g, 0),
+        carbs_g: items.reduce((s, i) => s + (i.carbs_g ?? 0), 0),
+        fat_g: items.reduce((s, i) => s + (i.fat_g ?? 0), 0),
+      };
+    });
 
     const totalCalories = meals.reduce((s, m) => s + m.calories, 0);
     const totalProtein = meals.reduce((s, m) => s + m.protein_g, 0);

@@ -612,6 +612,16 @@ function formatLayer3(
 
 // ─── Layer 4: Scoped Chat History ───
 
+// Rough token budget for Layer 4 history. Leaves headroom for the rest of the
+// system prompt (layers 1-3 + mode instructions + user message + response).
+// Assumes a 128k context model with ~8k reserved for history; conservative.
+const LAYER4_TOKEN_BUDGET = 6000;
+const CHARS_PER_TOKEN = 3.5;
+
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+
 async function buildLayer4Scoped(userId: string, plan: RetrievalPlan, sessionId?: string): Promise<{ role: string; content: string }[]> {
   const limit = plan.layer4MaxMessages;
   if (limit === 0) return [];
@@ -623,7 +633,6 @@ async function buildLayer4Scoped(userId: string, plan: RetrievalPlan, sessionId?
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  // If session_id provided, scope to that session only
   if (sessionId) {
     query = query.eq('session_id', sessionId);
   }
@@ -631,7 +640,30 @@ async function buildLayer4Scoped(userId: string, plan: RetrievalPlan, sessionId?
   const { data } = await query;
 
   if (!data || data.length === 0) return [];
-  return (data as { role: string; content: string }[]).reverse();
+
+  // Drop messages from newest-first so the most recent turns survive when the
+  // session is long. Without this, long sessions overflow the model's context
+  // window and the API returns 400. Messages trimmed here still live in the
+  // database; Layer 2 (ai_summary) preserves anything durable about the user.
+  const newestFirst = data as { role: string; content: string }[];
+  const kept: { role: string; content: string }[] = [];
+  let usedTokens = 0;
+  for (const msg of newestFirst) {
+    const cost = estimateTokens(msg.content ?? '');
+    if (usedTokens + cost > LAYER4_TOKEN_BUDGET && kept.length > 0) break;
+    kept.push(msg);
+    usedTokens += cost;
+  }
+
+  const trimmed = kept.length < newestFirst.length;
+  const ordered = kept.reverse();
+  if (trimmed) {
+    ordered.unshift({
+      role: 'system',
+      content: `[Bu oturumun onceki ${newestFirst.length - kept.length} mesaji baglam butcesi icin kirpildi. Uzun vadeli bilgiler Katman 2 ozetinde tutuluyor.]`,
+    });
+  }
+  return ordered;
 }
 
 // ─── Context Meta Refinement ───
