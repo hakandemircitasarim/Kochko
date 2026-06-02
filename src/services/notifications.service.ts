@@ -97,8 +97,20 @@ export async function requestNotificationPermissionIfNeeded(): Promise<string | 
   }
 }
 
+export async function setupAndroidChannel(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Kochko',
+      importance: Notifications.AndroidImportance.DEFAULT,
+      sound: 'default',
+    });
+  } catch { /* channel setup non-critical */ }
+}
+
 export async function initializeNotifications(): Promise<string | null> {
   setupNotificationHandler();
+  await setupAndroidChannel();
   return requestNotificationPermissionIfNeeded();
 }
 
@@ -137,7 +149,7 @@ export async function updateNotificationPrefs(
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('if_active, if_eating_start, if_eating_end, workout_days, sleep_time')
+    .select('if_active, if_eating_start, if_eating_end, sleep_time')
     .eq('id', userId)
     .single();
 
@@ -147,10 +159,37 @@ export async function updateNotificationPrefs(
     if_eating_end: profile.if_eating_end as string | null,
   } : null;
 
-  const workoutDays = (profile as Record<string, unknown> | null)?.workout_days as number[] | null;
+  // profiles has no workout_days column — workout-day reminders are disabled until one exists
+  // (querying it 400'd the whole select and silently killed ALL local notification scheduling).
+  const workoutDays: number[] | null = null;
   const sleepTime = (profile as Record<string, unknown> | null)?.sleep_time as string | null;
 
   await scheduleLocalNotifications(updated, ifProfile, workoutDays, userId, sleepTime);
+}
+
+/**
+ * Schedule local notifications on app startup from the user's saved prefs.
+ * Previously reminders were only (re)scheduled when the user opened the notification
+ * settings screen — so a user who never visited it received no local reminders at all.
+ */
+export async function scheduleNotificationsOnStartup(userId: string): Promise<void> {
+  const prefs = await getNotificationPrefs(userId);
+  if (!prefs.enabled) {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    return;
+  }
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('if_active, if_eating_start, if_eating_end, sleep_time')
+    .eq('id', userId)
+    .single();
+  const ifProfile = profile ? {
+    if_active: profile.if_active as boolean,
+    if_eating_start: profile.if_eating_start as string | null,
+    if_eating_end: profile.if_eating_end as string | null,
+  } : null;
+  const sleepTime = (profile as Record<string, unknown> | null)?.sleep_time as string | null;
+  await scheduleLocalNotifications(prefs, ifProfile, null, userId, sleepTime);
 }
 
 export async function scheduleLocalNotifications(
@@ -255,6 +294,7 @@ export async function scheduleLocalNotifications(
 
   if (prefs.types.water_reminder) {
     for (let hour = 9; hour <= 20; hour += 2) {
+      if (isTimeInQuietWindow(hour, 0, prefs.quietStart, prefs.quietEnd)) continue; // P1#9: respect quiet hours
       await Notifications.scheduleNotificationAsync({
         content: {
           title: 'Su Hatırlatma',
@@ -299,7 +339,7 @@ export async function scheduleLocalNotifications(
     });
   }
 
-  if (prefs.types.night_risk) {
+  if (prefs.types.night_risk && !isTimeInQuietWindow(22, 30, prefs.quietStart, prefs.quietEnd)) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: 'Gece Hatırlatma',
@@ -319,14 +359,16 @@ export async function scheduleLocalNotifications(
       if (totalMin < 0) totalMin += 24 * 60;
       const windHour = Math.floor(totalMin / 60) % 24;
       const windMin = totalMin % 60;
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Uyku Yaklaşıyor',
-          body: 'Yatış saatine 30 dakika kaldı. Ekranı kapat, bir su iç, ertesi gün için güzel bir uyku al.',
-          data: { type: 'bedtime_wind_down' },
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: windHour, minute: windMin },
-      });
+      if (!isTimeInQuietWindow(windHour, windMin, prefs.quietStart, prefs.quietEnd)) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Uyku Yaklaşıyor',
+            body: 'Yatış saatine 30 dakika kaldı. Ekranı kapat, bir su iç, ertesi gün için güzel bir uyku al.',
+            data: { type: 'bedtime_wind_down' },
+          },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: windHour, minute: windMin },
+        });
+      }
     }
   }
 }
@@ -377,17 +419,18 @@ export function getReengagementLevel(hoursSinceLastActivity: number): 'none' | '
 
 export function isQuietHour(quietStart: string, quietEnd: string): boolean {
   const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  const currentMinutes = hour * 60 + minute;
+  return isTimeInQuietWindow(now.getHours(), now.getMinutes(), quietStart, quietEnd);
+}
 
+/** Is a specific scheduled time (hour:minute) inside the quiet window? (P1#9) */
+function isTimeInQuietWindow(hour: number, minute: number, quietStart: string, quietEnd: string): boolean {
+  const cur = hour * 60 + minute;
   const [startH, startM] = quietStart.split(':').map(Number);
   const [endH, endM] = quietEnd.split(':').map(Number);
   const startMinutes = startH * 60 + startM;
   const endMinutes = endH * 60 + endM;
-
   if (startMinutes > endMinutes) {
-    return currentMinutes >= startMinutes || currentMinutes < endMinutes;
+    return cur >= startMinutes || cur < endMinutes;
   }
-  return currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  return cur >= startMinutes && cur < endMinutes;
 }

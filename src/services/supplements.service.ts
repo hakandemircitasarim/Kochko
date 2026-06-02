@@ -24,17 +24,23 @@ const SUPPLEMENT_MACROS: Record<string, { calories: number; protein_g: number; c
   multivitamin: { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
 };
 
-export async function logSupplement(name: string, amount: string): Promise<void> {
+export async function logSupplement(name: string, amount: string): Promise<{ error: string | null }> {
   const key = name.toLowerCase().replace(/\s+/g, '_');
   const macros = SUPPLEMENT_MACROS[key] ?? { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
 
-  await supabase.from('supplement_logs').insert({
+  // supplement_logs.user_id is NOT NULL + RLS WITH CHECK(auth.uid()=user_id)
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Oturum bulunamadi.' };
+
+  const { error } = await supabase.from('supplement_logs').insert({
+    user_id: user.id,
     supplement_name: name,
     amount,
     calories: macros.calories,
     protein_g: macros.protein_g,
     logged_for_date: new Date().toISOString().split('T')[0],
   });
+  return { error: error?.message ?? null };
 }
 
 export async function getTodaySupplements(userId?: string): Promise<SupplementLog[]> {

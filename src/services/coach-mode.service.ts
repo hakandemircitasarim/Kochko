@@ -82,11 +82,12 @@ export async function getCoachClients(coachId: string): Promise<CoachClient[]> {
 
   for (const p of profiles) {
     // Get latest metrics for this client
+    // compliance_score lives on daily_reports (keyed on `date`), not daily_metrics.
     const { data: metrics } = await supabase
-      .from('daily_metrics')
-      .select('log_date, compliance_score')
+      .from('daily_reports')
+      .select('date, compliance_score')
       .eq('user_id', p.id)
-      .order('log_date', { ascending: false })
+      .order('date', { ascending: false })
       .limit(1);
 
     // Get active goal
@@ -114,7 +115,7 @@ export async function getCoachClients(coachId: string): Promise<CoachClient[]> {
       displayName: `Danisan ${p.id.slice(0, 6)}`, // anonymized
       weight_kg: p.weight_kg,
       goalType: goal?.goal_type ?? null,
-      lastActiveDate: latestMetric?.log_date ?? null,
+      lastActiveDate: latestMetric?.date ?? null,
       complianceScore: latestMetric?.compliance_score ?? null,
       sharedDataTypes: consent?.data_types ?? [],
     });

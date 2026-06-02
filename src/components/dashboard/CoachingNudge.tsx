@@ -50,7 +50,7 @@ export function CoachingNudge({
             <Ionicons name="chatbubble-ellipses-outline" size={18} color={accentColor} style={{ marginRight: SPACING.sm, marginTop: 1 }} />
             <View style={{ flex: 1 }}>
               <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
-                {msg.message}
+                {msg.content}
               </Text>
               <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 4 }}>
                 {new Date(msg.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}

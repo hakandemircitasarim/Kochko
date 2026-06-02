@@ -2,16 +2,18 @@
  * Coaching Messages Service
  * Fetches proactive coaching messages (nudges) from ai-proactive edge function.
  * Shows unread messages on dashboard and chat tab.
+ *
+ * Columns match the coaching_messages table (migration 003): content, trigger_type, read.
  */
 import { supabase } from '@/lib/supabase';
 
 export interface CoachingMessage {
   id: string;
   user_id: string;
-  message: string;
+  content: string;
   trigger_type: string;
   priority: 'low' | 'medium' | 'high';
-  is_read: boolean;
+  read: boolean;
   created_at: string;
 }
 
@@ -22,9 +24,9 @@ export interface CoachingMessage {
 export async function getUnreadCoachingMessages(userId: string): Promise<CoachingMessage[]> {
   const { data, error } = await supabase
     .from('coaching_messages')
-    .select('id, user_id, message, trigger_type, priority, is_read, created_at')
+    .select('id, user_id, content, trigger_type, priority, read, created_at')
     .eq('user_id', userId)
-    .eq('is_read', false)
+    .eq('read', false)
     .order('created_at', { ascending: false })
     .limit(5);
 
@@ -41,7 +43,7 @@ export async function getUnreadCoachingMessages(userId: string): Promise<Coachin
 export async function markMessageRead(messageId: string): Promise<void> {
   await supabase
     .from('coaching_messages')
-    .update({ is_read: true })
+    .update({ read: true })
     .eq('id', messageId);
 }
 
@@ -51,7 +53,7 @@ export async function markMessageRead(messageId: string): Promise<void> {
 export async function markAllRead(userId: string): Promise<void> {
   await supabase
     .from('coaching_messages')
-    .update({ is_read: true })
+    .update({ read: true })
     .eq('user_id', userId)
-    .eq('is_read', false);
+    .eq('read', false);
 }

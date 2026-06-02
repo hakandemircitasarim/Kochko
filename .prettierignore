@@ -1,0 +1,8 @@
+node_modules
+dist
+build
+.expo
+supabase/functions
+*.md
+*.lock
+*.log

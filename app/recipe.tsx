@@ -131,12 +131,21 @@ export default function RecipeScreen() {
       {recipes.length === 0 ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
           <Ionicons name="restaurant-outline" size={48} color={colors.textMuted} />
-          <Text style={{ color: colors.textMuted, fontSize: 14, marginTop: SPACING.md, textAlign: 'center' }}>
+          <Text style={{ color: colors.text, fontSize: 15, fontWeight: '500', marginTop: SPACING.md, textAlign: 'center' }}>
             Henüz kayıtlı tarif yok
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: SPACING.sm, textAlign: 'center' }}>
-            Koçuna tarif sor, beğendiklerini kaydet
+          <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: SPACING.sm, textAlign: 'center', maxWidth: 280, lineHeight: 20 }}>
+            Koçuna tarif sor; beğendiklerini "kaydet" butonu ile kütüphanene ekle.
           </Text>
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Akşam ne pişireyim? Kalan makro hedefime göre bir tarif öner.' } })}
+            style={{
+              marginTop: SPACING.xl, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md,
+              backgroundColor: colors.primary, borderRadius: RADIUS.sm,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Koça tarif sor</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList

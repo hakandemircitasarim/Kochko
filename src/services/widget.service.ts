@@ -49,7 +49,7 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
   const weekStart = startOfWeekISO();
 
   // Fire all queries in parallel
-  const [profileRes, metricsRes, mealsRes, planRes, weekMealsRes] = await Promise.all([
+  const [profileRes, metricsRes, mealsRes, planRes, weekMealsRes, streakRes] = await Promise.all([
     // 1. Profile for targets
     supabase
       .from('profiles')
@@ -57,36 +57,48 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
       .eq('id', userId)
       .single(),
 
-    // 2. Today's daily_metrics
+    // 2. Today's daily_metrics (keyed on `date`; there is no streak_days column)
     supabase
       .from('daily_metrics')
-      .select('water_liters, steps, steps_source, streak_days')
+      .select('water_liters, steps, steps_source')
       .eq('user_id', userId)
-      .eq('log_date', today)
-      .single(),
+      .eq('date', today)
+      .maybeSingle(),
 
-    // 3. Today's meal totals
+    // 3. Today's meal totals — meal_log_items has no user_id/date; scope via the meal_logs FK
     supabase
       .from('meal_log_items')
-      .select('calories_kcal, protein_g')
-      .eq('user_id', userId)
-      .eq('log_date', today),
+      .select('calories, protein_g, meal_logs!inner(user_id, logged_for_date, is_deleted)')
+      .eq('meal_logs.user_id', userId)
+      .eq('meal_logs.logged_for_date', today)
+      .eq('meal_logs.is_deleted', false),
 
-    // 4. Today's plan for focus message
+    // 4. Today's plan for focus message (latest version; daily_plans keys on `date`)
     supabase
       .from('daily_plans')
       .select('focus_message')
       .eq('user_id', userId)
-      .eq('plan_date', today)
-      .single(),
+      .eq('date', today)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
 
-    // 5. Week meals for weekly budget
+    // 5. Week meals for weekly budget (via the meal_logs FK)
     supabase
       .from('meal_log_items')
-      .select('calories_kcal')
+      .select('calories, meal_logs!inner(user_id, logged_for_date, is_deleted)')
+      .eq('meal_logs.user_id', userId)
+      .gte('meal_logs.logged_for_date', weekStart)
+      .lte('meal_logs.logged_for_date', today)
+      .eq('meal_logs.is_deleted', false),
+
+    // 6. Last 90 days of metric dates — derive the streak (no streak_days column exists)
+    supabase
+      .from('daily_metrics')
+      .select('date')
       .eq('user_id', userId)
-      .gte('log_date', weekStart)
-      .lte('log_date', today),
+      .order('date', { ascending: false })
+      .limit(90),
   ]);
 
   // Extract profile data
@@ -100,15 +112,24 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
   const waterTarget = profile?.water_target_liters ?? 2.5;
 
   // Sum today's meals
-  const meals = mealsRes.data ?? [];
-  const todayCalories = meals.reduce((sum, m) => sum + (m.calories_kcal ?? 0), 0);
+  const meals = (mealsRes.data ?? []) as { calories: number | null; protein_g: number | null }[];
+  const todayCalories = meals.reduce((sum, m) => sum + (m.calories ?? 0), 0);
   const todayProtein = meals.reduce((sum, m) => sum + (m.protein_g ?? 0), 0);
 
   // Daily metrics
   const metrics = metricsRes.data;
   const waterLiters = metrics?.water_liters ?? 0;
   const steps = metrics?.steps ?? 0;
-  const streak = metrics?.streak_days ?? 0;
+
+  // Streak: consecutive days ending today that have a daily_metrics row
+  // (daily_metrics has no streak_days column — derive it, like analytics.service.ts).
+  const streakDates = new Set(((streakRes.data ?? []) as { date: string }[]).map(d => d.date));
+  let streak = 0;
+  const cursor = new Date(today);
+  while (streakDates.has(cursor.toISOString().slice(0, 10))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
 
   // Steps target (default 10000)
   const stepsTarget = 10000;
@@ -117,8 +138,8 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
   const focusMessage = planRes.data?.focus_message ?? null;
 
   // Weekly budget remaining
-  const weekMeals = weekMealsRes.data ?? [];
-  const weekCalories = weekMeals.reduce((sum, m) => sum + (m.calories_kcal ?? 0), 0);
+  const weekMeals = (weekMealsRes.data ?? []) as { calories: number | null }[];
+  const weekCalories = weekMeals.reduce((sum, m) => sum + (m.calories ?? 0), 0);
   const weeklyBudget = calorieTarget * 7;
   const weeklyBudgetRemaining = weeklyBudget - weekCalories;
 

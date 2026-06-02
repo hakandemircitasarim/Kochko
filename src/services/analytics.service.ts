@@ -91,12 +91,12 @@ export function flushEventBuffer(): AnalyticsEvent[] {
  */
 export async function getRetentionMetrics(userId: string): Promise<RetentionMetrics> {
   const [metricsRes, sessionsRes] = await Promise.all([
-    // Count distinct active days
+    // Count distinct active days (daily_metrics has one row per active day, keyed by `date`)
     supabase
       .from('daily_metrics')
-      .select('log_date, streak_days')
+      .select('date')
       .eq('user_id', userId)
-      .order('log_date', { ascending: false }),
+      .order('date', { ascending: false }),
 
     // Count chat sessions as proxy for app sessions
     supabase
@@ -107,9 +107,16 @@ export async function getRetentionMetrics(userId: string): Promise<RetentionMetr
       .order('created_at', { ascending: true }),
   ]);
 
-  const dailyRows = metricsRes.data ?? [];
+  const dailyRows = (metricsRes.data ?? []) as { date: string }[];
   const daysActive = dailyRows.length;
-  const streakMax = dailyRows.reduce((max, r) => Math.max(max, r.streak_days ?? 0), 0);
+  // No streak_days column — derive the longest run of consecutive active days from dates.
+  const dayTimes = dailyRows.map(r => new Date(r.date).getTime()).sort((a, b) => a - b);
+  let streakMax = 0;
+  let run = 0;
+  for (let i = 0; i < dayTimes.length; i++) {
+    run = i > 0 && Math.round((dayTimes[i] - dayTimes[i - 1]) / 86400000) === 1 ? run + 1 : 1;
+    if (run > streakMax) streakMax = run;
+  }
 
   // Estimate sessions: group messages by 30-minute gaps
   const messages = sessionsRes.data ?? [];
@@ -184,12 +191,13 @@ export async function getEngagementMetrics(userId: string): Promise<EngagementMe
   const since = thirtyDaysAgo.toISOString().slice(0, 10);
 
   const [mealsRes, messagesRes, metricsRes] = await Promise.all([
-    // Meals logged in last 30 days
+    // Meals logged in last 30 days (meal_logs carries user_id + logged_for_date; meal_log_items does not)
     supabase
-      .from('meal_log_items')
-      .select('log_date')
+      .from('meal_logs')
+      .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
-      .gte('log_date', since),
+      .eq('is_deleted', false)
+      .gte('logged_for_date', since),
 
     // User messages in last 30 days
     supabase
@@ -202,21 +210,21 @@ export async function getEngagementMetrics(userId: string): Promise<EngagementMe
     // Active days in last 30 days
     supabase
       .from('daily_metrics')
-      .select('log_date')
+      .select('date')
       .eq('user_id', userId)
-      .gte('log_date', since),
+      .gte('date', since),
   ]);
 
-  const meals = mealsRes.data ?? [];
+  const mealsCount = mealsRes.count ?? 0;
   const messages = messagesRes.data ?? [];
   const activeDays = metricsRes.data?.length ?? 1;
 
-  const avgDailyMeals = activeDays > 0 ? Math.round((meals.length / activeDays) * 10) / 10 : 0;
+  const avgDailyMeals = activeDays > 0 ? Math.round((mealsCount / activeDays) * 10) / 10 : 0;
   const avgDailyMessages = activeDays > 0 ? Math.round((messages.length / activeDays) * 10) / 10 : 0;
 
-  // Feature usage: count distinct dates per feature proxy
+  // Feature usage proxies
   const featureUsage: Record<string, number> = {
-    meal_logging: meals.length,
+    meal_logging: mealsCount,
     chat: messages.length,
     daily_tracking: activeDays,
   };

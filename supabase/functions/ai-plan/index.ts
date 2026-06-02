@@ -131,7 +131,7 @@ serve(async (req: Request) => {
     // Get profile for calorie validation and periodic state
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min, equipment_access, pregnancy_trimester')
+      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min, equipment_access, pregnancy_trimester, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length')
       .eq('id', userId).maybeSingle();
 
     // Build periodic + seasonal context
@@ -155,15 +155,21 @@ serve(async (req: Request) => {
       }
     }
 
-    // D3: Goal-based workout type emphasis
+    // D3: Goal-based workout type emphasis (mirrors strength.service.ts getGoalBasedWorkoutType)
     let goalWorkoutContext = '';
     if (activeGoal?.goal_type) {
-      if (activeGoal.goal_type === 'lose_weight') {
-        goalWorkoutContext = '\nANTRENMAN ODAGI: Hedef kilo verme — kardio ve HIIT agirlikli antrenman oner, guc calismasini tamamlayici tut.';
-      } else if (activeGoal.goal_type === 'gain_muscle') {
-        goalWorkoutContext = '\nANTRENMAN ODAGI: Hedef kas kazanimi — guc antrenmanini on plana al, kardioyu minimum tut (haftada 1-2 hafif seans).';
-      } else if (activeGoal.goal_type === 'health') {
-        goalWorkoutContext = '\nANTRENMAN ODAGI: Hedef genel saglik — karisik program: mobilite, hafif kardio ve fonksiyonel hareketler oner.';
+      const goalType = activeGoal.goal_type as string;
+      const GOAL_WORKOUT: Record<string, string> = {
+        lose_weight: 'Hedef kilo verme — kardio/HIIT agirlikli (3x kardio + 2x guc). Kas kaybini onlemek icin guc antrenmanini birakma.',
+        gain_muscle: 'Hedef kas kazanimi — guc agirlikli (4x guc + 1x hafif kardio). Progresif yuklenmeye odaklan.',
+        gain_weight: 'Hedef kilo alma — agir bilesik hareketler (squat, deadlift, bench). Kardioyu minimumda tut.',
+        health: 'Hedef genel saglik — dengeli program (2x guc + 2x kardio + 1x yoga/mobilite).',
+        conditioning: 'Hedef kondisyon — kardio ve HIIT (3x orta tempo kardio + 2x HIIT).',
+        maintain: 'Hedef bakim — mevcut formu koruyan karisik program (2x guc + 2x kardio).',
+      };
+      const focus = GOAL_WORKOUT[goalType];
+      if (focus) {
+        goalWorkoutContext = `\nANTRENMAN ODAGI: ${focus}`;
       }
     }
 
@@ -188,10 +194,10 @@ serve(async (req: Request) => {
     for (const lift of COMPOUND_LIFTS) {
       const { data: recentSets } = await supabaseAdmin
         .from('strength_sets')
-        .select('reps, logged_at')
-        .eq('user_id', userId)
-        .eq('exercise', lift)
-        .order('logged_at', { ascending: false })
+        .select('reps, created_at, workout_logs!inner(user_id)')
+        .eq('exercise_name', lift)
+        .eq('workout_logs.user_id', userId)
+        .order('created_at', { ascending: false })
         .limit(3);
       if (recentSets && recentSets.length >= 2) {
         const TARGET_REPS = 8;
@@ -236,9 +242,8 @@ serve(async (req: Request) => {
       }
     }
 
-    // D1: Sleep check — query yesterday's daily_metrics for sleep data
+    // D1: Sleep check — query yesterday's daily_metrics for sleep data (reuses `yesterday` from the diff block above)
     let sleepWarning = '';
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     const { data: yesterdaySleep } = await supabaseAdmin
       .from('daily_metrics')
       .select('sleep_hours, sleep_quality')
@@ -254,6 +259,25 @@ serve(async (req: Request) => {
         sleepWarning = `\nUYKU UYARISI: Kullanici dun ${hoursDisplay} saat uyumus (kalite: ${qualityDisplay}). Yogun antrenman ONERME, hafif aktivite/mobilite oner.`;
       }
     }
+
+    // Saved recipes context (daily plan) — mirror of weekly plan logic.
+    // Favorites + frequently used are suggested to the AI so it can prefer them
+    // when picking today's meals.
+    let savedRecipesContext = '';
+    try {
+      const { data: favRecipes } = await supabaseAdmin
+        .from('saved_recipes')
+        .select('title, total_calories, total_protein, category, prep_time_min')
+        .eq('user_id', userId)
+        .or('is_favorite.eq.true,use_count.gt.2')
+        .order('use_count', { ascending: false })
+        .limit(8);
+      if (favRecipes && favRecipes.length > 0) {
+        const lines = (favRecipes as { title: string; total_calories: number | null; total_protein: number | null; category: string | null; prep_time_min: number | null }[])
+          .map(r => `- ${r.title} (${r.total_calories ?? '?'}kcal, ${r.total_protein ?? '?'}g protein${r.category ? `, ${r.category}` : ''}${r.prep_time_min ? `, ${r.prep_time_min}dk` : ''})`);
+        savedRecipesContext = `\nKAYITLI TARIFLER (mumkunse bugunku planda tercih et):\n${lines.join('\n')}`;
+      }
+    } catch { /* non-critical */ }
 
     // Rejection context: if user rejected previous plan
     let rejectionLine = '';
@@ -430,7 +454,7 @@ serve(async (req: Request) => {
       }
     }
 
-    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${goalWorkoutContext}${sleepWarning}${strengthContext}${deloadContext}${personaContext}${cycleContext}${equipmentContext}${injuryContext}${diffContext}${plateauContext}${rejectionLine}\n\nBugunku plani olustur.`;
+    const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${goalWorkoutContext}${sleepWarning}${strengthContext}${deloadContext}${personaContext}${cycleContext}${equipmentContext}${injuryContext}${diffContext}${plateauContext}${savedRecipesContext}${rejectionLine}\n\nBugunku plani olustur.`;
 
     const plan = await chatCompletion<Record<string, unknown>>(
       [

@@ -10,20 +10,28 @@
  * Get the effective date for a log entry, considering day boundary.
  * If current time is before the boundary hour, the entry belongs to yesterday.
  */
+/** Format a Date as YYYY-MM-DD using LOCAL calendar components (not UTC). */
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function getEffectiveDate(
   currentTime: Date,
   dayBoundaryHour: number = 4 // 04:00 default
 ): string {
+  // The boundary check (getHours) and the returned date must be in the SAME
+  // (local/device) timezone. Mixing local getHours() with UTC toISOString()
+  // caused an off-by-one for late-night logs in UTC+ timezones.
   const hour = currentTime.getHours();
-
+  const d = new Date(currentTime);
   if (hour < dayBoundaryHour) {
     // Before boundary → belongs to yesterday
-    const yesterday = new Date(currentTime);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split('T')[0];
+    d.setDate(d.getDate() - 1);
   }
-
-  return currentTime.toISOString().split('T')[0];
+  return toLocalDateStr(d);
 }
 
 /**

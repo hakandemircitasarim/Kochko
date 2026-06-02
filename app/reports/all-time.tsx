@@ -39,11 +39,11 @@ export default function AllTimeReportScreen() {
       supabase.from('daily_metrics').select('weight_kg, date').eq('user_id', user.id).not('weight_kg', 'is', null).order('date').limit(1).single(),
       supabase.from('meal_logs').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_deleted', false),
       supabase.from('workout_logs').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
-      supabase.from('daily_reports').select('compliance_score, report_date').eq('user_id', user.id).order('report_date', { ascending: true }),
+      supabase.from('daily_reports').select('compliance_score, date').eq('user_id', user.id).order('date', { ascending: true }),
       supabase.from('achievements').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
     ]).then(([profileRes, firstWeightRes, mealsRes, workoutsRes, reportsRes, achievementsRes]) => {
       const profile = profileRes.data;
-      const reports = (reportsRes.data ?? []) as { compliance_score: number; report_date: string }[];
+      const reports = (reportsRes.data ?? []) as { compliance_score: number; date: string }[];
       const avgComp = reports.length > 0
         ? Math.round(reports.reduce((s, r) => s + r.compliance_score, 0) / reports.length) : 0;
 
@@ -55,8 +55,8 @@ export default function AllTimeReportScreen() {
           if (i === 0) {
             currentRun = 1;
           } else {
-            const prev = new Date(reports[i - 1].report_date).getTime();
-            const curr = new Date(reports[i].report_date).getTime();
+            const prev = new Date(reports[i - 1].date).getTime();
+            const curr = new Date(reports[i].date).getTime();
             const diffDays = Math.round((curr - prev) / 86400000);
             currentRun = diffDays === 1 ? currentRun + 1 : 1;
           }

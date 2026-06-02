@@ -20,6 +20,10 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
   const lines = csvText.split('\n').filter(l => l.trim());
   if (lines.length < 2) return { success: false, recordsImported: 0, errors: ['Veri bulunamadi.'] };
 
+  // meal_logs.user_id is NOT NULL + RLS WITH CHECK(auth.uid()=user_id)
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, recordsImported: 0, errors: ['Oturum bulunamadi.'] };
+
   // Skip header
   const dataLines = lines.slice(1);
   const errors: string[] = [];
@@ -37,6 +41,7 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
 
     // Create meal log
     const { data: log } = await supabase.from('meal_logs').insert({
+      user_id: user.id,
       raw_input: foodName,
       meal_type: mealType || 'snack',
       logged_for_date: date,
@@ -70,6 +75,10 @@ export async function importWeightsFromCSV(csvText: string): Promise<ImportResul
   const lines = csvText.split('\n').filter(l => l.trim());
   if (lines.length < 2) return { success: false, recordsImported: 0, errors: ['Veri bulunamadi.'] };
 
+  // daily_metrics.user_id is NOT NULL + RLS WITH CHECK(auth.uid()=user_id)
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, recordsImported: 0, errors: ['Oturum bulunamadi.'] };
+
   const dataLines = lines.slice(1);
   const errors: string[] = [];
   let imported = 0;
@@ -83,7 +92,7 @@ export async function importWeightsFromCSV(csvText: string): Promise<ImportResul
     if (isNaN(weight) || weight < 20 || weight > 300) { errors.push(`Gecersiz kilo: ${line}`); continue; }
 
     await supabase.from('daily_metrics').upsert(
-      { date, weight_kg: weight, water_liters: 0, synced: true },
+      { user_id: user.id, date, weight_kg: weight, water_liters: 0, synced: true },
       { onConflict: 'user_id,date' }
     );
     imported++;

@@ -24,7 +24,7 @@ import { analyzeMessage, getRetrievalPlan } from '../shared/retrieval-planner.ts
 import { buildContextFromPlan } from '../shared/context-builders.ts';
 import { selectModel } from '../shared/model-router.ts';
 import { BASE_SYSTEM_PROMPT, buildConfidenceNote } from './system-prompt.ts';
-import { detectTaskMode, getModeInstructions } from './task-modes.ts';
+import { detectTaskMode, getModeInstructions, type TaskMode } from './task-modes.ts';
 import {
   detectRepairIntent, handleUndo, buildCorrectionContext,
   shouldDetectPersona, buildPersonaDetectionPrompt, getMessageCount,
@@ -151,6 +151,13 @@ serve(async (req: Request) => {
 
     // Detect task mode (Spec 5.2)
     const taskMode = detectTaskMode(message ?? '', isOnboarding);
+    // Phase 2/3/5 plan-negotiation modes (plan_diet/plan_workout/daily_log) are driven by the
+    // client's explicit task_mode_hint — detectTaskMode can never produce them. Prefer the hint
+    // so the <plan_snapshot> contract inside getModeInstructions actually reaches the model.
+    const HINT_MODES = ['plan_diet', 'plan_workout', 'daily_log'];
+    const effectiveMode: TaskMode = (typeof task_mode_hint === 'string' && HINT_MODES.includes(task_mode_hint))
+      ? (task_mode_hint as TaskMode)
+      : taskMode;
 
     // Analyze message for subtype + risk + retrieval needs (Retrieval Planner v2)
     const analysis = analyzeMessage(message ?? '', taskMode);
@@ -160,7 +167,7 @@ serve(async (req: Request) => {
     const ctx = await buildContextFromPlan(userId, retrievalPlan, session_id);
 
     // Assemble system prompt = base + mode instructions + confidence note + persona/tone/repair context
-    const modeInstructions = getModeInstructions(taskMode);
+    const modeInstructions = getModeInstructions(effectiveMode);
     const confidenceNote = buildConfidenceNote(ctx.contextMeta);
 
     // Persona detection trigger (Spec 5.15: after 100+ messages)
@@ -210,7 +217,7 @@ serve(async (req: Request) => {
           .replace(/elimde|evde sadece|evde|dolabımda|dolapta|var|sahip oldug[ua]m|buzdolabında|ne yapabilirim|ne yapsam|tarif/g, ' ')
           .replace(/[.,;:!?]/g, ' ')
           .trim();
-        const tokens = cleaned.split(/\s+/).filter(t => t.length >= 3).slice(0, 8);
+        const tokens = cleaned.split(/\s+/).filter((t: string) => t.length >= 3).slice(0, 8);
 
         if (tokens.length > 0) {
           // Fetch all saved recipes and rank by token overlap
@@ -224,7 +231,7 @@ serve(async (req: Request) => {
             type RecipeRow = { id: string; title: string; ingredients: { name: string }[]; total_calories: number | null; total_protein: number | null; prep_time_min: number | null; servings: number };
             const scored = (savedRecipes as RecipeRow[]).map(r => {
               const names = (r.ingredients ?? []).map(i => i.name?.toLocaleLowerCase('tr') ?? '');
-              const matched = names.filter(n => tokens.some(t => n.includes(t) || t.includes(n.split(' ')[0] ?? '')));
+              const matched = names.filter((n: string) => tokens.some((t: string) => n.includes(t) || t.includes(n.split(' ')[0] ?? '')));
               const matchPct = names.length > 0 ? Math.round((matched.length / names.length) * 100) : 0;
               return { r, matchPct, matched: matched.length };
             });
@@ -732,7 +739,7 @@ serve(async (req: Request) => {
     const actionFeedback = await executeActions(userId, actions, profile?.gender, target_date, inputSource);
 
     // A8: Low confidence proactive verification — append confirmation question
-    const mealActions = actions.filter((a: { type: string }) => a.type === 'meal_log');
+    const mealActions = actions.filter((a) => (a as { type?: string }).type === 'meal_log');
     for (const mealAction of mealActions) {
       const items = mealAction.items as { name: string; portion: string; calories: number; confidence?: number }[] | undefined;
       if (items && items.length > 0) {
@@ -802,12 +809,12 @@ serve(async (req: Request) => {
     }
 
     // Async: check onboarding completion
-    if (isOnboarding && actions.some((a: { type: string }) => a.type === 'profile_update')) {
-      checkOnboardingCompletion(userId).catch(() => {});
+    if (isOnboarding && actions.some((a) => (a as { type?: string }).type === 'profile_update')) {
+      checkOnboardingCompletion(userId).then(() => {}, () => {});
     }
 
-    const outActions = actions.map((a: { type: string }, i: number) => ({
-      type: a.type,
+    const outActions = actions.map((a, i: number) => ({
+      type: (a as { type: string }).type,
       feedback: actionFeedback[i] ?? null,
     }));
     if (personaJustDetected) {
@@ -1314,7 +1321,7 @@ async function executeActions(
           }
 
           // --- Auto Meal Time Learning (Spec 5.15) ---
-          learnMealTime(userId, mealType, action.logged_at as string | undefined).catch(() => {});
+          learnMealTime(userId, mealType, action.logged_at as string | undefined).then(() => {}, () => {});
 
           // --- Caffeine Integration (Spec 5.34) ---
           if (items?.length) {
@@ -1410,7 +1417,7 @@ async function executeActions(
             );
             await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
             // T1.19: Check if TDEE recalculation needed
-            recalculateTDEEIfNeeded(userId, w).catch(() => {});
+            recalculateTDEEIfNeeded(userId, w).then(() => {}, () => {});
 
             // Creatine water retention check
             const { data: recentCreatine } = await supabaseAdmin
@@ -1531,6 +1538,16 @@ async function executeActions(
           if (action.body_fat_pct) updates.body_fat_pct = action.body_fat_pct;
           if (action.waist_cm) updates.waist_cm = action.waist_cm;
           if (action.hip_cm) updates.hip_cm = action.hip_cm;
+
+          // P2: merge disliked_foods into profiles.disliked_foods (JSONB, mig 031). Plan
+          // negotiation emits these incrementally, so we append + dedupe by item rather than overwrite.
+          if (Array.isArray(action.disliked_foods) && action.disliked_foods.length > 0) {
+            const { data: curPref } = await supabaseAdmin.from('profiles').select('disliked_foods').eq('id', userId).maybeSingle();
+            const existing = (curPref?.disliked_foods as { item?: string }[] | null) ?? [];
+            const seen = new Set(existing.map(d => (d.item ?? '').toLowerCase()));
+            const additions = (action.disliked_foods as { item?: string }[]).filter(d => d.item && !seen.has(d.item.toLowerCase()));
+            if (additions.length > 0) updates.disliked_foods = [...existing, ...additions];
+          }
 
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date().toISOString();
@@ -1891,7 +1908,7 @@ async function executeActions(
           // Store as ai_summary coaching_note so follow-up context remembers
           await updateLayer2(userId, {
             coaching_notes: `[${today}] Plateau stratejisi: ${strategyId}. ${instructions}`,
-          }).catch(() => {});
+          }).then(() => {}, () => {});
 
           feedback.push(`Plateau stratejisi uygulandi: ${strategyId}. ${instructions}`);
           break;
@@ -1914,7 +1931,7 @@ async function executeActions(
 
           await updateLayer2(userId, {
             coaching_notes: `[${today}] Bakim modu basladi. Hedef TDEE ${tdee} kcal, ${weeksNeeded} hafta boyunca haftalik +125 kcal artis.`,
-          }).catch(() => {});
+          }).then(() => {}, () => {});
 
           feedback.push(`Bakim modu aktif. ${weeksNeeded} hafta boyunca haftalik +125 kcal artirma plani — tolerans bandi ±1.5kg.`);
           break;
@@ -1947,14 +1964,22 @@ async function executeActions(
         }
         case 'goal_suggestion': {
           // Spec 6.3: User accepted AI-suggested goal — insert into goals.
-          const gType = action.goal_type as string;
+          const GOAL_TYPE_MAP: Record<string, string> = {
+            kas_kazanim: 'gain_muscle', kilo_verme: 'lose_weight', kilo_alma: 'gain_weight',
+            saglik: 'health', kondisyon: 'conditioning', bakim: 'maintain',
+          };
+          const rawType = action.goal_type as string;
+          const gType = GOAL_TYPE_MAP[rawType] ?? rawType; // normalize to DB goal_type enum
           const targetVal = action.target_value as number | null;
           const targetWeeks = (action.target_weeks as number) ?? 12;
+          const hasWeightTarget = gType === 'gain_muscle' || gType === 'lose_weight' || gType === 'gain_weight';
 
+          // Single-active-goal invariant (migration 033): deactivate current goal first.
+          await supabaseAdmin.from('goals').update({ is_active: false }).eq('user_id', userId).eq('is_active', true);
           await supabaseAdmin.from('goals').insert({
             user_id: userId,
             goal_type: gType,
-            target_weight_kg: gType === 'kas_kazanim' || gType === 'kilo_verme' ? targetVal : null,
+            target_weight_kg: hasWeightTarget ? targetVal : null,
             target_weeks: targetWeeks,
             is_active: true,
             created_at: new Date().toISOString(),
@@ -2143,7 +2168,7 @@ async function checkCaffeineIntake(
             .from('coaching_messages')
             .select('id')
             .eq('user_id', userId)
-            .eq('trigger', 'caffeine_water_bump')
+            .eq('trigger_type', 'caffeine_water_bump')
             .gte('created_at', `${today}T00:00:00`)
             .limit(1);
           if (!caffeineLogged || caffeineLogged.length === 0) {
@@ -2153,9 +2178,9 @@ async function checkCaffeineIntake(
               .eq('id', todayPlan.id);
             await supabaseAdmin.from('coaching_messages').insert({
               user_id: userId,
-              trigger: 'caffeine_water_bump',
+              trigger_type: 'caffeine_water_bump',
               priority: 'low',
-              message: `Kafein icin su hedefi +${additionalLiters}L arttirildi (${base}L → ${Math.round((base + additionalLiters) * 10) / 10}L).`,
+              content: `Kafein icin su hedefi +${additionalLiters}L arttirildi (${base}L → ${Math.round((base + additionalLiters) * 10) / 10}L).`,
             });
             warnings.push(`Kafein yuksek — su hedefini ${Math.round((base + additionalLiters) * 10) / 10}L'ye cikardim.`);
           }
@@ -2539,8 +2564,8 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
     : 'İlk TDEE hesaplamasi';
   await supabaseAdmin.from('coaching_messages').insert({
     user_id: userId,
-    trigger: 'tdee_recalculated',
+    trigger_type: 'tdee_recalculated',
     priority: 'low',
-    message: `${reason}. Yeni TDEE ${tdee} kcal, kalori araligi ${restMin}-${trainingMax} kcal, protein ${proteinG}g, su ${waterTarget}L.`,
-  }).catch(() => {});
+    content: `${reason}. Yeni TDEE ${tdee} kcal, kalori araligi ${restMin}-${trainingMax} kcal, protein ${proteinG}g, su ${waterTarget}L.`,
+  }).then(() => {}, () => {});
 }

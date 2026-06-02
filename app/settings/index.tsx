@@ -70,25 +70,36 @@ export default function SettingsScreen() {
         <Button title="Challenge'lar" variant="outline" onPress={() => router.push('/settings/challenges')} />
         <Button title="Başarımlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
         <Button title="Tarif Kütüphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
-        <Button title="Haftalık Menü" variant="outline" onPress={() => router.push('/settings/weekly-menu')} />
+        {/* Haftalık Menü & Meal Prep gated off for ship: the legacy weekly-menu path upserts
+            weekly_plans with onConflict 'user_id,week_start' (dropped in migration 030) → 42P10,
+            and getCurrentWeeklyPlan().single() → PGRST116 now that the new plan_snapshot system
+            (plan.service.ts) shares the table. Rebuild these on the new system post-ship.
+            See BITIRME_PLANI_v2.md P0#7 / P3. */}
+        {/* <Button title="Haftalık Menü" variant="outline" onPress={() => router.push('/settings/weekly-menu')} /> */}
+        {/* <Button title="Meal Prep Planı" variant="outline" onPress={() => router.push('/settings/meal-prep-plan')} /> */}
         <Button title="İlerleme Fotoğrafları" variant="outline" onPress={() => router.push('/settings/progress-photos')} />
       </View>
 
-      {/* Social */}
+      {/* Social — gated off for ship. household & coach-sharing query tables no migration
+          creates yet (households/household_members/weekly_plan_shopping and
+          coach_consents/profiles.coach_id), so the screens throw "relation does not exist"
+          on mount. Re-enable once those tables + RLS ship. See BITIRME_PLANI_v2.md P0#13. */}
+      {/*
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Sosyal</Text>
       <View style={{ gap: SPACING.sm }}>
         <Button title="Aile Planı" variant="outline" onPress={() => router.push('/settings/household')} />
         <Button title="Koç Paylaşımı" variant="outline" onPress={() => router.push('/settings/coach-sharing')} />
       </View>
+      */}
 
       {/* Preferences */}
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Tercihler</Text>
       <View style={{ gap: SPACING.sm }}>
         <Button title="Koç Tonu" variant="outline" onPress={() => router.push('/settings/coach-tone')} />
+        <Button title="Kochko'nun Senin Hakkında Bildikleri" variant="outline" onPress={() => router.push('/settings/coach-memory')} />
         <Button title="Bildirimler" variant="outline" onPress={() => router.push('/settings/notifications')} />
         <Button title="Dönemsel Durum" variant="outline" onPress={() => router.push('/settings/periodic-state')} />
         <Button title="Tema" variant="outline" onPress={() => router.push('/settings/theme')} />
-        <Button title="Premium" variant="outline" onPress={() => router.push('/settings/premium')} />
       </View>
 
       {/* Data */}

@@ -38,7 +38,7 @@ serve(async (req: Request) => {
      * Get user's current local hour based on their timezone.
      * Falls back to UTC+3 (Turkey) if no timezone set.
      */
-    function getUserLocalHour(profile: { home_timezone?: string; active_timezone?: string }): number {
+    function getUserLocalHour(profile: { home_timezone?: string | null; active_timezone?: string | null }): number {
       const tz = (profile.active_timezone ?? profile.home_timezone) as string | undefined;
       if (tz) {
         try {
@@ -107,15 +107,15 @@ serve(async (req: Request) => {
           .from('coaching_messages')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', profile.id)
-          .eq('trigger', 'snack_hour_nudge')
+          .eq('trigger_type','snack_hour_nudge')
           .gte('created_at', dayStart.toISOString());
         if ((alreadySent ?? 0) > 0) continue;
 
         await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id,
-          trigger: 'snack_hour_nudge',
+          trigger_type: 'snack_hour_nudge',
           priority: 'low',
-          message: `Saat ${match}:00 civarinda atistirma yapma egilimin var. Bir bardak su ic, 5 dakika bekle — istersen o zaman yine degerlendir.`,
+          content: `Saat ${match}:00 civarinda atistirma yapma egilimin var. Bir bardak su ic, 5 dakika bekle — istersen o zaman yine degerlendir.`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -133,7 +133,7 @@ serve(async (req: Request) => {
           .from('coaching_messages')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', profile.id)
-          .eq('trigger', 'motivation_dip')
+          .eq('trigger_type','motivation_dip')
           .gte('created_at', threeDaysAgo);
         if ((alreadySent ?? 0) > 0) continue;
 
@@ -162,9 +162,9 @@ serve(async (req: Request) => {
 
         await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id,
-          trigger: 'motivation_dip',
+          trigger_type: 'motivation_dip',
           priority: 'low',
-          message: `Son haftada biraz yavasladin — olur boyle donemler, hic sorun degil. Bugun sadece tek sey: bir sey ye ve kaydet. O kadar. Yarin devam ederiz.`,
+          content: `Son haftada biraz yavasladin — olur boyle donemler, hic sorun degil. Bugun sadece tek sey: bir sey ye ve kaydet. O kadar. Yarin devam ederiz.`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -184,7 +184,7 @@ serve(async (req: Request) => {
             .from('coaching_messages')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', profile.id)
-            .eq('trigger', 'alcohol_next_day')
+            .eq('trigger_type','alcohol_next_day')
             .gte('created_at', weekAgo);
           if ((alreadySent ?? 0) > 0) continue;
 
@@ -230,9 +230,9 @@ serve(async (req: Request) => {
 
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
-            trigger: 'alcohol_next_day',
+            trigger_type: 'alcohol_next_day',
             priority: 'low',
-            message: `Gecmiste cuma icki → cumartesi ogun atlama kalibini gorduk. Bugun kahvaltiyi atlamamaya calisalim — protein agirlikli hafif birsey yeter. Su 2 bardak.`,
+            content: `Gecmiste cuma icki → cumartesi ogun atlama kalibini gorduk. Bugun kahvaltiyi atlamamaya calisalim — protein agirlikli hafif birsey yeter. Su 2 bardak.`,
           });
           totalSent++;
 
@@ -240,7 +240,7 @@ serve(async (req: Request) => {
           await supabaseAdmin.rpc('ai_summary_merge', {
             p_user_id: profile.id,
             p_patch: { alcohol_pattern: `Cuma ickili → cumartesi ogle ogun atlama egilimi (${Math.round((satDipAfterAlcoholCount / friAlcoholCount) * 100)}% ornekte gozlendi).` },
-          }).catch(() => {});
+          }).then(() => {}, () => {});
         } catch { /* non-critical */ }
       }
     }
@@ -266,7 +266,7 @@ serve(async (req: Request) => {
             .from('coaching_messages')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', profile.id)
-            .eq('trigger', 'weekly_budget_70')
+            .eq('trigger_type','weekly_budget_70')
             .gte('created_at', thisWeekStart.toISOString());
           if ((alreadySent ?? 0) > 0) continue;
 
@@ -286,9 +286,9 @@ serve(async (req: Request) => {
           const perDay = Math.round(remaining / daysLeft);
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
-            trigger: 'weekly_budget_70',
+            trigger_type: 'weekly_budget_70',
             priority: 'medium',
-            message: `Haftalik butcenin %${Math.round(pct * 100)}'i tukendi (${consumed}/${weeklyBudget} kcal). Kalan 4 gune ${perDay} kcal/gun duserse dengede kalirsin.`,
+            content: `Haftalik butcenin %${Math.round(pct * 100)}'i tukendi (${consumed}/${weeklyBudget} kcal). Kalan 4 gune ${perDay} kcal/gun duserse dengede kalirsin.`,
           });
           totalSent++;
         } catch { /* non-critical */ }
@@ -309,7 +309,7 @@ serve(async (req: Request) => {
             .from('coaching_messages')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', profile.id)
-            .eq('trigger', 'weekend_drift')
+            .eq('trigger_type','weekend_drift')
             .gte('created_at', weekAgo);
           if ((alreadySent ?? 0) > 0) continue;
 
@@ -337,9 +337,9 @@ serve(async (req: Request) => {
 
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
-            trigger: 'weekend_drift',
+            trigger_type: 'weekend_drift',
             priority: 'medium',
-            message: `Son 4 hafta sonu ortalama %${Math.round(avgWeekend)} uyum, hafta ici %${Math.round(avgWeekday)}. Bu hafta sonu icin kucuk bir plan yapalim mi? Cuma aksami hafif yersen cumartesi ogle daha rahat olur.`,
+            content: `Son 4 hafta sonu ortalama %${Math.round(avgWeekend)} uyum, hafta ici %${Math.round(avgWeekday)}. Bu hafta sonu icin kucuk bir plan yapalim mi? Cuma aksami hafif yersen cumartesi ogle daha rahat olur.`,
           });
           totalSent++;
         } catch { /* non-critical */ }
@@ -379,7 +379,7 @@ serve(async (req: Request) => {
           .from('coaching_messages')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', profile.id)
-          .eq('trigger', `reengagement_${tier}`)
+          .eq('trigger_type',`reengagement_${tier}`)
           .gte('created_at', sixtyAgo);
         if ((alreadySent ?? 0) > 0) continue;
 
@@ -389,7 +389,7 @@ serve(async (req: Request) => {
         } else if (tier === 'medium') {
           // Reference past wins if any
           const { data: achievements } = await supabaseAdmin
-            .from('achievements').select('type').eq('user_id', profile.id).limit(3);
+            .from('achievements').select('achievement_type').eq('user_id', profile.id).limit(3);
           const winRef = (achievements?.length ?? 0) > 0 ? ` ${achievements?.length} basari kazanmisin, bunu kaybetme.` : '';
           message = `Bir haftadir konusmadik.${winRef} Tek bir ogun kaydiyla geri donebiliriz, baski yok.`;
         } else {
@@ -398,9 +398,9 @@ serve(async (req: Request) => {
 
         await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id,
-          trigger: `reengagement_${tier}`,
+          trigger_type: `reengagement_${tier}`,
           priority: tier === 'long' ? 'medium' : 'low',
-          message,
+          content: message,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -455,7 +455,7 @@ serve(async (req: Request) => {
               await supabaseAdmin.rpc('ai_summary_merge', {
                 p_user_id: profile.id,
                 p_patch: { seasonal_notes: prev ? `${prev}\n${summary}` : summary },
-              }).catch(() => {});
+              }).then(() => {}, () => {});
             }
           } catch { /* snapshot non-critical */ }
 
@@ -468,13 +468,13 @@ serve(async (req: Request) => {
           // Auto-resume paused challenges (mirrors periodic_state_update 'none')
           await supabaseAdmin.from('challenges').update({
             status: 'active', paused_at: null,
-          }).eq('user_id', profile.id).eq('status', 'paused').catch(() => {});
+          }).eq('user_id', profile.id).eq('status', 'paused').then(() => {}, () => {});
 
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
-            trigger: 'periodic_end',
+            trigger_type: 'periodic_end',
             priority: 'medium',
-            message: `${profile.periodic_state} donemin bitti. Normal plana donuyoruz — duraklatilmis challenge'lar yeniden aktif.`,
+            content: `${profile.periodic_state} donemin bitti. Normal plana donuyoruz — duraklatilmis challenge'lar yeniden aktif.`,
           });
           totalSent++;
           continue;
@@ -490,7 +490,7 @@ serve(async (req: Request) => {
             .from('coaching_messages')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', profile.id)
-            .eq('trigger', 'periodic_transition_3d')
+            .eq('trigger_type','periodic_transition_3d')
             .gte('created_at', new Date(Date.now() - 4 * 86400000).toISOString());
           if ((alreadySent ?? 0) > 0) continue;
 
@@ -509,9 +509,9 @@ serve(async (req: Request) => {
 
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
-            trigger: 'periodic_transition_3d',
+            trigger_type: 'periodic_transition_3d',
             priority: 'medium',
-            message: `${stateLabel} 3 gun sonra bitiyor. ${advice}`,
+            content: `${stateLabel} 3 gun sonra bitiyor. ${advice}`,
           });
           totalSent++;
         }
@@ -541,7 +541,7 @@ serve(async (req: Request) => {
           .from('coaching_messages')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', profile.id)
-          .in('trigger', ['habit_introduce', 'habit_stack'])
+          .in('trigger_type',['habit_introduce', 'habit_stack'])
           .gte('created_at', dayStart.toISOString());
         if ((alreadyIntroduced ?? 0) > 0) continue;
 
@@ -566,9 +566,9 @@ serve(async (req: Request) => {
 
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
-            trigger: 'habit_introduce',
+            trigger_type: 'habit_introduce',
             priority: 'medium',
-            message: `Ilk aliskanlik zamani: "${nextHabit.label}". ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Baslayalim mi? Onaylarsan 2 hafta boyunca bu tek sey odagimiz olur.`,
+            content: `Ilk aliskanlik zamani: "${nextHabit.label}". ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Baslayalim mi? Onaylarsan 2 hafta boyunca bu tek sey odagimiz olur.`,
           });
           totalSent++;
           continue;
@@ -588,9 +588,9 @@ serve(async (req: Request) => {
 
         await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id,
-          trigger: 'habit_stack',
+          trigger_type: 'habit_stack',
           priority: 'medium',
-          message: `"${latestActive.name ?? latestActive.key}" aliskanligini %${Math.round(compliance)} uyumla 2 haftadir tutturuyorsun — harika! Sira "${nextHabit.label}" aliskanligina geldi. ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Eklemek ister misin?`,
+          content: `"${latestActive.name ?? latestActive.key}" aliskanligini %${Math.round(compliance)} uyumla 2 haftadir tutturuyorsun — harika! Sira "${nextHabit.label}" aliskanligina geldi. ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Eklemek ister misin?`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -620,15 +620,15 @@ serve(async (req: Request) => {
           .from('coaching_messages')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', profile.id)
-          .eq('trigger', 'mvd_reset')
+          .eq('trigger_type','mvd_reset')
           .gte('created_at', dayAgo);
         if ((alreadySent ?? 0) > 0) continue;
 
         await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id,
-          trigger: 'mvd_reset',
+          trigger_type: 'mvd_reset',
           priority: 'low',
-          message: `Dun MVD modunu kullandin. Bugun normal plana donuyoruz — yumusak baslayalim, istersen kayitlari ben yaparim.`,
+          content: `Dun MVD modunu kullandin. Bugun normal plana donuyoruz — yumusak baslayalim, istersen kayitlari ben yaparim.`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -659,7 +659,7 @@ serve(async (req: Request) => {
           .from('coaching_messages')
           .select('id', { count: 'exact', head: true })
           .eq('user_id', profile.id)
-          .eq('trigger', 'weight_reminder')
+          .eq('trigger_type','weight_reminder')
           .gte('created_at', twoDaysAgo);
         if ((alreadySent ?? 0) > 0) continue;
 
@@ -669,9 +669,9 @@ serve(async (req: Request) => {
 
         await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id,
-          trigger: 'weight_reminder',
+          trigger_type: 'weight_reminder',
           priority: daysSince >= 14 ? 'medium' : 'low',
-          message: msg,
+          content: msg,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -704,15 +704,15 @@ serve(async (req: Request) => {
             .from('coaching_messages')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', profile.id)
-            .eq('trigger', 'deload_suggestion')
+            .eq('trigger_type','deload_suggestion')
             .gte('created_at', weekAgo);
           if ((alreadySent ?? 0) > 0) continue;
 
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
-            trigger: 'deload_suggestion',
+            trigger_type: 'deload_suggestion',
             priority: 'medium',
-            message: `5+ haftadir yogun calisiyorsun (${heavyCount} agir seans). Bu hafta deload: ayni hareketler %60-70 agirlik, dusuk set. Onaylarsan plani buna gore ayarlayalim.`,
+            content: `5+ haftadir yogun calisiyorsun (${heavyCount} agir seans). Bu hafta deload: ayni hareketler %60-70 agirlik, dusuk set. Onaylarsan plani buna gore ayarlayalim.`,
           });
           totalSent++;
         } catch { /* non-critical */ }
@@ -731,18 +731,12 @@ serve(async (req: Request) => {
 
         for (const lift of COMPOUND_LIFTS) {
           try {
-            const { data: recentSets } = await supabaseAdmin
-              .from('strength_sets')
-              .select('reps, weight_kg, created_at, workout_log_id')
-              .order('created_at', { ascending: false })
-              .limit(6);
-            if (!recentSets || recentSets.length < 2) continue;
-
-            // Filter rows by exercise name via join (exercise_name is in strength_sets directly)
+            // Scope to THIS user's sets via the workout_logs parent (strength_sets has no user_id).
             const { data: liftSets } = await supabaseAdmin
               .from('strength_sets')
-              .select('reps, weight_kg, created_at, workout_log_id, exercise_name')
+              .select('reps, weight_kg, created_at, workout_log_id, exercise_name, workout_logs!inner(user_id)')
               .eq('exercise_name', lift)
+              .eq('workout_logs.user_id', profile.id)
               .order('created_at', { ascending: false })
               .limit(6);
             if (!liftSets || liftSets.length < 2) continue;
@@ -762,9 +756,9 @@ serve(async (req: Request) => {
               const nextWeight = sessionList[0].weight + 2.5;
               await supabaseAdmin.from('coaching_messages').insert({
                 user_id: profile.id,
-                trigger: 'progressive_overload',
+                trigger_type: 'progressive_overload',
                 priority: 'medium',
-                message: `${lift}: 2 seanstir ${TARGET_REPS}+ rep tutturuyorsun. Bir sonraki seans ${sessionList[0].weight}kg -> ${nextWeight}kg deneyelim.`,
+                content: `${lift}: 2 seanstir ${TARGET_REPS}+ rep tutturuyorsun. Bir sonraki seans ${sessionList[0].weight}kg -> ${nextWeight}kg deneyelim.`,
               });
               totalSent++;
               break; // only one lift per user per Monday
@@ -1108,7 +1102,7 @@ ${maintenanceInfo}
 ${goalTempoInfo}
 ${returnFlowInfo}
 ${cycleTransitionInfo}
-${(() => {
+${await (async () => {
   // Weekend Risk (Spec 5.35) - Friday evening check
   const triggers: string[] = [];
   if (now.getDay() === 5 && hour >= 17 && hour <= 19) {
@@ -1387,8 +1381,9 @@ ${await (async () => {
       } catch { /* non-critical per user */ }
     }
 
-    // T1.38: Auto-trigger daily report for users at day boundary (Spec 8.1)
-    if (hour >= 4 && hour <= 6) {
+    // T1.38: Auto-trigger daily report for users at day boundary (Spec 8.1).
+    // Fleet-wide cron window — use the server UTC hour (per-user `hour` isn't in scope here).
+    if (utcHour >= 4 && utcHour <= 6) {
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -1417,8 +1412,8 @@ ${await (async () => {
       }
     }
 
-    // T1.38: Auto-trigger weekly report on Monday mornings
-    if (dayOfWeek === 1 && hour >= 6 && hour <= 8) {
+    // T1.38: Auto-trigger weekly report on Monday mornings (fleet-wide cron — server UTC hour).
+    if (dayOfWeek === 1 && utcHour >= 6 && utcHour <= 8) {
       for (const profile of profiles as { id: string }[]) {
         const weekStart = new Date(now);
         weekStart.setDate(weekStart.getDate() - 7);
@@ -1625,6 +1620,17 @@ function isQuietHour(quietStart: string, quietEnd: string, currentHour: number):
   return currentHour >= sH && currentHour < eH;
 }
 
+/** User's current local hour from their timezone; falls back to Turkey UTC+3. */
+function userLocalHour(activeTz: string | null, homeTz: string | null): number {
+  const tz = activeTz ?? homeTz;
+  if (tz) {
+    try {
+      return new Date(new Date().toLocaleString('en-US', { timeZone: tz })).getHours();
+    } catch { /* invalid tz, fall through */ }
+  }
+  return (new Date().getUTCHours() + 3) % 24;
+}
+
 /**
  * Spec 10.4: Re-engagement level based on days since last activity.
  */
@@ -1637,25 +1643,9 @@ function getReengagementLevel(days: number): 'none' | '3day' | '7day' | '14day' 
   return 'stopped';
 }
 
-/**
- * Check if current time falls within quiet hours.
- * Handles overnight ranges (e.g. 23:00 to 07:00).
- */
-function isQuietHour(quietStart: string, quietEnd: string): boolean {
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  const [startH, startM] = quietStart.split(':').map(Number);
-  const [endH, endM] = quietEnd.split(':').map(Number);
-  const startMinutes = startH * 60 + startM;
-  const endMinutes = endH * 60 + endM;
-
-  if (startMinutes > endMinutes) {
-    // Crosses midnight: e.g. 23:00 - 07:00
-    return currentMinutes >= startMinutes || currentMinutes < endMinutes;
-  }
-  return currentMinutes >= startMinutes && currentMinutes < endMinutes;
-}
+// (Removed duplicate 2-arg isQuietHour — the timezone-aware 3-arg version above is the single
+//  source of truth. The old 2-arg version used server UTC time and, being declared later,
+//  silently shadowed the 3-arg one so the `hour` argument at the call sites was ignored.)
 
 /**
  * Spec 10.2: Send push notification via Expo Push API.
@@ -1670,7 +1660,7 @@ async function sendPushNotification(
   // Fetch push token and notification prefs from profile
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('push_token, notification_prefs')
+    .select('push_token, notification_prefs, home_timezone, active_timezone')
     .eq('id', userId)
     .maybeSingle();
 
@@ -1681,10 +1671,11 @@ async function sendPushNotification(
   // Check if notifications are enabled
   if (prefs.enabled === false) return false;
 
-  // Check quiet hours
+  // Check quiet hours in the user's local timezone (not server UTC)
   const quietStart = (prefs.quietStart as string) ?? '23:00';
   const quietEnd = (prefs.quietEnd as string) ?? '07:00';
-  if (isQuietHour(quietStart, quietEnd)) return false;
+  const localHour = userLocalHour(profile.active_timezone as string | null, profile.home_timezone as string | null);
+  if (isQuietHour(quietStart, quietEnd, localHour)) return false;
 
   // Send via Expo Push API
   try {

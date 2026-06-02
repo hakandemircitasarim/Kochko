@@ -46,6 +46,7 @@ export async function invokePlanChat(params: {
     task_mode_hint: params.planType === 'diet' ? 'plan_diet' : 'plan_workout',
     plan_type: params.planType,
   };
+  try { body.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* tz unavailable */ }
   if (params.userApproved) body.user_approved = true;
   if (params.draftId) body.draft_id = params.draftId;
   try {
@@ -120,6 +121,11 @@ async function invokeChat(
   body: Record<string, unknown>,
   maxRetries: number = DEFAULT_MAX_RETRIES,
 ): Promise<{ data: ChatResponse | null; error: string | null }> {
+  // Attach the device IANA timezone so the server can activate travel/jet-lag mode and
+  // resolve the user's local hour (getTravelContext + active_timezone update). (P2)
+  if (body.client_timezone === undefined) {
+    try { body.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* tz unavailable */ }
+  }
   let lastError = 'Baglanti hatasi. Lutfen tekrar dene.';
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {

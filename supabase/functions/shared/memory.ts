@@ -57,7 +57,7 @@ async function buildLayer1(userId: string): Promise<string> {
   const hour = now.getHours();
   const minute = now.getMinutes().toString().padStart(2, '0');
 
-  const goals = (goalRes.data ?? []) as { goal_type: string; target_weight_kg: number; priority: string; phase_label: string; weekly_rate: number }[];
+  const goals = (goalRes.data ?? []) as { goal_type: string; target_weight_kg: number; priority: string; phase_label: string; weekly_rate: number; created_at: string; target_weeks: number | null }[];
   const prefs = (prefsRes.data ?? []) as { food_name: string; preference: string; is_allergen: boolean; allergen_severity: string | null }[];
   const health = (healthRes.data ?? []) as { event_type: string; description: string; is_ongoing: boolean }[];
 
@@ -587,7 +587,7 @@ export async function analyzeLateMealSleep(userId: string): Promise<void> {
   if (diff < 0.5) return; // no meaningful correlation
 
   const note = `Gec yemek (21:00+) → uyku kalitesi gozleminde ortalama ${avgLate.toFixed(1)}sa vs erken yemek gunlerinde ${avgEarly.toFixed(1)}sa (fark ${diff.toFixed(1)}sa).`;
-  await updateLayer2(userId, { caffeine_sleep_notes: note }).catch(() => {});
+  await updateLayer2(userId, { caffeine_sleep_notes: note }).then(() => {}, () => {});
 }
 
 /**
@@ -637,10 +637,10 @@ export async function calibrateActivityMultiplier(userId: string): Promise<void>
   // Mismatch ≥2 tiers — propose
   await supabaseAdmin.from('coaching_messages').insert({
     user_id: userId,
-    trigger: 'activity_level_recalibrated',
+    trigger_type: 'activity_level_recalibrated',
     priority: 'low',
-    message: `Profilinde aktivite: ${declared}, son 4 haftaya bakınca: ${observedLevel} (${Math.round(avgSteps)} adim/gun, ${workoutsPerWeek.toFixed(1)} seans/hafta). Aktivite seviyeni ${observedLevel} yapayim mi? Kalori hedefin bu degisime gore guncellenir.`,
-  }).catch(() => {});
+    content: `Profilinde aktivite: ${declared}, son 4 haftaya bakınca: ${observedLevel} (${Math.round(avgSteps)} adim/gun, ${workoutsPerWeek.toFixed(1)} seans/hafta). Aktivite seviyeni ${observedLevel} yapayim mi? Kalori hedefin bu degisime gore guncellenir.`,
+  }).then(() => {}, () => {});
 }
 
 /**
@@ -679,7 +679,7 @@ export async function detectSnackingHours(userId: string): Promise<void> {
 
   await updateLayer2(userId, {
     snacking_hours: top.map(t => t.hour),
-  }).catch(() => {});
+  }).then(() => {}, () => {});
 }
 
 /**

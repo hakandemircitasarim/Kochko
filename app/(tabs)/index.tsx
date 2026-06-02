@@ -47,7 +47,11 @@ export default function TodayScreen() {
   const [returnStatus, setReturnStatus] = useState<ReturnStatus | null>(null);
 
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
-  const waterTarget = (profile?.water_target_liters ?? 2.5) as number;
+  // Prefer dynamic water target from dashboard store (respects today's training
+  // day + summer adjustment via calculateWaterTarget). Profile value is a static
+  // user preference / fallback.
+  const storeWaterTarget = useDashboardStore(s => s.waterTarget);
+  const waterTarget = storeWaterTarget || ((profile?.water_target_liters ?? 2.5) as number);
   const ifActive = !!profile?.if_active;
   const ifEatingStart = profile?.if_eating_start as string | null;
   const ifEatingEnd = profile?.if_eating_end as string | null;
@@ -109,7 +113,6 @@ export default function TodayScreen() {
       { user_id: user.id, date, weight_kg: w, synced: true },
       { onConflict: 'user_id,date' }
     );
-    await supabase.from('weight_logs').insert({ user_id: user.id, weight_kg: w, logged_at: new Date().toISOString() });
     setShowWeightInput(false);
     setWeightInput('');
     refresh();
@@ -246,7 +249,7 @@ export default function TodayScreen() {
               onTap={(msg) => {
                 markMessageRead(msg.id);
                 setCoachingMessages(prev => prev.filter(m => m.id !== msg.id));
-                router.push({ pathname: '/(tabs)/chat', params: { prefill: msg.message } });
+                router.push({ pathname: '/(tabs)/chat', params: { prefill: msg.content } });
               }}
             />
           </View>

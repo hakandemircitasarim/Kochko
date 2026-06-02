@@ -45,6 +45,19 @@ export default function NotificationsScreen() {
     if (userId) updateNotificationPrefs(userId, updated);
   };
 
+  // P3: persist daily-limit + quiet-hours (previously only setPrefs, never saved server-side).
+  const persist = (updated: NotificationPreferences) => {
+    setPrefs(updated);
+    if (userId) updateNotificationPrefs(userId, updated);
+  };
+  const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
+  const updateQuiet = (key: 'quietStart' | 'quietEnd', value: string) => {
+    const updated = { ...prefs, [key]: value };
+    setPrefs(updated);
+    // Persist (and reschedule) only once a full HH:MM is typed, to avoid thrashing per keystroke.
+    if (userId && TIME_RE.test(value)) updateNotificationPrefs(userId, updated);
+  };
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Bildirimler</Text>
@@ -67,7 +80,7 @@ export default function NotificationsScreen() {
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Günde en fazla kaç bildirim almak istiyorsun?</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               {[3, 5, 7, 10].map(n => (
-                <TouchableOpacity key={n} onPress={() => { setPrefs(p => p ? { ...p, dailyLimit: n } : p); }}
+                <TouchableOpacity key={n} onPress={() => persist({ ...prefs, dailyLimit: n })}
                   style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center',
                     backgroundColor: prefs.dailyLimit === n ? COLORS.primary : COLORS.surfaceLight,
                     borderWidth: 1, borderColor: prefs.dailyLimit === n ? COLORS.primary : COLORS.border }}>
@@ -81,8 +94,8 @@ export default function NotificationsScreen() {
           <Card title="Sessiz Saatler">
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Bu saatler arasında bildirim gönderilmez.</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.md }}>
-              <View style={{ flex: 1 }}><Input label="Başlangıç" value={prefs.quietStart} onChangeText={v => setPrefs(p => p ? { ...p, quietStart: v } : p)} placeholder="23:00" /></View>
-              <View style={{ flex: 1 }}><Input label="Bitiş" value={prefs.quietEnd} onChangeText={v => setPrefs(p => p ? { ...p, quietEnd: v } : p)} placeholder="07:00" /></View>
+              <View style={{ flex: 1 }}><Input label="Başlangıç" value={prefs.quietStart} onChangeText={v => updateQuiet('quietStart', v)} placeholder="23:00" /></View>
+              <View style={{ flex: 1 }}><Input label="Bitiş" value={prefs.quietEnd} onChangeText={v => updateQuiet('quietEnd', v)} placeholder="07:00" /></View>
             </View>
           </Card>
 

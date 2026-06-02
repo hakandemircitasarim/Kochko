@@ -50,9 +50,23 @@ export async function addPhase(
     .eq('user_id', userId)
     .order('phase_order', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
   const nextOrder = ((existing?.phase_order as number) ?? 0) + 1;
+
+  // Snapshot current weight as the phase start weight — GoalProgressWidget needs it to
+  // compute tempo/percent (without it, progress shows 0% / "Durmus").
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('weight_kg')
+    .eq('id', userId)
+    .maybeSingle();
+  const startWeight = (profile?.weight_kg as number | null) ?? null;
+
+  // Derive weekly_rate from the real target/timeline instead of a hardcoded 0.5.
+  const weeklyRate = targetWeight && startWeight && targetWeeks > 0
+    ? Math.round((Math.abs(startWeight - targetWeight) / targetWeeks) * 100) / 100
+    : targetWeight ? 0.5 : null;
 
   await supabase.from('goals').insert({
     user_id: userId,
@@ -64,7 +78,8 @@ export async function addPhase(
     is_active: nextOrder === 1, // only first phase is active initially
     priority: 'sustainable',
     restriction_mode: 'sustainable',
-    weekly_rate: targetWeight ? 0.5 : null,
+    start_weight_kg: startWeight,
+    weekly_rate: weeklyRate,
   });
 }
 

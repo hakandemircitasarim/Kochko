@@ -161,6 +161,28 @@ export function validatePlanOutput(output: Record<string, unknown>): ValidationR
     }
   }
 
+  // Protein equal-distribution check (Spec 7.1 — "Proteini ogunlere esit dagit")
+  // Meal-count agnostic: looks at first option per meal, flags if any meal is
+  // <60% or >160% of the per-meal target. Snacks are excluded from the balance
+  // (they are ≤10% of daily protein by design).
+  if (Array.isArray(output.meal_suggestions) && typeof output.protein_target_g === 'number' && (output.protein_target_g as number) > 0) {
+    const mainMeals = (output.meal_suggestions as { meal_type?: string; options: { protein_g?: number }[] }[])
+      .filter(m => m.meal_type !== 'snack' && m.options && m.options.length > 0);
+    if (mainMeals.length >= 2) {
+      const perMealTarget = (output.protein_target_g as number) / mainMeals.length;
+      const imbalanced: string[] = [];
+      for (const meal of mainMeals) {
+        const p = meal.options[0].protein_g ?? 0;
+        if (p < perMealTarget * 0.6 || p > perMealTarget * 1.6) {
+          imbalanced.push(`${meal.meal_type ?? '?'}: ${Math.round(p)}g`);
+        }
+      }
+      if (imbalanced.length > 0) {
+        errors.push(`Protein dagilimi dengesiz (${Math.round(perMealTarget)}g/ogun hedef): ${imbalanced.join(', ')}`);
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors, corrected: output };
 }
 

@@ -67,9 +67,19 @@ export default function QuickLogScreen() {
     setLoading(true);
     try {
       const { error } = await sendMessage(text.trim());
-      if (error) Alert.alert('Hata', error);
+      if (error) Alert.alert('Kayıt eklenemedi', error);
       else { await fetchToday(user.id); router.back(); }
-    } catch { Alert.alert('Hata', 'Bir sorun oluştu.'); }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'Bilinmeyen hata';
+      Alert.alert(
+        'Kayıt eklenemedi',
+        `İnternet bağlantını kontrol et ve tekrar dene.\n\nDetay: ${detail}`,
+        [
+          { text: 'Kapat', style: 'cancel' },
+          { text: 'Tekrar dene', onPress: () => { void handleLog(); } },
+        ],
+      );
+    }
     finally { submittingRef.current = false; setLoading(false); }
   };
 
@@ -96,9 +106,15 @@ export default function QuickLogScreen() {
         if (user?.id) await fetchToday(user.id);
         setTimeout(() => { router.back(); }, 1500);
       } else {
-        setBarcodeResult('Ürün bulunamadı. Koçuna yazarak bildir.');
+        setBarcodeResult('Ürün veritabanında bulunamadı. "Yazarak gir" ile manuel kaydedebilirsin.');
       }
-    } catch { setBarcodeResult('Barkod okunamadı.'); }
+    } catch (err) {
+      console.warn('[log] barcode lookup failed', err);
+      const isOffline = err instanceof Error && /network|fetch/i.test(err.message);
+      setBarcodeResult(isOffline
+        ? 'İnternet bağlantısı yok. Çevrimdışına alınan barkodlar otomatik eklenir veya "Yazarak gir" ile manuel kaydedebilirsin.'
+        : 'Barkod okunamadı. Kamerayı temiz tut ve barkodu net göster, veya "Yazarak gir" ile manuel kaydet.');
+    }
     finally { submittingRef.current = false; setBarcodeLoading(false); }
   };
 
@@ -162,7 +178,6 @@ export default function QuickLogScreen() {
         { onConflict: 'user_id,date' }
       );
       if (metricsErr) throw metricsErr;
-      await supabase.from('weight_logs').insert({ user_id: user.id, weight_kg: w, logged_at: new Date().toISOString() });
       await fetchToday(user.id);
       showSuccessAndClose('Kilo kaydedildi!');
     } catch {

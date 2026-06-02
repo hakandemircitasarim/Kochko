@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { calculateGoalProgress, type GoalProgress } from '@/lib/goal-progress';
+import { calculateWaterTarget } from '@/lib/tdee';
 import type { Goal } from '@/types/database';
 
 interface MealEntry {
@@ -31,6 +32,7 @@ interface TodayState {
   workouts: WorkoutEntry[];
   weightKg: number | null;
   waterLiters: number;
+  waterTarget: number;          // Dynamic: from today's plan, or computed from weight/training/season
   sleepHours: number | null;
   sleepTime: string | null;   // U4: "HH:MM" yatis saati
   wakeTime: string | null;    // U4: "HH:MM" kalkis saati
@@ -59,6 +61,7 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   workouts: [],
   weightKg: null,
   waterLiters: 0,
+  waterTarget: 2.5,
   sleepHours: null,
   sleepTime: null,
   wakeTime: null,
@@ -85,11 +88,11 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         .eq('user_id', userId).eq('logged_for_date', date).order('logged_at'),
       supabase.from('daily_metrics').select('*')
         .eq('user_id', userId).eq('date', date).maybeSingle(),
-      supabase.from('daily_plans').select('focus_message, weekly_budget_remaining')
+      supabase.from('daily_plans').select('focus_message, weekly_budget_remaining, water_target_liters, plan_type')
         .eq('user_id', userId).eq('date', date).order('version', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('goals').select('*')
         .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).maybeSingle(),
-      supabase.from('profiles').select('weight_kg')
+      supabase.from('profiles').select('weight_kg, water_target_liters')
         .eq('id', userId).maybeSingle(),
     ]);
 
@@ -126,11 +129,23 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
     const totalFat = meals.reduce((s, m) => s + m.fat_g, 0);
     const metrics = metricsRes.data;
 
+    // Water target: prefer today's plan (dynamic per training day/season) →
+    // fallback to profile static → last resort compute from weight+date.
+    const planWater = (planRes.data?.water_target_liters as number | null) ?? null;
+    const profileWater = (profileRes.data?.water_target_liters as number | null) ?? null;
+    const weight = (profileRes.data?.weight_kg as number | null) ?? null;
+    const isTrainingDay = (planRes.data?.plan_type as string | undefined) === 'training';
+    const month = new Date().getMonth() + 1;
+    const isSummer = month >= 6 && month <= 8;
+    const computedWater = weight ? calculateWaterTarget(weight, isTrainingDay, isSummer) : 2.5;
+    const waterTarget = planWater ?? profileWater ?? computedWater;
+
     set({
       meals,
       workouts: (workoutsRes.data ?? []) as WorkoutEntry[],
       weightKg: metrics?.weight_kg ?? null,
       waterLiters: metrics?.water_liters ?? 0,
+      waterTarget,
       sleepHours: metrics?.sleep_hours ?? null,
       sleepTime: metrics?.sleep_time ?? null,
       wakeTime: metrics?.wake_time ?? null,

@@ -56,7 +56,7 @@ serve(async () => {
           // Delete storage object if ref looks like a path/url
           if (ref) {
             const path = ref.includes('/') ? ref.split(STORAGE_BUCKET + '/')[1] ?? ref : ref;
-            await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([path]).catch(() => {});
+            await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([path]).then(() => {}, () => {});
           }
           // Delete DB row for progress_photos if target_table points there
           if (row.target_table === 'progress_photos' && row.target_id) {
@@ -65,7 +65,7 @@ serve(async () => {
         } else if (type === 'export') {
           if (ref) {
             const path = ref.includes('/') ? ref.split(STORAGE_BUCKET + '/')[1] ?? ref : ref;
-            await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([path]).catch(() => {});
+            await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([path]).then(() => {}, () => {});
           }
         } else if (type === 'temp_data' && row.target_table && row.target_id) {
           await supabaseAdmin.from(row.target_table).delete().eq('id', row.target_id);
@@ -81,7 +81,7 @@ serve(async () => {
         await supabaseAdmin
           .from('scheduled_cleanups')
           .update({ status: 'failed', executed_at: now, metadata: { error: (err as Error).message } })
-          .eq('id', row.id).catch(() => {});
+          .eq('id', row.id).then(() => {}, () => {});
         failed++;
       }
     }

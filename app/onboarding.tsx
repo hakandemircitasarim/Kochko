@@ -13,6 +13,7 @@ import { detectTimezone } from '@/lib/timezone';
 import { startTrialIfEligible } from '@/services/subscription.service';
 import { loadOnboardingDraft, saveOnboardingDraft, clearOnboardingDraft, type OnboardingDraft } from '@/services/onboarding-draft.service';
 import type { GoalType, ActivityLevel, Gender } from '@/types/database';
+import { calculateBMR, calculateTDEE, calculateTargets } from '@/lib/tdee';
 
 const { width } = Dimensions.get('window');
 
@@ -214,15 +215,34 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
         return;
       }
 
-      // 2. Update profile (only after goal succeeds)
+      // 2. Update profile (only after goal succeeds). Compute TDEE + calorie/macro targets here
+      //    so the dashboard shows real numbers on first run instead of zeros. Birth year isn't
+      //    collected in onboarding yet, so assume age 30; the AI refines TDEE once real weight/
+      //    activity data arrives (Spec 2.4).
+      const heightNum = parseInt(heightCm);
+      const bmr = calculateBMR(w, heightNum, 30, gender as Gender);
+      const tdee = calculateTDEE(bmr, activity as ActivityLevel);
+      const targets = calculateTargets({
+        tdee, goalType: goalType as GoalType, restrictionMode: 'sustainable',
+        weeksSinceStart: 0, complianceAvg: 0, weightKg: w, gender: gender as Gender,
+        macroPct: { protein: 30, carb: 40, fat: 30 },
+      });
       const tz = detectTimezone();
       await update(user.id, {
-        height_cm: parseInt(heightCm),
-        weight_kg: parseFloat(weightKg),
+        height_cm: heightNum,
+        weight_kg: w,
         gender: gender as Gender,
         activity_level: activity as ActivityLevel,
         home_timezone: tz,
         active_timezone: tz,
+        tdee_calculated: tdee,
+        calorie_range_training_min: targets.trainingDay.min,
+        calorie_range_training_max: targets.trainingDay.max,
+        calorie_range_rest_min: targets.restDay.min,
+        calorie_range_rest_max: targets.restDay.max,
+        weekly_calorie_budget: targets.weeklyBudget,
+        protein_per_kg: Math.round((targets.proteinG / w) * 100) / 100,
+        protein_target_g: targets.proteinG,
         onboarding_completed: true,
       } as never);
 

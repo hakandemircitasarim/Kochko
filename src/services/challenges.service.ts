@@ -46,7 +46,10 @@ export async function startChallenge(
     throw new Error('En fazla 2 aktif challenge olabilir.');
   }
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Oturum bulunamadi.');
   await supabase.from('challenges').insert({
+    user_id: user.id,
     title, description, challenge_type: type, target, status: 'active', progress: [],
   });
 }

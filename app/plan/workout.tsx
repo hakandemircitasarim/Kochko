@@ -209,8 +209,12 @@ export default function WorkoutPlanScreen() {
     if (error || !data?.plan_approved) {
       let reason = error ?? 'Plan onaylanamadi. Yeni bir taslak olustur ve tekrar dene.';
       const persistErr = data?.plan_persist_error;
-      if (persistErr?.includes('plan_type mismatch')) {
+      if (persistErr?.startsWith('allergen_violation')) {
+        reason = 'Bu plan alerjen listenle cakisiyor. Kocuna tekrar yazip plani yenileyelim.';
+      } else if (persistErr?.includes('plan_type mismatch')) {
         reason = 'Plan turu uyusmadi. Koc ekranindan tekrar dene.';
+      } else if (persistErr?.startsWith('injury_violation')) {
+        reason = 'Bu plan sakatlik bildirimlerinle cakisan egzersizler iceriyor. Yeniden olusturalim.';
       } else if (persistErr) {
         reason = `Plan kaydedilemedi: ${persistErr}`;
       }

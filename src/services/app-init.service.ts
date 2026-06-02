@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
-import { initializeNotifications, savePushToken } from '@/services/notifications.service';
+import { initializeNotifications, savePushToken, scheduleNotificationsOnStartup } from '@/services/notifications.service';
 import { checkAndRunBackup } from '@/services/auto-backup.service';
 import { registerSession, heartbeatSession, isSessionStillValid } from '@/services/realtime-sync.service';
 import { getWidgetData, serializeForNativeWidget } from '@/services/widget.service';
@@ -21,6 +21,7 @@ async function initNotificationsAndSession(userId: string) {
   try {
     const token = await initializeNotifications();
     if (token) savePushToken(userId, token);
+    await scheduleNotificationsOnStartup(userId).catch(() => {});
     const deviceInfo = `${Device.modelName ?? 'Unknown'} · ${Device.osName ?? ''} ${Device.osVersion ?? ''}`.trim();
     await registerSession(deviceInfo, token ?? null);
   } catch (err) {

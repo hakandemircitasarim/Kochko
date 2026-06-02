@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getRecipes, deleteRecipe, updateRecipe, scaleRecipe, suggestSubstitution, type SavedRecipe } from '@/services/recipes.service';
+import { getRecipes, deleteRecipe, updateRecipe, scaleRecipe, suggestSubstitution, toggleFavorite, incrementUseCount, getRecipesByIngredients, type SavedRecipe } from '@/services/recipes.service';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -26,6 +26,9 @@ export default function RecipesScreen() {
   const [scalingServings, setScalingServings] = useState<Record<string, number>>({});
   // D10: Substitution state
   const [substitutions, setSubstitutions] = useState<Record<string, { replacement: string; note_tr: string }[]>>({});
+  // P1#10: "Elimde sunlar var" ingredient match
+  const [ingredientQuery, setIngredientQuery] = useState('');
+  const [ingredientMatches, setIngredientMatches] = useState<{ recipe: SavedRecipe; matchPercent: number }[] | null>(null);
 
   useEffect(() => { load(); }, [filter]);
   const load = () => getRecipes(filter ?? undefined).then(setRecipes);
@@ -81,6 +84,28 @@ export default function RecipesScreen() {
     setSubstitutions(prev => ({ ...prev, [`${recipeId}:${ingredientName}`]: subs }));
   };
 
+  // P1#2: Favorite toggle + "cooked it" use-count (feeds ai-plan's saved-recipe preference query)
+  const handleToggleFavorite = async (r: SavedRecipe) => {
+    const next = !(r.is_favorite ?? false);
+    setRecipes(prev => prev.map(x => x.id === r.id ? { ...x, is_favorite: next } : x));
+    await toggleFavorite(r.id, r.is_favorite ?? false);
+  };
+
+  const handleCooked = async (r: SavedRecipe) => {
+    setRecipes(prev => prev.map(x => x.id === r.id ? { ...x, use_count: (x.use_count ?? 0) + 1 } : x));
+    await incrementUseCount(r.id);
+    Alert.alert('Isaretlendi', `"${r.title}" kullanildi olarak kaydedildi. Koc haftalik plan yaparken sik kullandigin tarifleri tercih eder.`);
+  };
+
+  // P1#10: "Elimde sunlar var" — match saved recipes to available ingredients
+  const handleIngredientSearch = async () => {
+    const items = ingredientQuery.split(',').map(s => s.trim()).filter(Boolean);
+    if (items.length === 0) { setIngredientMatches(null); load(); return; }
+    const matches = await getRecipesByIngredients(items);
+    setIngredientMatches(matches);
+    setRecipes(matches.map(m => m.recipe));
+  };
+
   // Get display recipe (scaled or original)
   const getDisplayRecipe = (r: SavedRecipe): SavedRecipe => scaledRecipes[r.id] ?? r;
 
@@ -102,6 +127,25 @@ export default function RecipesScreen() {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* P1#10: "Elimde sunlar var" ingredient match */}
+      <View style={{ flexDirection: 'row', gap: SPACING.xs, marginBottom: SPACING.md }}>
+        <TextInput
+          style={[inputStyle, { flex: 1 }]}
+          value={ingredientQuery}
+          onChangeText={setIngredientQuery}
+          placeholder="Elimde: tavuk, pirinc, brokoli"
+          placeholderTextColor={COLORS.textMuted}
+        />
+        <TouchableOpacity onPress={handleIngredientSearch} style={{ paddingHorizontal: SPACING.md, justifyContent: 'center', borderRadius: 8, backgroundColor: COLORS.primary }}>
+          <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Ara</Text>
+        </TouchableOpacity>
+      </View>
+      {ingredientMatches !== null && (
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+          {ingredientMatches.length > 0 ? `${ingredientMatches.length} tarif eslesti (en az %50 malzeme).` : 'Eslesen tarif yok. Kocundan bu malzemelerle tarif iste.'}
+        </Text>
+      )}
 
       {recipes.length === 0 ? (
         <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henuz kayitli tarif yok. Kocundan tarif iste ve "Kaydet" de.</Text></Card>
@@ -158,6 +202,9 @@ export default function RecipesScreen() {
                         {r.category && <Text style={{ color: COLORS.primary, fontSize: FONT.xs }}>{CAT_LABELS[r.category] ?? r.category}</Text>}
                       </View>
                     </View>
+                    <TouchableOpacity onPress={() => handleToggleFavorite(r)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ paddingHorizontal: SPACING.xs }}>
+                      <Text style={{ fontSize: 18, color: r.is_favorite ? '#EF9F27' : COLORS.textMuted }}>{r.is_favorite ? '★' : '☆'}</Text>
+                    </TouchableOpacity>
                     <Text style={{ color: COLORS.textMuted, fontSize: FONT.md }}>{expanded === r.id ? '-' : '+'}</Text>
                   </View>
 
@@ -220,9 +267,14 @@ export default function RecipesScreen() {
                       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.md, marginBottom: SPACING.xs }}>YAPILISI</Text>
                       <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 22 }}>{display.instructions}</Text>
                       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>{display.servings} porsiyon</Text>
-                      <TouchableOpacity onPress={() => startEdit(r)} style={{ marginTop: SPACING.sm, paddingVertical: SPACING.xs, alignSelf: 'flex-start' }}>
-                        <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>Duzenle</Text>
-                      </TouchableOpacity>
+                      <View style={{ flexDirection: 'row', gap: SPACING.lg, marginTop: SPACING.sm }}>
+                        <TouchableOpacity onPress={() => startEdit(r)} style={{ paddingVertical: SPACING.xs }}>
+                          <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>Duzenle</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleCooked(r)} style={{ paddingVertical: SPACING.xs }}>
+                          <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600' }}>Pisirdim ✓</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                     );
                   })()}

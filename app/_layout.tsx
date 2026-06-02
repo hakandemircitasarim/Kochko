@@ -8,12 +8,17 @@ import { installGlobalErrorHandlers } from '@/services/error-handler.service';
 import { safeGetString, safeSetString } from '@/lib/safe-storage';
 import { ThemeContext, DARK_COLORS, LIGHT_COLORS, type ThemeMode } from '@/lib/theme';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { OfflineBanner } from '@/components/common/OfflineBanner';
+import { initSentry } from '@/lib/sentry';
 
 const THEME_KEY = '@kochko_theme_mode';
 
 // Install at module load, before any render happens, so rejections fired
 // during component mount are also captured.
 installGlobalErrorHandlers();
+
+// Initialize Sentry once at module load. No-op if DSN is unset.
+void initSentry();
 
 export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
@@ -50,6 +55,7 @@ export default function RootLayout() {
     <ErrorBoundary>
     <ThemeContext.Provider value={themeValue}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+      <OfflineBanner />
       <Stack screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,

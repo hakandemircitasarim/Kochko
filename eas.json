@@ -1,0 +1,45 @@
+{
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "development",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR-DEV-PROJECT.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOi..."
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": { "simulator": false, "resourceClass": "m-medium" },
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR-BETA-PROJECT.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOi..."
+      }
+    },
+    "production": {
+      "channel": "production",
+      "ios": { "resourceClass": "m-medium" },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR-PROD-PROJECT.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOi..."
+      }
+    }
+  },
+  "submit": {
+    "preview": {
+      "ios": { "appleId": "YOUR_APPLE_ID_HERE", "ascAppId": "YOUR_ASC_APP_ID", "appleTeamId": "YOUR_TEAM_ID" },
+      "android": { "serviceAccountKeyPath": "./play-service-account.json", "track": "internal" }
+    },
+    "production": {
+      "ios": { "appleId": "YOUR_APPLE_ID_HERE", "ascAppId": "YOUR_ASC_APP_ID", "appleTeamId": "YOUR_TEAM_ID" },
+      "android": { "serviceAccountKeyPath": "./play-service-account.json", "track": "production" }
+    }
+  }
+}

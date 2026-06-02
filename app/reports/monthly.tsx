@@ -96,9 +96,11 @@ export default function MonthlyReportScreen() {
     ? Math.round(weeklyReports.reduce((s, r) => s + (r.avg_compliance as number ?? 0), 0) / weeklyReports.length)
     : 0;
 
-  const firstWeight: number | null = (weeklyReports[0]?.weight_start as number) ?? null;
-  const lastWeight: number | null = (weeklyReports[weeklyReports.length - 1]?.weight_end as number) ?? null;
-  const weightChange: number | null = firstWeight && lastWeight ? lastWeight - firstWeight : null;
+  // weekly_reports has no weight_start/weight_end columns — derive month-boundary weights from
+  // the daily_metrics weights already loaded (weightData is ascending by date).
+  const firstWeight: number | null = weightData.length > 0 ? weightData[0].value : null;
+  const lastWeight: number | null = weightData.length > 0 ? weightData[weightData.length - 1].value : null;
+  const weightChange: number | null = firstWeight !== null && lastWeight !== null ? lastWeight - firstWeight : null;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
@@ -238,7 +240,6 @@ export default function MonthlyReportScreen() {
           <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.sm, borderBottomWidth: i < weeklyReports.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{wr.week_start as string}</Text>
             <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '600' }}>%{wr.avg_compliance as number ?? 0}</Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>{wr.weight_end ? `${wr.weight_end}kg` : '-'}</Text>
           </View>
         ))}
         {weeklyReports.length === 0 && (

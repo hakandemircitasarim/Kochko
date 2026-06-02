@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { Link, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function RegisterScreen() {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -43,7 +45,16 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: SPACING.lg }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          padding: SPACING.lg,
+          paddingTop: SPACING.lg + insets.top,
+          paddingBottom: SPACING.lg + insets.bottom,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
           <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary }}>Kochko</Text>
           <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary }}>Hesap Oluştur</Text>

@@ -7,6 +7,7 @@
  * default where unhandled rejections are only visible in a dev console.
  */
 import { trackEvent } from './analytics.service';
+import { reportError } from '@/lib/sentry';
 
 type RejectionTracking = {
   enable: (opts: {
@@ -38,6 +39,7 @@ export function installGlobalErrorHandlers(): void {
         stack: e?.stack,
         is_fatal: !!isFatal,
       });
+      reportError(err, { source: 'global_handler', isFatal: !!isFatal });
       previous?.(err, isFatal);
     });
   }
@@ -57,6 +59,7 @@ export function installGlobalErrorHandlers(): void {
           message: e?.message ?? String(error),
           stack: e?.stack,
         });
+        reportError(error, { source: 'unhandled_rejection', rejection_id: id });
         if (__DEV__) console.warn('[UnhandledRejection]', id, error);
       },
       onHandled: () => { /* ignore late-handled rejections */ },

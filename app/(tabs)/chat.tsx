@@ -54,10 +54,21 @@ export default function SessionListScreen() {
           if (prefill) params.prefill = prefill;
           if (openCamera) params.openCamera = openCamera;
           router.replace({ pathname: `/chat/${id}`, params });
+        } else {
+          // createSession returned null — surface to user so they aren't stuck on empty view
+          Alert.alert(
+            'Sohbet başlatılamadı',
+            'İnternet bağlantını kontrol et ve tekrar dene.',
+            [{ text: 'Tamam', onPress: () => setPrefillHandled(false) }],
+          );
         }
       }).catch((err) => {
         console.warn('Chat session creation failed:', err);
-        setPrefillHandled(false); // retry on next render
+        Alert.alert(
+          'Sohbet başlatılamadı',
+          err instanceof Error ? err.message : 'Bilinmeyen hata. Tekrar dene.',
+          [{ text: 'Tamam', onPress: () => setPrefillHandled(false) }],
+        );
       });
     }
   }, [prefill, openCamera, prefillHandled]);
@@ -70,7 +81,9 @@ export default function SessionListScreen() {
     let incompleteTasks: OnboardingTask[] = [];
     try {
       incompleteTasks = await getIncompleteTasks(user.id);
-    } catch { /* migration may not be applied yet */ }
+    } catch (err) {
+      console.warn('[chat] onboarding tasks load failed (migration may be pending):', err);
+    }
     setTasks(incompleteTasks);
 
     const data = await loadSessions();

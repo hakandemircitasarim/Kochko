@@ -13,10 +13,7 @@ import type {
   ContextMeta, DataConfidence,
 } from './retrieval-planner.ts';
 
-// Approximate: 1 token ~ 3.5 Turkish characters
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 3.5);
-}
+// (estimateTokens is declared once below, near LAYER4_TOKEN_BUDGET, to avoid a duplicate.)
 
 // ─── Public Interface ───
 
@@ -285,7 +282,7 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
     const patterns = s.behavioral_patterns as Record<string, unknown>[] | null;
     if (patterns && patterns.length > 0) {
       // Score-based filtering: prioritize high confidence, recent, high impact
-      const scored = patterns.map(p => ({
+      const scored = patterns.map((p): Record<string, unknown> & { score: number } => ({
         ...p,
         score: computePatternScore(p),
       })).sort((a, b) => b.score - a.score);
@@ -432,7 +429,7 @@ async function buildLayer3Scoped(userId: string, plan: RetrievalPlan): Promise<s
   const startDate = new Date(Date.now() - daysBack * 86400000).toISOString().split('T')[0];
 
   // Parallel fetch only what's needed
-  const queries: Record<string, Promise<{ data: unknown[] | null }>> = {};
+  const queries: Record<string, PromiseLike<{ data: unknown[] | null }>> = {};
 
   if (scope.includes('meals')) {
     queries.meals = supabaseAdmin.from('meal_logs')

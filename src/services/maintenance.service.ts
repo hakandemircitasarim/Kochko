@@ -142,10 +142,10 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
     ? reverseDiet.targetCalories
     : tdee;
 
-  if (reverseDiet && !reverseDiet.isComplete) {
-    writeReverseDietToPlan(userId, reverseDiet).catch(() => {});
-  }
-
+  // Reverse-diet ramp is owned server-side: ai-proactive bumps profiles.calorie_range_rest_*
+  // by +125 kcal/week (Mondays), which ai-plan then reads into the daily plan. We only COMPUTE
+  // reverseDiet here for the status message — writing daily_plans here too would double-apply the
+  // ramp against the server profile ramp (P4 single-source-of-truth). See writeReverseDietToPlan.
   let message: string;
   if (reverseDiet && !reverseDiet.isComplete) {
     message = `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal (TDEE'ye haftalik +${REVERSE_DIET_WEEKLY_INCREASE} kcal artis)`;

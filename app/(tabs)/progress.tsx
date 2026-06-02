@@ -129,6 +129,8 @@ export default function ProgressScreen() {
       calorie_range_rest_max: miniCutCalories + 100,
     }).eq('id', user.id);
 
+    // Single-active-goal invariant (migration 033): deactivate the current goal first.
+    await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
     await supabase.from('goals').insert({
       user_id: user.id,
       goal_type: 'lose_weight',

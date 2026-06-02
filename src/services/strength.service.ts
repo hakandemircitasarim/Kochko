@@ -79,13 +79,30 @@ export async function getExerciseHistory(
   const latest = history[history.length - 1];
   const estimated = estimate1RM(latest.weight_kg, latest.reps);
 
+  // Count weeks since most recent deload (low-weight session, < 60% of max).
+  // Fallback: weeks elapsed since first training session in window.
+  const maxWeight = Math.max(...history.map(h => h.weight_kg));
+  const deloadThreshold = maxWeight * 0.6;
+  let lastDeloadDate: string | null = null;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].weight_kg <= deloadThreshold) {
+      lastDeloadDate = history[i].date;
+      break;
+    }
+  }
+  const anchorDate = lastDeloadDate ?? history[0].date;
+  const weeksSinceDeload = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(anchorDate).getTime()) / (7 * 86400000)),
+  );
+
   return {
     exercise: exerciseName,
     estimated1RM: estimated,
     lastWeight: latest.weight_kg,
     lastReps: latest.reps,
     history,
-    weeksSinceDeload: history.length, // simplified
+    weeksSinceDeload,
   };
 }
 

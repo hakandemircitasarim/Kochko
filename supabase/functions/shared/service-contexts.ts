@@ -714,7 +714,7 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
       await supabaseAdmin.from('profiles').update({
         active_timezone: clientTimezone,
         timezone_changed_at: new Date().toISOString(),
-      }).eq('id', userId).catch(() => {});
+      }).eq('id', userId).then(() => {}, () => {});
     }
 
     if (clientTimezone === homeTimezone) return '';

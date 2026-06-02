@@ -342,12 +342,17 @@ Gunluk Uyum: ${dailyReports.map((r: { date: string; compliance_score: number }) 
     report.avg_compliance = Math.max(0, Math.min(100, Math.round(report.avg_compliance)));
   }
 
+  // monthly_reports.trend_direction CHECK accepts the Turkish set (migration 036).
+  // Guard against AI drift so a stray value can't silently fail the whole upsert.
+  const VALID_TRENDS = ['yukselis', 'dusus', 'stabil'];
+  const trendDir = VALID_TRENDS.includes(report.trend_direction as string) ? (report.trend_direction as string) : 'stabil';
+
   await supabaseAdmin.from('monthly_reports').upsert({
     user_id: userId,
     month_start: msStr,
     avg_compliance: report.avg_compliance ?? avgCompliance,
     weight_change_kg: report.weight_change_kg ?? weightChange,
-    trend_direction: report.trend_direction,
+    trend_direction: trendDir,
     monthly_summary: report.monthly_summary,
     risk_signals: report.risk_signals,
     behavioral_patterns: report.behavioral_patterns,
@@ -383,11 +388,14 @@ async function generateAllTimeReport(userId: string) {
       .eq('user_id', userId)
       .gte('compliance_score', 70)
       .order('date'),
+    // strength_sets has no user_id/logged_for_date — scope via the workout_logs FK and order by
+    // weight so the first row per exercise is that exercise's heaviest set (lifetime PR).
     supabaseAdmin.from('strength_sets')
-      .select('exercise_name, weight_kg, reps')
-      .eq('user_id', userId)
-      .order('logged_for_date', { ascending: false })
-      .limit(50),
+      .select('exercise_name, weight_kg, reps, workout_logs!inner(user_id)')
+      .eq('workout_logs.user_id', userId)
+      .not('weight_kg', 'is', null)
+      .order('weight_kg', { ascending: false })
+      .limit(200),
   ]);
 
   const reports = (dailyRes.data ?? []) as { date: string; compliance_score: number }[];
@@ -421,6 +429,16 @@ async function generateAllTimeReport(userId: string) {
   const firstDate = reports.length > 0 ? reports[0].date : null;
   const daysSinceStart = firstDate ? Math.floor((Date.now() - new Date(firstDate).getTime()) / 86400000) : 0;
 
+  // Lifetime strength PRs: heaviest set per exercise (rows already ordered by weight desc).
+  const strengthSets = (strengthRes.data ?? []) as { exercise_name: string; weight_kg: number | null; reps: number }[];
+  const bestLifts: { exercise: string; weight_kg: number; reps: number }[] = [];
+  const seenLifts = new Set<string>();
+  for (const s of strengthSets) {
+    if (s.weight_kg == null || seenLifts.has(s.exercise_name)) continue;
+    seenLifts.add(s.exercise_name);
+    bestLifts.push({ exercise: s.exercise_name, weight_kg: s.weight_kg, reps: s.reps });
+  }
+
   const allTimeReport = {
     total_days_tracked: totalDays,
     days_since_start: daysSinceStart,
@@ -431,6 +449,7 @@ async function generateAllTimeReport(userId: string) {
     longest_streak: maxStreak,
     goals_completed: goals.filter(g => !g.is_active).length,
     goals_active: goals.filter(g => g.is_active).length,
+    best_lifts: bestLifts.slice(0, 5),
     weight_journey: weights.length > 10
       ? weights.filter((_, i) => i % Math.ceil(weights.length / 10) === 0).map(w => ({ date: w.date, kg: w.weight_kg }))
       : weights.map(w => ({ date: w.date, kg: w.weight_kg })),

@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAchievements, type Achievement } from '@/services/achievements.service';
 import { shareMilestone } from '@/services/sharing.service';
+import { shareMilestoneCard, type MilestoneCardData } from '@/services/share-card.service';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
@@ -11,6 +12,19 @@ const TYPE_ICONS: Record<string, string> = {
   streak_7: '7', streak_30: '30', streak_100: '100', pr: 'PR',
   maintenance_1m: 'M1', maintenance_3m: 'M3', maintenance_6m: 'M6',
 };
+
+// P1#8: map an achievement to a shareable 1080x1920 card (share-card.service).
+function achievementToCard(a: Achievement): MilestoneCardData {
+  const t = a.achievement_type;
+  const sub = a.description ?? undefined;
+  if (t.startsWith('streak_')) {
+    return { title: a.title, subtitle: sub, value: `${t.replace('streak_', '')} gün`, theme: 'streak' };
+  }
+  if (t === 'first_kg' || t === 'five_kg' || t === 'half_goal' || t === 'goal_reached') {
+    return { title: a.title, subtitle: sub, theme: 'success' };
+  }
+  return { title: a.title, subtitle: sub, theme: 'milestone' };
+}
 
 export default function AchievementsScreen() {
   const insets = useSafeAreaInsets();
@@ -44,7 +58,7 @@ export default function AchievementsScreen() {
                 </Text>
                 {/* D17: Share button */}
                 <TouchableOpacity
-                  onPress={() => shareMilestone(a.title, a.description ?? '')}
+                  onPress={async () => { const ok = await shareMilestoneCard(achievementToCard(a)); if (!ok) shareMilestone(a.title, a.description ?? ''); }}
                   style={{
                     paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: 8,
                     backgroundColor: COLORS.primary + '15', borderWidth: 1, borderColor: COLORS.primary + '40',
