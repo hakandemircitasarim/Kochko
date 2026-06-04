@@ -76,7 +76,7 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
     // 4. Today's plan for focus message (latest version; daily_plans keys on `date`)
     supabase
       .from('daily_plans')
-      .select('focus_message')
+      .select('focus_message, calorie_target_min, calorie_target_max')
       .eq('user_id', userId)
       .eq('date', today)
       .order('version', { ascending: false })
@@ -103,9 +103,16 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
 
   // Extract profile data
   const profile = profileRes.data;
-  const calorieTarget = profile
-    ? Math.round(((profile.calorie_range_training_min ?? 1800) + (profile.calorie_range_training_max ?? 2200)) / 2)
-    : 2000;
+  // Prefer today's plan target (projected from the active chat plan into daily_plans);
+  // fall back to the profile training band only when there's no plan row — the old
+  // code always used the training band, ignoring the plan and rest days.
+  const planCalMin = planRes.data?.calorie_target_min as number | null | undefined;
+  const planCalMax = planRes.data?.calorie_target_max as number | null | undefined;
+  const calorieTarget = (planCalMin != null && planCalMax != null)
+    ? Math.round((planCalMin + planCalMax) / 2)
+    : profile
+      ? Math.round(((profile.calorie_range_training_min ?? 1800) + (profile.calorie_range_training_max ?? 2200)) / 2)
+      : 2000;
   const proteinTarget = profile && profile.protein_per_kg && profile.weight_kg
     ? Math.round(profile.protein_per_kg * profile.weight_kg)
     : 120;

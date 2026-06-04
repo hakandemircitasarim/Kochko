@@ -1922,28 +1922,9 @@ async function executeActions(
           feedback.push(pfMessages.length > 0 ? pfMessages.join('\n') : null);
           break;
         }
-        case 'strength_log': {
-          // T3.24: Parse strength sets from chat (e.g., "bench press 4x8 70kg")
-          // First create a workout_log, then attach strength_sets to it
-          const sets = action.sets as { exercise: string; set_number: number; reps: number; weight_kg: number }[] | undefined;
-          if (sets?.length) {
-            const { data: wlog } = await supabaseAdmin.from('workout_logs').insert({
-              user_id: userId, raw_input: action.raw as string ?? 'strength',
-              workout_type: 'strength', duration_min: sets.length * 3,
-              intensity: 'moderate', logged_for_date: today,
-            }).select('id').maybeSingle();
-            if (wlog?.id) {
-              await supabaseAdmin.from('strength_sets').insert(
-                sets.map(s => ({
-                  workout_log_id: wlog.id, exercise_name: s.exercise,
-                  set_number: s.set_number, reps: s.reps, weight_kg: s.weight_kg,
-                }))
-              );
-            }
-            feedback.push(`Guc kaydi: ${sets.length} set kaydedildi`);
-          }
-          break;
-        }
+        // NOTE: strength logging is handled by the `workout_log` action (it parses
+        // action.strength_sets into the strength_sets table). The old dead `strength_log`
+        // case (action.sets) was never emitted by any prompt and was removed in cleanup.
         case 'save_recipe': {
           // T3.6: Save recipe from AI chat to recipe library
           const recipe = action as Record<string, unknown>;

@@ -357,7 +357,7 @@ Her adim 1-2 cumle, teknik ama samimi.
 
 ### ONAY ("Onayla ve kaydet" butonu)
 Client user_approved: true sinyali ile gelir. Kisa bir kapanis cumlesi yaz:
-"Plan hazir. Iyi sanslar!" yeterli. Ayrica <plan_finalize>{}</plan_finalize> emit etsen bile sunucu zaten aktif hale getiriyor.
+"Plan hazir. Iyi sanslar!" yeterli. Onayi client user_approved sinyali yapar; ekstra bir blok emit etmene gerek yok.
 
 ### KESIN YASAKLAR
 - "Kaydettim", "Planini guncelledim", "Degisiklikleri kaydettim" gibi SOZLU onaylar YASAK. UI zaten yeni snapshoti gosteriyor.
@@ -456,7 +456,7 @@ ZORUNLU: 7 gun, dinlenme gunleri rest_day: true ile isaretli. Aktif gunlerde foc
 Her adim 1-2 cumle.
 
 ### ONAY
-Kisa kapanis + opsiyonel <plan_finalize>{}.
+Kisa kapanis cumlesi. Onayi client user_approved sinyali yapar.
 
 ### KESIN YASAKLAR
 - "Kaydettim" / "Planini guncelledim" YASAK.
