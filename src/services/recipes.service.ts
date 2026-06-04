@@ -49,16 +49,19 @@ export async function getRecipes(category?: string): Promise<SavedRecipe[]> {
 }
 
 export async function saveRecipe(recipe: Omit<SavedRecipe, 'id' | 'created_at'>): Promise<void> {
-  await supabase.from('saved_recipes').insert(recipe);
+  const { error } = await supabase.from('saved_recipes').insert(recipe);
+  if (error) throw new Error(error.message);
 }
 
 export async function deleteRecipe(id: string): Promise<void> {
-  await supabase.from('saved_recipes').delete().eq('id', id);
+  const { error } = await supabase.from('saved_recipes').delete().eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 export async function updateRecipe(recipeId: string, updates: Partial<SavedRecipe>): Promise<void> {
   const { id, created_at, ...rest } = updates as Record<string, unknown>;
-  await supabase.from('saved_recipes').update(rest).eq('id', recipeId);
+  const { error } = await supabase.from('saved_recipes').update(rest).eq('id', recipeId);
+  if (error) throw new Error(error.message);
 }
 
 // ─── Search & Filter ───
@@ -149,7 +152,8 @@ function scaleAmount(amount: string, factor: number): string {
 // ─── Favorites ───
 
 export async function toggleFavorite(recipeId: string, isFavorite: boolean): Promise<void> {
-  await supabase.from('saved_recipes').update({ is_favorite: !isFavorite }).eq('id', recipeId);
+  const { error } = await supabase.from('saved_recipes').update({ is_favorite: !isFavorite }).eq('id', recipeId);
+  if (error) throw new Error(error.message);
 }
 
 export async function getFavorites(): Promise<SavedRecipe[]> {
@@ -165,9 +169,11 @@ export async function getPopularRecipes(limit = 10): Promise<SavedRecipe[]> {
 }
 
 export async function incrementUseCount(recipeId: string): Promise<void> {
-  const { data } = await supabase.from('saved_recipes').select('use_count').eq('id', recipeId).single();
+  const { data, error: selectError } = await supabase.from('saved_recipes').select('use_count').eq('id', recipeId).single();
+  if (selectError) throw new Error(selectError.message);
   const current = (data?.use_count as number) ?? 0;
-  await supabase.from('saved_recipes').update({ use_count: current + 1 }).eq('id', recipeId);
+  const { error } = await supabase.from('saved_recipes').update({ use_count: current + 1 }).eq('id', recipeId);
+  if (error) throw new Error(error.message);
 }
 
 // ─── Allergen Check ───

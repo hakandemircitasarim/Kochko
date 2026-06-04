@@ -108,7 +108,6 @@ export interface PlanRow {
   user_revisions: Revision[];
   approval_snapshot: Record<string, unknown> | null;
   superseded_by: string | null;
-  created_at: string;
   generated_at: string;
 }
 

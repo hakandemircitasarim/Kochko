@@ -34,14 +34,16 @@ export default function FoodPreferencesScreen() {
 
   const handleAdd = async () => {
     if (!user?.id || !newFood.trim()) return;
-    await supabase.from('food_preferences').upsert({
+    const { error } = await supabase.from('food_preferences').upsert({
       user_id: user.id, food_name: newFood.trim().toLowerCase(), preference: newPref, is_allergen: isAllergen,
     }, { onConflict: 'user_id,food_name' });
+    if (error) { Alert.alert('Kaydedilemedi', error.message ?? 'Bir hata oluştu, tekrar dene.'); return; }
     setNewFood(''); setIsAllergen(false); load();
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from('food_preferences').delete().eq('id', id);
+    const { error } = await supabase.from('food_preferences').delete().eq('id', id);
+    if (error) { Alert.alert('Silinemedi', error.message ?? 'Bir hata oluştu, tekrar dene.'); return; }
     setItems(prev => prev.filter(i => i.id !== id));
   };
 

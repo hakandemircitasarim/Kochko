@@ -171,10 +171,11 @@ export async function updateMenstrualSettings(
   cycleLength?: number,
   lastPeriodStart?: string
 ): Promise<void> {
-  await supabase.from('profiles').update({
+  const { error } = await supabase.from('profiles').update({
     menstrual_tracking: tracking,
     menstrual_cycle_length: cycleLength ?? null,
     menstrual_last_period_start: lastPeriodStart ?? null,
     updated_at: new Date().toISOString(),
-  }).eq('id', userId);
+  } as never).eq('id', userId);
+  if (error) throw new Error(error.message);
 }

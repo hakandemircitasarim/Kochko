@@ -123,11 +123,15 @@ export async function savePushToken(userId: string, token: string): Promise<void
 }
 
 export async function getNotificationPrefs(userId: string): Promise<NotificationPreferences> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('profiles')
     .select('notification_prefs')
     .eq('id', userId)
     .single();
+
+  if (error) {
+    console.warn('getNotificationPrefs read failed, using defaults:', error.message);
+  }
 
   if (data?.notification_prefs) {
     return { ...DEFAULT_PREFS, ...data.notification_prefs as Partial<NotificationPreferences> };
@@ -138,14 +142,19 @@ export async function getNotificationPrefs(userId: string): Promise<Notification
 export async function updateNotificationPrefs(
   userId: string,
   prefs: Partial<NotificationPreferences>
-): Promise<void> {
+): Promise<boolean> {
   const current = await getNotificationPrefs(userId);
   const updated = { ...current, ...prefs };
 
-  await supabase.from('profiles').update({
+  const { error } = await supabase.from('profiles').update({
     notification_prefs: updated,
     updated_at: new Date().toISOString(),
   }).eq('id', userId);
+
+  if (error) {
+    console.error('updateNotificationPrefs error:', error.message);
+    return false; // do not reschedule when the prefs were not persisted
+  }
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -165,6 +174,7 @@ export async function updateNotificationPrefs(
   const sleepTime = (profile as Record<string, unknown> | null)?.sleep_time as string | null;
 
   await scheduleLocalNotifications(updated, ifProfile, workoutDays, userId, sleepTime);
+  return true;
 }
 
 /**

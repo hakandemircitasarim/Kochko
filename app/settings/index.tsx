@@ -26,10 +26,14 @@ export default function SettingsScreen() {
             // Both columns set: deletion_requested_at drives the hard-delete cron;
             // deleted_at is the legacy soft-delete flag still read elsewhere in the app.
             const now = new Date().toISOString();
-            await supabase.from('profiles').update({
+            const { data, error } = await supabase.from('profiles').update({
               deletion_requested_at: now,
               deleted_at: now,
-            }).eq('id', user.id);
+            }).eq('id', user.id).select('id');
+            if (error || !data || data.length === 0) {
+              Alert.alert('Hata', 'Hesabın silinmek üzere işaretlenemedi. Lütfen tekrar dene.');
+              return; // do NOT sign out
+            }
             await signOut();
           }
         }},

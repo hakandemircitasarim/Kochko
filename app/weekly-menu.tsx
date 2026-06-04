@@ -67,9 +67,13 @@ export default function WeeklyMenuScreen() {
   const handleApprove = async () => {
     if (!plan) return;
     setApproving(true);
-    await approveWeeklyPlan(plan.id);
-    setPlan({ ...plan, approved_at: new Date().toISOString() });
+    const { error } = await approveWeeklyPlan(plan.id);
     setApproving(false);
+    if (error) {
+      Alert.alert('Hata', 'Menü onaylanamadı, tekrar dene.');
+      return;
+    }
+    setPlan({ ...plan, approved_at: new Date().toISOString() });
   };
 
   const handleRequestModification = async () => {

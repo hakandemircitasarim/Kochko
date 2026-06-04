@@ -15,10 +15,13 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 interface ProgressPhoto {
   id: string;
-  photo_uri: string;
+  user_id: string;
+  storage_path: string;
   pose_type: string;
-  taken_at: string;
-  notes: string | null;
+  angle: string | null;
+  photo_date: string;
+  note: string | null;
+  created_at: string;
 }
 
 const POSE_TYPES = ['on', 'yan', 'arka'];
@@ -35,8 +38,9 @@ export default function ProgressPhotosScreen() {
   useEffect(() => {
     if (!user?.id) return;
     supabase.from('progress_photos').select('*').eq('user_id', user.id)
-      .order('taken_at', { ascending: false })
-      .then(({ data }) => {
+      .order('created_at', { ascending: false })
+      .then(({ data, error }) => {
+        if (error) console.warn('progress_photos load failed', error);
         setPhotos((data ?? []) as ProgressPhoto[]);
         setLoading(false);
       });
@@ -72,16 +76,19 @@ export default function ProgressPhotosScreen() {
 
   const savePhoto = async (uri: string) => {
     if (!user?.id) return;
-    // Store locally - photos are NOT sent to AI (Spec 3.1)
-    const newPhoto: Omit<ProgressPhoto, 'id'> & { user_id: string } = {
+    // Store locally - photos are NOT sent to AI (Spec 3.1).
+    // storage_path holds the on-device URI; nothing is uploaded to cloud/AI.
+    const { data, error } = await supabase.from('progress_photos').insert({
       user_id: user.id,
-      photo_uri: uri,
+      storage_path: uri,
       pose_type: selectedPose,
-      taken_at: new Date().toISOString(),
-      notes: null,
-    };
-
-    const { data } = await supabase.from('progress_photos').insert(newPhoto).select('*').single();
+      photo_date: new Date().toISOString().slice(0, 10),
+      note: null,
+    }).select('*').single();
+    if (error) {
+      Alert.alert('Kaydedilemedi', error.message);
+      return;
+    }
     if (data) setPhotos(prev => [data as ProgressPhoto, ...prev]);
   };
 
@@ -97,7 +104,7 @@ export default function ProgressPhotosScreen() {
 
   // Group by date for timeline
   const grouped = photos.reduce<Record<string, ProgressPhoto[]>>((acc, p) => {
-    const date = p.taken_at.split('T')[0];
+    const date = p.photo_date.split('T')[0];
     (acc[date] ??= []).push(p);
     return acc;
   }, {});
@@ -106,7 +113,7 @@ export default function ProgressPhotosScreen() {
   const comparisonPhotos = useMemo(() => {
     const posePhotos = photos
       .filter(p => p.pose_type === selectedPose)
-      .sort((a, b) => new Date(a.taken_at).getTime() - new Date(b.taken_at).getTime());
+      .sort((a, b) => new Date(a.photo_date).getTime() - new Date(b.photo_date).getTime());
     if (posePhotos.length < 2) return null;
     return { earliest: posePhotos[0], latest: posePhotos[posePhotos.length - 1] };
   }, [photos, selectedPose]);
@@ -163,16 +170,16 @@ export default function ProgressPhotosScreen() {
           {comparisonPhotos && (
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               <View style={{ width: comparisonWidth }}>
-                <Image source={{ uri: comparisonPhotos.earliest.photo_uri }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} />
+                <Image source={{ uri: comparisonPhotos.earliest.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} />
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
-                  {new Date(comparisonPhotos.earliest.taken_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {new Date(comparisonPhotos.earliest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </Text>
                 <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Baslangic</Text>
               </View>
               <View style={{ width: comparisonWidth }}>
-                <Image source={{ uri: comparisonPhotos.latest.photo_uri }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} />
+                <Image source={{ uri: comparisonPhotos.latest.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} />
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
-                  {new Date(comparisonPhotos.latest.taken_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {new Date(comparisonPhotos.latest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </Text>
                 <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Guncel</Text>
               </View>
@@ -194,7 +201,7 @@ export default function ProgressPhotosScreen() {
             {datePhotos.map(photo => (
               <TouchableOpacity key={photo.id} onLongPress={() => deletePhoto(photo.id)}
                 style={{ width: (screenWidth - SPACING.md * 2 - SPACING.sm * 2) / 3, borderRadius: 8, overflow: 'hidden' }}>
-                <Image source={{ uri: photo.photo_uri }} style={{ width: '100%', aspectRatio: 3 / 4 }} />
+                <Image source={{ uri: photo.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4 }} />
                 <Text style={{ color: COLORS.textMuted, fontSize: 9, textAlign: 'center', marginTop: 2, textTransform: 'capitalize' }}>{photo.pose_type}</Text>
               </TouchableOpacity>
             ))}

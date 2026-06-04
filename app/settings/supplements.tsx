@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTodaySupplements, logSupplement, type SupplementLog } from '@/services/supplements.service';
 import { Button } from '@/components/ui/Button';
@@ -27,13 +27,15 @@ export default function SupplementsScreen() {
   useEffect(() => { getTodaySupplements().then(setLogs); }, []);
 
   const handleQuickAdd = async (name: string, amount: string) => {
-    await logSupplement(name, amount);
+    const { error } = await logSupplement(name, amount);
+    if (error) { Alert.alert('Kaydedilemedi', error); return; }
     getTodaySupplements().then(setLogs);
   };
 
   const handleCustomAdd = async () => {
     if (!customName.trim()) return;
-    await logSupplement(customName.trim(), customAmount.trim() || '1');
+    const { error } = await logSupplement(customName.trim(), customAmount.trim() || '1');
+    if (error) { Alert.alert('Kaydedilemedi', error); return; }
     setCustomName(''); setCustomAmount('');
     getTodaySupplements().then(setLogs);
   };

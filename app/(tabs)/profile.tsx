@@ -31,6 +31,7 @@ export default function ProfileScreen() {
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [streak, setStreak] = useState(0);
   const [goal, setGoal] = useState<{ goal_type: string; target_weight_kg: number | null } | null>(null);
+  const [allergens, setAllergens] = useState<string[]>([]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -43,6 +44,13 @@ export default function ProfileScreen() {
         if (!cancelled) {
           const row = (data as { goal_type: string; target_weight_kg: number | null }[] | null)?.[0] ?? null;
           setGoal(row);
+        }
+      });
+    supabase.from('food_preferences').select('food_name').eq('user_id', user.id).eq('is_allergen', true)
+      .then(({ data }) => {
+        if (!cancelled) {
+          const names = (data as { food_name: string }[] | null)?.map((r) => r.food_name) ?? [];
+          setAllergens(names);
         }
       });
     return () => { cancelled = true; };
@@ -91,7 +99,7 @@ export default function ProfileScreen() {
         <MenuRow icon="chatbubble-outline" color={colors.primary} label="Koç iletişim tonu" value={{ balanced: 'Dengeli', strict: 'Sıkı', friendly: 'Arkadaşça', motivating: 'Motive edici' }[(profile?.coach_tone as string) ?? 'balanced'] ?? (profile?.coach_tone as string) ?? 'Dengeli'} onPress={() => router.push('/settings/coach-tone')} colors={colors} />
         <MenuRow icon="timer-outline" color={colors.purple} label="IF penceresi" value={profile?.if_eating_start ? `${profile.if_eating_start}-${profile.if_eating_end}` : 'Kapalı'} onPress={() => router.push('/settings/if-settings')} colors={colors} />
         <MenuRow icon="time-outline" color={colors.textSecondary} label="Gün dönümü" value={`${(profile?.day_boundary_hour as number) ?? 4}:00`} onPress={() => router.push('/settings/day-boundary')} colors={colors} />
-        <MenuRow icon="restaurant-outline" color={colors.fat} label="Alerjenler" value={(profile?.food_allergies as string) || 'Yok'} onPress={() => router.push('/settings/food-preferences')} colors={colors} />
+        <MenuRow icon="restaurant-outline" color={colors.fat} label="Alerjenler" value={allergens.length ? allergens.join(', ') : 'Yok'} onPress={() => router.push('/settings/food-preferences')} colors={colors} />
         <MenuRow icon="calendar-outline" color={colors.pink} label="Dönemsel durum" value={(profile?.periodic_state as string) ?? 'Normal'} onPress={() => router.push('/settings/periodic-state')} colors={colors} last />
       </View>
 

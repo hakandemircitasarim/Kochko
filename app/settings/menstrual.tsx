@@ -36,10 +36,14 @@ export default function MenstrualScreen() {
 
   const handleSave = async () => {
     if (!user?.id) return;
-    await updateMenstrualSettings(user.id, tracking, parseInt(cycleLength) || 28, lastPeriod || undefined);
-    Alert.alert('Kaydedildi', tracking ? 'Dongü takibi aktif.' : 'Dongü takibi kapatildi.', [
-      { text: 'Tamam', onPress: () => router.back() },
-    ]);
+    try {
+      await updateMenstrualSettings(user.id, tracking, parseInt(cycleLength) || 28, lastPeriod || undefined);
+      Alert.alert('Kaydedildi', tracking ? 'Dongü takibi aktif.' : 'Dongü takibi kapatildi.', [
+        { text: 'Tamam', onPress: () => router.back() },
+      ]);
+    } catch (e) {
+      Alert.alert('Hata', 'Ayarlar kaydedilemedi. Lutfen tekrar deneyin.');
+    }
   };
 
   return (

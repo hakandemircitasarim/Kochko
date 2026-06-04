@@ -14,14 +14,17 @@ export default function WeeklyMenuScreen() {
   const [plan, setPlan] = useState<WeeklyPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'menu' | 'shopping'>('menu');
 
   useEffect(() => { getCurrentWeeklyPlan().then(p => { setPlan(p); setLoading(false); }); }, []);
 
   const handleGenerate = async () => {
     setGenerating(true);
-    const { data } = await generateWeeklyPlan();
-    if (data) setPlan(data);
+    setError(null);
+    const { data, error } = await generateWeeklyPlan();
+    if (error) setError('Menu olusturulamadi: ' + error);
+    else if (data) setPlan(data);
     setGenerating(false);
   };
 
@@ -44,6 +47,7 @@ export default function WeeklyMenuScreen() {
       {!plan ? (
         <Card>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Haftalik menu henuz olusturulmamis.</Text>
+          {error && <Text style={{ color: COLORS.error, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{error}</Text>}
           <Button title="Menu Olustur" onPress={handleGenerate} loading={generating} size="lg" />
         </Card>
       ) : (
@@ -102,6 +106,7 @@ export default function WeeklyMenuScreen() {
             </>
           )}
 
+          {error && <Text style={{ color: COLORS.error, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{error}</Text>}
           <Button title="Menuyu Yeniden Olustur" variant="outline" onPress={handleGenerate} loading={generating} />
         </>
       )}

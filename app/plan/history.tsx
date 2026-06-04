@@ -172,7 +172,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
       onPress={() => setExpanded(e => !e)}
       activeOpacity={0.85}
       accessibilityRole="button"
-      accessibilityLabel={`${formatDate(row.created_at)} planı, ${reasonLabel}`}
+      accessibilityLabel={`${formatDate(row.generated_at)} planı, ${reasonLabel}`}
       style={{
         backgroundColor: colors.card,
         borderRadius: RADIUS.lg,
@@ -187,7 +187,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
-            {formatDate(row.created_at)}
+            {formatDate(row.generated_at)}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
             {summary}

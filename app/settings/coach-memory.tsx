@@ -48,6 +48,7 @@ export default function CoachMemoryScreen() {
   const [loading, setLoading] = useState(true);
   const [menstrualTracking, setMenstrualTracking] = useState(false);
   const [activeGoal, setActiveGoal] = useState<{ goal_type?: string; target_weight_kg?: number; weekly_rate?: number } | null>(null);
+  const [allergens, setAllergens] = useState<string[]>([]);
 
   const cardStyle = {
     backgroundColor: colors.card, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.md,
@@ -58,16 +59,18 @@ export default function CoachMemoryScreen() {
     if (!user?.id) return;
     setLoading(true);
 
-    // Fetch AI summary + profile menstrual_tracking + active goal in parallel
-    const [result, profileResult, goalResult] = await Promise.all([
+    // Fetch AI summary + profile menstrual_tracking + active goal + allergens in parallel
+    const [result, profileResult, goalResult, allergenResult] = await Promise.all([
       getAISummaryForReview(user.id),
       supabase.from('profiles').select('menstrual_tracking').eq('id', user.id).maybeSingle(),
       supabase.from('goals').select('goal_type, target_weight_kg, weekly_rate').eq('user_id', user.id).eq('is_active', true).limit(1),
+      supabase.from('food_preferences').select('food_name').eq('user_id', user.id).eq('is_allergen', true),
     ]);
 
     setData(result);
     setMenstrualTracking(Boolean(profileResult.data?.menstrual_tracking));
     setActiveGoal((goalResult.data as { goal_type?: string; target_weight_kg?: number; weekly_rate?: number }[] | null)?.[0] ?? null);
+    setAllergens(((allergenResult.data as { food_name: string }[] | null) ?? []).map(a => a.food_name));
     // Make sure profile store is loaded too
     if (!profile) await fetchProfile(user.id);
 
@@ -195,7 +198,7 @@ export default function CoachMemoryScreen() {
   if (profile?.if_active && profile?.if_eating_start && profile?.if_eating_end) {
     profileRows.push({ label: 'IF penceresi', value: `${profile.if_eating_start}-${profile.if_eating_end}` });
   }
-  if (profile?.food_allergies) profileRows.push({ label: 'Alerjenler', value: String(profile.food_allergies) });
+  if (allergens.length) profileRows.push({ label: 'Alerjenler', value: allergens.join(', ') });
   if (profile?.periodic_state) profileRows.push({ label: 'Dönemsel durum', value: String(profile.periodic_state) });
 
   const isEmpty = isAiEmpty && profileRows.length === 0;

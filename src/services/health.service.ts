@@ -25,7 +25,9 @@ export async function getHealthEvents(): Promise<HealthEvent[]> {
 }
 
 export async function addHealthEvent(event: Omit<HealthEvent, 'id'>): Promise<boolean> {
-  const { error } = await supabase.from('health_events').insert(event);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) { console.error('addHealthEvent: no auth user'); return false; }
+  const { error } = await supabase.from('health_events').insert({ ...event, user_id: user.id });
   if (error) { console.error('addHealthEvent error:', error.message); return false; }
   return true;
 }
@@ -54,7 +56,9 @@ export async function getLabValues(): Promise<LabValue[]> {
 }
 
 export async function addLabValue(entry: Omit<LabValue, 'id' | 'is_out_of_range'>): Promise<boolean> {
-  const { error } = await supabase.from('lab_values').insert(entry);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) { console.error('addLabValue: no auth user'); return false; }
+  const { error } = await supabase.from('lab_values').insert({ ...entry, user_id: user.id });
   if (error) { console.error('addLabValue error:', error.message); return false; }
   return true;
 }
