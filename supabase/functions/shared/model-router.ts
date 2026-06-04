@@ -91,7 +91,7 @@ const ALWAYS_SMART_MODES: Set<string> = new Set([
  * Select the appropriate model tier based on message analysis.
  * This is a deterministic decision — no LLM call needed.
  */
-export function selectModel(analysis: MessageAnalysis, hasImage: boolean): ModelSelection {
+export function selectModel(analysis: MessageAnalysis, hasImage: boolean, taskModeOverride?: string): ModelSelection {
   // Vision always uses vision model
   if (hasImage) {
     return {
@@ -103,6 +103,22 @@ export function selectModel(analysis: MessageAnalysis, hasImage: boolean): Model
   }
 
   const { taskMode, subtype, riskLevel } = analysis;
+
+  // Plan generation emits a full 7-day JSON snapshot — far larger than a normal
+  // reply. The default 1500–2500 token ceiling truncates it mid-JSON, so the
+  // closing </plan_snapshot> tag never arrives and the whole plan is silently
+  // dropped (user taps "Plan oluştur" and nothing happens). The plan modes come
+  // from the client hint, not message analysis, so the caller passes them in via
+  // taskModeOverride. Force the smart model with a high ceiling for any of them.
+  const planMode = taskModeOverride || taskMode;
+  if (planMode && planMode.startsWith('plan')) {
+    return {
+      tier: 'smart',
+      model: MODEL_CONFIG.smart.model,
+      maxTokens: 8000,
+      reason: `plan_generation_${planMode}`,
+    };
+  }
 
   // High risk always goes to smart tier
   if (riskLevel === 'high') {

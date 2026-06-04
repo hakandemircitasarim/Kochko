@@ -417,7 +417,7 @@ serve(async (req: Request) => {
     }
 
     // Call OpenAI (Spec 5.27: temperature by mode, model router for tier selection)
-    const modelSelection = selectModel(analysis, !!image_base64);
+    const modelSelection = selectModel(analysis, !!image_base64, effectiveMode);
     const temperature = TEMPERATURE[taskMode] ?? 0.5;
 
     let assistantMessage = await chatCompletion<string>(
@@ -989,10 +989,23 @@ function extractPlanSnapshot(text: string): { cleanMessage: string; snapshot: Re
   if (!match) return { cleanMessage: text, snapshot: null };
   let parsed: Record<string, unknown> | null = null;
   let parseError: string | undefined;
-  try {
-    parsed = JSON.parse(match[1]) as Record<string, unknown>;
-  } catch (e) {
-    parseError = (e as Error).message;
+  // Models occasionally wrap the JSON in markdown fences, add stray prose around
+  // it, or leave a trailing comma — any of which breaks a naive JSON.parse and
+  // silently drops the entire plan (the user taps "Plan oluştur" and nothing
+  // happens). Normalise before parsing: strip fences, slice to the outermost
+  // braces, then try with and without trailing-comma repair.
+  let raw = match[1].trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  if (first !== -1 && last !== -1 && last > first) raw = raw.slice(first, last + 1);
+  for (const candidate of [raw, raw.replace(/,(\s*[}\]])/g, '$1')]) {
+    try {
+      parsed = JSON.parse(candidate) as Record<string, unknown>;
+      parseError = undefined;
+      break;
+    } catch (e) {
+      parseError = (e as Error).message;
+    }
   }
   return {
     cleanMessage: text.replace(/<plan_snapshot>[\s\S]*?<\/plan_snapshot>/, '').trim(),
