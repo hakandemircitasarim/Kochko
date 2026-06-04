@@ -37,6 +37,8 @@ export default function TodayScreen() {
     meals, workouts, weightKg, waterLiters, sleepHours, steps,
     totalCalories, totalProtein, totalCarbs, totalFat, focusMessage,
     weeklyBudgetRemaining,
+    calorieTargetMin: planCalMin, calorieTargetMax: planCalMax,
+    proteinTarget: planProtein, carbsTarget: planCarbs, fatTarget: planFat,
     loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
@@ -55,12 +57,20 @@ export default function TodayScreen() {
   const ifActive = !!profile?.if_active;
   const ifEatingStart = profile?.if_eating_start as string | null;
   const ifEatingEnd = profile?.if_eating_end as string | null;
-  const calorieTargetMin = (profile?.calorie_range_rest_min as number) ?? 0;
-  const calorieTargetMax = (profile?.calorie_range_rest_max as number) ?? 0;
-  const proteinTarget = profile?.protein_per_kg && profile?.weight_kg
-    ? Math.round(Number(profile.protein_per_kg) * Number(profile.weight_kg)) : 120;
-  const carbsTarget = (profile?.carbs_target_g as number) ?? 200;
-  const fatTarget = (profile?.fat_target_g as number) ?? 65;
+  // Prefer today's plan targets (projected from the active chat plan into
+  // daily_plans); fall back to the profile TDEE range + macro percentages when
+  // there is no plan. NOTE: carbs_target_g / fat_target_g are NOT columns on
+  // profiles — the old reads always hit the 200/65 default; derive carbs/fat from
+  // the real macro_carb_pct / macro_fat_pct against the calorie target instead.
+  const calorieTargetMin = planCalMin ?? (profile?.calorie_range_rest_min as number) ?? 0;
+  const calorieTargetMax = planCalMax ?? (profile?.calorie_range_rest_max as number) ?? 0;
+  const proteinTarget = planProtein ?? (profile?.protein_per_kg && profile?.weight_kg
+    ? Math.round(Number(profile.protein_per_kg) * Number(profile.weight_kg)) : 120);
+  const calMid = (calorieTargetMin + calorieTargetMax) / 2;
+  const carbPct = Number(profile?.macro_carb_pct) || 0;
+  const fatPct = Number(profile?.macro_fat_pct) || 0;
+  const carbsTarget = planCarbs ?? (carbPct > 0 && calMid > 0 ? Math.round((calMid * carbPct / 100) / 4) : 200);
+  const fatTarget = planFat ?? (fatPct > 0 && calMid > 0 ? Math.round((calMid * fatPct / 100) / 9) : 65);
   const userName = profile?.display_name as string | undefined;
 
   // Mount-only setup that shouldn't re-run on every focus.

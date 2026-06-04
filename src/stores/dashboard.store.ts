@@ -44,6 +44,11 @@ interface TodayState {
   totalFat: number;
   focusMessage: string | null;
   weeklyBudgetRemaining: number | null;
+  calorieTargetMin: number | null;   // from today's daily_plans projection
+  calorieTargetMax: number | null;
+  proteinTarget: number | null;
+  carbsTarget: number | null;
+  fatTarget: number | null;
   goalProgress: GoalProgress | null;
   activeGoal: Goal | null;
   loading: boolean;
@@ -73,6 +78,11 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   totalFat: 0,
   focusMessage: null,
   weeklyBudgetRemaining: null,
+  calorieTargetMin: null,
+  calorieTargetMax: null,
+  proteinTarget: null,
+  carbsTarget: null,
+  fatTarget: null,
   goalProgress: null,
   activeGoal: null,
   loading: false,
@@ -88,7 +98,7 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         .eq('user_id', userId).eq('logged_for_date', date).order('logged_at'),
       supabase.from('daily_metrics').select('*')
         .eq('user_id', userId).eq('date', date).maybeSingle(),
-      supabase.from('daily_plans').select('focus_message, weekly_budget_remaining, water_target_liters, plan_type')
+      supabase.from('daily_plans').select('focus_message, weekly_budget_remaining, water_target_liters, plan_type, calorie_target_min, calorie_target_max, protein_target_g, carbs_target_g, fat_target_g')
         .eq('user_id', userId).eq('date', date).order('version', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('goals').select('*')
         .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).maybeSingle(),
@@ -157,6 +167,11 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       totalFat: Math.round(totalFat),
       focusMessage: planRes.data?.focus_message ?? null,
       weeklyBudgetRemaining: planRes.data?.weekly_budget_remaining ?? null,
+      calorieTargetMin: (planRes.data?.calorie_target_min as number | null) ?? null,
+      calorieTargetMax: (planRes.data?.calorie_target_max as number | null) ?? null,
+      proteinTarget: (planRes.data?.protein_target_g as number | null) ?? null,
+      carbsTarget: (planRes.data?.carbs_target_g as number | null) ?? null,
+      fatTarget: (planRes.data?.fat_target_g as number | null) ?? null,
       activeGoal: goalRes.data as Goal | null,
       goalProgress: (() => {
         const goal = goalRes.data as Goal | null;
