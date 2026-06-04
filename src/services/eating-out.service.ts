@@ -43,18 +43,19 @@ export interface DayAdjustment {
  * Get all saved venues for a user.
  */
 export async function getVenues(userId: string): Promise<VenueInfo[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('user_venues')
-    .select('venue_name, venue_type, learned_items, visit_count, updated_at')
+    .select('venue_name, venue_type, learned_items, visit_count')
     .eq('user_id', userId)
     .order('visit_count', { ascending: false });
+
+  if (error) console.warn('getVenues failed', error);
 
   return (data ?? []).map(v => ({
     venue_name: v.venue_name as string,
     venue_type: v.venue_type as string | undefined,
     learned_items: (v.learned_items as LearnedItem[]) ?? [],
     visit_count: v.visit_count as number,
-    last_visit: v.updated_at as string,
   }));
 }
 

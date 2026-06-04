@@ -20,6 +20,7 @@ const QUEUE_INDEX_KEY = 'kochko_offline_queue_index';
 const QUEUE_ITEM_PREFIX = 'kochko_offline_queue_item_';
 const LEGACY_QUEUE_KEY = '@kochko_offline_queue';
 const LAST_SYNC_KEY = '@kochko_last_sync';
+const LAST_SYNC_FAILED_KEY = '@kochko_last_sync_failed';
 
 export interface QueuedAction {
   id: string;
@@ -139,9 +140,10 @@ export async function syncQueue(): Promise<{ synced: number; failed: number }> {
             continue;
           }
         }
-        await supabase.from(action.table)
-          .update({ ...action.data, synced: true })
+        const { error } = await supabase.from(action.table)
+          .update({ ...action.data })
           .eq('id', action.userId);
+        if (error) { failed++; continue; }
       } else if (dataType === 'daily_metrics') {
         const recordDate = (action.data as Record<string, unknown>).date as string;
         const { data: serverData } = await supabase.from(action.table)
@@ -149,15 +151,21 @@ export async function syncQueue(): Promise<{ synced: number; failed: number }> {
 
         if (serverData) {
           const result = resolveConflict(action.data as Record<string, unknown>, serverData, 'daily_metrics');
-          await supabase.from(action.table)
+          const { error } = await supabase.from(action.table)
             .upsert({ ...(result.data as Record<string, unknown>), synced: true }, { onConflict: 'user_id,date' });
+          if (error) { failed++; continue; }
         } else {
-          await supabase.from(action.table)
+          const { error } = await supabase.from(action.table)
             .upsert({ ...action.data, synced: true }, { onConflict: 'user_id,date' });
+          if (error) { failed++; continue; }
         }
       } else {
-        await supabase.from(action.table)
-          .upsert({ ...action.data, synced: true });
+        // Only meal_logs / workout_logs carry a `synced` column; gate the flag
+        // so supplement_logs (and other null-mapped tables) don't 42703.
+        const hasSynced = action.table === 'meal_logs' || action.table === 'workout_logs';
+        const { error } = await supabase.from(action.table)
+          .upsert(hasSynced ? { ...action.data, synced: true } : { ...action.data });
+        if (error) { failed++; continue; }
       }
       syncedIds.push(action.id);
       synced++;
@@ -168,6 +176,7 @@ export async function syncQueue(): Promise<{ synced: number; failed: number }> {
 
   if (syncedIds.length > 0) await removeItems(syncedIds);
   await AsyncStorage.setItem(LAST_SYNC_KEY, new Date().toISOString());
+  await AsyncStorage.setItem(LAST_SYNC_FAILED_KEY, String(failed));
   return { synced, failed };
 }
 
@@ -210,5 +219,7 @@ export async function getQueueStatus(): Promise<{
 }> {
   const pending = await getQueueCount();
   const lastSyncAt = await AsyncStorage.getItem(LAST_SYNC_KEY);
-  return { pending, failed: 0, lastSyncAt };
+  const failedRaw = await AsyncStorage.getItem(LAST_SYNC_FAILED_KEY);
+  const failed = failedRaw ? Number(failedRaw) || 0 : 0;
+  return { pending, failed, lastSyncAt };
 }

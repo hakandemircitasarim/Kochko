@@ -145,14 +145,18 @@ export async function getDraft(userId: string, planType: PlanType): Promise<Plan
 }
 
 export async function getHistory(userId: string, planType: PlanType, limit = 20): Promise<PlanRow[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('weekly_plans')
     .select('*')
     .eq('user_id', userId)
     .eq('plan_type', planType)
     .eq('status', 'archived')
-    .order('created_at', { ascending: false })
+    .order('generated_at', { ascending: false })
     .limit(limit);
+  if (error) {
+    console.warn('[plan.service] getHistory failed:', error.message);
+    return [];
+  }
   return (data as PlanRow[] | null) ?? [];
 }
 

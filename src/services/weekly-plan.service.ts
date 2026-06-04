@@ -34,11 +34,19 @@ export interface ShoppingItem {
 
 export async function getCurrentWeeklyPlan(): Promise<WeeklyPlan | null> {
   const weekStart = getWeekStart();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('weekly_plans')
     .select('*')
     .eq('week_start', weekStart)
-    .single();
+    .eq('status', 'active')
+    .eq('plan_type', 'diet') // this path is the diet menu
+    .order('generated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn('getCurrentWeeklyPlan failed', error);
+    return null;
+  }
   return data as WeeklyPlan | null;
 }
 
@@ -50,13 +58,21 @@ export async function generateWeeklyPlan(modificationRequest?: string): Promise<
   return { data: data as WeeklyPlan, error: null };
 }
 
-export async function approveWeeklyPlan(planId: string): Promise<void> {
-  await supabase.from('weekly_plans').update({ approved_at: new Date().toISOString() }).eq('id', planId);
+export async function approveWeeklyPlan(planId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('weekly_plans')
+    .update({ approved_at: new Date().toISOString() })
+    .eq('id', planId);
+  return { error: error?.message ?? null };
 }
 
 export async function requestMenuModification(planId: string, request: string): Promise<{ data: WeeklyPlan | null; error: string | null }> {
   // Store the modification request, then regenerate
-  await supabase.from('weekly_plans').update({ modification_request: request }).eq('id', planId);
+  const { error } = await supabase
+    .from('weekly_plans')
+    .update({ modification_request: request })
+    .eq('id', planId);
+  if (error) return { data: null, error: error.message };
   return generateWeeklyPlan(request);
 }
 

@@ -20,10 +20,11 @@ export async function requestAccountDeletion(userId: string): Promise<{ schedule
   scheduledDate.setDate(scheduledDate.getDate() + 30);
 
   // Mark profile for deletion (don't actually delete yet)
-  await supabase.from('profiles').update({
+  const { error } = await supabase.from('profiles').update({
     deletion_requested_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as never).eq('id', userId);
+  if (error) throw new Error(error.message);
 
   return { scheduledDate: scheduledDate.toISOString().split('T')[0] };
 }
@@ -32,10 +33,11 @@ export async function requestAccountDeletion(userId: string): Promise<{ schedule
  * Cancel account deletion (user logged back in within 30 days).
  */
 export async function cancelAccountDeletion(userId: string): Promise<void> {
-  await supabase.from('profiles').update({
+  const { error } = await supabase.from('profiles').update({
     deletion_requested_at: null,
     updated_at: new Date().toISOString(),
   } as never).eq('id', userId);
+  if (error) throw new Error(error.message);
 }
 
 /**
@@ -124,13 +126,15 @@ export async function deleteAISummaryNote(
   if (typeof currentValue === 'string') {
     // Remove the note from text
     const updated = (currentValue as string).replace(noteToDelete, '').replace(/\n\n+/g, '\n\n').trim();
-    await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId);
+    const { error } = await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId);
+    if (error) throw new Error(error.message);
   } else if (Array.isArray(currentValue)) {
     // Remove from array (patterns, habits, etc.)
     const updated = (currentValue as { description: string }[]).filter(
       item => !item.description?.includes(noteToDelete)
     );
-    await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId);
+    const { error } = await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId);
+    if (error) throw new Error(error.message);
   }
 }
 
@@ -139,7 +143,7 @@ export async function deleteAISummaryNote(
  * User explicitly requests full memory reset.
  */
 export async function resetAISummary(userId: string): Promise<void> {
-  await supabase.from('ai_summary').update({
+  const { error } = await supabase.from('ai_summary').update({
     general_summary: '',
     behavioral_patterns: [],
     coaching_notes: '',
@@ -160,6 +164,7 @@ export async function resetAISummary(userId: string): Promise<void> {
     supplement_notes: null,
     updated_at: new Date().toISOString(),
   } as never).eq('user_id', userId);
+  if (error) throw new Error(error.message);
 }
 
 // ─── Photo Cleanup (Phase 7) ───
@@ -173,13 +178,14 @@ export async function schedulePhotoCleanup(
   photoUrl: string
 ): Promise<void> {
   const deleteAt = new Date(Date.now() + 24 * 3600000).toISOString();
-  await supabase.from('scheduled_cleanups').upsert({
+  const { error } = await supabase.from('scheduled_cleanups').upsert({
     user_id: userId,
     resource_type: 'meal_photo',
     resource_id: photoUrl,
     scheduled_at: deleteAt,
     status: 'pending',
   });
+  if (error) throw new Error(error.message);
 }
 
 // ─── KVKK Audit Log (Phase 7) ───
@@ -192,11 +198,12 @@ export async function logAuditEvent(
   eventType: string,
   description: string
 ): Promise<void> {
-  await supabase.from('audit_logs').insert({
+  const { error } = await supabase.from('audit_logs').insert({
     user_id: userId,
     event_type: eventType,
     description,
   });
+  if (error) console.error('[audit] log insert failed', eventType, error);
 }
 
 // ─── Data Minimization (Phase 7) ───

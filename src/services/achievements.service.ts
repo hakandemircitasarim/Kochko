@@ -71,55 +71,65 @@ export async function checkMilestones(
     .eq('user_id', userId);
   const types = new Set((existing ?? []).map((a: { achievement_type: string }) => a.achievement_type));
 
-  let newAchievement: { type: string; title: string; desc: string } | null = null;
+  // Collect EVERY unmet milestone whose threshold is currently crossed, evaluated
+  // independently (no ascending-order short-circuit), ordered highest-tier first so
+  // the returned achievement is the most significant one for the toast.
+  const earned: { type: string; title: string; desc: string }[] = [];
 
-  // Weight milestones
+  // Weight milestones (highest threshold first)
   if (currentWeight && startWeight) {
     const lost = startWeight - currentWeight;
-    if (lost >= 1 && !types.has('first_kg')) newAchievement = { type: 'first_kg', title: 'İlk Kilo!', desc: '1 kg verdin.' };
-    else if (lost >= 5 && !types.has('five_kg')) newAchievement = { type: 'five_kg', title: '5 Kilo!', desc: '5 kg verdin, harika iş!' };
-    else if (targetWeight && lost >= (startWeight - targetWeight) / 2 && !types.has('half_goal'))
-      newAchievement = { type: 'half_goal', title: 'Yarı Yolda!', desc: 'Hedefin yarısına ulaştın.' };
-    else if (targetWeight && currentWeight <= targetWeight && !types.has('goal_reached'))
-      newAchievement = { type: 'goal_reached', title: 'HEDEFE ULAŞTIN!', desc: 'Tebrikler, hedef kilona ulaştın!' };
+    if (targetWeight && currentWeight <= targetWeight && !types.has('goal_reached'))
+      earned.push({ type: 'goal_reached', title: 'HEDEFE ULAŞTIN!', desc: 'Tebrikler, hedef kilona ulaştın!' });
+    if (targetWeight && lost >= (startWeight - targetWeight) / 2 && !types.has('half_goal'))
+      earned.push({ type: 'half_goal', title: 'Yarı Yolda!', desc: 'Hedefin yarısına ulaştın.' });
+    if (lost >= 5 && !types.has('five_kg'))
+      earned.push({ type: 'five_kg', title: '5 Kilo!', desc: '5 kg verdin, harika iş!' });
+    if (lost >= 1 && !types.has('first_kg'))
+      earned.push({ type: 'first_kg', title: 'İlk Kilo!', desc: '1 kg verdin.' });
   }
 
-  // Streak milestones
-  if (!newAchievement) {
-    if (streak >= 7 && !types.has('streak_7')) newAchievement = { type: 'streak_7', title: '7 Gün Seri!', desc: '1 hafta kesintisiz kayıt.' };
-    else if (streak >= 30 && !types.has('streak_30')) newAchievement = { type: 'streak_30', title: '30 Gün!', desc: '1 ay kesintisiz, muhteşem disiplin.' };
-    else if (streak >= 100 && !types.has('streak_100')) newAchievement = { type: 'streak_100', title: '100 GÜN!', desc: 'İnanılmaz. 100 gün arka arkaya.' };
-  }
+  // Streak milestones (highest threshold first)
+  if (streak >= 100 && !types.has('streak_100'))
+    earned.push({ type: 'streak_100', title: '100 GÜN!', desc: 'İnanılmaz. 100 gün arka arkaya.' });
+  if (streak >= 30 && !types.has('streak_30'))
+    earned.push({ type: 'streak_30', title: '30 Gün!', desc: '1 ay kesintisiz, muhteşem disiplin.' });
+  if (streak >= 7 && !types.has('streak_7'))
+    earned.push({ type: 'streak_7', title: '7 Gün Seri!', desc: '1 hafta kesintisiz kayıt.' });
 
-  // Maintenance milestones (Spec 13.2)
-  if (!newAchievement && targetWeight && currentWeight) {
-    const goalReached = currentWeight <= targetWeight;
-    if (goalReached) {
-      // Check maintenance duration
-      const { data: goalReachedAch } = await supabase
-        .from('achievements').select('achieved_at')
-        .eq('user_id', userId).eq('achievement_type', 'goal_reached').single();
-      if (goalReachedAch) {
-        const daysSinceGoal = Math.floor((Date.now() - new Date(goalReachedAch.achieved_at).getTime()) / 86400000);
-        if (daysSinceGoal >= 30 && !types.has('maintenance_1m'))
-          newAchievement = { type: 'maintenance_1m', title: '1 Ay Bakımda!', desc: 'Hedef kilonda 1 aydır tutunuyorsun.' };
-        else if (daysSinceGoal >= 90 && !types.has('maintenance_3m'))
-          newAchievement = { type: 'maintenance_3m', title: '3 Ay Bakımda!', desc: 'Hedef kilonda 3 aydır devam ediyorsun, muhteşem.' };
-        else if (daysSinceGoal >= 180 && !types.has('maintenance_6m'))
-          newAchievement = { type: 'maintenance_6m', title: '6 Ay Bakımda!', desc: 'Yarım yıl hedef kilonda. Alışkanlığın oturmuş.' };
-      }
+  // Maintenance milestones (Spec 13.2) — highest threshold first
+  if (targetWeight && currentWeight && currentWeight <= targetWeight) {
+    // Check maintenance duration
+    const { data: goalReachedAch } = await supabase
+      .from('achievements').select('achieved_at')
+      .eq('user_id', userId).eq('achievement_type', 'goal_reached').maybeSingle();
+    if (goalReachedAch) {
+      const daysSinceGoal = Math.floor((Date.now() - new Date(goalReachedAch.achieved_at).getTime()) / 86400000);
+      if (daysSinceGoal >= 180 && !types.has('maintenance_6m'))
+        earned.push({ type: 'maintenance_6m', title: '6 Ay Bakımda!', desc: 'Yarım yıl hedef kilonda. Alışkanlığın oturmuş.' });
+      if (daysSinceGoal >= 90 && !types.has('maintenance_3m'))
+        earned.push({ type: 'maintenance_3m', title: '3 Ay Bakımda!', desc: 'Hedef kilonda 3 aydır devam ediyorsun, muhteşem.' });
+      if (daysSinceGoal >= 30 && !types.has('maintenance_1m'))
+        earned.push({ type: 'maintenance_1m', title: '1 Ay Bakımda!', desc: 'Hedef kilonda 1 aydır tutunuyorsun.' });
     }
   }
 
-  if (newAchievement) {
-    const { data } = await supabase.from('achievements').insert({
+  if (earned.length === 0) return null;
+
+  const { data, error } = await supabase.from('achievements').insert(
+    earned.map(a => ({
       user_id: userId,
-      achievement_type: newAchievement.type,
-      title: newAchievement.title,
-      description: newAchievement.desc,
-    }).select().single();
-    return data as Achievement | null;
+      achievement_type: a.type,
+      title: a.title,
+      description: a.desc,
+    }))
+  ).select();
+  if (error) {
+    console.warn('checkMilestones insert failed', error);
+    return null;
   }
 
-  return null;
+  const rows = (data ?? []) as Achievement[];
+  // Return the highest-tier earned achievement (earned[] is ordered top-down) for the toast.
+  return rows.find(r => r.achievement_type === earned[0].type) ?? rows[0] ?? null;
 }

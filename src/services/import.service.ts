@@ -40,7 +40,7 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
     if (isNaN(calories)) { errors.push(`Gecersiz kalori: ${line}`); continue; }
 
     // Create meal log
-    const { data: log } = await supabase.from('meal_logs').insert({
+    const { data: log, error: logErr } = await supabase.from('meal_logs').insert({
       user_id: user.id,
       raw_input: foodName,
       meal_type: mealType || 'snack',
@@ -49,19 +49,25 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
       synced: true,
     }).select('id').single();
 
-    if (log) {
-      await supabase.from('meal_log_items').insert({
-        meal_log_id: log.id,
-        food_name: foodName,
-        portion_text: '1 porsiyon',
-        calories,
-        protein_g: protein || 0,
-        carbs_g: 0,
-        fat_g: 0,
-        data_source: 'ai_estimate',
-      });
-      imported++;
+    if (logErr || !log) { errors.push(`Kayit olusturulamadi: ${line}`); continue; }
+
+    const { error: itemErr } = await supabase.from('meal_log_items').insert({
+      meal_log_id: log.id,
+      food_name: foodName,
+      portion_text: '1 porsiyon',
+      calories,
+      protein_g: protein || 0,
+      carbs_g: 0,
+      fat_g: 0,
+      data_source: 'ai_estimate',
+    });
+    if (itemErr) {
+      // Roll back the empty parent log so no orphan meal_log remains
+      await supabase.from('meal_logs').delete().eq('id', log.id);
+      errors.push(`Item eklenemedi: ${line}`);
+      continue;
     }
+    imported++;
   }
 
   return { success: imported > 0, recordsImported: imported, errors };
@@ -91,10 +97,11 @@ export async function importWeightsFromCSV(csvText: string): Promise<ImportResul
     const weight = parseFloat(weightStr);
     if (isNaN(weight) || weight < 20 || weight > 300) { errors.push(`Gecersiz kilo: ${line}`); continue; }
 
-    await supabase.from('daily_metrics').upsert(
+    const { error: upsertErr } = await supabase.from('daily_metrics').upsert(
       { user_id: user.id, date, weight_kg: weight, water_liters: 0, synced: true },
       { onConflict: 'user_id,date' }
     );
+    if (upsertErr) { errors.push(`Kilo kaydedilemedi: ${line}`); continue; }
     imported++;
   }
 

@@ -41,13 +41,19 @@ export async function logAuditEvent(
   description: string,
   metadata?: Record<string, unknown>
 ): Promise<void> {
-  await supabase.from('audit_logs').insert({
+  const { error } = await supabase.from('audit_logs').insert({
     user_id: userId,
     event_type: eventType,
     description,
     metadata: metadata ?? null,
     ip_address: null, // Not available on client
   });
+  if (error) {
+    // Surface the failure so a lost compliance log is observable instead of
+    // silently succeeding. Kept non-throwing because callers invoke this
+    // fire-and-forget for non-blocking events (e.g. photo_upload).
+    console.warn('[audit] audit_logs insert failed', { eventType, error });
+  }
 }
 
 /**
@@ -78,14 +84,19 @@ export async function schedulePhotoCleanup(
 ): Promise<void> {
   const deleteAt = new Date(Date.now() + 24 * 3600000).toISOString();
 
-  await supabase.from('scheduled_cleanups').insert({
+  const { error } = await supabase.from('scheduled_cleanups').insert({
     user_id: userId,
     resource_type: 'meal_photo',
     resource_id: photoId,
     scheduled_at: deleteAt,
     status: 'pending',
   });
+  if (error) {
+    console.warn('[audit] scheduled_cleanups insert failed', { photoId, error });
+    throw error;
+  }
 
+  // Only emit the retention audit event after the cleanup row is persisted.
   await logAuditEvent(userId, 'photo_upload', `Yemek fotosu yuklendi, 24 saat sonra silinecek`, { photoId });
 }
 

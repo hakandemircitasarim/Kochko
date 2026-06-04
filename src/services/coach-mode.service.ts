@@ -6,7 +6,6 @@
  * professional coach can view and guide multiple client accounts.
  */
 import { supabase } from '@/lib/supabase';
-import type { Profile } from '@/types/database';
 
 // ────────────────────────────── Types ──────────────────────────────
 
@@ -46,20 +45,25 @@ export type ShareableDataType = (typeof SHAREABLE_DATA_TYPES)[number];
 // ────────────────────────────── Coach checks ──────────────────────────────
 
 /**
- * Check if a profile has an active coach relationship.
+ * Check if a user has an active coach relationship.
+ * Derived from the active-consent state (the coach link lives on
+ * coach_consents, not on profiles).
  */
-export function isCoachMode(profile: Pick<Profile, 'id'> & { coach_id?: string | null }): boolean {
-  return profile.coach_id != null && profile.coach_id.length > 0;
+export function isCoachMode(consent: DataSharingConsent | null): boolean {
+  return consent != null && consent.active;
 }
 
 /**
  * Check if the given userId is a coach (has at least one client).
+ * The coach link is modelled through coach_consents (the only table
+ * with a coach_id column), not profiles.
  */
 export async function isCoach(userId: string): Promise<boolean> {
   const { count } = await supabase
-    .from('profiles')
+    .from('coach_consents')
     .select('id', { count: 'exact', head: true })
-    .eq('coach_id', userId);
+    .eq('coach_id', userId)
+    .eq('is_active', true);
   return (count ?? 0) > 0;
 }
 
@@ -70,23 +74,37 @@ export async function isCoach(userId: string): Promise<boolean> {
  * Fetches profile basics + latest daily_metrics for last-active and compliance.
  */
 export async function getCoachClients(coachId: string): Promise<CoachClient[]> {
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, weight_kg, created_at, updated_at')
+  // The coach link lives on coach_consents (the only table with coach_id),
+  // not on profiles. Resolve clients via active consents.
+  const { data: consents } = await supabase
+    .from('coach_consents')
+    .select('user_id, shared_data_types')
     .eq('coach_id', coachId)
-    .is('deleted_at', null);
+    .eq('is_active', true);
 
-  if (!profiles || profiles.length === 0) return [];
+  if (!consents || consents.length === 0) return [];
 
   const clients: CoachClient[] = [];
 
-  for (const p of profiles) {
+  for (const consent of consents) {
+    const clientId = consent.user_id as string;
+
+    // Fetch client profile basics
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, weight_kg')
+      .eq('id', clientId)
+      .is('deleted_at', null)
+      .single();
+
+    if (!profile) continue;
+
     // Get latest metrics for this client
     // compliance_score lives on daily_reports (keyed on `date`), not daily_metrics.
     const { data: metrics } = await supabase
       .from('daily_reports')
       .select('date, compliance_score')
-      .eq('user_id', p.id)
+      .eq('user_id', clientId)
       .order('date', { ascending: false })
       .limit(1);
 
@@ -94,30 +112,21 @@ export async function getCoachClients(coachId: string): Promise<CoachClient[]> {
     const { data: goal } = await supabase
       .from('goals')
       .select('goal_type')
-      .eq('user_id', p.id)
+      .eq('user_id', clientId)
       .eq('is_active', true)
       .limit(1)
-      .single();
-
-    // Get consent data types
-    const { data: consent } = await supabase
-      .from('coach_consents')
-      .select('data_types')
-      .eq('user_id', p.id)
-      .eq('coach_id', coachId)
-      .eq('active', true)
       .single();
 
     const latestMetric = metrics?.[0];
 
     clients.push({
-      id: p.id,
-      displayName: `Danisan ${p.id.slice(0, 6)}`, // anonymized
-      weight_kg: p.weight_kg,
+      id: profile.id,
+      displayName: `Danisan ${(profile.id as string).slice(0, 6)}`, // anonymized
+      weight_kg: profile.weight_kg,
       goalType: goal?.goal_type ?? null,
       lastActiveDate: latestMetric?.date ?? null,
       complianceScore: latestMetric?.compliance_score ?? null,
-      sharedDataTypes: consent?.data_types ?? [],
+      sharedDataTypes: (consent.shared_data_types as string[]) ?? [],
     });
   }
 
@@ -144,44 +153,36 @@ export async function shareDataWithCoach(
     throw new Error('En az bir gecerli veri tipi secilmelidir.');
   }
 
-  // Upsert consent record
+  // Upsert consent record. The relationship is carried entirely by this row
+  // (coach_consents is the only table with coach_id); created_at is set by the
+  // table default.
   const { error } = await supabase
     .from('coach_consents')
     .upsert(
       {
         user_id: userId,
         coach_id: coachId,
-        data_types: validTypes,
-        granted_at: new Date().toISOString(),
-        active: true,
+        shared_data_types: validTypes,
+        is_active: true,
       },
       { onConflict: 'user_id,coach_id' }
     );
 
   if (error) throw error;
-
-  // Set coach_id on profile
-  await supabase
-    .from('profiles')
-    .update({ coach_id: coachId })
-    .eq('id', userId);
 }
 
 /**
- * Revoke coach access: remove coach_id from profile and deactivate consent.
+ * Revoke coach access: deactivate the user's consent record(s).
+ * The relationship lives entirely on coach_consents, so deactivating the
+ * consent is sufficient to remove coach access.
  */
 export async function revokeCoachAccess(userId: string): Promise<void> {
-  // Deactivate all consents
-  await supabase
+  const { error } = await supabase
     .from('coach_consents')
-    .update({ active: false })
+    .update({ is_active: false, revoked_at: new Date().toISOString() })
     .eq('user_id', userId);
 
-  // Clear coach_id from profile
-  await supabase
-    .from('profiles')
-    .update({ coach_id: null })
-    .eq('id', userId);
+  if (error) throw error;
 }
 
 /**
@@ -194,7 +195,7 @@ export async function getActiveConsent(
     .from('coach_consents')
     .select('*')
     .eq('user_id', userId)
-    .eq('active', true)
+    .eq('is_active', true)
     .single();
 
   if (!data) return null;
@@ -202,8 +203,8 @@ export async function getActiveConsent(
   return {
     userId: data.user_id,
     coachId: data.coach_id,
-    dataTypes: data.data_types ?? [],
-    grantedAt: data.granted_at,
-    active: data.active,
+    dataTypes: data.shared_data_types ?? [],
+    grantedAt: data.created_at,
+    active: data.is_active,
   };
 }

@@ -88,13 +88,14 @@ export async function storeRepairEvent(
   userId: string,
   event: Omit<RepairEvent, 'id' | 'created_at'>
 ): Promise<void> {
-  await supabase.from('repair_history').insert({
+  const { error } = await supabase.from('repair_history').insert({
     user_id: userId,
     repair_type: event.repair_type,
-    original_input: event.original_input,
-    corrected_input: event.corrected_input,
-    food_item: event.food_item,
+    original_text: event.original_input,
+    corrected_text: event.corrected_input,
+    food_name: event.food_item,
   });
+  if (error) console.error('storeRepairEvent failed:', error.message);
 }
 
 /**
@@ -105,14 +106,15 @@ export async function getRepairHistory(
   userId: string,
   limit = 10
 ): Promise<RepairEvent[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('repair_history')
-    .select('id, repair_type, original_input, corrected_input, food_item, created_at')
+    .select('id, repair_type, original_input:original_text, corrected_input:corrected_text, food_item:food_name, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  return (data ?? []) as RepairEvent[];
+  if (error) console.error('getRepairHistory failed:', error.message);
+  return (data ?? []) as unknown as RepairEvent[];
 }
 
 /**
@@ -136,17 +138,19 @@ export async function getRepairStats(userId: string): Promise<{
     .gte('created_at', sevenDaysAgo);
 
   // Get most commonly corrected food items
-  const { data: corrections } = await supabase
+  const { data: corrections, error: correctionsError } = await supabase
     .from('repair_history')
-    .select('food_item')
+    .select('food_name')
     .eq('user_id', userId)
-    .not('food_item', 'is', null)
+    .not('food_name', 'is', null)
     .order('created_at', { ascending: false })
     .limit(50);
 
+  if (correctionsError) console.error('getRepairStats failed:', correctionsError.message);
+
   const foodCounts: Record<string, number> = {};
-  for (const c of (corrections ?? []) as { food_item: string }[]) {
-    foodCounts[c.food_item] = (foodCounts[c.food_item] ?? 0) + 1;
+  for (const c of (corrections ?? []) as { food_name: string }[]) {
+    foodCounts[c.food_name] = (foodCounts[c.food_name] ?? 0) + 1;
   }
 
   const commonCorrections = Object.entries(foodCounts)

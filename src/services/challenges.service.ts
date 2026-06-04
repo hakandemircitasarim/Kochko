@@ -48,20 +48,24 @@ export async function startChallenge(
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error('Oturum bulunamadi.');
-  await supabase.from('challenges').insert({
+  const { error } = await supabase.from('challenges').insert({
     user_id: user.id,
     title, description, challenge_type: type, target, status: 'active', progress: [],
   });
+  if (error) throw error;
 }
 
 export async function pauseChallenge(id: string): Promise<void> {
-  await supabase.from('challenges').update({ status: 'paused', paused_at: new Date().toISOString() }).eq('id', id);
+  const { error } = await supabase.from('challenges').update({ status: 'paused', paused_at: new Date().toISOString() }).eq('id', id);
+  if (error) throw error;
 }
 
 export async function resumeChallenge(id: string): Promise<void> {
-  await supabase.from('challenges').update({ status: 'active', paused_at: null }).eq('id', id);
+  const { error } = await supabase.from('challenges').update({ status: 'active', paused_at: null }).eq('id', id);
+  if (error) throw error;
 }
 
 export async function abandonChallenge(id: string): Promise<void> {
-  await supabase.from('challenges').update({ status: 'abandoned' }).eq('id', id);
+  const { error } = await supabase.from('challenges').update({ status: 'abandoned' }).eq('id', id);
+  if (error) throw error;
 }

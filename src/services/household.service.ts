@@ -69,18 +69,16 @@ export async function createHousehold(
 
   if (error || !data) throw error ?? new Error('Aile olusturulamadi.');
 
-  // Add owner as first member
-  await supabase.from('household_members').insert({
-    household_id: data.id,
-    user_id: userId,
-    role: 'owner',
-  });
+  // Add owner as first member (household_members is the source of truth)
+  const { error: memberError } = await supabase
+    .from('household_members')
+    .insert({
+      household_id: data.id,
+      user_id: userId,
+      role: 'owner',
+    });
 
-  // Set household_id on profile
-  await supabase
-    .from('profiles')
-    .update({ household_id: data.id })
-    .eq('id', userId);
+  if (memberError) throw memberError;
 
   return {
     id: data.id,
@@ -132,12 +130,6 @@ export async function joinHousehold(
 
   if (joinError) throw joinError;
 
-  // Update profile
-  await supabase
-    .from('profiles')
-    .update({ household_id: household.id })
-    .eq('id', userId);
-
   return {
     id: household.id,
     name: household.name,
@@ -160,27 +152,28 @@ export async function leaveHousehold(userId: string, householdId: string): Promi
     .single();
 
   if (membership?.role === 'owner') {
-    // Dissolve: remove all members, delete household
-    await supabase.from('household_members').delete().eq('household_id', householdId);
-    await supabase.from('households').delete().eq('id', householdId);
-
-    // Clear household_id from all former members
-    await supabase
-      .from('profiles')
-      .update({ household_id: null })
+    // Dissolve: remove all members, delete household.
+    // Deleting the household_members rows is sufficient; membership is the
+    // single source of truth (profiles has no household_id column).
+    const { error: membersError } = await supabase
+      .from('household_members')
+      .delete()
       .eq('household_id', householdId);
+    if (membersError) throw membersError;
+
+    const { error: householdError } = await supabase
+      .from('households')
+      .delete()
+      .eq('id', householdId);
+    if (householdError) throw householdError;
   } else {
     // Just remove this member
-    await supabase
+    const { error: memberError } = await supabase
       .from('household_members')
       .delete()
       .eq('household_id', householdId)
       .eq('user_id', userId);
-
-    await supabase
-      .from('profiles')
-      .update({ household_id: null })
-      .eq('id', userId);
+    if (memberError) throw memberError;
   }
 }
 
@@ -192,19 +185,20 @@ export async function leaveHousehold(userId: string, householdId: string): Promi
 export async function getHouseholdMembers(
   householdId: string
 ): Promise<HouseholdMember[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('household_members')
-    .select('user_id, role, created_at')
+    .select('user_id, role, joined_at')
     .eq('household_id', householdId)
-    .order('created_at', { ascending: true });
+    .order('joined_at', { ascending: true });
 
+  if (error) console.warn('getHouseholdMembers failed', error);
   if (!data) return [];
 
   return data.map((m, i) => ({
     userId: m.user_id,
     displayName: m.role === 'owner' ? 'Aile Reisi' : `Uye ${i + 1}`,
     role: m.role as 'owner' | 'member',
-    joinedAt: m.created_at,
+    joinedAt: m.joined_at,
   }));
 }
 
@@ -212,19 +206,21 @@ export async function getHouseholdMembers(
  * Get the household info for a user (if any).
  */
 export async function getUserHousehold(userId: string): Promise<Household | null> {
-  const { data: profile } = await supabase
-    .from('profiles')
+  // Resolve membership through the household_members join table
+  // (the source of truth; profiles has no household_id column).
+  const { data: membership } = await supabase
+    .from('household_members')
     .select('household_id')
-    .eq('id', userId)
-    .single();
+    .eq('user_id', userId)
+    .maybeSingle();
 
-  if (!profile?.household_id) return null;
+  if (!membership?.household_id) return null;
 
   const { data } = await supabase
     .from('households')
     .select('*')
-    .eq('id', profile.household_id)
-    .single();
+    .eq('id', membership.household_id)
+    .maybeSingle();
 
   if (!data) return null;
 
@@ -263,34 +259,48 @@ export async function getSharedShoppingList(
   now.setDate(now.getDate() - diff);
   const weekStart = now.toISOString().slice(0, 10);
 
-  // Fetch shopping items from all members' weekly plans
-  const { data: items } = await supabase
-    .from('weekly_plan_shopping')
-    .select('ingredient, amount, unit, user_id')
+  // Fetch each member's weekly plan and read its embedded shopping_list JSON.
+  // (There is no weekly_plan_shopping table; the list lives on weekly_plans.)
+  const { data: plans, error } = await supabase
+    .from('weekly_plans')
+    .select('user_id, shopping_list, week_start')
     .in('user_id', memberIds)
     .gte('week_start', weekStart);
 
-  if (!items || items.length === 0) return [];
+  if (error) console.warn('getSharedShoppingList failed', error);
+  if (!plans || plans.length === 0) return [];
 
-  // Aggregate by ingredient + unit
+  // Aggregate by ingredient name. shopping_list items are
+  // { category, name, amount (free-text string), checked }; there is no
+  // numeric quantity, so we keep the amount string as the unit label and use
+  // totalAmount to count how many members need the item.
   const aggregated = new Map<string, ShoppingListItem>();
 
-  for (const item of items) {
-    const key = `${item.ingredient.toLowerCase()}|${item.unit}`;
-    const existing = aggregated.get(key);
+  for (const plan of plans) {
+    const list = (plan.shopping_list as
+      | { name?: string; amount?: string }[]
+      | null) ?? [];
 
-    if (existing) {
-      existing.totalAmount += item.amount ?? 0;
-      if (!existing.memberIds.includes(item.user_id)) {
-        existing.memberIds.push(item.user_id);
+    for (const item of list) {
+      const name = item.name?.trim();
+      if (!name) continue;
+
+      const key = name.toLowerCase();
+      const existing = aggregated.get(key);
+
+      if (existing) {
+        if (!existing.memberIds.includes(plan.user_id)) {
+          existing.memberIds.push(plan.user_id);
+          existing.totalAmount += 1;
+        }
+      } else {
+        aggregated.set(key, {
+          ingredient: name,
+          totalAmount: 1,
+          unit: item.amount ?? '',
+          memberIds: [plan.user_id],
+        });
       }
-    } else {
-      aggregated.set(key, {
-        ingredient: item.ingredient,
-        totalAmount: item.amount ?? 0,
-        unit: item.unit ?? '',
-        memberIds: [item.user_id],
-      });
     }
   }
 

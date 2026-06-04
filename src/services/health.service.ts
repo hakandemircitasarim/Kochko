@@ -24,9 +24,10 @@ export async function getHealthEvents(): Promise<HealthEvent[]> {
   }
 }
 
-export async function addHealthEvent(event: Omit<HealthEvent, 'id'>): Promise<void> {
+export async function addHealthEvent(event: Omit<HealthEvent, 'id'>): Promise<boolean> {
   const { error } = await supabase.from('health_events').insert(event);
-  if (error) console.error('addHealthEvent error:', error.message);
+  if (error) { console.error('addHealthEvent error:', error.message); return false; }
+  return true;
 }
 
 // Lab values
@@ -52,9 +53,10 @@ export async function getLabValues(): Promise<LabValue[]> {
   }
 }
 
-export async function addLabValue(entry: Omit<LabValue, 'id' | 'is_out_of_range'>): Promise<void> {
+export async function addLabValue(entry: Omit<LabValue, 'id' | 'is_out_of_range'>): Promise<boolean> {
   const { error } = await supabase.from('lab_values').insert(entry);
-  if (error) console.error('addLabValue error:', error.message);
+  if (error) { console.error('addLabValue error:', error.message); return false; }
+  return true;
 }
 
 // Common Turkish lab parameters with reference ranges

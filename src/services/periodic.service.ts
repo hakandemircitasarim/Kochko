@@ -205,9 +205,11 @@ export async function setPeriodicState(
     updates.if_active = false;
   }
 
-  await supabase.from('profiles').update(updates).eq('id', userId);
+  const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
+  if (error) throw error;
 
   // Auto-replan: trigger new daily plan generation when periodic state changes (Spec 9.2)
+  // Only after the write is confirmed.
   if (state) {
     supabase.functions.invoke('ai-plan', {
       body: { type: 'daily', periodic_state_changed: true },
@@ -219,15 +221,17 @@ export async function setPeriodicState(
 
 export async function clearPeriodicState(userId: string): Promise<{ previousState: string | null }> {
   // Get current state before clearing
-  const { data } = await supabase.from('profiles').select('periodic_state').eq('id', userId).single();
+  const { data, error: selectError } = await supabase.from('profiles').select('periodic_state').eq('id', userId).single();
+  if (selectError) console.warn('[periodic] clearPeriodicState select failed', selectError);
   const previousState = (data as { periodic_state: string | null } | null)?.periodic_state ?? null;
 
-  await supabase.from('profiles').update({
+  const { error } = await supabase.from('profiles').update({
     periodic_state: null,
     periodic_state_start: null,
     periodic_state_end: null,
     updated_at: new Date().toISOString(),
   }).eq('id', userId);
+  if (error) throw error;
 
   return { previousState };
 }
