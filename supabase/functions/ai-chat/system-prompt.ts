@@ -109,19 +109,19 @@ Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylas
    "dietary_restriction": "vegan|vegetarian|pescatarian|halal|kosher|gluten_free|lactose_free",
    "eating_out_frequency": "never|rare|weekly|frequent",
    "fastfood_frequency": "never|rare|weekly|frequent",
-   "skipped_meals": true, "night_eating_habit": true, "emotional_eating": true, "snacking_habit": true,
+   "skipped_meals": "kahvaltiyi atlarim", "night_eating_habit": "gece atistirma", "emotional_eating": "stresli olunca", "snacking_habit": "ikindi 4-5 arasi atistirma",
    "caffeine_intake": "none|low|moderate|high",
    // Mutfak
-   "meal_prep_time": "short|medium|long", "kitchen_equipment": ["oven","airfryer","blender","stove"],
+   "meal_prep_time": "short|medium|long", "kitchen_equipment": "firin, airfryer, blender, tarti",
    "household_cooking": "self|partner|parent|shared", "household_diet_challenge": "aciklama",
    // Antrenman
    "training_experience": "none|beginner|intermediate|advanced",
    "training_style": "cardio|strength|mixed",
    "equipment_access": "home|gym|both",
    "exercise_history": "kullanici kendi sozleriyle gecmisi (serbest metin)",
-   "preferred_exercises": ["yuzme","fitness","kosu"],
-   "disliked_exercises": ["burpees"],
-   "available_training_times": ["sabah","aksam"],
+   "preferred_exercises": "yuzme, fitness, kosu",
+   "disliked_exercises": "burpees",
+   "available_training_times": "sabah, aksam",
    // Saglik / yasam
    "stress_level": "low|moderate|high", "stress_sources": "aciklama",
    "sleep_quality": "poor|ok|good",
@@ -140,6 +140,7 @@ Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylas
 </actions>
 Eylem YOKSA bu blogu EKLEME.
 profile_update icin sadece ACIKCA soylenen alanlari doldur, tahmin YAPMA.
+ONEMLI: skipped_meals, night_eating_habit, emotional_eating, snacking_habit, kitchen_equipment, preferred_exercises, disliked_exercises, available_training_times alanlari DAIMA serbest metin / virgulle ayrilmis string olarak yaz — ASLA dizi (array) veya boolean (true/false) verme.
 ONEMLI: Kullanici "boyum 175" veya "72 kiloyum" veya "25 yasindayim" gibi bilgi verirse MUTLAKA profile_update action'i ekle. Bu bilgileri sadece sohbette tutma, KAYDET.
 ASLA "Bu bilgileri kaydedeyim mi?" diye sorma. Kayit sessizce yapilir, "Profiline ekledim" gibi ifade KULLANMA — kullaniciyi dogal sohbetle devam ettir.
 

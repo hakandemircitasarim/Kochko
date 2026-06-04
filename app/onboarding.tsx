@@ -196,6 +196,9 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
       // 1. Create goal first
       const w = parseFloat(weightKg);
       const targetWeight = targetWeightKg ? parseFloat(targetWeightKg) : w;
+      // Single-active-goal invariant (migration 033): deactivate any existing active
+      // goal first so a retry after a partial failure doesn't violate the unique index.
+      await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
       const { error: goalError } = await supabase.from('goals').insert({
         user_id: user.id,
         goal_type: goalType,
@@ -242,7 +245,6 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
         calorie_range_rest_max: targets.restDay.max,
         weekly_calorie_budget: targets.weeklyBudget,
         protein_per_kg: Math.round((targets.proteinG / w) * 100) / 100,
-        protein_target_g: targets.proteinG,
         onboarding_completed: true,
       } as never);
 

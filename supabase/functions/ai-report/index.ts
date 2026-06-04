@@ -171,11 +171,19 @@ ${(() => {
   if (typeof report.full_report === 'string') report.full_report = sanitizeText(report.full_report).clean;
   if (typeof report.tomorrow_action === 'string') report.tomorrow_action = sanitizeText(report.tomorrow_action).clean;
 
-  // Clamp compliance
-  report.compliance_score = Math.max(0, Math.min(100, Math.round(report.compliance_score as number)));
+  // Clamp compliance (coerce to a finite number first so a missing/NaN value
+  // can never reach the NOT NULL column)
+  const rawCompliance = Number(report.compliance_score);
+  report.compliance_score = Number.isFinite(rawCompliance)
+    ? Math.max(0, Math.min(100, Math.round(rawCompliance)))
+    : 0;
+
+  // Backfill NOT NULL columns so a model omission can't violate the constraint
+  if (typeof report.tomorrow_action !== 'string' || !report.tomorrow_action) report.tomorrow_action = '-';
+  if (typeof report.full_report !== 'string' || !report.full_report) report.full_report = 'Rapor oluşturulamadı.';
 
   // Store
-  await supabaseAdmin.from('daily_reports').upsert({
+  const { error: upsertErr } = await supabaseAdmin.from('daily_reports').upsert({
     user_id: userId, date: reportDate,
     compliance_score: report.compliance_score,
     calorie_actual: totalCal, protein_actual: Math.round(totalPro),
@@ -194,6 +202,10 @@ ${(() => {
     full_report: report.full_report,
     generated_at: new Date().toISOString(),
   }, { onConflict: 'user_id,date' });
+  if (upsertErr) {
+    console.error('[ai-report] daily_reports upsert failed:', upsertErr.message);
+    return respond({ error: 'Rapor kaydedilemedi: ' + upsertErr.message }, 500);
+  }
 
   return respond(report);
 }
@@ -247,11 +259,15 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
     { temperature: TEMPERATURE.analyst, maxTokens: 2000, jsonMode: true }
   );
 
-  if (typeof report.next_week_strategy === 'string') report.next_week_strategy = sanitizeText(report.next_week_strategy).clean;
+  // Default the NOT NULL next_week_strategy before the upsert so an omitted key
+  // can't violate the constraint.
+  report.next_week_strategy = (typeof report.next_week_strategy === 'string' && report.next_week_strategy.trim())
+    ? sanitizeText(report.next_week_strategy).clean
+    : '-';
 
   const weights = metrics.filter((m: { weight_kg: number | null }) => m.weight_kg).map((m: { date: string; weight_kg: number }) => ({ date: m.date, kg: m.weight_kg }));
 
-  await supabaseAdmin.from('weekly_reports').upsert({
+  const { error: wrErr } = await supabaseAdmin.from('weekly_reports').upsert({
     user_id: userId, week_start: wsStr,
     weight_trend: weights,
     avg_compliance: report.avg_compliance,
@@ -266,6 +282,10 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
     plan_revision: report.plan_revision,
     generated_at: new Date().toISOString(),
   }, { onConflict: 'user_id,week_start' });
+  if (wrErr) {
+    console.error('[ai-report] weekly_reports upsert failed:', wrErr.message);
+    return respond({ error: 'Haftalik rapor kaydedilemedi: ' + wrErr.message }, 500);
+  }
 
   // Sync weekly learning to Layer 2 (ai_summary) for long-term memory
   if (report.ai_learning_note) {
@@ -347,11 +367,16 @@ Gunluk Uyum: ${dailyReports.map((r: { date: string; compliance_score: number }) 
   const VALID_TRENDS = ['yukselis', 'dusus', 'stabil'];
   const trendDir = VALID_TRENDS.includes(report.trend_direction as string) ? (report.trend_direction as string) : 'stabil';
 
-  await supabaseAdmin.from('monthly_reports').upsert({
+  // Coerce + clamp AI-provided numerics defensively (covers numeric strings the typeof clamp above misses)
+  const safeCompliance = Math.max(0, Math.min(100, Math.round(Number(report.avg_compliance ?? avgCompliance)) || 0));
+  const rawWeightChange = report.weight_change_kg ?? weightChange;
+  const safeWeightChange = rawWeightChange == null ? null : Math.max(-999, Math.min(999, Number(rawWeightChange) || 0));
+
+  const { error: monthlyErr } = await supabaseAdmin.from('monthly_reports').upsert({
     user_id: userId,
     month_start: msStr,
-    avg_compliance: report.avg_compliance ?? avgCompliance,
-    weight_change_kg: report.weight_change_kg ?? weightChange,
+    avg_compliance: safeCompliance,
+    weight_change_kg: safeWeightChange,
     trend_direction: trendDir,
     monthly_summary: report.monthly_summary,
     risk_signals: report.risk_signals,
@@ -362,6 +387,10 @@ Gunluk Uyum: ${dailyReports.map((r: { date: string; compliance_score: number }) 
     weight_trend: weights,
     generated_at: new Date().toISOString(),
   }, { onConflict: 'user_id,month_start' });
+  if (monthlyErr) {
+    console.error('[ai-report] monthly_reports upsert failed:', monthlyErr.message);
+    return respond({ error: 'Aylik rapor kaydedilemedi: ' + monthlyErr.message }, 500);
+  }
 
   return respond(report);
 }

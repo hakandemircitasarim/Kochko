@@ -31,8 +31,42 @@ export interface AllergenCheck {
 }
 
 /**
+ * Category -> concrete food tokens that contain that allergen.
+ * Shared so guardrails.ts and service-contexts.ts use the same coverage.
+ * Keys are stored lowercased (tr locale); both diacritic and ascii variants
+ * are included so a stored allergen like "süt" or "sut" both resolve.
+ */
+export const ALLERGEN_FOODS: Record<string, string[]> = {
+  gluten: ['ekmek', 'makarna', 'un', 'bulgur', 'simit', 'börek', 'borek', 'poğaça', 'pogaca', 'pasta', 'pizza', 'kek', 'bisküvi', 'biskuvi'],
+  laktoz: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
+  süt: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
+  sut: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
+  fındık: ['fındık', 'findik'],
+  findik: ['fındık', 'findik'],
+  fıstık: ['fıstık', 'fistik'],
+  fistik: ['fıstık', 'fistik'],
+  yumurta: ['yumurta', 'omlet', 'menemen'],
+  balık: ['balık', 'balik', 'somon', 'levrek', 'hamsi'],
+  balik: ['balık', 'balik', 'somon', 'levrek', 'hamsi'],
+};
+
+/**
+ * Strip common Turkish derivational/possessive suffixes so inflected
+ * forms ("sütlü", "fındıklı") still match the bare token.
+ */
+function stripTurkishSuffix(word: string): string {
+  return word
+    .replace(/(sız|siz|suz|süz)$/u, '')
+    .replace(/(lı|li|lu|lü)$/u, '')
+    .replace(/(lar|ler)$/u, '')
+    .replace(/(ı|i|u|ü)$/u, '');
+}
+
+/**
  * Check AI-generated meal suggestions against user's allergen list.
  * This is a CODE-BASED guardrail (Spec 12.4).
+ * Category-expanding, bidirectional, suffix-tolerant match so Turkish
+ * inflected/compound forms and multi-word allergens are caught.
  */
 export function checkAllergens(
   mealText: string,
@@ -41,7 +75,26 @@ export function checkAllergens(
   if (allergens.length === 0) return { passed: true, violations: [] };
 
   const lowerText = mealText.toLocaleLowerCase('tr');
-  const violations = allergens.filter(a => lowerText.includes(a.toLocaleLowerCase('tr')));
+  const normText = stripTurkishSuffix(lowerText);
+  // Tokenize meal text for the reverse (short item vs compound allergen) check.
+  const textItems = lowerText.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+  const violations = allergens.filter(a => {
+    const aName = a.toLocaleLowerCase('tr');
+    const tokens = new Set<string>([aName, ...(ALLERGEN_FOODS[aName] ?? [])]);
+    for (const token of tokens) {
+      if (!token) continue;
+      const normToken = stripTurkishSuffix(token);
+      // Normal direction: meal text contains the (possibly suffixed) token.
+      if (lowerText.includes(token) || normText.includes(normToken)) return true;
+      // Reverse direction: a short meal item is contained in a compound token
+      // (e.g. item "süt" vs allergen token "süt ürünleri").
+      for (const item of textItems) {
+        if (item.length >= 3 && token.includes(item)) return true;
+      }
+    }
+    return false;
+  });
 
   return {
     passed: violations.length === 0,

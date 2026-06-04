@@ -171,7 +171,7 @@ function analyzePlan(lower: string): MessageAnalysis {
 
 function analyzeCoaching(lower: string): MessageAnalysis {
   // Symptom/health decision
-  if (/halsiz|hasta|enerji|basi?m?\s*agr|ağrı|mide|bulanti|uyu(ya)?m|yorgun|bas\s*don/.test(lower)) {
+  if (/halsiz|hasta|enerji|baş?ı?m?\s*[ae]ğ?r|ağrı|mide|bulant[iı]|uyu(ya)?m|yorgun|baş?ı?m?\s*dön|bas\s*don|sersem|dengemi?\s*kaybet/.test(lower)) {
     return {
       taskMode: 'coaching',
       subtype: 'symptom_decision',

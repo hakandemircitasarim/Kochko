@@ -45,14 +45,14 @@ export default function MonthlyReportScreen() {
     Promise.all([
       supabase.from('weekly_reports').select('*').eq('user_id', user.id)
         .gte('week_start', fourWeeksAgo).order('week_start'),
-      supabase.from('profiles').select('weight_kg, target_weight_kg').eq('id', user.id).single(),
+      supabase.from('goals').select('target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1),
       supabase.from('monthly_reports').select('*').eq('user_id', user.id)
         .eq('month_start', monthStart).single(),
       supabase.from('daily_metrics').select('date, weight_kg').eq('user_id', user.id)
         .gte('date', monthStart).lte('date', monthEnd).order('date'),
-    ]).then(([reportsRes, profileRes, monthlyRes, metricsRes]) => {
+    ]).then(([reportsRes, goalRes, monthlyRes, metricsRes]) => {
       setWeeklyReports((reportsRes.data ?? []) as Record<string, unknown>[]);
-      setProfile(profileRes.data);
+      setProfile((goalRes.data as { target_weight_kg: number | null }[] | null)?.[0] ?? null);
       if (monthlyRes.data) {
         setAiReport(monthlyRes.data as unknown as MonthlyAIReport);
       }

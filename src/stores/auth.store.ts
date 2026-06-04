@@ -15,8 +15,8 @@ interface AuthState {
   initialized: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (email: string, password: string, birthYear: number) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
-  signInWithGoogle: () => Promise<{ error: string | null }>;
-  signInWithApple: () => Promise<{ error: string | null }>;
+  signInWithGoogle: () => Promise<{ error: string | null; cancelled?: boolean }>;
+  signInWithApple: () => Promise<{ error: string | null; cancelled?: boolean }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   initialize: () => Promise<void>;
@@ -84,19 +84,27 @@ export const useAuthStore = create<AuthState>((set) => ({
         options: { redirectTo, skipBrowserRedirect: true },
       });
       if (error) { set({ loading: false }); return { error: error.message }; }
+      let result: WebBrowser.WebBrowserAuthSessionResult | undefined;
       if (data.url) {
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+        result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
         if (result.type === 'success' && result.url) {
           const url = new URL(result.url);
           const accessToken = url.searchParams.get('access_token') ?? url.hash?.match(/access_token=([^&]*)/)?.[1];
           const refreshToken = url.searchParams.get('refresh_token') ?? url.hash?.match(/refresh_token=([^&]*)/)?.[1];
           if (accessToken && refreshToken) {
-            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+            const { error: sessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+            if (sessionError) { set({ loading: false }); return { error: sessionError.message }; }
           }
         }
       }
+      // Only report success once a session truly exists — openAuthSessionAsync
+      // resolves with type 'success' even when token parsing/setSession failed,
+      // and resolves 'cancel'/'dismiss' when the user backed out of the browser.
+      const { data: { session } } = await supabase.auth.getSession();
       set({ loading: false });
-      return { error: null };
+      if (session) return { error: null };
+      if (result?.type === 'cancel' || result?.type === 'dismiss') return { error: null, cancelled: true };
+      return { error: 'Giriş tamamlanamadı.' };
     } catch (e) {
       set({ loading: false });
       return { error: 'Google ile giris sirasinda hata olustu.' };
@@ -115,19 +123,27 @@ export const useAuthStore = create<AuthState>((set) => ({
         options: { redirectTo, skipBrowserRedirect: true },
       });
       if (error) { set({ loading: false }); return { error: error.message }; }
+      let result: WebBrowser.WebBrowserAuthSessionResult | undefined;
       if (data.url) {
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+        result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
         if (result.type === 'success' && result.url) {
           const url = new URL(result.url);
           const accessToken = url.searchParams.get('access_token') ?? url.hash?.match(/access_token=([^&]*)/)?.[1];
           const refreshToken = url.searchParams.get('refresh_token') ?? url.hash?.match(/refresh_token=([^&]*)/)?.[1];
           if (accessToken && refreshToken) {
-            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+            const { error: sessionError } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+            if (sessionError) { set({ loading: false }); return { error: sessionError.message }; }
           }
         }
       }
+      // Only report success once a session truly exists — openAuthSessionAsync
+      // resolves with type 'success' even when token parsing/setSession failed,
+      // and resolves 'cancel'/'dismiss' when the user backed out of the browser.
+      const { data: { session } } = await supabase.auth.getSession();
       set({ loading: false });
-      return { error: null };
+      if (session) return { error: null };
+      if (result?.type === 'cancel' || result?.type === 'dismiss') return { error: null, cancelled: true };
+      return { error: 'Giriş tamamlanamadı.' };
     } catch (e) {
       set({ loading: false });
       return { error: 'Apple ile giris sirasinda hata olustu.' };

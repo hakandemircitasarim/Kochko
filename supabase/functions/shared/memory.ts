@@ -57,7 +57,7 @@ async function buildLayer1(userId: string): Promise<string> {
   const hour = now.getHours();
   const minute = now.getMinutes().toString().padStart(2, '0');
 
-  const goals = (goalRes.data ?? []) as { goal_type: string; target_weight_kg: number; priority: string; phase_label: string; weekly_rate: number; created_at: string; target_weeks: number | null }[];
+  const goals = (goalRes.data ?? []) as { goal_type: string; target_weight_kg: number; priority: string; phase_label: string; weekly_rate: number; created_at: string; target_weeks: number | null; start_weight_kg: number | null }[];
   const prefs = (prefsRes.data ?? []) as { food_name: string; preference: string; is_allergen: boolean; allergen_severity: string | null }[];
   const health = (healthRes.data ?? []) as { event_type: string; description: string; is_ongoing: boolean }[];
 
@@ -91,7 +91,10 @@ ${goals.length > 0 ? goals.map(g => {
   const weeksLeft = Math.max(0, targetWeeks - weeksElapsed);
   const kgRemaining = tw && cw ? Math.abs(cw - tw) : null;
   const kgLost = tw && cw ? (g.goal_type === 'lose_weight' ? (p.weight_kg as number) - cw : cw - (p.weight_kg as number)) : null;
-  const pct = tw && cw && kgRemaining !== null ? Math.min(100, Math.round(((Math.abs((p.weight_kg as number) - tw) - kgRemaining) / Math.abs((p.weight_kg as number) - tw)) * 100)) : null;
+  const sw = (g.start_weight_kg as number | null) ?? cw; // baseline; falls back to current for un-backfilled goals
+  const pct = (sw !== null && tw && cw && Math.abs(sw - tw) > 0.01)
+    ? Math.min(100, Math.max(0, Math.round((Math.abs(sw - cw) / Math.abs(sw - tw)) * 100)))
+    : null;
   return `${g.phase_label ?? g.goal_type}: ${tw ?? '?'}kg | ${g.priority} | ${g.weekly_rate ?? '?'}kg/hafta | ${weeksElapsed}/${targetWeeks} hafta | ${kgRemaining !== null ? kgRemaining.toFixed(1) + 'kg kaldi' : ''} | ${pct !== null ? '%' + pct : ''}`;
 }).join('\n') : 'Hedef belirlenmemis'}
 
@@ -458,13 +461,14 @@ export async function storeRepairEvent(
   correctedInput: string | null,
   foodItem: string | null
 ): Promise<void> {
-  await supabaseAdmin.from('repair_history').insert({
+  const { error } = await supabaseAdmin.from('repair_history').insert({
     user_id: userId,
     repair_type: repairType,
     original_text: originalInput,
     corrected_text: correctedInput,
     food_name: foodItem,
   });
+  if (error) console.error('storeRepairEvent failed:', error.message);
 }
 
 // ─── Pattern Confidence Evolution ───

@@ -384,13 +384,14 @@ serve(async (req: Request) => {
         const toMax = tProfile.phase_transition_to_rest_max as number;
         const interpMin = Math.round(fromMin + (toMin - fromMin) * progress);
         const interpMax = Math.round(fromMax + (toMax - fromMax) * progress);
-        await supabaseAdmin.from('profiles').update({
+        const { error: transitionErr } = await supabaseAdmin.from('profiles').update({
           calorie_range_rest_min: interpMin,
           calorie_range_rest_max: interpMax,
         }).eq('id', userId);
+        if (transitionErr) throw new Error('profiles transition update failed: ' + transitionErr.message);
       } else if (daysSince > 6) {
         // Transition complete: snap to final and clear transition markers
-        await supabaseAdmin.from('profiles').update({
+        const { error: transitionDoneErr } = await supabaseAdmin.from('profiles').update({
           calorie_range_rest_min: tProfile.phase_transition_to_rest_min,
           calorie_range_rest_max: tProfile.phase_transition_to_rest_max,
           phase_transition_start_date: null,
@@ -399,6 +400,7 @@ serve(async (req: Request) => {
           phase_transition_to_rest_min: null,
           phase_transition_to_rest_max: null,
         }).eq('id', userId);
+        if (transitionDoneErr) throw new Error('profiles transition completion update failed: ' + transitionDoneErr.message);
       }
     }
 
@@ -509,7 +511,7 @@ serve(async (req: Request) => {
     }
 
     // Guardrail: workout duration cap (Spec 12.2 — max 120 min)
-    const workout = plan.workout_plan as { duration_min?: number; main?: string[]; type?: string; intensity?: string } | undefined;
+    const workout = plan.workout_plan as { duration_min?: number; main?: string[]; type?: string; rpe?: number; heart_rate_zone?: string } | undefined;
     if (workout && typeof workout.duration_min === 'number' && workout.duration_min > MAX_WORKOUT_DURATION_MIN) {
       workout.duration_min = MAX_WORKOUT_DURATION_MIN;
       plan._workout_duration_capped = true;
@@ -611,9 +613,11 @@ serve(async (req: Request) => {
         .eq('user_id', userId)
         .eq('intensity', 'high')
         .gte('logged_for_date', new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0]);
+      const rpe = typeof workout.rpe === 'number' ? workout.rpe : 0;
+      const intensity = (rpe >= 8 || workout.heart_rate_zone === 'yuksek') ? 'yuksek' : 'orta';
       const exCheck = validateExercise(
         workout.duration_min ?? 0,
-        workout.type ?? 'mixed',
+        intensity,
         sleepHours,
         consecutiveHardDays ?? 0
       );
@@ -667,7 +671,7 @@ serve(async (req: Request) => {
     const nextVersion = (existingPlan?.version ?? 0) + 1;
 
     // Store plan with version
-    await supabaseAdmin.from('daily_plans').insert({
+    const { error: dailyPlanErr } = await supabaseAdmin.from('daily_plans').insert({
       user_id: userId,
       date: today,
       version: nextVersion,
@@ -688,6 +692,7 @@ serve(async (req: Request) => {
       status: 'draft',
       generated_at: new Date().toISOString(),
     });
+    if (dailyPlanErr) throw new Error('daily_plans insert failed: ' + dailyPlanErr.message);
 
     return new Response(JSON.stringify(plan), { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
@@ -753,12 +758,16 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
     }
   } catch { /* non-critical */ }
 
-  // Fetch existing plan to preserve approval state + increment revision_count
+  // Fetch existing active diet plan to preserve approval state + increment revision_count.
+  // Migration 030 dropped the (user_id, week_start) UNIQUE in favour of a partial unique
+  // index (uniq_active_plan_per_type) of one active plan per (user, plan_type), so we
+  // scope to the active diet row instead of week_start (which could match archived rows).
   const { data: existing } = await supabaseAdmin
     .from('weekly_plans')
     .select('id, revision_count, approved_at')
     .eq('user_id', userId)
-    .eq('week_start', weekStart)
+    .eq('plan_type', 'diet')
+    .eq('status', 'active')
     .maybeSingle();
 
   const modLine = modificationRequest
@@ -787,20 +796,41 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
   }
 
   // Store in weekly_plans table. Regeneration resets approved_at and bumps revision_count.
+  // The uniq_active_plan_per_type partial index forbids two active diet rows per user, so on
+  // regeneration we UPDATE the existing active row in place rather than blind-inserting; a
+  // fresh user gets an explicit INSERT with status/plan_type set so the active index is honored.
   const nextRevision = (existing?.revision_count ?? 0) + (existing ? 1 : 0);
-  await supabaseAdmin.from('weekly_plans').upsert(
-    {
-      user_id: userId,
-      week_start: weekStart,
-      plan_data: weeklyPlan.days,
-      shopping_list: weeklyPlan.shopping_list ?? [],
-      generated_at: new Date().toISOString(),
-      approved_at: null,
-      modification_request: modificationRequest ?? null,
-      revision_count: nextRevision,
-    },
-    { onConflict: 'user_id,week_start' }
-  );
+  if (existing?.id) {
+    const { error: updateErr } = await supabaseAdmin
+      .from('weekly_plans')
+      .update({
+        week_start: weekStart,
+        plan_data: weeklyPlan.days,
+        shopping_list: weeklyPlan.shopping_list ?? [],
+        generated_at: new Date().toISOString(),
+        approved_at: null,
+        modification_request: modificationRequest ?? null,
+        revision_count: nextRevision,
+      })
+      .eq('id', existing.id);
+    if (updateErr) throw new Error('weekly_plans update failed: ' + updateErr.message);
+  } else {
+    const { error: insertErr } = await supabaseAdmin
+      .from('weekly_plans')
+      .insert({
+        user_id: userId,
+        week_start: weekStart,
+        plan_type: 'diet',
+        status: 'active',
+        plan_data: weeklyPlan.days,
+        shopping_list: weeklyPlan.shopping_list ?? [],
+        generated_at: new Date().toISOString(),
+        approved_at: null,
+        modification_request: modificationRequest ?? null,
+        revision_count: nextRevision,
+      });
+    if (insertErr) throw new Error('weekly_plans insert failed: ' + insertErr.message);
+  }
 
   return weeklyPlan;
 }

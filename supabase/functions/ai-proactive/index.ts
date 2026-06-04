@@ -402,6 +402,15 @@ serve(async (req: Request) => {
           priority: tier === 'long' ? 'medium' : 'low',
           content: message,
         });
+
+        // Push notification (folded in from the former parallel re-engagement loop)
+        const reengageTitle = tier === 'short' ? 'Seni ozledik!'
+          : tier === 'medium' ? 'Bir haftadir gormuyoruz'
+          : 'Yeniden baslayalim mi?';
+        try {
+          await sendPushNotification(profile.id, reengageTitle, message, { type: 'reengagement', tier });
+        } catch { /* push non-critical */ }
+
         totalSent++;
       } catch { /* non-critical */ }
     }
@@ -1272,27 +1281,6 @@ ${await (async () => {
           push_sent: !!profile.push_token,
         });
 
-        // Send push notification via Expo Push API (Spec 10.1)
-        if (profile.push_token) {
-          const prefs = profile.notification_prefs as { quietStart?: string; quietEnd?: string; enabled?: boolean } | null;
-          const shouldSend = prefs?.enabled !== false && !isQuietHour(prefs?.quietStart ?? '23:00', prefs?.quietEnd ?? '07:00', hour);
-          if (shouldSend) {
-            try {
-              await fetch('https://exp.host/--/api/v2/push/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  to: profile.push_token,
-                  title: 'Kochko',
-                  body: clean,
-                  sound: 'default',
-                  data: { type: 'coaching', trigger: result.trigger },
-                }),
-              });
-            } catch { /* push non-critical */ }
-          }
-        }
-
         // Mark commitments as followed up
         for (const c of dueCommitments) {
           await supabaseAdmin.from('user_commitments')
@@ -1313,72 +1301,6 @@ ${await (async () => {
           );
         } catch { /* push non-critical */ }
       }
-    }
-
-    // --- Re-engagement loop (Spec 10.4) ---
-    const reengagementMessages: Record<string, { title: string; body: string }> = {
-      '3day': {
-        title: 'Seni ozledik!',
-        body: 'Birlikte nerede kalmistik? Kisa bir merhaba yeter.',
-      },
-      '7day': {
-        title: 'Bir haftadir gormuyoruz',
-        body: 'Hedeflerin seni bekliyor. Tek bir adim yeterli, geri donmeye ne dersin?',
-      },
-      '14day': {
-        title: 'Hala buradayiz',
-        body: 'Iki haftadir uzaktasin. Planini guncellememizi ister misin?',
-      },
-      '30day': {
-        title: 'Yeniden baslayalim mi?',
-        body: 'Bir ay oldu. Sifirdan baslamak da cesaret ister - hazirsan buradayiz.',
-      },
-    };
-
-    for (const profile of profiles as { id: string; push_token: string | null; notification_prefs: Record<string, unknown> | null }[]) {
-      try {
-        const { data: lastChat } = await supabaseAdmin
-          .from('chat_messages')
-          .select('created_at')
-          .eq('user_id', profile.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!lastChat?.created_at) continue;
-
-        const daysSinceActivity = (now.getTime() - new Date(lastChat.created_at).getTime()) / 86400000;
-        const level = getReengagementLevel(daysSinceActivity);
-
-        if (level === 'none' || level === 'stopped') continue;
-
-        // Check if re-engagement already sent today
-        const { count: reengagementToday } = await supabaseAdmin
-          .from('coaching_messages')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', profile.id)
-          .eq('trigger_type', `reengagement_${level}`)
-          .gte('created_at', `${today}T00:00:00`);
-
-        if ((reengagementToday ?? 0) > 0) continue;
-
-        const msg = reengagementMessages[level];
-        if (!msg) continue;
-
-        await supabaseAdmin.from('coaching_messages').insert({
-          user_id: profile.id,
-          content: msg.body,
-          trigger_type: `reengagement_${level}`,
-          priority: level === '30day' ? 'high' : 'medium',
-          read: false,
-        });
-
-        try {
-          await sendPushNotification(profile.id, msg.title, msg.body, { type: 'reengagement', level });
-        } catch { /* push non-critical */ }
-
-        totalSent++;
-      } catch { /* non-critical per user */ }
     }
 
     // T1.38: Auto-trigger daily report for users at day boundary (Spec 8.1).
@@ -1629,18 +1551,6 @@ function userLocalHour(activeTz: string | null, homeTz: string | null): number {
     } catch { /* invalid tz, fall through */ }
   }
   return (new Date().getUTCHours() + 3) % 24;
-}
-
-/**
- * Spec 10.4: Re-engagement level based on days since last activity.
- */
-function getReengagementLevel(days: number): 'none' | '3day' | '7day' | '14day' | '30day' | 'stopped' {
-  if (days < 3) return 'none';
-  if (days < 7) return '3day';
-  if (days < 14) return '7day';
-  if (days < 30) return '14day';
-  if (days < 31) return '30day';
-  return 'stopped';
 }
 
 // (Removed duplicate 2-arg isQuietHour — the timezone-aware 3-arg version above is the single

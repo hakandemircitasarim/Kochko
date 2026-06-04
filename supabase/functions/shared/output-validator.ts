@@ -48,15 +48,19 @@ export function validateMealParse(output: Record<string, unknown>): ValidationRe
 
     // Macro-calorie consistency check (Spec 5.29)
     // protein*4 + carbs*4 + fat*9 ≈ calories (±10%)
+    const macroSum =
+      (corrected.protein_g as number) +
+      (corrected.carbs_g as number) +
+      (corrected.fat_g as number);
     const calculated = Math.round(
       (corrected.protein_g as number) * 4 +
       (corrected.carbs_g as number) * 4 +
       (corrected.fat_g as number) * 9
     );
     const stated = corrected.calories as number;
-    if (stated > 0 && Math.abs(calculated - stated) > stated * 0.15) {
+    if (stated > 0 && macroSum > 0 && calculated > 0 && Math.abs(calculated - stated) > stated * 0.15) {
       errors.push(`Item ${i}: makro-kalori tutarsiz (${stated} kcal vs hesaplanan ${calculated} kcal)`);
-      // Trust macros, recalculate calories
+      // Trust macros only when they exist, recalculate calories
       corrected.calories = calculated;
     }
 

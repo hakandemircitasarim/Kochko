@@ -83,7 +83,7 @@ export function detectRepairIntent(message: string): RepairDetection {
  */
 export async function handleUndo(userId: string): Promise<RepairResult> {
   // Try undoing the most recent meal log
-  const { data: lastMeal } = await supabaseAdmin
+  const { data: lastMeal, error: lastMealErr } = await supabaseAdmin
     .from('meal_logs')
     .select('id, raw_input, meal_type, logged_at')
     .eq('user_id', userId)
@@ -91,22 +91,25 @@ export async function handleUndo(userId: string): Promise<RepairResult> {
     .order('logged_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (lastMealErr) console.error('[handleUndo] meal_logs fetch failed', lastMealErr);
 
-  const { data: lastWorkout } = await supabaseAdmin
+  const { data: lastWorkout, error: lastWorkoutErr } = await supabaseAdmin
     .from('workout_logs')
     .select('id, raw_input, logged_at')
     .eq('user_id', userId)
     .order('logged_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (lastWorkoutErr) console.error('[handleUndo] workout_logs fetch failed', lastWorkoutErr);
 
-  const { data: lastSupplement } = await supabaseAdmin
+  const { data: lastSupplement, error: lastSupplementErr } = await supabaseAdmin
     .from('supplement_logs')
     .select('id, supplement_name, logged_at')
     .eq('user_id', userId)
     .order('logged_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (lastSupplementErr) console.error('[handleUndo] supplement_logs fetch failed', lastSupplementErr);
 
   // Find the most recent one
   type LogEntry = { id: string; logged_at: string; type: string; label: string };
@@ -151,25 +154,43 @@ export async function handleUndo(userId: string): Promise<RepairResult> {
   const target = candidates[0];
 
   // Soft delete based on type
+  let mutationError: unknown = null;
   switch (target.type) {
-    case 'meal':
-      await supabaseAdmin
+    case 'meal': {
+      const { error } = await supabaseAdmin
         .from('meal_logs')
         .update({ is_deleted: true, deleted_at: new Date().toISOString() })
         .eq('id', target.id);
+      mutationError = error;
       break;
-    case 'workout':
-      await supabaseAdmin
+    }
+    case 'workout': {
+      const { error } = await supabaseAdmin
         .from('workout_logs')
         .delete()
         .eq('id', target.id);
+      mutationError = error;
       break;
-    case 'supplement':
-      await supabaseAdmin
+    }
+    case 'supplement': {
+      const { error } = await supabaseAdmin
         .from('supplement_logs')
         .delete()
         .eq('id', target.id);
+      mutationError = error;
       break;
+    }
+  }
+
+  // If the destructive mutation failed, do not claim success.
+  if (mutationError) {
+    console.error('[handleUndo] undo failed', mutationError);
+    return {
+      handled: true,
+      response: 'Kaydı geri alırken bir sorun oluştu, tekrar dener misin?',
+      undoneAction: null,
+      shouldContinueNormal: false,
+    };
   }
 
   // Store repair event

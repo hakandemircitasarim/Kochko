@@ -103,14 +103,25 @@ export default function ProgressScreen() {
       min: (profile.calorie_range_rest_min as number) ?? 1800,
       max: (profile.calorie_range_rest_max as number) ?? 2200,
     };
-    const currentProtein = (profile.protein_target_g as number) ?? 120;
+    const weightKg = (profile.weight_kg as number | null) ?? null;
+    const proteinPerKg = (profile.protein_per_kg as number | null) ?? null;
+    const currentProtein = (weightKg && proteinPerKg) ? Math.round(weightKg * proteinPerKg) : 120;
     const result = applyPlateauStrategy(strategyId, currentCalorie, currentProtein);
 
-    await supabase.from('profiles').update({
+    const profileUpdate: Record<string, number> = {
       calorie_range_rest_min: result.adjustedCalorie.min,
       calorie_range_rest_max: result.adjustedCalorie.max,
-      protein_target_g: result.adjustedProtein,
-    }).eq('id', user.id);
+    };
+    // protein_target_g is not a profiles column (it lives on daily_plans); persist the
+    // protein intent via protein_per_kg instead so the adjusted protein is not lost.
+    if (weightKg) profileUpdate.protein_per_kg = Math.round((result.adjustedProtein / weightKg) * 10) / 10;
+
+    const { error } = await supabase.from('profiles').update(profileUpdate).eq('id', user.id);
+
+    if (error) {
+      Alert.alert('Hata', 'Strateji uygulanamadı, lütfen tekrar dene.', [{ text: 'Tamam' }]);
+      return;
+    }
 
     useProfileStore.getState().fetch(user.id);
     Alert.alert('Strateji Uygulandı', result.instructions, [{ text: 'Tamam' }]);

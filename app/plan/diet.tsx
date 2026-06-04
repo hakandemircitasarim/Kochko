@@ -86,7 +86,7 @@ export default function DietPlanScreen() {
 
   const load = useCallback(async () => {
     if (!user?.id) return;
-    if (!profile) await fetchProfile(user.id);
+    if (!useProfileStore.getState().profile) await fetchProfile(user.id);
     const [activeRow, draftRow, goalRes] = await Promise.all([
       getActive(user.id, 'diet'),
       getDraft(user.id, 'diet'),
@@ -102,9 +102,8 @@ export default function DietPlanScreen() {
       prevPlanRef.current = draftRow.plan_data as DietPlanData;
     } else if (activeRow) setView('active');
     else setView('empty');
-  }, [user?.id, profile, fetchProfile]);
+  }, [user?.id, fetchProfile]);
 
-  useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   // Reset fullyViewed whenever snapshot version changes

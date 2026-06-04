@@ -114,7 +114,11 @@ export default function SessionListScreen() {
 
   const handleNewSession = async () => {
     const id = await createSession();
-    if (id) router.push(`/chat/${id}`);
+    if (id) {
+      router.push(`/chat/${id}`);
+    } else {
+      Alert.alert('Sohbet başlatılamadı', 'İnternet bağlantını kontrol et ve tekrar dene.');
+    }
   };
 
   const handleTaskPress = async (task: OnboardingTask) => {
@@ -124,6 +128,8 @@ export default function SessionListScreen() {
         pathname: `/chat/${id}`,
         params: { prefill: task.prefillMessage, taskModeHint: task.taskModeHint },
       });
+    } else {
+      Alert.alert('Sohbet başlatılamadı', 'İnternet bağlantını kontrol et ve tekrar dene.');
     }
   };
 

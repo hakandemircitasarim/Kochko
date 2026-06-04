@@ -810,7 +810,7 @@ serve(async (req: Request) => {
 
     // Async: check onboarding completion
     if (isOnboarding && actions.some((a) => (a as { type?: string }).type === 'profile_update')) {
-      checkOnboardingCompletion(userId).then(() => {}, () => {});
+      checkOnboardingCompletion(userId).then(() => {}, (e) => console.error('[Onboarding] checkOnboardingCompletion failed:', (e as Error).message));
     }
 
     const outActions = actions.map((a, i: number) => ({
@@ -1324,16 +1324,19 @@ async function executeActions(
             };
             const multiplier = cookingMethod ? (COOKING_MULTIPLIERS[cookingMethod.toLowerCase()] ?? 1.0) : 1.0;
 
-            await supabaseAdmin.from('meal_log_items').insert(
+            const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(
               items.map(i => ({
                 meal_log_id: log.id, food_name: i.name, portion_text: i.portion,
                 calories: Math.max(0, Math.round(i.calories * multiplier)),
                 protein_g: Math.max(0, i.protein_g), carbs_g: Math.max(0, i.carbs_g),
                 fat_g: Math.max(0, Math.round(i.fat_g * multiplier)),
                 data_source: 'ai_estimate',
-                cooking_method: cookingMethod,
               }))
             );
+            // NOTE: cooking_method is NOT a column on meal_log_items — its effect
+            // is already folded into calories/fat via `multiplier` above. Writing
+            // it 42703'd and silently dropped EVERY item (zero-calorie meals).
+            if (itemsErr) console.error('[meal_log_items] insert failed:', itemsErr.message);
           }
 
           // --- Auto Meal Time Learning (Spec 5.15) ---
@@ -2493,11 +2496,13 @@ async function checkOnboardingCompletion(userId: string) {
     const trainingMax = targetCal + Math.round(rangeWidth / 2);
     const restMin = Math.max(trainingMin - 250, data.gender === 'female' ? 1200 : 1400);
     const restMax = trainingMax - 250;
-    const proteinG = Math.round(data.weight_kg * 1.8);
     const waterTarget = Math.round(data.weight_kg * 0.033 * 10) / 10;
     const weeklyBudget = 4 * Math.round((trainingMin + trainingMax) / 2) + 3 * Math.round((restMin + restMax) / 2);
 
-    await supabaseAdmin.from('profiles').update({
+    // NOTE: protein_target_g is NOT a profiles column (it lives on daily_plans);
+    // protein intensity is captured by protein_per_kg. Macro split columns are
+    // macro_protein_pct/macro_carb_pct/macro_fat_pct (001:77-79), not macro_pct_*.
+    const { error } = await supabaseAdmin.from('profiles').update({
       onboarding_completed: true,
       tdee_calculated: tdee,
       tdee_last_weight: data.weight_kg,
@@ -2506,15 +2511,15 @@ async function checkOnboardingCompletion(userId: string) {
       calorie_range_training_max: trainingMax,
       calorie_range_rest_min: restMin,
       calorie_range_rest_max: restMax,
-      protein_target_g: proteinG,
       protein_per_kg: 1.8,
       water_target_liters: waterTarget,
       weekly_calorie_budget: weeklyBudget,
-      macro_pct_protein: 30,
-      macro_pct_carb: 40,
-      macro_pct_fat: 30,
+      macro_protein_pct: 30,
+      macro_carb_pct: 40,
+      macro_fat_pct: 30,
       updated_at: new Date().toISOString(),
     }).eq('id', userId);
+    if (error) console.error('[Onboarding] completion update failed:', error.message);
   }
 }
 
@@ -2560,6 +2565,8 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
   const waterTarget = Math.round(currentWeight * 0.033 * 10) / 10;
   const weeklyBudget = 4 * Math.round((trainingMin + trainingMax) / 2) + 3 * Math.round((restMin + restMax) / 2);
 
+  // protein_target_g is not a profiles column (it lives on daily_plans); record
+  // protein intent via protein_per_kg (proteinG above derives from this 1.8 factor).
   await supabaseAdmin.from('profiles').update({
     tdee_calculated: tdee,
     tdee_last_weight: currentWeight,
@@ -2568,7 +2575,7 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
     calorie_range_training_max: trainingMax,
     calorie_range_rest_min: restMin,
     calorie_range_rest_max: restMax,
-    protein_target_g: proteinG,
+    protein_per_kg: 1.8,
     water_target_liters: waterTarget,
     weekly_calorie_budget: weeklyBudget,
     updated_at: new Date().toISOString(),

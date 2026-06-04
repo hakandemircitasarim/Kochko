@@ -71,15 +71,52 @@ export async function chatCompletion<T = string>(
 
   if (!response.ok) {
     const err = await response.text();
-    // Retry with fallback model on failure (Spec 5.25)
-    if (model !== MODELS.fallback) {
+    const transient = response.status === 429 || response.status >= 500;
+    // Retry with fallback model only on transient failures (Spec 5.25); re-throw 4xx immediately
+    if (model !== MODELS.fallback && transient) {
+      if (response.status === 429) {
+        // respect Retry-After if present, else short backoff
+        const ra = Number(response.headers.get('retry-after'));
+        await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 500));
+      }
+      console.error(`OpenAI ${model} failed (${response.status}), falling back to ${MODELS.fallback}: ${err.substring(0, 200)}`);
       return chatCompletion<T>(messages, { ...options, model: MODELS.fallback });
     }
-    throw new Error(`OpenAI error: ${response.status} - ${err}`);
+    throw new Error(`OpenAI error (${model}): ${response.status} - ${err}`);
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content ?? '';
+  const choice = data.choices?.[0];
+  const content = choice?.message?.content ?? '';
+  const finishReason = choice?.finish_reason;
+
+  if (finishReason === 'length') {
+    // Truncated by the token ceiling — the historical plan-snapshot failure mode.
+    console.error(
+      `OpenAI output truncated (finish_reason=length); max_tokens=${body.max_tokens} too small for model ${model}, jsonMode=${!!options?.jsonMode}`
+    );
+    // For JSON, a truncated body will not parse — fail loudly with a truncation-specific message
+    // (and optionally retry once with a larger ceiling) rather than the generic 'invalid JSON'.
+    if (options?.jsonMode) {
+      const bumped = (options?.maxTokens ?? 2000) * 2;
+      if (bumped <= 16000 && (options?.maxTokens ?? 2000) < bumped) {
+        return chatCompletion<T>(messages, { ...options, maxTokens: bumped });
+      }
+      throw new Error('OpenAI output truncated (finish_reason=length): increase maxTokens');
+    }
+    // For text, surface truncation rather than returning a half-finished reply silently.
+    throw new Error('OpenAI output truncated (finish_reason=length): increase maxTokens');
+  }
+
+  if (typeof content !== 'string' || content.trim() === '') {
+    const finish = finishReason ?? 'unknown';
+    const refusal = choice?.message?.refusal;
+    // Empty completion (content_filter / refusal / length). Try fallback model once.
+    if (model !== MODELS.fallback) {
+      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback });
+    }
+    throw new Error(`OpenAI returned empty content (finish_reason=${finish}${refusal ? `, refusal=${refusal}` : ''})`);
+  }
 
   if (options?.jsonMode) {
     try {

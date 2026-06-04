@@ -175,16 +175,18 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
     const current = get().waterLiters;
     const newTotal = Math.round((current + amount) * 100) / 100;
 
-    await supabase.from('daily_metrics').upsert(
+    const { error } = await supabase.from('daily_metrics').upsert(
       { user_id: userId, date, water_liters: newTotal, synced: true },
       { onConflict: 'user_id,date' }
     );
+    if (error) throw error;
     set({ waterLiters: newTotal });
   },
 
   deleteMeal: async (mealId) => {
     // Soft delete (Spec 3.2)
-    await supabase.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', mealId);
+    const { error } = await supabase.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', mealId);
+    if (error) throw error;
     set(state => {
       const deleted = state.meals.find(m => m.id === mealId);
       return {
@@ -198,7 +200,8 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   },
 
   deleteWorkout: async (workoutId) => {
-    await supabase.from('workout_logs').delete().eq('id', workoutId);
+    const { error } = await supabase.from('workout_logs').delete().eq('id', workoutId);
+    if (error) throw error;
     set(state => ({ workouts: state.workouts.filter(w => w.id !== workoutId) }));
   },
 }));

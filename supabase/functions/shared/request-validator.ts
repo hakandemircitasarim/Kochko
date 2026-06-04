@@ -6,6 +6,7 @@
 const MAX_PAYLOAD_BYTES = 1_000_000; // 1MB
 const MAX_MESSAGE_LENGTH = 5000;
 const MAX_IMAGE_BASE64_LENGTH = 10_000_000; // ~7.5MB image
+const MAX_AUDIO_BASE64_LENGTH = 10_000_000; // ~7.5MB audio
 
 export interface ValidationResult {
   valid: boolean;
@@ -19,8 +20,8 @@ export function validateChatRequest(body: unknown): ValidationResult {
 
   const b = body as Record<string, unknown>;
 
-  // At least message or image required
-  if (!b.message && !b.image_base64) {
+  // At least message, image, or audio required
+  if (!b.message && !b.image_base64 && !b.audio_base64) {
     return { valid: false, error: 'message or image_base64 required.' };
   }
 
@@ -32,6 +33,11 @@ export function validateChatRequest(body: unknown): ValidationResult {
   // Image size check
   if (b.image_base64 && typeof b.image_base64 === 'string' && b.image_base64.length > MAX_IMAGE_BASE64_LENGTH) {
     return { valid: false, error: 'Image too large. Max ~7.5MB.' };
+  }
+
+  // Audio size check
+  if (b.audio_base64 && typeof b.audio_base64 === 'string' && b.audio_base64.length > MAX_AUDIO_BASE64_LENGTH) {
+    return { valid: false, error: 'Audio too large.' };
   }
 
   // Message type check

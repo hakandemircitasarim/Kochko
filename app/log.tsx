@@ -102,7 +102,12 @@ export default function QuickLogScreen() {
       if (result.found && result.product_name) {
         setBarcodeResult(`${result.product_name} (${result.calories_per_100g} kcal/100g)`);
         const msg = `Barkod: ${barcode} - ${result.product_name}, ${result.calories_per_100g} kcal/100g, P:${result.protein_per_100g}g K:${result.carbs_per_100g}g Y:${result.fat_per_100g}g (porsiyon: ${result.serving_size_g}g)`;
-        await sendMessage(msg);
+        const { error: sendErr } = await sendMessage(msg);
+        if (sendErr) {
+          setBarcodeResult('Kayıt eklenemedi: ' + sendErr);
+          setScannedBarcode(null); // allow re-scanning the same product to retry
+          return; // finally{} still resets submittingRef + barcodeLoading
+        }
         if (user?.id) await fetchToday(user.id);
         setTimeout(() => { router.back(); }, 1500);
       } else {
