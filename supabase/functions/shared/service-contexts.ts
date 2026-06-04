@@ -150,7 +150,11 @@ export async function getRecoveryContext(userId: string): Promise<string> {
 
     // Weekly budget remaining
     const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1);
+    // ISO week starts Monday. JS getDay() returns 0 for Sunday, so normalize it
+    // to 6 (offset from Monday) instead of letting -0+1 jump to NEXT Monday.
+    const weekDay = weekStart.getDay();
+    const mondayOffset = weekDay === 0 ? 6 : weekDay - 1;
+    weekStart.setDate(weekStart.getDate() - mondayOffset);
     const weekStartStr = weekStart.toISOString().split('T')[0];
     const { data: weekLogs } = await supabaseAdmin
       .from('meal_logs').select('id').eq('user_id', userId).gte('logged_for_date', weekStartStr).eq('is_deleted', false);

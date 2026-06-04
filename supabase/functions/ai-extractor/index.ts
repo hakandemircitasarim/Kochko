@@ -162,7 +162,14 @@ serve(async (req: Request) => {
 
       if (Object.keys(profileUpdates).length > 0) {
         profileUpdates.updated_at = new Date().toISOString();
-        await supabaseAdmin.from('profiles').update(profileUpdates).eq('id', userId);
+        const { error: updateErr } = await supabaseAdmin.from('profiles').update(profileUpdates).eq('id', userId);
+        if (updateErr) {
+          // A single bad-typed / CHECK-violating field (e.g. activity_level:"orta")
+          // fails the whole UPDATE. Do NOT advance the checkpoint, so this batch is
+          // retried on the next run instead of being silently dropped forever.
+          console.error(`[Extractor] Profile update failed for ${userId}, checkpoint not advanced:`, updateErr.message);
+          continue;
+        }
       }
 
       // 7. Update checkpoint

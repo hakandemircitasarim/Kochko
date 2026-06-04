@@ -131,7 +131,7 @@ serve(async (req: Request) => {
     // Get profile for calorie validation and periodic state
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min, equipment_access, pregnancy_trimester, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length')
+      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min, equipment_access, pregnancy_trimester, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length, weekly_calorie_budget')
       .eq('id', userId).maybeSingle();
 
     // Build periodic + seasonal context
@@ -663,6 +663,15 @@ serve(async (req: Request) => {
     const weekConsumed = (weekMeals ?? []).reduce((s: number, i: { calories: number }) => s + i.calories, 0);
     plan.weekly_budget_consumed = weekConsumed;
 
+    // Weekly budget total + remaining are computed in code (not trusted from the LLM,
+    // which is never given a numeric budget). Use profiles.weekly_calorie_budget as the
+    // real total; fall back to today's mid-target * 7 when unset (mirrors widget.service.ts).
+    const planMidTarget = Math.round((((plan.calorie_target_min as number) ?? 0) + ((plan.calorie_target_max as number) ?? 0)) / 2);
+    const weeklyBudgetTotal = (profile?.weekly_calorie_budget as number | null) ?? (planMidTarget > 0 ? planMidTarget * 7 : 0);
+    const weeklyBudgetRemaining = Math.max(0, weeklyBudgetTotal - weekConsumed);
+    plan.weekly_budget_total = weeklyBudgetTotal;
+    plan.weekly_budget_remaining = weeklyBudgetRemaining;
+
     // Get current version for today (Spec 7.3: plan versioning)
     const { data: existingPlan } = await supabaseAdmin
       .from('daily_plans').select('version')
@@ -686,9 +695,9 @@ serve(async (req: Request) => {
       meal_suggestions: plan.meal_suggestions,
       snack_strategy: plan.snack_strategy,
       workout_plan: plan.workout_plan,
-      weekly_budget_total: plan.weekly_budget_total,
+      weekly_budget_total: weeklyBudgetTotal,
       weekly_budget_consumed: weekConsumed,
-      weekly_budget_remaining: plan.weekly_budget_remaining,
+      weekly_budget_remaining: weeklyBudgetRemaining,
       status: 'draft',
       generated_at: new Date().toISOString(),
     });

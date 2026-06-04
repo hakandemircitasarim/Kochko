@@ -165,14 +165,23 @@ async function buildLayer2(userId: string): Promise<string> {
   if (s.user_persona) parts.push(`Persona: ${s.user_persona}`);
   if (s.nutrition_literacy) parts.push(`Beslenme okuryazarligi: ${s.nutrition_literacy}`);
   if (s.learned_tone_preference) parts.push(`Ogrenilen ton: ${s.learned_tone_preference}`);
-  // A1: Structured alcohol pattern
-  const alcoholPattern = s.alcohol_pattern as { pattern: string; frequency: string; impact: string } | string | null;
-  if (alcoholPattern) {
-    if (typeof alcoholPattern === 'object') {
-      parts.push(`Alkol kalibi: ${alcoholPattern.pattern} | Siklik: ${alcoholPattern.frequency} | Etki: ${alcoholPattern.impact}`);
-    } else {
-      parts.push(`Alkol kalibi: ${alcoholPattern}`);
+  // A1: Alcohol pattern. ai_summary.alcohol_pattern is a TEXT column, so reads always
+  // come back as a string. A legacy writer may have serialized {pattern,frequency,impact}
+  // into it as a JSON blob; parse that back into a readable line instead of dumping raw JSON.
+  const alcoholPatternRaw = s.alcohol_pattern as string | null;
+  if (alcoholPatternRaw) {
+    let alcoholLine = alcoholPatternRaw;
+    const trimmed = alcoholPatternRaw.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as { pattern?: string; frequency?: string; impact?: string };
+        if (parsed && (parsed.pattern || parsed.frequency || parsed.impact)) {
+          alcoholLine = [parsed.pattern, parsed.frequency && `Siklik: ${parsed.frequency}`, parsed.impact && `Etki: ${parsed.impact}`]
+            .filter(Boolean).join(' | ');
+        }
+      } catch { /* not JSON, use the raw text */ }
     }
+    parts.push(`Alkol kalibi: ${alcoholLine}`);
   }
   if (s.caffeine_sleep_notes) parts.push(`Kafein-uyku: ${s.caffeine_sleep_notes}`);
   // A2: Social eating notes (structured date-stamped)
@@ -415,7 +424,12 @@ export async function updateLayer2(
     p_patch: updates,
   });
   if (error) {
-    console.error('updateLayer2 merge failed:', error.message);
+    // Surface the failure with enough context to diagnose a dead write path:
+    // which user, which Layer-2 keys, and the Postgres error code (e.g. 42804).
+    console.error(
+      `updateLayer2 merge failed (user=${userId}, keys=[${Object.keys(updates).join(',')}]):`,
+      error.code ? `${error.code} ${error.message}` : error.message,
+    );
   }
 }
 

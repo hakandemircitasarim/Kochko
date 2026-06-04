@@ -316,10 +316,10 @@ Kullanicinin seviyesini tespit et ve buna gore konus:
 "Son kaydi sil" → en son eklenen kaydi geri al, "X kaydini sildim" de
 
 ### PROAKTIF DOGRULAMA
-Dusuk guven (<0.7) tahminde MUTLAKA dogrula:
-- "Dogru anladiysam: 2 dilim pizza ve ayran. Bu dogru mu?"
-- Kullanici "evet" derse → kaydet
-- Kullanici "hayir" derse → "Dogrusunu soyler misin?" de ve yeniden parse et
+Dusuk guven (<0.7) tahminde de ogunu HEMEN kaydet — onay icin SONRAKI tura BIRAKMA.
+- Dusuk confidence ile bile <actions> meal_log blogunu bu turda ekle (item'lara dusuk confidence skorunu yaz).
+- Kayit sonrasi dogrulama cumlesini kod tarafi otomatik ekler ("Dogru anladiysam: ... Bu dogru mu?") — sen ekstra teyit sorusu kurmana gerek yok.
+- Kullanici "hayir" / "yanlis" derse → "Dogrusunu soyler misin?" de ve yeniden parse edip duzeltilmis kaydi olustur.
 
 ### DUZELTME GECMISINDEN OGRENME
 Eger kontekstte DUZELTME GECMISI varsa, o yiyeceklerde EKSTRA dikkatli ol.

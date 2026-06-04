@@ -27,10 +27,14 @@ export interface RepairResult {
 
 // ─── Repair Phrase Detection (Server-side mirror) ───
 
+// NOTE: undo commands ('geri al', 'iptal et', 'son kaydı sil', ...) are NOT
+// listed here. They mean UNDO, not "re-parse" — and they are handled by the
+// gated UNDO_PHRASES branch. Listing them here would (a) be redundant and
+// (b) re-introduce the mid-sentence misfire ('geri almak', 'iptal ettim')
+// that the (now word-boundary-gated) undo branch was just fixed to avoid.
 const REPAIR_PHRASES = [
   'yanlis anladin', 'yanlış anladın', 'oyle demedim', 'öyle demedim',
   'hayir oyle degil', 'hayır öyle değil',
-  'son kaydi sil', 'son kaydı sil', 'geri al', 'iptal et',
   'duzelt', 'düzelt', 'yanlis girdi', 'yanlış girdi',
   'onu demek istemedim', 'kastetmedim',
 ];
@@ -45,10 +49,24 @@ const CONFIRMATION_NEGATIVE = ['hayir', 'hayır', 'yanlis', 'yanlış', 'degil',
 
 export function detectRepairIntent(message: string): RepairDetection {
   const lower = message.toLocaleLowerCase('tr').trim();
+  const wordCount = lower.split(/\s+/).length;
 
-  for (const phrase of UNDO_PHRASES) {
-    if (lower.includes(phrase)) {
-      return { type: 'undo', confidence: 0.95, matchedPhrase: phrase };
+  // Match a phrase only as a standalone whitespace-delimited token sequence,
+  // so 'geri al' / 'iptal et' don't fire inside ordinary verbs like
+  // 'geri almak' / 'iptal ettim'. Padding the message lets the phrase match
+  // at the start or end of the utterance too.
+  const padded = ` ${lower} `;
+  const containsPhrase = (phrase: string) => padded.includes(` ${phrase} `);
+
+  // Undo is DESTRUCTIVE (soft-deletes the last meal / hard-deletes the last
+  // workout|supplement), so gate it like confirmations: short message + a
+  // word-boundary match. This prevents a user merely talking ABOUT regaining
+  // weight/muscle or cancelling something from wiping their latest log.
+  if (wordCount <= 5) {
+    for (const phrase of UNDO_PHRASES) {
+      if (containsPhrase(phrase)) {
+        return { type: 'undo', confidence: 0.95, matchedPhrase: phrase };
+      }
     }
   }
 
@@ -58,7 +76,6 @@ export function detectRepairIntent(message: string): RepairDetection {
     }
   }
 
-  const wordCount = lower.split(/\s+/).length;
   if (wordCount <= 5) {
     for (const phrase of CONFIRMATION_POSITIVE) {
       if (lower === phrase || lower.startsWith(phrase + ' ')) {

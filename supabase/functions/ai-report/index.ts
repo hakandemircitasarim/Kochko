@@ -265,6 +265,14 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
     ? sanitizeText(report.next_week_strategy).clean
     : '-';
 
+  // best_day / worst_day are DATE columns; the prompt asks for a free-form "tarih"
+  // so the model may emit "" or a weekday name ("Pazartesi"), which 22007-fails the
+  // whole upsert. Accept only an ISO date inside this week's range, else null.
+  const validDay = (v: unknown): string | null =>
+    (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && v >= wsStr && v <= weStr) ? v : null;
+  const bestDay = validDay(report.best_day);
+  const worstDay = validDay(report.worst_day);
+
   const weights = metrics.filter((m: { weight_kg: number | null }) => m.weight_kg).map((m: { date: string; weight_kg: number }) => ({ date: m.date, kg: m.weight_kg }));
 
   const { error: wrErr } = await supabaseAdmin.from('weekly_reports').upsert({
@@ -273,8 +281,8 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
     avg_compliance: report.avg_compliance,
     weekly_budget_compliance: report.weekly_budget_compliance,
     top_deviation: report.top_deviation,
-    best_day: report.best_day,
-    worst_day: report.worst_day,
+    best_day: bestDay,
+    worst_day: worstDay,
     strength_summary: report.strength_summary,
     ai_learning_note: report.ai_learning_note,
     alcohol_total_calories: thisWeekAlcTotal,
@@ -382,7 +390,9 @@ Gunluk Uyum: ${dailyReports.map((r: { date: string; compliance_score: number }) 
     risk_signals: report.risk_signals,
     behavioral_patterns: report.behavioral_patterns,
     top_achievement: report.top_achievement,
-    deviation_distribution: report.deviation_distribution,
+    // Persist the ground-truth tally the code already computed, not the model's
+    // reconstruction (the LLM drops/renames keys and fudges counts).
+    deviation_distribution: devDist,
     next_month_focus: report.next_month_focus,
     weight_trend: weights,
     generated_at: new Date().toISOString(),

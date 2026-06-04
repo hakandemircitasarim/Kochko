@@ -23,7 +23,7 @@ serve(async (req: Request) => {
   try {
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, gender, night_eating_risk, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone')
+      .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone')
       .eq('onboarding_completed', true);
 
     if (!profiles?.length) return respond({ processed: 0, sent: 0 });
@@ -777,7 +777,7 @@ serve(async (req: Request) => {
       }
     }
 
-    for (const profile of profiles as { id: string; night_eating_risk: boolean; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null; weekly_calorie_budget: number | null; wake_time: string | null; sleep_time: string | null; home_timezone: string | null; active_timezone: string | null }[]) {
+    for (const profile of profiles as { id: string; night_eating_habit: string | null; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null; weekly_calorie_budget: number | null; wake_time: string | null; sleep_time: string | null; home_timezone: string | null; active_timezone: string | null }[]) {
       // Per-user local time check — skip if outside their active hours
       const userLocalHour = getUserLocalHour(profile);
       if (!isAppropriateTime({ wake_time: profile.wake_time ?? undefined, sleep_time: profile.sleep_time ?? undefined }, userLocalHour)) continue;
@@ -810,7 +810,7 @@ serve(async (req: Request) => {
       const dueCommitments = (commitmentsRes.data ?? []) as { commitment: string }[];
       const patterns = (summaryRes.data?.behavioral_patterns as { type: string; description: string }[]) ?? [];
 
-      const nightRisk = profile.night_eating_risk && hour >= 21 && hour <= 23;
+      const nightRisk = !!profile.night_eating_habit && hour >= 21 && hour <= 23;
 
       // T3.13: Plateau detection for proactive messaging
       let plateauInfo = '';
@@ -1435,15 +1435,20 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
   // Safety: min must be less than max
   if (newTMin >= newTMax || newRMin >= newRMax) return;
 
-  await supabaseAdmin.from('profiles').update({
+  // protein target is derived downstream from protein_per_kg * weight_kg
+  // (protein_target_g is not a profiles column — it lives on daily_plans).
+  const { error: difficultyErr } = await supabaseAdmin.from('profiles').update({
     calorie_range_training_min: newTMin,
     calorie_range_training_max: newTMax,
     calorie_range_rest_min: newRMin,
     calorie_range_rest_max: newRMax,
     protein_per_kg: newProteinPerKg,
-    protein_target_g: Math.round(weightKg * newProteinPerKg),
     updated_at: new Date().toISOString(),
   }).eq('id', userId);
+  if (difficultyErr) {
+    console.error('adjustAdaptiveDifficulty profile update failed:', difficultyErr.message);
+    return; // don't tell the user their targets changed if the write failed
+  }
 
   // Send trigger as coaching message
   const triggerMsg = adjustment === 'increase'

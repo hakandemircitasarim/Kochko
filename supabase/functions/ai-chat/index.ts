@@ -440,10 +440,15 @@ serve(async (req: Request) => {
     // instructions. Matches at sentence boundaries to avoid mid-word damage.
     assistantMessage = stripVerbalAcknowledgements(assistantMessage);
 
-    // Regex fallback: always run, even when AI emitted actions, to fill in fields
-    // the model might have skipped (target_weight_kg, goal_type, motivation_source
-    // are the common misses). Existing action fields take precedence.
-    if (message) {
+    // Regex fallback: fill in profile fields the model might have skipped
+    // (target_weight_kg, goal_type, motivation_source are the common misses).
+    // Existing action fields take precedence. GATED to onboarding / onboarding_* task
+    // chats only: outside onboarding its bare "NN kg" regex misreads a workout/recipe
+    // weight (e.g. "bench press 4x8 70kg") as bodyweight and silently overwrites
+    // profiles.weight_kg, corrupting calorie/protein targets.
+    const regexFallbackAllowed = isOnboarding
+      || (typeof task_mode_hint === 'string' && task_mode_hint.startsWith('onboarding_'));
+    if (message && regexFallbackAllowed) {
       const regexExtracted = extractProfileFromMessage(message, task_mode_hint as string | undefined);
       if (regexExtracted) {
         const existingProfileAction = actions.find(a => a.type === 'profile_update') as Record<string, unknown> | undefined;
@@ -458,6 +463,21 @@ serve(async (req: Request) => {
           actions.push({ type: 'profile_update', ...regexExtracted });
         }
       }
+    }
+
+    // Meal-log safety net (Part B): the model intermittently reports a meal verbally
+    // ("2 yumurta yedim") but omits the <actions> meal_log block, so nothing is saved
+    // yet the reply looks like a confirmation. When the user message clearly reports an
+    // eaten meal, no meal_log action is present, and we're in a logging mode, replace
+    // the reply with an explicit confirm prompt. We DO NOT write any DB row here (zero
+    // double-log risk) — the user's "Evet" next turn produces the real meal_log. This
+    // only fires when the meal_log action is ABSENT, so it never touches the working path.
+    if (message
+      && looksLikeMealReport(message)
+      && !actions.some(a => a.type === 'meal_log')
+      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      console.warn('[meal_safety_net] meal intent, no meal_log action', { mode: effectiveMode });
+      assistantMessage = 'Bunu ogun olarak kaydedeyim mi? "Evet" dersen kalori ve makrolariyla ekleyeyim - istersen porsiyonlari biraz netlestir, daha dogru hesaplarim.';
     }
 
     // Extract Layer 2 updates
@@ -903,6 +923,22 @@ function stripVerbalAcknowledgements(text: string): string {
   return out.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/**
+ * Server safety net (meal-log reliability Part B): does this user message read like a
+ * report of a meal the user ALREADY ate (past tense), as opposed to a hypothetical
+ * ("kac kalori olur"), a refusal ("yemedim"), or a question? Used to detect when the
+ * model verbally acknowledges a meal but forgets the <actions> meal_log block, so we can
+ * ask for an explicit confirm instead of silently dropping the meal.
+ */
+function looksLikeMealReport(msg: string): boolean {
+  const m = msg.toLocaleLowerCase('tr');
+  const ate = /\b(yedim|yedik|ictim|atistirdim|tukettim|kahvalti yaptim)\b/.test(m) || /\b(içtim|atıştırdım|tükettim)\b/.test(m);
+  if (!ate) return false;
+  if (/(kac kalori|kaç kalori|olur mu|yesem|yersem|icsem|içsem|ne olur|kac gram|kaç gram)/.test(m)) return false;
+  if (/(yemedim|içmedim|icmedim|kaydetme|sayma|atladim|atladım)/.test(m)) return false;
+  return true;
+}
+
 function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<string, unknown> | null {
   const result: Record<string, unknown> = {};
   const lower = msg.toLocaleLowerCase('tr');
@@ -1270,17 +1306,30 @@ async function executeActions(
   const today = targetDate ?? new Date().toISOString().split('T')[0];
   const feedback: (string | null)[] = [];
 
-  // Get existing water for today
+  // Get existing water for today. waterTotal is a MUTABLE running total: every metric
+  // upsert (weight/sleep/mood/water) re-writes water_liters because upsert REPLACES the
+  // column, so a water_log batched before a later metric action would otherwise be reset
+  // to the original value. Increment waterTotal in water_log and write it in the others.
   const { data: todayMetrics } = await supabaseAdmin
     .from('daily_metrics').select('water_liters').eq('user_id', userId).eq('date', today).maybeSingle();
-  const existingWater = todayMetrics?.water_liters ?? 0;
+  let waterTotal = (todayMetrics?.water_liters as number | null) ?? 0;
 
   for (const action of actions) {
     try {
       switch (action.type) {
         case 'meal_log': {
+          // Collect all sub-messages (allergen warning, caffeine notices, low-confidence
+          // note, 'Ogun kaydedildi') into ONE entry. The caller maps feedback positionally
+          // to actions (one chip per action), so pushing multiple entries here would shove
+          // the extras onto later actions' chips and drop them for a lone meal_log.
+          const mealFeedback: string[] = [];
           const items = action.items as { name: string; portion: string; calories: number; protein_g: number; carbs_g: number; fat_g: number; confidence?: number }[] | undefined;
-          const mealType = action.meal_type as string ?? 'snack';
+          // meal_type is CHECK-constrained to breakfast|lunch|dinner|snack. A stray model
+          // value (e.g. 'brunch', 'ara ogun') would 23514-reject the whole insert and
+          // silently drop the meal — whitelist it, defaulting to 'snack' on any miss.
+          const VALID_MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack']);
+          const rawMealType = action.meal_type as string ?? 'snack';
+          const mealType = VALID_MEAL_TYPES.has(rawMealType) ? rawMealType : 'snack';
 
           // Aggregate confidence: bucket from min item confidence
           let mealConfidence: 'high' | 'medium' | 'low' = 'medium';
@@ -1306,18 +1355,27 @@ async function executeActions(
                 const warns = matched.map(m =>
                   `${m.food_name}${m.allergen_severity === 'severe' ? ' (CIDDI ALERJI!)' : ' (alerjen)'}`
                 );
-                feedback.push(`⚠️ ALERJEN UYARISI: ${warns.join(', ')} — yine de kaydedildi`);
+                mealFeedback.push(`⚠️ ALERJEN UYARISI: ${warns.join(', ')} — yine de kaydedildi`);
               }
             }
           }
 
-          const { data: log } = await supabaseAdmin.from('meal_logs').insert({
+          const { data: log, error: logErr } = await supabaseAdmin.from('meal_logs').insert({
             user_id: userId, raw_input: action.raw as string ?? '',
             meal_type: mealType,
             input_method: inputMethod,
             confidence: mealConfidence,
             logged_for_date: today, synced: true,
           }).select('id').maybeSingle();
+
+          // Supabase does not throw on DB errors — if the parent insert failed (or returned
+          // no row) the meal was NOT saved. Surface a failure chip instead of falling
+          // through to 'Ogun kaydedildi', which would lie to the user about a saved meal.
+          if (logErr || !log) {
+            if (logErr) console.error('[meal_logs] insert failed:', logErr.message);
+            feedback.push('Kayit basarisiz: ogun');  // one entry for this action
+            break;
+          }
 
           if (log && items?.length) {
             // Phase 6: Cooking method calorie adjustments
@@ -1352,13 +1410,12 @@ async function executeActions(
           learnMealTime(userId, mealType, action.logged_at as string | undefined).then(() => {}, () => {});
 
           // --- Caffeine Integration (Spec 5.34) ---
+          // Caffeine notices used to be pushed as separate feedback entries (and the case
+          // broke early), so for a lone meal_log they landed on later actions' chips and
+          // were dropped. Accumulate them into mealFeedback so they reach the user.
           if (items?.length) {
             const caffeineFeedback = await checkCaffeineIntake(userId, items, today);
-            if (caffeineFeedback.length > 0) {
-              feedback.push('Ogun kaydedildi');
-              for (const cf of caffeineFeedback) feedback.push(cf);
-              break;
-            }
+            for (const cf of caffeineFeedback) mealFeedback.push(cf);
           }
 
           // A8: Low confidence proactive verification
@@ -1367,11 +1424,13 @@ async function executeActions(
           if (items?.length) {
             const totalMealCal = items.reduce((s, i) => s + (i.calories ?? 0), 0);
             if (totalMealCal > 1500 || (totalMealCal > 0 && totalMealCal < 50)) {
-              feedback.push('NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste.');
+              mealFeedback.push('NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste.');
             }
           }
 
-          feedback.push('Ogun kaydedildi');
+          mealFeedback.push('Ogun kaydedildi');
+          // Single entry per action: join allergen + caffeine + low-conf + 'kaydedildi'.
+          feedback.push(mealFeedback.join('\n'));
           break;
         }
         case 'workout_log': {
@@ -1398,14 +1457,41 @@ async function executeActions(
             caloriesBurned = Math.round(met * bodyWeight * (durationMin / 60));
           }
 
-          await supabaseAdmin.from('workout_logs').insert({
+          const { data: wlogRow, error: wlogErr } = await supabaseAdmin.from('workout_logs').insert({
             user_id: userId, raw_input: action.raw as string ?? '',
             workout_type: workoutType,
             duration_min: durationMin,
             intensity,
             calories_burned: caloriesBurned,
             logged_for_date: today, synced: true,
-          });
+          }).select('id').maybeSingle();
+          if (wlogErr) console.error('[workout_logs] insert failed:', wlogErr.message);
+
+          // Per-set strength data: the system-prompt contract carries detail as a nested
+          // strength_sets array on workout_log ({exercise, sets:count, reps, weight_kg}).
+          // The handler never read it, so chat strength logging never populated the
+          // strength_sets table (breaking PR detection / progressive overload). Expand the
+          // numeric set count into set_number = 1..N rows and insert them now.
+          const strengthSets = action.strength_sets as { exercise: string; sets: number; reps: number; weight_kg: number }[] | undefined;
+          if (wlogRow?.id && Array.isArray(strengthSets) && strengthSets.length > 0) {
+            const setRows: { workout_log_id: string; exercise_name: string; set_number: number; reps: number; weight_kg: number }[] = [];
+            for (const s of strengthSets) {
+              const setCount = Math.max(1, Math.round(Number(s.sets) || 1));
+              for (let n = 1; n <= setCount; n++) {
+                setRows.push({
+                  workout_log_id: wlogRow.id as string,
+                  exercise_name: s.exercise,
+                  set_number: n,
+                  reps: s.reps,
+                  weight_kg: s.weight_kg,
+                });
+              }
+            }
+            if (setRows.length > 0) {
+              const { error: setsErr } = await supabaseAdmin.from('strength_sets').insert(setRows);
+              if (setsErr) console.error('[strength_sets] insert failed:', setsErr.message);
+            }
+          }
 
           // Post-workout calorie target bump (Spec 7.5)
           // Bump today's remaining calorie allowance by ~50% of burned kcal,
@@ -1440,7 +1526,7 @@ async function executeActions(
           const w = action.value as number;
           if (w > 20 && w < 300) {
             await supabaseAdmin.from('daily_metrics').upsert(
-              { user_id: userId, date: today, weight_kg: w, water_liters: existingWater, synced: true },
+              { user_id: userId, date: today, weight_kg: w, water_liters: waterTotal, synced: true },
               { onConflict: 'user_id,date' }
             );
             await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
@@ -1466,8 +1552,9 @@ async function executeActions(
         case 'water_log': {
           const l = action.liters as number;
           if (l > 0) {
+            waterTotal += l;  // keep the running total so a later metric upsert preserves it
             await supabaseAdmin.from('daily_metrics').upsert(
-              { user_id: userId, date: today, water_liters: existingWater + l, synced: true },
+              { user_id: userId, date: today, water_liters: waterTotal, synced: true },
               { onConflict: 'user_id,date' }
             );
             feedback.push(`Su +${l}L`);
@@ -1478,7 +1565,7 @@ async function executeActions(
           const h = action.hours as number;
           if (h > 0 && h < 24) {
             await supabaseAdmin.from('daily_metrics').upsert(
-              { user_id: userId, date: today, sleep_hours: h, sleep_quality: action.quality as string, water_liters: existingWater, synced: true },
+              { user_id: userId, date: today, sleep_hours: h, sleep_quality: action.quality as string, water_liters: waterTotal, synced: true },
               { onConflict: 'user_id,date' }
             );
             feedback.push('Uyku kaydedildi');
@@ -1487,7 +1574,7 @@ async function executeActions(
         }
         case 'mood_log': {
           await supabaseAdmin.from('daily_metrics').upsert(
-            { user_id: userId, date: today, mood_score: action.score as number, mood_note: action.note as string, water_liters: existingWater, synced: true },
+            { user_id: userId, date: today, mood_score: action.score as number, mood_note: action.note as string, water_liters: waterTotal, synced: true },
             { onConflict: 'user_id,date' }
           );
           feedback.push('Ruh hali kaydedildi');

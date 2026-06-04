@@ -37,7 +37,7 @@ export interface AllergenCheck {
  * are included so a stored allergen like "süt" or "sut" both resolve.
  */
 export const ALLERGEN_FOODS: Record<string, string[]> = {
-  gluten: ['ekmek', 'makarna', 'un', 'bulgur', 'simit', 'börek', 'borek', 'poğaça', 'pogaca', 'pasta', 'pizza', 'kek', 'bisküvi', 'biskuvi'],
+  gluten: ['ekmek', 'makarna', 'bulgur', 'simit', 'börek', 'borek', 'poğaça', 'pogaca', 'pasta', 'pizza', 'kek', 'bisküvi', 'biskuvi'],
   laktoz: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
   süt: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
   sut: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
@@ -84,6 +84,11 @@ export function checkAllergens(
     const tokens = new Set<string>([aName, ...(ALLERGEN_FOODS[aName] ?? [])]);
     for (const token of tokens) {
       if (!token) continue;
+      // Tokens shorter than 3 chars (e.g. "un"=flour) substring-match common
+      // Turkish words and genitive endings ("tavuğun", "kavun"), so they would
+      // flag safe meals. Require >=3 chars for substring matching (same guard
+      // as the reverse direction below).
+      if (token.length < 3) continue;
       const normToken = stripTurkishSuffix(token);
       // Normal direction: meal text contains the (possibly suffixed) token.
       if (lowerText.includes(token) || normText.includes(normToken)) return true;
