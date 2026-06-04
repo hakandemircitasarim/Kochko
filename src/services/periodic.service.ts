@@ -208,13 +208,12 @@ export async function setPeriodicState(
   const { error } = await supabase.from('profiles').update(updates).eq('id', userId);
   if (error) throw error;
 
-  // Auto-replan: trigger new daily plan generation when periodic state changes (Spec 9.2)
-  // Only after the write is confirmed.
-  if (state) {
-    supabase.functions.invoke('ai-plan', {
-      body: { type: 'daily', periodic_state_changed: true },
-    }).catch(() => {}); // Non-blocking, best effort
-  }
+  // NOTE: this previously auto-invoked the legacy `ai-plan` daily generator on a
+  // periodic-state change. ai-plan writes a daily_plans row in the OLD shape with a
+  // higher version, which would OVERRIDE the user's chat-plan projection (now the
+  // single source of truth) with a divergent legacy plan. Removed. The periodic_state
+  // is saved to profiles above and the coach reads it as context; a proper periodic
+  // re-plan should go through the chat plan flow (which re-projects daily_plans).
 
   return { ifPaused };
 }
