@@ -468,16 +468,35 @@ serve(async (req: Request) => {
     // Meal-log safety net (Part B): the model intermittently reports a meal verbally
     // ("2 yumurta yedim") but omits the <actions> meal_log block, so nothing is saved
     // yet the reply looks like a confirmation. When the user message clearly reports an
-    // eaten meal, no meal_log action is present, and we're in a logging mode, replace
-    // the reply with an explicit confirm prompt. We DO NOT write any DB row here (zero
-    // double-log risk) — the user's "Evet" next turn produces the real meal_log. This
-    // only fires when the meal_log action is ABSENT, so it never touches the working path.
+    // eaten meal, no meal_log action is present, and we're in a logging mode, we run a
+    // SECOND focused model call constrained to emit ONLY the meal_log <actions> block,
+    // parse it, and inject the action so the existing executeActions(...) below logs it
+    // in ONE shot — no fragile "Evet" follow-up that detectTaskMode misroutes. If the
+    // forced extraction fails to produce a parseable meal_log, we fall back to the old
+    // explicit-confirm prompt (zero DB write on that path → zero double-log risk).
+    // GUARD: only runs on the miss path (no meal_log action already present) and only
+    // for register/daily_log meal reports, so the working path is never touched and a
+    // meal is never double-logged.
     if (message
       && looksLikeMealReport(message)
       && !actions.some(a => a.type === 'meal_log')
       && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
-      console.warn('[meal_safety_net] meal intent, no meal_log action', { mode: effectiveMode });
-      assistantMessage = 'Bunu ogun olarak kaydedeyim mi? "Evet" dersen kalori ve makrolariyla ekleyeyim - istersen porsiyonlari biraz netlestir, daha dogru hesaplarim.';
+      console.warn('[meal_safety_net] meal intent, no meal_log action — attempting forced extraction', { mode: effectiveMode });
+      const forcedAction = await forceMealLogAction(message, modelSelection.model);
+      if (forcedAction) {
+        actions.push(forcedAction);
+        console.warn('[meal_safety_net] forced meal_log injected', { meal_type: forcedAction.meal_type, items: (forcedAction.items as unknown[] | undefined)?.length ?? 0 });
+        // Let the normal flow + executeActions feedback run. Only synthesize a short
+        // acknowledgement if the model's original reply was empty (otherwise its own
+        // narration — "harika, ~350 kcal" — is fine and the UI shows the saved chip).
+        if (!assistantMessage.trim()) {
+          assistantMessage = 'Tamamdir, ogununu kaydediyorum.';
+        }
+      } else {
+        // Couldn't parse a meal_log — keep the existing explicit-confirm fallback.
+        console.warn('[meal_safety_net] forced extraction returned null — falling back to confirm prompt');
+        assistantMessage = 'Bunu ogun olarak kaydedeyim mi? "Evet" dersen kalori ve makrolariyla ekleyeyim - istersen porsiyonlari biraz netlestir, daha dogru hesaplarim.';
+      }
     }
 
     // Extract Layer 2 updates
@@ -937,6 +956,83 @@ function looksLikeMealReport(msg: string): boolean {
   if (/(kac kalori|kaç kalori|olur mu|yesem|yersem|icsem|içsem|ne olur|kac gram|kaç gram)/.test(m)) return false;
   if (/(yemedim|içmedim|icmedim|kaydetme|sayma|atladim|atladım)/.test(m)) return false;
   return true;
+}
+
+/**
+ * Server safety net (meal-log reliability Part B, forced action extraction):
+ * When the main model reported a meal verbally but omitted the <actions> meal_log block,
+ * make a SECOND, focused model call that is constrained to output ONLY the meal_log
+ * actions block. Parse it with extractActions and return the first meal_log action so the
+ * caller can inject it into the `actions` array BEFORE executeActions runs — logging the
+ * meal in a single turn (no fragile "Evet" follow-up that detectTaskMode misroutes).
+ *
+ * Returns null if the model produced nothing parseable as a meal_log; the caller then
+ * keeps the existing confirm-prompt fallback. Robust to the model wrapping the block in
+ * ```json fences (extractActions only strips the <actions> tags, not fences) and to a
+ * bare JSON array with no <actions> wrapper at all.
+ */
+async function forceMealLogAction(
+  message: string,
+  model: string,
+): Promise<Record<string, unknown> | null> {
+  const systemInstruction = [
+    'Sen bir beslenme parse motorusun. Kullanicinin yedigi/ictigi ogunu analiz et ve SADECE asagidaki formatta tek bir <actions> blogu dondur.',
+    'BASKA HICBIR SEY YAZMA — aciklama yok, selamlama yok, markdown yok, kod blogu (```) yok. Sadece <actions>...</actions>.',
+    'Format:',
+    '<actions>[{"type":"meal_log","meal_type":"breakfast|lunch|dinner|snack","raw":"kullanicinin yazdigi metin","cooking_method":"haslama|izgara|kizartma|firinda|cig|buharla|sotele|null","items":[{"name":"yiyecek adi","portion":"porsiyon (orn. 200 gram)","calories":sayi,"protein_g":sayi,"carbs_g":sayi,"fat_g":sayi,"confidence":0.0-1.0}]}]</actions>',
+    'KURALLAR:',
+    '- meal_type SADECE breakfast, lunch, dinner veya snack olabilir. Kullanici "ogle/oglen" derse lunch, "aksam" derse dinner, "kahvalti/sabah" derse breakfast, "atistirma/ara ogun" derse snack. Belirsizse snack kullan.',
+    '- Her yiyecek icin gercekci kalori ve makro (protein_g, carbs_g, fat_g) tahmini ver. Turk mutfagi porsiyonlarini bilerek hesapla.',
+    '- Kullanici gram/adet/porsiyon belirttiyse ona gore hesapla. Belirtmediyse tipik bir porsiyon varsay.',
+    '- calories, protein_g, carbs_g, fat_g DAIMA sayi (number) olmali, 0 olabilir ama string OLMAZ.',
+    '- Eger metinde hicbir yiyecek/icecek tespit edemezsen bos dizi dondur: <actions>[]</actions>.',
+  ].join('\n');
+
+  let raw: string;
+  try {
+    raw = await chatCompletion<string>(
+      [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: message },
+      ],
+      { model, temperature: 0.2, maxTokens: 600 },
+    );
+  } catch (e) {
+    console.error('[forceMealLogAction] chatCompletion failed:', (e as Error).message);
+    return null;
+  }
+
+  // Strip markdown code fences the model may wrap the block in (```json ... ```), then
+  // hand to extractActions. If the model returned a bare JSON array with no <actions>
+  // wrapper, wrap it so extractActions can parse it.
+  let cleaned = raw.trim().replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+  if (!/<actions>/i.test(cleaned)) {
+    const firstBracket = cleaned.indexOf('[');
+    const lastBracket = cleaned.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      cleaned = `<actions>${cleaned.slice(firstBracket, lastBracket + 1)}</actions>`;
+    }
+  }
+
+  const { actions: parsed } = extractActions(cleaned);
+  const mealAction = parsed.find((a) => (a as { type?: string }).type === 'meal_log') as Record<string, unknown> | undefined;
+  if (!mealAction) return null;
+
+  // Must carry at least one item, otherwise there is nothing to log (would create an
+  // empty meal_log with zero calories — keep the confirm-prompt fallback instead).
+  const items = mealAction.items as unknown[] | undefined;
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  // Guard meal_type to the CHECK-constrained set (executeActions also defaults it, but
+  // normalise here so logs/feedback are correct).
+  const VALID_MEAL_TYPES = new Set(['breakfast', 'lunch', 'dinner', 'snack']);
+  const mt = mealAction.meal_type as string | undefined;
+  if (!mt || !VALID_MEAL_TYPES.has(mt)) mealAction.meal_type = 'snack';
+
+  // Ensure raw is populated for the meal_logs.raw_input column.
+  if (typeof mealAction.raw !== 'string' || !mealAction.raw) mealAction.raw = message;
+
+  return mealAction;
 }
 
 function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<string, unknown> | null {
