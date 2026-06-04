@@ -31,6 +31,7 @@ import {
   getToneContext, buildKnowledgeSummary, getRepairContext,
 } from '../shared/repair-handler.ts';
 import { getAllServiceContexts, checkHabitFromChat } from '../shared/service-contexts.ts';
+import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -677,6 +678,105 @@ serve(async (req: Request) => {
             const used = (profUsed?.plans_used_free as { diet?: number; workout?: number } | null) ?? { diet: 0, workout: 0 };
             const nextUsed = { ...used, [expectedType]: (used[expectedType] ?? 0) + 1 };
             await supabaseAdmin.from('profiles').update({ plans_used_free: nextUsed }).eq('id', userId);
+
+            // ROOT FIX (Option A): project the now-active weekly_plans snapshot(s) into
+            // daily_plans so the dashboard/context/reports (which only read daily_plans)
+            // actually see the chat-created plan. BEST-EFFORT: any failure here must NOT
+            // block the already-successful approval or change the response.
+            try {
+              // a. Fetch BOTH active plans (the just-approved one is one of them).
+              const { data: activePlans } = await supabaseAdmin
+                .from('weekly_plans')
+                .select('plan_type, plan_data, week_start')
+                .eq('user_id', userId)
+                .eq('status', 'active');
+              const dietRow = (activePlans ?? []).find((p: { plan_type: string }) => p.plan_type === 'diet') as
+                | { plan_type: string; plan_data: DietPlanData; week_start: string }
+                | undefined;
+              const workoutRow = (activePlans ?? []).find((p: { plan_type: string }) => p.plan_type === 'workout') as
+                | { plan_type: string; plan_data: WorkoutPlanData; week_start: string }
+                | undefined;
+
+              // b. Determine the week anchor. Anchor to the user's CURRENT calendar week
+              //    (Monday of "today"), NOT the model-chosen week_start in the snapshot —
+              //    the model sometimes emits a future / non-Monday week_start, which would
+              //    leave TODAY with no daily_plans row (the exact symptom we're fixing).
+              //    plan_data.days[] is a Mon..Sun template; project it onto the real week.
+              const requestToday = (target_date as string | undefined) ?? new Date().toISOString().split('T')[0];
+              const weekStart = getWeekStart(requestToday);
+
+              // c. Profile + this week's consumed kcal (mirrors ai-plan/index.ts logic).
+              const { data: profForProj } = await supabaseAdmin
+                .from('profiles')
+                .select('weight_kg, weekly_calorie_budget')
+                .eq('id', userId)
+                .maybeSingle();
+              const weekEnd = addCalendarDays(weekStart, 6);
+              const { data: weekMealLogs } = await supabaseAdmin
+                .from('meal_logs')
+                .select('id')
+                .eq('user_id', userId)
+                .gte('logged_for_date', weekStart)
+                .lte('logged_for_date', weekEnd);
+              const weekLogIds = (weekMealLogs ?? []).map((m: { id: string }) => m.id);
+              let weekConsumed = 0;
+              if (weekLogIds.length > 0) {
+                const { data: weekItems } = await supabaseAdmin
+                  .from('meal_log_items')
+                  .select('calories')
+                  .in('meal_log_id', weekLogIds);
+                weekConsumed = (weekItems ?? []).reduce(
+                  (s: number, it: { calories: number | null }) => s + (it.calories ?? 0),
+                  0,
+                );
+              }
+
+              // d. Project 7 rows (Mon..Sun) from the snapshots.
+              const projectedRows = projectDailyPlanRows({
+                dietPlanData: dietRow?.plan_data ?? null,
+                workoutPlanData: workoutRow?.plan_data ?? null,
+                weekStart,
+                profile: {
+                  weight_kg: (profForProj?.weight_kg as number | null) ?? null,
+                  weekly_calorie_budget: (profForProj?.weekly_calorie_budget as number | null) ?? null,
+                },
+                weekConsumed,
+              });
+
+              // e. Only write today..weekEnd — never rewrite past days. Delete-then-insert
+              //    so the readers' `order(version desc).limit(1)` sees a clean version=1.
+              //    NOTE (midnight caveat): the delete lower bound uses the request's `today`
+              //    (UTC date from target_date / now). Around the client's local midnight this
+              //    could be off by one calendar day vs the user's wall clock; acceptable for a
+              //    plan projection and consistent with how other daily_* writes date themselves.
+              const lowerBound = requestToday > weekStart ? requestToday : weekStart;
+              const writeRows = projectedRows
+                .filter((r) => r.date >= lowerBound && r.date <= weekEnd)
+                .map((r) => ({ ...r, user_id: userId, version: 1 }));
+
+              if (writeRows.length > 0) {
+                const { error: delErr } = await supabaseAdmin
+                  .from('daily_plans')
+                  .delete()
+                  .eq('user_id', userId)
+                  .gte('date', lowerBound)
+                  .lte('date', weekEnd);
+                if (delErr) {
+                  console.error('[approve][projection] delete failed', delErr);
+                } else {
+                  const { error: insErr } = await supabaseAdmin.from('daily_plans').insert(writeRows);
+                  if (insErr) {
+                    console.error('[approve][projection] insert failed', insErr);
+                  } else {
+                    console.log(`[approve][projection] wrote ${writeRows.length} daily_plans rows (${lowerBound}..${weekEnd})`);
+                  }
+                }
+              } else {
+                console.log('[approve][projection] no rows in range to write (weekEnd in the past?)');
+              }
+            } catch (projErr) {
+              console.error('[approve][projection] unexpected error (non-blocking)', projErr);
+            }
           }
         }
       }
@@ -896,6 +996,22 @@ function respond(data: unknown, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
+}
+
+/** Monday-anchored week start for a 'YYYY-MM-DD' date (UTC). Mirrors ai-plan/index.ts. */
+function getWeekStart(dateStr: string): string {
+  const d = new Date(`${dateStr}T12:00:00.000Z`);
+  const day = d.getUTCDay(); // 0=Sun..6=Sat
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
+  return d.toISOString().split('T')[0];
+}
+
+/** Add N calendar days to a 'YYYY-MM-DD' date, returns 'YYYY-MM-DD' (UTC). */
+function addCalendarDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split('T')[0];
 }
 
 function extractActions(text: string): { cleanMessage: string; actions: Record<string, unknown>[] } {
