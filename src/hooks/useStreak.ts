@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/auth.store';
 import { calculateStreak, checkMilestones } from '@/services/achievements.service';
 import { supabase } from '@/lib/supabase';
@@ -13,7 +13,11 @@ export function useStreak() {
     calculateStreak(user.id).then(setStreak);
   }, [user?.id]);
 
-  const checkForMilestones = async () => {
+  // Must be memoized: the dashboard lists this in a useCallback dep array that
+  // feeds useFocusEffect. An unstable identity here makes the focus effect
+  // re-run on every render → setState → re-render → "Maximum update depth
+  // exceeded" infinite loop (the whole authed app spins).
+  const checkForMilestones = useCallback(async () => {
     if (!user?.id) return;
     const s = await calculateStreak(user.id);
     setStreak(s);
@@ -36,7 +40,7 @@ export function useStreak() {
       // Clear after 5 seconds
       setTimeout(() => setNewAchievement(null), 5000);
     }
-  };
+  }, [user?.id]);
 
   return { streak, newAchievement, checkForMilestones };
 }

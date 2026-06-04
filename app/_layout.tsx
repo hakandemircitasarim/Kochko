@@ -23,7 +23,10 @@ void initSentry();
 export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
   const systemScheme = useColorScheme();
-  const [themeMode, setThemeMode] = useState<ThemeMode>('system');
+  // App is designed as a flat dark theme (teal accent). Default to dark so a
+  // light-mode device doesn't render authed screens light while the hardcoded
+  // auth screens stay dark. Users can still override in settings (persisted).
+  const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
 
   useEffect(() => { initialize(); }, [initialize]);
 
