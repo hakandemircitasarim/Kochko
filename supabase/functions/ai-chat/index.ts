@@ -910,10 +910,12 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<s
     }
   }
 
-  // Height: "boyum 175", "175 cm", "boy: 180"
-  const heightMatch = lower.match(/boy\w*\s*[:=]?\s*(\d{2,3})\s*(cm)?|(\d{2,3})\s*cm/);
+  // Height: "boyum 175", "boy: 180", "175 cm", "175 boy", "175 boyundayim".
+  // Both orders matter — Turkish users very often put the number first
+  // ("175 boy"), which the old "boy"-then-number regex missed entirely.
+  const heightMatch = lower.match(/boy\w*\s*[:=]?\s*(\d{2,3})|(\d{2,3})\s*(?:cm|boy)/);
   if (heightMatch) {
-    const h = parseInt(heightMatch[1] ?? heightMatch[3]);
+    const h = parseInt(heightMatch[1] ?? heightMatch[2]);
     if (h >= 100 && h <= 250) result.height_cm = h;
   }
 
@@ -947,9 +949,10 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<s
     }
   }
 
-  // Gender
-  if (/erkek|male/.test(lower)) result.gender = 'male';
-  else if (/kadin|kadın|female/.test(lower)) result.gender = 'female';
+  // Gender. "erkeğim" mutates the final k→ğ (erke[kğ] covers erkek + erkeğim);
+  // \bmale\b prevents the substring in "female" from falsely matching male.
+  if (/erke[kğ]|\bmale\b/.test(lower)) result.gender = 'male';
+  else if (/kad[iı]n|bayan|\bfemale\b/.test(lower)) result.gender = 'female';
 
   // Goal type from Turkish phrases. Priority: explicit wins; combos (weight AND muscle)
   // resolve to lose_weight if body mass suggests deficit is the first move.
