@@ -1760,10 +1760,15 @@ async function executeActions(
             if (additions.length > 0) updates.disliked_foods = [...existing, ...additions];
           }
 
+          // Accumulate this action's sub-messages into ONE feedback entry: the caller
+          // maps feedback[i] -> actions[i] positionally (line ~863), so pushing 2
+          // (profile + goal) for a single action would shift every later action's chip.
+          const pfMessages: string[] = [];
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date().toISOString();
-            await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
-            feedback.push('Profil güncellendi');
+            const { error: pfErr } = await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
+            if (pfErr) console.error('[profile_update] update failed:', pfErr.message);
+            else pfMessages.push('Profil güncellendi');
           }
           // Goal persistence: save even without target_weight_kg — user may give goal type
           // ("kilo vermek istiyorum") before specifying a target. Upsert on active goal so
@@ -1794,8 +1799,11 @@ async function executeActions(
             } else {
               await supabaseAdmin.from('goals').update(goalPatch).eq('id', existing.id);
             }
-            feedback.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
+            pfMessages.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
           }
+          // Exactly one feedback entry for this profile_update action (null = no chip,
+          // but keeps feedback[] positionally aligned with actions[]).
+          feedback.push(pfMessages.length > 0 ? pfMessages.join('\n') : null);
           break;
         }
         case 'strength_log': {

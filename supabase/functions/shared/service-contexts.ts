@@ -645,7 +645,9 @@ export async function getConflictContext(
       if (allergens && allergens.length > 0) {
         const lower = loggedFoodText.toLocaleLowerCase('tr');
         const ALLERGEN_FOODS: Record<string, string[]> = {
-          gluten: ['makarna', 'ekmek', 'borek', 'pasta', 'pizza', 'bulgur', 'un', 'simit', 'pogaca'],
+          // 'un' (flour) removed: a bare 2-char token substring-matches Turkish '-un'
+          // genitive endings (same bug fixed in guardrails.ts ALLERGEN_FOODS).
+          gluten: ['makarna', 'ekmek', 'borek', 'pasta', 'pizza', 'bulgur', 'simit', 'pogaca'],
           laktoz: ['sut', 'süt', 'peynir', 'yogurt', 'yoğurt', 'dondurma', 'krema'],
           fistik: ['fistik', 'fıstık'],
           yumurta: ['yumurta', 'omlet', 'menemen'],

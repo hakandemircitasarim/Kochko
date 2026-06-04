@@ -810,7 +810,13 @@ serve(async (req: Request) => {
       const dueCommitments = (commitmentsRes.data ?? []) as { commitment: string }[];
       const patterns = (summaryRes.data?.behavioral_patterns as { type: string; description: string }[]) ?? [];
 
-      const nightRisk = !!profile.night_eating_habit && hour >= 21 && hour <= 23;
+      // night_eating_habit is free text (e.g. "gece atistirma" / "yok" / "gece yemem").
+      // Only flag risk when it describes ACTUAL night eating — exclude negative answers
+      // so a "yok"/"yemem" reply doesn't falsely light up the 'Gece riski' nudge context.
+      const neh = (profile.night_eating_habit ?? '').toLocaleLowerCase('tr');
+      const nightRisk = !!neh
+        && !/(yok|yemem|etmem|hayır|hayir|asla|nadiren)/.test(neh)
+        && hour >= 21 && hour <= 23;
 
       // T3.13: Plateau detection for proactive messaging
       let plateauInfo = '';
