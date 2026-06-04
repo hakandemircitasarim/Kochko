@@ -71,33 +71,13 @@ function localDayStartIso(
   return d.toISOString();
 }
 
-/**
- * Check if the user still has any uncompleted onboarding tasks. If yes,
- * they are in "onboarding mode" and bypass the cap entirely.
- */
-async function isInOnboarding(userId: string): Promise<boolean> {
-  const { data } = await supabaseAdmin
-    .from('ai_summary')
-    .select('onboarding_tasks_completed')
-    .eq('user_id', userId)
-    .maybeSingle();
-  const completed = (data?.onboarding_tasks_completed as string[] | null) ?? [];
-  // 13 tasks total (see MASTER_PLAN Appendix A). Any missing → onboarding mode.
-  const ALL_TASKS = [
-    'introduce_yourself', 'set_goal', 'daily_routine', 'eating_habits', 'allergies',
-    'kitchen_logistics', 'exercise_history', 'health_history', 'weight_history',
-    'lab_values', 'sleep_patterns', 'stress_motivation', 'home_environment',
-  ];
-  return ALL_TASKS.some(k => !completed.includes(k));
-}
-
 export async function checkRateLimit(
   userId: string,
   isRecordParse: boolean = false,
 ): Promise<RateLimitResult> {
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('premium, home_timezone, day_boundary_hour')
+    .select('premium, home_timezone, day_boundary_hour, onboarding_completed')
     .eq('id', userId)
     .maybeSingle();
 
@@ -106,8 +86,12 @@ export async function checkRateLimit(
   // Record parse never counts against limits.
   if (isRecordParse) return { allowed: true, remaining: -1 };
 
-  // Onboarding bypass — free users completing onboarding get unlimited messages.
-  if (!isPremium && await isInOnboarding(userId)) {
+  // Onboarding bypass — free users get unlimited messages ONLY while still in the
+  // initial onboarding flow (onboarding_completed != true). Keying this on the 13
+  // OPTIONAL task-cards (the old isInOnboarding) let a fully-onboarded free user
+  // (the normal state: core done, optional cards skipped) bypass the daily cap
+  // forever — an AI-cost / monetization hole.
+  if (!isPremium && profile?.onboarding_completed !== true) {
     return { allowed: true, remaining: -1 };
   }
 
