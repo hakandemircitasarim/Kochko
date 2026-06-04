@@ -36,7 +36,15 @@ export default function RecipesScreen() {
   const handleDelete = (id: string) => {
     Alert.alert('Sil', 'Tarifi silmek istediğine emin misin?', [
       { text: 'İptal' },
-      { text: 'Sil', style: 'destructive', onPress: () => { deleteRecipe(id); setRecipes(prev => prev.filter(r => r.id !== id)); } },
+      { text: 'Sil', style: 'destructive', onPress: async () => {
+        try {
+          await deleteRecipe(id);
+        } catch {
+          Alert.alert('Hata', 'Tarif silinemedi, tekrar dene.');
+          return;
+        }
+        setRecipes(prev => prev.filter(r => r.id !== id));
+      } },
     ]);
   };
 
@@ -54,11 +62,16 @@ export default function RecipesScreen() {
   const saveEdit = async () => {
     if (!editingId) return;
     const servingsNum = parseInt(editServings, 10);
-    await updateRecipe(editingId, {
-      title: editTitle.trim(),
-      instructions: editInstructions.trim(),
-      servings: isNaN(servingsNum) ? 1 : servingsNum,
-    });
+    try {
+      await updateRecipe(editingId, {
+        title: editTitle.trim(),
+        instructions: editInstructions.trim(),
+        servings: isNaN(servingsNum) ? 1 : servingsNum,
+      });
+    } catch {
+      Alert.alert('Hata', 'Tarif kaydedilemedi, tekrar dene.');
+      return;
+    }
     setEditingId(null);
     load();
   };

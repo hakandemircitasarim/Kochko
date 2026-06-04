@@ -84,10 +84,10 @@ function computeWeakSpots(profile: Profile | null, planType: PlanType): MissingF
 
   if (planType === 'diet') {
     if (!p.activity_level)       spots.push(DIET_WEAK_SPOTS[0]);
-    // Allergies: weak-spot unless user has explicitly been through that task.
-    // Phase 1 will surface a task-completed flag; for now we treat "no profile
-    // signal" as a weak spot, which is the safer default.
-    if (!p.food_allergies)       spots.push(DIET_WEAK_SPOTS[1]);
+    // Allergies: there is no allergen signal on `profiles` (allergens live in
+    // food_preferences.is_allergen, not on the profile). Until a task-completed
+    // flag is plumbed through, always surface this — the safer default for diet.
+    spots.push(DIET_WEAK_SPOTS[1]);
     if (!p.diet_mode)            spots.push(DIET_WEAK_SPOTS[2]);
     // health_history weak-spot only if user hasn't confirmed (same caveat).
     spots.push(DIET_WEAK_SPOTS[3]);

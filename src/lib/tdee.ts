@@ -124,12 +124,16 @@ export function calculateTargets(input: {
   const absoluteFloor = input.gender === 'female' ? 1200 : 1400;
   const safeTrainingMin = Math.max(trainingMin, absoluteFloor);
   const safeRestMin = Math.max(restMin, absoluteFloor);
+  // The floor only lifts the *min* side; clamp each max up to its floored min so
+  // a low-TDEE user can never end up with an inverted min>max range (Spec 12.1).
+  const safeTrainingMax = Math.max(trainingMax, safeTrainingMin);
+  const safeRestMax = Math.max(restMax, safeRestMin);
 
   // Weekly budget (Spec 2.6)
   // Assume 4 training days, 3 rest days as default
   const weeklyBudget =
-    4 * Math.round((safeTrainingMin + trainingMax) / 2) +
-    3 * Math.round((safeRestMin + restMax) / 2);
+    4 * Math.round((safeTrainingMin + safeTrainingMax) / 2) +
+    3 * Math.round((safeRestMin + safeRestMax) / 2);
 
   // Protein calculation (Spec 2.1)
   const proteinPerKg = input.proteinPerKg ?? calculateProteinPerKg(goalType, restrictionMode);
@@ -137,7 +141,7 @@ export function calculateTargets(input: {
   const proteinCalories = proteinG * 4;
 
   // Remaining calories for carbs and fat
-  const avgTarget = Math.round((safeTrainingMin + trainingMax) / 2);
+  const avgTarget = Math.round((safeTrainingMin + safeTrainingMax) / 2);
   const remainingCalories = avgTarget - proteinCalories;
   const carbRatio = macroPct.carb / (macroPct.carb + macroPct.fat);
   const carbsG = Math.round((remainingCalories * carbRatio) / 4);
@@ -146,8 +150,8 @@ export function calculateTargets(input: {
   return {
     bmr: 0, // caller should set this
     tdee,
-    trainingDay: { min: safeTrainingMin, max: trainingMax },
-    restDay: { min: safeRestMin, max: restMax },
+    trainingDay: { min: safeTrainingMin, max: safeTrainingMax },
+    restDay: { min: safeRestMin, max: safeRestMax },
     weeklyBudget,
     proteinG,
     carbsG,

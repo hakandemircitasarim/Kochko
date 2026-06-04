@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getHealthEvents, addHealthEvent, type HealthEvent } from '@/services/health.service';
 import { supabase } from '@/lib/supabase';
@@ -24,7 +24,11 @@ export default function HealthEventsScreen() {
 
   const handleAdd = async () => {
     if (!desc.trim()) return;
-    await addHealthEvent({ event_type: type, description: desc, event_date: date || null, is_ongoing: ongoing });
+    const ok = await addHealthEvent({ event_type: type, description: desc, event_date: date || null, is_ongoing: ongoing });
+    if (!ok) {
+      Alert.alert('Kaydedilemedi', 'Kayıt eklenemedi, lütfen tekrar dene.');
+      return;
+    }
     setShowAdd(false); setDesc(''); setDate('');
     getHealthEvents().then(setEvents);
   };

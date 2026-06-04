@@ -1332,7 +1332,7 @@ async function executeActions(
 
             const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(
               items.map(i => ({
-                meal_log_id: log.id, food_name: i.name, portion_text: i.portion,
+                meal_log_id: log.id, food_name: i.name ?? 'Yiyecek', portion_text: i.portion ?? '1 porsiyon',
                 calories: Math.max(0, Math.round(i.calories * multiplier)),
                 protein_g: Math.max(0, i.protein_g), carbs_g: Math.max(0, i.carbs_g),
                 fat_g: Math.max(0, Math.round(i.fat_g * multiplier)),

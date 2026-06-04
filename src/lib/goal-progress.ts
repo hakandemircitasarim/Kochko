@@ -83,7 +83,7 @@ export function calculateGoalProgress(
 
   // Estimated completion
   let estimatedCompletionDate: string | null = null;
-  if (weeklyActualRate > 0 && kgRemaining > 0) {
+  if (movingRight && weeklyActualRate > 0 && kgRemaining > 0) {
     const weeksToGo = kgRemaining / weeklyActualRate;
     const completionDate = new Date(now.getTime() + weeksToGo * 7 * 24 * 60 * 60 * 1000);
     estimatedCompletionDate = completionDate.toISOString().split('T')[0];

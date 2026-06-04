@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { getLabValues, addLabValue, COMMON_LAB_PARAMS, type LabValue } from '@/services/health.service';
@@ -27,11 +27,15 @@ export default function LabValuesScreen() {
 
   const handleAdd = async () => {
     if (!paramName.trim() || !value.trim()) return;
-    await addLabValue({
+    const ok = await addLabValue({
       parameter_name: paramName, value: parseFloat(value), unit: unit || '-',
       reference_min: refMin ? parseFloat(refMin) : null, reference_max: refMax ? parseFloat(refMax) : null,
       measured_at: new Date().toISOString().split('T')[0],
     });
+    if (!ok) {
+      Alert.alert('Kaydedilemedi', 'Değer eklenemedi, lütfen tekrar dene.');
+      return;
+    }
     setShowAdd(false); setParamName(''); setValue(''); setUnit(''); setRefMin(''); setRefMax('');
     getLabValues().then(setEntries);
   };

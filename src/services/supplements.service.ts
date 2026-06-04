@@ -24,8 +24,26 @@ const SUPPLEMENT_MACROS: Record<string, { calories: number; protein_g: number; c
   multivitamin: { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 },
 };
 
+// Map user-facing / Turkish display names (quick-add pills, free text) to the
+// canonical SUPPLEMENT_MACROS keys. Without this, 'Protein' / 'Kreatin' /
+// 'Omega-3' / 'Multi' never match and the supplement logs 0 cal / 0 g protein.
+const SUPPLEMENT_ALIASES: Record<string, string> = {
+  protein: 'protein_powder',
+  protein_tozu: 'protein_powder',
+  whey: 'protein_powder',
+  kreatin: 'creatine',
+  omega: 'omega3',
+  'omega-3': 'omega3',
+  omega_3: 'omega3',
+  balik_yagi: 'omega3',
+  multi: 'multivitamin',
+  'd-vitamini': 'vitamin_d',
+  d_vitamini: 'vitamin_d',
+};
+
 export async function logSupplement(name: string, amount: string): Promise<{ error: string | null }> {
-  const key = name.toLowerCase().replace(/\s+/g, '_');
+  const norm = name.toLowerCase().trim().replace(/\s+/g, '_');
+  const key = SUPPLEMENT_ALIASES[norm] ?? norm;
   const macros = SUPPLEMENT_MACROS[key] ?? { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 };
 
   // supplement_logs.user_id is NOT NULL + RLS WITH CHECK(auth.uid()=user_id)
