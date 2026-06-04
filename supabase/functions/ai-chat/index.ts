@@ -881,8 +881,11 @@ function extractActions(text: string): { cleanMessage: string; actions: Record<s
  */
 function stripVerbalAcknowledgements(text: string): string {
   const patterns: RegExp[] = [
-    // "Hedef kilonu kaydettim.", "Boyunu kaydettim." (X'ini/ni/nu/u kaydettim)
-    /(?:^|(?<=[.!?\n]\s*))[A-Za-zÇĞİÖŞÜçğıöşü][^.!?\n]*?kaydett(?:i|i[mk]|ik)\.?\s*/gi,
+    // "Hedef kilonu kaydettim.", "Boyunu kaydettim.", "2 yumurta kaydettim."
+    // Alternation is longest-first (i[mk] before bare i) so "kaydettim" is fully
+    // consumed — the old order matched just "kaydetti" and left a stray "m.".
+    // Leading char class includes 0-9 so quantity-initial meal acks also strip.
+    /(?:^|(?<=[.!?\n]\s*))[A-Za-zÇĞİÖŞÜçğıöşü0-9][^.!?\n]*?kaydett(?:i[mk]|ik|i)\.?\s*/gi,
     // "Aktivite seviyeni öğrendim.", "Yaşını öğrendim, teşekkürler."
     /(?:^|(?<=[.!?\n]\s*))[A-Za-zÇĞİÖŞÜçğıöşü][^.!?\n]*?öğren(?:di|dim|dik)[^.!?\n]*?(?:\.|,\s*teşekkür[^.!?\n]*?\.)\s*/gi,
     // "Profilini güncelledim."
