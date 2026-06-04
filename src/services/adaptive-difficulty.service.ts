@@ -101,7 +101,7 @@ export function calculateNewTargets(
     calorie_range_rest_max: number | null;
     calorie_range_training_min: number | null;
     calorie_range_training_max: number | null;
-    protein_target_g: number | null;
+    protein_per_kg: number | null;
     water_target_liters: number | null;
     intensity_level?: number | null;
   },
@@ -124,8 +124,10 @@ export function calculateNewTargets(
     updates.calorie_range_training_min = Math.max(1200, trainingMin - Math.max(trainingReduction, 10));
   }
 
-  const proteinDelta = direction === 'increase' ? 5 : -5;
-  updates.protein_target_g = Math.max(50, (currentProfile.protein_target_g ?? 100) + proteinDelta);
+  const proteinDelta = direction === 'increase' ? 0.1 : -0.1;
+  updates.protein_per_kg = Math.round(
+    Math.max(1.2, Math.min(3.0, (currentProfile.protein_per_kg ?? 1.8) + proteinDelta)) * 10
+  ) / 10;
 
   const waterDelta = direction === 'increase' ? 0.2 : -0.2;
   updates.water_target_liters = Math.round(
@@ -145,7 +147,7 @@ export async function applyDifficultyAdjustment(userId: string, adjustment: Diff
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, protein_target_g, water_target_liters, intensity_level')
+    .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, protein_per_kg, water_target_liters, intensity_level')
     .eq('id', userId)
     .single();
 
@@ -157,7 +159,7 @@ export async function applyDifficultyAdjustment(userId: string, adjustment: Diff
       calorie_range_rest_max: profile.calorie_range_rest_max as number | null,
       calorie_range_training_min: profile.calorie_range_training_min as number | null,
       calorie_range_training_max: profile.calorie_range_training_max as number | null,
-      protein_target_g: profile.protein_target_g as number | null,
+      protein_per_kg: profile.protein_per_kg as number | null,
       water_target_liters: profile.water_target_liters as number | null,
       intensity_level: (profile as Record<string, unknown>).intensity_level as number | null | undefined,
     },

@@ -2,7 +2,7 @@
  * Activity Timeline - Meals and workouts in a unified timeline view.
  */
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
@@ -25,8 +25,8 @@ interface WorkoutEntry {
 interface Props {
   meals: MealEntry[];
   workouts: WorkoutEntry[];
-  onDeleteMeal: (id: string) => void;
-  onDeleteWorkout: (id: string) => void;
+  onDeleteMeal: (id: string) => void | Promise<void>;
+  onDeleteWorkout: (id: string) => void | Promise<void>;
 }
 
 const MEAL_LABELS: Record<string, string> = {
@@ -123,7 +123,13 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
             <TouchableOpacity
               key={activity.id}
               activeOpacity={0.7}
-              onLongPress={() => activity.type === 'meal' ? onDeleteMeal(activity.id) : onDeleteWorkout(activity.id)}
+              onLongPress={async () => {
+                try {
+                  await (activity.type === 'meal' ? onDeleteMeal(activity.id) : onDeleteWorkout(activity.id));
+                } catch {
+                  Alert.alert('Silinemedi', 'Bir şeyler ters gitti, lütfen tekrar dene.');
+                }
+              }}
               style={{
                 flexDirection: 'row', alignItems: 'center',
                 paddingVertical: SPACING.sm,

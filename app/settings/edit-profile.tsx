@@ -132,36 +132,41 @@ export default function EditProfileScreen() {
   const handleSave = async () => {
     if (!user?.id) return;
     setSaving(true);
-    await update(user.id, {
-      height_cm: heightCm ? parseInt(heightCm) : null,
-      weight_kg: weightKg ? parseFloat(weightKg) : null,
-      birth_year: birthYear ? parseInt(birthYear) : null,
-      gender: gender || null,
-      activity_level: activity as ActivityLevel,
-      equipment_access: equipment as Equipment,
-      cooking_skill: cookingSkill as CookingSkill,
-      budget_level: budget as BudgetLevel,
-      training_style: trainingStyle as TrainingStyle,
-      diet_mode: dietMode as DietMode,
-      sleep_time: sleepTime || null,
-      wake_time: wakeTime || null,
-      work_start: workStart || null,
-      work_end: workEnd || null,
-      occupation: occupation || null,
-      meal_count_preference: parseInt(mealCount),
-      unit_system: unitSystem as UnitSystem,
-      portion_language: portionLang as PortionLanguage,
-      alcohol_frequency: alcoholFreq as AlcoholFrequency,
-      day_boundary_hour: parseInt(dayBoundary),
-      body_fat_pct: bodyFat ? parseFloat(bodyFat) : null,
-      muscle_mass_pct: muscleMass ? parseFloat(muscleMass) : null,
-      waist_cm: waist ? parseFloat(waist) : null,
-      hip_cm: hip ? parseFloat(hip) : null,
-      chest_cm: chest ? parseFloat(chest) : null,
-      thigh_cm: thigh ? parseFloat(thigh) : null,
-    } as never);
-    setSaving(false);
-    Alert.alert('Kaydedildi', 'Profil güncellendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+    try {
+      await update(user.id, {
+        height_cm: heightCm ? parseInt(heightCm) : null,
+        weight_kg: weightKg ? parseFloat(weightKg) : null,
+        birth_year: birthYear ? parseInt(birthYear) : null,
+        gender: gender || null,
+        activity_level: activity as ActivityLevel,
+        equipment_access: equipment as Equipment,
+        cooking_skill: cookingSkill as CookingSkill,
+        budget_level: budget as BudgetLevel,
+        training_style: trainingStyle as TrainingStyle,
+        diet_mode: dietMode as DietMode,
+        sleep_time: sleepTime || null,
+        wake_time: wakeTime || null,
+        work_start: workStart || null,
+        work_end: workEnd || null,
+        occupation: occupation || null,
+        meal_count_preference: parseInt(mealCount),
+        unit_system: unitSystem as UnitSystem,
+        portion_language: portionLang as PortionLanguage,
+        alcohol_frequency: alcoholFreq as AlcoholFrequency,
+        day_boundary_hour: parseInt(dayBoundary),
+        body_fat_pct: bodyFat ? parseFloat(bodyFat) : null,
+        muscle_mass_pct: muscleMass ? parseFloat(muscleMass) : null,
+        waist_cm: waist ? parseFloat(waist) : null,
+        hip_cm: hip ? parseFloat(hip) : null,
+        chest_cm: chest ? parseFloat(chest) : null,
+        thigh_cm: thigh ? parseFloat(thigh) : null,
+      } as never);
+      Alert.alert('Kaydedildi', 'Profil güncellendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+    } catch {
+      Alert.alert('Kaydedilemedi', 'Profil güncellenemedi. Lütfen tekrar deneyin.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

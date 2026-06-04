@@ -93,15 +93,23 @@ export default function TodayScreen() {
 
   const handleAddWater = () => {
     if (!user?.id) return;
+    const saveWater = async () => {
+      try {
+        await addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
+      } catch (err) {
+        console.warn('addWater failed:', err);
+        Alert.alert('Hata', 'Su kaydedilemedi. Lütfen tekrar deneyin.');
+      }
+    };
     const newTotal = waterLiters + WATER_INCREMENT;
     const warning = checkSuspiciousInput('water', newTotal);
     if (warning) {
       Alert.alert('Doğrulama', warning, [
         { text: 'İptal', style: 'cancel' },
-        { text: 'Evet', onPress: () => addWater(user.id, WATER_INCREMENT, dayBoundaryHour) },
+        { text: 'Evet', onPress: saveWater },
       ]);
     } else {
-      addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
+      saveWater();
     }
   };
 

@@ -21,13 +21,15 @@ export default function LoginScreen() {
   };
 
   const handleGoogle = async () => {
-    const { error } = await signInWithGoogle();
+    const { error, cancelled } = await signInWithGoogle();
+    if (cancelled) return;
     if (error) Alert.alert('Hata', error);
     else router.replace('/');
   };
 
   const handleApple = async () => {
-    const { error } = await signInWithApple();
+    const { error, cancelled } = await signInWithApple();
+    if (cancelled) return;
     if (error) Alert.alert('Hata', error);
     else router.replace('/');
   };

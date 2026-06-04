@@ -94,7 +94,6 @@ export interface Profile {
   macro_carb_pct: number;
   macro_fat_pct: number;
   protein_per_kg: number | null;
-  protein_target_g: number | null;
   water_target_liters: number | null;
   periodic_state: PeriodicState | null;
   periodic_state_start: string | null;

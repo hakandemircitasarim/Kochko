@@ -808,8 +808,14 @@ serve(async (req: Request) => {
       });
     }
 
-    // Async: check onboarding completion
-    if (isOnboarding && actions.some((a) => (a as { type?: string }).type === 'profile_update')) {
+    // Async: finalize onboarding the moment the 4 core demographics exist — NOT
+    // only when THIS message carried a profile_update action. Demographics often
+    // land via the regex extractor (extractProfileFromMessage), which updates the
+    // profile WITHOUT emitting a profile_update action, so the old action-gated
+    // check meant onboarding_completed + TDEE/calorie/protein/water targets were
+    // never written for those users. checkOnboardingCompletion is idempotent (its
+    // own gate skips once completed, and isOnboarding flips false next request).
+    if (isOnboarding) {
       checkOnboardingCompletion(userId).then(() => {}, (e) => console.error('[Onboarding] checkOnboardingCompletion failed:', (e as Error).message));
     }
 
