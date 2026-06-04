@@ -24,11 +24,17 @@ export default function RegisterScreen() {
     if (!year || year < 1920 || year > currentYear) { Alert.alert('Hata', 'Geçerli doğum yılı girin.'); return; }
     if (currentYear - year < 18) { Alert.alert('Yaş Sınırı', 'Bu uygulama 18 yaş ve üzeri içindir.'); return; }
 
-    const { error } = await signUp(email.trim(), password, year);
-    if (error) Alert.alert('Hata', error);
-    else Alert.alert('E-posta Doğrulaması', 'Hesabın oluşturuldu. Lütfen e-posta adresine gönderilen doğrulama linkine tıkla.', [
-      { text: 'Tamam', onPress: () => router.replace('/(auth)/login') },
-    ]);
+    const { error, needsConfirmation } = await signUp(email.trim(), password, year);
+    if (error) { Alert.alert('Hata', error); return; }
+    if (needsConfirmation) {
+      // Email confirmation is on → no session yet, user must verify first.
+      Alert.alert('E-posta Doğrulaması', 'Hesabın oluşturuldu. Lütfen e-posta adresine gönderilen doğrulama linkine tıkla.', [
+        { text: 'Tamam', onPress: () => router.replace('/(auth)/login') },
+      ]);
+    } else {
+      // Session is already active → drop the user straight into the app.
+      router.replace('/');
+    }
   };
 
   const handleGoogle = async () => {

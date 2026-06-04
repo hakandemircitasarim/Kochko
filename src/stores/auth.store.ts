@@ -14,7 +14,7 @@ interface AuthState {
   loading: boolean;
   initialized: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, birthYear: number) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, birthYear: number) => Promise<{ error: string | null; needsConfirmation?: boolean }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signInWithApple: () => Promise<{ error: string | null }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
@@ -64,12 +64,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
 
     set({ loading: true });
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email, password,
       options: { data: { birth_year: birthYear } },
     });
     set({ loading: false });
-    return { error: error?.message ?? null };
+    // When email confirmation is disabled, signUp returns an active session and
+    // the user is already logged in — they should go straight into the app, not
+    // be told to check a verification email that was never sent.
+    return { error: error?.message ?? null, needsConfirmation: !error && !data.session };
   },
 
   signInWithGoogle: async () => {
