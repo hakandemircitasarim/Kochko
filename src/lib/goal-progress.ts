@@ -69,9 +69,11 @@ export function calculateGoalProgress(
   const plannedRate = goal.weekly_rate ?? (totalChangeNeeded / targetWeeks);
   const tempoRatio = plannedRate > 0 ? weeklyActualRate / plannedRate : 1;
 
-  // Pace status
+  // Pace status. Wrong-direction → 'stalled' regardless of how new the goal is: tempoRatio
+  // is built from the UNSIGNED actualChange, so without this a week-1 user who GAINED on a
+  // lose_weight goal read as 'on_track'/'ahead' (green check) next to a correct 0% bar.
   let paceStatus: PaceStatus;
-  if (!movingRight && weeksElapsed >= 2) {
+  if (!movingRight) {
     paceStatus = 'stalled';
   } else if (tempoRatio >= 0.85) {
     paceStatus = tempoRatio >= 1.3 ? 'ahead' : 'on_track';

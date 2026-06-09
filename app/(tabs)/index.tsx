@@ -37,6 +37,7 @@ export default function TodayScreen() {
     meals, workouts, weightKg, waterLiters, sleepHours, steps,
     totalCalories, totalProtein, totalCarbs, totalFat, focusMessage,
     weeklyBudgetRemaining,
+    weeklyBudgetTotal: storeBudgetTotal, weeklyBudgetConsumed: storeBudgetConsumed,
     calorieTargetMin: planCalMin, calorieTargetMax: planCalMax,
     proteinTarget: planProtein, carbsTarget: planCarbs, fatTarget: planFat,
     loading, fetchToday, addWater, deleteMeal, deleteWorkout,
@@ -136,11 +137,17 @@ export default function TodayScreen() {
     refresh();
   };
 
-  // Weekly budget calculation — guard against NaN / null / undefined
-  const weeklyBudgetTotal = calorieTargetMax > 0 ? calorieTargetMax * 7 : 0;
-  const rawConsumed = weeklyBudgetTotal - (weeklyBudgetRemaining ?? 0);
+  // Weekly budget — prefer the projection's STORED weighted total/consumed (4 training +
+  // 3 rest days, rest 250 lower) over the old flat calorie_target_max*7, which overstated
+  // both total and consumed by the train/rest gap. Fall back to the flat estimate only when
+  // the stored fields are absent (legacy rows). Guard against NaN / null / undefined.
+  const flatTotal = calorieTargetMax > 0 ? calorieTargetMax * 7 : 0;
+  const weeklyBudgetTotal = (storeBudgetTotal != null && storeBudgetTotal > 0) ? storeBudgetTotal : flatTotal;
+  const rawConsumed = (storeBudgetConsumed != null)
+    ? storeBudgetConsumed
+    : weeklyBudgetTotal - (weeklyBudgetRemaining ?? 0);
   const weeklyConsumed = Math.max(0, isNaN(rawConsumed) ? 0 : rawConsumed);
-  const rawRemaining = weeklyBudgetRemaining ?? 0;
+  const rawRemaining = weeklyBudgetRemaining ?? Math.max(0, weeklyBudgetTotal - weeklyConsumed);
   const weeklyRemaining = isNaN(rawRemaining) ? 0 : rawRemaining;
   const weeklyPct = weeklyBudgetTotal > 0 ? Math.min(1, weeklyConsumed / weeklyBudgetTotal) : 0;
 

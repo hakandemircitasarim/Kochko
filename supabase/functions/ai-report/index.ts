@@ -109,7 +109,7 @@ async function generateDailyReport(userId: string, date?: string) {
 
   // Fetch today's data
   const [planRes, mealsRes, workoutsRes, metricsRes, goalRes] = await Promise.all([
-    supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, protein_target_g').eq('user_id', userId).eq('date', reportDate).limit(1).maybeSingle(),
+    supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, protein_target_g, water_target_liters').eq('user_id', userId).eq('date', reportDate).limit(1).maybeSingle(),
     supabaseAdmin.from('meal_logs').select('id').eq('user_id', userId).eq('logged_for_date', reportDate).eq('is_deleted', false),
     supabaseAdmin.from('workout_logs').select('duration_min').eq('user_id', userId).eq('logged_for_date', reportDate),
     supabaseAdmin.from('daily_metrics').select('*').eq('user_id', userId).eq('date', reportDate).maybeSingle(),
@@ -182,6 +182,20 @@ ${(() => {
   if (typeof report.tomorrow_action !== 'string' || !report.tomorrow_action) report.tomorrow_action = '-';
   if (typeof report.full_report !== 'string' || !report.full_report) report.full_report = 'Rapor oluşturulamadı.';
 
+  // Compute the target-met booleans DETERMINISTICALLY from the actuals we already summed —
+  // the LLM was deciding these and could contradict the very numbers shown beside the
+  // checkmark (e.g. green "Kalori met" next to 2400 kcal over an 1800-2000 target).
+  const calorieTargetMet = (plan?.calorie_target_min != null && plan?.calorie_target_max != null)
+    ? (totalCal >= plan.calorie_target_min && totalCal <= plan.calorie_target_max)
+    : (report.calorie_target_met ?? false);
+  const proteinTargetMet = (plan?.protein_target_g != null)
+    ? (Math.round(totalPro) >= plan.protein_target_g)
+    : (report.protein_target_met ?? false);
+  const workoutCompleted = workouts.length > 0;
+  const waterTargetMet = (plan?.water_target_liters != null)
+    ? ((metrics?.water_liters ?? 0) >= plan.water_target_liters)
+    : (report.water_target_met ?? false);
+
   // Store
   const { error: upsertErr } = await supabaseAdmin.from('daily_reports').upsert({
     user_id: userId, date: reportDate,
@@ -189,10 +203,10 @@ ${(() => {
     calorie_actual: totalCal, protein_actual: Math.round(totalPro),
     carbs_actual: Math.round(totalCarb), fat_actual: Math.round(totalFat),
     alcohol_calories: totalAlcCal,
-    calorie_target_met: report.calorie_target_met,
-    protein_target_met: report.protein_target_met,
-    workout_completed: report.workout_completed,
-    water_target_met: report.water_target_met,
+    calorie_target_met: calorieTargetMet,
+    protein_target_met: proteinTargetMet,
+    workout_completed: workoutCompleted,
+    water_target_met: waterTargetMet,
     steps_actual: report.steps_actual ?? metrics?.steps,
     sleep_impact: report.sleep_impact,
     water_impact: report.water_impact,
@@ -275,11 +289,22 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
 
   const weights = metrics.filter((m: { weight_kg: number | null }) => m.weight_kg).map((m: { date: string; weight_kg: number }) => ({ date: m.date, kg: m.weight_kg }));
 
+  // avg_compliance + weekly_budget_compliance computed DETERMINISTICALLY (the LLM was
+  // guessing both — and the weekly prompt contains NO calorie/budget data at all, so its
+  // budget verdict was a coin-flip). Mirrors the monthly path + the Progress tab.
+  const avgCompliance = reports.length
+    ? Math.max(0, Math.min(100, Math.round(reports.reduce((s: number, r: { compliance_score?: number }) => s + (r.compliance_score ?? 0), 0) / reports.length)))
+    : 0;
+  const weekConsumed = reports.reduce((s: number, r: { calorie_actual?: number }) => s + (r.calorie_actual ?? 0), 0);
+  const { data: budgetProfile } = await supabaseAdmin.from('profiles').select('weekly_calorie_budget').eq('id', userId).maybeSingle();
+  const weeklyBudget = budgetProfile?.weekly_calorie_budget as number | null;
+  const weeklyBudgetCompliance = (weeklyBudget != null && weeklyBudget > 0) ? (weekConsumed <= weeklyBudget) : null;
+
   const { error: wrErr } = await supabaseAdmin.from('weekly_reports').upsert({
     user_id: userId, week_start: wsStr,
     weight_trend: weights,
-    avg_compliance: report.avg_compliance,
-    weekly_budget_compliance: report.weekly_budget_compliance,
+    avg_compliance: avgCompliance,
+    weekly_budget_compliance: weeklyBudgetCompliance,
     top_deviation: report.top_deviation,
     best_day: bestDay,
     worst_day: worstDay,

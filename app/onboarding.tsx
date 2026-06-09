@@ -199,13 +199,19 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
       // Single-active-goal invariant (migration 033): deactivate any existing active
       // goal first so a retry after a partial failure doesn't violate the unique index.
       await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
+      // Derive the weekly rate from the entered target + 12-week horizon instead of a flat
+      // 0.5 (which contradicted the target weight and made GoalProgress show a wrong tempo).
+      // Clamp to the 1.0 kg/wk safety guardrail.
+      const weeklyRate = (needsTargetWeight && targetWeight !== w)
+        ? Math.min(1.0, Math.round((Math.abs(w - targetWeight) / 12) * 100) / 100)
+        : 0.5;
       const { error: goalError } = await supabase.from('goals').insert({
         user_id: user.id,
         goal_type: goalType,
         start_weight_kg: w,
         target_weight_kg: targetWeight,
         target_weeks: 12,
-        weekly_rate: 0.5,
+        weekly_rate: weeklyRate,
         priority: 'sustainable',
         restriction_mode: 'sustainable',
         is_active: true,

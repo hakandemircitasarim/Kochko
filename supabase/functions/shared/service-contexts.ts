@@ -167,7 +167,10 @@ export async function getRecoveryContext(userId: string): Promise<string> {
     }
     const weeklyBudget = dailyTarget * 7;
     const weeklyRemaining = Math.max(0, weeklyBudget - weeklyConsumed);
-    const daysLeftInWeek = 7 - new Date().getDay();
+    // Days left in the ISO week INCLUDING today (Monday-anchored). The old `7 - getDay()`
+    // used Sunday=0, so on Sunday it said 7 days left (a fresh week) instead of 1 — telling
+    // the recovery coach to spread the excess over a week that's actually ending today.
+    const daysLeftInWeek = 7 - mondayOffset; // 7 on Monday … 1 on Sunday
 
     let severity: 'mild' | 'moderate' | 'significant' = 'mild';
     if (excess > 800) severity = 'significant';

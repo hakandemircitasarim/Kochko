@@ -2824,6 +2824,17 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
   }
 }
 
+// Calorie factor by goal DIRECTION — MUST mirror src/lib/tdee.ts calculateTargets so the
+// chat-path TDEE doesn't diverge from onboarding. Sustainable defaults: deficit for weight
+// loss, surplus for gain/muscle, maintenance (=TDEE) for maintain/health/conditioning.
+// (Bug fix: both TDEE paths previously hardcoded *0.85 for EVERYONE → bulking/maintain users
+// were silently put into a weight-loss deficit, ~670 kcal/day in the wrong direction.)
+function goalCalorieFactor(goalType: string | null | undefined): number {
+  if (goalType === 'lose_weight') return 0.85;
+  if (goalType === 'gain_weight' || goalType === 'gain_muscle') return 1.10;
+  return 1.0; // maintain / health / conditioning / unknown
+}
+
 async function checkOnboardingCompletion(userId: string) {
   const { data } = await supabaseAdmin
     .from('profiles')
@@ -2838,8 +2849,9 @@ async function checkOnboardingCompletion(userId: string) {
     const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
     const tdee = Math.round(bmr * (multipliers[data.activity_level ?? 'moderate'] ?? 1.55));
 
-    // Default sustainable deficit targets
-    const targetCal = Math.round(tdee * 0.85);
+    // Goal-aware target (profiles has no goal_type — read the active goal row).
+    const { data: goalRow } = await supabaseAdmin.from('goals').select('goal_type').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle();
+    const targetCal = Math.round(tdee * goalCalorieFactor(goalRow?.goal_type as string | undefined));
     const rangeWidth = Math.round(targetCal * 0.10);
     const trainingMin = Math.max(targetCal - Math.round(rangeWidth / 2), data.gender === 'female' ? 1200 : 1400);
     const trainingMax = targetCal + Math.round(rangeWidth / 2);
@@ -2904,7 +2916,9 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
   const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
   const tdee = Math.round(bmr * (multipliers[profile.activity_level ?? 'moderate'] ?? 1.55));
 
-  const targetCal = Math.round(tdee * 0.85);
+  // Goal-aware target (don't diet a bulking/maintain user on a weight-change recalc).
+  const { data: goalRow } = await supabaseAdmin.from('goals').select('goal_type').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle();
+  const targetCal = Math.round(tdee * goalCalorieFactor(goalRow?.goal_type as string | undefined));
   const rangeWidth = Math.round(targetCal * 0.10);
   const trainingMin = Math.max(targetCal - Math.round(rangeWidth / 2), profile.gender === 'female' ? 1200 : 1400);
   const trainingMax = targetCal + Math.round(rangeWidth / 2);

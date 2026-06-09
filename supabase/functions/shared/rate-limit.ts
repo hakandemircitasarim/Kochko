@@ -54,13 +54,18 @@ function localDayStartIso(
       }, {} as Record<string, string>);
       const localHour = parseInt(parts.hour ?? '0', 10);
       const useYesterday = localHour < boundary;
-      const isoDay = `${parts.year}-${parts.month}-${parts.day}`;
-      // We want the start of the active "user day" — if local time is before
-      // boundary, we're still in yesterday's day from the user's perspective.
-      const baseDate = new Date(`${isoDay}T00:00:00Z`);
+      // The tz's UTC offset at `now`: the local wall-clock interpreted as UTC, minus the
+      // true UTC instant. (Bug fix: the old code parsed the local date as UTC and applied
+      // the boundary hour WITHOUT this offset, so the day-start was wrong by the full UTC
+      // offset — e.g. 3h off for Istanbul/UTC+3 — shifting the daily-cap window for everyone.)
+      const localAsUtcMs = new Date(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`).getTime();
+      const offsetMs = localAsUtcMs - now.getTime();
+      // The boundary-hour wall-clock on the active "user day" (yesterday if before boundary)...
+      const baseDate = new Date(`${parts.year}-${parts.month}-${parts.day}T00:00:00Z`);
       if (useYesterday) baseDate.setUTCDate(baseDate.getUTCDate() - 1);
       baseDate.setUTCHours(boundary, 0, 0, 0);
-      return baseDate.toISOString();
+      // ...converted from local wall-clock to the true UTC instant by removing the offset.
+      return new Date(baseDate.getTime() - offsetMs).toISOString();
     }
   } catch {
     // fall through to UTC
