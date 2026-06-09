@@ -41,7 +41,12 @@ export async function addPhase(
   goalType: string,
   targetWeight: number | null,
   targetWeeks: number,
-  phaseLabel: string
+  phaseLabel: string,
+  // When set, forces the new row's is_active. The single-goal "replace" path
+  // (settings/goals.tsx) passes true — it deactivates the old goal then expects
+  // THIS one active. Left undefined for the multi-phase append path, where only
+  // phase 1 starts active (later phases activate via auto-transition).
+  active?: boolean,
 ): Promise<void> {
   // Get current max phase order
   const { data: existing } = await supabase
@@ -75,7 +80,7 @@ export async function addPhase(
     target_weeks: targetWeeks,
     phase_order: nextOrder,
     phase_label: phaseLabel,
-    is_active: nextOrder === 1, // only first phase is active initially
+    is_active: active ?? (nextOrder === 1), // explicit flag wins; else only first phase active
     priority: 'sustainable',
     restriction_mode: 'sustainable',
     start_weight_kg: startWeight,

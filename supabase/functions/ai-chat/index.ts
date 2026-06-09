@@ -1776,19 +1776,34 @@ async function executeActions(
         case 'sleep_log': {
           const h = action.hours as number;
           if (h > 0 && h < 24) {
-            await supabaseAdmin.from('daily_metrics').upsert(
-              { user_id: userId, date: today, sleep_hours: h, sleep_quality: action.quality as string, water_liters: waterTotal, synced: true },
+            // daily_metrics.sleep_quality CHECK allows only good|ok|bad. The model
+            // occasionally emits 'poor'/Turkish synonyms (the profile-field prompt
+            // teaches a different vocabulary) — an off-enum value would 23514-reject
+            // the WHOLE upsert (sleep_hours included) while we falsely report success.
+            const SQ_MAP: Record<string, string> = { poor: 'bad', kotu: 'bad', 'kötü': 'bad', iyi: 'good', orta: 'ok', normal: 'ok' };
+            const rawQ = (action.quality as string | undefined)?.toLowerCase();
+            const mapped = rawQ ? (SQ_MAP[rawQ] ?? rawQ) : undefined;
+            const sleepQuality = mapped && ['good', 'ok', 'bad'].includes(mapped) ? mapped : null; // null is allowed (nullable col)
+            const { error: sleepErr } = await supabaseAdmin.from('daily_metrics').upsert(
+              { user_id: userId, date: today, sleep_hours: h, sleep_quality: sleepQuality, water_liters: waterTotal, synced: true },
               { onConflict: 'user_id,date' }
             );
-            feedback.push('Uyku kaydedildi');
+            if (sleepErr) { console.error('[sleep_log] upsert failed:', sleepErr.message); feedback.push('Uyku kaydi basarisiz'); }
+            else feedback.push('Uyku kaydedildi');
           }
           break;
         }
         case 'mood_log': {
-          await supabaseAdmin.from('daily_metrics').upsert(
-            { user_id: userId, date: today, mood_score: action.score as number, mood_note: action.note as string, water_liters: waterTotal, synced: true },
+          // daily_metrics.mood_score CHECK is 1..5. Clamp so an out-of-range value
+          // (users say "8/10") doesn't 23514-reject the whole upsert silently.
+          const s = Number(action.score);
+          const moodScore = Number.isFinite(s) ? Math.min(5, Math.max(1, Math.round(s))) : null;
+          if (moodScore === null) break;
+          const { error: moodErr } = await supabaseAdmin.from('daily_metrics').upsert(
+            { user_id: userId, date: today, mood_score: moodScore, mood_note: action.note as string, water_liters: waterTotal, synced: true },
             { onConflict: 'user_id,date' }
           );
+          if (moodErr) { console.error('[mood_log] upsert failed:', moodErr.message); break; }
           feedback.push('Ruh hali kaydedildi');
           break;
         }

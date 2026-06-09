@@ -49,9 +49,31 @@ export async function chatCompletion<T = string>(
   options?: CompletionOptions
 ): Promise<T> {
   const model = options?.model ?? MODELS.primary;
+  let effectiveMessages = messages;
+
+  if (options?.jsonMode) {
+    // OpenAI rejects response_format=json_object (400) unless the literal token
+    // "json" appears somewhere in the messages. Some prompts only SHOW a JSON
+    // shape (e.g. `{"send": false}`) without the word "json" — that 400'd the
+    // whole ai-proactive cron. Guarantee the precondition here so every caller
+    // (current + future) is protected, not just the ones that happen to say "json".
+    const mentionsJson = messages.some((m) => {
+      const c = m.content;
+      const text = typeof c === 'string'
+        ? c
+        : Array.isArray(c)
+          ? c.map((p) => (p && typeof p === 'object' && 'text' in p ? String((p as { text?: unknown }).text ?? '') : '')).join(' ')
+          : '';
+      return /json/i.test(text);
+    });
+    if (!mentionsJson) {
+      effectiveMessages = [...messages, { role: 'system', content: 'Yanıtını yalnızca geçerli bir JSON nesnesi olarak ver. (Respond with a valid JSON object.)' }];
+    }
+  }
+
   const body: Record<string, unknown> = {
     model,
-    messages,
+    messages: effectiveMessages,
     temperature: options?.temperature ?? 0.5,
     max_tokens: options?.maxTokens ?? 2000,
   };

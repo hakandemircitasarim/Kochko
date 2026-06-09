@@ -124,7 +124,7 @@ Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylas
    "available_training_times": "sabah, aksam",
    // Saglik / yasam
    "stress_level": "low|moderate|high", "stress_sources": "aciklama",
-   "sleep_quality": "poor|ok|good",
+   "sleep_quality": "good|ok|bad",
    "digestive_issues": "reflu/ibs/siskinlik vb",
    "hormone_conditions": "tiroid/PCOS/insulin_direnci vb",
    "previous_diets": "daha once denenenler (serbest metin)",

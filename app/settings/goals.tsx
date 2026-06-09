@@ -170,7 +170,10 @@ export default function GoalsScreen() {
       : goalType === 'maintain' ? 'Koruma'
       : goalType === 'conditioning' ? 'Kondisyon'
       : 'Sağlık';
-    await addPhase(user.id, goalType, tw || null, weeks, phaseLabel);
+    // Single-goal "replace" intent: the deactivate above cleared the old active
+    // goal, so this new one must be active (else the user is left with ZERO active
+    // goals and the dashboard / plan-gen / streak / progress all read nothing).
+    await addPhase(user.id, goalType, tw || null, weeks, phaseLabel, true);
     setSaving(false);
     Alert.alert('Başarılı', 'Hedef kaydedildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
   };

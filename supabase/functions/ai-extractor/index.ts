@@ -12,6 +12,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
 import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep } from '../shared/memory.ts';
+import { denyIfNotCron } from '../shared/cron-auth.ts';
 
 const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 
@@ -48,6 +49,8 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*' } });
   }
+  const denied = denyIfNotCron(req);
+  if (denied) return denied;
 
   try {
     const body = await req.json().catch(() => ({}));

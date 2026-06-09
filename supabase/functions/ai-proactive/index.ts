@@ -10,20 +10,24 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
+import { denyIfNotCron } from '../shared/cron-auth.ts';
 import { isIFCompatible, getSeasonalContext, type PeriodicState } from '../shared/periodic-config.ts';
 import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../shared/service-contexts.ts';
 
 const NUDGE_PROMPT = `Sen Kochko kocusun. Kullanicinin durumunu degerlendir.
 SADECE gercekten gerekli oldugunda mesaj uret. Spam YAPMA.
 Samimi, kisa (1-2 cumle), operasyonel ol. Emoji yok.
+Yanitini yalnizca JSON olarak ver:
 Gerekli degilse: {"send": false}
 Gerekli ise: {"send": true, "message": "mesaj", "trigger": "neden", "priority": "low|medium|high"}`;
 
 serve(async (req: Request) => {
+  const denied = denyIfNotCron(req);
+  if (denied) return denied;
   try {
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone')
+      .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length')
       .eq('onboarding_completed', true);
 
     if (!profiles?.length) return respond({ processed: 0, sent: 0 });

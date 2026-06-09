@@ -11,6 +11,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
+import { denyIfNotCron } from '../shared/cron-auth.ts';
 
 const STORAGE_BUCKET = 'user-uploads';
 
@@ -27,7 +28,9 @@ interface CleanupRow {
   status: string | null;
 }
 
-serve(async () => {
+serve(async (req: Request) => {
+  const denied = denyIfNotCron(req);
+  if (denied) return denied;
   try {
     const now = new Date().toISOString();
 

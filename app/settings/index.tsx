@@ -84,17 +84,14 @@ export default function SettingsScreen() {
         <Button title="İlerleme Fotoğrafları" variant="outline" onPress={() => router.push('/settings/progress-photos')} />
       </View>
 
-      {/* Social — gated off for ship. household & coach-sharing query tables no migration
-          creates yet (households/household_members/weekly_plan_shopping and
-          coach_consents/profiles.coach_id), so the screens throw "relation does not exist"
-          on mount. Re-enable once those tables + RLS ship. See BITIRME_PLANI_v2.md P0#13. */}
-      {/*
+      {/* Social — households/household_members/coach_consents all exist in the live DB and
+          their RLS is sound (migration 040 fixed the household_members policy recursion that
+          previously 500'd these screens). Verified live: create household + membership + lookup. */}
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Sosyal</Text>
       <View style={{ gap: SPACING.sm }}>
         <Button title="Aile Planı" variant="outline" onPress={() => router.push('/settings/household')} />
         <Button title="Koç Paylaşımı" variant="outline" onPress={() => router.push('/settings/coach-sharing')} />
       </View>
-      */}
 
       {/* Preferences */}
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase' }}>Tercihler</Text>
