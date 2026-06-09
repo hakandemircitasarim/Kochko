@@ -395,14 +395,28 @@ export default function ProgressScreen() {
         </Card>
       )}
 
-      {/* Calendar Link */}
-      <Button
-        title="Takvim Görünümü"
-        variant="outline"
-        onPress={() => router.push('/reports/calendar')}
-        style={{ marginTop: SPACING.sm }}
-      />
+      {/* Raporlar — daily/weekly/monthly/all-time were built but had no nav entry. */}
+      <Card title="Raporlar" style={{ marginTop: SPACING.sm }}>
+        <ReportLink label="Gün Sonu Raporu" icon="today-outline" onPress={() => router.push('/reports/daily')} colors={colors} />
+        <ReportLink label="Haftalık Rapor" icon="calendar-outline" onPress={() => router.push('/reports/weekly')} colors={colors} />
+        <ReportLink label="Aylık Rapor" icon="calendar-number-outline" onPress={() => router.push('/reports/monthly')} colors={colors} />
+        <ReportLink label="Tüm Zamanlar" icon="trophy-outline" onPress={() => router.push('/reports/all-time')} colors={colors} />
+        <ReportLink label="Takvim Görünümü" icon="grid-outline" onPress={() => router.push('/reports/calendar')} colors={colors} last />
+      </Card>
     </ScrollView>
+  );
+}
+
+function ReportLink({ label, icon, onPress, colors, last }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; colors: any; last?: boolean }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm + 2, borderBottomWidth: last ? 0 : 0.5, borderBottomColor: colors.border }}
+    >
+      <Ionicons name={icon} size={20} color={colors.primary} style={{ marginRight: SPACING.sm }} />
+      <Text style={{ flex: 1, color: colors.text, fontSize: FONT.md }}>{label}</Text>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </TouchableOpacity>
   );
 }
 

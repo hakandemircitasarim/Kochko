@@ -49,8 +49,13 @@ export default function DailyReportScreen() {
   }, [user?.id, today]);
 
   const handleGenerate = async () => {
+    if (!user?.id) return;
     setGenerating(true);
-    const { data } = await supabase.functions.invoke('ai-report', { body: { report_type: 'daily', date: today } });
+    // The ai-report response omits the computed actuals (calorie_actual, etc. — they
+    // are only written to the row). Re-read the persisted row so the UI shows real
+    // numbers instead of "undefined".
+    await supabase.functions.invoke('ai-report', { body: { report_type: 'daily', date: today } });
+    const { data } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single();
     if (data) setReport(data as DailyReport);
     setGenerating(false);
   };

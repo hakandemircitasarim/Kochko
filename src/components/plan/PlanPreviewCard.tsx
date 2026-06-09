@@ -25,18 +25,22 @@ interface Props {
 
 function DietStrip({ plan }: { plan: DietPlanData }) {
   const { colors } = useTheme();
+  // plan_data is raw LLM JSON; guard days/meals so a malformed snapshot can't crash the card.
+  const days = Array.isArray(plan?.days) ? plan.days : [];
   return (
     <View style={{ flexDirection: 'row', gap: 4, marginTop: SPACING.xs }}>
-      {plan.days.map(d => (
+      {days.map(d => {
+        const hasMeals = (d.meals?.length ?? 0) > 0;
+        return (
         <View
           key={d.day_index}
           style={{
             flex: 1,
             height: 28,
             borderRadius: 6,
-            backgroundColor: d.meals.length > 0 ? '#22C55E22' : colors.surfaceLight,
+            backgroundColor: hasMeals ? '#22C55E22' : colors.surfaceLight,
             borderWidth: 0.5,
-            borderColor: d.meals.length > 0 ? '#22C55E' : colors.border,
+            borderColor: hasMeals ? '#22C55E' : colors.border,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -44,23 +48,25 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
           <Text
             style={{
               fontSize: 9,
-              color: d.meals.length > 0 ? '#22C55E' : colors.textMuted,
+              color: hasMeals ? '#22C55E' : colors.textMuted,
               fontWeight: '700',
             }}
           >
             {DAY_LABELS_TR[d.day_index]?.[0]}
           </Text>
         </View>
-      ))}
+        );
+      })}
     </View>
   );
 }
 
 function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
   const { colors } = useTheme();
+  const days = Array.isArray(plan?.days) ? plan.days : [];
   return (
     <View style={{ flexDirection: 'row', gap: 4, marginTop: SPACING.xs }}>
-      {plan.days.map(d => {
+      {days.map(d => {
         const tone = d.rest_day
           ? { bg: colors.surfaceLight, bd: colors.border, fg: colors.textMuted }
           : { bg: '#6366F122', bd: '#6366F1', fg: '#6366F1' };
@@ -79,7 +85,7 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
             }}
           >
             <Text style={{ fontSize: 9, color: tone.fg, fontWeight: '700' }}>
-              {d.rest_day ? '–' : `${d.exercises.length}`}
+              {d.rest_day ? '–' : `${d.exercises?.length ?? 0}`}
             </Text>
           </View>
         );
@@ -94,16 +100,18 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props
   const summary = useMemo(() => {
     if (plan.plan_type === 'diet') {
       const d = plan as DietPlanData;
-      const totalKcal = d.days.reduce((s, day) => s + day.total_kcal, 0);
-      const avgKcal = Math.round(totalKcal / Math.max(1, d.days.filter(x => x.meals.length > 0).length));
+      const days = Array.isArray(d?.days) ? d.days : [];
+      const totalKcal = days.reduce((s, day) => s + (day.total_kcal ?? 0), 0);
+      const avgKcal = Math.round(totalKcal / Math.max(1, days.filter(x => (x.meals?.length ?? 0) > 0).length));
       return {
         primary: `${avgKcal} kcal/gün`,
-        secondary: `P ${d.targets.protein}g · K ${d.targets.carbs}g · Y ${d.targets.fat}g`,
+        secondary: `P ${d?.targets?.protein ?? 0}g · K ${d?.targets?.carbs ?? 0}g · Y ${d?.targets?.fat ?? 0}g`,
       };
     }
     const w = plan as WorkoutPlanData;
-    const activeDays = w.days.filter(d => !d.rest_day).length;
-    const totalExercises = w.days.reduce((s, d) => s + d.exercises.length, 0);
+    const days = Array.isArray(w?.days) ? w.days : [];
+    const activeDays = days.filter(d => !d.rest_day).length;
+    const totalExercises = days.reduce((s, d) => s + (d.exercises?.length ?? 0), 0);
     return {
       primary: `${activeDays} aktif gün`,
       secondary: `${totalExercises} egzersiz`,

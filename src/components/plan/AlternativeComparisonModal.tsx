@@ -26,10 +26,12 @@ interface Props {
 }
 
 function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanData; label: string; accent: string; onPick: () => void; colors: any }) {
-  const totalKcal = plan.days.reduce((s, d) => s + d.total_kcal, 0);
-  const activeDays = plan.days.filter(d => d.meals.length > 0).length;
+  // Candidate snapshot is raw LLM JSON — guard days/meals/targets against a malformed shape.
+  const days = Array.isArray(plan?.days) ? plan.days : [];
+  const totalKcal = days.reduce((s, d) => s + (d.total_kcal ?? 0), 0);
+  const activeDays = days.filter(d => (d.meals?.length ?? 0) > 0).length;
   const avgKcal = Math.round(totalKcal / Math.max(1, activeDays));
-  const sampleDay = plan.days.find(d => d.meals.length > 0);
+  const sampleDay = days.find(d => (d.meals?.length ?? 0) > 0);
 
   return (
     <View
@@ -59,7 +61,7 @@ function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanDa
         {avgKcal} kcal/gün
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-        P {plan.targets.protein}g · K {plan.targets.carbs}g · Y {plan.targets.fat}g
+        P {plan.targets?.protein ?? 0}g · K {plan.targets?.carbs ?? 0}g · Y {plan.targets?.fat ?? 0}g
       </Text>
 
       {sampleDay ? (
@@ -94,8 +96,9 @@ function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanDa
 }
 
 function WorkoutSummary({ plan, label, accent, onPick, colors }: { plan: WorkoutPlanData; label: string; accent: string; onPick: () => void; colors: any }) {
-  const active = plan.days.filter(d => !d.rest_day);
-  const total = active.reduce((s, d) => s + d.exercises.length, 0);
+  const days = Array.isArray(plan?.days) ? plan.days : [];
+  const active = days.filter(d => !d.rest_day);
+  const total = active.reduce((s, d) => s + (d.exercises?.length ?? 0), 0);
 
   return (
     <View

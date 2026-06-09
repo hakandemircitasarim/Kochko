@@ -75,11 +75,16 @@ export default function WeeklyReportScreen() {
   };
 
   const handleGenerate = async () => {
+    if (!user?.id) return;
     setGenerating(true);
-    const { data } = await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly' } });
+    // The ai-report response omits persisted fields (weight_trend, actuals); reading
+    // the raw response left report.weight_trend undefined → crash at the .length check.
+    // Re-read the stored row (NOT NULL weight_trend default []) so the UI is safe + complete.
+    await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly' } });
+    const { data } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
     if (data) {
       setReport(data as WeeklyReport);
-      if (user?.id && (data as WeeklyReport).week_start) {
+      if ((data as WeeklyReport).week_start) {
         await loadAlcoholData(user.id, (data as WeeklyReport).week_start);
       }
     }

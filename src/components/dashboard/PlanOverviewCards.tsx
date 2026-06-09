@@ -91,18 +91,21 @@ function PlanCard({
       };
     }
     if (planType === 'diet') {
+      // Defensive: plan_data is raw LLM-authored JSON (a structurally-incomplete but
+      // valid snapshot can slip past the server gate). Guard days/targets/meals so a
+      // malformed plan degrades to a soft empty state instead of crashing the dashboard.
       const d = plan.plan_data as DietPlanData;
-      const today = d.days.find(x => x.day_index === idx);
-      const mealCount = today?.meals.length ?? 0;
+      const today = (d?.days ?? []).find(x => x.day_index === idx);
+      const mealCount = today?.meals?.length ?? 0;
       const kcal = today?.total_kcal ?? 0;
       return {
         primary: `Bugün ${mealCount} öğün`,
-        secondary: `${kcal} kcal · ${d.targets.protein}g protein`,
-        chip: today?.meals[0]?.name ?? null,
+        secondary: `${kcal} kcal · ${d?.targets?.protein ?? 0}g protein`,
+        chip: today?.meals?.[0]?.name ?? null,
       };
     }
     const w = plan.plan_data as WorkoutPlanData;
-    const today = w.days.find(x => x.day_index === idx);
+    const today = (w?.days ?? []).find(x => x.day_index === idx);
     if (!today) return { primary: 'Bugün kayıt yok', secondary: '', chip: null };
     if (today.rest_day) {
       return {
@@ -112,9 +115,9 @@ function PlanCard({
       };
     }
     return {
-      primary: today.focus ?? `${today.exercises.length} egzersiz`,
-      secondary: `${today.estimated_duration_min ?? today.exercises.length * 3} dk`,
-      chip: today.exercises[0]?.name ?? null,
+      primary: today.focus ?? `${today.exercises?.length ?? 0} egzersiz`,
+      secondary: `${today.estimated_duration_min ?? (today.exercises?.length ?? 0) * 3} dk`,
+      chip: today.exercises?.[0]?.name ?? null,
     };
   })();
 

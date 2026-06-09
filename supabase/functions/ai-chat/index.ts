@@ -516,27 +516,40 @@ serve(async (req: Request) => {
     const { cleanMessage: afterNav, navigateTo } = extractNavigateTo(assistantMessage);
     assistantMessage = afterNav;
 
+    // A snapshot is only USABLE if it has a non-empty days array (and, for diet, a
+    // targets object). A structurally-incomplete-but-valid-JSON snapshot would be
+    // persisted and then CRASH the plan UI on render (PlanOverviewCards/PlanPreviewCard
+    // read days/targets) — so treat it exactly like a parse miss: retry, and never
+    // persist an unusable snapshot.
+    const snapshotUsable = (snap: Record<string, unknown> | null): boolean => {
+      if (!snap) return false;
+      if (!Array.isArray(snap.days) || snap.days.length === 0) return false;
+      if (task_mode_hint === 'plan_diet' && (!snap.targets || typeof snap.targets !== 'object')) return false;
+      return true;
+    };
+
     // RELIABILITY (plan generation): the 7-day diet snapshot is large; the model
     // intermittently abbreviates ("... 6 more days ...") or malforms the big JSON,
-    // so it parses to null and the plan is SILENTLY dropped (user sees the intro
-    // sentence with no plan). Retry ONCE with a JSON-only re-gen before giving up.
-    // (Same shape as the meal forced-extraction safety net.) Skipped on the approval
-    // turn (user_approved) where the client drives promotion, not snapshot emission.
-    if (!planSnapshot && user_approved !== true && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
-      console.warn('[plan_snapshot] first pass produced no valid snapshot — forcing JSON-only regen', { parseError: snapshotParseError });
+    // so it parses to null/incomplete and the plan is SILENTLY dropped (user sees the
+    // intro sentence with no plan) — or worse, a partial snapshot crashes the plan UI.
+    // Retry ONCE with a JSON-only re-gen before giving up. (Same shape as the meal
+    // forced-extraction net.) Skipped on the approval turn (client drives promotion).
+    if (!snapshotUsable(planSnapshot) && user_approved !== true && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
+      console.warn('[plan_snapshot] first pass produced no usable snapshot — forcing JSON-only regen', { parseError: snapshotParseError, hadSnapshot: !!planSnapshot });
       try {
         const forcedRaw = await chatCompletion<string>(
           [
             ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
-            { role: 'user', content: 'Onceki yanitindaki <plan_snapshot> blogu eksik ya da gecersiz JSON idi. SIMDI yalnizca gecerli bir <plan_snapshot>...</plan_snapshot> blogu uret: 7 GUNUN (day_index 0-6) HEPSINI eksiksiz yaz, "..." / "devami benzer" / kisaltma KULLANMA, markdown (```) KULLANMA, blok disina HICBIR sey yazma, trailing virgul birakma.' },
+            { role: 'user', content: 'Onceki yanitindaki <plan_snapshot> blogu eksik/gecersiz/yarim idi. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> blogu uret: "days" dizisinde 7 GUN (day_index 0-6) eksiksiz, diyet ise "targets" objesi dolu. "..." / "devami benzer" / kisaltma KULLANMA, markdown (```) KULLANMA, blok disina HICBIR sey yazma, trailing virgul birakma.' },
           ],
           { model: modelSelection.model, temperature: 0.2, maxTokens: 8000 },
         );
         const retry = extractPlanSnapshot(forcedRaw);
-        if (retry.snapshot) { planSnapshot = retry.snapshot; snapshotParseError = undefined; }
-        else { snapshotParseError = retry.parseError ?? snapshotParseError; }
+        if (snapshotUsable(retry.snapshot)) { planSnapshot = retry.snapshot; snapshotParseError = undefined; }
+        else { snapshotParseError = retry.parseError ?? 'incomplete snapshot (missing days/targets)'; planSnapshot = null; }
       } catch (e) {
         console.error('[plan_snapshot] forced regen threw', (e as Error).message);
+        if (!snapshotUsable(planSnapshot)) planSnapshot = null; // never persist an unusable first-pass snapshot
       }
     }
 
