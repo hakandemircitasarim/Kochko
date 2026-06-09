@@ -323,19 +323,29 @@ JSON SADECE ham olmali: markdown (\`\`\`) KULLANMA, blok disina aciklama yazma, 
           ],
           "total_kcal": 370, "total_protein": 21, "total_carbs": 39, "total_fat": 14
         },
-        { ... lunch ... },
-        { ... dinner ... },
-        { ... snack (optional) ... }
+        {
+          "meal_type": "lunch",
+          "time": "13:00",
+          "name": "Tavuklu bulgur pilavi",
+          "items": [
+            { "name": "tavuk gogsu", "grams": 150, "kcal": 248, "protein": 47, "carbs": 0, "fat": 5 },
+            { "name": "bulgur pilavi", "grams": 200, "kcal": 280, "protein": 8, "carbs": 56, "fat": 2 }
+          ],
+          "total_kcal": 528, "total_protein": 55, "total_carbs": 56, "total_fat": 7
+        }
       ],
       "total_kcal": 1950, "total_protein": 148, "total_carbs": 198, "total_fat": 64
-    },
-    ... 6 more days ...
+    }
   ],
   "version": 1
 }
 </plan_snapshot>
 
-ZORUNLU: 7 gun, her gun 3-4 ogun, her ogun icin detay + makrolar. Toplamlar gunluk hedefle +/- 150 kcal farkinda olmali.
+ZORUNLU JSON KURALLARI (uymazsan plan parse edilemez ve KAYBOLUR):
+- "days" dizisinde TAM 7 gun olmali: day_index 0,1,2,3,4,5,6 (Pazartesi..Pazar). Yukarida yalnizca 1 gun ornek verildi; sen 7 GUNUN HEPSINI ayni yapida ve eksiksiz yaz.
+- Her gun 3-4 ogun (breakfast, lunch, dinner + opsiyonel snack); her ogun "items" listesi + makro toplamlari ile DOLU olsun.
+- ASLA "...", "devami benzer", "6 more days", yorum (//) veya herhangi bir placeholder yazma — bunlar JSON'u gecersiz kilar.
+- Markdown (\`\`\`) yok, blok disina metin yok, trailing virgul yok. Toplamlar gunluk hedefle +/- 150 kcal icinde olsun.
 
 ### PAZARLIK AKISI
 Kullanici "yumurta sevmem" / "sabaha yulaf olmasin" / "sut urunlerini sevmem" / "butcem kisitli, somon cok pahali" gibi degisiklik isterse:
@@ -425,14 +435,17 @@ JSON SADECE ham olmali: markdown (\`\`\`) KULLANMA, blok disina aciklama yazma, 
       "day_label": "Sali",
       "rest_day": true,
       "exercises": []
-    },
-    ... 5 more days ...
+    }
   ],
   "version": 1
 }
 </plan_snapshot>
 
-ZORUNLU: 7 gun, dinlenme gunleri rest_day: true ile isaretli. Aktif gunlerde focus field'ini doldur (Push/Pull/Legs/Full Body/Cardio vs). Deneyim seviyesine gore:
+ZORUNLU JSON KURALLARI (uymazsan plan parse edilemez ve KAYBOLUR):
+- "days" dizisinde TAM 7 gun olmali: day_index 0..6 (Pazartesi..Pazar). Yukarida 2 gun ornek; sen 7 GUNUN HEPSINI yaz.
+- ASLA "...", "devami benzer", "5 more days", yorum (//) veya placeholder yazma — JSON gecersiz olur.
+- Markdown (\`\`\`) yok, blok disi metin yok, trailing virgul yok.
+- Dinlenme gunleri rest_day: true + exercises: []. Aktif gunlerde focus alanini doldur (Push/Pull/Legs/Full Body/Cardio vs). Deneyim seviyesine gore:
 - beginner: 3 gun antrenman, full body, 3×10 compound odakli
 - intermediate: 4 gun split (upper/lower veya push/pull/legs+full)
 - advanced: 5 gun full split

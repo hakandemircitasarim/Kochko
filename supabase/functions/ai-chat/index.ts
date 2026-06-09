@@ -507,7 +507,7 @@ serve(async (req: Request) => {
     // Plan snapshot + reasoning extraction (MASTER_PLAN §4.4, Phase 2/3).
     // AI in plan_diet/plan_workout modes re-emits a full snapshot every turn.
     // Server persists the snapshot to the current draft row.
-    const { cleanMessage: afterSnapshot, snapshot: planSnapshot, parseError: snapshotParseError } = extractPlanSnapshot(assistantMessage);
+    let { cleanMessage: afterSnapshot, snapshot: planSnapshot, parseError: snapshotParseError } = extractPlanSnapshot(assistantMessage);
     assistantMessage = afterSnapshot;
     const { cleanMessage: afterReasoning, reasoning: planReasoning } = extractReasoning(assistantMessage);
     assistantMessage = afterReasoning;
@@ -515,6 +515,30 @@ serve(async (req: Request) => {
     // <navigate_to> — route hint for daily_log chats (Phase 5).
     const { cleanMessage: afterNav, navigateTo } = extractNavigateTo(assistantMessage);
     assistantMessage = afterNav;
+
+    // RELIABILITY (plan generation): the 7-day diet snapshot is large; the model
+    // intermittently abbreviates ("... 6 more days ...") or malforms the big JSON,
+    // so it parses to null and the plan is SILENTLY dropped (user sees the intro
+    // sentence with no plan). Retry ONCE with a JSON-only re-gen before giving up.
+    // (Same shape as the meal forced-extraction safety net.) Skipped on the approval
+    // turn (user_approved) where the client drives promotion, not snapshot emission.
+    if (!planSnapshot && user_approved !== true && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
+      console.warn('[plan_snapshot] first pass produced no valid snapshot — forcing JSON-only regen', { parseError: snapshotParseError });
+      try {
+        const forcedRaw = await chatCompletion<string>(
+          [
+            ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
+            { role: 'user', content: 'Onceki yanitindaki <plan_snapshot> blogu eksik ya da gecersiz JSON idi. SIMDI yalnizca gecerli bir <plan_snapshot>...</plan_snapshot> blogu uret: 7 GUNUN (day_index 0-6) HEPSINI eksiksiz yaz, "..." / "devami benzer" / kisaltma KULLANMA, markdown (```) KULLANMA, blok disina HICBIR sey yazma, trailing virgul birakma.' },
+          ],
+          { model: modelSelection.model, temperature: 0.2, maxTokens: 8000 },
+        );
+        const retry = extractPlanSnapshot(forcedRaw);
+        if (retry.snapshot) { planSnapshot = retry.snapshot; snapshotParseError = undefined; }
+        else { snapshotParseError = retry.parseError ?? snapshotParseError; }
+      } catch (e) {
+        console.error('[plan_snapshot] forced regen threw', (e as Error).message);
+      }
+    }
 
     let persistedPlan: Record<string, unknown> | null = null;
     let planPersistError: string | null = null;
