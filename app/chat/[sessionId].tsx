@@ -38,7 +38,7 @@ import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import {
   MacroSummary, MacroRing, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
-  RecipeCard, ConfirmRejectButtons, PersonaCard,
+  RecipeCard, ConfirmRejectButtons, PersonaCard, ConfidenceBadge,
 } from '@/components/chat/RichMessage';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
@@ -64,7 +64,7 @@ interface RecipeData {
 
 // Extended message type for UI state
 interface UIMessage extends ChatMessage {
-  actions?: { type: string; feedback: string | null }[];
+  actions?: { type: string; feedback: string | null; confidence?: 'high' | 'medium' | 'low' }[];
   showFeedback?: boolean;
   simulationData?: SimulationData | null;
   recipeData?: RecipeData | null;
@@ -230,7 +230,7 @@ export default function SessionDetailScreen() {
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
-  const { sessionId, prefill, taskModeHint } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string }>();
+  const { sessionId, prefill, taskModeHint, openCamera } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string; openCamera?: string }>();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const refreshDashboard = useDashboardStore(s => s.fetchToday);
@@ -410,6 +410,18 @@ export default function SessionDetailScreen() {
       setPrefillApplied(true);
     }
   }, [prefill, taskModeHint, prefillApplied, loading]);
+
+  // Quick Log "Fotoğraf çek" deep-link: log.tsx sends openCamera:'true' through
+  // (tabs)/chat.tsx into this screen — fire the camera ONCE after load. Without
+  // this consumer the whole chain silently ended here (P1 wiring item).
+  const cameraHandledRef = useRef(false);
+  useEffect(() => {
+    if (openCamera === 'true' && !cameraHandledRef.current && !loading) {
+      cameraHandledRef.current = true;
+      void takePhoto();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openCamera, loading]);
 
   // Scroll to bottom helper
   const scrollToBottom = useCallback(() => {
@@ -1442,6 +1454,13 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
             ))}
           </View>
         )}
+
+        {/* Spec 3.3: surface the parser's uncertainty on non-high-confidence meal
+            logs so the user knows to double-check the estimate. */}
+        {!isUser && (() => {
+          const conf = message.actions?.find(a => a.type === 'meal_log' && a.confidence && a.confidence !== 'high')?.confidence;
+          return conf ? <ConfidenceBadge level={conf} /> : null;
+        })()}
 
         {/* Onboarding task handoff — MASTER_PLAN §4.1 */}
         {!isUser && message.taskCompletion && (

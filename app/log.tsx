@@ -20,7 +20,15 @@ import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 
-type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep';
+type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery';
+
+// daily_metrics.muscle_soreness is CHECK-constrained to these text values.
+const SORENESS_LEVELS = [
+  { value: 1, label: 'Yok', dbValue: 'none' },
+  { value: 2, label: 'Hafif', dbValue: 'light' },
+  { value: 3, label: 'Orta', dbValue: 'moderate' },
+  { value: 4, label: 'Şiddetli', dbValue: 'severe' },
+] as const;
 
 export default function QuickLogScreen() {
   const { colors } = useTheme();
@@ -51,6 +59,10 @@ export default function QuickLogScreen() {
   // Sleep state
   const [sleepTime, setSleepTime] = useState('');
   const [wakeTime, setWakeTime] = useState('');
+
+  // Recovery state (Spec 3.1 — muscle soreness + recovery feel)
+  const [soreness, setSoreness] = useState<number | null>(null);
+  const [recoveryScore, setRecoveryScore] = useState<number | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   // Single shared mutex — prevents two handlers firing at once (e.g. double-tap
   // the FAB, or tapping Save + Water before the first finishes).
@@ -68,7 +80,7 @@ export default function QuickLogScreen() {
     try {
       const { error } = await sendMessage(text.trim());
       if (error) Alert.alert('Kayıt eklenemedi', error);
-      else { await fetchToday(user.id); router.back(); }
+      else { await fetchToday(user.id, dayBoundaryHour); router.back(); }
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'Bilinmeyen hata';
       Alert.alert(
@@ -108,7 +120,7 @@ export default function QuickLogScreen() {
           setScannedBarcode(null); // allow re-scanning the same product to retry
           return; // finally{} still resets submittingRef + barcodeLoading
         }
-        if (user?.id) await fetchToday(user.id);
+        if (user?.id) await fetchToday(user.id, dayBoundaryHour);
         setTimeout(() => { router.back(); }, 1500);
       } else {
         setBarcodeResult('Ürün veritabanında bulunamadı. "Yazarak gir" ile manuel kaydedebilirsin.');
@@ -183,10 +195,34 @@ export default function QuickLogScreen() {
         { onConflict: 'user_id,date' }
       );
       if (metricsErr) throw metricsErr;
-      await fetchToday(user.id);
+      await fetchToday(user.id, dayBoundaryHour);
       showSuccessAndClose('Kilo kaydedildi!');
     } catch {
       Alert.alert('Hata', 'Kilo kaydedilemedi. Tekrar dene.');
+    } finally {
+      submittingRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  const handleRecoverySave = async () => {
+    if (submittingRef.current) return;
+    if (!user?.id || (soreness === null && recoveryScore === null)) return;
+    submittingRef.current = true;
+    setLoading(true);
+    try {
+      const date = getEffectiveDate(new Date(), dayBoundaryHour);
+      const payload: Record<string, unknown> = { user_id: user.id, date, synced: true };
+      if (soreness !== null) {
+        payload.muscle_soreness = SORENESS_LEVELS.find(s => s.value === soreness)?.dbValue ?? 'none';
+      }
+      if (recoveryScore !== null) payload.recovery_score = recoveryScore;
+      const { error } = await supabase.from('daily_metrics').upsert(payload, { onConflict: 'user_id,date' });
+      if (error) throw error;
+      await fetchToday(user.id, dayBoundaryHour);
+      showSuccessAndClose('Toparlanma kaydedildi!');
+    } catch {
+      Alert.alert('Hata', 'Toparlanma kaydedilemedi. Tekrar dene.');
     } finally {
       submittingRef.current = false;
       setLoading(false);
@@ -216,7 +252,7 @@ export default function QuickLogScreen() {
         { onConflict: 'user_id,date' }
       );
       if (error) throw error;
-      await fetchToday(user.id);
+      await fetchToday(user.id, dayBoundaryHour);
       showSuccessAndClose('Uyku kaydedildi!');
     } catch {
       Alert.alert('Hata', 'Uyku kaydedilemedi. Tekrar dene.');
@@ -390,6 +426,59 @@ export default function QuickLogScreen() {
     );
   }
 
+  // ====== RECOVERY SCREEN ======
+  if (screen === 'recovery') {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
+        <TouchableOpacity onPress={() => setScreen('main')} style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
+          <Ionicons name="close" size={24} color={colors.textMuted} />
+        </TouchableOpacity>
+        <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.success + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
+          <Ionicons name="fitness" size={24} color={colors.success} />
+        </View>
+        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Toparlanma Kaydı</Text>
+
+        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Kas ağrısı</Text>
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xl }}>
+          {SORENESS_LEVELS.map(s => (
+            <TouchableOpacity key={s.value} onPress={() => setSoreness(s.value)}
+              style={{
+                flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, alignItems: 'center',
+                backgroundColor: soreness === s.value ? colors.warning : colors.card,
+                borderWidth: 0.5, borderColor: soreness === s.value ? colors.warning : colors.border,
+              }}>
+              <Text style={{ color: soreness === s.value ? '#fff' : colors.textSecondary, fontSize: 12, fontWeight: '600' }}>{s.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Genel toparlanma (1 kötü — 5 harika)</Text>
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xxl }}>
+          {[1, 2, 3, 4, 5].map(r => (
+            <TouchableOpacity key={r} onPress={() => setRecoveryScore(r)}
+              style={{
+                flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, alignItems: 'center',
+                backgroundColor: recoveryScore === r ? colors.success : colors.card,
+                borderWidth: 0.5, borderColor: recoveryScore === r ? colors.success : colors.border,
+              }}>
+              <Text style={{ color: recoveryScore === r ? '#fff' : colors.textSecondary, fontSize: 14, fontWeight: '700' }}>{r}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
+          <TouchableOpacity onPress={() => setScreen('main')} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>İptal</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleRecoverySave} disabled={loading || (soreness === null && recoveryScore === null)}
+            style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: loading || (soreness === null && recoveryScore === null) ? 0.5 : 1 }}>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   // ====== SUCCESS TOAST ======
   if (successMsg) {
     return (
@@ -473,6 +562,7 @@ export default function QuickLogScreen() {
           { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, onPress: () => setScreen('weight') },
           { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, onPress: () => setScreen('sleep') },
           { icon: 'water-outline' as const, label: 'Su (+0.25L)', color: colors.protein, onPress: handleWaterAdd },
+          { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, onPress: () => setScreen('recovery') },
         ].map((action, i) => (
           <TouchableOpacity key={i} onPress={action.onPress}
             style={{ width: '48%', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm }}>

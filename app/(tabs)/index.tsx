@@ -89,10 +89,10 @@ export default function TodayScreen() {
   // ref gymnastics are needed.
   const refresh = useCallback(() => {
     if (!user?.id) return;
-    fetchToday(user.id).catch((err) => console.warn('fetchToday failed:', err));
+    fetchToday(user.id, dayBoundaryHour).catch((err) => console.warn('fetchToday failed:', err));
     checkForMilestones();
     getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {});
-  }, [user?.id, fetchToday, checkForMilestones]);
+  }, [user?.id, fetchToday, checkForMilestones, dayBoundaryHour]);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 

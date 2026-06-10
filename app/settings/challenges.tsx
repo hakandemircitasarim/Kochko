@@ -37,12 +37,25 @@ export default function ChallengesScreen() {
     const days = parseInt(customDays) || 14;
     if (days < 3 || days > 90) { Alert.alert('Geçersiz', 'Süre 3-90 gün arası olmalı.'); return; }
     const threshold = customThreshold ? parseFloat(customThreshold) : null;
+    // Canonical target shape — same as SYSTEM_CHALLENGES, so the nightly
+    // evaluator (ai-proactive) can score custom challenges too. The old
+    // {type, daily_threshold} shape was cast through `as unknown` and would
+    // have been unreadable to any evaluator.
+    const METRIC_BY_TYPE: Record<typeof customType, { metric: string; defaultGoal: number }> = {
+      water: { metric: 'water_met', defaultGoal: 1 },
+      protein: { metric: 'protein_met', defaultGoal: 1 },
+      steps: { metric: 'steps', defaultGoal: 10000 },
+      sleep: { metric: 'sleep', defaultGoal: 7 },
+      custom: { metric: 'manual', defaultGoal: 1 },
+    };
+    const m = METRIC_BY_TYPE[customType];
     try {
       await startChallenge(customTitle.trim(), null, {
-        type: customType,
+        metric: m.metric,
+        goal: threshold ?? m.defaultGoal,
+        period: 'daily',
         duration_days: days,
-        daily_threshold: threshold,
-      } as unknown as typeof SYSTEM_CHALLENGES[0]['target']);
+      }, 'custom');
       setShowCustom(false);
       setCustomTitle(''); setCustomDays('14'); setCustomThreshold(''); setCustomType('custom');
       load();

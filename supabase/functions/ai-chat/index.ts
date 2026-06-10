@@ -32,6 +32,7 @@ import {
 } from '../shared/repair-handler.ts';
 import { getAllServiceContexts, checkHabitFromChat } from '../shared/service-contexts.ts';
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
+import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -144,9 +145,18 @@ serve(async (req: Request) => {
 
     // Check onboarding status
     const { data: profile } = await supabaseAdmin
-      .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg')
+      .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg, home_timezone, active_timezone, day_boundary_hour')
       .eq('id', userId).maybeSingle();
     const isOnboarding = !profile?.onboarding_completed;
+
+    // The user's *effective* calendar day (Spec 2.8): late-night logs before
+    // day_boundary_hour belong to the previous day, computed in the user's own
+    // timezone — NOT the server's UTC date. Every logged_for_date / daily-keyed
+    // write below must use this (or an explicit target_date backdate).
+    const userTz = (client_timezone as string | undefined)
+      ?? (profile?.active_timezone as string | null)
+      ?? (profile?.home_timezone as string | null);
+    const effectiveToday = getEffectiveDateForUser(userTz, profile?.day_boundary_hour as number | null);
 
     // Return-flow detection is now handled by service-contexts.ts (richer context with weight, compliance history)
 
@@ -254,7 +264,7 @@ serve(async (req: Request) => {
     let remainingMacrosNote = '';
     if (taskMode === 'recipe') {
       try {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = effectiveToday;
         const { data: todayLogs } = await supabaseAdmin
           .from('meal_logs')
           .select('id')
@@ -612,7 +622,7 @@ serve(async (req: Request) => {
               user_id: userId,
               plan_type: expectedType,
               status: 'draft',
-              week_start: (planSnapshot.week_start as string) || new Date().toISOString().split('T')[0],
+              week_start: (planSnapshot.week_start as string) || effectiveToday,
               plan_data: { ...planSnapshot, version: 1 },
               user_revisions: [],
             })
@@ -739,7 +749,7 @@ serve(async (req: Request) => {
               //    the model sometimes emits a future / non-Monday week_start, which would
               //    leave TODAY with no daily_plans row (the exact symptom we're fixing).
               //    plan_data.days[] is a Mon..Sun template; project it onto the real week.
-              const requestToday = (target_date as string | undefined) ?? new Date().toISOString().split('T')[0];
+              const requestToday = (target_date as string | undefined) ?? effectiveToday;
               const weekStart = getWeekStart(requestToday);
 
               // c. Profile + this week's consumed kcal (mirrors ai-plan/index.ts logic).
@@ -912,7 +922,7 @@ serve(async (req: Request) => {
     // Execute actions (use target_date for batch entry, T1.17)
     // Source of log: photo > voice (transcribed) > default text/chat
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
-    const actionFeedback = await executeActions(userId, actions, profile?.gender, target_date, inputSource);
+    const actionFeedback = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource);
 
     // A8: Low confidence proactive verification — append confirmation question
     const mealActions = actions.filter((a) => (a as { type?: string }).type === 'meal_log');
@@ -944,7 +954,7 @@ serve(async (req: Request) => {
               .from('ai_summary').select('habit_progress').eq('user_id', userId).maybeSingle();
             if (summaryRow?.habit_progress) {
               const habits = summaryRow.habit_progress as { name?: string; habit?: string; status: string; streak: number; completion_log?: string[] }[];
-              const todayStr = new Date().toISOString().split('T')[0];
+              const todayStr = effectiveToday;
               const updated = habits.map(h => {
                 if ((h.name ?? h.habit) === habitMatch.habitName && h.status === 'active') {
                   const log = h.completion_log ?? [];
@@ -995,10 +1005,23 @@ serve(async (req: Request) => {
       checkOnboardingCompletion(userId).then(() => {}, (e) => console.error('[Onboarding] checkOnboardingCompletion failed:', (e as Error).message));
     }
 
-    const outActions = actions.map((a, i: number) => ({
-      type: (a as { type: string }).type,
-      feedback: actionFeedback[i] ?? null,
-    }));
+    const outActions = actions.map((a, i: number) => {
+      const base: { type: string; feedback: string | null; confidence?: 'high' | 'medium' | 'low' } = {
+        type: (a as { type: string }).type,
+        feedback: actionFeedback[i] ?? null,
+      };
+      // Surface meal-parse confidence so the client can render the
+      // ConfidenceBadge (Spec 3.3). Same bucketing as executeActions: the
+      // weakest item drives the badge.
+      if (base.type === 'meal_log') {
+        const items = (a as { items?: { confidence?: number }[] }).items;
+        if (items?.length) {
+          const minConf = Math.min(...items.map(it => typeof it.confidence === 'number' ? it.confidence : 0.75));
+          base.confidence = minConf >= 0.85 ? 'high' : minConf >= 0.65 ? 'medium' : 'low';
+        }
+      }
+      return base;
+    });
     if (personaJustDetected) {
       outActions.push({
         type: 'persona_detected',
@@ -1072,27 +1095,39 @@ function extractActions(text: string): { cleanMessage: string; actions: Record<s
  * follows a sentence boundary, to avoid nuking unrelated text.
  */
 function stripVerbalAcknowledgements(text: string): string {
+  // JS \b is ASCII-based: Turkish suffixed forms ("kaydettikten" = "kaydettik|ten")
+  // would produce a fake word boundary, so word-end checks use a Turkish-aware
+  // negative lookahead (?![A-Za-zÇĞİÖŞÜçğıöşü]) instead. Sentences are consumed to
+  // their END ([^.!?\n]*(?:[.!?]+\s*|$)) so no ", güzel bir kahvaltı." stubs remain.
   const patterns: RegExp[] = [
-    // "Hedef kilonu kaydettim.", "Boyunu kaydettim.", "2 yumurta kaydettim."
-    // Alternation is longest-first (i[mk] before bare i) so "kaydettim" is fully
-    // consumed — the old order matched just "kaydetti" and left a stray "m.".
-    // Leading char class includes 0-9 so quantity-initial meal acks also strip.
-    /(?:^|(?<=[.!?\n]\s*))[A-Za-zÇĞİÖŞÜçğıöşü0-9][^.!?\n]*?kaydett(?:i[mk]|ik|i)\.?\s*/gi,
-    // "Aktivite seviyeni öğrendim.", "Yaşını öğrendim, teşekkürler."
-    /(?:^|(?<=[.!?\n]\s*))[A-Za-zÇĞİÖŞÜçğıöşü][^.!?\n]*?öğren(?:di|dim|dik)[^.!?\n]*?(?:\.|,\s*teşekkür[^.!?\n]*?\.)\s*/gi,
-    // "Profilini güncelledim."
-    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?profili[^.!?\n]*?güncell[^.!?\n]*?\.\s*/gi,
-    // "Not aldım.", "Not ettim."
-    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?not\s*(?:aldı[mk]|etti[mk])[^.!?\n]*?\.\s*/gi,
-    // "Hedefini anladım."
-    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?anladı[mk][^.!?\n]*?\.\s*/gi,
+    // "Öğününü kaydettim.", "2 yumurta kaydettik...", "Öğle yemeğini kaydediyorum.",
+    // "Kaydedildi." — 1st person past + present + passive. 3rd person "kaydetti" is
+    // deliberately excluded (can be legitimate narration); suffixed forms like
+    // "kaydettikten/kaydettiğinde/kaydettiklerini" are protected by the lookahead.
+    /(?:^|(?<=[.!?\n]\s*))(?:[A-Za-zÇĞİÖŞÜçğıöşü0-9][^.!?\n]*?)?kayd(?:ett(?:im|ik)|ediyorum|edildi)(?![A-Za-zÇĞİÖŞÜçğıöşü])[^.!?\n]*(?:[.!?]+\s*|$)/gi,
+    // "Aktivite seviyeni öğrendim." — "öğrendiğinde/öğrendikçe" protected by lookahead.
+    /(?:^|(?<=[.!?\n]\s*))[A-Za-zÇĞİÖŞÜçğıöşü][^.!?\n]*?öğren(?:dim|dik|di)(?![A-Za-zÇĞİÖŞÜçğıöşü])[^.!?\n]*(?:[.!?]+\s*|$)/gi,
+    // "Profilini güncelledim." — advice like "profilini güncelleyebilirsin" is kept.
+    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?profili[^.!?\n]*?güncelle(?:dim|dik)(?![A-Za-zÇĞİÖŞÜçğıöşü])[^.!?\n]*(?:[.!?]+\s*|$)/gi,
+    // "Not aldım.", "Not ettim." — "not aldıktan sonra..." protected by lookahead.
+    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?not\s*(?:aldı[mk]|etti[mk])(?![A-Za-zÇĞİÖŞÜçğıöşü])[^.!?\n]*(?:[.!?]+\s*|$)/gi,
+    // "Hedefini anladım." — only short ack sentences that END at the verb; empathy
+    // sentences that continue with a comma ("Seni çok iyi anladım, zor bir dönemden
+    // geçiyorsun.") are kept because [.!] must follow immediately.
+    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]{0,40}?anladı[mk][.!]\s*/gi,
     // "Bilgilerini aldım."
-    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?bilgi(?:leri|ni)[^.!?\n]*?aldı[mk][^.!?\n]*?\.\s*/gi,
+    /(?:^|(?<=[.!?\n]\s*))[^.!?\n]*?bilgi(?:leri|ni)[^.!?\n]*?aldı[mk](?![A-Za-zÇĞİÖŞÜçğıöşü])[^.!?\n]*(?:[.!?]+\s*|$)/gi,
   ];
   let out = text;
   for (const p of patterns) out = out.replace(p, '');
-  // Collapse excessive whitespace left by removals.
-  return out.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  // Collapse excessive whitespace left by removals; re-insert the space a
+  // mid-paragraph removal swallowed ("kaldı.Devam" → "kaldı. Devam" — uppercase
+  // only, so decimals like "2.5" stay intact).
+  return out
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/([.!?])([A-ZÇĞİÖŞÜ])/g, '$1 $2')
+    .trim();
 }
 
 /**
@@ -2077,7 +2112,7 @@ async function executeActions(
             const floor = profileFloor?.gender === 'female' ? 1200 : 1400;
 
             for (let offset = 1; offset <= 2; offset++) {
-              const targetDate = new Date(Date.now() + offset * 86400000).toISOString().split('T')[0];
+              const targetDate = shiftDateString(today, offset);
               const { data: futurePlan } = await supabaseAdmin
                 .from('daily_plans')
                 .select('id, calorie_target_min, calorie_target_max')
@@ -2141,7 +2176,7 @@ async function executeActions(
           const endDate = action.end_date as string | null;
           const profileUpdates: Record<string, unknown> = {
             periodic_state: newState,
-            periodic_state_start: new Date().toISOString().split('T')[0],
+            periodic_state_start: today,
             periodic_state_end: endDate ?? null,
             updated_at: new Date().toISOString(),
           };
@@ -2319,7 +2354,7 @@ async function executeActions(
             calorie_range_rest_max: cutMax,
             periodic_state: 'mini_cut',
             periodic_state_start: today,
-            periodic_state_end: new Date(Date.now() + weeks * 7 * 86400000).toISOString().split('T')[0],
+            periodic_state_end: shiftDateString(today, weeks * 7),
           }).eq('id', userId);
 
           await supabaseAdmin.from('daily_plans').update({

@@ -3,6 +3,7 @@
  * Spec Section 3.4: Favori öğün şablonları
  */
 import { supabase } from '@/lib/supabase';
+import { getEffectiveDate } from '@/lib/day-boundary';
 
 export interface MealTemplate {
   id: string;
@@ -60,7 +61,9 @@ export async function useTemplate(
   }
 
   const mealType = opts?.mealType ?? guessMealTypeForNow();
-  const loggedForDate = opts?.loggedForDate ?? new Date().toISOString().split('T')[0];
+  // Effective (day-boundary-aware, local-tz) date — the raw UTC date put
+  // late-evening template logs on tomorrow for UTC- users.
+  const loggedForDate = opts?.loggedForDate ?? getEffectiveDate(new Date());
   const items = (template.items ?? []) as MealTemplate['items'];
 
   // meal_logs.user_id is NOT NULL + RLS WITH CHECK(auth.uid()=user_id)
@@ -76,6 +79,7 @@ export async function useTemplate(
       meal_type: mealType,
       logged_for_date: loggedForDate,
       input_method: 'template',
+      template_id: templateId,
       synced: true,
     })
     .select('id')
@@ -123,6 +127,8 @@ function guessMealTypeForNow(): string {
   return 'snack';
 }
 
-export async function deleteTemplate(templateId: string): Promise<void> {
-  await supabase.from('meal_templates').delete().eq('id', templateId);
+export async function deleteTemplate(templateId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('meal_templates').delete().eq('id', templateId);
+  if (error) console.error('[Templates] delete failed:', error.message);
+  return { error: error?.message ?? null };
 }

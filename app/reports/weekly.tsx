@@ -80,7 +80,7 @@ export default function WeeklyReportScreen() {
     // The ai-report response omits persisted fields (weight_trend, actuals); reading
     // the raw response left report.weight_trend undefined → crash at the .length check.
     // Re-read the stored row (NOT NULL weight_trend default []) so the UI is safe + complete.
-    await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly' } });
+    await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly', force: true } });
     const { data } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
     if (data) {
       setReport(data as WeeklyReport);

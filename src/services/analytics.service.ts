@@ -194,7 +194,7 @@ export async function getEngagementMetrics(userId: string): Promise<EngagementMe
     // Meals logged in last 30 days (meal_logs carries user_id + logged_for_date; meal_log_items does not)
     supabase
       .from('meal_logs')
-      .select('id', { count: 'exact', head: true })
+      .select('logged_for_date')
       .eq('user_id', userId)
       .eq('is_deleted', false)
       .gte('logged_for_date', since),
@@ -207,7 +207,7 @@ export async function getEngagementMetrics(userId: string): Promise<EngagementMe
       .eq('role', 'user')
       .gte('created_at', thirtyDaysAgo.toISOString()),
 
-    // Active days in last 30 days
+    // Days with any metric entry in last 30 days
     supabase
       .from('daily_metrics')
       .select('date')
@@ -215,9 +215,18 @@ export async function getEngagementMetrics(userId: string): Promise<EngagementMe
       .gte('date', since),
   ]);
 
-  const mealsCount = mealsRes.count ?? 0;
+  const meals = mealsRes.data ?? [];
+  const mealsCount = meals.length;
   const messages = messagesRes.data ?? [];
-  const activeDays = metricsRes.data?.length ?? 1;
+
+  // "Active day" = any day the user touched the app's data: a metric entry, a
+  // meal log OR a chat message. Deriving it from daily_metrics alone zeroed the
+  // whole card for users who log meals/chat but skip water-weight-sleep entry.
+  const activeDaySet = new Set<string>();
+  for (const m of (metricsRes.data ?? []) as { date: string }[]) activeDaySet.add(m.date);
+  for (const m of meals as { logged_for_date: string }[]) activeDaySet.add(m.logged_for_date);
+  for (const m of messages as { created_at: string }[]) activeDaySet.add(m.created_at.slice(0, 10));
+  const activeDays = activeDaySet.size;
 
   const avgDailyMeals = activeDays > 0 ? Math.round((mealsCount / activeDays) * 10) / 10 : 0;
   const avgDailyMessages = activeDays > 0 ? Math.round((messages.length / activeDays) * 10) / 10 : 0;

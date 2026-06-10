@@ -67,7 +67,7 @@ export default function WeeklyMenuScreen() {
           {tab === 'menu' ? (
             // Weekly Menu
             plan.plan_data.map((day, di) => (
-              <Card key={di} title={`${day.dayName} ${day.isTrainingDay ? '(Antrenman)' : '(Dinlenme)'}`}>
+              <Card key={di} title={`${day.dayName}${day.isTrainingDay === undefined ? '' : day.isTrainingDay ? ' (Antrenman)' : ' (Dinlenme)'}`}>
                 {day.meals.map((meal, mi) => (
                   <View key={mi} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: mi < day.meals.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
                     <View style={{ flex: 1 }}>

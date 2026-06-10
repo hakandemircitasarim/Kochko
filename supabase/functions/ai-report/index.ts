@@ -86,14 +86,15 @@ JSON formatinda:
 serve(async (req: Request) => {
   try {
     const userId = await getUserId(req);
-    const { report_type, date } = await req.json();
+    const { report_type, date, force } = await req.json();
+    const forceRegen = force === true;
 
     if (report_type === 'daily') {
-      return await generateDailyReport(userId, date);
+      return await generateDailyReport(userId, date, forceRegen);
     } else if (report_type === 'weekly') {
-      return await generateWeeklyReport(userId);
+      return await generateWeeklyReport(userId, forceRegen);
     } else if (report_type === 'monthly') {
-      return await generateMonthlyReport(userId);
+      return await generateMonthlyReport(userId, forceRegen);
     } else if (report_type === 'all_time') {
       return await generateAllTimeReport(userId);
     }
@@ -104,8 +105,30 @@ serve(async (req: Request) => {
   }
 });
 
-async function generateDailyReport(userId: string, date?: string) {
+/**
+ * Server-side report cache (cost control): every authed JWT could previously
+ * loop ai-report and burn AI tokens — each call re-ran chatCompletion even
+ * when the period's row already existed. Now the persisted row IS the cache:
+ * return it unless the client explicitly asks force:true, and even then apply
+ * a short cooldown so a stuck retry-loop can't spend money.
+ */
+const FORCE_COOLDOWN_MS = 5 * 60 * 1000;
+
+function cacheHit(row: Record<string, unknown> | null, force: boolean): boolean {
+  if (!row) return false;
+  if (!force) return true;
+  const gen = row.generated_at ? new Date(row.generated_at as string).getTime() : 0;
+  return Date.now() - gen < FORCE_COOLDOWN_MS;
+}
+
+async function generateDailyReport(userId: string, date?: string, force = false) {
   const reportDate = date ?? new Date().toISOString().split('T')[0];
+
+  // Cache: the persisted row for this date, unless force (with cooldown).
+  const { data: cached } = await supabaseAdmin
+    .from('daily_reports').select('*')
+    .eq('user_id', userId).eq('date', reportDate).maybeSingle();
+  if (cacheHit(cached, force)) return respond(cached);
 
   // Fetch today's data
   const [planRes, mealsRes, workoutsRes, metricsRes, goalRes] = await Promise.all([
@@ -224,7 +247,7 @@ ${(() => {
   return respond(report);
 }
 
-async function generateWeeklyReport(userId: string) {
+async function generateWeeklyReport(userId: string, force = false) {
   const now = new Date();
   const day = now.getDay();
   const mondayOffset = day === 0 ? -6 : 1 - day;
@@ -232,6 +255,12 @@ async function generateWeeklyReport(userId: string) {
   const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
   const wsStr = weekStart.toISOString().split('T')[0];
   const weStr = weekEnd.toISOString().split('T')[0];
+
+  // Cache: the persisted row for this week, unless force (with cooldown).
+  const { data: cached } = await supabaseAdmin
+    .from('weekly_reports').select('*')
+    .eq('user_id', userId).eq('week_start', wsStr).maybeSingle();
+  if (cacheHit(cached, force)) return respond(cached);
 
   // For alcohol comparison
   const prevWeekStart = new Date(weekStart); prevWeekStart.setDate(weekStart.getDate() - 7);
@@ -335,12 +364,18 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
   return respond(report);
 }
 
-async function generateMonthlyReport(userId: string) {
+async function generateMonthlyReport(userId: string, force = false) {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const msStr = monthStart.toISOString().split('T')[0];
   const meStr = monthEnd.toISOString().split('T')[0];
+
+  // Cache: the persisted row for this month, unless force (with cooldown).
+  const { data: cached } = await supabaseAdmin
+    .from('monthly_reports').select('*')
+    .eq('user_id', userId).eq('month_start', msStr).maybeSingle();
+  if (cacheHit(cached, force)) return respond(cached);
 
   const [weeklyRes, dailyRes, metricsRes] = await Promise.all([
     supabaseAdmin.from('weekly_reports').select('*').eq('user_id', userId).gte('week_start', msStr).lte('week_start', meStr).order('week_start'),

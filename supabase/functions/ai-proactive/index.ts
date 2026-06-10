@@ -790,14 +790,19 @@ serve(async (req: Request) => {
       const hour = userLocalHour;
       const isWakeUp = isWakeUpHour({ wake_time: profile.wake_time ?? undefined }, hour);
 
-      // Max messages per day check
-      const { count } = await supabaseAdmin
+      // Max messages per day check — fetch the rows (not just a count) so the
+      // LLM context and the post-LLM dupe guard can see what was already sent.
+      const { data: sentTodayRows } = await supabaseAdmin
         .from('coaching_messages')
-        .select('id', { count: 'exact', head: true })
+        .select('content, trigger_type')
         .eq('user_id', profile.id)
         .gte('created_at', `${today}T00:00:00`);
+      const sentToday = (sentTodayRows ?? []) as { content: string; trigger_type: string | null }[];
       const dailyLimit = (profile.notification_prefs?.dailyLimit as number | undefined) ?? 5;
-      if ((count ?? 0) >= dailyLimit) continue;
+      if (sentToday.length >= dailyLimit) continue;
+      const sentTodayContext = sentToday.length > 0
+        ? `\nBUGUN ZATEN GONDERILEN MESAJLAR:\n${sentToday.map(m => `- [${m.trigger_type ?? '?'}] ${m.content.slice(0, 90)}`).join('\n')}\nKURAL: Yukaridakilerle ayni veya benzer konuda bugun IKINCI mesaj gonderme — o durumda send:false dondur.`
+        : '';
 
       // Gather state
       const [lastMealRes, lastChatRes, commitmentsRes, summaryRes] = await Promise.all([
@@ -1273,7 +1278,8 @@ ${await (async () => {
     if (adapt) return adapt;
   } catch { /* non-critical */ }
   return '';
-})()}`;
+})()}
+${sentTodayContext}`;
 
       interface NudgeResult { send: boolean; message?: string; trigger?: string; priority?: string; }
 
@@ -1284,12 +1290,29 @@ ${await (async () => {
 
       if (result.send && result.message) {
         const { clean } = sanitizeText(result.message);
-        await supabaseAdmin.from('coaching_messages').insert({
+
+        // Hard dupe guard: the LLM's trigger label is free text ("3+ gün sessiz"
+        // vs "30+ GÜN SESSİZ"), so normalize before comparing; also catch
+        // near-identical message bodies. Without this the return-flow trigger
+        // re-fired on every hourly run (live: 4x "Seni özledik" in 90 min).
+        const norm = (s: string) => s.toLocaleLowerCase('tr').replace(/[^a-zçğıöşü]/g, '');
+        const newTrigger = norm(result.trigger ?? 'proactive');
+        const newContent = norm(clean).slice(0, 40);
+        const isDupe = sentToday.some(m =>
+          (newTrigger.length > 3 && norm(m.trigger_type ?? '') === newTrigger)
+          || (newContent.length > 10 && norm(m.content).slice(0, 40) === newContent)
+        );
+        if (isDupe) continue;
+
+        // Insert with push_sent=false; flip to true only after Expo accepts the
+        // push (the old optimistic !!push_token wrote true even when the push
+        // was suppressed by quiet hours/prefs or failed).
+        const { data: inserted } = await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id, content: clean,
           trigger_type: result.trigger ?? 'proactive',
           priority: result.priority ?? 'medium', read: false,
-          push_sent: !!profile.push_token,
-        });
+          push_sent: false,
+        }).select('id').maybeSingle();
 
         // Mark commitments as followed up
         for (const c of dueCommitments) {
@@ -1303,12 +1326,16 @@ ${await (async () => {
 
         // Send push notification for the coaching message
         try {
-          await sendPushNotification(
+          const pushed = await sendPushNotification(
             profile.id,
             'Kochko',
             clean,
             { type: result.trigger ?? 'proactive' }
           );
+          if (pushed && inserted?.id) {
+            await supabaseAdmin.from('coaching_messages')
+              .update({ push_sent: true }).eq('id', inserted.id);
+          }
         } catch { /* push non-critical */ }
       }
     }
@@ -1337,10 +1364,18 @@ ${await (async () => {
                 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
                 'x-user-id': profile.id,
               },
-              body: JSON.stringify({ type: 'daily', date: yesterdayStr }),
+              body: JSON.stringify({ report_type: 'daily', date: yesterdayStr }),
             });
           } catch { /* non-critical */ }
         }
+      }
+
+      // Spec 13.5: Nightly challenge evaluator — without this, challenges.progress
+      // never advanced and status could never reach 'completed' (frozen feature).
+      try {
+        await evaluateChallenges(yesterdayStr);
+      } catch (e) {
+        console.error('[ai-proactive] challenge evaluation failed:', (e as Error).message);
       }
     }
 
@@ -1365,7 +1400,7 @@ ${await (async () => {
                 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
                 'x-user-id': profile.id,
               },
-              body: JSON.stringify({ type: 'weekly' }),
+              body: JSON.stringify({ report_type: 'weekly' }),
             });
           } catch { /* non-critical */ }
         }
@@ -1377,6 +1412,117 @@ ${await (async () => {
     return respond({ error: (err as Error).message }, 500);
   }
 });
+
+/**
+ * Spec 13.5: Nightly challenge evaluator. For every ACTIVE challenge, score
+ * yesterday against target.metric, append {date, value, met} to progress and
+ * mark status='completed' (+ achievement + coaching message) when the met-day
+ * count reaches duration_days. Idempotent: a day already in progress is skipped.
+ */
+async function evaluateChallenges(dateStr: string) {
+  const { data: challenges } = await supabaseAdmin
+    .from('challenges')
+    .select('id, user_id, title, target, progress, status, started_at')
+    .eq('status', 'active');
+  if (!challenges?.length) return;
+
+  const SUGAR_RE = /şeker|seker|tatlı|tatli|çikolata|cikolata|kek\b|kurabiye|baklava|dondurma|gazoz|kola|şekerleme|gofret|waffle|bonbon|jelibon/i;
+
+  for (const ch of challenges as { id: string; user_id: string; title: string; target: Record<string, unknown>; progress: { date: string; value: number; met: boolean }[]; started_at: string }[]) {
+    try {
+      const target = ch.target ?? {};
+      const metric = (target.metric as string) ?? 'manual';
+      if (metric === 'manual') continue; // user-defined, not auto-scorable
+      const goal = Number(target.goal) || 1;
+      const durationDays = Number(target.duration_days) || 7;
+      const progress = Array.isArray(ch.progress) ? ch.progress : [];
+
+      // Skip if this day is already scored, or the challenge started after it.
+      if (progress.some(p => p.date === dateStr)) continue;
+      if (ch.started_at && ch.started_at.split('T')[0] > dateStr) continue;
+
+      let value = 0;
+      let met = false;
+
+      if (metric === 'steps') {
+        const { data: m } = await supabaseAdmin.from('daily_metrics')
+          .select('steps').eq('user_id', ch.user_id).eq('date', dateStr).maybeSingle();
+        value = (m?.steps as number | null) ?? 0;
+        met = value >= goal;
+      } else if (metric === 'water_met') {
+        const [{ data: m }, { data: plan }] = await Promise.all([
+          supabaseAdmin.from('daily_metrics').select('water_liters').eq('user_id', ch.user_id).eq('date', dateStr).maybeSingle(),
+          supabaseAdmin.from('daily_plans').select('water_target_liters').eq('user_id', ch.user_id).eq('date', dateStr).limit(1).maybeSingle(),
+        ]);
+        value = (m?.water_liters as number | null) ?? 0;
+        met = value >= ((plan?.water_target_liters as number | null) ?? 2.5);
+      } else if (metric === 'sleep') {
+        const { data: m } = await supabaseAdmin.from('daily_metrics')
+          .select('sleep_hours').eq('user_id', ch.user_id).eq('date', dateStr).maybeSingle();
+        value = (m?.sleep_hours as number | null) ?? 0;
+        met = value >= goal;
+      } else if (metric === 'workout') {
+        const { count } = await supabaseAdmin.from('workout_logs')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', ch.user_id).eq('logged_for_date', dateStr);
+        value = count ?? 0;
+        met = value >= 1;
+      } else if (metric === 'protein_met') {
+        // Prefer the daily report's deterministic verdict (generated minutes
+        // earlier in this same cron window); fall back to summing items.
+        const { data: report } = await supabaseAdmin.from('daily_reports')
+          .select('protein_target_met, protein_actual').eq('user_id', ch.user_id).eq('date', dateStr).maybeSingle();
+        if (report) {
+          value = (report.protein_actual as number | null) ?? 0;
+          met = report.protein_target_met === true;
+        }
+      } else if (metric === 'no_sugar') {
+        const { data: logs } = await supabaseAdmin.from('meal_logs')
+          .select('id').eq('user_id', ch.user_id).eq('logged_for_date', dateStr).eq('is_deleted', false);
+        const ids = (logs ?? []).map((l: { id: string }) => l.id);
+        if (ids.length === 0) {
+          met = false; // nothing logged → can't verify a sugar-free day
+        } else {
+          const { data: items } = await supabaseAdmin.from('meal_log_items')
+            .select('food_name').in('meal_log_id', ids);
+          const sugary = (items ?? []).filter((i: { food_name: string }) => SUGAR_RE.test(i.food_name ?? ''));
+          value = sugary.length;
+          met = sugary.length === 0;
+        }
+      } else {
+        continue; // unknown metric — leave untouched rather than guess
+      }
+
+      const newProgress = [...progress, { date: dateStr, value, met }];
+      const metDays = newProgress.filter(p => p.met).length;
+      const completed = metDays >= durationDays;
+
+      await supabaseAdmin.from('challenges').update({
+        progress: newProgress,
+        ...(completed ? { status: 'completed' } : {}),
+      }).eq('id', ch.id);
+
+      if (completed) {
+        await supabaseAdmin.from('achievements').insert({
+          user_id: ch.user_id,
+          achievement_type: 'challenge',
+          title: `Challenge tamamlandı: ${ch.title}`,
+          description: `${durationDays} günlük hedefe ulaştın!`,
+        });
+        await supabaseAdmin.from('coaching_messages').insert({
+          user_id: ch.user_id,
+          trigger_type: 'challenge_completed',
+          priority: 'high',
+          content: `🏆 "${ch.title}" challenge'ını tamamladın — ${durationDays} günün ${metDays}'inde hedefi tutturdun. Tebrikler!`,
+          read: false,
+          push_sent: false,
+        });
+      }
+    } catch (e) {
+      console.error(`[ai-proactive] challenge ${ch.id} eval failed:`, (e as Error).message);
+    }
+  }
+}
 
 /**
  * Spec 5.34: Adaptive Difficulty
@@ -1595,6 +1741,26 @@ async function sendPushNotification(
 
   // Check if notifications are enabled
   if (prefs.enabled === false) return false;
+
+  // Spec 10.2: respect the per-type toggles the user set in
+  // Ayarlar > Bildirimler — data.type carries the trigger key (e.g.
+  // 'reengagement'). Previously only the master switch was honored, so a
+  // disabled type still pushed.
+  const notifType = (data?.type as string | undefined) ?? null;
+  const types = (prefs.types as Record<string, unknown> | undefined) ?? undefined;
+  if (notifType && types && types[notifType] === false) return false;
+
+  // Daily push cap: dailyLimit counts pushes actually delivered today (rows
+  // with push_sent=true), so loops that bypass the main nudge gate can't spam.
+  const dailyLimit = (prefs.dailyLimit as number | undefined) ?? 5;
+  const todayUtc = new Date().toISOString().split('T')[0];
+  const { count: pushedToday } = await supabaseAdmin
+    .from('coaching_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('push_sent', true)
+    .gte('created_at', `${todayUtc}T00:00:00`);
+  if ((pushedToday ?? 0) >= dailyLimit) return false;
 
   // Check quiet hours in the user's local timezone (not server UTC)
   const quietStart = (prefs.quietStart as string) ?? '23:00';

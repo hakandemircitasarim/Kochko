@@ -8,7 +8,10 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { calculateDynamicTiming, inferActiveHours } from '@/services/notification-intelligence.service';
+import {
+  calculateDynamicTiming, inferActiveHours, bundleNotifications,
+  type NotificationCandidate,
+} from '@/services/notification-intelligence.service';
 
 export interface NotificationPreferences {
   enabled: boolean;
@@ -238,21 +241,52 @@ export async function scheduleLocalNotifications(
     return { hour: adjusted.getHours(), minute: adjusted.getMinutes() };
   };
 
+  // Quiet-window policy applied to EVERY candidate (previously only 3/9 types
+  // were checked, and adjustTime could shift a reminder INTO the quiet window):
+  //  - 'skip':  drop it (water in the middle of the night is useless)
+  //  - 'after': push to quietEnd (morning-type reminders)
+  //  - 'before': pull to 30 min before quietStart (evening reports)
+  const [qeH, qeM] = prefs.quietEnd.split(':').map(Number);
+  const [qsH, qsM] = prefs.quietStart.split(':').map(Number);
+  const resolveQuiet = (
+    hour: number, minute: number, policy: 'skip' | 'after' | 'before',
+  ): { hour: number; minute: number } | null => {
+    if (!isTimeInQuietWindow(hour, minute, prefs.quietStart, prefs.quietEnd)) return { hour, minute };
+    if (policy === 'skip') return null;
+    if (policy === 'after') return { hour: (qeH ?? 7) % 24, minute: qeM ?? 0 };
+    let total = (qsH ?? 23) * 60 + (qsM ?? 0) - 30;
+    if (total < 0) total += 24 * 60;
+    return { hour: Math.floor(total / 60) % 24, minute: total % 60 };
+  };
+
+  // Collect all DAILY candidates first, then bundle same-30-min-window ones into
+  // a single notification (Spec 10: "AI aynı anda birden fazla bildirim göndermez").
+  type DailyCandidate = NotificationCandidate & { extraData?: Record<string, unknown> };
+  const daily: DailyCandidate[] = [];
+  const candidateAt = (hour: number, minute: number): Date => {
+    const d = new Date();
+    d.setHours(hour, minute, 0, 0);
+    return d;
+  };
+  const pushDaily = (
+    type: string, title: string, body: string,
+    priority: NotificationCandidate['priority'],
+    t: { hour: number; minute: number } | null,
+    extraData?: Record<string, unknown>,
+  ) => {
+    if (!t) return;
+    daily.push({ id: `${type}_${t.hour}_${t.minute}`, type, title, body, priority, scheduledAt: candidateAt(t.hour, t.minute), category: type, extraData });
+  };
+
   if (prefs.types.morning_plan) {
     const t = adjustTime(7, 30);
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Günün Planı Hazır',
-        body: 'Bugünün beslenme ve antrenman planına göz at.',
-        data: { type: 'morning_plan' },
-      },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: t.hour, minute: t.minute },
-    });
+    pushDaily('morning_plan', 'Günün Planı Hazır', 'Bugünün beslenme ve antrenman planına göz at.', 'medium',
+      resolveQuiet(t.hour, t.minute, 'after'));
   }
 
   if (prefs.types.meal_reminder) {
     const useIF = ifProfile?.if_active && ifProfile.if_eating_start && ifProfile.if_eating_end;
-    let mealTimes: { label: string; title: string; body: string; meal: string; hour: number; minute: number }[];
+    let mealTimes: { title: string; body: string; meal: string; hour: number; minute: number }[];
 
     if (useIF) {
       const [startH, startM] = ifProfile!.if_eating_start!.split(':').map(Number);
@@ -265,120 +299,121 @@ export async function scheduleLocalNotifications(
       const midM = (startH * 60 + startM + halfWindow) % 60;
 
       mealTimes = [
-        { label: 'ilk_ogun', title: 'İlk Öğün', body: 'IF pencereni açtın, ilk öğününü kaydet.', meal: 'kahvalti', hour: startH, minute: startM },
-        { label: 'ara_ogun', title: 'Ara Öğün', body: 'IF pencerende ikinci öğün zamanı.', meal: 'ogle', hour: midH, minute: midM },
-        { label: 'son_ogun', title: 'Son Öğün', body: 'IF penceresi kapanmadan son öğününü planla.', meal: 'aksam', hour: endH > 0 ? endH - 1 : 23, minute: endM },
+        { title: 'İlk Öğün', body: 'IF pencereni açtın, ilk öğününü kaydet.', meal: 'kahvalti', hour: startH, minute: startM },
+        { title: 'Ara Öğün', body: 'IF pencerende ikinci öğün zamanı.', meal: 'ogle', hour: midH, minute: midM },
+        { title: 'Son Öğün', body: 'IF penceresi kapanmadan son öğününü planla.', meal: 'aksam', hour: endH > 0 ? endH - 1 : 23, minute: endM },
       ];
     } else {
       mealTimes = [
-        { label: 'kahvalti', title: 'Kahvaltı Zamanı', body: 'Güne sağlıklı bir kahvaltı ile başla.', meal: 'kahvalti', hour: 8, minute: 0 },
-        { label: 'ogle', title: 'Öğle Yemeği', body: 'Öğle yemeği vakti geldi, dengeli bir öğün seç.', meal: 'ogle', hour: 12, minute: 30 },
-        { label: 'aksam', title: 'Akşam Yemeği', body: 'Akşam yemeği için hafif ve doyurucu bir şey hazırla.', meal: 'aksam', hour: 19, minute: 0 },
+        { title: 'Kahvaltı Zamanı', body: 'Güne sağlıklı bir kahvaltı ile başla.', meal: 'kahvalti', hour: 8, minute: 0 },
+        { title: 'Öğle Yemeği', body: 'Öğle yemeği vakti geldi, dengeli bir öğün seç.', meal: 'ogle', hour: 12, minute: 30 },
+        { title: 'Akşam Yemeği', body: 'Akşam yemeği için hafif ve doyurucu bir şey hazırla.', meal: 'aksam', hour: 19, minute: 0 },
       ];
     }
 
     for (const mt of mealTimes) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: mt.title,
-          body: mt.body,
-          data: { type: 'meal_reminder', meal: mt.meal },
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: mt.hour, minute: mt.minute },
-      });
-    }
-  }
-
-  if (prefs.types.workout_reminder && workoutDays && workoutDays.length > 0) {
-    for (const weekday of workoutDays) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Antrenman Zamanı',
-          body: 'Bugün antrenman günün. Planını kontrol et ve hazırlıklara başla!',
-          data: { type: 'workout_reminder', weekday },
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday, hour: 9, minute: 0 },
-      });
+      pushDaily('meal_reminder', mt.title, mt.body, 'medium',
+        resolveQuiet(mt.hour, mt.minute, 'skip'), { meal: mt.meal });
     }
   }
 
   if (prefs.types.water_reminder) {
     for (let hour = 9; hour <= 20; hour += 2) {
-      if (isTimeInQuietWindow(hour, 0, prefs.quietStart, prefs.quietEnd)) continue; // P1#9: respect quiet hours
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Su Hatırlatma',
-          body: 'Su içmeyi unutma!',
-          data: { type: 'water_reminder' },
-        },
-        trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute: 0 },
-      });
+      pushDaily('water_reminder', 'Su Hatırlatma', 'Su içmeyi unutma!', 'low',
+        resolveQuiet(hour, 0, 'skip'));
     }
   }
 
-  if (prefs.types.weight_reminder) {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Tartı Hatırlatma',
-        body: 'Bu hafta tartılmayı unutma.',
-        data: { type: 'weight_reminder' },
-      },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 2, hour: 8, minute: 0 },
-    });
-  }
-
   if (prefs.types.daily_report) {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Gün Sonu',
-        body: 'Günün nasıl geçti? Raporuna bak.',
-        data: { type: 'daily_report' },
-      },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 21, minute: 0 },
-    });
+    pushDaily('daily_report', 'Gün Sonu', 'Günün nasıl geçti? Raporuna bak.', 'medium',
+      resolveQuiet(21, 0, 'before'));
   }
 
-  if (prefs.types.weekly_report) {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Haftalık Rapor',
-        body: 'Bu haftanın raporu hazır.',
-        data: { type: 'weekly_report' },
-      },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 1, hour: 19, minute: 0 },
-    });
-  }
-
-  if (prefs.types.night_risk && !isTimeInQuietWindow(22, 30, prefs.quietStart, prefs.quietEnd)) {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Gece Hatırlatma',
-        body: 'Uykudan önce mutfaktan uzak dur. Yarın için planın hazır.',
-        data: { type: 'night_risk' },
-      },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: 22, minute: 30 },
-    });
+  if (prefs.types.night_risk) {
+    pushDaily('night_risk', 'Gece Hatırlatma', 'Uykudan önce mutfaktan uzak dur. Yarın için planın hazır.', 'high',
+      resolveQuiet(22, 30, 'skip'));
   }
 
   // Bedtime wind-down (Spec 14.2): sleep_time - 30 minutes → soft "screen off" reminder.
-  // Uses profile.sleep_time (HH:MM). Falls back silent if not set.
   if (sleepTime) {
     const [sh, sm] = sleepTime.split(':').map(Number);
     if (Number.isFinite(sh) && Number.isFinite(sm)) {
       let totalMin = sh * 60 + sm - 30;
       if (totalMin < 0) totalMin += 24 * 60;
-      const windHour = Math.floor(totalMin / 60) % 24;
-      const windMin = totalMin % 60;
-      if (!isTimeInQuietWindow(windHour, windMin, prefs.quietStart, prefs.quietEnd)) {
+      pushDaily('bedtime_wind_down', 'Uyku Yaklaşıyor',
+        'Yatış saatine 30 dakika kaldı. Ekranı kapat, bir su iç, ertesi gün için güzel bir uyku al.', 'low',
+        resolveQuiet(Math.floor(totalMin / 60) % 24, totalMin % 60, 'skip'));
+    }
+  }
+
+  // Group daily candidates into 30-min windows; 2+ in a window collapse into ONE
+  // bundled notification via notification-intelligence (previously each type was
+  // scheduled independently, so e.g. dinner 19:00 + water 19:00 fired together).
+  const sortedDaily = [...daily].sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+  const windows: DailyCandidate[][] = [];
+  for (const cand of sortedDaily) {
+    const cur = windows[windows.length - 1];
+    if (cur && cand.scheduledAt.getTime() - cur[0].scheduledAt.getTime() < 30 * 60 * 1000) cur.push(cand);
+    else windows.push([cand]);
+  }
+  for (const group of windows) {
+    const winner = group.length === 1 ? group[0] : (bundleNotifications(group) ?? group[0]);
+    const data = group.length === 1
+      ? { type: winner.type, ...(group[0].extraData ?? {}) }
+      : { type: 'bundled', bundled: group.map(g => g.type) };
+    await Notifications.scheduleNotificationAsync({
+      content: { title: winner.title, body: winner.body, data },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: winner.scheduledAt.getHours(),
+        minute: winner.scheduledAt.getMinutes(),
+      },
+    });
+  }
+
+  // Weekly reminders (different weekday semantics — not bundled with dailies,
+  // but the quiet-window policy still applies).
+  if (prefs.types.workout_reminder && workoutDays && workoutDays.length > 0) {
+    const t = resolveQuiet(9, 0, 'after');
+    if (t) {
+      for (const weekday of workoutDays) {
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: 'Uyku Yaklaşıyor',
-            body: 'Yatış saatine 30 dakika kaldı. Ekranı kapat, bir su iç, ertesi gün için güzel bir uyku al.',
-            data: { type: 'bedtime_wind_down' },
+            title: 'Antrenman Zamanı',
+            body: 'Bugün antrenman günün. Planını kontrol et ve hazırlıklara başla!',
+            data: { type: 'workout_reminder', weekday },
           },
-          trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: windHour, minute: windMin },
+          trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday, hour: t.hour, minute: t.minute },
         });
       }
+    }
+  }
+
+  if (prefs.types.weight_reminder) {
+    const t = resolveQuiet(8, 0, 'after');
+    if (t) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Tartı Hatırlatma',
+          body: 'Bu hafta tartılmayı unutma.',
+          data: { type: 'weight_reminder' },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 2, hour: t.hour, minute: t.minute },
+      });
+    }
+  }
+
+  if (prefs.types.weekly_report) {
+    const t = resolveQuiet(19, 0, 'before');
+    if (t) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Haftalık Rapor',
+          body: 'Bu haftanın raporu hazır.',
+          data: { type: 'weekly_report' },
+        },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 1, hour: t.hour, minute: t.minute },
+      });
     }
   }
 }

@@ -20,7 +20,7 @@ export interface TaskCompletion {
 
 export interface ChatResponse {
   message: string;
-  actions: { type: string; feedback: string | null }[];
+  actions: { type: string; feedback: string | null; confidence?: 'high' | 'medium' | 'low' }[];
   task_mode: string;
   task_completion?: TaskCompletion | null;
   plan_snapshot?: Record<string, unknown> | null;

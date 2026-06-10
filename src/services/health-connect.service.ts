@@ -135,16 +135,16 @@ export async function getLatestWeight(): Promise<number | null> {
  * Safe to call on dashboard mount / app foreground.
  */
 import { supabase } from '@/lib/supabase';
+import { getEffectiveDate } from '@/lib/day-boundary';
 
 export async function syncStepsToDailyMetrics(userId: string, dayBoundaryHour: number = 4): Promise<number | null> {
   const steps = await getTodaySteps();
   if (steps === null) return null;
 
-  // Use day-boundary-aware date
-  const now = new Date();
-  const effective = new Date(now);
-  if (now.getHours() < dayBoundaryHour) effective.setDate(effective.getDate() - 1);
-  const date = effective.toISOString().split('T')[0];
+  // getEffectiveDate keeps the boundary check and the formatted date in the SAME
+  // (local) timezone — the previous inline local-getHours + UTC-toISOString mix
+  // re-created the off-by-one that day-boundary.ts already fixed.
+  const date = getEffectiveDate(new Date(), dayBoundaryHour);
 
   const { data: existing } = await supabase
     .from('daily_metrics').select('steps').eq('user_id', userId).eq('date', date).maybeSingle();

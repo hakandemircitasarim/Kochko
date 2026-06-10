@@ -74,6 +74,7 @@ JSON formati:
   "days": [
     {
       "date": "YYYY-MM-DD",
+      "is_training_day": true,
       "meals": [
         {"meal_type": "breakfast|lunch|dinner|snack", "name": "yemek adi", "calories": sayi, "protein_g": sayi}
       ]

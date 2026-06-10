@@ -102,13 +102,73 @@ export async function getMealPrepPrefs(userId: string): Promise<{
   };
 }
 
+export async function setMealPrepPrefs(
+  userId: string,
+  active: boolean,
+  prepDays: number[] = [0],
+): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ meal_prep_active: active, meal_prep_days: prepDays })
+    .eq('id', userId);
+  return { error: error?.message ?? null };
+}
+
+// ─── Dish classification heuristics (drive storage + timing per dish name) ───
+
+const DISH_RULES: { match: RegExp; storageKey: string; prepTimeMin: number; cookTimeMin: number }[] = [
+  { match: /çorba|corba/, storageKey: 'corba', prepTimeMin: 15, cookTimeMin: 35 },
+  { match: /pilav|pirinç|pirinc/, storageKey: 'pirinc', prepTimeMin: 5, cookTimeMin: 20 },
+  { match: /bulgur/, storageKey: 'bulgur', prepTimeMin: 5, cookTimeMin: 20 },
+  { match: /makarna|spagetti|eriste|erişte/, storageKey: 'makarna', prepTimeMin: 5, cookTimeMin: 15 },
+  { match: /tavuk|hindi/, storageKey: 'tavuk', prepTimeMin: 10, cookTimeMin: 25 },
+  { match: /köfte|kofte|kıyma|kiyma|burger/, storageKey: 'kiyma', prepTimeMin: 15, cookTimeMin: 20 },
+  { match: /balık|balik|somon|ton/, storageKey: 'balik', prepTimeMin: 10, cookTimeMin: 20 },
+  { match: /yumurta|omlet|menemen/, storageKey: 'yumurta', prepTimeMin: 5, cookTimeMin: 10 },
+  { match: /salata/, storageKey: 'salata', prepTimeMin: 10, cookTimeMin: 0 },
+  { match: /mercimek|nohut|fasulye|barbunya/, storageKey: 'kuru_baklagil', prepTimeMin: 10, cookTimeMin: 40 },
+  { match: /sebze|brokoli|kabak|ıspanak|ispanak|pırasa|pirasa/, storageKey: 'pismis_sebze', prepTimeMin: 10, cookTimeMin: 25 },
+];
+
+function classifyDish(name: string): { storageKey: string; prepTimeMin: number; cookTimeMin: number } {
+  const lower = name.toLocaleLowerCase('tr');
+  const rule = DISH_RULES.find(r => r.match.test(lower));
+  return rule ?? { storageKey: 'varsayilan', prepTimeMin: 10, cookTimeMin: 20 };
+}
+
+const PREP_DAY_NAMES = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
+/** Map weekly_plans.shopping_list (grouped or flat) to ConsolidatedItem[]. */
+function shoppingListToConsolidated(raw: unknown): ConsolidatedItem[] {
+  if (!Array.isArray(raw)) return [];
+  const catMap: Record<string, ConsolidatedItem['category']> = {
+    protein: 'protein', vegetable: 'sebze', fruit: 'meyve', dairy: 'sut_urunleri', grain: 'tahil', other: 'diger',
+  };
+  const out: ConsolidatedItem[] = [];
+  for (const entry of raw as { category?: string; items?: { name?: string; amount?: string }[]; name?: string; amount?: string }[]) {
+    const category = catMap[entry.category ?? 'other'] ?? 'diger';
+    if (Array.isArray(entry.items)) {
+      for (const item of entry.items) out.push({ item: item.name ?? '', totalAmount: item.amount ?? '', category });
+    } else if (entry.name) {
+      out.push({ item: entry.name, totalAmount: entry.amount ?? '', category });
+    }
+  }
+  return out;
+}
+
+/**
+ * Build the meal prep plan DETERMINISTICALLY from the persisted weekly menu.
+ * (The old version free-texted ai-chat and cast its {message, actions, ...}
+ * envelope to MealPrepPlan — plan.items was always undefined → crash. All the
+ * building blocks below were already in this file; no AI call needed.)
+ */
 export async function generateMealPrepPlan(
   userId: string,
   weeklyPlanId: string,
 ): Promise<MealPrepPlan | null> {
   const { data: plan } = await supabase
     .from('weekly_plans')
-    .select('plan_data')
+    .select('plan_data, shopping_list')
     .eq('id', weeklyPlanId)
     .single();
 
@@ -117,13 +177,64 @@ export async function generateMealPrepPlan(
   const prefs = await getMealPrepPrefs(userId);
   if (!prefs.active) return null;
 
-  const { data: result } = await supabase.functions.invoke('ai-chat', {
-    body: {
-      message: `Haftalik menumdeki su yemeklerden toplu hazirlama plani olustur. Hangi yemekler onceden hazirlabilir, nasil saklanir, kac gun dayanir? Hazirlik sirasi ve toplam sure belirt. Menu: ${JSON.stringify(plan.plan_data)}`,
-    },
-  });
+  // plan_data may be raw AI days (meal.name) or normalized (meal.suggestion.name).
+  type AnyDay = { date?: string; meals?: { meal_type?: string; name?: string; suggestion?: { name: string } }[] };
+  const days = (plan.plan_data as AnyDay[]) ?? [];
+  const MEAL_TR: Record<string, string> = { breakfast: 'kahvaltı', lunch: 'öğle', dinner: 'akşam', snack: 'ara öğün' };
+  const dishMap = new Map<string, { display: string; count: number; targetMeals: string[] }>();
+  for (const day of days) {
+    for (const meal of day.meals ?? []) {
+      const name = meal.suggestion?.name ?? meal.name;
+      if (!name) continue;
+      const key = name.toLocaleLowerCase('tr').trim();
+      if (!dishMap.has(key)) dishMap.set(key, { display: name, count: 0, targetMeals: [] });
+      const e = dishMap.get(key)!;
+      e.count++;
+      e.targetMeals.push(`${dayNameShort(day.date)} ${MEAL_TR[meal.meal_type ?? ''] ?? meal.meal_type ?? ''}`.trim());
+    }
+  }
 
-  return result as MealPrepPlan | null;
+  const month = new Date().getMonth(); // 5..7 = Haziran-Ağustos
+  const isSummer = month >= 5 && month <= 7;
+
+  const items: PrepItem[] = [];
+  for (const e of dishMap.values()) {
+    const { storageKey, prepTimeMin, cookTimeMin } = classifyDish(e.display);
+    const { days: storageDays } = calculateStorageDuration(storageKey, 'fridge', isSummer);
+    // Batch-worthy: repeats during the week, or keeps well enough to cook ahead.
+    if (storageDays === 0 || (e.count < 2 && storageDays < 3)) continue;
+    items.push({
+      recipeName: e.display,
+      quantity: `${e.count} porsiyon`,
+      storageDays,
+      storageMethod: 'fridge',
+      storageInstructions: `Buzdolabında ${storageDays} gün saklanabilir`,
+      targetMeals: e.targetMeals,
+      prepTimeMin,
+      cookTimeMin: cookTimeMin * Math.max(1, Math.ceil(e.count / 4)), // big batches cook a bit longer
+    });
+  }
+  // Most-repeated dishes first; cap the session at 6 dishes to keep prep day sane.
+  items.sort((a, b) => b.targetMeals.length - a.targetMeals.length);
+  const selected = items.slice(0, 6);
+  if (selected.length === 0) return null;
+
+  const prepOrder = generatePrepOrder(selected);
+  return {
+    prepDay: PREP_DAY_NAMES[prefs.prepDays[0] ?? 0] ?? 'Pazar',
+    items: selected,
+    prepOrder,
+    totalPrepTime: selected.reduce((s, i) => s + i.prepTimeMin, 0),
+    totalCookTime: Math.max(...selected.map(i => i.cookTimeMin), 0),
+    shoppingList: shoppingListToConsolidated(plan.shopping_list),
+    containerSuggestion: getContainerSuggestions(selected),
+  };
+}
+
+function dayNameShort(dateStr: string | undefined): string {
+  if (!dateStr) return '';
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? '' : PREP_DAY_NAMES[d.getUTCDay()];
 }
 
 // ─── Storage Duration ───

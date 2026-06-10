@@ -69,7 +69,7 @@ export default function MonthlyReportScreen() {
     setGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('ai-report', {
-        body: { report_type: 'monthly' },
+        body: { report_type: 'monthly', force: true },
       });
       if (error) throw error;
       setAiReport(data as MonthlyAIReport);

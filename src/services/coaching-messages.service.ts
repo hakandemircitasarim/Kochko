@@ -41,19 +41,21 @@ export async function getUnreadCoachingMessages(userId: string): Promise<Coachin
  * Mark a coaching message as read.
  */
 export async function markMessageRead(messageId: string): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('coaching_messages')
     .update({ read: true })
     .eq('id', messageId);
+  if (error) console.error('[CoachingMessages] markMessageRead failed:', error.message);
 }
 
 /**
  * Mark all coaching messages as read for a user.
  */
 export async function markAllRead(userId: string): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from('coaching_messages')
     .update({ read: true })
     .eq('user_id', userId)
     .eq('read', false);
+  if (error) console.error('[CoachingMessages] markAllRead failed:', error.message);
 }

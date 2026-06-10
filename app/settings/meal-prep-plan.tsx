@@ -2,15 +2,20 @@
  * Meal Prep Plan Screen
  * Package 9: Displays generated meal prep plans with prep order, storage info, and timing.
  */
-import { useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth.store';
-import { generateMealPrepPlan, type MealPrepPlan } from '@/services/meal-prep.service';
+import { generateMealPrepPlan, getMealPrepPrefs, setMealPrepPrefs, type MealPrepPlan } from '@/services/meal-prep.service';
 import { getCurrentWeeklyPlan } from '@/services/weekly-plan.service';
+
+const PREP_DAY_OPTIONS = [
+  { value: 0, label: 'Paz' }, { value: 1, label: 'Pzt' }, { value: 2, label: 'Sal' },
+  { value: 3, label: 'Çar' }, { value: 4, label: 'Per' }, { value: 5, label: 'Cum' }, { value: 6, label: 'Cmt' },
+];
 
 export default function MealPrepPlanScreen() {
   const insets = useSafeAreaInsets();
@@ -18,6 +23,25 @@ export default function MealPrepPlanScreen() {
   const [plan, setPlan] = useState<MealPrepPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [active, setActive] = useState(false);
+  const [prepDay, setPrepDay] = useState(0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    getMealPrepPrefs(user.id)
+      .then(p => { setActive(p.active); setPrepDay(p.prepDays[0] ?? 0); })
+      .finally(() => setPrefsLoaded(true));
+  }, [user?.id]);
+
+  const handleActivate = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    const { error: err } = await setMealPrepPrefs(user.id, true, [prepDay]);
+    if (err) setError('Tercih kaydedilemedi: ' + err);
+    else { setActive(true); setError(null); }
+    setLoading(false);
+  };
 
   const handleGenerate = async () => {
     if (!user?.id) return;
@@ -31,7 +55,7 @@ export default function MealPrepPlanScreen() {
       }
       const result = await generateMealPrepPlan(user.id, weeklyPlan.id);
       if (!result) {
-        setError('Meal prep plani olusturulamadi. Ayarlardan meal prep tercihini aktif ettiginizden emin olun.');
+        setError('Bu haftanin menusunde toplu hazirlamaya uygun yemek bulunamadi.');
         return;
       }
       setPlan(result);
@@ -41,6 +65,31 @@ export default function MealPrepPlanScreen() {
       setLoading(false);
     }
   };
+
+  // Activation gate: meal_prep_active was previously impossible to enable from
+  // ANY screen (the feature was a permanent dead-end) — this is the toggle.
+  if (prefsLoaded && !active) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Meal Prep Plani</Text>
+        <Card>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md }}>
+            Toplu hazirlik modunu aktif et ve hazirlik gununu sec — haftalik menunden otomatik prep plani cikaralim.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 6, marginBottom: SPACING.lg, flexWrap: 'wrap' }}>
+            {PREP_DAY_OPTIONS.map(d => (
+              <TouchableOpacity key={d.value} onPress={() => setPrepDay(d.value)}
+                style={{ paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: 8, backgroundColor: prepDay === d.value ? COLORS.primary : COLORS.surfaceLight }}>
+                <Text style={{ color: prepDay === d.value ? '#fff' : COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>{d.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {error && <Text style={{ color: COLORS.error, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{error}</Text>}
+          <Button title="Meal Prep Modunu Aktif Et" onPress={handleActivate} loading={loading} />
+        </Card>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
