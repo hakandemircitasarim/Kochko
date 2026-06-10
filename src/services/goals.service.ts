@@ -59,8 +59,9 @@ export async function addPhase(
 
   const nextOrder = ((existing?.phase_order as number) ?? 0) + 1;
 
-  // Snapshot current weight as the phase start weight — GoalProgressWidget needs it to
-  // compute tempo/percent (without it, progress shows 0% / "Durmus").
+  // Snapshot current weight as the phase start weight — the dashboard's goal
+  // progress math (lib/goal-progress.ts via dashboard.store) needs a FIXED
+  // baseline; without it progress reads 0% / "Durmus" forever.
   const { data: profile } = await supabase
     .from('profiles')
     .select('weight_kg')

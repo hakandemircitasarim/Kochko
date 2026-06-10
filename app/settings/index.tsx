@@ -74,13 +74,12 @@ export default function SettingsScreen() {
         <Button title="Challenge'lar" variant="outline" onPress={() => router.push('/settings/challenges')} />
         <Button title="Başarımlar" variant="outline" onPress={() => router.push('/settings/achievements')} />
         <Button title="Tarif Kütüphanesi" variant="outline" onPress={() => router.push('/settings/recipes')} />
-        {/* Haftalık Menü & Meal Prep gated off for ship: the legacy weekly-menu path upserts
-            weekly_plans with onConflict 'user_id,week_start' (dropped in migration 030) → 42P10,
-            and getCurrentWeeklyPlan().single() → PGRST116 now that the new plan_snapshot system
-            (plan.service.ts) shares the table. Rebuild these on the new system post-ship.
-            See BITIRME_PLANI_v2.md P0#7 / P3. */}
-        {/* <Button title="Haftalık Menü" variant="outline" onPress={() => router.push('/settings/weekly-menu')} /> */}
-        {/* <Button title="Meal Prep Planı" variant="outline" onPress={() => router.push('/settings/meal-prep-plan')} /> */}
+        {/* Re-enabled after the DoD-5 round: getCurrentWeeklyPlan is scoped
+            (plan_type+status, limit 1), plan_data/shopping_list normalize on
+            read, generate returns the persisted row, and meal-prep builds
+            deterministically with an in-screen activation toggle. */}
+        <Button title="Haftalık Menü" variant="outline" onPress={() => router.push('/settings/weekly-menu')} />
+        <Button title="Meal Prep Planı" variant="outline" onPress={() => router.push('/settings/meal-prep-plan')} />
         <Button title="İlerleme Fotoğrafları" variant="outline" onPress={() => router.push('/settings/progress-photos')} />
       </View>
 
