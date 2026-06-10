@@ -13,13 +13,21 @@ export default function Index() {
     if (session?.user?.id) fetchProfile(session.user.id);
   }, [session?.user?.id, fetchProfile]);
 
-  // Reactivate soft-deleted accounts on re-login (30-day recovery window)
+  // Reactivate soft-deleted accounts on re-login (30-day recovery window).
+  // Checks BOTH columns: the profile-tab deletion path sets only
+  // deletion_requested_at (deleted_at stays null), and gating on deleted_at
+  // alone meant a returning user was still hard-deleted by the day-30 cron.
   useEffect(() => {
     const p = profile as Record<string, unknown> | null;
-    if (p?.deleted_at && session?.user?.id) {
+    if ((p?.deleted_at || p?.deletion_requested_at) && session?.user?.id) {
       reactivateAccount(session.user.id);
     }
-  }, [(profile as Record<string, unknown> | null)?.deleted_at, session?.user?.id, reactivateAccount]);
+  }, [
+    (profile as Record<string, unknown> | null)?.deleted_at,
+    (profile as Record<string, unknown> | null)?.deletion_requested_at,
+    session?.user?.id,
+    reactivateAccount,
+  ]);
 
   if (!initialized) {
     return (

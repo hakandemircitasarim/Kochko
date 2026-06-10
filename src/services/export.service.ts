@@ -3,50 +3,85 @@
  * Spec 18: Veri saklama, gizlilik - export kapasitesi
  */
 import { Share } from 'react-native';
+// legacy entrypoint: cacheDirectory/writeAsStringAsync string-API (the new
+// SDK 54 File/Paths API renamed these; legacy keeps the stable surface)
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { supabase } from '@/lib/supabase';
 
 /**
- * Export all user data as JSON (Spec 18).
- * Includes profile, AI summary (Katman 2), logs, reports, preferences.
+ * Export all user data as JSON (Spec 18 / KVKK Md.20 taşınabilirlik).
+ * The old 12-table list omitted ~19 tables (chat history, plans, reports,
+ * health events, supplements…) while the UI claimed a FULL export.
+ * Includes profile, AI summary (Katman 2), logs, reports, preferences,
+ * chat history, plans and social data. Written to a file and shared via the
+ * system sheet — inlining the JSON into Share.share({message}) hit Android's
+ * ~1MB binder limit for exactly the long-tenured users who need export most.
  */
 export async function exportJSON(): Promise<void> {
-  const [profile, goals, meals, workouts, metrics, reports, labs, prefs, summary, recipes, challenges, achievements] = await Promise.all([
-    supabase.from('profiles').select('*').single(),
-    supabase.from('goals').select('*'),
-    supabase.from('meal_logs').select('*, meal_log_items(*)').eq('is_deleted', false).order('logged_at'),
-    supabase.from('workout_logs').select('*, strength_sets(*)').order('logged_at'),
-    supabase.from('daily_metrics').select('*').order('date'),
-    supabase.from('daily_reports').select('*').order('date'),
-    supabase.from('lab_values').select('*').order('measured_at'),
-    supabase.from('food_preferences').select('*'),
-    supabase.from('ai_summary').select('*').maybeSingle(),
-    supabase.from('saved_recipes').select('*'),
-    supabase.from('challenges').select('*'),
-    supabase.from('achievements').select('*'),
-  ]).catch((err) => {
-    console.error('exportJSON failed:', err);
-    throw err;
+  const queries = {
+    profile: supabase.from('profiles').select('*').maybeSingle(),
+    ai_summary: supabase.from('ai_summary').select('*').maybeSingle(),
+    goals: supabase.from('goals').select('*'),
+    // is_deleted dahil: soft-silinen kayıtlar da DB'de tutulan kişisel veridir.
+    meal_logs: supabase.from('meal_logs').select('*, meal_log_items(*)').order('logged_at'),
+    workout_logs: supabase.from('workout_logs').select('*, strength_sets(*)').order('logged_at'),
+    daily_metrics: supabase.from('daily_metrics').select('*').order('date'),
+    daily_reports: supabase.from('daily_reports').select('*').order('date'),
+    weekly_reports: supabase.from('weekly_reports').select('*').order('week_start'),
+    monthly_reports: supabase.from('monthly_reports').select('*').order('month_start'),
+    daily_plans: supabase.from('daily_plans').select('*').order('date'),
+    weekly_plans: supabase.from('weekly_plans').select('*').order('generated_at'),
+    chat_sessions: supabase.from('chat_sessions').select('*').order('created_at'),
+    chat_messages: supabase.from('chat_messages').select('*').order('created_at'),
+    coaching_messages: supabase.from('coaching_messages').select('*').order('created_at'),
+    health_events: supabase.from('health_events').select('*').order('created_at'),
+    lab_values: supabase.from('lab_values').select('*').order('measured_at'),
+    food_preferences: supabase.from('food_preferences').select('*'),
+    supplement_logs: supabase.from('supplement_logs').select('*').order('logged_for_date'),
+    weight_history: supabase.from('weight_history').select('*'),
+    meal_templates: supabase.from('meal_templates').select('*'),
+    user_venues: supabase.from('user_venues').select('*'),
+    user_commitments: supabase.from('user_commitments').select('*'),
+    ai_feedback: supabase.from('ai_feedback').select('*'),
+    saved_recipes: supabase.from('saved_recipes').select('*'),
+    challenges: supabase.from('challenges').select('*'),
+    achievements: supabase.from('achievements').select('*'),
+    coach_consents: supabase.from('coach_consents').select('*'),
+    household_members: supabase.from('household_members').select('*'),
+    subscriptions: supabase.from('subscriptions').select('*'),
+    progress_photos: supabase.from('progress_photos').select('*'),
+  } as const;
+
+  const keys = Object.keys(queries) as (keyof typeof queries)[];
+  const results = await Promise.all(Object.values(queries));
+
+  // supabase-js never rejects — errors arrive in each result. Coalescing them
+  // to [] produced silently-partial KVKK exports; collect them explicitly.
+  const errors: string[] = [];
+  const data: Record<string, unknown> = { exported_at: new Date().toISOString() };
+  keys.forEach((key, i) => {
+    const res = results[i] as { data: unknown; error: { message: string } | null };
+    if (res.error) {
+      // Tables that may not exist for this account (e.g. no membership rows)
+      // legitimately return data; a real error must be visible in the export.
+      errors.push(`${key}: ${res.error.message}`);
+      data[key] = null;
+    } else {
+      data[key] = res.data ?? (key === 'profile' || key === 'ai_summary' ? null : []);
+    }
   });
+  if (errors.length > 0) data._export_errors = errors;
 
-  const data = {
-    exported_at: new Date().toISOString(),
-    profile: profile.data,
-    ai_summary: summary.data,
-    goals: goals.data ?? [],
-    meal_logs: meals.data ?? [],
-    workout_logs: workouts.data ?? [],
-    daily_metrics: metrics.data ?? [],
-    daily_reports: reports.data ?? [],
-    lab_values: labs.data ?? [],
-    food_preferences: prefs.data ?? [],
-    saved_recipes: recipes.data ?? [],
-    challenges: challenges.data ?? [],
-    achievements: achievements.data ?? [],
-  };
-
-  await Share.share({ title: 'Kochko Export', message: JSON.stringify(data, null, 2) });
+  const json = JSON.stringify(data, null, 2);
+  const fileUri = `${FileSystem.cacheDirectory}kochko-export-${Date.now()}.json`;
+  await FileSystem.writeAsStringAsync(fileUri, json, { encoding: 'utf8' });
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Kochko Veri Exportu' });
+  } else {
+    await Share.share({ title: 'Kochko Export', message: json });
+  }
 }
 
 /**

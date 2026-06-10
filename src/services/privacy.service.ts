@@ -19,9 +19,13 @@ export async function requestAccountDeletion(userId: string): Promise<{ schedule
   const scheduledDate = new Date();
   scheduledDate.setDate(scheduledDate.getDate() + 30);
 
-  // Mark profile for deletion (don't actually delete yet)
+  // Mark profile for deletion (don't actually delete yet). deleted_at is set
+  // too so this path behaves identically to the settings-screen path — the
+  // re-login reactivation watches these flags, and leaving deleted_at null
+  // here used to let the day-30 cron hard-delete a RETURNED user.
   const { error } = await supabase.from('profiles').update({
     deletion_requested_at: new Date().toISOString(),
+    deleted_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as never).eq('id', userId);
   if (error) throw new Error(error.message);

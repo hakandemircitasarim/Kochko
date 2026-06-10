@@ -225,11 +225,17 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
       }
 
       // 2. Update profile (only after goal succeeds). Compute TDEE + calorie/macro targets here
-      //    so the dashboard shows real numbers on first run instead of zeros. Birth year isn't
-      //    collected in onboarding yet, so assume age 30; the AI refines TDEE once real weight/
-      //    activity data arrives (Spec 2.4).
+      //    so the dashboard shows real numbers on first run instead of zeros. Birth year comes
+      //    from the signup metadata (register.tsx collects it; the DB trigger also copies it to
+      //    profiles since migration 044) — the old hardcoded age=30 skewed TDEE ~100 kcal for
+      //    older users.
       const heightNum = parseInt(heightCm);
-      const bmr = calculateBMR(w, heightNum, 30, gender as Gender);
+      const metaBirthYear = Number((user as { user_metadata?: Record<string, unknown> })?.user_metadata?.birth_year);
+      const nowYear = new Date().getFullYear();
+      const age = Number.isFinite(metaBirthYear) && metaBirthYear > 1900 && metaBirthYear <= nowYear
+        ? Math.max(18, nowYear - metaBirthYear)
+        : 30;
+      const bmr = calculateBMR(w, heightNum, age, gender as Gender);
       const tdee = calculateTDEE(bmr, activity as ActivityLevel);
       const targets = calculateTargets({
         tdee, goalType: goalType as GoalType, restrictionMode: 'sustainable',

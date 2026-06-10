@@ -16,7 +16,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2 } from '../shared/memory.ts';
-import { sanitizeText, detectEmergency, detectEDRisk, checkAllergens, sanitizeUserInput } from '../shared/guardrails.ts';
+import { sanitizeText, detectEmergency, detectEDRisk, checkAllergens, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -33,6 +33,7 @@ import {
 import { getAllServiceContexts, checkHabitFromChat } from '../shared/service-contexts.ts';
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
+import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -527,6 +528,60 @@ serve(async (req: Request) => {
       }
     }
 
+    // IF safety net — fully deterministic (no AI call): the model verbally
+    // "configures" IF while emitting no action (live audit, twice). Window
+    // times parse straight out of the user message.
+    if (message
+      && /(aralikli oruc|aralıklı oruç|intermittent fasting|\b1[468]\s*[:\/]\s*\d{1,2}\b|20\s*[:\/]\s*4|yeme penceresi)/i.test(message)
+      && !actions.some(a => a.type === 'profile_update' && (a as Record<string, unknown>).if_active !== undefined)) {
+      const stopIntent = /(birak|bırak|son ver|istemiyorum|kapat|bitir)/i.test(message);
+      const winMatch = message.match(/(\d{1,2}[:.]\d{2})\s*[-–—ila]+\s*(\d{1,2}[:.]\d{2})/);
+      const ratioMatch = message.match(/\b(1[468]|20)\s*[:\/]\s*(\d{1,2})\b/);
+      const normTime = (t: string) => {
+        const [h, m] = t.replace('.', ':').split(':');
+        return `${h.padStart(2, '0')}:${m}`;
+      };
+      if (stopIntent) {
+        actions.push({ type: 'profile_update', if_active: false });
+        console.warn('[if_safety_net] IF deactivation injected');
+      } else if (winMatch) {
+        actions.push({
+          type: 'profile_update',
+          if_active: true,
+          if_window: ratioMatch ? `${ratioMatch[1]}:${ratioMatch[2]}` : '16:8',
+          if_eating_start: normTime(winMatch[1]),
+          if_eating_end: normTime(winMatch[2]),
+        });
+        console.warn('[if_safety_net] IF setup injected', { start: normTime(winMatch[1]), end: normTime(winMatch[2]) });
+      }
+    }
+
+    // Allergy safety net — deterministic: "çilek alerjim var", "laktoz
+    // intoleransım var". The allergen guardrails read ONLY food_preferences,
+    // and the model skips the food_preference action often enough (live audit)
+    // that a chat-declared allergy would otherwise protect nobody.
+    if (message && !actions.some(a => (a as Record<string, unknown>).type === 'food_preference')) {
+      const mAll = message.toLocaleLowerCase('tr');
+      const negated = /(alerjim yok|alerjisi yok|intoleransim yok|intoleransım yok|alerji yok)/.test(mAll);
+      if (!negated) {
+        const allergyMatch = mAll.match(/([a-zçğıöşü]{3,})\s+alerji/);
+        const intoleranceMatch = mAll.match(/([a-zçğıöşü]{3,})\s+intolerans/);
+        const food = allergyMatch?.[1] ?? intoleranceMatch?.[1];
+        const STOPWORDS = new Set(['bir', 'hic', 'hiç', 'gida', 'gıda', 'besin', 'yok', 'ciddi', 'hafif', 'ayrica', 'ayrıca', 'bence', 'galiba', 'sanirim', 'sanırım', 'bende', 'benim']);
+        if (food && !STOPWORDS.has(food)) {
+          const severe = /(ciddi|şiddetli|siddetli|agir|ağır|anafilaksi)/.test(mAll);
+          actions.push({
+            type: 'food_preference',
+            food_name: food,
+            preference: 'never',
+            is_allergen: true,
+            allergen_severity: severe ? 'severe' : 'moderate',
+          });
+          console.warn('[allergy_safety_net] food_preference injected', { food, severe });
+        }
+      }
+    }
+
     // Goal safety net: goal statements ("3 ayda 5 kilo vermek istiyorum, hedefim
     // 70") were lost 5/5 in the live audit — the model answers conversationally
     // and omits the actions block despite prompt rules. Forced extraction of the
@@ -678,6 +733,24 @@ serve(async (req: Request) => {
     let planApproved: { id: string } | null = null;
     if (user_approved === true && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
       const expectedType = task_mode_hint === 'plan_diet' ? 'diet' : 'workout';
+
+      // SERVER-SIDE free-tier plan cap (mirror of premium-gate.ts canApprovePlan:
+      // free = 1 diet + 1 workout lifetime). This check used to live ONLY in the
+      // client, so any direct edge call approved unlimited plans on a free account.
+      const { data: gateProfile } = await supabaseAdmin
+        .from('profiles').select('premium, plans_used_free').eq('id', userId).maybeSingle();
+      if (gateProfile?.premium !== true) {
+        const used = (gateProfile?.plans_used_free as { diet?: number; workout?: number } | null) ?? {};
+        if ((used[expectedType] ?? 0) >= 1) {
+          return respond({
+            message: 'Ücretsiz planda 1 diyet + 1 antrenman planı onaylayabiliyorsun. Yeni plan onaylamak ve sınırsız revizyon için Premium\'a geçebilirsin.',
+            actions: [], task_mode: effectiveMode,
+            plan_snapshot: null, plan_reasoning: null,
+            plan_persist_error: 'free_quota_used', plan_approved: null, navigate_to: '/settings/premium',
+          });
+        }
+      }
+
       // Honor the client's draft_id when provided: the user approved the SPECIFIC
       // draft they were looking at. (The single-draft partial index makes the
       // fallback safe, but relying on it silently was a dead contract.)
@@ -958,6 +1031,25 @@ serve(async (req: Request) => {
       }
     }
 
+    // Deterministic backdate fallback: the model reliably parses the MEAL but
+    // unreliably emits days_ago for "dün ..." messages. If the user text names
+    // a past day and the model left days_ago off, inject it.
+    if (message && actions.length > 0) {
+      const mLower = message.toLocaleLowerCase('tr');
+      const inferredDaysAgo = /(evvelsi gun|evvelsi gün|onceki gun|önceki gün|2 gun once|2 gün önce)/.test(mLower) ? 2
+        : /(^|[^a-zçğıöşü])(dun|dün)([^a-zçğıöşü]|$)/.test(mLower) ? 1
+        : 0;
+      if (inferredDaysAgo > 0) {
+        const BACKDATABLE = new Set(['meal_log', 'workout_log', 'water_log', 'sleep_log', 'mood_log', 'supplement_log']);
+        for (const a of actions) {
+          const act = a as Record<string, unknown>;
+          if (BACKDATABLE.has(act.type as string) && act.days_ago === undefined) {
+            act.days_ago = inferredDaysAgo;
+          }
+        }
+      }
+    }
+
     // Execute actions (use target_date for batch entry, T1.17)
     // Source of log: photo > voice (transcribed) > default text/chat
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
@@ -976,6 +1068,39 @@ serve(async (req: Request) => {
           }
         }
       }
+    }
+
+    // ── Output-side safety scans (Spec 12.2/12.4: code-enforced, not
+    // prompt-dependent). Free-text replies previously bypassed both filters:
+    // a severe-peanut-allergy user got a peanut-butter snack recommendation,
+    // and a doctor-forbidden-squat knee patient got a squat-heavy program.
+    try {
+      const [{ data: allergenRows }, { data: injuryRows }] = await Promise.all([
+        supabaseAdmin.from('food_preferences').select('food_name').eq('user_id', userId).eq('is_allergen', true),
+        supabaseAdmin.from('health_events').select('description').eq('user_id', userId).eq('is_ongoing', true),
+      ]);
+      const allergens = (allergenRows ?? []).map((r: { food_name: string }) => r.food_name);
+      // Skip the allergen warning when the reply already addresses the allergy
+      // (e.g. "fıstık alerjin olduğu için önermiyorum").
+      if (allergens.length > 0 && !/alerj/i.test(assistantMessage)) {
+        const scan = checkAllergens(assistantMessage, allergens);
+        if (!scan.passed) {
+          // checkAllergens violations are full sentences — name just the foods.
+          const lowerReply = assistantMessage.toLocaleLowerCase('tr');
+          const matched = allergens.filter(a => lowerReply.includes(a.toLocaleLowerCase('tr')));
+          const names = matched.length > 0 ? matched.join(', ') : 'alerjen';
+          assistantMessage += `\n\n⚠️ Dikkat: profilinde ${names} alerjisi kayıtlı — yukarıdaki öneri buna uygun olmayabilir. Sana uygun bir alternatif isteyebilirsin.`;
+        }
+      }
+      const injuredParts = extractInjuredBodyParts((injuryRows ?? []).map((r: { description: string }) => r.description));
+      if (injuredParts.length > 0) {
+        const conflicts = findInjuryConflictsInText(assistantMessage, injuredParts);
+        if (conflicts.length > 0 && !/sakatl|yaralanma|dizini koru|dikkatli ol/i.test(assistantMessage)) {
+          assistantMessage += `\n\n⚠️ Not: kayıtlı sakatlığın nedeniyle ${conflicts.join(', ')} hareket(ler)i senin için riskli olabilir. İstersen sakatlık-dostu bir alternatif programlayalım.`;
+        }
+      }
+    } catch (e) {
+      console.error('[output_safety_scan] failed:', (e as Error).message);
     }
 
     // Store messages with token count and model version (Spec 5.25)
@@ -1196,10 +1321,18 @@ function stripVerbalAcknowledgements(text: string): string {
  */
 function looksLikeMealReport(msg: string): boolean {
   const m = msg.toLocaleLowerCase('tr');
-  const ate = /\b(yedim|yedik|ictim|atistirdim|tukettim|kahvalti yaptim)\b/.test(m) || /\b(içtim|atıştırdım|tükettim)\b/.test(m);
+  const ate = /\b(yedim|yedik|yemistim|yemiştim|ictim|icmistim|atistirdim|tukettim|kahvalti yaptim)\b/.test(m) || /\b(içtim|içmiştim|atıştırdım|tükettim)\b/.test(m);
   if (!ate) return false;
   if (/(kac kalori|kaç kalori|olur mu|yesem|yersem|icsem|içsem|ne olur|kac gram|kaç gram)/.test(m)) return false;
-  if (/(yemedim|içmedim|icmedim|kaydetme|sayma|atladim|atladım)/.test(m)) return false;
+  // 'kaydetme' (imperative "don't log") must NOT match 'kaydetmeyi unutmuşum'
+  // ("I forgot to log it" — the OPPOSITE intent, user wants it logged).
+  if (/(yemedim|içmedim|icmedim|kaydetme\b(?![^.!?]{0,12}unut)|sayma\b|atladim|atladım)/.test(m)) return false;
+  // Water-only drink reports ("2 litre su içtim, 7 saat uyudum") are handled by
+  // water_log — without this exclusion the meal net misfired and appended
+  // "Bunu ogun olarak kaydedeyim mi?" to pure metric messages.
+  const onlyDrinkIsWater = /\bsu\b[^.!?]{0,20}(içtim|ictim)|(içtim|ictim)[^.!?]{0,8}\bsu\b/.test(m);
+  const hasEatVerb = /\b(yedim|yedik|atistirdim|atıştırdım|tukettim|tükettim|kahvalti yaptim)\b/.test(m);
+  if (onlyDrinkIsWater && !hasEatVerb) return false;
   return true;
 }
 
@@ -1770,8 +1903,31 @@ async function executeActions(
     .from('daily_metrics').select('water_liters').eq('user_id', userId).eq('date', today).maybeSingle();
   let waterTotal = (todayMetrics?.water_liters as number | null) ?? 0;
 
+  // Backdated metric upserts must preserve THAT day's water — writing today's
+  // running total into yesterday's row would corrupt it.
+  const backdatedWater = new Map<string, number>();
+  const waterFor = async (date: string): Promise<number> => {
+    if (date === today) return waterTotal;
+    if (backdatedWater.has(date)) return backdatedWater.get(date)!;
+    const { data } = await supabaseAdmin
+      .from('daily_metrics').select('water_liters').eq('user_id', userId).eq('date', date).maybeSingle();
+    const w = (data?.water_liters as number | null) ?? 0;
+    backdatedWater.set(date, w);
+    return w;
+  };
+  const setWaterFor = (date: string, v: number) => {
+    if (date === today) waterTotal = v;
+    else backdatedWater.set(date, v);
+  };
+
   for (const action of actions) {
     try {
+      // Spec 3.1: natural-language backdating ("dün akşam pizza yedim" →
+      // days_ago:1 in the action JSON). Clamped to 7 days back, never future.
+      const rawDaysAgo = Number((action as Record<string, unknown>).days_ago);
+      const actionDate = Number.isFinite(rawDaysAgo) && rawDaysAgo >= 1 && rawDaysAgo <= 7
+        ? shiftDateString(today, -Math.round(rawDaysAgo))
+        : today;
       switch (action.type) {
         case 'meal_log': {
           // Collect all sub-messages (allergen warning, caffeine notices, low-confidence
@@ -1816,12 +1972,32 @@ async function executeActions(
             }
           }
 
+          // Duplicate guard: the model sometimes re-emits meals from earlier
+          // turns of the same conversation (observed live: 1 new meal arrived
+          // with 2 re-logs of already-saved ones). Same text + same target day
+          // within 10 minutes = duplicate, skip silently.
+          const rawText = (action.raw as string ?? '').trim();
+          if (rawText) {
+            const { data: recentDupe } = await supabaseAdmin
+              .from('meal_logs').select('id')
+              .eq('user_id', userId)
+              .eq('raw_input', rawText)
+              .eq('logged_for_date', actionDate)
+              .eq('is_deleted', false)
+              .gte('logged_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
+              .limit(1);
+            if (recentDupe && recentDupe.length > 0) {
+              feedback.push(null); // already saved — no chip, no double row
+              break;
+            }
+          }
+
           const { data: log, error: logErr } = await supabaseAdmin.from('meal_logs').insert({
-            user_id: userId, raw_input: action.raw as string ?? '',
+            user_id: userId, raw_input: rawText,
             meal_type: mealType,
             input_method: inputMethod,
             confidence: mealConfidence,
-            logged_for_date: today, synced: true,
+            logged_for_date: actionDate, synced: true,
           }).select('id').maybeSingle();
 
           // Supabase does not throw on DB errors — if the parent insert failed (or returned
@@ -1893,6 +2069,7 @@ async function executeActions(
           const durationMin = (action.duration_min as number) ?? 0;
           const intensity = (action.intensity as string) ?? 'moderate';
           const workoutType = (action.workout_type as string) ?? 'mixed';
+          let workoutPrNote = '';
 
           // MET-based calories_burned if AI didn't provide or gave zero (Spec 7.5)
           // MET table for common workout types/intensities
@@ -1919,7 +2096,7 @@ async function executeActions(
             duration_min: durationMin,
             intensity,
             calories_burned: caloriesBurned,
-            logged_for_date: today, synced: true,
+            logged_for_date: actionDate, synced: true,
           }).select('id').maybeSingle();
           if (wlogErr) console.error('[workout_logs] insert failed:', wlogErr.message);
 
@@ -1948,8 +2125,46 @@ async function executeActions(
               }
             }
             if (setRows.length > 0) {
-              const { error: setsErr } = await supabaseAdmin.from('strength_sets').insert(setRows);
+              // Spec 13.3: PR detection — compare each exercise's top weight
+              // against the user's historical max; mark is_pr and award a 'pr'
+              // achievement (is_pr had NO writer anywhere before this).
+              const prRows = setRows as (typeof setRows[number] & { is_pr?: boolean })[];
+              const prNotes: string[] = [];
+              try {
+                const uniqueExercises = [...new Set(setRows.map(r => r.exercise_name))];
+                for (const ex of uniqueExercises) {
+                  const newMax = Math.max(...setRows.filter(r => r.exercise_name === ex).map(r => Number(r.weight_kg) || 0));
+                  if (newMax <= 0) continue;
+                  const { data: histRows } = await supabaseAdmin
+                    .from('strength_sets')
+                    .select('weight_kg, workout_logs!inner(user_id)')
+                    .eq('exercise_name', ex)
+                    .eq('workout_logs.user_id', userId)
+                    .order('weight_kg', { ascending: false })
+                    .limit(1);
+                  const histMax = Number((histRows?.[0] as { weight_kg?: number } | undefined)?.weight_kg) || 0;
+                  if (histMax > 0 && newMax > histMax) {
+                    for (const r of prRows) {
+                      if (r.exercise_name === ex && Number(r.weight_kg) === newMax) r.is_pr = true;
+                    }
+                    await supabaseAdmin.from('achievements').insert({
+                      user_id: userId,
+                      achievement_type: 'pr',
+                      title: `Yeni rekor: ${ex.replace(/_/g, ' ')} ${newMax}kg`,
+                      description: `Önceki en iyin ${histMax}kg idi — +${Math.round((newMax - histMax) * 10) / 10}kg!`,
+                    });
+                    // Collected, NOT pushed: feedback[] is positionally aligned
+                    // with actions[] (one chip per action) — append to the
+                    // workout chip below instead.
+                    prNotes.push(`🏋️ Yeni kişisel rekor: ${ex.replace(/_/g, ' ')} ${newMax}kg!`);
+                  }
+                }
+              } catch (e) {
+                console.error('[strength_sets] PR detection failed:', (e as Error).message);
+              }
+              const { error: setsErr } = await supabaseAdmin.from('strength_sets').insert(prRows);
               if (setsErr) console.error('[strength_sets] insert failed:', setsErr.message);
+              workoutPrNote = prNotes.join(' ');
             }
           }
 
@@ -1976,9 +2191,9 @@ async function executeActions(
                 .eq('id', todayPlan.id);
             }
 
-            feedback.push(`Antrenman kaydedildi (~${caloriesBurned} kcal yakim). Bugun icin +${bump} kcal hareket alani acildi.`);
+            feedback.push(`Antrenman kaydedildi (~${caloriesBurned} kcal yakim). Bugun icin +${bump} kcal hareket alani acildi.${workoutPrNote ? ` ${workoutPrNote}` : ''}`);
           } else {
-            feedback.push('Antrenman kaydedildi');
+            feedback.push(`Antrenman kaydedildi${workoutPrNote ? `. ${workoutPrNote}` : ''}`);
           }
           break;
         }
@@ -1986,7 +2201,7 @@ async function executeActions(
           const w = action.value as number;
           if (w > 20 && w < 300) {
             await supabaseAdmin.from('daily_metrics').upsert(
-              { user_id: userId, date: today, weight_kg: w, water_liters: waterTotal, synced: true },
+              { user_id: userId, date: actionDate, weight_kg: w, water_liters: await waterFor(actionDate), synced: true },
               { onConflict: 'user_id,date' }
             );
             await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
@@ -2012,9 +2227,10 @@ async function executeActions(
         case 'water_log': {
           const l = action.liters as number;
           if (l > 0) {
-            waterTotal += l;  // keep the running total so a later metric upsert preserves it
+            const next = (await waterFor(actionDate)) + l;
+            setWaterFor(actionDate, next); // keep running totals so later metric upserts preserve them
             await supabaseAdmin.from('daily_metrics').upsert(
-              { user_id: userId, date: today, water_liters: waterTotal, synced: true },
+              { user_id: userId, date: actionDate, water_liters: next, synced: true },
               { onConflict: 'user_id,date' }
             );
             feedback.push(`Su +${l}L`);
@@ -2033,7 +2249,7 @@ async function executeActions(
             const mapped = rawQ ? (SQ_MAP[rawQ] ?? rawQ) : undefined;
             const sleepQuality = mapped && ['good', 'ok', 'bad'].includes(mapped) ? mapped : null; // null is allowed (nullable col)
             const { error: sleepErr } = await supabaseAdmin.from('daily_metrics').upsert(
-              { user_id: userId, date: today, sleep_hours: h, sleep_quality: sleepQuality, water_liters: waterTotal, synced: true },
+              { user_id: userId, date: actionDate, sleep_hours: h, sleep_quality: sleepQuality, water_liters: await waterFor(actionDate), synced: true },
               { onConflict: 'user_id,date' }
             );
             if (sleepErr) { console.error('[sleep_log] upsert failed:', sleepErr.message); feedback.push('Uyku kaydi basarisiz'); }
@@ -2048,7 +2264,7 @@ async function executeActions(
           const moodScore = Number.isFinite(s) ? Math.min(5, Math.max(1, Math.round(s))) : null;
           if (moodScore === null) break;
           const { error: moodErr } = await supabaseAdmin.from('daily_metrics').upsert(
-            { user_id: userId, date: today, mood_score: moodScore, mood_note: action.note as string, water_liters: waterTotal, synced: true },
+            { user_id: userId, date: actionDate, mood_score: moodScore, mood_note: action.note as string, water_liters: await waterFor(actionDate), synced: true },
             { onConflict: 'user_id,date' }
           );
           if (moodErr) { console.error('[mood_log] upsert failed:', moodErr.message); break; }
@@ -2058,7 +2274,7 @@ async function executeActions(
         case 'supplement_log': {
           await supabaseAdmin.from('supplement_logs').insert({
             user_id: userId, supplement_name: action.name as string,
-            amount: action.amount as string, logged_for_date: today,
+            amount: action.amount as string, logged_for_date: actionDate,
           });
           feedback.push('Supplement kaydedildi');
           break;
@@ -2077,10 +2293,35 @@ async function executeActions(
           const updates: Record<string, unknown> = {};
           // Core demographics
           if (action.height_cm) updates.height_cm = action.height_cm;
-          if (action.weight_kg) updates.weight_kg = action.weight_kg;
+          if (action.weight_kg) {
+            updates.weight_kg = action.weight_kg;
+            // Mirror into daily_metrics + TDEE check — the model routes plain
+            // "85.5 kiloyum" statements here (not weight_log), and without this
+            // the weight HISTORY (reports, trend, goal ETA) never got a row
+            // from chat-logged weights.
+            const wv = Number(action.weight_kg);
+            if (Number.isFinite(wv) && wv > 20 && wv < 300) {
+              await supabaseAdmin.from('daily_metrics').upsert(
+                { user_id: userId, date: actionDate, weight_kg: wv, water_liters: await waterFor(actionDate), synced: true },
+                { onConflict: 'user_id,date' }
+              );
+              recalculateTDEEIfNeeded(userId, wv).then(() => {}, () => {});
+            }
+          }
           if (action.birth_year) updates.birth_year = action.birth_year;
           if (action.gender) updates.gender = action.gender;
           if (action.display_name) updates.display_name = action.display_name;
+          // IF / yeme penceresi (Spec 2.1): the chat previously CONFIRMED IF
+          // setup verbally while writing nothing — no if_* field was accepted.
+          if (action.if_active !== undefined) updates.if_active = action.if_active === true;
+          const HHMM = /^([01]?\d|2[0-3]):[0-5]\d$/;
+          if (typeof action.if_eating_start === 'string' && HHMM.test(action.if_eating_start as string)) {
+            updates.if_eating_start = action.if_eating_start;
+          }
+          if (typeof action.if_eating_end === 'string' && HHMM.test(action.if_eating_end as string)) {
+            updates.if_eating_end = action.if_eating_end;
+          }
+          if (typeof action.if_window === 'string') updates.if_window = action.if_window;
           // Schedule & lifestyle
           if (action.occupation) updates.occupation = action.occupation;
           if (action.work_start) updates.work_start = action.work_start;
@@ -2208,6 +2449,57 @@ async function executeActions(
         // NOTE: strength logging is handled by the `workout_log` action (it parses
         // action.strength_sets into the strength_sets table). The old dead `strength_log`
         // case (action.sets) was never emitted by any prompt and was removed in cleanup.
+        case 'food_preference': {
+          // Spec 12.4 chain: allergies/intolerances DECLARED IN CHAT must reach
+          // food_preferences — the allergen guardrails read ONLY that table, so
+          // without this action a chat-declared allergy never protected anyone.
+          const VALID_PREFS = new Set(['love', 'like', 'can_cook', 'dislike', 'never']);
+          const VALID_SEV = new Set(['mild', 'moderate', 'severe']);
+          const foodName = (action.food_name as string ?? '').trim();
+          if (!foodName) { feedback.push(null); break; }
+          const rawPref = action.preference as string ?? (action.is_allergen ? 'never' : 'dislike');
+          const fpRow: Record<string, unknown> = {
+            user_id: userId,
+            food_name: foodName.toLocaleLowerCase('tr'),
+            preference: VALID_PREFS.has(rawPref) ? rawPref : 'dislike',
+            is_allergen: action.is_allergen === true,
+          };
+          if (action.is_allergen === true) {
+            fpRow.allergen_severity = VALID_SEV.has(action.allergen_severity as string)
+              ? action.allergen_severity : 'moderate';
+          }
+          const { error: fpErr } = await supabaseAdmin.from('food_preferences').insert(fpRow);
+          if (fpErr) {
+            console.error('[food_preference] insert failed:', fpErr.message);
+            feedback.push(null);
+          } else {
+            feedback.push(action.is_allergen === true ? 'Alerjen kaydedildi' : 'Yemek tercihi kaydedildi');
+          }
+          break;
+        }
+        case 'health_event': {
+          // Spec 2.1/12.2-12.3: surgeries, injuries, chronic conditions told in
+          // chat persist to health_events (the injury guardrail reads it).
+          const desc = (action.description as string ?? '').trim();
+          if (!desc) { feedback.push(null); break; }
+          const VALID_EVENTS = new Set(['surgery', 'injury', 'illness', 'condition', 'medication', 'other']);
+          const rawEvent = action.event_type as string ?? 'other';
+          const { error: heErr } = await supabaseAdmin.from('health_events').insert({
+            user_id: userId,
+            event_type: VALID_EVENTS.has(rawEvent) ? rawEvent : 'other',
+            description: desc,
+            event_date: typeof action.event_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(action.event_date as string)
+              ? action.event_date : null,
+            is_ongoing: action.is_ongoing !== false, // default true: it matters for guardrails
+          });
+          if (heErr) {
+            console.error('[health_event] insert failed:', heErr.message);
+            feedback.push(null);
+          } else {
+            feedback.push('Sağlık bilgisi kaydedildi');
+          }
+          break;
+        }
         case 'save_recipe': {
           // T3.6: Save recipe from AI chat to recipe library
           const recipe = action as Record<string, unknown>;
@@ -2368,14 +2660,32 @@ async function executeActions(
           break;
         }
         case 'periodic_state_update': {
-          const newState = action.state as string;
-          const endDate = action.end_date as string | null;
-          const profileUpdates: Record<string, unknown> = {
-            periodic_state: newState,
-            periodic_state_start: today,
-            periodic_state_end: endDate ?? null,
-            updated_at: new Date().toISOString(),
-          };
+          const rawState = action.state as string | null;
+          // Clearing ("iyileştim") maps none/normal/null to ACTUAL NULLs — the
+          // old code wrote the literal string 'none' into periodic_state and the
+          // Layer-1 context then rendered "DONEMSEL DURUM: none" forever.
+          const CLEARING = !rawState || ['none', 'normal', 'bitti', 'gecti', 'geçti'].includes(rawState);
+          // Validate against the known states — model free text must not land
+          // in the column (consumers silently no-op on unknown states).
+          const VALID_STATES = new Set(['ramadan', 'holiday', 'illness', 'busy_work', 'exam', 'pregnancy', 'breastfeeding', 'injury', 'travel', 'custom']);
+          if (!CLEARING && !VALID_STATES.has(rawState as string)) {
+            feedback.push(`Donemsel durum taninmadi: ${rawState}`);
+            break;
+          }
+          const newState = CLEARING ? '' : (rawState as string);
+          // requiresEndDate states (ramadan etc.) must not persist open-ended —
+          // the auto-expiry in ai-proactive only fires when an end date exists.
+          const MAX_DURATION: Record<string, number> = { ramadan: 30, illness: 14, holiday: 30, exam: 30, busy_work: 30, travel: 30 };
+          const endDate = (action.end_date as string | null)
+            ?? (newState && MAX_DURATION[newState] ? shiftDateString(today, MAX_DURATION[newState]) : null);
+          const profileUpdates: Record<string, unknown> = CLEARING
+            ? { periodic_state: null, periodic_state_start: null, periodic_state_end: null, updated_at: new Date().toISOString() }
+            : {
+                periodic_state: newState,
+                periodic_state_start: today,
+                periodic_state_end: endDate,
+                updated_at: new Date().toISOString(),
+              };
 
           // Past period memory: look up last occurrence of same state (Spec 9)
           if (newState && !['none', 'normal'].includes(newState)) {
@@ -2391,8 +2701,9 @@ async function executeActions(
               }
             } catch { /* non-critical */ }
           }
-          // Auto-pause IF if incompatible (illness, pregnancy, breastfeeding)
-          if (['illness', 'pregnancy', 'breastfeeding'].includes(newState)) {
+          // Auto-pause IF for every IF-incompatible state (config-driven —
+          // the old hardcoded trio missed ramadan, which is ifCompatible:false).
+          if (newState && !isIFCompatible(newState as PeriodicState)) {
             profileUpdates.if_active = false;
           }
           await supabaseAdmin.from('profiles').update(profileUpdates).eq('id', userId);
@@ -2442,12 +2753,14 @@ async function executeActions(
             .from('ai_summary').select('seasonal_notes').eq('user_id', userId).maybeSingle();
           const currentNotes = (existing?.seasonal_notes as string) ?? '';
           const dateStr = new Date().toISOString().split('T')[0];
-          const newNote = `${currentNotes}\n[${dateStr}] ${newState} donemi baslatildi${endDate ? ` (bitis: ${endDate})` : ''}`.trim();
+          const newNote = CLEARING
+            ? `${currentNotes}\n[${dateStr}] donemsel durum sona erdi, normale donuldu`.trim()
+            : `${currentNotes}\n[${dateStr}] ${newState} donemi baslatildi${endDate ? ` (bitis: ${endDate})` : ''}`.trim();
           await supabaseAdmin.from('ai_summary').upsert(
             { user_id: userId, seasonal_notes: newNote, updated_at: new Date().toISOString() },
             { onConflict: 'user_id' }
           );
-          feedback.push(`Donemsel durum: ${newState}`);
+          feedback.push(CLEARING ? 'Donemsel durum kapatildi — normale donuldu' : `Donemsel durum: ${newState}`);
           break;
         }
         case 'plateau_strategy_apply': {
@@ -2976,6 +3289,34 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       const current = (existing?.coaching_notes as string) ?? '';
       const dateStr = new Date().toISOString().split('T')[0];
       changes.coaching_notes = `${current}\n[${dateStr}] ${updates.coaching_note}`.trim();
+    }
+
+    // KVKK Md.16-17 (Spec 2.3): user-requested deletion/correction of L2 notes.
+    // The schema was append-only before — the model SAID "sildim" while nothing
+    // could actually remove a line.
+    if (typeof updates.remove_coaching_note === 'string' && updates.remove_coaching_note.trim().length >= 3) {
+      const needle = (updates.remove_coaching_note as string).toLocaleLowerCase('tr').trim();
+      const base = (changes.coaching_notes as string | undefined) ?? (existing?.coaching_notes as string) ?? '';
+      const kept = base.split('\n').filter(line => !line.toLocaleLowerCase('tr').includes(needle));
+      changes.coaching_notes = kept.join('\n').trim();
+    }
+
+    if (updates.resolve_pattern && typeof updates.resolve_pattern === 'object') {
+      const rp = updates.resolve_pattern as { type?: string; trigger?: string };
+      const patterns = ((changes.behavioral_patterns as Record<string, unknown>[] | undefined)
+        ?? (existing?.behavioral_patterns as Record<string, unknown>[] | null)
+        ?? []);
+      let resolvedAny = false;
+      const nextPatterns = patterns.map(p => {
+        const typeMatch = rp.type && (p.type as string)?.toLocaleLowerCase('tr').includes(rp.type.toLocaleLowerCase('tr'));
+        const trigMatch = rp.trigger && (p.trigger as string)?.toLocaleLowerCase('tr').includes(rp.trigger.toLocaleLowerCase('tr'));
+        if (typeMatch || trigMatch) {
+          resolvedAny = true;
+          return { ...p, status: 'resolved', resolved_at: new Date().toISOString(), resolved_reason: 'user_correction' };
+        }
+        return p;
+      });
+      if (resolvedAny) changes.behavioral_patterns = nextPatterns;
     }
 
     // Spec 5.15: User persona (override)

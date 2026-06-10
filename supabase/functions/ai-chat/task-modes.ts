@@ -44,16 +44,18 @@ export function detectTaskMode(message: string, isOnboarding: boolean): TaskMode
   // this misroute made chat goal creation fail 5/5.
   if (/hedefim|hedef koy|yeni hedef|hedefimi|kilo vermek istiyorum|kilo almak istiyorum|kas kazanmak istiyorum|zayiflamak istiyorum|zayıflamak istiyorum|formda olmak istiyorum/.test(lower)) return 'coaching';
 
-  // Register mode - logging food/workout/metrics
-  if (/yedim|yuttum|ictim|içtim|aldim|aldım|atistir|atıştır|yemek yedim|ara ogun|ara öğün|(kahvalt|ogle|öğle|aksam|akşam)[^.!?]*\b(yedim|yaptim|yaptım|aldim|aldım|tukettim|tükettim|atladim|atladım|kacirdim|kaçırdım)\b/.test(lower)) return 'register';
+  // Register mode - logging food/workout/metrics (past-perfect "yemiştim/içmiştim"
+  // included — those phrasings used to fall through to coaching and never log)
+  if (/yedim|yedik|yemistim|yemiştim|yuttum|ictim|içtim|icmistim|içmiştim|aldim|aldım|atistir|atıştır|yemek yedim|ara ogun|ara öğün|(kahvalt|ogle|öğle|aksam|akşam)[^.!?]*\b(yedim|yemistim|yemiştim|yaptim|yaptım|aldim|aldım|tukettim|tükettim|atladim|atladım|kacirdim|kaçırdım)\b/.test(lower)) return 'register';
   if (/yaptim|yaptım|kostum|koştum|yurudum|yürüdüm|antrenman|salon|egzersiz|spor yaptim|spor yaptım|yuzdum|yüzdüm|bisiklet/.test(lower)) return 'register';
   if (/\d+\s*k(g|ilo)|tartildim|tartıldım|tartiya ciktim|tartıya çıktım/.test(lower)) return 'register';
   if (/su (ic|iç)|bardak|litre|su aldim|su aldım|su ictim|su içtim/.test(lower)) return 'register';
   if (/saat uyudum|gec yattim|geç yattım|erken kalktim|erken kalktım|uyku/.test(lower)) return 'register';
   if (/ruh hal|mood|keyf|mutsuz|mutlu|stresli|enerjik/.test(lower)) return 'register';
 
-  // Periodic state mode
-  if (/ramazan|hamile|hastalandim|hastalandım|tatile|seyahate|sakatl|sakatlandim|sakatlandım|emzir|donemsel|dönemsel|yogun is|yoğun iş|sinav|sınav/.test(lower)) return 'periodic';
+  // Periodic state mode — entry AND exit phrases (the exit phrases used to land
+  // in coaching, so "iyileştim" never cleared the illness state).
+  if (/ramazan|hamile|hastalandim|hastalandım|tatile|seyahate|sakatl|sakatlandim|sakatlandım|emzir|donemsel|dönemsel|yogun is|yoğun iş|sinav|sınav|iyilestim|iyileştim|iyilesti|normale don|normale dön|tatil bitti|oruc bitti|oruç bitti/.test(lower)) return 'periodic';
 
   // MVD mode
   if (/istemiyorum|yapmak istemiyorum|motivasyonum yok|birakacagim|bırakacağım|vazgec|vazgeç/.test(lower)) return 'mvd';

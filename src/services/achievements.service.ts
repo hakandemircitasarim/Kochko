@@ -3,6 +3,7 @@
  * Spec Section 13: Başarı ve motivasyon sistemi
  */
 import { supabase } from '@/lib/supabase';
+import { getEffectiveDate } from '@/lib/day-boundary';
 
 export interface Achievement {
   id: string;
@@ -22,8 +23,13 @@ export async function getAchievements(): Promise<Achievement[]> {
 
 /**
  * Calculate current streak (consecutive days with at least 1 meal log).
+ *
+ * "Today" is the day-boundary-aware EFFECTIVE date (same definition the server
+ * uses when writing logged_for_date) — the old UTC date broke the chain every
+ * late evening/early morning depending on the user's timezone. A streak that
+ * ends YESTERDAY still counts (today simply hasn't been logged yet).
  */
-export async function calculateStreak(userId: string): Promise<number> {
+export async function calculateStreak(userId: string, dayBoundaryHour: number = 4): Promise<number> {
   const { data } = await supabase
     .from('meal_logs')
     .select('logged_for_date')
@@ -35,19 +41,21 @@ export async function calculateStreak(userId: string): Promise<number> {
   if (!data || data.length === 0) return 0;
 
   const dates = [...new Set((data as { logged_for_date: string }[]).map(d => d.logged_for_date))].sort().reverse();
+  const today = getEffectiveDate(new Date(), dayBoundaryHour);
+
+  // Anchor on today if logged, else yesterday (an unbroken run through
+  // yesterday shouldn't display as 0 before the user's first log of the day).
+  const shift = (dateStr: string, days: number): string => {
+    const d = new Date(`${dateStr}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().split('T')[0];
+  };
+  const anchor = dates[0] === today ? today : shift(today, -1);
+
   let streak = 0;
-  const today = new Date().toISOString().split('T')[0];
-
   for (let i = 0; i < dates.length; i++) {
-    const expected = new Date(today);
-    expected.setDate(expected.getDate() - i);
-    const expectedStr = expected.toISOString().split('T')[0];
-
-    if (dates[i] === expectedStr) {
-      streak++;
-    } else {
-      break;
-    }
+    if (dates[i] === shift(anchor, -i)) streak++;
+    else break;
   }
 
   return streak;

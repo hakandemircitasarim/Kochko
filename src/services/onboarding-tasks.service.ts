@@ -21,6 +21,7 @@ interface TaskCheckData {
   healthEvents: { event_type: string }[];
   labValuesCount: number;
   allergiesCount: number;
+  activeGoalsCount: number;
   completedTasks: string[];
 }
 
@@ -49,8 +50,10 @@ const ONBOARDING_TASKS: TaskDef[] = [
     prefillMessage: 'Hedeflerimi konuşmak istiyorum.',
     taskModeHint: 'onboarding_goal',
     checkCompletion: (d) =>
-      d.completedTasks.includes('set_goal'),
-      // Not: goals tablosu ayrıca kontrol edilebilir ama AI completion daha güvenilir
+      d.activeGoalsCount > 0
+      || d.completedTasks.includes('set_goal'),
+      // Aktif goals satırı da tamam sayılır: serbest onboarding mesajıyla hedef
+      // koyan kullanıcıya kart "Hedefini belirle" demeye devam ediyordu.
   },
 
   // === ÖNEMLİ (sırayla gösterilir) ===
@@ -75,8 +78,11 @@ const ONBOARDING_TASKS: TaskDef[] = [
     prefillMessage: 'Beslenme alışkanlıklarım ve günlük yeme düzenim hakkında konuşalım.',
     taskModeHint: 'onboarding_eating',
     checkCompletion: (d) =>
-      !!(d.profile?.eating_out_frequency || d.profile?.meal_count_preference)
+      !!d.profile?.eating_out_frequency
       || d.completedTasks.includes('eating_habits'),
+      // meal_count_preference KULLANILMAZ: kolonun DB default'u 3 olduğundan
+      // her kullanıcı doğuştan "tamamlanmış" sayılıyordu ve bu kart hiçbir
+      // kullanıcıda asla görünmüyordu.
   },
   {
     key: 'allergies',
@@ -197,12 +203,13 @@ const ONBOARDING_TASKS: TaskDef[] = [
  */
 export async function getIncompleteTasks(userId: string, maxCount = 3): Promise<OnboardingTask[]> {
   try {
-    const [profileRes, healthEventsRes, labValuesRes, allergiesRes, summaryRes] = await Promise.all([
+    const [profileRes, healthEventsRes, labValuesRes, allergiesRes, summaryRes, goalsRes] = await Promise.all([
       supabase.from('profiles').select('height_cm, weight_kg, birth_year, gender, occupation, work_start, meal_count_preference, eating_out_frequency, kitchen_equipment, meal_prep_time, exercise_history, training_experience, previous_diets, sleep_time, sleep_quality, stress_level, motivation_source, household_cooking').eq('id', userId).maybeSingle(),
       supabase.from('health_events').select('event_type').eq('user_id', userId),
       supabase.from('lab_values').select('id', { count: 'exact', head: true }).eq('user_id', userId),
       supabase.from('food_preferences').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_allergen', true),
       supabase.from('ai_summary').select('onboarding_tasks_completed').eq('user_id', userId).maybeSingle(),
+      supabase.from('goals').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_active', true),
     ]);
 
     const checkData: TaskCheckData = {
@@ -210,6 +217,7 @@ export async function getIncompleteTasks(userId: string, maxCount = 3): Promise<
       healthEvents: (healthEventsRes.data ?? []) as { event_type: string }[],
       labValuesCount: labValuesRes.count ?? 0,
       allergiesCount: allergiesRes.count ?? 0,
+      activeGoalsCount: goalsRes.count ?? 0,
       completedTasks: ((summaryRes.data as Record<string, unknown>)?.onboarding_tasks_completed as string[]) ?? [],
     };
 

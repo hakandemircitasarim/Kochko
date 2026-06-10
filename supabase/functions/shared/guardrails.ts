@@ -16,8 +16,13 @@ const MAX_WEEKLY_LOSS_KG = 1.0;
 const MAX_WORKOUT_DURATION_MIN = 120;
 
 // Spec 12.3: Forbidden medical phrases (Turkish)
+// NOTE: bare 'hastalık' is deliberately NOT here — the app itself labels the
+// illness periodic state with it ('Hastalık döneminde...'), and sanitizing it
+// mangled legitimate plan focus_message text into '[yasam tarzi notu] döneminde'.
+// The clinical combos below (teşhis/tedavi/hastalığınız) still catch medical
+// overreach without eating the app's own vocabulary.
 const FORBIDDEN_PHRASES = [
-  'teshis', 'teşhis', 'tani koy', 'tanı koy', 'tedavi', 'hastalık', 'hastalik',
+  'teshis', 'teşhis', 'tani koy', 'tanı koy', 'tedavi',
   'ilac', 'ilaç', 'recete', 'reçete', 'doktor olarak', 'tibbi olarak', 'tıbbi olarak',
   'tibbi tavsiye', 'tıbbi tavsiye', 'hastaligınız', 'hastalığınız', 'rahatsizligınız',
   'rahatsızlığınız', 'metabolizma bozukluğu', 'beslenme bozuklugu', 'beslenme bozukluğu',
@@ -606,6 +611,26 @@ export function filterExercisesByEquipment(
   }
 
   return { safe, excluded };
+}
+
+/**
+ * Output-side safety scan (Spec 12.2): find exercise names mentioned in a
+ * FREE-TEXT reply that load the user's injured body parts. Chat advice has no
+ * exercise array to run filterExercisesByInjury over, so scan the prose.
+ */
+export function findInjuryConflictsInText(
+  text: string,
+  injuredBodyParts: string[],
+): string[] {
+  if (injuredBodyParts.length === 0 || !text) return [];
+  const lower = text.toLocaleLowerCase('tr');
+  const conflicts = new Set<string>();
+  for (const [pattern, bodyParts] of Object.entries(EXERCISE_BODY_PART_MAP)) {
+    if (lower.includes(pattern) && bodyParts.some(bp => injuredBodyParts.includes(bp))) {
+      conflicts.add(pattern);
+    }
+  }
+  return Array.from(conflicts);
 }
 
 /**

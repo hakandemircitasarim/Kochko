@@ -103,6 +103,17 @@ serve(async (req: Request) => {
 
     // Route to weekly or daily plan generation
     if (body.type === 'weekly') {
+      // Weekly menu is a premium feature (premium-gate.ts weekly_menu_planning).
+      // The gate must live HERE: the screen called the edge function directly,
+      // so a free account could burn AI tokens generating weekly menus.
+      const { data: tierProfile } = await supabaseAdmin
+        .from('profiles').select('premium').eq('id', userId).maybeSingle();
+      if (tierProfile?.premium !== true) {
+        return new Response(
+          JSON.stringify({ error: 'needs_premium', message: 'Haftalık menü planlama Premium özelliğidir.' }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
       const result = await generateWeeklyPlan(userId, today, body.modification_request);
       return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
     }

@@ -31,13 +31,62 @@ const TIER3_FIELDS = [
   'kitchen_equipment', 'household_cooking', 'household_diet_challenge',
 ];
 
+// Enum-constrained profile columns: the model used to emit free Turkish text
+// ("stress_level":"yüksek") which either sat silently in CHECK-less columns or
+// 23514-failed the whole batch. Allowed values go INTO the prompt and a
+// whitelist normalizes/drops on the way out.
+const FIELD_ENUMS: Record<string, string[]> = {
+  sleep_quality: ['good', 'ok', 'bad'],
+  cooking_skill: ['none', 'basic', 'good'],
+  budget_level: ['low', 'medium', 'high'],
+  dietary_restriction: ['vegan', 'vegetarian', 'pescatarian', 'halal', 'kosher', 'gluten_free', 'lactose_free'],
+  eating_out_frequency: ['never', 'rare', 'weekly', 'frequent'],
+  fastfood_frequency: ['never', 'rare', 'weekly', 'frequent'],
+  stress_level: ['low', 'moderate', 'high'],
+  activity_level: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
+  training_experience: ['none', 'beginner', 'intermediate', 'advanced'],
+  equipment_access: ['home', 'gym', 'both'],
+  caffeine_intake: ['none', 'low', 'moderate', 'high'],
+  meal_prep_time: ['short', 'medium', 'long'],
+  household_cooking: ['self', 'partner', 'parent', 'shared'],
+};
+
+const TR_ENUM_ALIASES: Record<string, string[]> = {
+  high: ['yüksek', 'yuksek', 'çok', 'cok'],
+  moderate: ['orta', 'normal'],
+  medium: ['orta', 'normal'],
+  low: ['düşük', 'dusuk', 'az', 'hafif'],
+  good: ['iyi'],
+  bad: ['kötü', 'kotu'],
+  ok: ['orta', 'idare eder'],
+  home: ['ev', 'evde'],
+  gym: ['salon', 'spor salonu'],
+  lactose_free: ['laktoz intoleransı', 'laktoz intoleransi', 'laktozsuz'],
+  gluten_free: ['glutensiz', 'çölyak', 'colyak'],
+};
+
+function normalizeEnumValue(field: string, value: unknown): unknown {
+  const enums = FIELD_ENUMS[field];
+  if (!enums || typeof value !== 'string') return value;
+  const v = value.toLocaleLowerCase('tr').trim();
+  if (enums.includes(v)) return v;
+  for (const e of enums) {
+    if ((TR_ENUM_ALIASES[e] ?? []).includes(v)) return e;
+  }
+  return null; // unmappable → drop the field rather than persist junk
+}
+
 const EXTRACTION_PROMPT = (fields: string[], messages: string) => `
 Aşağıdaki sohbet mesajlarından kullanıcı hakkında şu bilgileri çıkars.
 Sadece AÇIKÇA belirtilen bilgileri çıkars. Tahmin YAPMA.
 Bilgi yoksa null döndür.
 
-Çıkarsanacak alanlar:
-${fields.map(f => `- ${f}`).join('\n')}
+Çıkarsanacak alanlar (parantezdeki değer listesi varsa SADECE o değerlerden birini kullan):
+${fields.map(f => `- ${f}${FIELD_ENUMS[f] ? ` (SADECE: ${FIELD_ENUMS[f].join('|')})` : ''}`).join('\n')}
+
+Ek olarak "_summary_update" anahtarı döndür: bu sohbetten kullanıcı hakkında
+öğrendiğin ÖNEMLİ ve KALICI şeyleri 1-2 cümleyle özetle (davranış kalıbı,
+yaşam koşulu, tercih). Kayda değer yeni bilgi yoksa null.
 
 Sohbet:
 ${messages}
@@ -154,13 +203,17 @@ serve(async (req: Request) => {
 
       totalExtracted++;
 
-      // 6. Write to profile
+      // 6. Write to profile (enum-normalized; unmappable enum values dropped)
       const profileFields = fields.filter(f => TIER2_FIELDS.includes(f) || TIER3_FIELDS.includes(f));
       const profileUpdates: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(nonNull)) {
-        if (profileFields.includes(key)) {
-          profileUpdates[key] = value;
+        if (!profileFields.includes(key)) continue;
+        const normalized = normalizeEnumValue(key, value);
+        if (normalized === null) {
+          console.warn(`[Extractor] dropped unmappable enum value ${key}=${value} for ${userId}`);
+          continue;
         }
+        profileUpdates[key] = normalized;
       }
 
       if (Object.keys(profileUpdates).length > 0) {
@@ -172,6 +225,28 @@ serve(async (req: Request) => {
           // retried on the next run instead of being silently dropped forever.
           console.error(`[Extractor] Profile update failed for ${userId}, checkpoint not advanced:`, updateErr.message);
           continue;
+        }
+      }
+
+      // 6b. L4→L2: merge the extraction call's summary line into ai_summary.
+      // Previously the ONLY L2 writer was the model's inline <layer2_update>
+      // (which it rarely emits), so general_summary went stale forever.
+      const summaryUpdate = nonNull._summary_update;
+      if (typeof summaryUpdate === 'string' && summaryUpdate.trim().length > 10) {
+        try {
+          const { data: curSummary } = await supabaseAdmin
+            .from('ai_summary').select('general_summary').eq('user_id', userId).maybeSingle();
+          const cur = (curSummary?.general_summary as string) ?? '';
+          const dateTag = new Date().toISOString().split('T')[0];
+          let next = `${cur}\n[${dateTag}] ${summaryUpdate.trim()}`.trim();
+          // Keep the summary bounded: oldest lines fall off past ~3000 chars.
+          if (next.length > 3000) next = next.slice(next.length - 3000);
+          await supabaseAdmin.from('ai_summary').upsert(
+            { user_id: userId, general_summary: next, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' },
+          );
+        } catch (e) {
+          console.error(`[Extractor] summary merge failed for ${userId}:`, (e as Error).message);
         }
       }
 

@@ -533,7 +533,9 @@ function formatLayer3(
   // Older days — summary or reference
   if (daysBack >= 3) {
     if (detailLevel === 'full') {
-      // Show per-day summaries for days 2-7
+      // Show per-day summaries for days 2-7 — WITH meal names. Count-only
+      // lines ("06-08: 1 ogun") made the model answer "hangi yemekleri
+      // kaydettim?" with "kayıt yapmamışsın" even though records existed.
       for (let d = 2; d < Math.min(daysBack, 8); d++) {
         const date = new Date(Date.now() - d * 86400000).toISOString().split('T')[0];
         const dayMeals = meals.filter(m => m.logged_for_date === date);
@@ -541,12 +543,14 @@ function formatLayer3(
         const dayReport = reports.find(r => r.date === date);
 
         if (dayMeals.length > 0 || dayWorkouts.length > 0 || dayReport) {
-          const lineParts = [`${date.slice(5)}: ${dayMeals.length} ogun`];
+          const mealNames = dayMeals.map(m => (m.raw_input ?? '').slice(0, 40)).filter(Boolean).join('; ');
+          const lineParts = [`${date.slice(5)}: ${dayMeals.length} ogun${mealNames ? ` (${mealNames})` : ''}`];
           if (dayWorkouts.length > 0) lineParts.push(`${dayWorkouts.length} antrenman`);
           if (dayReport) lineParts.push(`uyum: ${dayReport.compliance_score}/100${dayReport.deviation_reason ? ` (${dayReport.deviation_reason})` : ''}`);
           parts.push(lineParts.join(' | '));
         }
       }
+      parts.push('NOT: "N ogun" satiri o gun gercekten kayit OLDUGU anlamina gelir — "kayit yok" deme.');
 
       // Days 8+ — weekly reference only
       if (daysBack > 7 && reports.length > 0) {
