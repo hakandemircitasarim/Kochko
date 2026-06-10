@@ -45,3 +45,6 @@ yarn-error.*
 # Supabase local dev artifacts
 supabase/.temp/
 supabase/.branches/
+
+# Local test harness + live-DB credentials (service_role key, session tokens) - never commit
+TEMP/
