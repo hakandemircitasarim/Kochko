@@ -54,6 +54,11 @@ export async function createHousehold(
   userId: string,
   name?: string
 ): Promise<Household> {
+  // One household per user (uniq_household_member_per_user enforces this at the
+  // DB too) — pre-check so the user gets a clear message instead of a 23505.
+  const existing = await getUserHousehold(userId);
+  if (existing) throw new Error('Zaten bir ailenin uyesisin. Once mevcut aileden ayril.');
+
   const inviteCode = generateInviteCode();
   const householdName = name ?? 'Ailem';
 
@@ -93,49 +98,29 @@ export async function createHousehold(
  * Join an existing household by invite code.
  */
 export async function joinHousehold(
-  userId: string,
+  _userId: string,
   inviteCode: string
 ): Promise<Household> {
-  // Look up household by invite code
-  const { data: household, error: findError } = await supabase
-    .from('households')
-    .select('*')
-    .eq('invite_code', inviteCode.toUpperCase().trim())
-    .single();
+  // SECURITY DEFINER RPC (migration 043): a non-member can't SELECT the
+  // households row under RLS, so the old code-lookup ALWAYS failed with
+  // "Gecersiz davet kodu" — the join flow was structurally dead.
+  const { data, error } = await supabase.rpc('join_household_by_code', {
+    p_code: inviteCode.toUpperCase().trim(),
+  });
 
-  if (findError || !household) {
-    throw new Error('Gecersiz davet kodu.');
+  if (error) throw new Error('Katilim basarisiz: ' + error.message);
+  const result = data as { ok: boolean; error?: string; household?: Record<string, unknown> } | null;
+  if (!result?.ok || !result.household) {
+    throw new Error(result?.error ?? 'Gecersiz davet kodu.');
   }
 
-  // Check if already a member
-  const { data: existing } = await supabase
-    .from('household_members')
-    .select('id')
-    .eq('household_id', household.id)
-    .eq('user_id', userId)
-    .single();
-
-  if (existing) {
-    throw new Error('Zaten bu aileye uyesiniz.');
-  }
-
-  // Add as member
-  const { error: joinError } = await supabase
-    .from('household_members')
-    .insert({
-      household_id: household.id,
-      user_id: userId,
-      role: 'member',
-    });
-
-  if (joinError) throw joinError;
-
+  const h = result.household;
   return {
-    id: household.id,
-    name: household.name,
-    inviteCode: household.invite_code,
-    ownerId: household.owner_id,
-    createdAt: household.created_at,
+    id: h.id as string,
+    name: h.name as string,
+    inviteCode: h.invite_code as string,
+    ownerId: h.owner_id as string,
+    createdAt: h.created_at as string,
   };
 }
 
@@ -208,11 +193,15 @@ export async function getHouseholdMembers(
 export async function getUserHousehold(userId: string): Promise<Household | null> {
   // Resolve membership through the household_members join table
   // (the source of truth; profiles has no household_id column).
-  const { data: membership } = await supabase
+  // limit(1): legacy data could hold multiple memberships (pre-043 there was
+  // no per-user unique index) and maybeSingle() errors → null on multi-row,
+  // which made the screen show "Aile Oluştur" to an existing member.
+  const { data: memberships } = await supabase
     .from('household_members')
     .select('household_id')
     .eq('user_id', userId)
-    .maybeSingle();
+    .limit(1);
+  const membership = memberships?.[0];
 
   if (!membership?.household_id) return null;
 
@@ -240,48 +229,34 @@ export async function getUserHousehold(userId: string): Promise<Household | null
  * Combines identical ingredients, sums amounts, and tracks which members need them.
  */
 export async function getSharedShoppingList(
-  householdId: string
+  _householdId: string
 ): Promise<ShoppingListItem[]> {
-  // Get all member user IDs
-  const { data: members } = await supabase
-    .from('household_members')
-    .select('user_id')
-    .eq('household_id', householdId);
+  // SECURITY DEFINER RPC (migration 043): weekly_plans RLS only lets a user see
+  // their OWN rows, so the old .in('user_id', memberIds) query silently
+  // filtered other members out — the "shared" list was never shared.
+  const { data, error } = await supabase.rpc('get_household_shopping_list');
+  if (error) {
+    console.warn('getSharedShoppingList failed', error);
+    return [];
+  }
 
-  if (!members || members.length === 0) return [];
+  const plans = (data as { user_id: string; week_start: string; shopping_list: unknown }[] | null) ?? [];
+  if (plans.length === 0) return [];
 
-  const memberIds = members.map((m) => m.user_id);
-
-  // Get current week start
-  const now = new Date();
-  const day = now.getDay();
-  const diff = day === 0 ? 6 : day - 1;
-  now.setDate(now.getDate() - diff);
-  const weekStart = now.toISOString().slice(0, 10);
-
-  // Fetch each member's weekly plan and read its embedded shopping_list JSON.
-  // (There is no weekly_plan_shopping table; the list lives on weekly_plans.)
-  const { data: plans, error } = await supabase
-    .from('weekly_plans')
-    .select('user_id, shopping_list, week_start')
-    .in('user_id', memberIds)
-    .gte('week_start', weekStart);
-
-  if (error) console.warn('getSharedShoppingList failed', error);
-  if (!plans || plans.length === 0) return [];
-
-  // Aggregate by ingredient name. shopping_list items are
-  // { category, name, amount (free-text string), checked }; there is no
-  // numeric quantity, so we keep the amount string as the unit label and use
-  // totalAmount to count how many members need the item.
+  // Aggregate by ingredient name. shopping_list may be FLAT
+  // [{category,name,amount,checked}] or GROUPED [{category,items:[{name,amount}]}]
+  // (the raw AI shape) — flatten both. totalAmount counts how many members need it.
   const aggregated = new Map<string, ShoppingListItem>();
 
   for (const plan of plans) {
-    const list = (plan.shopping_list as
-      | { name?: string; amount?: string }[]
-      | null) ?? [];
+    const raw = Array.isArray(plan.shopping_list) ? plan.shopping_list : [];
+    const flat: { name?: string; amount?: string }[] = [];
+    for (const entry of raw as { name?: string; amount?: string; items?: { name?: string; amount?: string }[] }[]) {
+      if (Array.isArray(entry.items)) flat.push(...entry.items);
+      else flat.push(entry);
+    }
 
-    for (const item of list) {
+    for (const item of flat) {
       const name = item.name?.trim();
       if (!name) continue;
 

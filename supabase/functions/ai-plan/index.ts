@@ -218,14 +218,18 @@ serve(async (req: Request) => {
 
     // Deload check: if 6+ weeks since last deload
     let deloadContext = '';
-    const { data: recentDeload } = await supabaseAdmin
+    // ->> (text), not -> (jsonb): LIKE has no jsonb operator — the old query
+    // 42883-failed on every call and the error was silently swallowed, so the
+    // "days since last deload" branch was unreachable.
+    const { data: recentDeload, error: deloadErr } = await supabaseAdmin
       .from('daily_plans')
       .select('date')
       .eq('user_id', userId)
-      .like('workout_plan->type', '%deload%')
+      .like('workout_plan->>type', '%deload%')
       .order('date', { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (deloadErr) console.error('[ai-plan] deload lookup failed:', deloadErr.message);
     if (!recentDeload) {
       // No deload ever found — check how many weeks of training exist
       const { count } = await supabaseAdmin

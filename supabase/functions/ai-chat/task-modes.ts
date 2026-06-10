@@ -38,6 +38,12 @@ export function detectTaskMode(message: string, isOnboarding: boolean): TaskMode
   // Simulation mode - intent question, must win over bare logging keywords
   if (/yesem|yersem|icsem|içsem|olur mu|yer miyim|ice bilir|içe bilir|ne olur/.test(lower)) return 'simulation';
 
+  // Goal-setting intent must win over the bare "N kilo" weigh-in match below —
+  // "3 ayda 5 kilo vermek istiyorum, hedefim 70 kilo" is a GOAL conversation
+  // (coaching/gpt-4o, goal actions in scope), not a tartı kaydı. Live audit:
+  // this misroute made chat goal creation fail 5/5.
+  if (/hedefim|hedef koy|yeni hedef|hedefimi|kilo vermek istiyorum|kilo almak istiyorum|kas kazanmak istiyorum|zayiflamak istiyorum|zayıflamak istiyorum|formda olmak istiyorum/.test(lower)) return 'coaching';
+
   // Register mode - logging food/workout/metrics
   if (/yedim|yuttum|ictim|içtim|aldim|aldım|atistir|atıştır|yemek yedim|ara ogun|ara öğün|(kahvalt|ogle|öğle|aksam|akşam)[^.!?]*\b(yedim|yaptim|yaptım|aldim|aldım|tukettim|tükettim|atladim|atladım|kacirdim|kaçırdım)\b/.test(lower)) return 'register';
   if (/yaptim|yaptım|kostum|koştum|yurudum|yürüdüm|antrenman|salon|egzersiz|spor yaptim|spor yaptım|yuzdum|yüzdüm|bisiklet/.test(lower)) return 'register';

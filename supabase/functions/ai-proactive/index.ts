@@ -25,6 +25,15 @@ serve(async (req: Request) => {
   const denied = denyIfNotCron(req);
   if (denied) return denied;
   try {
+    // Ops backfill flag (cron-secret-gated like everything here): force the
+    // daily 4-6 UTC block (reports + challenge evaluation) outside its window —
+    // e.g. re-run a missed night, or verify the evaluator after a deploy.
+    let forceDaily = false;
+    try {
+      const body = await req.json();
+      forceDaily = body?.force_daily === true;
+    } catch { /* empty body is the normal cron case */ }
+
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
       .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length')
@@ -1342,7 +1351,7 @@ ${sentTodayContext}`;
 
     // T1.38: Auto-trigger daily report for users at day boundary (Spec 8.1).
     // Fleet-wide cron window — use the server UTC hour (per-user `hour` isn't in scope here).
-    if (utcHour >= 4 && utcHour <= 6) {
+    if ((utcHour >= 4 && utcHour <= 6) || forceDaily) {
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toISOString().split('T')[0];

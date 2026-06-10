@@ -70,16 +70,30 @@ export default function CoachSharingScreen() {
 
   const handleLink = async () => {
     if (!userId || !inviteCode.trim()) return;
+    const coachId = inviteCode.trim();
+    // The "code" must currently be the coach's account ID (UUID). Anything else
+    // hit raw Postgres errors (22P02 invalid uuid / 23503 FK) shown verbatim in
+    // an Alert. Validate up front with a human-readable message instead.
+    // (A real short-code mechanism is a future server feature — B2B, Spec 20.1.)
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(coachId)) {
+      Alert.alert(
+        'Gecersiz kod',
+        'Koc baglantisi icin kocunun hesap kimligini (UUID formatinda) girmen gerekiyor. Kocundan uygulamadaki profil kimligini istemelisin.',
+      );
+      return;
+    }
     setBusy(true);
     try {
-      // Use the invite code as the coach ID (simplified flow)
-      const coachId = inviteCode.trim();
       const allTypes = [...SHAREABLE_DATA_TYPES];
       await shareDataWithCoach(userId, coachId, allTypes);
       setInviteCode('');
       await loadData();
     } catch (e: any) {
-      Alert.alert('Hata', e?.message ?? 'Koc baglantisi kurulamadi.');
+      const msg = String(e?.message ?? '');
+      Alert.alert('Hata', msg.includes('foreign key') || msg.includes('23503')
+        ? 'Bu kimlikle kayitli bir koc bulunamadi. Kimligi kontrol et.'
+        : msg || 'Koc baglantisi kurulamadi.');
     } finally {
       setBusy(false);
     }

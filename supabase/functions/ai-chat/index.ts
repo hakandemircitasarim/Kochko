@@ -510,6 +510,39 @@ serve(async (req: Request) => {
       }
     }
 
+    // Workout-log safety net (mirror of the meal net): natural-phrasing strength
+    // reports ("bench press 4x8 65 kg kaldirdim") intermittently get a
+    // conversational reply with NO workout_log action — the workout silently
+    // vanishes. Same single forced-extraction call pattern, zero double-log risk.
+    if (message
+      && looksLikeWorkoutReport(message)
+      && !actions.some(a => a.type === 'workout_log')
+      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      console.warn('[workout_safety_net] workout intent, no workout_log action — attempting forced extraction');
+      const forcedWorkout = await forceWorkoutLogAction(message, modelSelection.model);
+      if (forcedWorkout) {
+        actions.push(forcedWorkout);
+        console.warn('[workout_safety_net] forced workout_log injected');
+        if (!assistantMessage.trim()) assistantMessage = 'Antrenmanini kaydediyorum, eline saglik!';
+      }
+    }
+
+    // Goal safety net: goal statements ("3 ayda 5 kilo vermek istiyorum, hedefim
+    // 70") were lost 5/5 in the live audit — the model answers conversationally
+    // and omits the actions block despite prompt rules. Forced extraction of the
+    // goal fields into a profile_update action.
+    if (message
+      && looksLikeGoalIntent(message)
+      && !actions.some(a => a.type === 'profile_update' && ((a as Record<string, unknown>).goal_type || (a as Record<string, unknown>).target_weight_kg))
+      && !actions.some(a => a.type === 'goal_suggestion')) {
+      console.warn('[goal_safety_net] goal intent, no goal action — attempting forced extraction');
+      const forcedGoal = await forceGoalAction(message, modelSelection.model);
+      if (forcedGoal) {
+        actions.push(forcedGoal);
+        console.warn('[goal_safety_net] forced goal profile_update injected', { goal_type: forcedGoal.goal_type });
+      }
+    }
+
     // Extract Layer 2 updates
     const { cleanMessage: finalMessage, layer2Updates } = extractLayer2Updates(assistantMessage);
     assistantMessage = finalMessage;
@@ -622,7 +655,9 @@ serve(async (req: Request) => {
               user_id: userId,
               plan_type: expectedType,
               status: 'draft',
-              week_start: (planSnapshot.week_start as string) || effectiveToday,
+              // Monday-anchor whatever the model emitted — the projection step
+              // already re-anchors for the same reason; persist consistently.
+              week_start: getWeekStart((planSnapshot.week_start as string) || effectiveToday),
               plan_data: { ...planSnapshot, version: 1 },
               user_revisions: [],
             })
@@ -643,13 +678,17 @@ serve(async (req: Request) => {
     let planApproved: { id: string } | null = null;
     if (user_approved === true && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
       const expectedType = task_mode_hint === 'plan_diet' ? 'diet' : 'workout';
-      const { data: draftRow } = await supabaseAdmin
+      // Honor the client's draft_id when provided: the user approved the SPECIFIC
+      // draft they were looking at. (The single-draft partial index makes the
+      // fallback safe, but relying on it silently was a dead contract.)
+      let draftQuery = supabaseAdmin
         .from('weekly_plans')
         .select('id, plan_data')
         .eq('user_id', userId)
         .eq('plan_type', expectedType)
-        .eq('status', 'draft')
-        .limit(1);
+        .eq('status', 'draft');
+      if (typeof draft_id === 'string' && draft_id) draftQuery = draftQuery.eq('id', draft_id);
+      const { data: draftRow } = await draftQuery.limit(1);
       const draft = draftRow?.[0] as { id: string; plan_data: Record<string, unknown> } | undefined;
 
       // Re-run the allergen guardrail on the draft before promoting — the
@@ -1051,6 +1090,24 @@ serve(async (req: Request) => {
 
 // --- Helper Functions ---
 
+/**
+ * Canonical snake_case exercise id. The model emits natural language
+ * ("bench press", "askere basma"); readers match exact ids. TR/EN aliases
+ * map to the canonical set used by COMPOUND_LIFTS / the Strength screen.
+ */
+const EXERCISE_ALIASES: Record<string, string> = {
+  'bench': 'bench_press', 'bench_press': 'bench_press', 'gogus_press': 'bench_press', 'göğüs_press': 'bench_press',
+  'squat': 'squat', 'skuat': 'squat', 'çömelme': 'squat', 'comelme': 'squat',
+  'deadlift': 'deadlift', 'olu_kaldiris': 'deadlift', 'ölü_kaldırış': 'deadlift',
+  'ohp': 'overhead_press', 'overhead_press': 'overhead_press', 'askere_basma': 'overhead_press',
+  'military_press': 'overhead_press', 'omuz_press': 'overhead_press',
+  'row': 'barbell_row', 'barbell_row': 'barbell_row', 'barfiks': 'pull_up', 'pull_up': 'pull_up', 'pullup': 'pull_up',
+};
+function canonicalExerciseName(raw: string): string {
+  const snake = (raw ?? '').toLocaleLowerCase('tr').trim().replace(/\s+/g, '_');
+  return EXERCISE_ALIASES[snake] ?? snake;
+}
+
 function respond(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -1223,6 +1280,119 @@ async function forceMealLogAction(
   return mealAction;
 }
 
+/** Past-tense workout report? (mirror of looksLikeMealReport, for the workout net) */
+function looksLikeWorkoutReport(msg: string): boolean {
+  const m = msg.toLocaleLowerCase('tr');
+  const did = /\b(yaptim|yaptım|kostum|koştum|yurudum|yürüdüm|yuzdum|yüzdüm|kaldirdim|kaldırdım|calistim|çalıştım|bitirdim)\b/.test(m)
+    || /(antrenman|salon|egzersiz|kardiyo|kosu|koşu)/.test(m) && /\b(yaptim|yaptım|gittim|bitti|tamamladim|tamamladım)\b/.test(m)
+    || /\d+\s*(set|tekrar|x)\s*\d*/.test(m) && /(press|squat|deadlift|bench|barfiks|agirlik|ağırlık|kg)/.test(m);
+  if (!did) return false;
+  if (/(yapsam|yapacagim|yapacağım|yapmali miyim|yapmalı mıyım|plan|oner|öner)/.test(m)) return false;
+  if (/(yapmadim|yapmadım|gitmedim|atladim|atladım)/.test(m)) return false;
+  return true;
+}
+
+/** Forced single-purpose extraction for workouts (mirror of forceMealLogAction). */
+async function forceWorkoutLogAction(
+  message: string,
+  model: string,
+): Promise<Record<string, unknown> | null> {
+  const systemInstruction = [
+    'Sen bir antrenman parse motorusun. Kullanicinin YAPTIGI antrenmani analiz et ve SADECE asagidaki formatta tek bir <actions> blogu dondur.',
+    'BASKA HICBIR SEY YAZMA — aciklama yok, markdown yok. Sadece <actions>...</actions>.',
+    'Format:',
+    '<actions>[{"type":"workout_log","raw":"kullanicinin yazdigi","workout_type":"cardio|strength|flexibility|sports","duration_min":sayi,"intensity":"low|moderate|high","calories_burned":sayi,"strength_sets":[{"exercise":"squat|bench_press|deadlift|overhead_press|barbell_row|pull_up|veya_snake_case","sets":sayi,"reps":sayi,"weight_kg":sayi}]}]</actions>',
+    'KURALLAR:',
+    '- exercise adlarini DAIMA kucuk harf snake_case yaz (bench press → bench_press).',
+    '- Sure belirtilmemisse antrenman tipine gore makul tahmin (guc ~45, kardiyo ~30).',
+    '- calories_burned gercekci tahmin; sayi olmali.',
+    '- Agirlik calismasi yoksa strength_sets bos dizi olsun.',
+    '- Antrenman tespit edemezsen bos dizi dondur: <actions>[]</actions>.',
+  ].join('\n');
+
+  let raw: string;
+  try {
+    raw = await chatCompletion<string>(
+      [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: message },
+      ],
+      { model, temperature: 0.2, maxTokens: 500 },
+    );
+  } catch (e) {
+    console.error('[forceWorkoutLogAction] chatCompletion failed:', (e as Error).message);
+    return null;
+  }
+
+  let cleaned = raw.trim().replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+  if (!/<actions>/i.test(cleaned)) {
+    const a = cleaned.indexOf('['), b = cleaned.lastIndexOf(']');
+    if (a !== -1 && b > a) cleaned = `<actions>${cleaned.slice(a, b + 1)}</actions>`;
+  }
+  const { actions: parsed } = extractActions(cleaned);
+  const workoutAction = parsed.find((x) => (x as { type?: string }).type === 'workout_log') as Record<string, unknown> | undefined;
+  if (!workoutAction) return null;
+  if (typeof workoutAction.raw !== 'string' || !workoutAction.raw) workoutAction.raw = message;
+  return workoutAction;
+}
+
+/** Goal-setting statement? ("3 ayda 5 kilo vermek istiyorum, hedefim 70") */
+function looksLikeGoalIntent(msg: string): boolean {
+  const m = msg.toLocaleLowerCase('tr');
+  return /(hedefim|hedef koy|yeni hedef|hedefimi)\b/.test(m)
+    || /(kilo vermek|kilo almak|kas kazanmak|zayiflamak|zayıflamak|formda olmak)\s+isti/.test(m);
+}
+
+/** Forced extraction of goal fields into a profile_update action. */
+async function forceGoalAction(
+  message: string,
+  model: string,
+): Promise<Record<string, unknown> | null> {
+  const systemInstruction = [
+    'Sen bir hedef parse motorusun. Kullanicinin sagliklik/kilo hedefini analiz et ve SADECE su formatta tek bir <actions> blogu dondur:',
+    '<actions>[{"type":"profile_update","goal_type":"lose_weight|gain_weight|gain_muscle|health|maintain|conditioning","target_weight_kg":sayi_veya_null}]</actions>',
+    'KURALLAR:',
+    '- "kilo vermek/zayiflamak" → lose_weight; "kilo almak" → gain_weight; "kas" → gain_muscle; "saglikli olmak" → health; "korumak" → maintain; "kondisyon/dayaniklilik" → conditioning.',
+    '- Kullanici hedef kilo soylediyse target_weight_kg olarak yaz (30-300 arasi degilse null).',
+    '- Hedef tespit edemezsen bos dizi: <actions>[]</actions>.',
+    'BASKA HICBIR SEY YAZMA.',
+  ].join('\n');
+
+  let raw: string;
+  try {
+    raw = await chatCompletion<string>(
+      [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: message },
+      ],
+      { model, temperature: 0.1, maxTokens: 200 },
+    );
+  } catch (e) {
+    console.error('[forceGoalAction] chatCompletion failed:', (e as Error).message);
+    return null;
+  }
+
+  let cleaned = raw.trim().replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+  if (!/<actions>/i.test(cleaned)) {
+    const a = cleaned.indexOf('['), b = cleaned.lastIndexOf(']');
+    if (a !== -1 && b > a) cleaned = `<actions>${cleaned.slice(a, b + 1)}</actions>`;
+  }
+  const { actions: parsed } = extractActions(cleaned);
+  const goalAction = parsed.find((x) => {
+    const t = x as Record<string, unknown>;
+    return t.type === 'profile_update' && (t.goal_type || t.target_weight_kg);
+  }) as Record<string, unknown> | undefined;
+  if (!goalAction) return null;
+
+  // Validate against the canonical enum — never let free text reach the column.
+  const VALID_GOALS = new Set(['lose_weight', 'gain_weight', 'gain_muscle', 'health', 'maintain', 'conditioning']);
+  if (goalAction.goal_type && !VALID_GOALS.has(goalAction.goal_type as string)) delete goalAction.goal_type;
+  const tw = Number(goalAction.target_weight_kg);
+  if (!Number.isFinite(tw) || tw < 30 || tw > 300) delete goalAction.target_weight_kg;
+  if (!goalAction.goal_type && !goalAction.target_weight_kg) return null;
+  return goalAction;
+}
+
 function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<string, unknown> | null {
   const result: Record<string, unknown> = {};
   const lower = msg.toLocaleLowerCase('tr');
@@ -1359,8 +1529,10 @@ function extractReasoning(text: string): { cleanMessage: string; reasoning: stri
  * Client renders a "Plana git →" button on the message; if user ignores it,
  * the prompt instructs the model not to re-emit.
  */
+// NOTE: index routes link as the GROUP path — '/(tabs)/index' does not match
+// expo-router's linking config (lands on +not-found); '/(tabs)' is the dashboard.
 const VALID_NAVIGATE_ROUTES = new Set([
-  '/plan/diet', '/plan/workout', '/(tabs)/index', '/(tabs)/chat', '/(tabs)/profile',
+  '/plan/diet', '/plan/workout', '/(tabs)', '/(tabs)/chat', '/(tabs)/profile',
   '/settings/coach-memory', '/settings/goals', '/settings/premium',
 ]);
 
@@ -1764,7 +1936,11 @@ async function executeActions(
               for (let n = 1; n <= setCount; n++) {
                 setRows.push({
                   workout_log_id: wlogRow.id as string,
-                  exercise_name: s.exercise,
+                  // Canonical snake_case at the WRITE boundary — every reader
+                  // (ai-plan progression, overload notifier, Strength screen)
+                  // matches exact snake_case ids, so "bench press" rows were
+                  // invisible to all of them.
+                  exercise_name: canonicalExerciseName(s.exercise),
                   set_number: n,
                   reps: s.reps,
                   weight_kg: s.weight_kg,
@@ -1981,7 +2157,7 @@ async function executeActions(
           if (action.goal_type || action.target_weight_kg) {
             const { data: existingRows } = await supabaseAdmin
               .from('goals')
-              .select('id')
+              .select('id, start_weight_kg, target_weight_kg, target_weeks')
               .eq('user_id', userId)
               .eq('is_active', true)
               .limit(1);
@@ -1993,14 +2169,34 @@ async function executeActions(
             if (action.goal_type) goalPatch.goal_type = action.goal_type;
             else if (!existing) goalPatch.goal_type = 'lose_weight'; // only set default on brand-new row
             if (action.target_weight_kg) goalPatch.target_weight_kg = action.target_weight_kg;
+
+            // start_weight_kg: fixed baseline snapshot for progress math (DoD#7).
+            // Derive weekly_rate from |start - target| / weeks instead of a 0.5
+            // hardcode when both ends are known.
+            const { data: goalProfile } = await supabaseAdmin
+              .from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
+            const currentWeight = (goalProfile?.weight_kg as number | null) ?? null;
+            const targetW = (action.target_weight_kg as number | undefined)
+              ?? (existing?.target_weight_kg as number | undefined) ?? null;
+            const weeks = (existing?.target_weeks as number | undefined) ?? 12;
+            const startW = (existing?.start_weight_kg as number | null) ?? currentWeight;
+            if (!existing && currentWeight) goalPatch.start_weight_kg = currentWeight;
+            else if (existing && !existing.start_weight_kg && currentWeight) goalPatch.start_weight_kg = currentWeight;
+            const derivedRate = (startW && targetW && weeks > 0)
+              ? Math.round((Math.abs(startW - targetW) / weeks) * 100) / 100
+              : null;
+
             if (!existing) {
               goalPatch.target_weeks = 12;
               goalPatch.priority = 'sustainable';
               goalPatch.restriction_mode = 'sustainable';
-              goalPatch.weekly_rate = 0.5;
-              await supabaseAdmin.from('goals').insert(goalPatch);
+              goalPatch.weekly_rate = derivedRate ?? 0.5;
+              const { error: gInsErr } = await supabaseAdmin.from('goals').insert(goalPatch);
+              if (gInsErr) console.error('[profile_update] goal insert failed:', gInsErr.message);
             } else {
-              await supabaseAdmin.from('goals').update(goalPatch).eq('id', existing.id);
+              if (derivedRate) goalPatch.weekly_rate = derivedRate;
+              const { error: gUpdErr } = await supabaseAdmin.from('goals').update(goalPatch).eq('id', existing.id);
+              if (gUpdErr) console.error('[profile_update] goal update failed:', gUpdErr.message);
             }
             pfMessages.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
           }
@@ -2372,21 +2568,61 @@ async function executeActions(
             saglik: 'health', kondisyon: 'conditioning', bakim: 'maintain',
           };
           const rawType = action.goal_type as string;
-          const gType = GOAL_TYPE_MAP[rawType] ?? rawType; // normalize to DB goal_type enum
           const targetVal = action.target_value as number | null;
           const targetWeeks = (action.target_weeks as number) ?? 12;
+
+          // Metric micro-goals (water/sleep/steps) are NOT goals-table rows —
+          // goals.goal_type now has a CHECK on the 6 canonical types and every
+          // consumer (progress math, compatibility matrix) only understands
+          // those. Persist the metric on the profile target instead.
+          if (rawType === 'water' || rawType === 'steps' || rawType === 'sleep') {
+            if (rawType === 'water' && targetVal && targetVal >= 1.5 && targetVal <= 6) {
+              await supabaseAdmin.from('profiles').update({ water_target_liters: targetVal }).eq('id', userId);
+              feedback.push(`Su hedefi guncellendi: ${targetVal}L/gun.`);
+            } else if (rawType === 'steps' && targetVal && targetVal >= 3000 && targetVal <= 30000) {
+              await supabaseAdmin.from('profiles').update({ step_target: Math.round(targetVal) }).eq('id', userId);
+              feedback.push(`Adim hedefi guncellendi: ${Math.round(targetVal)}/gun.`);
+            } else {
+              await updateLayer2(userId, { coaching_note: `Hedef onerisi kabul edildi: ${rawType}${targetVal ? ` ${targetVal}` : ''}` }).then(() => {}, () => {});
+              feedback.push('Hedef not edildi.');
+            }
+            break;
+          }
+
+          const gType = GOAL_TYPE_MAP[rawType];
+          if (!gType) {
+            // Unmapped free-text type: don't pass through to the CHECK-constrained column.
+            feedback.push(`Hedef tipi taninmadi: ${rawType}`);
+            break;
+          }
           const hasWeightTarget = gType === 'gain_muscle' || gType === 'lose_weight' || gType === 'gain_weight';
+
+          // start_weight_kg snapshot: progress math needs a FIXED baseline —
+          // falling back to current profile weight made progress read ~0% forever.
+          const { data: gsProfile } = await supabaseAdmin
+            .from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
+          const startWeight = (gsProfile?.weight_kg as number | null) ?? null;
+          const weeklyRate = (hasWeightTarget && targetVal && startWeight && targetWeeks > 0)
+            ? Math.round((Math.abs(startWeight - targetVal) / targetWeeks) * 100) / 100
+            : null;
 
           // Single-active-goal invariant (migration 033): deactivate current goal first.
           await supabaseAdmin.from('goals').update({ is_active: false }).eq('user_id', userId).eq('is_active', true);
-          await supabaseAdmin.from('goals').insert({
+          const { error: gsErr } = await supabaseAdmin.from('goals').insert({
             user_id: userId,
             goal_type: gType,
             target_weight_kg: hasWeightTarget ? targetVal : null,
             target_weeks: targetWeeks,
+            start_weight_kg: startWeight,
+            ...(weeklyRate ? { weekly_rate: weeklyRate } : {}),
             is_active: true,
             created_at: new Date().toISOString(),
           });
+          if (gsErr) {
+            console.error('[goal_suggestion] insert failed:', gsErr.message);
+            feedback.push('Hedef kaydedilemedi, tekrar dene.');
+            break;
+          }
 
           feedback.push(`Hedef olusturuldu: ${gType}${targetVal ? ` → ${targetVal}` : ''} (${targetWeeks} hafta).`);
           break;

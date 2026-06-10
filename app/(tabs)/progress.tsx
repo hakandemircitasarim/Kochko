@@ -132,29 +132,44 @@ export default function ProgressScreen() {
   const handleMiniCut = async () => {
     if (!user?.id || !profile) return;
     setMiniCutLoading(true);
-    const tdee = (profile.tdee_calculated as number) ?? 2000;
-    const miniCutCalories = Math.round(tdee * 0.85);
+    try {
+      const tdee = (profile.tdee_calculated as number) ?? 2000;
+      const miniCutCalories = Math.round(tdee * 0.85);
+      const currentWeight = (profile.weight_kg as number | null) ?? null;
+      // A weight target keeps goal-progress math sane: without one,
+      // calculateGoalProgress treated target=current → "goal reached" on day 1.
+      const targetWeight = currentWeight ? Math.round((currentWeight - 1.5) * 10) / 10 : null;
 
-    await supabase.from('profiles').update({
-      calorie_range_rest_min: miniCutCalories - 100,
-      calorie_range_rest_max: miniCutCalories + 100,
-    }).eq('id', user.id);
+      const { error: profErr } = await supabase.from('profiles').update({
+        calorie_range_rest_min: miniCutCalories - 100,
+        calorie_range_rest_max: miniCutCalories + 100,
+      }).eq('id', user.id);
+      if (profErr) throw profErr;
 
-    // Single-active-goal invariant (migration 033): deactivate the current goal first.
-    await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
-    await supabase.from('goals').insert({
-      user_id: user.id,
-      goal_type: 'lose_weight',
-      target_weeks: 3,
-      phase_label: 'Mini-Cut',
-      priority: 'sustainable',
-      restriction_mode: 'sustainable',
-      is_active: true,
-    });
+      // Single-active-goal invariant (migration 033): deactivate the current goal first.
+      const { error: deactErr } = await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
+      if (deactErr) throw deactErr;
+      const { error: insErr } = await supabase.from('goals').insert({
+        user_id: user.id,
+        goal_type: 'lose_weight',
+        target_weeks: 3,
+        phase_label: 'Mini-Cut',
+        priority: 'sustainable',
+        restriction_mode: 'sustainable',
+        start_weight_kg: currentWeight,
+        target_weight_kg: targetWeight,
+        weekly_rate: 0.5,
+        is_active: true,
+      });
+      if (insErr) throw insErr;
 
-    Alert.alert('Mini-Cut Başlatıldı', `3 haftalık mini-cut: ${miniCutCalories - 100}-${miniCutCalories + 100} kcal. Sonra tekrar bakıma dönersin.`);
-    setMiniCutOffered(false);
-    setMiniCutLoading(false);
+      Alert.alert('Mini-Cut Başlatıldı', `3 haftalık mini-cut: ${miniCutCalories - 100}-${miniCutCalories + 100} kcal. Sonra tekrar bakıma dönersin.`);
+      setMiniCutOffered(false);
+    } catch (e) {
+      Alert.alert('Hata', 'Mini-cut başlatılamadı, lütfen tekrar dene.\n\n' + ((e as { message?: string }).message ?? ''));
+    } finally {
+      setMiniCutLoading(false);
+    }
   };
 
   if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
