@@ -53,6 +53,14 @@ export const ALLERGEN_FOODS: Record<string, string[]> = {
   yumurta: ['yumurta', 'omlet', 'menemen'],
   balık: ['balık', 'balik', 'somon', 'levrek', 'hamsi'],
   balik: ['balık', 'balik', 'somon', 'levrek', 'hamsi'],
+  // Category-style allergens users actually say ("deniz ürünleri alerjim var") must
+  // expand to concrete member foods (karides, midye...) or a shrimp suggestion would
+  // slip past the allergen guardrail (#R2-12).
+  'deniz ürünleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'balık', 'balik', 'somon', 'levrek', 'hamsi'],
+  'deniz urunleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'istakoz', 'yengec', 'istiridye', 'balik', 'somon', 'levrek', 'hamsi'],
+  'deniz mahsulleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengeç', 'yengec', 'istiridye', 'balık', 'balik', 'somon', 'levrek', 'hamsi'],
+  kabuklu: ['karides', 'midye', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'kalamar'],
+  kabuklular: ['karides', 'midye', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'kalamar'],
 };
 
 /**

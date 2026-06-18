@@ -2181,8 +2181,11 @@ async function executeActions(
                   // invisible to all of them.
                   exercise_name: canonicalExerciseName(s.exercise),
                   set_number: n,
-                  reps: s.reps,
-                  weight_kg: s.weight_kg,
+                  // reps is NOT NULL — coerce so a model that omits reps doesn't
+                  // 23502-fail the WHOLE batch and lose every set (#R2-11). weight
+                  // defaults to 0 (bodyweight) when absent.
+                  reps: Math.max(1, Math.round(Number(s.reps)) || 1),
+                  weight_kg: Number.isFinite(Number(s.weight_kg)) ? Number(s.weight_kg) : 0,
                 });
               }
             }
@@ -3460,19 +3463,10 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       changes.habit_progress = habits;
     }
 
-    // A1: Alcohol pattern (Spec 3.1 — previously silently dropped)
-    if (updates.alcohol_pattern) {
-      const current = (existing?.coaching_notes as string) ?? '';
-      const dateStr = new Date().toISOString().split('T')[0];
-      changes.coaching_notes = `${current}\n[${dateStr}] Alkol kalıbı: ${updates.alcohol_pattern}`.trim();
-    }
-
-    // A2: Social eating note (Spec 7.4 — previously silently dropped)
-    if (updates.social_eating_note) {
-      const current = (existing?.coaching_notes as string) ?? '';
-      const dateStr = new Date().toISOString().split('T')[0];
-      changes.coaching_notes = `${current}\n[${dateStr}] Sosyal yeme: ${updates.social_eating_note}`.trim();
-    }
+    // A1/A2: alcohol_pattern + social_eating_note are written to their DEDICATED
+    // columns below (A1/A2 structured blocks), which buildLayer2/context-builders
+    // read. The old coaching_notes duplication here double-wrote the same info
+    // (#R2-14) — removed so each signal has one home.
 
     // A3: Features introduced tracking (Spec 15 — progressive disclosure)
     if (updates.features_introduced) {
@@ -3489,16 +3483,19 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       changes.seasonal_notes = `${current}\n[${dateStr}] ${updates.seasonal_note}`.trim();
     }
 
-    // A1: Alcohol pattern — structured format { pattern, frequency, impact }
+    // A1: Alcohol pattern. The column is TEXT (read via ->>'alcohol_pattern' and in
+    // buildLayer2), so write a clean human-readable STRING — NOT an object, which
+    // would be stored as raw JSON and need parse-back everywhere (#R2-13/#R2-14).
     if (updates.alcohol_pattern) {
       if (typeof updates.alcohol_pattern === 'object') {
-        changes.alcohol_pattern = updates.alcohol_pattern;
+        const o = updates.alcohol_pattern as { pattern?: string; frequency?: string; impact?: string };
+        changes.alcohol_pattern = [
+          o.pattern,
+          o.frequency && o.frequency !== 'bilinmiyor' && `Siklik: ${o.frequency}`,
+          o.impact && o.impact !== 'bilinmiyor' && `Etki: ${o.impact}`,
+        ].filter(Boolean).join(' | ') || (o.pattern ?? '');
       } else {
-        changes.alcohol_pattern = {
-          pattern: updates.alcohol_pattern as string,
-          frequency: 'bilinmiyor',
-          impact: 'bilinmiyor',
-        };
+        changes.alcohol_pattern = updates.alcohol_pattern as string;
       }
     }
 

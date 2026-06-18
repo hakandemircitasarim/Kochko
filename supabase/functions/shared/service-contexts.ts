@@ -660,6 +660,11 @@ export async function getConflictContext(
           fistik: ['fistik', 'fıstık'],
           yumurta: ['yumurta', 'omlet', 'menemen'],
           balik: ['balik', 'balık', 'somon', 'levrek', 'hamsi'],
+          // Seafood/shellfish category expansion — same coverage as guardrails.ts (#R2-12).
+          'deniz urunleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengec', 'istiridye', 'balik', 'somon', 'levrek', 'hamsi'],
+          'deniz ürünleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengeç', 'yengec', 'istiridye', 'balık', 'balik', 'somon', 'levrek', 'hamsi'],
+          'deniz mahsulleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengec', 'istiridye', 'balik', 'somon', 'levrek', 'hamsi'],
+          kabuklu: ['karides', 'midye', 'istakoz', 'yengeç', 'yengec', 'istiridye', 'kalamar'],
         };
 
         for (const allergen of allergens) {

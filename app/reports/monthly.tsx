@@ -34,6 +34,7 @@ export default function MonthlyReportScreen() {
   const [aiReport, setAiReport] = useState<MonthlyAIReport | null>(null);
   const [generating, setGenerating] = useState(false);
   const [weightData, setWeightData] = useState<{ label: string; value: number }[]>([]);
+  const [dailyAvgCompliance, setDailyAvgCompliance] = useState<number>(0);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -50,7 +51,15 @@ export default function MonthlyReportScreen() {
         .eq('month_start', monthStart).single(),
       supabase.from('daily_metrics').select('date, weight_kg').eq('user_id', user.id)
         .gte('date', monthStart).lte('date', monthEnd).order('date'),
-    ]).then(([reportsRes, goalRes, monthlyRes, metricsRes]) => {
+      // Daily-report compliance fallback: early users often have daily_reports but
+      // no weekly_reports yet, so weekly-only avg shows 0 despite compliant days (#R2-15).
+      supabase.from('daily_reports').select('compliance_score').eq('user_id', user.id)
+        .gte('date', monthStart).lte('date', monthEnd),
+    ]).then(([reportsRes, goalRes, monthlyRes, metricsRes, dailyRes]) => {
+      const dailyScores = ((dailyRes.data ?? []) as { compliance_score: number | null }[])
+        .map(d => d.compliance_score).filter((s): s is number => typeof s === 'number' && s > 0);
+      setDailyAvgCompliance(dailyScores.length > 0
+        ? Math.round(dailyScores.reduce((a, b) => a + b, 0) / dailyScores.length) : 0);
       setWeeklyReports((reportsRes.data ?? []) as Record<string, unknown>[]);
       setProfile((goalRes.data as { target_weight_kg: number | null }[] | null)?.[0] ?? null);
       if (monthlyRes.data) {
@@ -92,9 +101,12 @@ export default function MonthlyReportScreen() {
     </View>;
   }
 
-  const avgCompliance = weeklyReports.length > 0
+  const weeklyAvgCompliance = weeklyReports.length > 0
     ? Math.round(weeklyReports.reduce((s, r) => s + (r.avg_compliance as number ?? 0), 0) / weeklyReports.length)
     : 0;
+  // Prefer weekly aggregate; fall back to the daily-report average so early users
+  // (daily_reports but no weekly_reports yet) don't see a misleading 0 (#R2-15).
+  const avgCompliance = weeklyAvgCompliance > 0 ? weeklyAvgCompliance : dailyAvgCompliance;
 
   // weekly_reports has no weight_start/weight_end columns — derive month-boundary weights from
   // the daily_metrics weights already loaded (weightData is ascending by date).

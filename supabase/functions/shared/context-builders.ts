@@ -339,7 +339,22 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
       if (lines.length > 0) parts.push(lines.join('\n\n'));
     }
     if (s.coaching_notes) parts.push(`## KOCLUK NOTLARI\n${s.coaching_notes}`);
-    if (s.alcohol_pattern) parts.push(`Alkol kalibi: ${s.alcohol_pattern}`);
+    if (s.alcohol_pattern) {
+      // A legacy writer may have serialized {pattern,frequency,impact} as JSON into
+      // this TEXT column — parse it back to a readable line instead of dumping raw
+      // JSON into the prompt (#R2-13), matching memory.ts.
+      const raw = (s.alcohol_pattern as string).trim();
+      let line = s.alcohol_pattern as string;
+      if (raw.startsWith('{')) {
+        try {
+          const p = JSON.parse(raw) as { pattern?: string; frequency?: string; impact?: string };
+          if (p && (p.pattern || p.frequency || p.impact)) {
+            line = [p.pattern, p.frequency && `Siklik: ${p.frequency}`, p.impact && `Etki: ${p.impact}`].filter(Boolean).join(' | ');
+          }
+        } catch { /* not JSON, use raw */ }
+      }
+      parts.push(`Alkol kalibi: ${line}`);
+    }
     if (s.caffeine_sleep_notes) parts.push(`Kafein-uyku: ${s.caffeine_sleep_notes}`);
     if (s.social_eating_notes) parts.push(`Sosyal yeme: ${s.social_eating_notes}`);
     if (s.weekly_budget_pattern) parts.push(`Haftalik butce kalibi: ${s.weekly_budget_pattern}`);

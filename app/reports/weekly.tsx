@@ -65,7 +65,9 @@ export default function WeeklyReportScreen() {
       const kcal = r.alcohol_calories ?? 0;
       thisWeekTotal += kcal;
       const d = new Date(r.date).getDay();
-      if (d === 0 || d === 5 || d === 6) weekendKcal += kcal;
+      // Turkish weekend is Saturday(6)+Sunday(0). Friday(5) was wrongly bucketed
+      // as weekend, inflating the "Hafta sonu" total (#R2-16).
+      if (d === 0 || d === 6) weekendKcal += kcal;
       else weekdayKcal += kcal;
     }
     const prevWeekTotal = ((prevWeekRows.data ?? []) as { alcohol_calories: number | null }[])
