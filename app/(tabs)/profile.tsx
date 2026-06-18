@@ -142,12 +142,22 @@ export default function ProfileScreen() {
           coachingNotes={String(summary.coaching_notes ?? '')}
           onDeleteNote={async (note) => {
             if (!user?.id) return;
-            await deleteAISummaryNote(user.id, 'general_summary', note);
+            try {
+              await deleteAISummaryNote(user.id, 'general_summary', note);
+            } catch {
+              Alert.alert('Silinemedi', 'Not silinirken bir sorun oluştu. Lütfen tekrar dene.');
+              return;
+            }
             loadInsights().then(setSummary);
           }}
           onResetAll={async () => {
             if (!user?.id) return;
-            await resetAISummary(user.id);
+            try {
+              await resetAISummary(user.id);
+            } catch {
+              Alert.alert('Sıfırlanamadı', 'Hafıza sıfırlanırken bir sorun oluştu. Lütfen tekrar dene.');
+              return;
+            }
             setSummary(null);
           }}
         />

@@ -235,6 +235,36 @@ export async function getIncompleteTasks(userId: string, maxCount = 3): Promise<
 }
 
 /**
+ * Overall onboarding progress across all 13 profile-building tasks.
+ * Powers the "X / 13 tamamlandı" header + progress bar so the user can see how
+ * far along they are instead of facing an open-ended list (note: "sonsuz kuyu").
+ */
+export async function getOnboardingProgress(userId: string): Promise<{ completed: number; total: number }> {
+  try {
+    const [profileRes, healthEventsRes, labValuesRes, allergiesRes, summaryRes, goalsRes] = await Promise.all([
+      supabase.from('profiles').select('height_cm, weight_kg, birth_year, gender, occupation, work_start, meal_count_preference, eating_out_frequency, kitchen_equipment, meal_prep_time, exercise_history, training_experience, previous_diets, sleep_time, sleep_quality, stress_level, motivation_source, household_cooking').eq('id', userId).maybeSingle(),
+      supabase.from('health_events').select('event_type').eq('user_id', userId),
+      supabase.from('lab_values').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+      supabase.from('food_preferences').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_allergen', true),
+      supabase.from('ai_summary').select('onboarding_tasks_completed').eq('user_id', userId).maybeSingle(),
+      supabase.from('goals').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_active', true),
+    ]);
+    const checkData: TaskCheckData = {
+      profile: profileRes.data as Record<string, unknown> | null,
+      healthEvents: (healthEventsRes.data ?? []) as { event_type: string }[],
+      labValuesCount: labValuesRes.count ?? 0,
+      allergiesCount: allergiesRes.count ?? 0,
+      activeGoalsCount: goalsRes.count ?? 0,
+      completedTasks: ((summaryRes.data as Record<string, unknown>)?.onboarding_tasks_completed as string[]) ?? [],
+    };
+    const completed = ONBOARDING_TASKS.filter(t => t.checkCompletion(checkData)).length;
+    return { completed, total: ONBOARDING_TASKS.length };
+  } catch {
+    return { completed: 0, total: ONBOARDING_TASKS.length };
+  }
+}
+
+/**
  * Lookup a single task's display metadata by key. Used by TaskCompletionCard
  * to render next-suggestion cards after the AI finishes a task.
  * Returns null for unknown keys (silently drops invalid next_suggestions).

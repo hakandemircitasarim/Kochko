@@ -75,6 +75,7 @@ interface UIMessage extends ChatMessage {
   recipeSaved?: boolean;
   taskCompletion?: { completed: string; summary: string; next_suggestions: string[] } | null;
   navigateTo?: string | null;
+  reasoning?: string | null; // AI's thinking for this message — shown inline on "Neden?" toggle
   failed?: boolean;
   errorMessage?: string;
   retryPayload?: { text: string; photoUri: string | null; taskMode?: string; backdate?: string | null };
@@ -180,6 +181,17 @@ function sanitizeAssistantText(text: string): string {
     .replace(/<commitment>[\s\S]*?<\/commitment>/g, '')
     .replace(/<persona_detected>[\s\S]*?<\/persona_detected>/g, '')
     .trim();
+}
+
+// Extract the model's <reasoning> block (its "thinking" for this reply). We keep
+// it on the message and reveal it inline on the "Neden?" toggle — like ChatGPT's
+// show-thinking — instead of stripping it and forcing a second round-trip.
+function parseReasoning(content: string): { cleanContent: string; reasoning: string | null } {
+  const match = content.match(/<reasoning>([\s\S]*?)<\/reasoning>/);
+  if (!match) return { cleanContent: content, reasoning: null };
+  const reasoning = match[1].trim();
+  const cleanContent = content.replace(/<reasoning>[\s\S]*?<\/reasoning>/, '').trim();
+  return { cleanContent, reasoning: reasoning || null };
 }
 
 function parseQuickSelect(content: string): { cleanContent: string; options: string[] | null } {
@@ -567,6 +579,12 @@ export default function SessionDetailScreen() {
       messageContent = quickSelectParsed.cleanContent;
       const quickSelectOptions = quickSelectParsed.options;
 
+      // Extract the AI's reasoning so the "Neden?" toggle can reveal it inline
+      // (no extra round-trip). Falls back to plan_reasoning when present.
+      const reasoningParsed = parseReasoning(messageContent);
+      messageContent = reasoningParsed.cleanContent;
+      const reasoning = reasoningParsed.reasoning ?? data.plan_reasoning ?? null;
+
       // Detect confirm/reject plan suggestion
       const hasPlanSuggestion = hasConfirmRejectIndicator(messageContent, data.task_mode);
       messageContent = messageContent.replace(/<confirm_reject\s*\/?>/g, '').trim();
@@ -594,6 +612,7 @@ export default function SessionDetailScreen() {
         personaDetected,
         taskCompletion: data.task_completion ?? null,
         navigateTo: data.navigate_to ?? null,
+        reasoning,
       };
       setMessages(prev => [...prev, reply]);
 
@@ -943,6 +962,7 @@ export default function SessionDetailScreen() {
           messages={messages}
           isOnboarding={!!isOnboarding}
           onSuggestion={handleSuggestion}
+          showSuggestions={!taskModeHint}
         />
       ) : (
         <FlatList
@@ -1212,10 +1232,13 @@ export default function SessionDetailScreen() {
 
 // --- Sub-components ---
 
-function EmptyState({ messages, isOnboarding, onSuggestion }: {
+function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = true }: {
   messages: UIMessage[];
   isOnboarding: boolean;
   onSuggestion: (text: string) => void;
+  // In a specific task chat the AI opens with a contextual question, so generic
+  // example-starters ("2 yumurta yedim") are irrelevant noise — hide them there.
+  showSuggestions?: boolean;
 }) {
   const { colors, isDark } = useTheme();
 
@@ -1281,10 +1304,13 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
         </View>
       )}
 
+      {showSuggestions && (
       <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm }}>
         ÖRNEK BAŞLANGIÇLAR
       </Text>
+      )}
 
+      {showSuggestions && (
       <View style={{ gap: SPACING.sm }}>
         {suggestions.map((s, i) => (
           <TouchableOpacity
@@ -1321,6 +1347,7 @@ function EmptyState({ messages, isOnboarding, onSuggestion }: {
           </TouchableOpacity>
         ))}
       </View>
+      )}
     </ScrollView>
   );
 }
@@ -1377,6 +1404,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
 }) {
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
+  const [showReasoning, setShowReasoning] = useState(false);
 
   // Detect which silent actions this message triggered (for visual badges)
   const allActions = [...(message.actions ?? []), ...(message.actions_executed ?? [])];
@@ -1580,15 +1608,30 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
             contextType={message.task_mode === 'recipe' ? 'recipe' : message.task_mode === 'plan' ? 'meal_suggestion' : 'coaching_message'}
             contextId={message.id}
           />
-          {/* Transparency: ask why this suggestion */}
+          {/* Transparency: reveal the AI's reasoning for THIS message inline (like
+              ChatGPT's "show thinking"). If the reply already carries reasoning we
+              just toggle it — no extra chat round-trip. Only fall back to asking
+              the model when this message has no pre-emitted reasoning. */}
           <TouchableOpacity
-            onPress={() => onAskWhy(message.content)}
-            style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm }}
+            onPress={() => { if (message.reasoning) setShowReasoning(v => !v); else onAskWhy(message.content); }}
+            style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
+            <Ionicons name="bulb-outline" size={12} color={colors.textMuted} />
             <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
-              Neden bu öneriyi yaptın?
+              {message.reasoning ? (showReasoning ? 'Düşünce akışını gizle' : 'Neden bu öneriyi yaptım?') : 'Neden bu öneriyi yaptın?'}
             </Text>
           </TouchableOpacity>
+          {message.reasoning && showReasoning && (
+            <View style={{
+              marginTop: SPACING.xs, padding: SPACING.sm, borderRadius: RADIUS.md,
+              backgroundColor: isDark ? '#FFFFFF0A' : '#0000000A',
+              borderLeftWidth: 2, borderLeftColor: colors.primary,
+            }}>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, lineHeight: 18, fontStyle: 'italic' }}>
+                {message.reasoning}
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -1649,7 +1692,10 @@ function TaskCompletionCard({
   const handleTap = async (task: NonNullable<ReturnType<typeof getTaskByKey>>) => {
     const id = await createSession({ title: task.title, topicTags: [task.key] });
     if (id) {
-      router.push({
+      // We're already on a /chat/[sessionId] screen — REPLACE it, don't push, so
+      // moving to the next topic doesn't stack chats (back would otherwise return
+      // to the just-finished chat instead of the session list).
+      router.replace({
         pathname: `/chat/${id}`,
         params: { prefill: task.prefillMessage, taskModeHint: task.taskModeHint },
       });

@@ -13,7 +13,7 @@ import {
   loadSessions, createSession, deleteSession, closeSession,
   type ChatSessionSummary,
 } from '@/services/chat.service';
-import { getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
+import { getIncompleteTasks, getOnboardingProgress, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { OnboardingTaskCard } from '@/components/chat/OnboardingTaskCard';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
@@ -41,6 +41,7 @@ export default function SessionListScreen() {
   const { prefill, openCamera } = useLocalSearchParams<{ prefill?: string; openCamera?: string }>();
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [tasks, setTasks] = useState<OnboardingTask[]>([]);
+  const [progress, setProgress] = useState<{ completed: number; total: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [prefillHandled, setPrefillHandled] = useState(false);
 
@@ -80,7 +81,9 @@ export default function SessionListScreen() {
     // Load sessions — tasks may fail if migration not run yet, that's ok
     let incompleteTasks: OnboardingTask[] = [];
     try {
-      incompleteTasks = await getIncompleteTasks(user.id);
+      const [t, p] = await Promise.all([getIncompleteTasks(user.id), getOnboardingProgress(user.id)]);
+      incompleteTasks = t;
+      setProgress(p);
     } catch (err) {
       console.warn('[chat] onboarding tasks load failed (migration may be pending):', err);
     }
@@ -199,6 +202,38 @@ export default function SessionListScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Profilini tamamla — onboarding progress + task cards. Rendered ABOVE the
+          list/empty-state so the cards show even when there are no sessions yet
+          (note #6), and the progress bar tells the user how far along they are
+          instead of an open-ended list (note #4). */}
+      {tasks.length > 0 && (
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
+            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Profilini tamamla
+            </Text>
+            {progress && (
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+                {progress.completed}/{progress.total} konu
+              </Text>
+            )}
+          </View>
+          {progress && progress.total > 0 && (
+            <View style={{ height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden', marginBottom: SPACING.md }}>
+              <View style={{ width: `${Math.round((progress.completed / progress.total) * 100)}%`, height: '100%', backgroundColor: colors.primary, borderRadius: 3 }} />
+            </View>
+          )}
+          <FlatList
+            data={tasks}
+            keyExtractor={t => t.key}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: SPACING.sm }}
+            renderItem={({ item }) => <OnboardingTaskCard task={item} onPress={handleTaskPress} />}
+          />
+        </View>
+      )}
+
       {/* Session list */}
       {sessions.length === 0 && !loading ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
@@ -231,21 +266,6 @@ export default function SessionListScreen() {
           keyExtractor={s => s.id}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchSessions} tintColor={colors.primary} />}
           contentContainerStyle={{ paddingHorizontal: SPACING.xl, paddingBottom: 100 + insets.bottom }}
-          ListHeaderComponent={tasks.length > 0 ? (
-            <View style={{ marginBottom: SPACING.xxl }}>
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
-                Yapılacaklar
-              </Text>
-              <FlatList
-                data={tasks}
-                keyExtractor={t => t.key}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: SPACING.sm }}
-                renderItem={({ item }) => <OnboardingTaskCard task={item} onPress={handleTaskPress} />}
-              />
-            </View>
-          ) : null}
           renderItem={({ item }) => (
             <TouchableOpacity
               onPress={() => router.push(`/chat/${item.id}`)}
