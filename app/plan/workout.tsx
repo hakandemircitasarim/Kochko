@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Stack, router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -111,7 +112,9 @@ export default function WorkoutPlanScreen() {
     });
     setSending(false);
     if (error || !data) {
-      setMessages(prev => [...prev, { id: 'err-' + Date.now(), role: 'assistant', content: error ?? 'Plan oluşturulamadı.' }]);
+      // messages list only renders in 'draft' view; on failure view stays
+      // 'empty' so a pushed bubble is invisible — use an Alert instead.
+      Alert.alert('Plan oluşturulamadı', error ?? 'Bir sorun oluştu, lütfen tekrar dene.');
       return;
     }
     setMessages(prev => [

@@ -134,8 +134,13 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
 
   let reverseDiet: ReverseDietStatus | null = null;
   if (tdee && profile.calorie_range_rest_min) {
-    const deficitCalories = profile.calorie_range_rest_min as number;
-    reverseDiet = calculateReverseDiet(deficitCalories, tdee, weeksSinceGoalReached);
+    // profile.calorie_range_rest_min is ALREADY the server-ramped current target
+    // (ai-proactive bumps it +125 kcal/week, Mondays). Passing weeksSinceGoalReached
+    // here would re-add that ramp → displayed target double-counts (#21). Treat the
+    // ramped column as the live value (weeksSinceGoalReached=0) and only surface the
+    // real week index in the status message.
+    const rampedCalories = profile.calorie_range_rest_min as number;
+    reverseDiet = { ...calculateReverseDiet(rampedCalories, tdee, 0), currentWeek: weeksSinceGoalReached };
   }
 
   const maintenanceCalories = reverseDiet && !reverseDiet.isComplete

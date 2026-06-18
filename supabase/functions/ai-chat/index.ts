@@ -1518,12 +1518,60 @@ async function forceGoalAction(
   if (!goalAction) return null;
 
   // Validate against the canonical enum — never let free text reach the column.
-  const VALID_GOALS = new Set(['lose_weight', 'gain_weight', 'gain_muscle', 'health', 'maintain', 'conditioning']);
-  if (goalAction.goal_type && !VALID_GOALS.has(goalAction.goal_type as string)) delete goalAction.goal_type;
+  if (goalAction.goal_type && !CANONICAL_GOAL_TYPES.has(goalAction.goal_type as string)) delete goalAction.goal_type;
   const tw = Number(goalAction.target_weight_kg);
   if (!Number.isFinite(tw) || tw < 30 || tw > 300) delete goalAction.target_weight_kg;
   if (!goalAction.goal_type && !goalAction.target_weight_kg) return null;
   return goalAction;
+}
+
+// Canonical goal types (mig 043 CHECK). Hoisted to module scope so BOTH the
+// regex safety-net (validateGoalAction) and the model-emitted profile_update goal
+// path reuse the same whitelist — a free-text/Turkish goal_type must never reach
+// the CHECK-constrained column. (#8)
+const CANONICAL_GOAL_TYPES = new Set(['lose_weight', 'gain_weight', 'gain_muscle', 'health', 'maintain', 'conditioning']);
+
+// CHECK-constrained profiles enum columns. The model occasionally emits Turkish
+// free text ("orta", "kadın") which 23514-fails the WHOLE batch update and
+// silently drops every co-submitted field (height_cm, weight_kg, ...). Normalize/
+// drop the offending value on the way out, mirroring ai-extractor. (#7)
+const PROFILE_ENUM_WHITELIST: Record<string, string[]> = {
+  gender: ['male', 'female', 'other'],
+  activity_level: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
+  budget_level: ['low', 'medium', 'high'],
+  cooking_skill: ['none', 'basic', 'good'],
+  diet_mode: ['standard', 'low_carb', 'keto', 'high_protein'],
+  equipment_access: ['home', 'gym', 'both'],
+  training_style: ['cardio', 'strength', 'mixed'],
+};
+const PROFILE_ENUM_ALIASES: Record<string, string[]> = {
+  male: ['erkek', 'bay', 'man'],
+  female: ['kadın', 'kadin', 'bayan', 'woman'],
+  high: ['yüksek', 'yuksek', 'çok', 'cok'],
+  moderate: ['orta', 'normal'],
+  medium: ['orta', 'normal'],
+  low: ['düşük', 'dusuk', 'az', 'hafif'],
+  good: ['iyi'],
+  none: ['yok', 'hiç', 'hic'],
+  basic: ['temel', 'başlangıç', 'baslangic'],
+  home: ['ev', 'evde'],
+  gym: ['salon', 'spor salonu'],
+  both: ['ikisi', 'her ikisi', 'ikisi de'],
+  strength: ['güç', 'guc', 'kuvvet', 'ağırlık', 'agirlik'],
+  cardio: ['kardiyo'],
+  mixed: ['karışık', 'karisik', 'karma'],
+};
+// Returns a canonical value, or null if the value can't be mapped (→ drop it).
+function normalizeProfileEnum(field: string, value: unknown): string | null {
+  const enums = PROFILE_ENUM_WHITELIST[field];
+  if (!enums) return typeof value === 'string' ? value : null;
+  if (typeof value !== 'string') return null;
+  const v = value.toLocaleLowerCase('tr').trim();
+  if (enums.includes(v)) return v;
+  for (const e of enums) {
+    if ((PROFILE_ENUM_ALIASES[e] ?? []).includes(v)) return e;
+  }
+  return null;
 }
 
 function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<string, unknown> | null {
@@ -2384,6 +2432,16 @@ async function executeActions(
           // maps feedback[i] -> actions[i] positionally (line ~863), so pushing 2
           // (profile + goal) for a single action would shift every later action's chip.
           const pfMessages: string[] = [];
+          // Normalize/drop CHECK-constrained enum columns so one off-enum value
+          // (e.g. Turkish "orta") can't 23514-fail the whole batch and silently
+          // lose every co-submitted field (#7).
+          for (const enumField of Object.keys(PROFILE_ENUM_WHITELIST)) {
+            if (updates[enumField] !== undefined) {
+              const norm = normalizeProfileEnum(enumField, updates[enumField]);
+              if (norm === null) delete updates[enumField];
+              else updates[enumField] = norm;
+            }
+          }
           if (Object.keys(updates).length > 0) {
             updates.updated_at = new Date().toISOString();
             const { error: pfErr } = await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
@@ -2407,7 +2465,10 @@ async function executeActions(
               user_id: userId,
               is_active: true,
             };
-            if (action.goal_type) goalPatch.goal_type = action.goal_type;
+            // Whitelist goal_type — a model-emitted profile_update bypasses both the
+            // regex safety-net and goal_suggestion's GOAL_TYPE_MAP, so an off-enum
+            // value (e.g. 'cut'/'kilo_verme') would 23514-fail the insert (#8).
+            if (action.goal_type && CANONICAL_GOAL_TYPES.has(action.goal_type as string)) goalPatch.goal_type = action.goal_type;
             else if (!existing) goalPatch.goal_type = 'lose_weight'; // only set default on brand-new row
             if (action.target_weight_kg) goalPatch.target_weight_kg = action.target_weight_kg;
 
@@ -2427,19 +2488,22 @@ async function executeActions(
               ? Math.round((Math.abs(startW - targetW) / weeks) * 100) / 100
               : null;
 
+            let goalWriteOk = true;
             if (!existing) {
               goalPatch.target_weeks = 12;
               goalPatch.priority = 'sustainable';
               goalPatch.restriction_mode = 'sustainable';
               goalPatch.weekly_rate = derivedRate ?? 0.5;
               const { error: gInsErr } = await supabaseAdmin.from('goals').insert(goalPatch);
-              if (gInsErr) console.error('[profile_update] goal insert failed:', gInsErr.message);
+              if (gInsErr) { console.error('[profile_update] goal insert failed:', gInsErr.message); goalWriteOk = false; }
             } else {
               if (derivedRate) goalPatch.weekly_rate = derivedRate;
               const { error: gUpdErr } = await supabaseAdmin.from('goals').update(goalPatch).eq('id', existing.id);
-              if (gUpdErr) console.error('[profile_update] goal update failed:', gUpdErr.message);
+              if (gUpdErr) { console.error('[profile_update] goal update failed:', gUpdErr.message); goalWriteOk = false; }
             }
-            pfMessages.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
+            // Only claim success when the DB actually accepted the write — never tell
+            // the user "Hedef belirlendi" while the row was rejected (#8).
+            if (goalWriteOk) pfMessages.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
           }
           // Exactly one feedback entry for this profile_update action (null = no chip,
           // but keeps feedback[] positionally aligned with actions[]).
@@ -3503,10 +3567,16 @@ async function checkOnboardingCompletion(userId: string) {
 async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('height_cm, birth_year, gender, activity_level, tdee_last_weight, tdee_last_date')
+    .select('height_cm, birth_year, gender, activity_level, tdee_last_weight, tdee_last_date, maintenance_mode, periodic_state')
     .eq('id', userId).maybeSingle();
 
   if (!profile?.height_cm || !profile?.birth_year || !profile?.gender) return;
+
+  // In maintenance/reverse-diet, ai-proactive OWNS calorie_range_rest_* and
+  // weekly_calorie_budget (it ramps them +125 kcal/week). A weight-log recalc must
+  // NOT overwrite those with the deficit formula — that erases the ramp (#13). We
+  // still refresh the BMR/TDEE baseline + protein/water so they don't go stale.
+  const inMaintenance = profile.maintenance_mode === true || profile.periodic_state === 'maintenance';
 
   const lastWeight = profile.tdee_last_weight as number | null;
   const lastDate = profile.tdee_last_date as string | null;
@@ -3542,28 +3612,43 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
 
   // protein_target_g is not a profiles column (it lives on daily_plans); record
   // protein intent via protein_per_kg (proteinG above derives from this 1.8 factor).
-  await supabaseAdmin.from('profiles').update({
+  const profileUpdate: Record<string, unknown> = {
     tdee_calculated: tdee,
     tdee_last_weight: currentWeight,
     tdee_last_date: new Date().toISOString().split('T')[0],
-    calorie_range_training_min: trainingMin,
-    calorie_range_training_max: trainingMax,
-    calorie_range_rest_min: restMin,
-    calorie_range_rest_max: restMax,
     protein_per_kg: 1.8,
     water_target_liters: waterTarget,
-    weekly_calorie_budget: weeklyBudget,
     updated_at: new Date().toISOString(),
-  }).eq('id', userId);
+  };
+  if (!inMaintenance) {
+    // Only the non-maintenance path may rewrite the calorie ranges / weekly budget.
+    profileUpdate.calorie_range_training_min = trainingMin;
+    profileUpdate.calorie_range_training_max = trainingMax;
+    profileUpdate.calorie_range_rest_min = restMin;
+    profileUpdate.calorie_range_rest_max = restMax;
+    profileUpdate.weekly_calorie_budget = weeklyBudget;
+  }
+  await supabaseAdmin.from('profiles').update(profileUpdate).eq('id', userId);
+
+  // #10: write the previously-dead Layer-2 tdee_notes signal (spec 5.1) so buildLayer2
+  // surfaces a real value instead of an empty field.
+  await supabaseAdmin.rpc('ai_summary_merge', {
+    p_user_id: userId,
+    p_patch: { tdee_notes: `Son TDEE ${tdee} kcal @ ${currentWeight.toFixed(1)}kg (${new Date().toISOString().split('T')[0]})` },
+  }).then(() => {}, () => {});
 
   // Notify user so they know targets shifted
   const reason = lastWeight
     ? `Kilon ${lastWeight.toFixed(1)} → ${currentWeight.toFixed(1)}kg degisti`
     : 'İlk TDEE hesaplamasi';
+  const content = inMaintenance
+    // In maintenance we deliberately didn't touch the ranges (ramp owns them).
+    ? `${reason}. Yeni TDEE ${tdee} kcal, protein ${proteinG}g, su ${waterTarget}L. (Bakım dönemi: kalori aralığın korunuyor.)`
+    : `${reason}. Yeni TDEE ${tdee} kcal, kalori araligi ${restMin}-${trainingMax} kcal, protein ${proteinG}g, su ${waterTarget}L.`;
   await supabaseAdmin.from('coaching_messages').insert({
     user_id: userId,
     trigger_type: 'tdee_recalculated',
     priority: 'low',
-    content: `${reason}. Yeni TDEE ${tdee} kcal, kalori araligi ${restMin}-${trainingMax} kcal, protein ${proteinG}g, su ${waterTarget}L.`,
+    content,
   }).then(() => {}, () => {});
 }

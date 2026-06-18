@@ -73,8 +73,9 @@ export default function RootLayout() {
         {/* app/plan/* — header is managed per-page via inline <Stack.Screen> in
             diet.tsx/workout.tsx/history.tsx (each sets its own title). No
             grouped layout file, so no parent declaration needed here. */}
-        <Stack.Screen name="recipe" options={{ headerShown: false }} />
-        <Stack.Screen name="weekly-menu" options={{ headerShown: false }} />
+        {/* (removed) 'recipe' / 'weekly-menu' had no app/recipe.* or app/weekly-menu.*
+            route file — the real screens live at app/settings/{recipes,weekly-menu}.tsx
+            and nothing navigates to the bare names. Orphan registrations deleted. */}
         <Stack.Screen name="reports" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
       </Stack>

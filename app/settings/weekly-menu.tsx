@@ -23,7 +23,7 @@ export default function WeeklyMenuScreen() {
     setGenerating(true);
     setError(null);
     const { data, error } = await generateWeeklyPlan();
-    if (error) setError('Menu olusturulamadi: ' + error);
+    if (error) setError(error);
     else if (data) setPlan(data);
     setGenerating(false);
   };

@@ -88,6 +88,20 @@ export function validatePlanOutput(output: Record<string, unknown>): ValidationR
     }
   }
 
+  // Top-level plan_type is CHECK-constrained to training|rest in daily_plans. The
+  // model occasionally emits 'training_day'/'antrenman'/etc., which 23514-fails the
+  // insert and 500s the whole plan generation. Coerce to a legal value here (#9),
+  // mirroring the workout_plan.type guard below. Prefer deriving from workout_plan.
+  {
+    const wpType = (output.workout_plan && typeof output.workout_plan === 'object')
+      ? (output.workout_plan as Record<string, unknown>).type
+      : undefined;
+    if (output.plan_type !== 'training' && output.plan_type !== 'rest') {
+      if (output.plan_type !== undefined) errors.push(`plan_type gecersiz: ${output.plan_type}`);
+      output.plan_type = (wpType === 'rest' || wpType === undefined) ? 'rest' : 'training';
+    }
+  }
+
   // Calorie min should be less than max
   if (typeof output.calorie_target_min === 'number' && typeof output.calorie_target_max === 'number') {
     if ((output.calorie_target_min as number) > (output.calorie_target_max as number)) {

@@ -15,6 +15,9 @@ import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, 
 import { denyIfNotCron } from '../shared/cron-auth.ts';
 
 const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
+// Same provider-config knob as shared/openai.ts — point at any OpenAI-compatible
+// endpoint via the OPENAI_BASE_URL secret (defaults to OpenAI).
+const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
 
 const TIER2_FIELDS = [
   'occupation', 'work_start', 'work_end', 'sleep_time', 'wake_time', 'sleep_quality',
@@ -158,7 +161,7 @@ serve(async (req: Request) => {
         .join('\n');
 
       // 4. Call GPT-4o-mini for extraction
-      const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      const openaiRes = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OPENAI_KEY}`,

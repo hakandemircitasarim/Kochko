@@ -130,15 +130,17 @@ export async function deleteAISummaryNote(
   if (typeof currentValue === 'string') {
     // Remove the note from text
     const updated = (currentValue as string).replace(noteToDelete, '').replace(/\n\n+/g, '\n\n').trim();
-    const { error } = await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId);
+    const { data: upd, error } = await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId).select('user_id');
     if (error) throw new Error(error.message);
+    if (!upd || upd.length === 0) throw new Error('Not silinemedi (kayıt güncellenmedi).');
   } else if (Array.isArray(currentValue)) {
     // Remove from array (patterns, habits, etc.)
     const updated = (currentValue as { description: string }[]).filter(
       item => !item.description?.includes(noteToDelete)
     );
-    const { error } = await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId);
+    const { data: upd, error } = await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId).select('user_id');
     if (error) throw new Error(error.message);
+    if (!upd || upd.length === 0) throw new Error('Not silinemedi (kayıt güncellenmedi).');
   }
 }
 
@@ -147,7 +149,7 @@ export async function deleteAISummaryNote(
  * User explicitly requests full memory reset.
  */
 export async function resetAISummary(userId: string): Promise<void> {
-  const { error } = await supabase.from('ai_summary').update({
+  const { data, error } = await supabase.from('ai_summary').update({
     general_summary: '',
     behavioral_patterns: [],
     coaching_notes: '',
@@ -167,8 +169,12 @@ export async function resetAISummary(userId: string): Promise<void> {
     weekly_budget_pattern: null,
     supplement_notes: null,
     updated_at: new Date().toISOString(),
-  } as never).eq('user_id', userId);
+  } as never).eq('user_id', userId).select('user_id');
   if (error) throw new Error(error.message);
+  // A PostgREST UPDATE blocked by RLS returns success with 0 rows (no error).
+  // Treat a 0-row result as a hard failure so a KVKK reset can never silently
+  // no-op (e.g. if the ai_summary_upd policy regresses).
+  if (!data || data.length === 0) throw new Error('Hafıza sıfırlanamadı (kayıt güncellenmedi).');
 }
 
 // ─── Photo Cleanup (Phase 7) ───

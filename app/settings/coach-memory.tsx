@@ -114,7 +114,14 @@ export default function CoachMemoryScreen() {
             // Clear the field by setting it to null/empty
             const emptyValue = ['behavioral_patterns', 'micro_nutrient_risks', 'habit_progress', 'features_introduced'].includes(field)
               ? [] : typeof data?.[fieldToKey(field)] === 'object' ? {} : null;
-            await supabase.from('ai_summary').update({ [field]: emptyValue } as never).eq('user_id', user.id);
+            // .select() so a 0-row result (RLS no-op) is detectable — a KVKK Madde 17
+            // delete must never silently fail and leave the data in place.
+            const { data: upd, error } = await supabase.from('ai_summary')
+              .update({ [field]: emptyValue } as never).eq('user_id', user.id).select('user_id');
+            if (error || !upd || upd.length === 0) {
+              Alert.alert('Silinemedi', 'Bilgi silinirken bir sorun oluştu. Lütfen tekrar dene.');
+              return;
+            }
             await logAuditEvent(user.id, 'ai_summary_delete', `Kullanici AI ozeti alani temizledi: ${field}`, { field });
             loadData();
           }
@@ -133,7 +140,12 @@ export default function CoachMemoryScreen() {
           text: 'Hepsini Sıfırla', style: 'destructive',
           onPress: async () => {
             if (!user?.id) return;
-            await resetAISummary(user.id);
+            try {
+              await resetAISummary(user.id);
+            } catch {
+              Alert.alert('Sıfırlanamadı', 'Hafıza sıfırlanırken bir sorun oluştu. Lütfen tekrar dene.');
+              return;
+            }
             await logAuditEvent(user.id, 'ai_summary_delete', 'Kullanici tum AI hafizasini sifirladi');
             loadData();
           }

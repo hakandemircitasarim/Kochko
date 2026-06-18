@@ -144,7 +144,7 @@ export async function getRecoveryContext(userId: string): Promise<string> {
 
     // Get target from profile
     const { data: profile } = await supabaseAdmin
-      .from('profiles').select('calorie_range_rest_min, calorie_range_rest_max').eq('id', userId).maybeSingle();
+      .from('profiles').select('calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, weekly_calorie_budget').eq('id', userId).maybeSingle();
     const dailyTarget = Math.round(((profile?.calorie_range_rest_min as number ?? 1800) + (profile?.calorie_range_rest_max as number ?? 2200)) / 2);
     const excess = Math.max(0, todayCalories - dailyTarget);
 
@@ -165,7 +165,12 @@ export async function getRecoveryContext(userId: string): Promise<string> {
         .from('meal_log_items').select('calories').in('meal_log_id', weekLogIds);
       weeklyConsumed = (weekItems ?? []).reduce((s, i) => s + ((i.calories as number) ?? 0), 0);
     }
-    const weeklyBudget = dailyTarget * 7;
+    // Canonical weekly budget = profiles.weekly_calorie_budget (4×training-mid +
+    // 3×rest-mid), the SAME value the dashboard/plan projection uses. dailyTarget*7
+    // flattened the deliberate 4-training/3-rest split and disagreed with the
+    // dashboard for the same user (#14).
+    const trainingMid = Math.round(((profile?.calorie_range_training_min as number ?? 2000) + (profile?.calorie_range_training_max as number ?? 2400)) / 2);
+    const weeklyBudget = (profile?.weekly_calorie_budget as number | null | undefined) ?? (4 * trainingMid + 3 * dailyTarget);
     const weeklyRemaining = Math.max(0, weeklyBudget - weeklyConsumed);
     // Days left in the ISO week INCLUDING today (Monday-anchored). The old `7 - getDay()`
     // used Sunday=0, so on Sunday it said 7 days left (a fresh week) instead of 1 — telling

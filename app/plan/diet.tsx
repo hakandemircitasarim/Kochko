@@ -20,6 +20,7 @@ import {
   Platform,
   FlatList,
   Keyboard,
+  Alert,
 } from 'react-native';
 import { Stack, router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -128,7 +129,10 @@ export default function DietPlanScreen() {
     });
     setSending(false);
     if (error || !data) {
-      setMessages(prev => [...prev, { id: 'err-' + Date.now(), role: 'assistant', content: error ?? 'Plan oluşturulamadı.' }]);
+      // The messages list only renders inside the 'draft' view; on a creation
+      // failure no draft exists so view stays 'empty' (PlanEmptyState) and a
+      // pushed bubble would be invisible. Surface the error with an Alert.
+      Alert.alert('Plan oluşturulamadı', error ?? 'Bir sorun oluştu, lütfen tekrar dene.');
       return;
     }
     setMessages(prev => [

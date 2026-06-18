@@ -53,7 +53,7 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
     // 1. Profile for targets
     supabase
       .from('profiles')
-      .select('calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg, water_target_liters')
+      .select('calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, weekly_calorie_budget, protein_per_kg, weight_kg, water_target_liters')
       .eq('id', userId)
       .single(),
 
@@ -147,7 +147,16 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
   // Weekly budget remaining
   const weekMeals = (weekMealsRes.data ?? []) as { calories: number | null }[];
   const weekCalories = weekMeals.reduce((sum, m) => sum + (m.calories ?? 0), 0);
-  const weeklyBudget = calorieTarget * 7;
+  // Canonical weekly budget = profiles.weekly_calorie_budget (4×training-mid + 3×rest-mid),
+  // the SAME value the dashboard projects from. The old calorieTarget*7 flattened the
+  // deliberate 4-training/3-rest weighting and disagreed with the dashboard (#14).
+  const trainingMid = profile
+    ? Math.round(((profile.calorie_range_training_min ?? 1800) + (profile.calorie_range_training_max ?? 2200)) / 2)
+    : 2000;
+  const restMid = profile
+    ? Math.round(((profile.calorie_range_rest_min ?? 1600) + (profile.calorie_range_rest_max ?? 2000)) / 2)
+    : 1800;
+  const weeklyBudget = (profile?.weekly_calorie_budget as number | null | undefined) ?? (4 * trainingMid + 3 * restMid);
   const weeklyBudgetRemaining = weeklyBudget - weekCalories;
 
   return {

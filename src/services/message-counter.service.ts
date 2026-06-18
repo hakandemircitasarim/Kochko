@@ -78,6 +78,22 @@ export async function incrementAndCheck(isPremium: boolean): Promise<{
 }
 
 /**
+ * Refund one message for today (clamped at 0). Call this when a send that was
+ * optimistically counted ultimately FAILED (LLM/edge error) and no chat_messages
+ * row was persisted server-side — otherwise a free user would burn their daily
+ * allowance on messages the AI never answered, and could even lock themselves
+ * out client-side while the authoritative server still allows them.
+ */
+export async function refundDailyMessage(isPremium: boolean): Promise<void> {
+  if (isPremium) return;
+  const today = new Date().toISOString().split('T')[0];
+  const current = await getDailyMessageCount();
+  if (current.date !== today) return; // day rolled over; nothing to refund
+  const newCount = Math.max(0, current.count - 1);
+  await AsyncStorage.setItem(COUNTER_KEY, JSON.stringify({ date: today, count: newCount }));
+}
+
+/**
  * Get remaining messages for today.
  */
 export async function getRemainingMessages(isPremium: boolean): Promise<number> {

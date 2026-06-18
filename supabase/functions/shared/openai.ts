@@ -5,6 +5,13 @@
  */
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
+// Provider/base-URL is configurable so the project can be pointed at any
+// OpenAI-compatible endpoint (Azure OpenAI, OpenRouter, a self-hosted gateway,
+// or a different OpenAI account) by setting ONE secret — no code change/redeploy
+// of logic needed. Defaults to OpenAI. Combined with KOCHKO_MODEL_* overrides
+// (model-router.ts) this lets the operator swap the whole LLM backend in seconds,
+// e.g. to recover from a quota outage without waiting on a deploy.
+const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
 
 const MODELS = {
   primary: 'gpt-4o',
@@ -82,7 +89,7 @@ export async function chatCompletion<T = string>(
     body.response_format = { type: 'json_object' };
   }
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${OPENAI_API_KEY}`,

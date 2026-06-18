@@ -51,10 +51,10 @@ export async function invokePlanChat(params: {
   if (params.draftId) body.draft_id = params.draftId;
   try {
     const { data, error } = await supabase.functions.invoke('ai-chat', { body });
-    if (error) return { data: null, error: error.message };
+    if (error) return { data: null, error: await mapInvokeError(error) };
     return { data: data as ChatResponse, error: null };
   } catch (e) {
-    return { data: null, error: (e as Error).message };
+    return { data: null, error: FRIENDLY_AI_ERROR };
   }
 }
 
@@ -102,6 +102,52 @@ async function handleAuthFailure(): Promise<void> {
   }
 }
 
+// ─── Error mapping ───
+// supabase-js wraps any non-2xx edge response in a FunctionsHttpError whose
+// .message is ALWAYS the fixed English string 'Edge Function returned a non-2xx
+// status code'; the real HTTP status + body live in error.context (a Response).
+// We must never surface that raw string to a Turkish user — map every failure to
+// a friendly message, and read the real status for retry decisions.
+const FRIENDLY_AI_ERROR = 'Kochko şu an yanıt veremiyor. Birazdan tekrar dene.';
+
+function extractStatus(error: unknown): number | null {
+  const ctx = (error as { context?: unknown } | null)?.context;
+  if (ctx && typeof ctx === 'object' && 'status' in (ctx as object)) {
+    const s = (ctx as { status?: unknown }).status;
+    return typeof s === 'number' ? s : null;
+  }
+  return null;
+}
+
+async function extractServerError(error: unknown): Promise<string | null> {
+  const ctx = (error as { context?: unknown } | null)?.context;
+  if (ctx && typeof (ctx as { clone?: unknown }).clone === 'function') {
+    try {
+      const body = await (ctx as Response).clone().json();
+      if (body && typeof body === 'object' && 'error' in body) return String((body as { error: unknown }).error);
+    } catch { /* body not JSON or already consumed */ }
+  }
+  return null;
+}
+
+// Map any edge/LLM failure to a friendly Turkish message. Never leaks the raw
+// supabase-js 'non-2xx status code' string.
+async function mapInvokeError(error: { message: string }): Promise<string> {
+  const msg = error.message ?? '';
+  if (isAuthError(msg)) return 'Oturum süresi doldu. Lütfen tekrar giriş yap.';
+  const status = extractStatus(error);
+  if (status === 401 || status === 403) return 'Oturum süresi doldu. Lütfen tekrar giriş yap.';
+  if (status === 429) return 'Çok hızlı gidiyorsun, birazdan tekrar dene.';
+  const serverMsg = await extractServerError(error);
+  // Server-authored 4xx validation messages are Turkish and user-safe — surface
+  // them. But never echo an internal provider error (OpenAI/quota/key) to the user.
+  if (status !== null && status >= 400 && status < 500 && serverMsg && !/openai|api key|quota|insufficient/i.test(serverMsg)) {
+    return serverMsg;
+  }
+  // 5xx / AI down / unknown → friendly fallback.
+  return FRIENDLY_AI_ERROR;
+}
+
 // ─── Validation ───
 
 export function validateMessage(text: string): { valid: boolean; error: string | null } {
@@ -126,7 +172,8 @@ async function invokeChat(
   if (body.client_timezone === undefined) {
     try { body.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* tz unavailable */ }
   }
-  let lastError = 'Baglanti hatasi. Lutfen tekrar dene.';
+  let lastFriendly = 'Bağlantı hatası. Lütfen tekrar dene.';
+  let serverRetries = 0; // 5xx/AI-down attempts already spent (cap at 1 extra)
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Promise.race gives us a hard upper bound on wait time. Supabase client
@@ -146,33 +193,39 @@ async function invokeChat(
     const { data, error } = result as { data: unknown; error: { message: string } | null };
     if (!error) return { data: data as ChatResponse, error: null };
 
-    lastError = error.message;
-
-    // Timeout: retry a second time unless we're on the last attempt. The
-    // retry loop will hit the same timeout again if the server really is down.
+    // Timeout: retry unless we're on the last attempt. The retry loop will hit
+    // the same timeout again if the server really is down.
     if (timedOut && attempt < maxRetries) {
       continue;
     }
 
-    if (isAuthError(lastError)) {
+    const status = extractStatus(error);
+    if (isAuthError(error.message) || status === 401 || status === 403) {
       // Fire-and-forget — handleAuthFailure tries a silent refresh and falls
       // back to signOut. UI gets a friendly message either way.
       void handleAuthFailure();
-      return { data: null, error: 'Oturum suresi doldu. Lutfen tekrar giris yap.' };
+      return { data: null, error: 'Oturum süresi doldu. Lütfen tekrar giriş yap.' };
     }
 
-    // Non-retryable errors: fail fast
-    if (isNonRetryable(lastError)) return { data: null, error: lastError };
+    // Always resolve to a friendly Turkish message — never the raw English
+    // 'Edge Function returned a non-2xx status code'.
+    lastFriendly = await mapInvokeError(error);
 
-    // Last attempt — don't wait
-    if (attempt === maxRetries) break;
+    // Client 4xx (validation/rate-limit/payload) won't change on retry — fail fast.
+    const isClient4xx = status !== null && status >= 400 && status < 500;
+    if (isClient4xx || isNonRetryable(error.message)) {
+      return { data: null, error: lastFriendly };
+    }
 
-    // Exponential backoff: attempt 0→1s, attempt 1→3s
-    const delayMs = attempt === 0 ? 1000 : 3000;
-    await new Promise(resolve => setTimeout(resolve, delayMs));
+    // 5xx / unknown server error (e.g. OpenAI quota outage) won't self-heal in
+    // seconds. Allow ONE quick retry to absorb a cold-start bounce, then stop —
+    // retrying 3× just burns ~4s and up to 6 server-side OpenAI calls (#11).
+    serverRetries++;
+    if (serverRetries > 1 || attempt === maxRetries) break;
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  return { data: null, error: lastError };
+  return { data: null, error: lastFriendly };
 }
 
 // ─── Core Send Functions ───

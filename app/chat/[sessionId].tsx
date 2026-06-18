@@ -31,7 +31,7 @@ import { getTaskByKey } from '@/services/onboarding-tasks.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { saveRecipe, type RecipeIngredient } from '@/services/recipes.service';
 import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
-import { incrementAndCheck, getRemainingMessages } from '@/services/message-counter.service';
+import { incrementAndCheck, getRemainingMessages, refundDailyMessage } from '@/services/message-counter.service';
 import { speak, stopSpeaking, isSpeaking } from '@/services/tts.service';
 import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
@@ -351,7 +351,7 @@ export default function SessionDetailScreen() {
         // Card-triggered session: AI sends first message (not user)
         setLoading(false);
         setSending(true);
-        const { data: response } = await sendMessageToSession(
+        const { data: response, error } = await sendMessageToSession(
           sessionId,
           `[SYSTEM_INIT] Bu konu hakkında bildiklerini özetle ve sormak istediğin soruları sor.`,
           taskModeHint,
@@ -360,6 +360,15 @@ export default function SessionDetailScreen() {
           setMessages([
             { id: `a-${Date.now()}`, role: 'assistant', content: response.message, task_mode: response.task_mode, created_at: new Date().toISOString() },
           ]);
+        } else if (!cancelled) {
+          // Auto-start failed (e.g. LLM outage). Don't drop the user into a blank
+          // EmptyState as if nothing happened — show a friendly assistant bubble
+          // so the tapped task clearly registered. (User can re-send to retry.)
+          setMessages([{
+            id: `a-init-err-${Date.now()}`, role: 'assistant',
+            content: error ?? 'Şu an cevap veremedim, bağlantıda bir sorun oldu. Birazdan tekrar dener misin?',
+            task_mode: taskModeHint, created_at: new Date().toISOString(),
+          }]);
         }
         if (!cancelled) { setSending(false); setPrefillApplied(true); }
       } else if (data.length === 0 && isOnboarding && !taskModeHint) {
@@ -468,6 +477,7 @@ export default function SessionDetailScreen() {
     let effectiveTaskMode: string | undefined;
     let backdate: string | null;
     let userMsgId: string;
+    let counterIncremented = false; // so we can refund it if the send fails (#12)
 
     if (retryFrom && retryFrom.retryPayload) {
       text = retryFrom.retryPayload.text;
@@ -486,6 +496,7 @@ export default function SessionDetailScreen() {
       // Message counter check (Spec 16: free daily limit)
       if (text && !photo) {
         const counterResult = await incrementAndCheck(isPremium);
+        counterIncremented = counterResult.allowed && !isPremium;
         setRemainingMsgs(counterResult.remaining);
         if (!counterResult.allowed) {
           Alert.alert(
@@ -617,6 +628,13 @@ export default function SessionDetailScreen() {
           }
         : m
       ));
+      // The send never reached/persisted on the server — refund the optimistic
+      // daily-message increment so a free user doesn't lose a message the AI
+      // never answered (#12). Retries don't re-increment, so this stays balanced.
+      if (counterIncremented) {
+        await refundDailyMessage(isPremium);
+        getRemainingMessages(isPremium).then(setRemainingMsgs);
+      }
     }
 
     setSending(false);
@@ -681,7 +699,12 @@ export default function SessionDetailScreen() {
         }]);
         if (data.actions.some(a => a.feedback) && user?.id) refreshDashboard(user.id);
       } else {
-        setMessages(prev => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: error ?? 'Bağlantı hatası.', created_at: new Date().toISOString() }]);
+        // Mirror the main send path: flip the user's own bubble to a failed state
+        // with a 'Yeniden dene' retry, instead of printing the error as a fake
+        // assistant reply (which looked like the coach said the error text).
+        setMessages(prev => prev.map(m => m.id === userMsg.id
+          ? { ...m, failed: true, errorMessage: error ?? 'Bağlantı hatası.', retryPayload: { text: option, photoUri: null } }
+          : m));
       }
       setSending(false);
       scrollToBottom();
@@ -826,12 +849,11 @@ export default function SessionDetailScreen() {
         };
         setMessages(prev => [...prev, reply]);
       } else {
-        setMessages(prev => [...prev, {
-          id: `e-${Date.now()}`,
-          role: 'assistant',
-          content: error ?? 'Bağlantı hatası. Tekrar dene.',
-          created_at: new Date().toISOString(),
-        }]);
+        // Flip the user's bubble to a failed/retry state rather than rendering
+        // the error as a fake assistant reply.
+        setMessages(prev => prev.map(m => m.id === userMsg.id
+          ? { ...m, failed: true, errorMessage: error ?? 'Bağlantı hatası. Tekrar dene.', retryPayload: { text, photoUri: null } }
+          : m));
       }
       setSending(false);
       scrollToBottom();

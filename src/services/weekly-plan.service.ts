@@ -153,7 +153,9 @@ export async function generateWeeklyPlan(modificationRequest?: string): Promise<
   const body: Record<string, unknown> = { type: 'weekly' };
   if (modificationRequest) body.modification_request = modificationRequest;
   const { error } = await supabase.functions.invoke('ai-plan', { body });
-  if (error) return { data: null, error: error.message };
+  // Never surface the raw supabase-js 'Edge Function returned a non-2xx status
+  // code' to the user (e.g. on an OpenAI outage) — show a friendly Turkish msg.
+  if (error) return { data: null, error: 'Menü şu an oluşturulamıyor, birazdan tekrar dene.' };
   // The function's response body is the raw AI JSON (no row id) — the persisted
   // weekly_plans row is the source of truth, so re-read it for the screen.
   const plan = await getCurrentWeeklyPlan();
