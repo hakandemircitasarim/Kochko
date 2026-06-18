@@ -79,7 +79,27 @@ serve(async (req: Request) => {
       return respond({ error: 'message or image required' }, 400);
     }
 
-    // Prompt injection detection (Spec 5.26)
+    // SAFETY FIRST (Spec 5.5 / 12.5): emergency + high-risk eating-disorder
+    // screening runs BEFORE the prompt-injection guard and rate limit. A genuine
+    // crisis ("ölmek istiyorum") must ALWAYS reach the 112 / crisis referral even
+    // if the message also contains injection-shaped phrases or the user is rate-
+    // limited — otherwise an injection match would short-circuit a distressed user
+    // into the dismissive coach rejection (#R2-8).
+    if (message) {
+      const emergency = detectEmergency(message);
+      if (emergency.isEmergency) {
+        await storeMessages(userId, message, emergency.message, undefined, undefined, undefined, undefined, session_id);
+        return respond({ message: emergency.message, actions: [], task_mode: 'emergency' });
+      }
+      const edRisk = detectEDRisk(message);
+      if (edRisk.isRisk && edRisk.severity === 'high') {
+        await storeMessages(userId, message, edRisk.message, undefined, undefined, undefined, undefined, session_id);
+        return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
+      }
+      // Medium severity: continue normal flow but AI will see ED_REFERRAL in sanitized output
+    }
+
+    // Prompt injection detection (Spec 5.26) — after crisis screening
     let injectionDetected = false;
     if (message) {
       const injection = sanitizeUserInput(message);
@@ -103,25 +123,6 @@ serve(async (req: Request) => {
         rate_limited: true,
         remaining: 0,
       }, 200);
-    }
-
-    // Emergency detection (Spec 5.5)
-    if (message) {
-      const emergency = detectEmergency(message);
-      if (emergency.isEmergency) {
-        await storeMessages(userId, message, emergency.message, undefined, undefined, undefined, undefined, session_id);
-        return respond({ message: emergency.message, actions: [], task_mode: 'emergency' });
-      }
-    }
-
-    // Eating disorder risk detection (Spec 12.5)
-    if (message) {
-      const edRisk = detectEDRisk(message);
-      if (edRisk.isRisk && edRisk.severity === 'high') {
-        await storeMessages(userId, message, edRisk.message, undefined, undefined, undefined, undefined, session_id);
-        return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
-      }
-      // Medium severity: continue normal flow but AI will see ED_REFERRAL in sanitized output
     }
 
     // Repair intent detection — BEFORE task mode (Spec 5.32)
@@ -1434,7 +1435,7 @@ async function forceWorkoutLogAction(
     'Sen bir antrenman parse motorusun. Kullanicinin YAPTIGI antrenmani analiz et ve SADECE asagidaki formatta tek bir <actions> blogu dondur.',
     'BASKA HICBIR SEY YAZMA — aciklama yok, markdown yok. Sadece <actions>...</actions>.',
     'Format:',
-    '<actions>[{"type":"workout_log","raw":"kullanicinin yazdigi","workout_type":"cardio|strength|flexibility|sports","duration_min":sayi,"intensity":"low|moderate|high","calories_burned":sayi,"strength_sets":[{"exercise":"squat|bench_press|deadlift|overhead_press|barbell_row|pull_up|veya_snake_case","sets":sayi,"reps":sayi,"weight_kg":sayi}]}]</actions>',
+    '<actions>[{"type":"workout_log","raw":"kullanicinin yazdigi","workout_type":"cardio|strength|flexibility|sports|mixed","duration_min":sayi,"intensity":"low|moderate|high","calories_burned":sayi,"strength_sets":[{"exercise":"squat|bench_press|deadlift|overhead_press|barbell_row|pull_up|veya_snake_case","sets":sayi,"reps":sayi,"weight_kg":sayi}]}]</actions>',
     'KURALLAR:',
     '- exercise adlarini DAIMA kucuk harf snake_case yaz (bench press → bench_press).',
     '- Sure belirtilmemisse antrenman tipine gore makul tahmin (guc ~45, kardiyo ~30).',
@@ -2115,8 +2116,15 @@ async function executeActions(
         }
         case 'workout_log': {
           const durationMin = (action.duration_min as number) ?? 0;
-          const intensity = (action.intensity as string) ?? 'moderate';
-          const workoutType = (action.workout_type as string) ?? 'mixed';
+          // Whitelist the two CHECK-constrained columns (workout_type IN cardio|
+          // strength|flexibility|sports|mixed, intensity IN low|moderate|high). An
+          // off-enum model value (e.g. 'running'/'kuvvet'/'çok yüksek') would
+          // 23514-fail the insert, skip strength_sets, and the user would be falsely
+          // told the workout was saved (#R2-1).
+          const VALID_WORKOUT_TYPES = new Set(['cardio', 'strength', 'flexibility', 'sports', 'mixed']);
+          const VALID_INTENSITIES = new Set(['low', 'moderate', 'high']);
+          const intensity = VALID_INTENSITIES.has(action.intensity as string) ? (action.intensity as string) : 'moderate';
+          const workoutType = VALID_WORKOUT_TYPES.has(action.workout_type as string) ? (action.workout_type as string) : 'mixed';
           let workoutPrNote = '';
 
           // MET-based calories_burned if AI didn't provide or gave zero (Spec 7.5)
@@ -2146,7 +2154,13 @@ async function executeActions(
             calories_burned: caloriesBurned,
             logged_for_date: actionDate, synced: true,
           }).select('id').maybeSingle();
-          if (wlogErr) console.error('[workout_logs] insert failed:', wlogErr.message);
+          // Gate ALL downstream effects (strength_sets, PR, calorie bump, success
+          // chip) on a real write — never claim "Antrenman kaydedildi" on failure.
+          if (wlogErr || !wlogRow) {
+            console.error('[workout_logs] insert failed:', wlogErr?.message);
+            feedback.push('Antrenmanı kaydedemedim, tekrar dener misin?');
+            break;
+          }
 
           // Per-set strength data: the system-prompt contract carries detail as a nested
           // strength_sets array on workout_log ({exercise, sets:count, reps, weight_kg}).
@@ -2269,6 +2283,10 @@ async function executeActions(
             } else {
               feedback.push('Tarti kaydedildi');
             }
+          } else {
+            // Out-of-range value (parse error) — push a placeholder so feedback[]
+            // stays positionally aligned with actions[] (#R2-6).
+            feedback.push(null);
           }
           break;
         }
@@ -2282,6 +2300,8 @@ async function executeActions(
               { onConflict: 'user_id,date' }
             );
             feedback.push(`Su +${l}L`);
+          } else {
+            feedback.push(null); // alignment (#R2-6)
           }
           break;
         }
@@ -2302,6 +2322,8 @@ async function executeActions(
             );
             if (sleepErr) { console.error('[sleep_log] upsert failed:', sleepErr.message); feedback.push('Uyku kaydi basarisiz'); }
             else feedback.push('Uyku kaydedildi');
+          } else {
+            feedback.push(null); // alignment (#R2-6)
           }
           break;
         }
@@ -2310,30 +2332,39 @@ async function executeActions(
           // (users say "8/10") doesn't 23514-reject the whole upsert silently.
           const s = Number(action.score);
           const moodScore = Number.isFinite(s) ? Math.min(5, Math.max(1, Math.round(s))) : null;
-          if (moodScore === null) break;
+          if (moodScore === null) { feedback.push(null); break; } // alignment (#R2-6)
           const { error: moodErr } = await supabaseAdmin.from('daily_metrics').upsert(
             { user_id: userId, date: actionDate, mood_score: moodScore, mood_note: action.note as string, water_liters: await waterFor(actionDate), synced: true },
             { onConflict: 'user_id,date' }
           );
-          if (moodErr) { console.error('[mood_log] upsert failed:', moodErr.message); break; }
+          if (moodErr) { console.error('[mood_log] upsert failed:', moodErr.message); feedback.push(null); break; }
           feedback.push('Ruh hali kaydedildi');
           break;
         }
         case 'supplement_log': {
-          await supabaseAdmin.from('supplement_logs').insert({
-            user_id: userId, supplement_name: action.name as string,
+          // supplement_name is NOT NULL — guard the model omitting it, capture the
+          // error, and never claim success on failure (#R2-5).
+          const suppName = (action.name as string | undefined)?.trim();
+          if (!suppName) { feedback.push(null); break; }
+          const { error: suppErr } = await supabaseAdmin.from('supplement_logs').insert({
+            user_id: userId, supplement_name: suppName,
             amount: action.amount as string, logged_for_date: actionDate,
           });
+          if (suppErr) { console.error('[supplement_logs] insert failed:', suppErr.message); feedback.push('Supplement kaydedilemedi'); break; }
           feedback.push('Supplement kaydedildi');
           break;
         }
         case 'commitment': {
+          // commitment is NOT NULL — guard + capture error, don't fake success (#R2-5).
+          const commitText = (action.text as string | undefined)?.trim();
+          if (!commitText) { feedback.push(null); break; }
           const followUp = new Date();
           followUp.setDate(followUp.getDate() + ((action.follow_up_days as number) ?? 1));
-          await supabaseAdmin.from('user_commitments').insert({
-            user_id: userId, commitment: action.text as string,
+          const { error: commitErr } = await supabaseAdmin.from('user_commitments').insert({
+            user_id: userId, commitment: commitText,
             follow_up_at: followUp.toISOString(), status: 'pending',
           });
+          if (commitErr) { console.error('[user_commitments] insert failed:', commitErr.message); feedback.push(null); break; }
           feedback.push('Taahhut kaydedildi');
           break;
         }
@@ -2565,19 +2596,24 @@ async function executeActions(
           break;
         }
         case 'save_recipe': {
-          // T3.6: Save recipe from AI chat to recipe library
+          // T3.6: Save recipe from AI chat to recipe library. ingredients is jsonb
+          // NOT NULL with no default — if the model omits it, default to [] so the
+          // insert doesn't 23502-fail, and capture the error so we don't claim
+          // "Tarif kaydedildi" when nothing was written (#R2-4).
           const recipe = action as Record<string, unknown>;
-          await supabaseAdmin.from('saved_recipes').insert({
+          const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+          const { error: recipeErr } = await supabaseAdmin.from('saved_recipes').insert({
             user_id: userId,
             title: recipe.title as string ?? 'Tarif',
             category: recipe.category as string ?? 'dinner',
-            ingredients: recipe.ingredients,
+            ingredients,
             instructions: recipe.instructions as string ?? '',
             total_calories: recipe.calories as number ?? 0,
             total_protein: recipe.protein_g as number ?? 0,
             prep_time_min: recipe.prep_time_min as number ?? 0,
             servings: recipe.servings as number ?? 1,
           });
+          if (recipeErr) { console.error('[saved_recipes] insert failed:', recipeErr.message); feedback.push('Tarif kaydedilemedi'); break; }
           feedback.push('Tarif kaydedildi');
           break;
         }

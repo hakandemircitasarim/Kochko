@@ -1059,15 +1059,23 @@ serve(async (req: Request) => {
         const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
         const { data: snackLogs } = await supabaseAdmin
           .from('meal_logs')
-          .select('created_at')
+          .select('logged_at')   // meal_logs has logged_at (timestamptz), NOT created_at
           .eq('user_id', profile.id)
           .eq('meal_type', 'snack')
           .eq('is_deleted', false)
           .gte('logged_for_date', fourteenDaysAgo);
         if (snackLogs && snackLogs.length > 0) {
+          const tz = (profile.active_timezone ?? profile.home_timezone) as string | undefined;
           const hourCounts: Record<number, number> = {};
-          for (const s of snackLogs as { created_at: string }[]) {
-            const h = new Date(s.created_at).getHours();
+          for (const s of snackLogs as { logged_at: string }[]) {
+            // logged_at is UTC; getHours() in Deno returns the UTC hour. Convert to
+            // the user's local hour so the detected snack window is correct.
+            let h: number;
+            try {
+              h = new Date(new Date(s.logged_at).toLocaleString('en-US', { timeZone: tz ?? 'Europe/Istanbul' })).getHours();
+            } catch {
+              h = new Date(s.logged_at).getHours();
+            }
             hourCounts[h] = (hourCounts[h] ?? 0) + 1;
           }
           for (const [h, cnt] of Object.entries(hourCounts)) {

@@ -535,6 +535,31 @@ const EXERCISE_BODY_PART_MAP: Record<string, string[]> = {
   // Hip/groin
   'hip thrust': ['hip'],
   'sumo deadlift': ['hip', 'groin', 'back'],
+
+  // Turkish exercise names (#R2-7) — the coaching/plan model emits Turkish, so the
+  // English-only map let injury-loading moves slip past the code-enforced filter.
+  'çömelme': ['knee', 'quad', 'hip'],
+  'comelme': ['knee', 'quad', 'hip'],
+  'skuat': ['knee', 'quad', 'hip'],
+  'hamle': ['knee', 'quad', 'hip'],
+  'çökme': ['knee', 'quad', 'hip'],
+  'koşu': ['knee', 'ankle'],
+  'kosu': ['knee', 'ankle'],
+  'koşma': ['knee', 'ankle'],
+  'zıplama': ['knee', 'ankle'],
+  'ziplama': ['knee', 'ankle'],
+  'sıçrama': ['knee', 'ankle'],
+  'sicrama': ['knee', 'ankle'],
+  'şınav': ['wrist', 'shoulder', 'elbow'],
+  'sinav': ['wrist', 'shoulder', 'elbow'],
+  'mekik': ['back'],
+  'göğüs pres': ['shoulder', 'elbow'],
+  'gogus pres': ['shoulder', 'elbow'],
+  'omuz pres': ['shoulder'],
+  'ölü kaldırış': ['back', 'hamstring', 'hip'],
+  'olu kaldiris': ['back', 'hamstring', 'hip'],
+  'ölü kaldırma': ['back', 'hamstring', 'hip'],
+  'barfiks': ['shoulder', 'elbow'],
 };
 
 /**
