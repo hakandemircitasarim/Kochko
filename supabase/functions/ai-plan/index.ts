@@ -12,6 +12,7 @@ import { buildFullContext, updateLayer2 } from '../shared/memory.ts';
 import { checkAllergens, validateCalories, sanitizeText, checkWeightVelocity, validateExercise, MAX_WORKOUT_DURATION_MIN, extractInjuredBodyParts, filterExercisesByInjury, filterExercisesByEquipment } from '../shared/guardrails.ts';
 import { validatePlanOutput } from '../shared/output-validator.ts';
 import { getPeriodicCalorieAdjustment, isIFCompatible, buildPeriodicPlanContext, getSeasonalContext } from '../shared/periodic-config.ts';
+import { isActivePremium } from '../shared/premium.ts';
 
 const PLAN_SYSTEM = `Sen Kochko plan yapicisisin. Kullanicinin profiline, hedefine ve gecmis verilerine gore gunluk beslenme + antrenman plani olustur.
 
@@ -107,8 +108,9 @@ serve(async (req: Request) => {
       // The gate must live HERE: the screen called the edge function directly,
       // so a free account could burn AI tokens generating weekly menus.
       const { data: tierProfile } = await supabaseAdmin
-        .from('profiles').select('premium').eq('id', userId).maybeSingle();
-      if (tierProfile?.premium !== true) {
+        .from('profiles').select('premium, premium_expires_at').eq('id', userId).maybeSingle();
+      // Honor premium_expires_at (cron grace window) — match ai-chat:72/991 gates.
+      if (!isActivePremium(tierProfile)) {
         return new Response(
           JSON.stringify({ error: 'needs_premium', message: 'Haftalık menü planlama Premium özelliğidir.' }),
           { status: 403, headers: { 'Content-Type': 'application/json' } },
@@ -143,7 +145,7 @@ serve(async (req: Request) => {
     // Get profile for calorie validation and periodic state
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min, equipment_access, pregnancy_trimester, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length, weekly_calorie_budget')
+      .select('gender, weight_kg, periodic_state, periodic_state_start, periodic_state_end, if_active, tdee_calculated, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, equipment_access, pregnancy_trimester, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length, weekly_calorie_budget')
       .eq('id', userId).maybeSingle();
 
     // Build periodic + seasonal context
@@ -503,6 +505,10 @@ serve(async (req: Request) => {
     const calCheck = validateCalories(calMin, profile?.gender);
     if (!calCheck.valid) {
       plan.calorie_target_min = calCheck.corrected;
+      // #S18: lifting only the MIN to the gender floor can leave min > max when a negative
+      // periodic adjustment (ramadan -150, injury -100) already pushed a low-TDEE user's max
+      // below the floor. Re-clamp max up so the band never inverts (mirrors tdee.ts:130).
+      plan.calorie_target_max = Math.max(plan.calorie_target_max as number, calCheck.corrected);
     }
 
     // Guardrail: weight velocity check (Spec 12.1 — max 1kg/week loss)
@@ -670,26 +676,40 @@ serve(async (req: Request) => {
       plan.snack_strategy = sanitizeText(plan.snack_strategy as string).clean;
     }
 
-    // Calculate weekly budget
+    // Calculate weekly budget. #S19: exclude soft-deleted meals — every other reader filters
+    // is_deleted=false; without it a user's DELETED meal keeps counting against the dashboard
+    // weekly budget until the next regeneration.
     const { data: weekMeals } = await supabaseAdmin
       .from('meal_log_items')
       .select('calories')
       .in('meal_log_id',
         (await supabaseAdmin.from('meal_logs').select('id').eq('user_id', userId)
+          .eq('is_deleted', false)
           .gte('logged_for_date', getWeekStart(today)).lte('logged_for_date', today)).data?.map((m: { id: string }) => m.id) ?? []
       );
 
     const weekConsumed = (weekMeals ?? []).reduce((s: number, i: { calories: number }) => s + i.calories, 0);
     plan.weekly_budget_consumed = weekConsumed;
 
-    // Weekly budget total + remaining are computed in code (not trusted from the LLM,
-    // which is never given a numeric budget). Use profiles.weekly_calorie_budget as the
-    // real total; fall back to today's mid-target * 7 when unset (mirrors widget.service.ts).
-    const planMidTarget = Math.round((((plan.calorie_target_min as number) ?? 0) + ((plan.calorie_target_max as number) ?? 0)) / 2);
-    const weeklyBudgetTotal = (profile?.weekly_calorie_budget as number | null) ?? (planMidTarget > 0 ? planMidTarget * 7 : 0);
+    // Weekly budget total + remaining are computed in code (not trusted from the LLM, which is
+    // never given a numeric budget). Use profiles.weekly_calorie_budget as the real total;
+    // #S20: fall back to the CANONICAL 4×training-mid + 3×rest-mid (matching widget.service.ts /
+    // service-contexts.ts / the onboarding writer) — NOT planMid*7, which diverged so the
+    // dashboard and home widget showed different weekly budgets for an unset-budget user.
+    const trainMid = Math.round((((profile?.calorie_range_training_min as number | null) ?? (plan.calorie_target_min as number) ?? 0)
+      + ((profile?.calorie_range_training_max as number | null) ?? (plan.calorie_target_max as number) ?? 0)) / 2);
+    const restMid = Math.round((((profile?.calorie_range_rest_min as number | null) ?? (plan.calorie_target_min as number) ?? 0)
+      + ((profile?.calorie_range_rest_max as number | null) ?? (plan.calorie_target_max as number) ?? 0)) / 2);
+    const canonicalFallback = (trainMid > 0 && restMid > 0) ? (4 * trainMid + 3 * restMid) : 0;
+    const weeklyBudgetTotal = (profile?.weekly_calorie_budget as number | null) ?? canonicalFallback;
     const weeklyBudgetRemaining = Math.max(0, weeklyBudgetTotal - weekConsumed);
     plan.weekly_budget_total = weeklyBudgetTotal;
     plan.weekly_budget_remaining = weeklyBudgetRemaining;
+
+    // #S18: final invariant — no calorie mutation above may leave the band inverted.
+    if ((plan.calorie_target_min as number) > (plan.calorie_target_max as number)) {
+      plan.calorie_target_max = plan.calorie_target_min;
+    }
 
     // Get current version for today (Spec 7.3: plan versioning)
     const { data: existingPlan } = await supabaseAdmin

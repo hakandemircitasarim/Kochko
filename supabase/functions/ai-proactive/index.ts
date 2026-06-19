@@ -37,7 +37,8 @@ serve(async (req: Request) => {
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
       .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length')
-      .eq('onboarding_completed', true);
+      .eq('onboarding_completed', true)
+      .order('id'); // #L19: stable order so the rotating window below covers the whole fleet
 
     if (!profiles?.length) return respond({ processed: 0, sent: 0 });
 
@@ -46,6 +47,19 @@ serve(async (req: Request) => {
     const today = now.toISOString().split('T')[0];
     const dayOfWeek = now.getDay(); // 0=Sunday, 1=Monday
     let totalSent = 0;
+
+    // #L19: the fleet is processed SERIALLY with a per-user LLM call; a large fleet hit the
+    // 150s request idle limit (504) mid-pass and, with unrotated ordering, the SAME tail users
+    // were skipped every hourly run. Bound each run to a window and ROTATE it by the UTC hour
+    // so every user is covered across the day instead of starved. (Most users are gated out by
+    // the per-user local-time check anyway, so the effective LLM load per run is far smaller.)
+    const FLEET_WINDOW = 40;
+    let fleet = profiles as typeof profiles;
+    if (fleet.length > FLEET_WINDOW) {
+      const windowCount = Math.ceil(fleet.length / FLEET_WINDOW);
+      const startIdx = (utcHour % windowCount) * FLEET_WINDOW;
+      fleet = fleet.slice(startIdx, startIdx + FLEET_WINDOW);
+    }
 
     /**
      * Get user's current local hour based on their timezone.
@@ -802,7 +816,7 @@ serve(async (req: Request) => {
       }
     }
 
-    for (const profile of profiles as { id: string; night_eating_habit: string | null; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null; weekly_calorie_budget: number | null; wake_time: string | null; sleep_time: string | null; home_timezone: string | null; active_timezone: string | null }[]) {
+    for (const profile of fleet as { id: string; night_eating_habit: string | null; coach_tone: string; if_active: boolean; periodic_state: string | null; periodic_state_start: string | null; periodic_state_end: string | null; push_token: string | null; notification_prefs: Record<string, unknown> | null; weekly_calorie_budget: number | null; wake_time: string | null; sleep_time: string | null; home_timezone: string | null; active_timezone: string | null }[]) {
       // Per-user local time check — skip if outside their active hours
       const userLocalHour = getUserLocalHour(profile);
       if (!isAppropriateTime({ wake_time: profile.wake_time ?? undefined, sleep_time: profile.sleep_time ?? undefined }, userLocalHour)) continue;

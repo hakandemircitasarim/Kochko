@@ -161,13 +161,13 @@ HANEHALKI OLCEKLEMESI:
 
 Malzeme listesi + adimlar + makro bilgisi ver.
 
-ONEMLI: Yanıtının sonuna asagidaki formatta bir <recipe> blogu ekle:
-<recipe>{"title":"Tarif Adi","prepTime":20,"servings":2,"ingredients":[{"name":"malzeme","amount":"miktar"}],"macros":{"calories":350,"protein":25,"carbs":30,"fat":12}}</recipe>
-- title: Tarifin adi
-- prepTime: Dakika cinsinden hazirlanma suresi
-- servings: Porsiyon sayisi (hanehalki boyutuna esit)
-- ingredients: Malzeme listesi (name ve amount alanlari)
-- macros: Porsiyon basina (kisi basi) kalori, protein, karbonhidrat, yag degerleri`;
+TARIF KAYDETME (T3.6): Kullanici onerdigin tarifi kaydetmek isterse ("bu tarifi kaydet",
+"tarif kutuphaneme ekle", "kaydet") yanitinin sonuna MUTLAKA bir <actions> blogu ekleyip
+save_recipe action'i gonder (asla "kaydedemem" deme — bu ozellik vardir):
+<actions>[{"type":"save_recipe","title":"Tarif Adi","category":"breakfast|lunch|dinner|snack","ingredients":[{"name":"malzeme","amount":"miktar"}],"instructions":"hazirlanis adimlari","calories":sayi,"protein_g":sayi,"prep_time_min":sayi,"servings":sayi}]</actions>
+- calories/protein_g: PORSIYON basina (kisi basi) degerler
+- prep_time_min: dakika cinsinden hazirlanma suresi
+- servings: porsiyon sayisi (hanehalki boyutuna esit)`;
 
     case 'eating_out':
       return `## MOD: DISARIDA YEMEK

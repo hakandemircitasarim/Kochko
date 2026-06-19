@@ -5,23 +5,28 @@
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useProfileStore } from '@/stores/profile.store';
+import { isActivePremium } from '@/lib/premium-gate';
 
 export function usePremium() {
   const profile = useProfileStore(s => s.profile);
   const isPremium = profile?.premium ?? false;
   const premiumExpiresAt = (profile as Record<string, unknown>)?.premium_expires_at as string | null;
-  const trialUsed = (profile as Record<string, unknown>)?.trial_used as boolean ?? false;
 
   // Check if premium is expired
   const isExpired = premiumExpiresAt ? new Date(premiumExpiresAt) < new Date() : false;
-  const isActive = isPremium && !isExpired;
+  const isActive = isActivePremium(profile as { premium?: boolean | null; premium_expires_at?: string | null } | null);
 
-  // Check if in trial period
+  // Trial state: trial_used flips to true the instant a trial STARTS (subscription.service),
+  // so it can't mean "currently in trial". Derive trial from the ACTIVE timed-premium window
+  // inside the first 7 days instead — this re-enables the trial countdown UI + 2-day reminder
+  // that were permanently dead while keyed on trial_used.
   const createdAt = (profile as Record<string, unknown>)?.created_at as string | null;
   const daysSinceSignup = createdAt
     ? Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000) : 0;
-  const isInTrial = !trialUsed && daysSinceSignup <= 7;
-  const trialDaysLeft = isInTrial ? 7 - daysSinceSignup : 0;
+  const isInTrial = isActive && premiumExpiresAt != null && daysSinceSignup < 7;
+  const trialDaysLeft = isInTrial && premiumExpiresAt
+    ? Math.max(0, Math.ceil((new Date(premiumExpiresAt).getTime() - Date.now()) / 86400000))
+    : 0;
 
   const effectivePremium = isActive || isInTrial;
 

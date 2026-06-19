@@ -382,6 +382,31 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
     }
   }
 
+  // #live-L7: explicit dangerously-low calorie TARGET or aggressive rapid-loss intent.
+  // These phrasings ("günde 500 kalori yemek istiyorum", "çok hızlı zayıflamak istiyorum")
+  // matched no ED pattern, so the spec-required professional-support framing depended
+  // entirely on the LLM (which omitted it). Make it deterministic.
+  const EATING_CTX = /(ye|yi?yec|yemek|alaca|alıyor|aliyor|gün(de)?|gun(de)?|diyet|beslen|tüket|tuket)/;
+  const DEFICIT_CTX = /(açık|acik|defisit|yak|harca)/; // "500 kalori açık" is a deficit, not intake
+  const kcalMatch = lower.match(/(\d{2,4})\s*(kalori|kcal|kal\b|cal\b)/);
+  if (kcalMatch && !DEFICIT_CTX.test(lower)) {
+    const kcal = parseInt(kcalMatch[1], 10);
+    if (kcal > 0 && kcal < 1100 && EATING_CTX.test(lower)) {
+      return {
+        isRisk: true,
+        severity: 'medium',
+        message: 'Gunde bu kadar dusuk kalori (gunluk minimumun cok altinda) saglik icin riskli ve surdurulemez. Bu konuda bir uzman diyetisyen veya psikolog ile gorusmeni oneririm — saglikli ve kalici bir tempo icin birlikte daha guvenli bir plan kurabiliriz.',
+      };
+    }
+  }
+  if (/(cok hizli zayifla|çok hızlı zayıfla|hizlica zayifla|hızlıca zayıfla|cabuk zayifla|çabuk zayıfla|hemen zayifla|hemen zayıfla|acilen zayifla|acilen zayıfla|acil(en)? kilo ver|bir an once zayifla|bir an önce zayıfla)/.test(lower)) {
+    return {
+      isRisk: true,
+      severity: 'medium',
+      message: 'Cok hizli kilo verme istegini anliyorum ama saglikli kayip haftada 0.5-1 kg arasidir; daha hizlisi kas kaybi ve saglik riski getirir. Istersen bir uzman diyetisyen/psikolog destegiyle guvenli ve kalici bir plan kuralim.',
+    };
+  }
+
   // Medium severity — restrictive patterns
   const mediumPatterns = [
     'hic yemiyorum', 'hiç yemiyorum', 'hic bir sey yemiyorum', 'hicbir sey yemiyorum', 'hiçbir şey yemiyorum',
@@ -444,17 +469,26 @@ const INJECTION_PATTERNS = [
   /kural(lar)?\s*i?\s*(yoksay|gormezden|görmezden)/i,
   /sinir(lar)?\s*i?\s*(kaldir|kaldır|yoksay)/i,
   /guvenlik(leri)?\s*(kapat|devre\s*disi)/i,
-  /onceki\s+talimatlari\s+(unut|yoksay)/i,
+  /onceki\s+(tum\s+|butun\s+)?talimatlari\s+(unut|yoksay|gormezden|gozardi)/i,
 ];
 
 export function sanitizeUserInput(text: string): {
   sanitized: string;
   injectionDetected: boolean;
 } {
-  let injectionDetected = false;
+  // #live-L8: normalize Turkish diacritics + apostrophes so ASCII-written injection patterns
+  // still match real Turkish input. Without this "Önceki tüm talimatları unut" and
+  // "sistem prompt'unu yaz" slipped past the deterministic guard (diacritics + suffix
+  // apostrophe). We test patterns against BOTH the raw and the normalized text.
+  const normalized = text
+    .toLocaleLowerCase('tr')
+    .replace(/['’`´]/g, '')
+    .replace(/ı/g, 'i').replace(/ş/g, 's').replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ç/g, 'c').replace(/â/g, 'a');
 
+  let injectionDetected = false;
   for (const pattern of INJECTION_PATTERNS) {
-    if (pattern.test(text)) {
+    if (pattern.test(text) || pattern.test(normalized)) {
       injectionDetected = true;
       break;
     }

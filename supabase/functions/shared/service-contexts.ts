@@ -543,23 +543,32 @@ export async function getCaffeineSleepContext(userId: string): Promise<string> {
     const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
 
     const [mealsRes, metricsRes] = await Promise.all([
-      supabaseAdmin.from('meal_logs').select('raw_input, created_at, logged_for_date')
+      // #S3: meal_logs has logged_at (timestamptz), NOT created_at. The phantom column made
+      // PostgREST reject the whole select → meals=[] → this caffeine-sleep insight was
+      // permanently dead. Use logged_at.
+      supabaseAdmin.from('meal_logs').select('raw_input, logged_at, logged_for_date')
         .eq('user_id', userId).gte('logged_for_date', twoWeeksAgo).eq('is_deleted', false),
       supabaseAdmin.from('daily_metrics').select('date, sleep_hours')
         .eq('user_id', userId).gte('date', twoWeeksAgo).not('sleep_hours', 'is', null),
     ]);
 
-    const meals = (mealsRes.data ?? []) as { raw_input: string; created_at: string; logged_for_date: string }[];
+    const meals = (mealsRes.data ?? []) as { raw_input: string; logged_at: string; logged_for_date: string }[];
     const metrics = (metricsRes.data ?? []) as { date: string; sleep_hours: number }[];
 
     if (meals.length < 10 || metrics.length < 7) return '';
 
     const CAFFEINE_KEYWORDS = ['kahve', 'espresso', 'latte', 'cappuccino', 'americano', 'cay', 'enerji', 'red bull', 'monster', 'cola', 'kola'];
 
-    // Find days with late caffeine (after 15:00)
+    // Find days with late caffeine (after 15:00). logged_at is UTC — evaluate the hour in the
+    // user's local zone (Istanbul default) so the 15:00 cutoff isn't off by the UTC offset.
     const lateCaffeineDates = new Set<string>();
     for (const meal of meals) {
-      const hour = new Date(meal.created_at).getHours();
+      let hour: number;
+      try {
+        hour = new Date(new Date(meal.logged_at).toLocaleString('en-US', { timeZone: 'Europe/Istanbul' })).getHours();
+      } catch {
+        hour = new Date(meal.logged_at).getHours();
+      }
       if (hour >= 15) {
         const lower = (meal.raw_input ?? '').toLocaleLowerCase('tr');
         if (CAFFEINE_KEYWORDS.some(kw => lower.includes(kw))) {

@@ -53,6 +53,21 @@ const FREE_TIER_FEATURES = new Set<FeatureKey>([
   'step_counter',
 ]);
 
+/**
+ * Single client-side definition of "premium is active right now".
+ * Mirrors the server gate (ai-chat/index.ts: premium === true && (!expires || expires > now)).
+ * profiles.premium can stay true for ~1-2 days past premium_expires_at because the
+ * nightly expiry cron only flips subscriptions older than the 1-day grace — so every
+ * gate MUST also honor premium_expires_at, not just the boolean.
+ */
+export function isActivePremium(
+  profile: { premium?: boolean | null; premium_expires_at?: string | null } | null | undefined,
+): boolean {
+  if (!profile?.premium) return false;
+  const exp = profile.premium_expires_at;
+  return !exp || new Date(exp) > new Date();
+}
+
 export interface FeatureAccess {
   allowed: boolean;
   reason: 'free_tier_allowed' | 'premium_active' | 'trial_active' | 'needs_premium' | 'trial_expired';
@@ -66,15 +81,17 @@ export interface FeatureAccess {
  */
 export function checkFeature(key: FeatureKey): FeatureAccess {
   const profile = useProfileStore.getState().profile as { premium?: boolean; premium_expires_at?: string | null } | null;
-  const isPremium = !!profile?.premium;
   const expiresAt = (profile?.premium_expires_at as string | null) ?? null;
-  const trialActive = isPremium && expiresAt !== null; // simple heuristic: timed premium == trial or paid
+  // Active premium honors expiry — an expired premium (premium=true but past expires_at,
+  // during the cron grace window) must NOT be granted gated features.
+  const active = isActivePremium(profile);
+  const trialActive = active && expiresAt !== null; // timed active premium == trial or paid
 
   if (FREE_TIER_FEATURES.has(key)) {
-    return { allowed: true, reason: 'free_tier_allowed', tier: trialActive ? 'trial' : (isPremium ? 'premium' : 'free'), expiresAt };
+    return { allowed: true, reason: 'free_tier_allowed', tier: trialActive ? 'trial' : (active ? 'premium' : 'free'), expiresAt };
   }
 
-  if (isPremium) {
+  if (active) {
     return {
       allowed: true,
       reason: trialActive ? 'trial_active' : 'premium_active',
@@ -83,7 +100,7 @@ export function checkFeature(key: FeatureKey): FeatureAccess {
     };
   }
 
-  // Not premium and expired-previously → show upsell
+  // Not active (never premium, or premium expired) → show upsell
   if (expiresAt && new Date(expiresAt) < new Date()) {
     return { allowed: false, reason: 'trial_expired', tier: 'free', expiresAt };
   }
@@ -133,9 +150,12 @@ export interface PlanApprovalGate {
 
 export function canApprovePlan(planType: 'diet' | 'workout'): PlanApprovalGate {
   const profile = useProfileStore.getState().profile as
-    | { premium?: boolean; plans_used_free?: { diet?: number; workout?: number } | null }
+    | { premium?: boolean; premium_expires_at?: string | null; plans_used_free?: { diet?: number; workout?: number } | null }
     | null;
-  const isPremium = !!profile?.premium;
+  // Honor premium_expires_at so the client gate matches the server plan-cap gate
+  // (ai-chat/index.ts:991) — otherwise an expired-premium user would be shown an
+  // approval the server then rejects with free_quota_used (approve-then-bounce).
+  const isPremium = isActivePremium(profile);
   const used = profile?.plans_used_free?.[planType] ?? 0;
 
   if (isPremium) {

@@ -38,7 +38,7 @@ export async function exportJSON(options?: { share?: boolean }): Promise<void> {
     monthly_reports: supabase.from('monthly_reports').select('*').order('month_start'),
     daily_plans: supabase.from('daily_plans').select('*').order('date'),
     weekly_plans: supabase.from('weekly_plans').select('*').order('generated_at'),
-    chat_sessions: supabase.from('chat_sessions').select('*').order('created_at'),
+    chat_sessions: supabase.from('chat_sessions').select('*').order('started_at'), // #L17: chat_sessions has started_at, NOT created_at — created_at 42703'd and dropped the table from the KVKK export
     chat_messages: supabase.from('chat_messages').select('*').order('created_at'),
     coaching_messages: supabase.from('coaching_messages').select('*').order('created_at'),
     health_events: supabase.from('health_events').select('*').order('created_at'),

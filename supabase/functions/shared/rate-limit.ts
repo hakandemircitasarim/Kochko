@@ -13,6 +13,7 @@
  * so the cap and meal logs share one day definition.
  */
 import { supabaseAdmin } from './supabase-admin.ts';
+import { isActivePremium } from './premium.ts';
 
 interface RateLimitResult {
   allowed: boolean;
@@ -82,11 +83,13 @@ export async function checkRateLimit(
 ): Promise<RateLimitResult> {
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('premium, home_timezone, day_boundary_hour, onboarding_completed')
+    .select('premium, premium_expires_at, home_timezone, day_boundary_hour, onboarding_completed')
     .eq('id', userId)
     .maybeSingle();
 
-  const isPremium = profile?.premium === true;
+  // Honor premium_expires_at — an expired-premium user inside the cron grace window
+  // (premium=true but past expiry) must get the FREE cap, not 200/day.
+  const isPremium = isActivePremium(profile);
 
   // Record parse never counts against limits.
   if (isRecordParse) return { allowed: true, remaining: -1 };

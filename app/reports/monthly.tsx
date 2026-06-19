@@ -39,8 +39,16 @@ export default function MonthlyReportScreen() {
   useEffect(() => {
     if (!user?.id) return;
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    // #S13: build month bounds as plain calendar strings, NOT via Date->toISOString (which
+    // converts LOCAL midnight to UTC and rolls back a day in UTC+ zones, e.g. Turkey gave
+    // monthStart '2026-05-31'). That made .eq('month_start', monthStart) never match the
+    // edge-persisted UTC '2026-06-01' row, so the cached monthly report never loaded and the
+    // screen re-triggered a paid LLM generation every visit. Mirrors calendar.service.ts.
+    const _y = now.getFullYear();
+    const _m = now.getMonth(); // 0-based
+    const _mm = String(_m + 1).padStart(2, '0');
+    const monthStart = `${_y}-${_mm}-01`;
+    const monthEnd = `${_y}-${_mm}-${String(new Date(_y, _m + 1, 0).getDate()).padStart(2, '0')}`;
     const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
 
     Promise.all([
@@ -56,8 +64,11 @@ export default function MonthlyReportScreen() {
       supabase.from('daily_reports').select('compliance_score').eq('user_id', user.id)
         .gte('date', monthStart).lte('date', monthEnd),
     ]).then(([reportsRes, goalRes, monthlyRes, metricsRes, dailyRes]) => {
+      // #S15: keep legitimate 0-score (fully-missed) days in the average — the edge's
+      // authoritative avg_compliance counts zeros, so dropping them here over-reported
+      // adherence. Only filter out null/non-numeric.
       const dailyScores = ((dailyRes.data ?? []) as { compliance_score: number | null }[])
-        .map(d => d.compliance_score).filter((s): s is number => typeof s === 'number' && s > 0);
+        .map(d => d.compliance_score).filter((s): s is number => typeof s === 'number');
       setDailyAvgCompliance(dailyScores.length > 0
         ? Math.round(dailyScores.reduce((a, b) => a + b, 0) / dailyScores.length) : 0);
       setWeeklyReports((reportsRes.data ?? []) as Record<string, unknown>[]);

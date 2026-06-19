@@ -312,11 +312,13 @@ async function generateWeeklyReport(userId: string, force = false) {
   const prevWeekAlcTotal = ((prevReportsRes.data ?? []) as { alcohol_calories: number | null }[])
     .reduce((s, r) => s + (r.alcohol_calories ?? 0), 0);
 
-  // Classify weekday vs weekend alcohol (0=Sun, 5=Fri, 6=Sat in JS)
+  // Classify weekday vs weekend alcohol. #L11/S14: only Sunday(0) + Saturday(6) are weekend;
+  // Friday(5) is a WEEKDAY — matches weekly.tsx:70 and service-contexts.ts so the AI's
+  // "hafta ici / hafta sonu" split isn't inflated by Friday.
   let weekdayAlc = 0, weekendAlc = 0;
   for (const r of thisWeekAlcRows) {
     const d = new Date(r.date).getDay();
-    const isWeekend = d === 0 || d === 5 || d === 6;
+    const isWeekend = d === 0 || d === 6;
     if (isWeekend) weekendAlc += (r.alcohol_calories ?? 0);
     else weekdayAlc += (r.alcohol_calories ?? 0);
   }

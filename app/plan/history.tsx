@@ -154,16 +154,21 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
   const reasonLabel = REASON_LABELS[reason] ?? reason;
 
   const summary = (() => {
+    // #S2: plan_data is raw LLM-authored JSON (archived rows include user-discarded drafts);
+    // guard days/meals/exercises like every sibling plan component (PlanActiveView/FullPlanModal)
+    // so a malformed snapshot degrades to "0" instead of crashing the History tab.
     if (planType === 'diet') {
       const d = row.plan_data as DietPlanData;
+      const days = Array.isArray(d?.days) ? d.days : [];
       const avg = Math.round(
-        d.days.reduce((s, x) => s + (x.total_kcal ?? 0), 0) / Math.max(1, d.days.length)
+        days.reduce((s, x) => s + (x.total_kcal ?? 0), 0) / Math.max(1, days.length)
       );
-      return `${avg} kcal/gün ort. · ${d.targets?.protein ?? 0}g protein`;
+      return `${avg} kcal/gün ort. · ${d?.targets?.protein ?? 0}g protein`;
     }
     const w = row.plan_data as WorkoutPlanData;
-    const active = w.days.filter(x => !x.rest_day).length;
-    const ex = w.days.reduce((s, x) => s + x.exercises.length, 0);
+    const days = Array.isArray(w?.days) ? w.days : [];
+    const active = days.filter(x => !x.rest_day).length;
+    const ex = days.reduce((s, x) => s + (x.rest_day ? 0 : (x.exercises?.length ?? 0)), 0);
     return `${active} aktif gün · ${ex} egzersiz`;
   })();
 
@@ -229,13 +234,13 @@ function DietExpanded({ plan }: { plan: DietPlanData }) {
   const { colors } = useTheme();
   return (
     <View style={{ gap: 4 }}>
-      {plan.days.slice(0, 7).map(day => (
+      {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map(day => (
         <View key={day.day_index} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
             {day.day_label}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-            {day.meals.length} öğün · {day.total_kcal} kcal
+            {day.meals?.length ?? 0} öğün · {day.total_kcal ?? 0} kcal
           </Text>
         </View>
       ))}
@@ -247,13 +252,13 @@ function WorkoutExpanded({ plan }: { plan: WorkoutPlanData }) {
   const { colors } = useTheme();
   return (
     <View style={{ gap: 4 }}>
-      {plan.days.slice(0, 7).map(day => (
+      {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map(day => (
         <View key={day.day_index} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
             {day.day_label}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-            {day.rest_day ? 'Dinlenme' : `${day.focus ?? day.exercises.length + ' egzersiz'}`}
+            {day.rest_day ? 'Dinlenme' : `${day.focus ?? (day.exercises?.length ?? 0) + ' egzersiz'}`}
           </Text>
         </View>
       ))}

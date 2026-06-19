@@ -16,7 +16,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2 } from '../shared/memory.ts';
-import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText } from '../shared/guardrails.ts';
+import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -108,6 +108,11 @@ serve(async (req: Request) => {
     // if the message also contains injection-shaped phrases or the user is rate-
     // limited — otherwise an injection match would short-circuit a distressed user
     // into the dismissive coach rejection (#R2-8).
+    // #live-L6/L7: a MEDIUM-severity ED signal ("kendimi aç bırakıyorum", "çok şişmanım",
+    // sub-floor calorie + rapid-loss intent) must still surface the professional-support
+    // referral (Spec 12.5/5.6). It previously hit a dead comment and was dropped. We hoist
+    // it so coaching continues (soft tone) but the referral is appended to the final reply.
+    let edMediumReferral: string | null = null;
     if (message) {
       const emergency = detectEmergency(message);
       if (emergency.isEmergency) {
@@ -127,7 +132,9 @@ serve(async (req: Request) => {
         await storeMessages(userId, message, edRisk.message, 'safety', undefined, undefined, undefined, session_id);
         return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
       }
-      // Medium severity: continue normal flow but AI will see ED_REFERRAL in sanitized output
+      // Medium severity: keep coaching but ensure the referral reaches the user (appended
+      // to the reply below). Deterministic — does not depend on the LLM remembering to add it.
+      if (edRisk.isRisk && edRisk.severity === 'medium') edMediumReferral = edRisk.message;
     }
 
     // Prompt injection detection (Spec 5.26) — after crisis screening
@@ -174,6 +181,50 @@ serve(async (req: Request) => {
         await storeMessages(userId, message, summary, undefined, undefined, undefined, undefined, session_id);
         return respond({ message: summary, actions: [], task_mode: 'knowledge' });
       }
+
+      // #live-L18: KVKK Md.7/17 erasure. A full-account-deletion or "beni unut / hafızanı
+      // sıfırla" request previously had NO handler — the model freely (and FALSELY) confirmed
+      // a deletion that never happened (compliance + trust failure). Handle deterministically:
+      // memory-reset clears ai_summary; full-deletion ALSO schedules the reversible 30-day
+      // account-deletion grace (mirrors privacy.service.requestAccountDeletion) + audit, and
+      // points the user to Settings to confirm/cancel. Never claim a deletion we didn't do.
+      const mDel = message.toLocaleLowerCase('tr');
+      // Intent-based (NOT adjacency-based): an erase verb anywhere + a strong account/data/memory
+      // target anywhere. Adjacency regexes missed the natural phrasing "KVKK kapsamında tüm
+      // verilerimi KALICI OLARAK sil" (#live-L18 verify). Bare "bilgi/kayıt" is excluded so a
+      // correction/undo ("az önce verdiğim bilgiyi sil") doesn't misfire (it's handled above).
+      const eraseVerb = /(sil|unut|sıfırla|sifirla)/.test(mDel);
+      const eraseTarget = /(verilerim|verimi|tüm ver|tum ver|hesab|kvkk|unutulma|beni unut|hafıza|hafiza)/.test(mDel);
+      const wantsErase = eraseVerb && eraseTarget;
+      const isQuestion = /nasıl|nasil|\?|m[ıiuü]s[ıiuü]n|mümkün mü|mumkun mu|olur mu|misin/.test(mDel);
+      if (wantsErase && !isQuestion) {
+        const fullDeletion = /(hesab|tüm ver|tum ver|verilerimi|verimi|kvkk|kalıcı|kalici)/.test(mDel);
+        try {
+          // Always reset coaching memory on any erase intent (bounded, clearly requested).
+          await supabaseAdmin.from('ai_summary').delete().eq('user_id', userId);
+          await supabaseAdmin.from('audit_logs').insert({
+            user_id: userId,
+            event_type: fullDeletion ? 'account_delete_request' : 'memory_reset',
+            description: fullDeletion ? 'KVKK chat-initiated account deletion request (30-day grace)' : 'KVKK chat-initiated coach-memory reset',
+          });
+          let kvkkMsg: string;
+          let kvkkNav: string | null = null;
+          if (fullDeletion) {
+            await supabaseAdmin.from('profiles')
+              .update({ deletion_requested_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+              .eq('id', userId);
+            kvkkMsg = 'KVKK kapsamında veri silme talebini başlattım ve koç hafızamı sıfırladım. Hesabın ve tüm verilerin 30 gün içinde kalıcı olarak silinecek. Fikrini değiştirirsen bu süre içinde Ayarlar > Hesap ve Güvenlik ekranından talebi iptal edebilirsin.';
+            kvkkNav = '/settings/account-security';
+          } else {
+            kvkkMsg = 'Hakkında tuttuğum tüm koç hafızasını (notlar, çıkarımlar, alışkanlık özetleri) sildim. Bundan sonra seni yeniden tanımaya başlayacağım. Hesabını tamamen silmek istersen "tüm verilerimi sil" diyebilir ya da Ayarlar > Hesap ve Güvenlik ekranını kullanabilirsin.';
+          }
+          await storeMessages(userId, message, kvkkMsg, 'kvkk', undefined, undefined, undefined, session_id);
+          return respond({ message: kvkkMsg, actions: [], task_mode: 'kvkk', navigate_to: kvkkNav });
+        } catch (e) {
+          console.error('[kvkk_erase] failed:', (e as Error).message);
+          // fall through to normal flow rather than falsely confirming a deletion
+        }
+      }
     }
 
     // Check onboarding status
@@ -207,8 +258,18 @@ serve(async (req: Request) => {
     const analysis = analyzeMessage(message ?? '', taskMode);
     const retrievalPlan = getRetrievalPlan(analysis);
 
-    // Build scoped context based on retrieval plan
-    const ctx = await buildContextFromPlan(userId, retrievalPlan, session_id);
+    // Build scoped context based on retrieval plan.
+    // #live-L9: scope Layer-4 transcript to the user's CURRENT session even on no-session_id
+    // calls (quick-log/barcode). Without an id, buildLayer4Scoped loaded the newest messages
+    // across ALL sessions, bleeding an unrelated old conversation into context. Resolve the
+    // effective session the SAME way storeMessages will (body id if present, else active session).
+    let effectiveSessionId: string | undefined = (session_id as string | undefined) ?? undefined;
+    if (!effectiveSessionId) {
+      const { data: activeSession } = await supabaseAdmin
+        .from('chat_sessions').select('id').eq('user_id', userId).eq('is_active', true).maybeSingle();
+      if (activeSession) effectiveSessionId = activeSession.id as string;
+    }
+    const ctx = await buildContextFromPlan(userId, retrievalPlan, effectiveSessionId);
 
     // Assemble system prompt = base + mode instructions + confidence note + persona/tone/repair context
     const modeInstructions = getModeInstructions(effectiveMode);
@@ -575,15 +636,25 @@ serve(async (req: Request) => {
     // The model intermittently asserts the save in prose but omits the weight_log
     // action. Gated to a clear bodyweight report (intent verb) and NOT an exercise
     // weight ("bench press 60kg"), so a strength log can never be misread.
+    // NOT mode-gated (#live-L14): "85 oldum" routes to 'coaching', so a register-only
+    // gate dropped it. The strong-body-verb + !exerciseCtx + !goalCtx + 30-300 clamp guards
+    // keep it from misfiring on exercise weights or goal/target statements.
     if (message
       && !actions.some(a => a.type === 'weight_log')
-      && !actions.some(a => a.type === 'profile_update' && (a as Record<string, unknown>).weight_kg !== undefined)
-      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      && !actions.some(a => a.type === 'profile_update' && (a as Record<string, unknown>).weight_kg !== undefined)) {
       const mW = message.toLocaleLowerCase('tr');
       const exerciseCtx = /(bench|press|squat|deadlift|curl|lunge|set|\d+\s*tekrar|tekrar\s*\d|\brep\b|kaldir|kaldır|\d+\s*x\s*\d+|x\d)/.test(mW);
-      const bodyIntent = /(geldim|oldum|tartild|tartıld|tart[ıi]m|kiloyum|kilodayim|kilodayım|kiloya dust|kiloya düşt|sabah)/.test(mW);
-      if (!exerciseCtx && bodyIntent) {
-        const wm = mW.match(/\b(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)\b/);
+      // Strong body-weight verbs: the number IS the user's current weight.
+      const strongBodyIntent = /(geldim|oldum|tartild|tartıld|tart[ıi]m|kiloyum|kilodayim|kilodayım|kiloya dust|kiloya düşt)/.test(mW);
+      const bodyIntent = strongBodyIntent || /sabah/.test(mW);
+      // GOAL/target statements ("hedefim 80 kiloya inmek") are NOT a weigh-in.
+      const goalCtx = /(hedef|inmek ist|olmak ist|ula[sş]mak|vermek ist|atmak ist)/.test(mW);
+      if (!exerciseCtx && !goalCtx && bodyIntent) {
+        // Unit present (kg / standalone "kilo"), OR a unitless number when a strong
+        // body-weight verb is present ("85 oldum", "86.5 kiloyum" where "kilo" has no
+        // word boundary so the unit regex can't see it).
+        let wm = mW.match(/\b(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)\b/);
+        if (!wm && strongBodyIntent) wm = mW.match(/\b(\d{2,3}(?:[.,]\d)?)\b/);
         if (wm) {
           const w = parseFloat(wm[1].replace(',', '.'));
           if (w >= 30 && w <= 300) { actions.push({ type: 'weight_log', value: w }); console.warn('[weight_safety_net] weight_log injected', { w }); }
@@ -635,6 +706,34 @@ serve(async (req: Request) => {
         const found = SUPPS.filter((s) => mSup.includes(s));
         for (const name of found) actions.push({ type: 'supplement_log', name });
         if (found.length) console.warn('[supplement_safety_net] supplement_log injected', { found });
+      }
+    }
+
+    // Mood-log safety net — deterministic (#live-L13): subjective feeling reports
+    // ("bugün kendimi enerjik hissediyorum") are the one daily metric the model reliably
+    // under-emits and that had NO backstop, so mood was silently lost. NOT mode-gated
+    // (feeling statements route to 'coaching'); guarded against advice/questions.
+    if (message
+      && !actions.some(a => a.type === 'mood_log')) {
+      const mM = message.toLocaleLowerCase('tr');
+      const feelingIntent = /(hissediyorum|ruh halim|ruh hâlim|moralim|keyfim|kendimi .{0,25}hissed|modum|motivasyonum yüksek|motivasyonum düşük)/.test(mM);
+      const isQuestion = /\?|nas[ıi]l hissed|hisset(meli|sem|me)|olur mu|\bm[ıiuü] y[ıiuü]m\b/.test(mM);
+      if (feelingIntent && !isQuestion) {
+        let score: number | null = null;
+        const num = mM.match(/(\d{1,2})\s*\/\s*(5|10)/); // "ruh halim 4/5" / "moralim 8/10"
+        if (num) { const v = parseInt(num[1]); score = num[2] === '10' ? Math.round(v / 2) : v; }
+        if (score === null) {
+          const positive = /(harika|mükemmel|mukemmel|çok iyi|cok iyi|enerjik|mutlu|keyifli|huzurlu|iyi hissed|formda|motive|pozitif|neşeli|nese)/.test(mM);
+          const negative = /(kötü|kotu|berbat|üzgün|uzgun|mutsuz|yorgun|bitkin|bunal|stresli|moralim bozuk|isteksiz|halsiz|depres|kaygı|kaygi|gergin)/.test(mM);
+          const neutral = /(idare eder|normal|fena de[gğ]il|ortalama|so so)/.test(mM);
+          if (positive && !negative) score = /(harika|mükemmel|mukemmel|çok iyi|cok iyi)/.test(mM) ? 5 : 4;
+          else if (negative && !positive) score = /(berbat|çok kötü|cok kotu|depres|bitkin)/.test(mM) ? 1 : 2;
+          else if (neutral) score = 3;
+        }
+        if (score !== null && score >= 1 && score <= 5) {
+          actions.push({ type: 'mood_log', score, note: message });
+          console.warn('[mood_safety_net] mood_log injected', { score });
+        }
       }
     }
 
@@ -735,10 +834,26 @@ serve(async (req: Request) => {
       const visited = /(ictim|içtim|yedim|gittim|ugradim|uğradım|aldim|aldım|siparis|sipariş)/.test(mVen);
       const BRANDS = ['starbucks', 'mcdonald', 'burger king', 'big chefs', 'kfc', 'popeyes', 'dominos', "domino's", 'subway', 'kahve dunyasi', 'kahve dünyası', 'gloria jean', 'tavuk dunyasi', 'tavuk dünyası', 'simit sarayi', 'simit sarayı', 'arbys', "arby's", 'sbarro'];
       const brand = BRANDS.find(b => mVen.includes(b));
-      const hasVenueWord = /(restoran|lokanta|kafe|kafeterya|cafe|kafede|disarida yedim|dışarıda yedim)/.test(mVen);
-      if (visited && (brand || hasVenueWord)) {
-        // Capitalize a known brand nicely; otherwise a generic label.
-        const venueName = brand ? brand.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Restoran';
+      // #live-L15: cover Turkish venue-shop nouns with their case suffixes (kebapçıda/
+      // dönerciye/pideciden/lokantasında) via the stem, and decouple "dışarıda" from
+      // "yedim" (the words are rarely adjacent: "dışarıda kebapçıda yemek yedim").
+      const SHOP_TYPES: { re: RegExp; name: string }[] = [
+        { re: /(kebapç|kebapc)/, name: 'Kebapçı' },
+        { re: /(dönerc|donerc)/, name: 'Dönerci' },
+        { re: /(pideci|pidecis)/, name: 'Pideci' },
+        { re: /(lahmacun)/, name: 'Lahmacuncu' },
+        { re: /(köfteci|kofteci)/, name: 'Köfteci' },
+        { re: /(çiğköfteci|cigkofteci|çiğ köfteci)/, name: 'Çiğköfteci' },
+        { re: /(pizzac|pizza)/, name: 'Pizzacı' },
+        { re: /(restoran|lokanta)/, name: 'Restoran' },
+        { re: /(kafeterya|kafede|\bkafe\b|cafe)/, name: 'Kafe' },
+      ];
+      const shop = SHOP_TYPES.find(s => s.re.test(mVen));
+      const eatingOut = /(d[ıi][şs]ar[ıi]da|dışarıda)/.test(mVen) && /(yedim|yemek|ye(d|t)|akşam yemeği|öğle yemeği)/.test(mVen);
+      if (visited && (brand || shop || eatingOut)) {
+        const venueName = brand
+          ? brand.replace(/\b\w/g, (c) => c.toUpperCase())
+          : (shop ? shop.name : 'Restoran');
         actions.push({ type: 'venue_log', venue_name: venueName, items: [] });
         console.warn('[venue_safety_net] venue_log injected', { venueName });
       }
@@ -931,6 +1046,75 @@ serve(async (req: Request) => {
         }
         // Calorie reconciliation on the FINAL (possibly regenerated) snapshot (#R2-H3).
         if (!planPersistError) reconcileDietCalories(planSnapshot);
+      } else if (expectedType === 'workout') {
+        // Spec 12.2/15.7: code-enforced INJURY filter for chat-generated workout plans —
+        // symmetric with the diet allergen branch above and with ai-plan/index.ts:617.
+        // Without this, the chat coach could persist→activate→project a plan with
+        // exercises that load an injured joint (squat/koşu/deadlift...). The diet path
+        // was hardened (#journey-H); the workout path was the missing twin.
+        const { data: injRows } = await supabaseAdmin
+          .from('health_events')
+          .select('description')
+          .eq('user_id', userId)
+          .eq('is_ongoing', true);
+        const injuredParts = extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? ''));
+        if (injuredParts.length > 0) {
+          const scanInjury = (snap: Record<string, unknown>): string[] => {
+            const out: string[] = [];
+            for (const d of (snap.days as Array<Record<string, unknown>> | undefined) ?? []) {
+              if (d.rest_day) continue;
+              const names = ((d.exercises as Array<{ name?: string }> | undefined) ?? []).map(e => e.name ?? '');
+              const { excluded } = filterExercisesByInjury(names, injuredParts);
+              if (excluded.length > 0) out.push(...excluded.map(e => `${d.day_label ?? ''}: ${e.exercise}`));
+            }
+            return out;
+          };
+          let conflicts = scanInjury(planSnapshot);
+          if (conflicts.length > 0) {
+            // Force ONE exclusion regen (mirror the allergen recovery), so the model
+            // can rebuild a coherent program around the injury rather than us leaving holes.
+            console.warn('[plan_snapshot] injury conflict — forcing exclusion regen', { count: conflicts.length, injuredParts });
+            try {
+              const partsTr = injuredParts.join(', ');
+              const forcedRaw = await chatCompletion<string>(
+                [
+                  ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
+                  { role: 'user', content: `Onceki program kullanicinin SAKATLIGINI zorlayan egzersizler iceriyordu (etkilenen bolge: ${partsTr}). Bu KESIN YASAK. O bolgeyi yukleyen tum hareketleri (ornegin diz icin squat/lunge/leg press/kosu/ziplama; bel icin deadlift/good morning) plandan TAMAMEN cikar, yerine guvenli alternatif (izolasyon, yuzme, ust vucut, hafif kardiyo) koy. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> uret: 7 gun (day_index 0-6), her aktif gunde exercises dolu, HICBIR gunde sakat bolgeyi yukleyen hareket olmasin. "...", kisaltma, markdown KULLANMA.` },
+                ],
+                { model: modelSelection.model, temperature: 0.2, maxTokens: 8000 },
+              );
+              const retry = extractPlanSnapshot(forcedRaw);
+              if (retry.snapshot && snapshotUsable(retry.snapshot) && scanInjury(retry.snapshot).length === 0) {
+                planSnapshot = retry.snapshot;
+                conflicts = [];
+                console.warn('[plan_snapshot] injury exclusion regen clean — using regenerated plan');
+              }
+            } catch (e) {
+              console.error('[plan_snapshot] injury regen threw', (e as Error).message);
+            }
+            // Final safety net: if the regen still loads the injury, DROP the offending
+            // exercises in-place so we NEVER persist an injury-loading move. The user still
+            // gets a usable plan (fail-safe), matching ai-plan's drop-and-note behavior.
+            if (conflicts.length > 0) {
+              const dropped: string[] = [];
+              for (const d of (planSnapshot.days as Array<Record<string, unknown>> | undefined) ?? []) {
+                if (d.rest_day || !Array.isArray(d.exercises)) continue;
+                const names = (d.exercises as Array<{ name?: string }>).map(e => e.name ?? '');
+                const { safe, excluded } = filterExercisesByInjury(names, injuredParts);
+                if (excluded.length > 0) {
+                  const safeSet = new Set(safe);
+                  d.exercises = (d.exercises as Array<{ name?: string }>).filter(e => safeSet.has(e.name ?? ''));
+                  dropped.push(...excluded.map(e => e.exercise));
+                }
+              }
+              if (dropped.length > 0) {
+                (planSnapshot as Record<string, unknown>)._injury_excluded = [...new Set(dropped)];
+                const note = `Sakatlik nedeniyle cikarilan egzersizler: ${[...new Set(dropped)].join(', ')}. Yerine guvenli alternatif oneriyoruz.`;
+                planSnapshot.reasoning = `${(planSnapshot.reasoning as string) ?? ''} ${note}`.trim();
+              }
+            }
+          }
+        }
       }
       if (planSnapshot.plan_type === expectedType && !planPersistError) {
         // Find or create the draft.
@@ -1345,34 +1529,63 @@ serve(async (req: Request) => {
         supabaseAdmin.from('health_events').select('description').eq('user_id', userId).eq('is_ongoing', true),
       ]);
       const allergens = (allergenRows ?? []).map((r: { food_name: string }) => r.food_name);
-      // Skip the allergen warning when the reply already addresses the allergy
-      // (e.g. "fıstık alerjin olduğu için önermiyorum").
-      if (allergens.length > 0 && !/alerj/i.test(assistantMessage)) {
+      // #live-L4: ALWAYS run the allergen scan (never skip on a blanket /alerj/ substring).
+      // The model can write an "(alerjisi yoksa)" disclaimer while STILL recommending the
+      // banned food — that conditional is dangerous, not a decline. Suppress the warning
+      // ONLY when every matched allergen food sits next to a real DECLINE phrase
+      // (önermiyorum/kaçın/yerine...). "yoksa" and bare "alerji" do NOT count as a decline.
+      const DECLINE = /(önermiyor|onermiyor|öneremem|oneremem|kaçın|kacin|içermez|icermez|yerine|uygun değil|uygun degil|uzak dur|tüketme|tuketme|çıkar|cikar|eklemedim|kullanmad|hariç|haric|kullanma)/;
+      if (allergens.length > 0) {
         const scan = checkAllergens(assistantMessage, allergens);
         if (!scan.passed) {
-          // checkAllergens violations are full sentences — name just the foods. Resolve
-          // the displayed name via the SAME category expansion checkAllergens uses, so a
-          // category allergen ("deniz ürünleri") triggered by a member food ("somon") is
-          // named correctly instead of falling back to the literal "alerjen" (#R1-L5).
           const lowerReply = assistantMessage.toLocaleLowerCase('tr');
+          // Resolve displayed name via the SAME category expansion checkAllergens uses so a
+          // category allergen ("deniz ürünleri") triggered by a member food ("somon") is
+          // named correctly instead of the literal "alerjen" (#R1-L5).
           const matched = allergens.filter(a => {
             const aName = a.toLocaleLowerCase('tr');
             const tokens = [aName, ...((ALLERGEN_FOODS as Record<string, string[]>)[aName] ?? [])];
             return tokens.some(t => t.length >= 3 && lowerReply.includes(t));
           });
-          const names = matched.length > 0 ? matched.join(', ') : 'alerjen';
-          assistantMessage += `\n\n⚠️ Dikkat: profilinde ${names} alerjisi kayıtlı — yukarıdaki öneri buna uygun olmayabilir. Sana uygun bir alternatif isteyebilirsin.`;
+          const addressed = matched.length > 0 && matched.every(a => {
+            const aName = a.toLocaleLowerCase('tr');
+            const tokens = [aName, ...((ALLERGEN_FOODS as Record<string, string[]>)[aName] ?? [])].filter(t => t.length >= 3);
+            return tokens.some(t => {
+              const i = lowerReply.indexOf(t);
+              return i >= 0 && DECLINE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50));
+            });
+          });
+          if (!addressed) {
+            const names = matched.length > 0 ? matched.join(', ') : 'alerjen';
+            assistantMessage += `\n\n⚠️ Dikkat: profilinde ${names} alerjisi kayıtlı — yukarıdaki öneri buna uygun olmayabilir. Sana uygun bir alternatif isteyebilirsin.`;
+          }
         }
       }
       const injuredParts = extractInjuredBodyParts((injuryRows ?? []).map((r: { description: string }) => r.description));
       if (injuredParts.length > 0) {
         const conflicts = findInjuryConflictsInText(assistantMessage, injuredParts);
-        if (conflicts.length > 0 && !/sakatl|yaralanma|dizini koru|dikkatli ol/i.test(assistantMessage)) {
-          assistantMessage += `\n\n⚠️ Not: kayıtlı sakatlığın nedeniyle ${conflicts.join(', ')} hareket(ler)i senin için riskli olabilir. İstersen sakatlık-dostu bir alternatif programlayalım.`;
+        if (conflicts.length > 0) {
+          // Same logic: warn unless EVERY conflicting movement sits next to a decline/
+          // alternative phrase. A blanket "sakatl" mention is not a decline (#live-L4).
+          const lowerReply = assistantMessage.toLocaleLowerCase('tr');
+          const INJ_DECLINE = /(yerine|kaçın|kacin|önermiyor|onermiyor|öneremem|yapma|alternatif|uzak dur|uygun değil|uygun degil|çıkar|cikar|atla)/;
+          const addressed = conflicts.every(c => {
+            const i = lowerReply.indexOf(c.toLocaleLowerCase('tr'));
+            return i >= 0 && INJ_DECLINE.test(lowerReply.slice(Math.max(0, i - 50), i + c.length + 50));
+          });
+          if (!addressed) {
+            assistantMessage += `\n\n⚠️ Not: kayıtlı sakatlığın nedeniyle ${conflicts.join(', ')} hareket(ler)i senin için riskli olabilir. İstersen sakatlık-dostu bir alternatif programlayalım.`;
+          }
         }
       }
     } catch (e) {
       console.error('[output_safety_scan] failed:', (e as Error).message);
+    }
+
+    // #live-L6: surface the medium-severity ED professional-support referral deterministically
+    // (don't trust the LLM to include it). Skip if the reply already points to a professional.
+    if (edMediumReferral && !/(diyetisyen|psikolog|profesyonel destek|uzman)/i.test(assistantMessage)) {
+      assistantMessage += '\n\n' + edMediumReferral;
     }
 
     // Store messages with token count and model version (Spec 5.25)
@@ -2019,26 +2232,42 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
 // targets.kcal — the model reliably under-fills (#R2-H3). Mutates the snapshot in place.
 function reconcileDietCalories(snap: Record<string, unknown>): void {
   const tgt = Number((snap.targets as Record<string, unknown> | undefined)?.kcal);
-  if (!Number.isFinite(tgt) || tgt <= 0) return;
   for (const day of (snap.days as Array<Record<string, unknown>> | undefined) ?? []) {
     const meals = (day.meals as Array<Record<string, unknown>> | undefined) ?? [];
+    if (meals.length === 0) continue;
     const daySum = meals.reduce((s, m) => s + (Number(m.total_kcal) || 0), 0);
-    if (daySum <= 0) continue;
-    if (Math.abs(daySum - tgt) / tgt <= 0.12) continue;
-    const factor = Math.max(0.5, Math.min(2.5, tgt / daySum));
-    const sc = (v: unknown) => Math.round((Number(v) || 0) * factor);
-    for (const m of meals) {
-      for (const it of (m.items as Array<Record<string, unknown>> | undefined) ?? []) {
-        if (it.grams != null) it.grams = sc(it.grams);
-        if (it.kcal != null) it.kcal = sc(it.kcal);
-        if (it.protein != null) it.protein = sc(it.protein);
-        if (it.carbs != null) it.carbs = sc(it.carbs);
-        if (it.fat != null) it.fat = sc(it.fat);
+    // Rescale meals/items toward the day target ONLY when the meal sum drifts >12% and the
+    // target is valid (under-fill correction, #R2-H3). Skipping this when already on-target
+    // is correct — but the day-rollup recompute below must still run.
+    if (Number.isFinite(tgt) && tgt > 0 && daySum > 0 && Math.abs(daySum - tgt) / tgt > 0.12) {
+      const factor = Math.max(0.5, Math.min(2.5, tgt / daySum));
+      const sc = (v: unknown) => Math.round((Number(v) || 0) * factor);
+      for (const m of meals) {
+        for (const it of (m.items as Array<Record<string, unknown>> | undefined) ?? []) {
+          if (it.grams != null) it.grams = sc(it.grams);
+          if (it.kcal != null) it.kcal = sc(it.kcal);
+          if (it.protein != null) it.protein = sc(it.protein);
+          if (it.carbs != null) it.carbs = sc(it.carbs);
+          if (it.fat != null) it.fat = sc(it.fat);
+        }
+        if (m.total_kcal != null) m.total_kcal = sc(m.total_kcal);
+        if (m.total_protein != null) m.total_protein = sc(m.total_protein);
+        if (m.total_carbs != null) m.total_carbs = sc(m.total_carbs);
+        if (m.total_fat != null) m.total_fat = sc(m.total_fat);
       }
-      if (m.total_kcal != null) m.total_kcal = sc(m.total_kcal);
-      if (m.total_protein != null) m.total_protein = sc(m.total_protein);
-      if (m.total_carbs != null) m.total_carbs = sc(m.total_carbs);
-      if (m.total_fat != null) m.total_fat = sc(m.total_fat);
+    }
+    // #live-L3: ALWAYS recompute the day rollup from its (possibly rescaled) meals so the
+    // snapshot is internally consistent (day.total_* == sum(meals.total_*)). The LLM emitted
+    // day totals undershooting the meal sum by 25-45%; they were stored + rendered verbatim
+    // (FullPlanModal/PlanPreviewCard). Only overwrite when the meal sum is meaningful so a
+    // day whose meals carry no per-meal totals isn't zeroed.
+    const sumBy = (key: string) => Math.round(meals.reduce((s, m) => s + (Number(m[key]) || 0), 0));
+    const kcalSum = sumBy('total_kcal');
+    if (kcalSum > 0) {
+      day.total_kcal = kcalSum;
+      day.total_protein = sumBy('total_protein');
+      day.total_carbs = sumBy('total_carbs');
+      day.total_fat = sumBy('total_fat');
     }
   }
 }
@@ -2419,6 +2648,35 @@ async function executeActions(
             }
           }
 
+          // #live-L2: item-overlap de-dupe. When the user says "1 muz daha yedim", the model
+          // often RESTATES the whole meal-so-far (yumurta+ekmek+süt+muz) as a fresh meal_log,
+          // double-counting the already-logged items (+83% overcount). The exact-text guard
+          // above misses it because the restated text differs. Drop items that already exist
+          // in a recent same-day same-meal-type meal so only genuinely-new items are inserted.
+          let mealItems = items;
+          if (items?.length) {
+            const { data: recent } = await supabaseAdmin
+              .from('meal_logs').select('id')
+              .eq('user_id', userId).eq('meal_type', mealType).eq('logged_for_date', actionDate)
+              .eq('is_deleted', false)
+              .gte('logged_at', new Date(Date.now() - 15 * 60 * 1000).toISOString())
+              .order('logged_at', { ascending: false }).limit(1);
+            const recentId = recent?.[0]?.id as string | undefined;
+            if (recentId) {
+              const { data: exItems } = await supabaseAdmin
+                .from('meal_log_items').select('food_name').eq('meal_log_id', recentId);
+              const existingNames = new Set((exItems ?? []).map((r: { food_name: string }) => (r.food_name ?? '').toLocaleLowerCase('tr').trim()));
+              if (existingNames.size > 0) {
+                const filtered = items.filter(i => !existingNames.has((i.name ?? '').toLocaleLowerCase('tr').trim()));
+                if (filtered.length < items.length) {
+                  // A restate was detected (≥1 item already logged recently).
+                  if (filtered.length === 0) { feedback.push(null); break; } // nothing new — full restate
+                  mealItems = filtered; // insert only the genuinely-new items
+                }
+              }
+            }
+          }
+
           const { data: log, error: logErr } = await supabaseAdmin.from('meal_logs').insert({
             user_id: userId, raw_input: rawText,
             meal_type: mealType,
@@ -2436,7 +2694,7 @@ async function executeActions(
             break;
           }
 
-          if (log && items?.length) {
+          if (log && mealItems?.length) {
             // Phase 6: Cooking method calorie adjustments
             const cookingMethod = action.cooking_method as string | null;
             const COOKING_MULTIPLIERS: Record<string, number> = {
@@ -2451,7 +2709,7 @@ async function executeActions(
             const multiplier = cookingMethod ? (COOKING_MULTIPLIERS[cookingMethod.toLowerCase()] ?? 1.0) : 1.0;
 
             const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(
-              items.map(i => ({
+              mealItems.map(i => ({
                 meal_log_id: log.id, food_name: i.name ?? 'Yiyecek', portion_text: i.portion ?? '1 porsiyon',
                 // calories is smallint (max 32767) — clamp so one absurd value (parse
                 // error) can't overflow and 22003-fail the WHOLE item batch (#R4-14).
@@ -2474,16 +2732,16 @@ async function executeActions(
           // Caffeine notices used to be pushed as separate feedback entries (and the case
           // broke early), so for a lone meal_log they landed on later actions' chips and
           // were dropped. Accumulate them into mealFeedback so they reach the user.
-          if (items?.length) {
-            const caffeineFeedback = await checkCaffeineIntake(userId, items, today);
+          if (mealItems?.length) {
+            const caffeineFeedback = await checkCaffeineIntake(userId, mealItems, today);
             for (const cf of caffeineFeedback) mealFeedback.push(cf);
           }
 
           // A8: Low confidence proactive verification
           // NOTE: assistantMessage is not in scope here; pass via closure via the outer variable.
           // We check the action's items for suspicious calorie totals.
-          if (items?.length) {
-            const totalMealCal = items.reduce((s, i) => s + (i.calories ?? 0), 0);
+          if (mealItems?.length) {
+            const totalMealCal = mealItems.reduce((s, i) => s + (i.calories ?? 0), 0);
             if (totalMealCal > 1500 || (totalMealCal > 0 && totalMealCal < 50)) {
               mealFeedback.push('NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste.');
             }
@@ -2770,6 +3028,14 @@ async function executeActions(
                 { user_id: userId, date: actionDate, weight_kg: wv, water_liters: await waterFor(actionDate), synced: true },
                 { onConflict: 'user_id,date' }
               );
+              // #live-S6: weight_history is the canonical measurement store (KVKK export +
+              // trend/ETA source). The weight_log handler writes it; this profile_update
+              // path (the most common chat weigh-in, "85.5 kiloyum") must mirror it or the
+              // weigh-in is missing from the export and any weight_history-based reader.
+              await supabaseAdmin.from('weight_history').upsert(
+                { user_id: userId, weight_kg: wv, recorded_at: actionDate },
+                { onConflict: 'user_id,recorded_at' }
+              );
               recalculateTDEEIfNeeded(userId, wv).then(() => {}, () => {});
             }
           }
@@ -2864,6 +3130,7 @@ async function executeActions(
           // maps feedback[i] -> actions[i] positionally (line ~863), so pushing 2
           // (profile + goal) for a single action would shift every later action's chip.
           const pfMessages: string[] = [];
+          let tdeeRecalced = false; // guard so activity + goal changes don't recompute TDEE twice
           // Normalize/drop CHECK-constrained enum columns so one off-enum value
           // (e.g. Turkish "orta") can't 23514-fail the whole batch and silently
           // lose every co-submitted field (#7).
@@ -2886,7 +3153,7 @@ async function executeActions(
             if (!pfErr && updates.activity_level !== undefined) {
               const { data: wRow } = await supabaseAdmin.from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
               const wv = wRow?.weight_kg as number | null;
-              if (wv) recalculateTDEEIfNeeded(userId, wv, true).then(() => {}, () => {});
+              if (wv) { tdeeRecalced = true; recalculateTDEEIfNeeded(userId, wv, true).then(() => {}, () => {}); }
             }
           }
           // Goal persistence: save even without target_weight_kg — user may give goal type
@@ -2928,6 +3195,7 @@ async function executeActions(
             // weights (#R1-L6: 'maintain'/'gain' emitted on a target-only weight-loss
             // correction) so the correct existing goal_type is preserved.
             const modelGoalType = (action.goal_type && CANONICAL_GOAL_TYPES.has(action.goal_type as string)) ? (action.goal_type as string) : null;
+            let clearWeightTarget = false;
             if (modelGoalType) {
               let consistent = true;
               if (existing && startW && targetW && Math.abs(startW - targetW) > 1) {
@@ -2935,12 +3203,21 @@ async function executeActions(
                 if (losing && (modelGoalType === 'maintain' || modelGoalType === 'gain_weight')) consistent = false;
                 if (!losing && (modelGoalType === 'lose_weight' || modelGoalType === 'maintain')) consistent = false;
               }
-              if (consistent) goalPatch.goal_type = modelGoalType;
+              if (consistent) {
+                goalPatch.goal_type = modelGoalType;
+                // #live-L12: switching an EXISTING goal to a non-weight type (gain_muscle/maintain)
+                // without a NEW target must clear the stale target_weight_kg + weekly_rate — else a
+                // muscle-gain goal keeps the old weight-LOSS target (e.g. 80kg) and chat context +
+                // reports tell the user to drop weight. Mirrors goal_suggestion's null-target path.
+                if (existing && (modelGoalType === 'gain_muscle' || modelGoalType === 'maintain') && !action.target_weight_kg) {
+                  clearWeightTarget = true;
+                }
+              }
             } else if (!existing) {
               goalPatch.goal_type = 'lose_weight'; // only set default on brand-new row
             }
 
-            const derivedRate = (startW && targetW && weeks > 0)
+            const derivedRate = (startW && targetW && weeks > 0 && !clearWeightTarget)
               ? Math.round((Math.abs(startW - targetW) / weeks) * 100) / 100
               : null;
 
@@ -2953,13 +3230,23 @@ async function executeActions(
               const { error: gInsErr } = await supabaseAdmin.from('goals').insert(goalPatch);
               if (gInsErr) { console.error('[profile_update] goal insert failed:', gInsErr.message); goalWriteOk = false; }
             } else {
-              if (derivedRate) goalPatch.weekly_rate = derivedRate;
+              if (clearWeightTarget) { goalPatch.target_weight_kg = null; goalPatch.weekly_rate = null; }
+              else if (derivedRate) goalPatch.weekly_rate = derivedRate;
               const { error: gUpdErr } = await supabaseAdmin.from('goals').update(goalPatch).eq('id', existing.id);
               if (gUpdErr) { console.error('[profile_update] goal update failed:', gUpdErr.message); goalWriteOk = false; }
             }
             // Only claim success when the DB actually accepted the write — never tell
             // the user "Hedef belirlendi" while the row was rejected (#8).
             if (goalWriteOk) pfMessages.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
+            // #live-L1: the goal's deficit/surplus factor only enters calorie ranges via
+            // recalculateTDEEIfNeeded (goal-aware). When a user states their goal AFTER the
+            // identity card (the natural order), checkOnboardingCompletion already ran goal-less
+            // (factor 1.0 = maintenance), so a "kilo vermek" user was left on maintenance calories.
+            // Recompute now that the goal row exists/changed. (activity_level path above does the same.)
+            if (goalWriteOk && !tdeeRecalced && currentWeight) {
+              tdeeRecalced = true;
+              recalculateTDEEIfNeeded(userId, currentWeight as number, true).then(() => {}, () => {});
+            }
           }
           // Exactly one feedback entry for this profile_update action (null = no chip,
           // but keeps feedback[] positionally aligned with actions[]).
@@ -2988,9 +3275,16 @@ async function executeActions(
             fpRow.allergen_severity = VALID_SEV.has(action.allergen_severity as string)
               ? action.allergen_severity : 'moderate';
           }
-          const { error: fpErr } = await supabaseAdmin.from('food_preferences').insert(fpRow);
+          // UPSERT on the (user_id, food_name) unique key — a plain insert would 23505
+          // when escalating an already-known food (e.g. user earlier said "çileği sevmiyorum"
+          // then later "çilek alerjim var"): the allergy/severity would be silently dropped and
+          // the allergen guardrails (which read is_allergen) would never see it. Mirrors the
+          // client path (settings/food-preferences.tsx). #safety
+          const { error: fpErr } = await supabaseAdmin
+            .from('food_preferences')
+            .upsert(fpRow, { onConflict: 'user_id,food_name' });
           if (fpErr) {
-            console.error('[food_preference] insert failed:', fpErr.message);
+            console.error('[food_preference] upsert failed:', fpErr.message);
             feedback.push(null);
           } else {
             feedback.push(action.is_allergen === true ? 'Alerjen kaydedildi' : 'Yemek tercihi kaydedildi');
@@ -3185,6 +3479,10 @@ async function executeActions(
           break;
         }
         case 'periodic_state_update': {
+          // #S7: accumulate all sub-notes into ONE feedback entry — the caller maps
+          // feedback[i]->actions[i] positionally, so pushing 2-4 here would shove the
+          // extras onto a co-batched later action's chip.
+          const stateMessages: string[] = [];
           const rawState = action.state as string | null;
           // Clearing ("iyileştim") maps none/normal/null to ACTUAL NULLs — the
           // old code wrote the literal string 'none' into periodic_state and the
@@ -3222,7 +3520,7 @@ async function executeActions(
               const matches = notes.match(regex);
               if (matches && matches.length > 0) {
                 // Most recent match (last in list)
-                feedback.push(`Gecen ${newState} doneminden not: ${matches[matches.length - 1]}`);
+                stateMessages.push(`Gecen ${newState} doneminden not: ${matches[matches.length - 1]}`);
               }
             } catch { /* non-critical */ }
           }
@@ -3249,7 +3547,7 @@ async function executeActions(
                   .update({ status: 'paused', paused_at: new Date().toISOString() })
                   .in('id', challengeIds);
                 const stateLabel = newState === 'illness' ? 'Hastalik' : newState === 'travel' ? 'Seyahat' : 'Tatil';
-                feedback.push(`${stateLabel} nedeniyle ${activeChallenges.length} aktif challenge duraklatildi.`);
+                stateMessages.push(`${stateLabel} nedeniyle ${activeChallenges.length} aktif challenge duraklatildi.`);
               }
             } catch { /* challenge pause non-critical */ }
           }
@@ -3268,7 +3566,7 @@ async function executeActions(
                   .from('challenges')
                   .update({ status: 'active', paused_at: null })
                   .in('id', challengeIds);
-                feedback.push(`${pausedChallenges.length} duraklatilmis challenge tekrar aktif.`);
+                stateMessages.push(`${pausedChallenges.length} duraklatilmis challenge tekrar aktif.`);
               }
             } catch { /* challenge resume non-critical */ }
           }
@@ -3285,7 +3583,8 @@ async function executeActions(
             { user_id: userId, seasonal_notes: newNote, updated_at: new Date().toISOString() },
             { onConflict: 'user_id' }
           );
-          feedback.push(CLEARING ? 'Donemsel durum kapatildi — normale donuldu' : `Donemsel durum: ${newState}`);
+          stateMessages.push(CLEARING ? 'Donemsel durum kapatildi — normale donuldu' : `Donemsel durum: ${newState}`);
+          feedback.push(stateMessages.join('\n'));
           break;
         }
         case 'plateau_strategy_apply': {
@@ -3421,7 +3720,11 @@ async function executeActions(
               await supabaseAdmin.from('profiles').update({ step_target: Math.round(targetVal) }).eq('id', userId);
               feedback.push(`Adim hedefi guncellendi: ${Math.round(targetVal)}/gun.`);
             } else {
-              await updateLayer2(userId, { coaching_note: `Hedef onerisi kabul edildi: ${rawType}${targetVal ? ` ${targetVal}` : ''}` }).then(() => {}, () => {});
+              // #S4: route through processLayer2Updates which maps the singular `coaching_note`
+              // alias to the PLURAL `coaching_notes` column the ai_summary_merge RPC reads and
+              // APPENDS (a dated line). Calling updateLayer2 directly with `coaching_note` was a
+              // no-op (the RPC ignores the singular key) so the note was silently dropped.
+              await processLayer2Updates(userId, { coaching_note: `Hedef onerisi kabul edildi: ${rawType}${targetVal ? ` ${targetVal}` : ''}` }).then(() => {}, () => {});
               feedback.push('Hedef not edildi.');
             }
             break;
