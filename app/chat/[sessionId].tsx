@@ -278,6 +278,7 @@ export default function SessionDetailScreen() {
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
+  const barcodeProcessingRef = useRef(false); // debounce repeated onBarcodeScanned (#R4-15)
 
   const isOnboarding = profile && !profile.onboarding_completed;
   const isPremium = !!(profile as Record<string, unknown> | null)?.premium;
@@ -303,6 +304,11 @@ export default function SessionDetailScreen() {
 
   // Barcode scan handler (T2.12-T2.13)
   const handleBarcodeScan = async (barcode: string) => {
+    // CameraView fires onBarcodeScanned repeatedly while the code is in frame, and
+    // state updates are async, so several events can land before the scanner
+    // unmounts — debounce so we lookup/insert ONCE (#R4-15).
+    if (barcodeProcessingRef.current) return;
+    barcodeProcessingRef.current = true;
     setShowBarcodeScanner(false);
     setSending(true);
     const result = await lookupBarcode(barcode);
@@ -317,6 +323,7 @@ export default function SessionDetailScreen() {
       setInput(`Barkod ${barcode} bulunamadı. Bu ürünü metin olarak girebilirsin.`);
     }
     setSending(false);
+    barcodeProcessingRef.current = false; // allow the next deliberate scan
   };
 
   // Voice recording handler (T4.1 / U1)

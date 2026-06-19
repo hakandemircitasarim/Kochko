@@ -62,11 +62,16 @@ export async function transcribeAudio(audioUri: string): Promise<string | null> 
 
     // Convert to base64
     const reader = new FileReader();
-    const base64Promise = new Promise<string>((resolve) => {
+    const base64Promise = new Promise<string>((resolve, reject) => {
       reader.onloadend = () => {
         const base64 = (reader.result as string).split(',')[1];
         resolve(base64);
       };
+      // Without an error/abort handler a failed read leaves the promise pending
+      // forever, hanging the whole voice flow (#R4-13). Reject so the outer
+      // try/catch returns null and the UI can recover.
+      reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
+      reader.onabort = () => reject(new Error('FileReader aborted'));
     });
     reader.readAsDataURL(blob);
     const audioBase64 = await base64Promise;
