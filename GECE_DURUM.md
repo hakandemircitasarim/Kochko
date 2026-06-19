@@ -22,7 +22,22 @@ gerçek Supabase+OpenAI'a karşı test edildi; her bulgu ikinci bir ajanla düş
 
 **8 ORTA / 8 DÜŞÜK:** gender ASCII "erkegim" · ED-typo (sismansim→sismanim) · weight_history hiç yazılmıyordu (M2) · progressive_overload dedup · injury güvenlik-ağı · goal_type yanlış flip koruması · beslenme Q&A hafıza geri-çağırma · ai-extractor dizi→string · chat_sessions invariant (mig 048) · çıktı-alerjen isim çözümü · weekly rapor yanıt paritesi · schema dump tazelendi.
 
-**Deploy:** 5 edge function redeploy edildi, mig 048 canlıda. deno check 5/5 temiz. M3 (plan kalori-hedef uyumsuzluğu) Round-2'ye ertelendi (regen-döngü riski, dikkatli canlı test gerekiyor).
+**Deploy:** 5 edge function redeploy edildi, mig 048 canlıda. deno check 5/5 temiz.
+
+### Round-2: 7 paralel derin-spec ajanı + düşmanca doğrulama → 13 bug, hepsi DÜZELTİLDİ
+21 ajan / ~1.3M token. Dönemsel/premium/KVKK/proaktif+challenge/tarif/rapor+plan/bildirim+başarım.
+**0 kritik** (kritikleri Round-1 yakaladı), 3 yüksek, 3 orta, 7 düşük.
+
+**3 YÜKSEK (canlı doğrulandı):**
+- **H1:** "bakım moduna geç/hedefime ulaştım" maintenance_start action'ı hiç çıkmıyordu (model söz veriyor, kaydetmiyordu) → davranış-rehberi + deterministik net. Canlı: maintenance_mode=true. ✅
+- **H2:** Regl/adet takibi sohbetten HİÇ ayarlanamıyordu (action tipi+handler yoktu) → profile_update'a menstrual alanları + net. Canlı: tracking+tarih+döngü kaydı. ✅
+- **H3:** Diyet planı her gün hedefin ~%40-60 ALTINI dolduruyordu (model tutarsızlığı) → deterministik **porsiyon-ölçekleme** reconciliation. Canlı: 7/7 gün hedefte. ✅
+
+**3 ORTA:** menstrual gelecek-tarih guard'ı (3 edge dosyası — negatif döngü-günü) · premium gate'leri premium_expires_at'i yok sayıyordu (süresi dolan ~2 gün premium kalıyordu) → expiry kontrolü · venue_log sohbetten hiç çıkmıyordu (routing: register>eating_out) → venue net. **Hepsi canlı doğrulandı.**
+
+**7 DÜŞÜK:** mini_cut/maintenance off-enum periodic_state + config · challenges.completed_at hiç yazılmıyordu · tamamlanan challenge'lar ekranda kayboluyordu (geçmiş bölümü eklendi) · cron-auth yorum tutarsızlığı · meal_prep_days tip-kayması (kabul) · streak day_boundary_hour=4 hardcode (gerçek değer) · audit_logs.description NOT NULL drift (kabul — fonksiyonel hata değil).
+
+**Deploy:** 5 edge function tekrar redeploy. deno 5/5 + client tsc 0 hata. **Öz-denetimde 1 kendi-regresyonum yakalandı+düzeltildi** (geniş hedef-regex antrenman hedefini yutabiliyordu → egzersiz-bağlamı guard'ı).
 
 ---
 

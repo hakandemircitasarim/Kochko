@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getActiveChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
+import { getActiveChallenges, getCompletedChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -9,6 +9,7 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 export default function ChallengesScreen() {
   const insets = useSafeAreaInsets();
   const [active, setActive] = useState<Challenge[]>([]);
+  const [completed, setCompleted] = useState<Challenge[]>([]);
   const [showSystem, setShowSystem] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -20,7 +21,10 @@ export default function ChallengesScreen() {
   const [customThreshold, setCustomThreshold] = useState('');
 
   useEffect(() => { load().finally(() => setLoading(false)); }, []);
-  const load = () => getActiveChallenges().then(setActive);
+  const load = () => Promise.all([
+    getActiveChallenges().then(setActive),
+    getCompletedChallenges().then(setCompleted),
+  ]);
 
   const handleStart = async (c: typeof SYSTEM_CHALLENGES[0]) => {
     try {
@@ -190,6 +194,29 @@ export default function ChallengesScreen() {
           </View>
           <Button title="Başlat" onPress={handleStartCustom} />
         </Card>
+      )}
+
+      {/* #R2-L4: Completed/abandoned history — previously these vanished from the screen */}
+      {completed.length > 0 && (
+        <View style={{ marginTop: SPACING.lg }}>
+          <Text style={{ fontSize: FONT.lg, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.sm }}>Tamamlanan / Geçmiş</Text>
+          {completed.map(c => {
+            const done = c.progress.filter(p => p.met).length;
+            return (
+              <Card key={c.id}>
+                <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>
+                  {c.status === 'completed' ? '🏆 ' : ''}{c.title}
+                </Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 4 }}>
+                  {c.status === 'completed' ? 'Tamamlandı' : 'Bırakıldı'} · {done}/{c.target.duration_days} gün
+                </Text>
+                <View style={{ height: 6, backgroundColor: COLORS.surfaceLight, borderRadius: 3, overflow: 'hidden', marginTop: SPACING.sm }}>
+                  <View style={{ height: '100%', width: `${Math.min(100, (done / c.target.duration_days) * 100)}%`, backgroundColor: c.status === 'completed' ? COLORS.success : COLORS.textMuted, borderRadius: 3 }} />
+                </View>
+              </Card>
+            );
+          })}
+        </View>
       )}
     </ScrollView>
     </KeyboardAvoidingView>

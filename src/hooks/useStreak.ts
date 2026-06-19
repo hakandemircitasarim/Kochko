@@ -10,7 +10,13 @@ export function useStreak() {
 
   useEffect(() => {
     if (!user?.id) return;
-    calculateStreak(user.id).then(setStreak);
+    // #R2-L7: pass the user's saved day_boundary_hour instead of the service default (4),
+    // so a late-night log is credited to the same calendar day the server used.
+    (async () => {
+      const { data: prof } = await supabase.from('profiles').select('day_boundary_hour').eq('id', user.id).single();
+      const s = await calculateStreak(user.id, (prof?.day_boundary_hour as number | null) ?? 4);
+      setStreak(s);
+    })();
   }, [user?.id]);
 
   // Must be memoized: the dashboard lists this in a useCallback dep array that
@@ -19,11 +25,11 @@ export function useStreak() {
   // exceeded" infinite loop (the whole authed app spins).
   const checkForMilestones = useCallback(async () => {
     if (!user?.id) return;
-    const s = await calculateStreak(user.id);
+    // Get weight + day_boundary_hour for streak/milestone check (#R2-L7).
+    const { data: profile } = await supabase.from('profiles').select('weight_kg, day_boundary_hour').eq('id', user.id).single();
+    const s = await calculateStreak(user.id, (profile?.day_boundary_hour as number | null) ?? 4);
     setStreak(s);
 
-    // Get weight data for milestone check
-    const { data: profile } = await supabase.from('profiles').select('weight_kg').eq('id', user.id).single();
     const { data: firstMetric } = await supabase.from('daily_metrics').select('weight_kg').eq('user_id', user.id).order('date').limit(1).single();
     const { data: goal } = await supabase.from('goals').select('target_weight_kg, goal_type').eq('user_id', user.id).eq('is_active', true).single();
 

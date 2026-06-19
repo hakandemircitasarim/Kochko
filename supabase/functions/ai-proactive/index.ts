@@ -1051,7 +1051,9 @@ serve(async (req: Request) => {
       // Cycle phase transition notification (Phase 3: Kadın kullanıcılara özel)
       let cycleTransitionInfo = '';
       const prof = profile as Record<string, unknown>;
-      if (prof.menstrual_tracking && prof.menstrual_last_period_start && prof.menstrual_cycle_length) {
+      if (prof.menstrual_tracking && prof.menstrual_last_period_start && prof.menstrual_cycle_length
+          && new Date(prof.menstrual_last_period_start as string).getTime() <= Date.now()) {
+        // Guard future/invalid date -> no negative day-of-cycle / bogus transition (#R2-M1).
         const cycleLen = prof.menstrual_cycle_length as number;
         const lastStart = prof.menstrual_last_period_start as string;
         const daysSincePeriod = Math.floor((Date.now() - new Date(lastStart).getTime()) / 86400000);
@@ -1528,7 +1530,7 @@ async function evaluateChallenges(dateStr: string) {
 
       await supabaseAdmin.from('challenges').update({
         progress: newProgress,
-        ...(completed ? { status: 'completed' } : {}),
+        ...(completed ? { status: 'completed', completed_at: new Date().toISOString() } : {}),
       }).eq('id', ch.id);
 
       if (completed) {

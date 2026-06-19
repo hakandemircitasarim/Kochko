@@ -66,8 +66,11 @@ serve(async (req: Request) => {
     // server-side here. (The premium test account still uses them normally.)
     const usesPremiumIO = !!image_base64 || (!!audio_base64 && !!body.transcribe_only);
     if (usesPremiumIO) {
-      const { data: ioProfile } = await supabaseAdmin.from('profiles').select('premium').eq('id', userId).maybeSingle();
-      if (ioProfile?.premium !== true) {
+      const { data: ioProfile } = await supabaseAdmin.from('profiles').select('premium, premium_expires_at').eq('id', userId).maybeSingle();
+      // #R2-M2: gate on ACTIVE premium (boolean AND not-expired), not the boolean alone —
+      // the daily cron has a 1-day grace so an expired user keeps premium=true ~2 days.
+      const ioActive = ioProfile?.premium === true && (!ioProfile.premium_expires_at || new Date(ioProfile.premium_expires_at as string) > new Date());
+      if (!ioActive) {
         if (audio_base64 && body.transcribe_only) {
           return respond({ error: 'Sesli giriş Premium özelliğidir.', code: 'PREMIUM_REQUIRED' }, 403);
         }
@@ -712,6 +715,24 @@ serve(async (req: Request) => {
       }
     }
 
+    // Venue safety net — deterministic (#R2-M3): "Starbucks'ta latte ictim" routes to
+    // register (meal_log captures the food) but the venue_log action that builds venue
+    // memory (user_venues) never fired, so eating-out memory was unreachable. Detect a
+    // known brand or venue word + a visit/consumption verb and record the venue visit.
+    if (message && !actions.some(a => a.type === 'venue_log')) {
+      const mVen = message.toLocaleLowerCase('tr');
+      const visited = /(ictim|içtim|yedim|gittim|ugradim|uğradım|aldim|aldım|siparis|sipariş)/.test(mVen);
+      const BRANDS = ['starbucks', 'mcdonald', 'burger king', 'big chefs', 'kfc', 'popeyes', 'dominos', "domino's", 'subway', 'kahve dunyasi', 'kahve dünyası', 'gloria jean', 'tavuk dunyasi', 'tavuk dünyası', 'simit sarayi', 'simit sarayı', 'arbys', "arby's", 'sbarro'];
+      const brand = BRANDS.find(b => mVen.includes(b));
+      const hasVenueWord = /(restoran|lokanta|kafe|kafeterya|cafe|kafede|disarida yedim|dışarıda yedim)/.test(mVen);
+      if (visited && (brand || hasVenueWord)) {
+        // Capitalize a known brand nicely; otherwise a generic label.
+        const venueName = brand ? brand.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Restoran';
+        actions.push({ type: 'venue_log', venue_name: venueName, items: [] });
+        console.warn('[venue_safety_net] venue_log injected', { venueName });
+      }
+    }
+
     // Goal safety net: goal statements ("3 ayda 5 kilo vermek istiyorum, hedefim
     // 70") were lost 5/5 in the live audit — the model answers conversationally
     // and omits the actions block despite prompt rules. Forced extraction of the
@@ -725,6 +746,46 @@ serve(async (req: Request) => {
       if (forcedGoal) {
         actions.push(forcedGoal);
         console.warn('[goal_safety_net] forced goal profile_update injected', { goal_type: forcedGoal.goal_type });
+      }
+    }
+
+    // Maintenance safety net — deterministic (#R2-H1): the model verbally confirms
+    // "bakım moduna geçiyoruz" but reliably omits the maintenance_start action, so the
+    // reverse-diet / maintenance flow never persists. Fire on a clear maintenance intent.
+    if (message
+      && !actions.some(a => a.type === 'maintenance_start')
+      && /(bakim modu|bakım modu|maintenance|bakima gec|bakıma geç|kiloyu koru|kilomu koru|hedefime ulast|hedefime ulaşt|reverse diet|ters diyet)/i.test(message)
+      && /(gec|geç|baslat|başlat|gecmek|geçmek|al beni|alalim|alalım|istiyorum|ulast|ulaşt)/i.test(message)
+      && !/(bakim modu nedir|bakım modu nedir|maintenance nedir|ne zaman|gerekir mi|gecmeli miyim|geçmeli miyim)/i.test(message)) {
+      actions.push({ type: 'maintenance_start' });
+      console.warn('[maintenance_safety_net] maintenance_start injected');
+    }
+
+    // Menstrual tracking safety net — deterministic (#R2-H2): the model gives cycle
+    // advice but there was no chat write path for menstrual fields. Detect intent + a
+    // last-period date (YYYY-MM-DD or DD.MM.YYYY) and optional cycle length.
+    if (message
+      && !actions.some(a => a.type === 'profile_update' && (a as Record<string, unknown>).menstrual_tracking !== undefined)
+      && /(regl|adet|menstr|donem takib|dönem takib|period)/i.test(message)) {
+      const mMen = message.toLocaleLowerCase('tr');
+      const stop = /(takibi (birak|bırak|kapat|istemiyorum)|takip etme)/.test(mMen);
+      if (stop) {
+        actions.push({ type: 'profile_update', menstrual_tracking: false });
+        console.warn('[menstrual_safety_net] tracking disabled');
+      } else {
+        const iso = message.match(/(\d{4}-\d{2}-\d{2})/);
+        const dmy = message.match(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})/);
+        let lastStart: string | null = null;
+        if (iso) lastStart = iso[1];
+        else if (dmy) lastStart = `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+        const cyc = mMen.match(/(\d{2})\s*(?:gun|gün)(?:luk|lük)?\s*(?:dongu|döngü|adet|cycle)?/);
+        if (lastStart || /(takibi (yap|baslat|başlat|ac|aç)|takip et)/.test(mMen)) {
+          const upd: Record<string, unknown> = { type: 'profile_update', menstrual_tracking: true };
+          if (lastStart) upd.menstrual_last_period_start = lastStart;
+          if (cyc) { const n = parseInt(cyc[1]); if (n >= 20 && n <= 45) upd.menstrual_cycle_length = n; }
+          actions.push(upd);
+          console.warn('[menstrual_safety_net] tracking enabled', { lastStart, cyc: cyc?.[1] });
+        }
       }
     }
 
@@ -791,6 +852,39 @@ serve(async (req: Request) => {
     let planPersistError: string | null = null;
     if (planSnapshot && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
       const expectedType = task_mode_hint === 'plan_diet' ? 'diet' : 'workout';
+      // CALORIE RECONCILIATION (#R2-H3): the model reliably under-fills diet days — meals
+      // sum to ~40-60% of targets.kcal every generation, and prompt rules alone don't fix
+      // it. Deterministically rescale each day's item portions (grams + kcal + macros) by
+      // factor = target/daySum so the day hits its target with CONSISTENT, larger portions
+      // (200g chicken -> 320g chicken, calories scale with grams). Clamped to avoid extremes.
+      if (expectedType === 'diet') {
+        const tgt = Number((planSnapshot.targets as Record<string, unknown> | undefined)?.kcal);
+        if (Number.isFinite(tgt) && tgt > 0) {
+          for (const day of (planSnapshot.days as Array<Record<string, unknown>> | undefined) ?? []) {
+            const meals = (day.meals as Array<Record<string, unknown>> | undefined) ?? [];
+            const daySum = meals.reduce((s, m) => s + (Number(m.total_kcal) || 0), 0);
+            if (daySum <= 0) continue;
+            const dev = Math.abs(daySum - tgt) / tgt;
+            if (dev <= 0.12) continue; // already within ±12%
+            const factor = Math.max(0.5, Math.min(2.5, tgt / daySum));
+            const sc = (v: unknown) => Math.round((Number(v) || 0) * factor);
+            for (const m of meals) {
+              for (const it of (m.items as Array<Record<string, unknown>> | undefined) ?? []) {
+                if (it.grams != null) it.grams = sc(it.grams);
+                if (it.kcal != null) it.kcal = sc(it.kcal);
+                if (it.protein != null) it.protein = sc(it.protein);
+                if (it.carbs != null) it.carbs = sc(it.carbs);
+                if (it.fat != null) it.fat = sc(it.fat);
+              }
+              if (m.total_kcal != null) m.total_kcal = sc(m.total_kcal);
+              if (m.total_protein != null) m.total_protein = sc(m.total_protein);
+              if (m.total_carbs != null) m.total_carbs = sc(m.total_carbs);
+              if (m.total_fat != null) m.total_fat = sc(m.total_fat);
+            }
+          }
+          console.warn('[plan_calorie_reconcile] diet days rescaled toward target', { tgt });
+        }
+      }
       // Allergen guardrail (Spec 12.4): for diet snapshots, scan every meal name + items
       // against the user's allergen list. If any allergen is present, refuse to persist
       // and tell the AI to regenerate. The model's snapshot is never written to DB until
@@ -874,8 +968,9 @@ serve(async (req: Request) => {
       // free = 1 diet + 1 workout lifetime). This check used to live ONLY in the
       // client, so any direct edge call approved unlimited plans on a free account.
       const { data: gateProfile } = await supabaseAdmin
-        .from('profiles').select('premium, plans_used_free').eq('id', userId).maybeSingle();
-      if (gateProfile?.premium !== true) {
+        .from('profiles').select('premium, premium_expires_at, plans_used_free').eq('id', userId).maybeSingle();
+      const gateActive = gateProfile?.premium === true && (!gateProfile.premium_expires_at || new Date(gateProfile.premium_expires_at as string) > new Date());
+      if (!gateActive) {
         const used = (gateProfile?.plans_used_free as { diet?: number; workout?: number } | null) ?? {};
         if ((used[expectedType] ?? 0) >= 1) {
           return respond({
@@ -1773,14 +1868,20 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
     if (h >= 100 && h <= 250) result.height_cm = h;
   }
 
-  // Target weight: "hedef kilo 90", "hedef kilom 90", "90 kg hedef", and the verb-less
-  // correction "hedefim 78" / "hedefim 78 olsun" (#R1-M8) — checked BEFORE plain weight
-  // so "hedef kilo 100" isn't misread as current weight. The \d{2,3} (2-3 digit) guard
-  // means an AMOUNT like "5 kilo vermek" can never be captured as a target.
-  const targetMatch = lower.match(/hedef\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:[.,]\d)?)|(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)\s*hedef|hedef\w*\s*[:=]?\s*(\d{2,3}(?:[.,]\d)?)\b/);
+  // Target weight: "hedef kilo 90", "hedef kilom 90", "90 kg hedef" — checked BEFORE
+  // plain weight so "hedef kilo 100" isn't misread as current weight.
+  const targetMatch = lower.match(/hedef\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:[.,]\d)?)|(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)\s*hedef/);
   if (targetMatch && result.target_weight_kg == null) {
-    const t = parseFloat((targetMatch[1] ?? targetMatch[2] ?? targetMatch[3]).replace(',', '.'));
+    const t = parseFloat((targetMatch[1] ?? targetMatch[2]).replace(',', '.'));
     if (t >= 30 && t <= 300) result.target_weight_kg = t;
+  }
+  // Verb-less goal correction "hedefim 78" / "hedefim 78 olsun" (#R1-M8). Gated to
+  // NON-exercise messages so a LIFT goal ("bench press hedefim 100 kg") is never
+  // misread as a bodyweight target. The \d{2,3} guard also excludes amounts ("5 kilo").
+  if (result.target_weight_kg == null
+    && !/(bench|press|squat|deadlift|curl|set|tekrar|\brep\b|kaldir|kaldır|antren|egzersiz|\d+\s*x\s*\d+)/.test(lower)) {
+    const hm = lower.match(/hedef\w*\s*[:=]?\s*(\d{2,3}(?:[.,]\d)?)\b/);
+    if (hm) { const t = parseFloat(hm[1].replace(',', '.')); if (t >= 30 && t <= 300) result.target_weight_kg = t; }
   }
 
   // Current weight: "kilom 72", "72 kg", "72 kiloyum" — but not if we just matched it as target.
@@ -2619,6 +2720,17 @@ async function executeActions(
             updates.if_eating_end = action.if_eating_end;
           }
           if (typeof action.if_window === 'string') updates.if_window = action.if_window;
+          // Menstrual tracking (#R2-H2): previously no chat write path — profile_update
+          // silently ignored these, so the spec-described chat flow was non-functional.
+          if (action.menstrual_tracking !== undefined) updates.menstrual_tracking = action.menstrual_tracking === true;
+          if (typeof action.menstrual_last_period_start === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(action.menstrual_last_period_start as string)) {
+            // Guard against a future last-period date (would yield a negative cycle day downstream).
+            const d = new Date(action.menstrual_last_period_start as string);
+            if (!Number.isNaN(d.getTime()) && d.getTime() <= Date.now()) updates.menstrual_last_period_start = action.menstrual_last_period_start;
+          }
+          if (typeof action.menstrual_cycle_length === 'number' && action.menstrual_cycle_length >= 20 && action.menstrual_cycle_length <= 45) {
+            updates.menstrual_cycle_length = action.menstrual_cycle_length;
+          }
           // Schedule & lifestyle
           if (action.occupation) updates.occupation = action.occupation;
           if (action.work_start) updates.work_start = action.work_start;

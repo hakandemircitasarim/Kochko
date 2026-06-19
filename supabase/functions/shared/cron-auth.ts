@@ -4,10 +4,10 @@
  * the WHOLE user fleet (LLM calls + push). Without a guard, anyone holding the
  * public anon key could POST and trigger fleet-wide cost / abuse.
  *
- * The pg_cron jobs pass `x-cron-secret: <SUPABASE_CRON_SECRET>`. We reject any
+ * The pg_cron jobs pass `x-cron-secret: <CRON_SECRET>`. We reject any
  * request whose header doesn't match the configured secret.
  *
- * FAIL-OPEN when SUPABASE_CRON_SECRET is unset: a missing env var must never lock
+ * FAIL-OPEN when CRON_SECRET is unset: a missing env var must never lock
  * out the crons. Once the secret is configured (and the cron commands send the
  * header), the guard is effectively fail-closed for everyone else.
  */

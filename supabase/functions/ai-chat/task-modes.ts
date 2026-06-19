@@ -362,7 +362,8 @@ ZORUNLU JSON KURALLARI (uymazsan plan parse edilemez ve KAYBOLUR):
 - "days" dizisinde TAM 7 gun olmali: day_index 0,1,2,3,4,5,6 (Pazartesi..Pazar). Yukarida yalnizca 1 gun ornek verildi; sen 7 GUNUN HEPSINI ayni yapida ve eksiksiz yaz.
 - Her gun 3-4 ogun (breakfast, lunch, dinner + opsiyonel snack); her ogun "items" listesi + makro toplamlari ile DOLU olsun.
 - ASLA "...", "devami benzer", "6 more days", yorum (//) veya herhangi bir placeholder yazma — bunlar JSON'u gecersiz kilar.
-- Markdown (\`\`\`) yok, blok disina metin yok, trailing virgul yok. Toplamlar gunluk hedefle +/- 150 kcal icinde olsun.
+- Markdown (\`\`\`) yok, blok disina metin yok, trailing virgul yok.
+- KRITIK KALORI KURALI: Her gunun TUM ogunlerinin total_kcal toplami, o gunun targets.kcal degerine ESIT olmali (en fazla %10 sapma). Eksik birakma! Cogu plan hatasi: ogunler kucuk tutuluyor ve gun toplami hedefin yarisi kaliyor. ORNEK: hedef 2400 kcal ve 3 ogun ise her ogun ~800 kcal olmali (ornegin ogle: 200g tavuk gogsu ~330 + 150g pirinc ~195 + 100g zeytinyagli sebze ~150 + 1 dilim ekmek ~80 + meyve ~45 = ~800). Porsiyonlari hedefi tutturacak kadar BUYUK yaz; gerekirse ogun sayisini artir veya ara ogun ekle. Her gun icin: meals[].total_kcal toplami ~ targets.kcal. Bunu yazmadan once kafanda topla ve hedefe oturt.
 
 ### PAZARLIK AKISI
 Kullanici "yumurta sevmem" / "sabaha yulaf olmasin" / "sut urunlerini sevmem" / "butcem kisitli, somon cok pahali" gibi degisiklik isterse:

@@ -4,7 +4,7 @@
  * NOTE: Client-side mirror exists in src/services/periodic.service.ts — keep in sync.
  */
 
-export type PeriodicState = 'ramadan' | 'holiday' | 'illness' | 'busy_work' | 'exam' | 'pregnancy' | 'breastfeeding' | 'injury' | 'travel' | 'custom';
+export type PeriodicState = 'ramadan' | 'holiday' | 'illness' | 'busy_work' | 'exam' | 'pregnancy' | 'breastfeeding' | 'injury' | 'travel' | 'custom' | 'mini_cut' | 'maintenance';
 
 export interface PeriodicStateConfig {
   calorieAdjustment: number;        // kcal delta (e.g., +300 for pregnancy T2)
@@ -29,6 +29,31 @@ export const PERIODIC_STATE_CONFIG: Record<PeriodicState, PeriodicStateConfig> =
     maxDurationDays: 30,
     label_tr: 'Ramazan',
     description_tr: 'Ogunler iftar-sahur penceresine sigdirilir, antrenman yogunlugu dusurulur.',
+  },
+  // mini_cut / maintenance are written by the mini_cut_start / maintenance_start actions
+  // (calorie bands are enforced directly there); these config entries exist so
+  // PERIODIC_STATE_CONFIG lookups don't silently fall back to undefined (#R2-L1).
+  mini_cut: {
+    calorieAdjustment: 0,
+    proteinMultiplier: 1.1,
+    workoutIntensityMax: 'high',
+    ifCompatible: true,
+    waterMultiplier: 1.0,
+    requiresEndDate: true,
+    maxDurationDays: 28,
+    label_tr: 'Mini Kesim',
+    description_tr: 'Kisa sureli agresif kalori acigi; kalori bandi mini_cut_start tarafindan ayarlanir.',
+  },
+  maintenance: {
+    calorieAdjustment: 0,
+    proteinMultiplier: 1.0,
+    workoutIntensityMax: 'high',
+    ifCompatible: true,
+    waterMultiplier: 1.0,
+    requiresEndDate: false,
+    maxDurationDays: null,
+    label_tr: 'Bakim',
+    description_tr: 'Kilo koruma / reverse diet; kaloriler kademeli TDEE seviyesine cikarilir.',
   },
   holiday: {
     calorieAdjustment: 0,

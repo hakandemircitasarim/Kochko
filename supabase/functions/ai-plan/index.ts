@@ -340,7 +340,10 @@ serve(async (req: Request) => {
 
     // Cycle phase adjustments (Phase 3: Kadın kullanıcılara özel)
     let cycleContext = '';
-    if (profile?.menstrual_tracking && profile?.menstrual_last_period_start && profile?.menstrual_cycle_length) {
+    if (profile?.menstrual_tracking && profile?.menstrual_last_period_start && profile?.menstrual_cycle_length
+        && new Date(profile.menstrual_last_period_start as string).getTime() <= Date.now()) {
+      // Guard: a future/invalid last-period date would yield a negative day-of-cycle and a
+      // bogus 'menstrual' phase (#R2-M1). The <=now check rejects both future and NaN dates.
       const cycleLength = profile.menstrual_cycle_length as number;
       const lastStart = profile.menstrual_last_period_start as string;
       const daysSince = Math.floor((Date.now() - new Date(lastStart).getTime()) / 86400000);

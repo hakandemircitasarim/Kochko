@@ -209,7 +209,9 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
     // Menstrual + Cycle Phase
     if (p.menstrual_tracking) {
       let cycleInfo = `Regl takibi aktif | Siklus: ${p.menstrual_cycle_length ?? '?'} gun`;
-      if (p.menstrual_last_period_start && p.menstrual_cycle_length) {
+      if (p.menstrual_last_period_start && p.menstrual_cycle_length
+          && new Date(p.menstrual_last_period_start as string).getTime() <= Date.now()) {
+        // Guard future/invalid date -> no negative day-of-cycle / bogus phase (#R2-M1).
         const cycleLen = p.menstrual_cycle_length as number;
         const lastStart = p.menstrual_last_period_start as string;
         const daysSince = Math.floor((Date.now() - new Date(lastStart).getTime()) / 86400000);

@@ -33,6 +33,18 @@ export async function getActiveChallenges(): Promise<Challenge[]> {
   return (data ?? []) as Challenge[];
 }
 
+// #R2-L4: completed/abandoned challenges were structurally hidden (getActiveChallenges
+// filters to active/paused), so a finished challenge silently vanished from the only
+// UI that lists them. Expose history so the screen can show a "Tamamlanan" section.
+export async function getCompletedChallenges(): Promise<Challenge[]> {
+  const { data } = await supabase
+    .from('challenges')
+    .select('*')
+    .in('status', ['completed', 'abandoned'])
+    .order('started_at', { ascending: false });
+  return (data ?? []) as Challenge[];
+}
+
 export async function startChallenge(
   title: string,
   description: string | null,

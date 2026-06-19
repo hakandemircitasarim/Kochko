@@ -38,7 +38,10 @@ export default function ProfileScreen() {
     let cancelled = false;
     fetchProfile(user.id);
     loadInsights().then((data) => { if (!cancelled) setSummary(data); });
-    calculateStreak(user.id).then((s) => { if (!cancelled) setStreak(s); });
+    // #R2-L7: use the user's saved day boundary (not the service default of 4).
+    supabase.from('profiles').select('day_boundary_hour').eq('id', user.id).single()
+      .then(({ data }) => calculateStreak(user.id, (data?.day_boundary_hour as number | null) ?? 4))
+      .then((s) => { if (!cancelled) setStreak(s); });
     supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1)
       .then(({ data }) => {
         if (!cancelled) {
