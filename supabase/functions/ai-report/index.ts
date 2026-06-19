@@ -48,7 +48,6 @@ JSON formatinda:
   "sleep_impact": "uyku yorumu veya null",
   "water_impact": "su yorumu veya null",
   "deviation_reason": "stres|aclik|disarida_yemek|plansiz_atistirma|sosyal|alkol|yok",
-  "weekly_budget_status": "haftalik butce durumu cumle",
   "tomorrow_action": "yarin icin tek en etkili aksiyon",
   "full_report": "2-3 cumle degerlendirme"
 }`;
@@ -165,6 +164,31 @@ async function generateDailyReport(userId: string, date?: string, force = false)
   const goalType = goalRes.data?.goal_type as string ?? 'health';
   const weights = getComplianceWeights(goalType);
 
+  // Deterministic weekly_budget_status (#R6-6) — the LLM was fabricating this with
+  // NO budget data fed. Compute from the canonical weekly_calorie_budget + this
+  // week's actual intake (week-to-date including today).
+  let weeklyBudgetStatus: string | null = null;
+  {
+    const { data: budgetProfile } = await supabaseAdmin.from('profiles').select('weekly_calorie_budget').eq('id', userId).maybeSingle();
+    const weeklyBudget = budgetProfile?.weekly_calorie_budget as number | null;
+    if (weeklyBudget && weeklyBudget > 0) {
+      const rd = new Date(reportDate + 'T00:00:00Z');
+      const dow = rd.getUTCDay();
+      const mondayOffset = dow === 0 ? 6 : dow - 1;
+      const ws = new Date(rd); ws.setUTCDate(rd.getUTCDate() - mondayOffset);
+      const wsStr = ws.toISOString().split('T')[0];
+      const { data: weekRows } = await supabaseAdmin.from('daily_reports')
+        .select('calorie_actual').eq('user_id', userId).gte('date', wsStr).lt('date', reportDate);
+      const priorConsumed = (weekRows ?? []).reduce((s: number, r: { calorie_actual: number | null }) => s + (Number(r.calorie_actual) || 0), 0);
+      const weekConsumed = priorConsumed + totalCal;
+      const remaining = weeklyBudget - weekConsumed;
+      const pct = Math.round((weekConsumed / weeklyBudget) * 100);
+      weeklyBudgetStatus = remaining >= 0
+        ? `Bu hafta haftalik butcenin %${pct}'ini kullandin, ${remaining} kcal marjin kaldi.`
+        : `Bu hafta haftalik butceyi ${Math.abs(remaining)} kcal astin (%${pct}).`;
+    }
+  }
+
   const prompt = `Tarih: ${reportDate}
 AGIRLIKLAR: Kalori=%${weights.calorie} Protein=%${weights.protein} Antrenman=%${weights.workout} Su=%${weights.water} Uyku=%${weights.sleep} Mood=%${weights.mood} (Hedef: ${goalType})
 Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g
@@ -239,7 +263,7 @@ ${(() => {
     sleep_impact: report.sleep_impact,
     water_impact: report.water_impact,
     deviation_reason: report.deviation_reason,
-    weekly_budget_status: report.weekly_budget_status,
+    weekly_budget_status: weeklyBudgetStatus ?? report.weekly_budget_status,
     tomorrow_action: report.tomorrow_action,
     full_report: report.full_report,
     generated_at: new Date().toISOString(),

@@ -20,7 +20,11 @@ import { logAuditEvent } from '@/services/privacy.service';
  * system sheet — inlining the JSON into Share.share({message}) hit Android's
  * ~1MB binder limit for exactly the long-tenured users who need export most.
  */
-export async function exportJSON(): Promise<void> {
+export async function exportJSON(options?: { share?: boolean }): Promise<void> {
+  // share defaults to true (user-initiated export). Auto-backup passes share:false
+  // so it writes the file silently instead of popping the system Share sheet on app
+  // launch (#R6-8).
+  const share = options?.share !== false;
   const queries = {
     profile: supabase.from('profiles').select('*').maybeSingle(),
     ai_summary: supabase.from('ai_summary').select('*').maybeSingle(),
@@ -78,10 +82,12 @@ export async function exportJSON(): Promise<void> {
   const json = JSON.stringify(data, null, 2);
   const fileUri = `${FileSystem.cacheDirectory}kochko-export-${Date.now()}.json`;
   await FileSystem.writeAsStringAsync(fileUri, json, { encoding: 'utf8' });
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Kochko Veri Exportu' });
-  } else {
-    await Share.share({ title: 'Kochko Export', message: json });
+  if (share) {
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Kochko Veri Exportu' });
+    } else {
+      await Share.share({ title: 'Kochko Export', message: json });
+    }
   }
 
   // KVKK audit trail — record the data export (Md.20 taşınabilirlik) (#R5-3).

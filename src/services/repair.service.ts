@@ -125,13 +125,15 @@ export async function getRepairStats(userId: string): Promise<{
   recentRepairs: number;
   commonCorrections: { food: string; count: number }[];
 }> {
-  const { data: total } = await supabase
+  // head:true returns the row count in `count`, not `data` (which is null) — the
+  // old `data:` destructure made both stats always 0 (#R6-10).
+  const { count: total } = await supabase
     .from('repair_history')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId);
 
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-  const { data: recent } = await supabase
+  const { count: recent } = await supabase
     .from('repair_history')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
@@ -159,8 +161,8 @@ export async function getRepairStats(userId: string): Promise<{
     .slice(0, 5);
 
   return {
-    totalRepairs: (total as unknown as { count: number })?.count ?? 0,
-    recentRepairs: (recent as unknown as { count: number })?.count ?? 0,
+    totalRepairs: total ?? 0,
+    recentRepairs: recent ?? 0,
     commonCorrections,
   };
 }

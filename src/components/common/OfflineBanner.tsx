@@ -56,7 +56,9 @@ export function OfflineBanner() {
   if (isOnline && !syncing) return null;
 
   const bg = syncing ? colors.primary + 'E6' : '#D85A30E6';
-  const label = syncing ? 'Bekleyen kayıtlar senkronize ediliyor...' : 'Çevrimdışısın — kayıtların yerel saklanıyor, bağlanınca eklenecek.';
+  // Don't promise local write-queueing for arbitrary logs — the structured offline
+  // queue isn't wired (only chat messages queue). Keep the copy honest (#R6-4).
+  const label = syncing ? 'Bekleyen kayıtlar senkronize ediliyor...' : 'Çevrimdışısın — internet gelince kaldığın yerden devam edebilirsin.';
   const icon = syncing ? 'sync' : 'cloud-offline-outline';
 
   return (

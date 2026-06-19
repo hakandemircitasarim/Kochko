@@ -135,7 +135,7 @@ export function FullPlanModal({
             paddingBottom: Math.max(insets.bottom, SPACING.lg) + SPACING.lg,
           }}
         >
-          {plan.days.map(day => {
+          {(Array.isArray(plan.days) ? plan.days : []).map(day => {
             const isOpen = expandedDay === day.day_index;
             return (
               <View key={day.day_index} style={{ marginBottom: SPACING.md }}>
@@ -166,7 +166,7 @@ export function FullPlanModal({
                     <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                       {(day as WorkoutPlanData['days'][number]).rest_day
                         ? 'Dinlenme'
-                        : `${(day as WorkoutPlanData['days'][number]).exercises.length} egzersiz`}
+                        : `${(day as WorkoutPlanData['days'][number]).exercises?.length ?? 0} egzersiz`}
                     </Text>
                   )}
                   <Ionicons
@@ -179,7 +179,7 @@ export function FullPlanModal({
                 {isOpen ? (
                   <View style={{ marginTop: SPACING.sm }}>
                     {isDiet ? (
-                      (day as DietPlanData['days'][number]).meals.length === 0 ? (
+                      ((day as DietPlanData['days'][number]).meals ?? []).length === 0 ? (
                         <Text
                           style={{
                             color: colors.textMuted,
@@ -192,7 +192,7 @@ export function FullPlanModal({
                           Bu gün için öğün yok.
                         </Text>
                       ) : (
-                        (day as DietPlanData['days'][number]).meals.map(meal => {
+                        ((day as DietPlanData['days'][number]).meals ?? []).map(meal => {
                           const key = `${day.day_index}-${meal.meal_type}`;
                           const isHl = !!highlightedCells?.find(
                             c => c.dayIndex === day.day_index && c.mealType === meal.meal_type,
@@ -222,7 +222,7 @@ export function FullPlanModal({
                         Dinlenme günü — hafif yürüyüş ve esneme yeterli.
                       </Text>
                     ) : (
-                      (day as WorkoutPlanData['days'][number]).exercises.map((ex, i) => (
+                      ((day as WorkoutPlanData['days'][number]).exercises ?? []).map((ex, i) => (
                         <ExerciseCard key={i} exercise={ex} />
                       ))
                     )}

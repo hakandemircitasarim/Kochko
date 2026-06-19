@@ -67,7 +67,9 @@ export async function checkAndRunBackup(): Promise<boolean> {
  */
 async function runBackup(): Promise<void> {
   try {
-    await exportJSON();
+    // share:false — auto-backup writes the file silently; it must NOT pop the
+    // system Share sheet on app launch (#R6-8).
+    await exportJSON({ share: false });
     await updateBackupConfig({ lastBackupAt: new Date().toISOString() });
   } catch {
     // Non-critical - backup failure shouldn't break the app

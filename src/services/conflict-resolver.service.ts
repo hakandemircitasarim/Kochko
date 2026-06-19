@@ -200,7 +200,8 @@ export function resolveConflict(
           merged[key] = localVal;
         }
       }
-      merged.updated_at = new Date().toISOString();
+      // NOTE: daily_metrics has NO updated_at column — writing it here would make
+      // the merged record 42703 on upsert (#R6-9).
       return {
         strategy: 'merge',
         winner: 'merged',

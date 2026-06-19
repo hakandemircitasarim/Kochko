@@ -59,6 +59,25 @@ serve(async (req: Request) => {
 
     const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id } = body;
 
+    // Voice (Whisper STT) and photo (gpt-4o vision) are declared Premium features
+    // (premium-gate.ts photo_logging/voice_input) but were never enforced anywhere —
+    // free users got unlimited gpt-4o vision + STT, and the transcribe path below
+    // even returned BEFORE rate-limiting (uncapped Whisper cost) (#R6-3). Gate both
+    // server-side here. (The premium test account still uses them normally.)
+    const usesPremiumIO = !!image_base64 || (!!audio_base64 && !!body.transcribe_only);
+    if (usesPremiumIO) {
+      const { data: ioProfile } = await supabaseAdmin.from('profiles').select('premium').eq('id', userId).maybeSingle();
+      if (ioProfile?.premium !== true) {
+        if (audio_base64 && body.transcribe_only) {
+          return respond({ error: 'Sesli giriş Premium özelliğidir.', code: 'PREMIUM_REQUIRED' }, 403);
+        }
+        return respond({
+          message: 'Fotoğrafla otomatik öğün analizi Premium bir özellik. Premium\'a geçince fotoğraftan kalori ve makroları çıkarabilirim. Şimdilik öğününü yazarak da kaydedebilirsin.',
+          actions: [], task_mode: 'coaching',
+        });
+      }
+    }
+
     // GAP 2: STT/Whisper transcription handler
     if (audio_base64 && body.transcribe_only) {
       const audioBuffer = Uint8Array.from(atob(audio_base64), (c: string) => c.charCodeAt(0));
@@ -1201,6 +1220,16 @@ serve(async (req: Request) => {
       });
     }
 
+    // If a plan was meant to be saved but persistence FAILED, the AI's prose may
+    // still claim success ("planını oluşturdum"). Append a Turkish caveat so the
+    // user isn't told it worked, and suppress the "planına git" navigation for a
+    // plan that was never saved (#R6-2). The client also reads plan_persist_error.
+    let finalNavigateTo = navigateTo;
+    if (planPersistError && !persistedPlan) {
+      assistantMessage += '\n\n(Not: planı kaydederken bir sorun oldu, birazdan tekrar dener misin?)';
+      finalNavigateTo = null;
+    }
+
     return respond({
       message: assistantMessage,
       actions: outActions,
@@ -1210,14 +1239,21 @@ serve(async (req: Request) => {
       plan_reasoning: planReasoning,
       plan_persist_error: planPersistError,
       plan_approved: planApproved,
-      navigate_to: navigateTo,
+      navigate_to: finalNavigateTo,
     });
   } catch (err) {
     const msg = (err as Error).message;
+    console.error('[ai-chat] unhandled error:', err); // full detail stays server-side
     if (msg.startsWith('SESSION_NOT_FOUND')) {
       return respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404);
     }
-    return respond({ error: msg }, 500);
+    // LLM availability/billing errors are diagnostic (not sensitive) — keep visible so
+    // the operator can see quota issues. Everything else (DB internals, stack info) is
+    // sanitized to a generic message so Postgres/schema details don't leak (#R6-11).
+    if (/openai|quota|insufficient|rate.?limit|api key|anthropic|model/i.test(msg)) {
+      return respond({ error: msg, code: 'AI_UNAVAILABLE' }, 500);
+    }
+    return respond({ error: 'Beklenmeyen bir hata oluştu. Lütfen tekrar dene.', code: 'AI_INTERNAL' }, 500);
   }
 });
 

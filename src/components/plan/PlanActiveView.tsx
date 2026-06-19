@@ -72,6 +72,13 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
 
   const data = plan.plan_data;
   const isDiet = data.plan_type === 'diet';
+  // plan_data is raw LLM-authored JSON — a structurally-incomplete snapshot can
+  // slip past the approve gate (a real active row with days=null exists). Guard
+  // like every sibling plan component so a malformed plan doesn't crash the tab (#R6-1).
+  type AnyDay = DietPlanData['days'][number] | WorkoutPlanData['days'][number];
+  const days: AnyDay[] = Array.isArray((data as { days?: unknown }).days)
+    ? ((data as { days: AnyDay[] }).days)
+    : [];
 
   return (
     <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: SPACING.sm }}>
@@ -211,7 +218,11 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
       ) : null}
 
       {/* Days */}
-      {data.days.map(day => {
+      {days.length === 0 ? (
+        <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
+          Bu planın içeriği eksik görünüyor. Plan sekmesinden yeni bir plan oluşturabilirsin.
+        </Text>
+      ) : days.map(day => {
         const isOpen = expandedDay === day.day_index;
         return (
           <View key={day.day_index}>
@@ -239,7 +250,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                   {(day as WorkoutPlanData['days'][number]).rest_day
                     ? 'Dinlenme'
-                    : `${(day as WorkoutPlanData['days'][number]).exercises.length} egzersiz`}
+                    : `${(day as WorkoutPlanData['days'][number]).exercises?.length ?? 0} egzersiz`}
                 </Text>
               )}
               <Ionicons
@@ -251,7 +262,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             {isOpen ? (
               <View style={{ marginTop: SPACING.sm }}>
                 {isDiet ? (
-                  (day as DietPlanData['days'][number]).meals.map(meal => {
+                  ((day as DietPlanData['days'][number]).meals ?? []).map(meal => {
                     const key = `${day.day_index}-${meal.meal_type}`;
                     return (
                       <MealCard
@@ -275,7 +286,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                     Dinlenme günü.
                   </Text>
                 ) : (
-                  (day as WorkoutPlanData['days'][number]).exercises.map((ex, i) => (
+                  ((day as WorkoutPlanData['days'][number]).exercises ?? []).map((ex, i) => (
                     <ExerciseCard key={i} exercise={ex} />
                   ))
                 )}
