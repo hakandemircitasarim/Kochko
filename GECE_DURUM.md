@@ -115,9 +115,41 @@ regresyon YOK** (sadece 1 low: profile.tsx KVKK try/catch — düzeltildi).
   cron'unun da OpenAI'a bağımlı olması (anahtar gelince hafıza dolacak). Prompt güçlendirildi,
   validation gate doğru. UI tarafı sağlam.
 
-### Tur 4 — çekirdek özellik denetimi (çalışıyor)
-Plan taslak→onayla→revize yaşam döngüsü (DoD#2), TDEE/kalori/makro matematiği, premium
-kapısı, foto/vision/barkod akışı. Sonuçlar eklenecek.
+### Tur 4 — çekirdek özellik denetimi → 15 bulgu, çoğu DÜZELTİLDİ (commit 7ba7564, 696b032)
+- **R4-1 KRİTİK (kendi açtığım regresyon, KAPATILDI):** mig 045 subscriptions INSERT
+  politikası yalnız user_id kontrol ediyordu → her kullanıcı {tier:'lifetime'} insert edip
+  ücretsiz ömür-boyu premium alabilirdi. **Mig 046 ile trial-only'e daraltıldı; CANLI
+  doğrulandı: lifetime/monthly self-grant 403, trial 201.**
+- **R4-2/R4-3 (high):** düşük-TDEE kullanıcıda ters kalori aralığı (restMin>restMax) +
+  bozuk haftalık bütçe → iki edge yolda da clamp eklendi.
+- **R4-5 (mig 047):** aktif plan düzenleme (alışveriş listesi) bloktu → politika genişletildi
+  + trigger ile client'ın draft→active terfisi engellendi. CANLI: aktif edit 200, terfi 400.
+- R4-6 MVD version filtresi; R4-7 milestone yön-duyarlı (kilo-alma); R4-9 barkod etiket;
+  R4-12 dev premium düğmesi dürüst; R4-14 smallint clamp; R4-13 ses-akışı hang; R4-15 barkod debounce.
+- **Ertelenenler (low/orta, riskli değil):** R4-4 premium expiry anlık değil (gece cron'a
+  güveniyor), R4-8 foto/ses premium server-side gate, R4-10/R4-11 (snapshot guard, revision_count).
+
+---
+
+## 🏁 GECE TOPLAM ÖZET
+**4 multi-agent denetim turu + senin 12 cihaz-test notun.** Toplam ~79 doğrulanmış bulgu,
+**~68 düzeltildi** (kalanı low/ertelendi ya da OpenAI'a bağımlı).
+
+**Kritik/güvenlik (hepsi canlı doğrulandı):**
+1. subscriptions trial RLS (deneme hiç başlamıyordu) → açıldı
+2. ai_summary RPC cross-user hafıza ezme → kapatıldı
+3. Acil/kriz taraması injection-guard'dan ÖNCE → kriz 112 mesajı OpenAI'sız bile çalışıyor
+4. subscriptions lifetime self-grant (kendi regresyonum) → kapatıldı
+5. weekly_plans draft→active terfi gate'i (R4-5'te korundu)
+
+**Migration'lar:** 045, 046, 047 canlıda + doğrulandı.
+**Edge:** ai-chat/plan/extractor/proactive/report defalarca redeploy edildi, hepsi temiz boot.
+**Client:** `tsc` 0 hata. **Tüm edge `deno check` temiz.** Regresyon yok (final battery geçti).
+
+**Senin yapman gerekenler (sadece 2, ikisi de harici):**
+1. **OpenAI kredisi ekle** (veya OPENAI_BASE_URL secret) → tüm AI akışları + hafıza dolumu açılır.
+2. **git push** (hesap seçimi engeli): GCM'i hakandemircitasarim olarak doğrula, sonra
+   `git push origin claude/KOCHKO`. 8 commit yerelde hazır (097c4f1..696b032).
 
 ---
 
