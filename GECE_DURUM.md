@@ -149,7 +149,34 @@ regresyon YOK** (sadece 1 low: profile.tsx KVKK try/catch — düzeltildi).
 **Senin yapman gerekenler (sadece 2, ikisi de harici):**
 1. **OpenAI kredisi ekle** (veya OPENAI_BASE_URL secret) → tüm AI akışları + hafıza dolumu açılır.
 2. **git push** (hesap seçimi engeli): GCM'i hakandemircitasarim olarak doğrula, sonra
-   `git push origin claude/KOCHKO`. 8 commit yerelde hazır (097c4f1..696b032).
+   `git push origin claude/KOCHKO`. 12 commit yerelde hazır (097c4f1..85ad2e5).
+
+### Tur 5 — denetlenmemiş özellik alanları → 16 bulgu (commit cbd8da8, 85ad2e5)
+auth/session, KVKK/silme, periodik/regl/hamilelik, ai-report. Yüksek+orta hepsi düzeltildi:
+- **R5-1:** uygulama içinde oturum kaybında login'e yönlendirme (root guard) — eskiden authed
+  ekranda kalakalıyordun.
+- **R5-2:** Şifre sıfırlama ekranı (app/reset-password.tsx) oluşturuldu — "Şifremi Unuttum"
+  deep-link'i artık çalışıyor (eskiden ölü uçtu).
+- **R5-3:** KVKK denetim kaydı (hesap silme + veri export audit_logs'a yazılıyor).
+- **R5-4:** periodik-durum ekranı mini_cut/maintenance'da CRASH ediyordu → guard.
+- **R5-5:** yeni kullanıcı (profil yüklenmeden) onboarding'i atlayıp boş tab'a düşüyordu → düzeltildi.
+- R5-6/7/8/10/13: hafıza sıfırlama tamlığı, periodik token çevirisi, rapor steps sanitize,
+  sahte sıfırlama hatası, regl gelecek-tarih guard.
+- **Ertelenenler (low):** R5-9 budget_status, R5-11 silme-cron izolasyon, R5-12 export birkaç tablo,
+  R5-14/15/16 (ölü kod, monthly pencere).
+
+---
+
+## 🏆 5 TUR BİTTİ — GRAND TOTAL
+**5 multi-agent denetim turu (R1-R5) + senin 12 cihaz notun → ~95 doğrulanmış bulgu, ~80 düzeltildi.**
+Tüm aksiyon alınabilir kritik/yüksek HALLEDILDI. Migration 045/046/047 canlı+doğrulandı.
+5 edge function defalarca temiz deploy edildi. Client `tsc` 0 hata, tüm edge `deno check` temiz.
+12 commit yerelde (097c4f1..85ad2e5). Regresyon yok.
+
+**Denetlenen tüm yüzey:** DB yazma/okuma, edge function'lar, AI aksiyon pipeline, guardrail
+güvenliği, UI/UX ekran durumları, navigasyon, safe-area/klavye, tema, auth/oturum, KVKK/silme,
+periodik/regl/hamilelik, raporlar, premium kapısı, foto/vision/barkod, TDEE/kalori matematiği,
+onboarding, 4-katman hafıza. **Geriye kalan: yalnız OpenAI anahtarı (senin) + push (senin).**
 
 ---
 
