@@ -5,6 +5,7 @@
 import { useEffect, useCallback, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/stores/auth.store';
@@ -31,6 +32,7 @@ import { OfflineBanner } from '@/components/ui/OfflineBanner';
 
 export default function TodayScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const {
@@ -208,7 +210,7 @@ export default function TodayScreen() {
 
       <OfflineBanner />
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.primary} />}
       >
         {/* Welcome back / re-onboarding banner (Spec 10.6) */}
