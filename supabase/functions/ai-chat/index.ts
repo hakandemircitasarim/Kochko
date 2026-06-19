@@ -877,66 +877,60 @@ serve(async (req: Request) => {
     let planPersistError: string | null = null;
     if (planSnapshot && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
       const expectedType = task_mode_hint === 'plan_diet' ? 'diet' : 'workout';
-      // CALORIE RECONCILIATION (#R2-H3): the model reliably under-fills diet days — meals
-      // sum to ~40-60% of targets.kcal every generation, and prompt rules alone don't fix
-      // it. Deterministically rescale each day's item portions (grams + kcal + macros) by
-      // factor = target/daySum so the day hits its target with CONSISTENT, larger portions
-      // (200g chicken -> 320g chicken, calories scale with grams). Clamped to avoid extremes.
-      if (expectedType === 'diet') {
-        const tgt = Number((planSnapshot.targets as Record<string, unknown> | undefined)?.kcal);
-        if (Number.isFinite(tgt) && tgt > 0) {
-          for (const day of (planSnapshot.days as Array<Record<string, unknown>> | undefined) ?? []) {
-            const meals = (day.meals as Array<Record<string, unknown>> | undefined) ?? [];
-            const daySum = meals.reduce((s, m) => s + (Number(m.total_kcal) || 0), 0);
-            if (daySum <= 0) continue;
-            const dev = Math.abs(daySum - tgt) / tgt;
-            if (dev <= 0.12) continue; // already within ±12%
-            const factor = Math.max(0.5, Math.min(2.5, tgt / daySum));
-            const sc = (v: unknown) => Math.round((Number(v) || 0) * factor);
-            for (const m of meals) {
-              for (const it of (m.items as Array<Record<string, unknown>> | undefined) ?? []) {
-                if (it.grams != null) it.grams = sc(it.grams);
-                if (it.kcal != null) it.kcal = sc(it.kcal);
-                if (it.protein != null) it.protein = sc(it.protein);
-                if (it.carbs != null) it.carbs = sc(it.carbs);
-                if (it.fat != null) it.fat = sc(it.fat);
-              }
-              if (m.total_kcal != null) m.total_kcal = sc(m.total_kcal);
-              if (m.total_protein != null) m.total_protein = sc(m.total_protein);
-              if (m.total_carbs != null) m.total_carbs = sc(m.total_carbs);
-              if (m.total_fat != null) m.total_fat = sc(m.total_fat);
-            }
-          }
-          console.warn('[plan_calorie_reconcile] diet days rescaled toward target', { tgt });
-        }
-      }
-      // Allergen guardrail (Spec 12.4): for diet snapshots, scan every meal name + items
-      // against the user's allergen list. If any allergen is present, refuse to persist
-      // and tell the AI to regenerate. The model's snapshot is never written to DB until
-      // it passes the safety check — preserves the "AI cannot bypass guardrails" invariant.
+      // Diet snapshot processing (Spec 12.4): ALLERGEN guardrail FIRST (with exclusion
+      // regen), THEN calorie reconciliation on the final snapshot.
       if (expectedType === 'diet') {
         const { data: prefRows } = await supabaseAdmin
           .from('food_preferences')
-          .select('food_name, allergen_severity')
+          .select('food_name')
           .eq('user_id', userId)
           .eq('is_allergen', true);
         const allergens = (prefRows ?? []).map((p: { food_name: string }) => p.food_name);
-        if (allergens.length > 0) {
-          const days = (planSnapshot.days as Array<Record<string, unknown>> | undefined) ?? [];
-          const violations: string[] = [];
-          for (const d of days) {
-            const meals = (d.meals as Array<Record<string, unknown>> | undefined) ?? [];
-            for (const m of meals) {
+        const scanViolations = (snap: Record<string, unknown>): string[] => {
+          const out: string[] = [];
+          for (const d of (snap.days as Array<Record<string, unknown>> | undefined) ?? []) {
+            for (const m of (d.meals as Array<Record<string, unknown>> | undefined) ?? []) {
               const text = `${m.name ?? ''} ${(m.items as Array<{ name?: string }> | undefined)?.map(i => i.name).join(' ') ?? ''}`;
               const check = checkAllergens(text, allergens);
-              if (!check.passed) violations.push(`${d.day_label ?? ''} ${m.meal_type ?? ''}: ${check.violations.join(', ')}`);
+              if (!check.passed) out.push(`${d.day_label ?? ''} ${m.meal_type ?? ''}: ${check.violations.join(', ')}`);
             }
           }
+          return out;
+        };
+        if (allergens.length > 0) {
+          let violations = scanViolations(planSnapshot);
           if (violations.length > 0) {
-            planPersistError = `allergen_violation: ${violations.slice(0, 3).join('; ')}`;
-            console.warn('[plan_snapshot] blocked by allergen guardrail', { count: violations.length });
+            // RECOVERY (#journey-H): the model frequently re-adds the user's allergen (e.g.
+            // seafood) into the plan even with it in context. Without a recovery the persist
+            // fails forever and an allergic user NEVER gets a plan. Force ONE exclusion-regen;
+            // only fail if it still violates.
+            console.warn('[plan_snapshot] allergen violation — forcing exclusion regen', { count: violations.length });
+            try {
+              const excludeList = allergens.join(', ');
+              const forcedRaw = await chatCompletion<string>(
+                [
+                  ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
+                  { role: 'user', content: `Onceki plan kullanicinin ALERJENINI iceriyordu: ${excludeList}. Bu KESIN YASAK. Bu besinleri ve TUM turevlerini (deniz urunleri ise karides/midye/kalamar/somon/levrek/balik dahil) plandan TAMAMEN cikar, yerine guvenli alternatif koy. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> uret: 7 gun (day_index 0-6) eksiksiz, "targets" dolu, HICBIR gunde ${excludeList} veya turevi olmasin. "...", kisaltma, markdown KULLANMA.` },
+                ],
+                { model: modelSelection.model, temperature: 0.2, maxTokens: 8000 },
+              );
+              const retry = extractPlanSnapshot(forcedRaw);
+              if (retry.snapshot && snapshotUsable(retry.snapshot) && scanViolations(retry.snapshot).length === 0) {
+                planSnapshot = retry.snapshot;
+                violations = [];
+                console.warn('[plan_snapshot] allergen exclusion regen clean — using regenerated plan');
+              }
+            } catch (e) {
+              console.error('[plan_snapshot] allergen regen threw', (e as Error).message);
+            }
+            if (violations.length > 0) {
+              planPersistError = `allergen_violation: ${violations.slice(0, 3).join('; ')}`;
+              console.warn('[plan_snapshot] still blocked by allergen guardrail after regen', { count: violations.length });
+            }
           }
         }
+        // Calorie reconciliation on the FINAL (possibly regenerated) snapshot (#R2-H3).
+        if (!planPersistError) reconcileDietCalories(planSnapshot);
       }
       if (planSnapshot.plan_type === expectedType && !planPersistError) {
         // Find or create the draft.
@@ -2021,6 +2015,34 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
  * This extracts it, strips the tag from the displayed message, and returns
  * the parsed object so the caller can persist it via plan.service.applySnapshot.
  */
+// Rescale each diet day's item portions (grams + kcal + macros) so the day total hits
+// targets.kcal — the model reliably under-fills (#R2-H3). Mutates the snapshot in place.
+function reconcileDietCalories(snap: Record<string, unknown>): void {
+  const tgt = Number((snap.targets as Record<string, unknown> | undefined)?.kcal);
+  if (!Number.isFinite(tgt) || tgt <= 0) return;
+  for (const day of (snap.days as Array<Record<string, unknown>> | undefined) ?? []) {
+    const meals = (day.meals as Array<Record<string, unknown>> | undefined) ?? [];
+    const daySum = meals.reduce((s, m) => s + (Number(m.total_kcal) || 0), 0);
+    if (daySum <= 0) continue;
+    if (Math.abs(daySum - tgt) / tgt <= 0.12) continue;
+    const factor = Math.max(0.5, Math.min(2.5, tgt / daySum));
+    const sc = (v: unknown) => Math.round((Number(v) || 0) * factor);
+    for (const m of meals) {
+      for (const it of (m.items as Array<Record<string, unknown>> | undefined) ?? []) {
+        if (it.grams != null) it.grams = sc(it.grams);
+        if (it.kcal != null) it.kcal = sc(it.kcal);
+        if (it.protein != null) it.protein = sc(it.protein);
+        if (it.carbs != null) it.carbs = sc(it.carbs);
+        if (it.fat != null) it.fat = sc(it.fat);
+      }
+      if (m.total_kcal != null) m.total_kcal = sc(m.total_kcal);
+      if (m.total_protein != null) m.total_protein = sc(m.total_protein);
+      if (m.total_carbs != null) m.total_carbs = sc(m.total_carbs);
+      if (m.total_fat != null) m.total_fat = sc(m.total_fat);
+    }
+  }
+}
+
 function extractPlanSnapshot(text: string): { cleanMessage: string; snapshot: Record<string, unknown> | null; parseError?: string } {
   const match = text.match(/<plan_snapshot>([\s\S]*?)<\/plan_snapshot>/);
   if (!match) return { cleanMessage: text, snapshot: null };
@@ -2857,6 +2879,15 @@ async function executeActions(
             const { error: pfErr } = await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
             if (pfErr) console.error('[profile_update] update failed:', pfErr.message);
             else pfMessages.push('Profil güncellendi');
+            // #R3/journey: activity_level is usually set on a LATER onboarding card than the
+            // identity card that first computed TDEE — checkOnboardingCompletion only computes
+            // TDEE once (when onboarding flips), so a later activity change left calorie targets
+            // stuck on the sedentary 1.2 multiplier (~30% low). Force a TDEE+ranges recompute.
+            if (!pfErr && updates.activity_level !== undefined) {
+              const { data: wRow } = await supabaseAdmin.from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
+              const wv = wRow?.weight_kg as number | null;
+              if (wv) recalculateTDEEIfNeeded(userId, wv, true).then(() => {}, () => {});
+            }
           }
           // Goal persistence: save even without target_weight_kg — user may give goal type
           // ("kilo vermek istiyorum") before specifying a target. Upsert on active goal so
@@ -3994,7 +4025,7 @@ async function checkOnboardingCompletion(userId: string) {
  * T1.19: Recalculate TDEE when significant weight change detected.
  * Spec 2.4: Triggers on 2.5+ kg change or 30+ days since last calc.
  */
-async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
+async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, force = false) {
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('height_cm, birth_year, gender, activity_level, tdee_last_weight, tdee_last_date, maintenance_mode, periodic_state')
@@ -4020,7 +4051,7 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
     if (daysSince > 30) needed = true;
   }
 
-  if (!needed) return;
+  if (!needed && !force) return;
 
   const age = new Date().getFullYear() - profile.birth_year;
   const base = 10 * currentWeight + 6.25 * profile.height_cm - 5 * age;
