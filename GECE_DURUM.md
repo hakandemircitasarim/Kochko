@@ -180,11 +180,26 @@ auth/session, KVKK/silme, periodik/regl/hamilelik, ai-report. Yüksek+orta hepsi
 
 ---
 
-## 🏆 6 TUR BİTTİ — GRAND TOTAL
-**6 multi-agent denetim turu (R1-R6) + senin 12 cihaz notun → ~106 doğrulanmış bulgu, ~88 düzeltildi.**
-Tüm aksiyon alınabilir kritik/yüksek HALLEDILDI. Migration 045/046/047 canlı+doğrulandı.
-5 edge function defalarca temiz deploy edildi. Client `tsc` 0 hata, tüm edge `deno check` temiz.
-16 commit yerelde (097c4f1..77e3562). Regresyon yok.
+### Tur 7 — KENDİ değişikliklerimin regresyon öz-denetimi → 4 regresyon bulundu+düzeltildi (commit 40d107b)
+Bu turda gece yaptığım 14 commit'i düşmanca taradım — kendi düzeltmelerimin yan etkilerini.
+4 gerçek regresyon buldum ve düzelttim:
+- **R7-1 (high):** Yeni root auth guard (R5-1), aynı turda eklediğim /reset-password ekranından
+  (R5-2) kullanıcıyı login'e atıyordu → guard artık reset-password'ü public route sayıyor.
+- **R7-2 (high):** Yeni profil-kapısı (R5-5), soğuk açılışta profil fetch başarısız olursa
+  SONSUZ spinner'da kalıyordu → fetchError flag + "Tekrar dene" eklendi.
+- **R7-3 (medium):** Premium ses kapısı (R6-3) 403'ü client "ses tanıma başarısız" diye yutuyordu
+  → transcribeAudio premiumRequired döndürüyor, ekranlar düzgün Premium mesajı gösteriyor.
+- **R7-4 (low):** Premium foto kapısı (R6-3) sohbet geçmişine yazmıyordu → artık yazıyor.
+> Öz-denetim turu DEĞERLİYDİ: kendi yeni hatalarımı yakaladı. Hepsi tsc/deno/canlı doğrulandı.
+
+---
+
+## 🏆 7 TUR BİTTİ — GRAND TOTAL
+**6 denetim turu (R1-R6) + 1 öz-denetim turu (R7) + senin 12 cihaz notun → ~110 doğrulanmış
+bulgu, ~92 düzeltildi.** Tüm aksiyon alınabilir kritik/yüksek HALLEDILDI ve kendi düzeltmelerimin
+4 regresyonu da yakalanıp giderildi. Migration 045/046/047 canlı+doğrulandı. 5 edge function
+defalarca temiz deploy edildi. Client `tsc` 0 hata, tüm edge `deno check` temiz.
+18 commit yerelde (097c4f1..40d107b). **Bilinen regresyon YOK** (öz-denetim turu geçti).
 
 **Denetlenen tüm yüzey:** DB yazma/okuma, edge function'lar, AI aksiyon pipeline, guardrail
 güvenliği, UI/UX ekran durumları, navigasyon, safe-area/klavye, tema, auth/oturum, KVKK/silme,
