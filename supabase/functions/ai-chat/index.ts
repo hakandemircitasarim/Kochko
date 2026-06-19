@@ -486,10 +486,14 @@ serve(async (req: Request) => {
     // chats only: outside onboarding its bare "NN kg" regex misreads a workout/recipe
     // weight (e.g. "bench press 4x8 70kg") as bodyweight and silently overwrites
     // profiles.weight_kg, corrupting calorie/protein targets.
-    const regexFallbackAllowed = isOnboarding
+    // Onboarding gets FULL regex extraction (incl. bodyweight). Regular chat gets the
+    // SAFE subset (age/gender/height/target — no ambiguous bodyweight) so an
+    // unambiguous profile statement still persists deterministically when the model
+    // SAYS it saved but omits the <actions> block (#1/#2/#5 — confirmed in live test).
+    const fullExtraction = isOnboarding
       || (typeof task_mode_hint === 'string' && task_mode_hint.startsWith('onboarding_'));
-    if (message && regexFallbackAllowed) {
-      const regexExtracted = extractProfileFromMessage(message, task_mode_hint as string | undefined);
+    if (message) {
+      const regexExtracted = extractProfileFromMessage(message, task_mode_hint as string | undefined, !fullExtraction);
       if (regexExtracted) {
         const existingProfileAction = actions.find(a => a.type === 'profile_update') as Record<string, unknown> | undefined;
         if (existingProfileAction) {
@@ -1619,7 +1623,12 @@ function normalizeProfileEnum(field: string, value: unknown): string | null {
   return null;
 }
 
-function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<string, unknown> | null {
+function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly = false): Record<string, unknown> | null {
+  // safeOnly (regular chat): skip the AMBIGUOUS bodyweight extraction only — a bare
+  // "70kg" in a workout/recipe context would be misread as bodyweight. Age/gender/
+  // height/target are unambiguous, so they're still extracted to deterministically
+  // catch the model omitting a profile_update action ("yaşını güncelledim" w/ no
+  // <actions>) outside onboarding (#1/#2/#5).
   const result: Record<string, unknown> = {};
   const lower = msg.toLocaleLowerCase('tr');
 
@@ -1654,12 +1663,16 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string): Record<s
 
   // Current weight: "kilom 72", "72 kg", "72 kiloyum" — but not if we just matched it as target.
   // Prefer "mevcut kilo X" disambiguation when both appear in the same line.
-  const currentMatch = lower.match(/mevcut\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)/);
-  if (currentMatch) {
-    const w = parseFloat(currentMatch[1] ?? currentMatch[2] ?? currentMatch[3]);
-    // Skip if the value matches the target we already extracted, to avoid
-    // double-assigning a single number to both fields.
-    if (w >= 30 && w <= 300 && result.target_weight_kg !== w) result.weight_kg = w;
+  // Bodyweight is the ONLY ambiguous field (a workout "70kg" misreads as bodyweight),
+  // so skip it in safeOnly/regular-chat mode (#1/#2/#5).
+  if (!safeOnly) {
+    const currentMatch = lower.match(/mevcut\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)/);
+    if (currentMatch) {
+      const w = parseFloat(currentMatch[1] ?? currentMatch[2] ?? currentMatch[3]);
+      // Skip if the value matches the target we already extracted, to avoid
+      // double-assigning a single number to both fields.
+      if (w >= 30 && w <= 300 && result.target_weight_kg !== w) result.weight_kg = w;
+    }
   }
 
   // Age/birth year: "25 yaşındayım", "yasim 25", "1998 doğumluyum"
