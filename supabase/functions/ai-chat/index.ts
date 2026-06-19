@@ -378,6 +378,13 @@ serve(async (req: Request) => {
       }
     }
 
+    // Fresh-session opener: when there's NO chat history yet (layer4 empty) and the
+    // user's first message isn't itself a log/topic, do NOT lead with proactive
+    // habit/predictive nudges — that's what made a brand-new chat open with an
+    // irrelevant "su iç" (water) reminder instead of responding to the user (#3/#R3-4).
+    const firstMsgIsLog = !!message && (looksLikeMealReport(message) || looksLikeWorkoutReport(message));
+    const freshOpener = ctx.layer4.length === 0 && !firstMsgIsLog;
+
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
       // Task card instructions come right after BASE so they are prominent — they override
@@ -390,12 +397,12 @@ serve(async (req: Request) => {
       correctionCtx,
       // Service contexts (11 integrated services)
       serviceCtx.returnFlow,           // 4. Return flow (richer: weight, compliance, plan lightening)
-      serviceCtx.habits.prompt,        // 1. Habits (active, mastered, streaks, compliance %)
+      freshOpener ? '' : serviceCtx.habits.prompt,        // 1. Habits — suppressed on a cold opener (#R3-4)
       serviceCtx.progressiveDisclosure,// 2. Progressive disclosure (features to introduce)
       serviceCtx.recovery,             // 3. Recovery (only in recovery mode)
       serviceCtx.eatingOut,            // 5. Eating out (only in eating_out mode)
       serviceCtx.mvd,                  // 6. MVD (only in mvd mode)
-      serviceCtx.predictiveRisk.prompt,// 7. Predictive risk alerts
+      freshOpener ? '' : serviceCtx.predictiveRisk.prompt,// 7. Predictive risk — suppressed on a cold opener (#R3-4)
       serviceCtx.caffeineSleep,        // 8. Caffeine-sleep correlation
       serviceCtx.adaptiveDifficulty,   // 9. Adaptive difficulty suggestions
       serviceCtx.conflicts,            // 10. Conflict detection (allergen, goal-behavior)

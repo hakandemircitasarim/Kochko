@@ -976,6 +976,8 @@ export default function SessionDetailScreen() {
           }}
           contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         />
       )}
 
@@ -1699,6 +1701,10 @@ function TaskCompletionCard({
         pathname: `/chat/${id}`,
         params: { prefill: task.prefillMessage, taskModeHint: task.taskModeHint },
       });
+    } else {
+      // createSession returned null (no auth / offline / insert error) — don't
+      // leave the tap as a dead button (#R3-8), mirror the other call sites.
+      Alert.alert('Sohbet başlatılamadı', 'İnternet bağlantını kontrol et ve tekrar dene.');
     }
   };
 

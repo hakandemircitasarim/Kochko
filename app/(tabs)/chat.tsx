@@ -45,10 +45,23 @@ export default function SessionListScreen() {
   const [loading, setLoading] = useState(true);
   const [prefillHandled, setPrefillHandled] = useState(false);
 
-  // Handle prefill redirect — auto-create session and navigate
+  // Handle prefill redirect — reuse the active session if one exists, else create.
   useEffect(() => {
-    if ((prefill || openCamera) && !prefillHandled) {
-      setPrefillHandled(true);
+    // Wait for sessions to load so the active-session lookup isn't racing an empty
+    // initial sessions=[] (otherwise we'd always create a cold new chat).
+    if (!(prefill || openCamera) || prefillHandled || loading) return;
+    setPrefillHandled(true);
+    const active = sessions.find(s => s.is_active);
+    if (active) {
+      // A dashboard nudge / quick-log should continue the ongoing conversation and
+      // its Layer-4 thread, not abandon it for a fresh empty chat (#R3-11/#3).
+      const params: Record<string, string> = {};
+      if (prefill) params.prefill = prefill;
+      if (openCamera) params.openCamera = openCamera;
+      router.replace({ pathname: `/chat/${active.id}`, params });
+      return;
+    }
+    {
       createSession().then(id => {
         if (id) {
           const params: Record<string, string> = {};
@@ -72,7 +85,7 @@ export default function SessionListScreen() {
         );
       });
     }
-  }, [prefill, openCamera, prefillHandled]);
+  }, [prefill, openCamera, prefillHandled, loading, sessions]);
 
   const fetchSessions = useCallback(async () => {
     if (!user?.id) { setLoading(false); return; }

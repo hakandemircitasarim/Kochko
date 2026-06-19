@@ -32,7 +32,10 @@ export default function RootLayout() {
 
   useEffect(() => {
     safeGetString(THEME_KEY).then(saved => {
-      if (saved === 'dark' || saved === 'light' || saved === 'system') setThemeMode(saved);
+      // Light/system are gated until Settings/Reports screens are migrated off the
+      // static dark COLORS (#R3-6). Honor only 'dark' so a previously-saved light/
+      // system pref can't load the app into the broken split-theme state.
+      if (saved === 'dark') setThemeMode(saved);
     });
   }, []);
 

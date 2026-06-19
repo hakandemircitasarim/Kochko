@@ -765,12 +765,23 @@ const AI_SUMMARY_FIELDS: { key: string; label: string; desc: string }[] = [
   { key: 'coachingNotes', label: 'Kocluk Notlari', desc: 'Ic gorusme gozlemi (sistem)' },
 ];
 
+function isMeaningful(item: unknown): boolean {
+  if (item == null) return false;
+  if (typeof item === 'string') return item.trim() !== '';
+  if (typeof item === 'object') return Object.keys(item as Record<string, unknown>).length > 0;
+  return true;
+}
+
 function formatFieldValue(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === 'string') return v.trim() === '' ? null : v;
   if (Array.isArray(v)) {
-    if (v.length === 0) return null;
-    return `${v.length} kayit`;
+    // Filter empty entries so an array of empty objects (e.g. micro_nutrient_risks
+    // stored as [{}]) reads as "not learned yet" instead of a misleading "1 kayit"
+    // / blank row (#R3-16/#R3-20).
+    const nonEmpty = v.filter(isMeaningful);
+    if (nonEmpty.length === 0) return null;
+    return `${nonEmpty.length} kayit`;
   }
   if (typeof v === 'object') {
     const keys = Object.keys(v as Record<string, unknown>);

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
@@ -50,17 +50,18 @@ export default function ProgressScreen() {
     propsForBackgroundLines: { stroke: colors.border },
   };
 
-  useEffect(() => {
-    if (!user?.id) return;
+  const load = useCallback(async () => {
+    if (!user?.id) { setLoading(false); return; }
     const from = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
-    Promise.all([
-      supabase.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps').eq('user_id', user.id).gte('date', from).order('date'),
-      supabase.from('daily_reports').select('date, compliance_score').eq('user_id', user.id).gte('date', from).order('date'),
-      detectPlateau(user.id),
-      getMaintenanceStatus(user.id),
-      getTimelineData(user.id),
-      getEngagementMetrics(user.id),
-    ]).then(([m, c, plateau, maintenance, timeline, engagementData]) => {
+    try {
+      const [m, c, plateau, maintenance, timeline, engagementData] = await Promise.all([
+        supabase.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps').eq('user_id', user.id).gte('date', from).order('date'),
+        supabase.from('daily_reports').select('date, compliance_score').eq('user_id', user.id).gte('date', from).order('date'),
+        detectPlateau(user.id),
+        getMaintenanceStatus(user.id),
+        getTimelineData(user.id),
+        getEngagementMetrics(user.id),
+      ]);
       setMetrics((m.data ?? []) as MetricPt[]);
       const compData = (c.data ?? []) as CompPt[];
       setCompliance(compData);
@@ -91,10 +92,16 @@ export default function ProgressScreen() {
       }
 
       setEngagement(engagementData);
-
+    } catch (err) {
+      // Never leave the primary Raporlar tab stuck on the spinner — a single
+      // rejected promise (e.g. a network drop) must still clear loading (#R3-1).
+      console.warn('[progress] load failed', err);
+    } finally {
       setLoading(false);
-    });
+    }
   }, [user?.id, profile]);
+
+  useEffect(() => { setLoading(true); load(); }, [load]);
 
   // D4: Apply plateau strategy
   const handleApplyStrategy = async (strategyId: string) => {
@@ -185,7 +192,11 @@ export default function ProgressScreen() {
   const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1) : null;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 12, paddingBottom: SPACING.xxl + insets.bottom }}
+      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { setLoading(true); load(); }} tintColor={colors.primary} />}
+    >
       <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
 
       {/* Summary */}
