@@ -37,6 +37,11 @@ export function calculateCycleStatus(
   const start = new Date(lastPeriodStart);
   const today = new Date();
   const daysSinceStart = Math.floor((today.getTime() - start.getTime()) / 86400000);
+  // Guard invalid data: an unparseable/future start date or a non-positive cycle
+  // length would yield a negative/garbage day-of-cycle and a wrong phase (#R5-13).
+  if (Number.isNaN(start.getTime()) || daysSinceStart < 0 || cycleLength <= 0) {
+    return { active: false, currentPhase: null, dayOfCycle: null, cycleLength, nextPeriodEstimate: null, phaseAdvice: null };
+  }
   const dayOfCycle = (daysSinceStart % cycleLength) + 1;
 
   // Phase calculation (approximate)

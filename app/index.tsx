@@ -39,8 +39,21 @@ export default function Index() {
 
   if (!session) return <Redirect href="/(auth)/login" />;
 
+  // Wait for the authed user's profile to resolve before routing — otherwise a new
+  // user whose profile hasn't loaded yet falls through to /(tabs) and SKIPS the
+  // onboarding gate (#R5-5), and an onboarded user would flash the onboarding
+  // screen. Spin until the profile is present (mig 044 guarantees a row exists, so
+  // a successful fetch always returns one).
+  if (!profile) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
   // Spec 15: New users go to structured onboarding flow
-  if (profile && !profile.onboarding_completed) {
+  if (!profile.onboarding_completed) {
     return <Redirect href="/onboarding" />;
   }
 
