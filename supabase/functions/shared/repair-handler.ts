@@ -410,16 +410,40 @@ export async function getToneContext(userId: string): Promise<string> {
  * Triggered when user asks "benim hakkimda ne biliyorsun" or similar.
  */
 export async function buildKnowledgeSummary(userId: string): Promise<string> {
-  const { data: summary } = await supabaseAdmin
-    .from('ai_summary')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
+  // #R3: the Layer-2 ai_summary row is built asynchronously (merge/cron), so a fully
+  // onboarded user often has none yet — the old early-return then claimed "I don't know
+  // you" despite a complete structured profile. Always load + prepend the structured
+  // baseline (profile, active goal, ongoing health events).
+  const [{ data: summary }, { data: profile }, { data: goalRows }, { data: ongoing }] = await Promise.all([
+    supabaseAdmin.from('ai_summary').select('*').eq('user_id', userId).maybeSingle(),
+    supabaseAdmin.from('profiles').select('weight_kg, height_cm, birth_year, gender, activity_level').eq('id', userId).maybeSingle(),
+    supabaseAdmin.from('goals').select('goal_type, target_weight_kg').eq('user_id', userId).eq('is_active', true).limit(1),
+    supabaseAdmin.from('health_events').select('description').eq('user_id', userId).eq('is_ongoing', true).limit(5),
+  ]);
 
-  if (!summary) return 'Henuz seni tanimiyorum — konustukca ogrenecegim!';
+  const parts: string[] = ['Seni su sekilde taniyorum:\n'];
+  if (profile) {
+    const p = profile as Record<string, unknown>;
+    const bits: string[] = [];
+    if (p.birth_year) bits.push(`${new Date().getFullYear() - (p.birth_year as number)} yas`);
+    if (p.gender) bits.push(p.gender === 'male' ? 'erkek' : p.gender === 'female' ? 'kadin' : String(p.gender));
+    if (p.height_cm) bits.push(`boy ${p.height_cm} cm`);
+    if (p.weight_kg) bits.push(`${p.weight_kg} kg`);
+    if (p.activity_level) bits.push(`aktivite: ${p.activity_level}`);
+    if (bits.length) parts.push(`**Profil:** ${bits.join(', ')}`);
+  }
+  const g = (goalRows as Record<string, unknown>[] | null)?.[0];
+  if (g?.goal_type) parts.push(`**Hedef:** ${g.goal_type}${g.target_weight_kg ? ` (hedef ${g.target_weight_kg} kg)` : ''}`);
+  const inj = (ongoing as { description: string }[] | null) ?? [];
+  if (inj.length > 0) parts.push(`**Saglik/sakatlik:** ${inj.map(x => x.description).join('; ')}`);
+
+  if (!summary) {
+    if (parts.length === 1) return 'Henuz seni tanimiyorum — konustukca ogrenecegim!';
+    parts.push('\n(Konustukca seni daha iyi taniyacagim.)');
+    return parts.join('\n');
+  }
 
   const s = summary as Record<string, unknown>;
-  const parts: string[] = ['Seni su sekilde taniyorum:\n'];
 
   if (s.general_summary) parts.push(`**Genel:** ${s.general_summary}`);
   if (s.user_persona) parts.push(`**Tip:** ${s.user_persona}`);

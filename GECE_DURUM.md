@@ -39,6 +39,19 @@ gerçek Supabase+OpenAI'a karşı test edildi; her bulgu ikinci bir ajanla düş
 
 **Deploy:** 5 edge function tekrar redeploy. deno 5/5 + client tsc 0 hata. **Öz-denetimde 1 kendi-regresyonum yakalandı+düzeltildi** (geniş hedef-regex antrenman hedefini yutabiliyordu → egzersiz-bağlamı guard'ı).
 
+### Round-3: ÖZ-REGRESYON taraması (bu oturumun 39 değişikliği) + kalan kapsam → 9 bug DÜZELTİLDİ
+15 ajan. **Kritik haber iyi:** guardrail-sırası (9/9 geçti — kriz/acil/ED/injection sağlam), plan-yaşamdöngüsü (8/8 — planlar üretiliyor, 7-gün/reconcile **regresyon YOK**), raporlar (10/10). 3 bulgu benim Round-2 net'lerimdendi — öz-denetim işe yaradı.
+
+- **HIGH (regresyon):** onboarding "boyum 182 kilom 88" (virgülsüz) → regex BOYU kilo olarak yazıyordu (TDEE bozuluyordu). Kelime-sınırı fix'i. Canlı: height=182, weight=88. ✅
+- **HIGH:** günlük su/adım hedefi sohbetten persist olmuyordu (profile_update dalı + net yoktu) → eklendi. Canlı: su 3.5L, adım 12000. ✅
+- **MEDIUM:** injury net her mesajda dup health_event yaratıyordu (benim net'im) → vücut-bölgesi dedup. · weight net "tekrar" kelimesini egzersiz sanıyordu → rep-bağlamı. · "benim hakkımda ne biliyorsun" yapısal profili görmüyordu → her zaman profil prepend. Canlı ✅. · what-if "kaç kilo veririm" spurious goal yaratıyordu → hypothetical guard. Canlı: goal yok ✅.
+- **LOW:** weight_history aynı-gün dup (mig 049 unique + upsert) · ameliyat→injury yerine surgery tipi · (lab-values feature-gap ertelendi).
+
+**Deploy:** ai-chat tekrar redeploy, mig 049 canlıda. deno + client tsc temiz.
+
+### 📦 KURULABİLİR APK HAZIR
+`C:\Users\demir\Desktop\KOCHKO-test.apk` (118MB, com.kochko.app, debug-imzalı) — telefonuna doğrudan kur, **canlı backend'e bağlanıyor** (tüm 48 fix dahil). Not: tüm kritik/yüksek düzeltmeler zaten edge-tarafı + canlı deploy edildi, yani mevcut kurulumun bile tüm kritik fix'leri alır; APK ek olarak minör client fix'lerini (challenge geçmişi, streak day-boundary) içerir.
+
 ---
 
 ---

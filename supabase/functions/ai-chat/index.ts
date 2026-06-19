@@ -580,7 +580,7 @@ serve(async (req: Request) => {
       && !actions.some(a => a.type === 'profile_update' && (a as Record<string, unknown>).weight_kg !== undefined)
       && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
       const mW = message.toLocaleLowerCase('tr');
-      const exerciseCtx = /(bench|press|squat|deadlift|curl|lunge|set|tekrar|\brep\b|kaldir|kaldır|\d+\s*x\s*\d+|x\d)/.test(mW);
+      const exerciseCtx = /(bench|press|squat|deadlift|curl|lunge|set|\d+\s*tekrar|tekrar\s*\d|\brep\b|kaldir|kaldır|\d+\s*x\s*\d+|x\d)/.test(mW);
       const bodyIntent = /(geldim|oldum|tartild|tartıld|tart[ıi]m|kiloyum|kilodayim|kilodayım|kiloya dust|kiloya düşt|sabah)/.test(mW);
       if (!exerciseCtx && bodyIntent) {
         const wm = mW.match(/\b(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)\b/);
@@ -710,8 +710,19 @@ serve(async (req: Request) => {
       const injuryCue = /(sakat|incin|burkul|fitik|fıtık|agri|ağrı|agriy|ağrıy|tutuldu|zorlan|kirec|kireç|menisk|ameliyat|koptu|zedele|yirtild|yırtıld|ağrim|agrim|sorunum var)/.test(mInj);
       const parts = injuryCue ? extractInjuredBodyParts([message]) : [];
       if (parts.length > 0) {
-        actions.push({ type: 'health_event', event_type: 'injury', description: message.slice(0, 280), is_ongoing: true });
-        console.warn('[injury_safety_net] health_event injected', { parts });
+        // #R3: dedup — the net fires on EVERY message with an injury cue, so a user
+        // discussing the same injury across turns produced duplicate health_events rows.
+        // Skip if an existing health_event already covers all the mentioned body parts.
+        const { data: existingHE } = await supabaseAdmin
+          .from('health_events').select('description').eq('user_id', userId).limit(50);
+        const covered = new Set(extractInjuredBodyParts((existingHE ?? []).map((r: { description: string }) => r.description)));
+        const fresh = parts.some((p) => !covered.has(p));
+        if (fresh) {
+          // #R3: 'ameliyat/operasyon' is a SURGERY (past event), not an ongoing injury.
+          const isSurgery = /(ameliyat|operasyon|protez|artroskopi)/.test(mInj);
+          actions.push({ type: 'health_event', event_type: isSurgery ? 'surgery' : 'injury', description: message.slice(0, 280), is_ongoing: !isSurgery });
+          console.warn('[injury_safety_net] health_event injected', { parts, isSurgery });
+        }
       }
     }
 
@@ -730,6 +741,20 @@ serve(async (req: Request) => {
         const venueName = brand ? brand.replace(/\b\w/g, (c) => c.toUpperCase()) : 'Restoran';
         actions.push({ type: 'venue_log', venue_name: venueName, items: [] });
         console.warn('[venue_safety_net] venue_log injected', { venueName });
+      }
+    }
+
+    // Micro-goal target safety net (#R3): "günlük su hedefim 3.5 litre", "adım hedefim
+    // 12000". The model claimed it saved these but emitted no usable action. Fires only
+    // on an explicit target intent (hedef + the metric word) so it can't misfire on a log.
+    if (message
+      && !actions.some(a => a.type === 'profile_update' && ((a as Record<string, unknown>).water_target_liters !== undefined || (a as Record<string, unknown>).step_target !== undefined))) {
+      const mT = message.toLocaleLowerCase('tr');
+      if (/hedef/.test(mT)) {
+        const upd: Record<string, unknown> = {};
+        if (/(su|sıvı|sivi)/.test(mT)) { const mm = mT.match(/(\d+(?:[.,]\d+)?)\s*(?:litre|lt|l)\b/); if (mm) { const v = parseFloat(mm[1].replace(',', '.')); if (v > 0 && v <= 10) upd.water_target_liters = v; } }
+        if (/(adim|adım|step)/.test(mT)) { const mm = mT.match(/(\d{4,6})/); if (mm) { const v = parseInt(mm[1]); if (v >= 1000 && v <= 50000) upd.step_target = v; } }
+        if (Object.keys(upd).length > 0) { actions.push({ type: 'profile_update', ...upd }); console.warn('[microgoal_safety_net] target injected', upd); }
       }
     }
 
@@ -1279,6 +1304,21 @@ serve(async (req: Request) => {
           }
         }
       }
+    }
+
+    // #R3: a what-if / projection question ("günde 500 açık yaparsam kaç kilo veririm")
+    // must NOT create or mutate a goal — the model probabilistically emits an unsolicited
+    // goal_type. Strip goal-mutating actions when the message is clearly hypothetical
+    // (the simulation projection is answered in prose, not by setting a goal).
+    if (message && /(yaparsam|edersem|yapsam|olur\s*mu|kac kilo ver|kaç kilo ver|veririm|verebilirim|kaybeder|kaybederim|ne kadar.*(ver|kaybet)|simulasyon|simülasyon|senaryo|farz et|diyelim ki)/i.test(message)) {
+      for (const a of actions) {
+        if ((a as Record<string, unknown>).type === 'profile_update') {
+          delete (a as Record<string, unknown>).goal_type;
+          delete (a as Record<string, unknown>).target_weight_kg;
+        }
+      }
+      const kept = actions.filter(a => (a as Record<string, unknown>).type !== 'set_goal' && (a as Record<string, unknown>).type !== 'goal_suggestion');
+      if (kept.length !== actions.length) { actions.length = 0; actions.push(...kept); }
     }
 
     // Execute actions (use target_date for batch entry, T1.17)
@@ -1890,7 +1930,12 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   // so skip it in safeOnly/regular-chat mode (#1/#2/#5) AND in the goal chat where the
   // prompt forbids touching current weight (#R1-C1).
   if (!safeOnly && !inGoalChat) {
-    const currentMatch = lower.match(/mevcut\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)/);
+    // #R3-net: the bare "NN kg/kilo" alternative must require the unit to END at a word
+    // boundary, else "kilo" matches the PREFIX of "kilom" in "boyum 182 kilom 88" and the
+    // leftmost match grabs the HEIGHT (182) as weight. The "kilo\w* NN" alt (2nd) then
+    // correctly captures the real weight (88) that FOLLOWS "kilom". (kiloyum listed
+    // explicitly so "88 kiloyum" still matches despite the suffix.)
+    const currentMatch = lower.match(/mevcut\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(?:kg|kiloyum|kilo)\b/);
     if (currentMatch) {
       const w = parseFloat(currentMatch[1] ?? currentMatch[2] ?? currentMatch[3]);
       // Skip if the value matches the target we already extracted, to avoid
@@ -2585,7 +2630,7 @@ async function executeActions(
             await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
             // weight_history is the canonical measurement store (export + trend source)
             // but was never written by any code path before (#R1-M2). Record each weigh-in.
-            await supabaseAdmin.from('weight_history').insert({ user_id: userId, weight_kg: w, recorded_at: actionDate });
+            await supabaseAdmin.from('weight_history').upsert({ user_id: userId, weight_kg: w, recorded_at: actionDate }, { onConflict: 'user_id,recorded_at' });
             // T1.19: Check if TDEE recalculation needed
             recalculateTDEEIfNeeded(userId, w).then(() => {}, () => {});
 
@@ -2731,6 +2776,10 @@ async function executeActions(
           if (typeof action.menstrual_cycle_length === 'number' && action.menstrual_cycle_length >= 20 && action.menstrual_cycle_length <= 45) {
             updates.menstrual_cycle_length = action.menstrual_cycle_length;
           }
+          // Micro-goal targets (#R3): water/step targets had no profile_update branch, so a
+          // chat-set "günlük su hedefim 3.5 litre" silently dropped while the AI claimed success.
+          if (typeof action.water_target_liters === 'number' && action.water_target_liters > 0 && action.water_target_liters <= 10) updates.water_target_liters = action.water_target_liters;
+          if (typeof action.step_target === 'number' && action.step_target >= 1000 && action.step_target <= 50000) updates.step_target = Math.round(action.step_target);
           // Schedule & lifestyle
           if (action.occupation) updates.occupation = action.occupation;
           if (action.work_start) updates.work_start = action.work_start;
