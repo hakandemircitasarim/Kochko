@@ -5,6 +5,27 @@ En güncel özet en altta. Sabah ilk bakacağın yer: **"⚠️ SENİN YAPMAN GE
 
 ---
 
+## ✅ CANLI AI TESTLERİ YAPILDI (OpenAI kredisi eklendikten sonra, 2026-06-19)
+API çalışır hale gelince tüm kritik akışları gerçek OpenAI ile uçtan uca test ettim:
+| # | Akış | Sonuç |
+|---|------|-------|
+| 1 | Öğün kaydı ("3 yumurta + ekmek") | ✅ meal_logs + 2 item + 370 kcal |
+| 2 | Diyet planı üretimi | ✅ 7-günlük taslak |
+| 3 | Plan onayla → active → daily_plans | ✅ draft→active + 3 gün projeksiyon (DoD#2) |
+| 4 | Günlük rapor | ✅ deterministik bütçe ("%3 kullanıldı, 13330 marjin") |
+| 5 | Reasoning (#7) | ⚠️ model her Q&A'da emit etmiyor (yapı sağlam, model değişken) |
+| 6 | **Yaş düzeltme (#1)** | ❌→✅ **CANLI HATA BULUNDU + DÜZELTİLDİ** (aşağıda) |
+| 7 | Antrenman kaydı (#R2-1) | ✅ cardio/moderate/45dk + sahte başarı yok |
+| 8 | Alerjen guardrail | ✅ deniz ürünü alerjisinde tavuk önerdi |
+
+**Canlı testte bulunan+düzeltilen KRİTİK hata (commit 1881d7d):** Onboarded kullanıcı
+"33 yaşındayım" deyince model "yaşını güncelledim" diyor ama action emit etmiyordu →
+birth_year değişmiyordu (TAM senin #1/#2/#5 şikayetin). Regex yedeğine safeOnly modu
+eklendi: regular chat'te yaş/cinsiyet/boy deterministik yakalanıyor (bodyweight hariç —
+antrenman ağırlığı karışmasın). Canlı doğrulandı: birth_year 1994→1993, weight korundu.
+
+---
+
 ## ⚠️ SENİN YAPMAN GEREKEN (tek harici blocker)
 
 **OpenAI API kotası tükenmiş.** Tüm AI akışları (sohbet, plan üretimi, rapor, foto/vision)
