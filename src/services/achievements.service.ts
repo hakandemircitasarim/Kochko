@@ -70,7 +70,8 @@ export async function checkMilestones(
   currentWeight: number | null,
   startWeight: number | null,
   targetWeight: number | null,
-  streak: number
+  streak: number,
+  goalType?: string | null,
 ): Promise<Achievement | null> {
   // Check existing achievements to avoid duplicates
   const { data: existing } = await supabase
@@ -84,17 +85,23 @@ export async function checkMilestones(
   // the returned achievement is the most significant one for the toast.
   const earned: { type: string; title: string; desc: string }[] = [];
 
-  // Weight milestones (highest threshold first)
+  // Weight milestones (highest threshold first). Direction-aware: a gain goal
+  // (gain_weight/gain_muscle) progresses UPWARD, so loss-only math never fired its
+  // milestones (#R4-7). `progress` = kg moved toward the goal in the right direction.
   if (currentWeight && startWeight) {
-    const lost = startWeight - currentWeight;
-    if (targetWeight && currentWeight <= targetWeight && !types.has('goal_reached'))
+    const isGain = goalType === 'gain_weight' || goalType === 'gain_muscle';
+    const progress = isGain ? currentWeight - startWeight : startWeight - currentWeight;
+    const totalNeeded = targetWeight != null ? Math.abs(startWeight - targetWeight) : null;
+    const reachedTarget = targetWeight != null && (isGain ? currentWeight >= targetWeight : currentWeight <= targetWeight);
+    const unit = isGain ? 'aldın' : 'verdin';
+    if (reachedTarget && !types.has('goal_reached'))
       earned.push({ type: 'goal_reached', title: 'HEDEFE ULAŞTIN!', desc: 'Tebrikler, hedef kilona ulaştın!' });
-    if (targetWeight && lost >= (startWeight - targetWeight) / 2 && !types.has('half_goal'))
+    if (totalNeeded != null && totalNeeded > 0 && progress >= totalNeeded / 2 && !types.has('half_goal'))
       earned.push({ type: 'half_goal', title: 'Yarı Yolda!', desc: 'Hedefin yarısına ulaştın.' });
-    if (lost >= 5 && !types.has('five_kg'))
-      earned.push({ type: 'five_kg', title: '5 Kilo!', desc: '5 kg verdin, harika iş!' });
-    if (lost >= 1 && !types.has('first_kg'))
-      earned.push({ type: 'first_kg', title: 'İlk Kilo!', desc: '1 kg verdin.' });
+    if (progress >= 5 && !types.has('five_kg'))
+      earned.push({ type: 'five_kg', title: '5 Kilo!', desc: `5 kg ${unit}, harika iş!` });
+    if (progress >= 1 && !types.has('first_kg'))
+      earned.push({ type: 'first_kg', title: 'İlk Kilo!', desc: `1 kg ${unit}.` });
   }
 
   // Streak milestones (highest threshold first)

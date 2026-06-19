@@ -92,7 +92,11 @@ export default function PremiumScreen() {
   const activatePremium = async (months: number) => {
     if (!user?.id) return;
 
-    // Native IAP first (Spec 19.0). Stubbed → dev fallback writes subscription row directly.
+    // Native IAP (Spec 19.0). Real purchases flow through the store + RevenueCat
+    // webhook (service_role). The old "dev fallback" that wrote subscriptions/
+    // profiles.premium directly is now correctly blocked server-side (RLS trial-only
+    // + protect_profile_entitlements trigger), so it can no longer self-grant premium
+    // for free (#R4-1/#R4-12) — and faking a success alert would be a lie.
     const productId = months === 1 ? 'monthly' : 'yearly';
     const result = await initiatePurchase(productId);
     if (result.ok) {
@@ -100,29 +104,11 @@ export default function PremiumScreen() {
       return;
     }
 
-    // DEV fallback — write directly to subscriptions table; trigger syncs profile.premium
-    const expiresAt = new Date();
-    expiresAt.setMonth(expiresAt.getMonth() + months);
-    try {
-      await supabase.from('subscriptions').insert({
-        user_id: user.id,
-        tier: months >= 12 ? 'yearly' : 'monthly',
-        status: 'active',
-        provider: 'manual',
-        product_id: productId,
-        started_at: new Date().toISOString(),
-        expires_at: expiresAt.toISOString(),
-      });
-    } catch { /* non-critical */ }
-    await update(user.id, {
-      premium: true,
-      premium_expires_at: expiresAt.toISOString(),
-      trial_used: true,
-    } as never);
-
-    Alert.alert('Tebrikler!', `Premium ${months} ay aktif (dev).`, [
-      { text: 'Tamam', onPress: () => router.back() },
-    ]);
+    Alert.alert(
+      'Satın alma yakında',
+      'Premium satın alma App Store / Google Play üzerinden çok yakında aktif olacak. Şimdilik ücretsiz deneme ile tüm özellikleri kullanabilirsin.',
+      [{ text: 'Tamam' }],
+    );
   };
 
   const handleCancel = () => {

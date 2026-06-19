@@ -2082,7 +2082,9 @@ async function executeActions(
             const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(
               items.map(i => ({
                 meal_log_id: log.id, food_name: i.name ?? 'Yiyecek', portion_text: i.portion ?? '1 porsiyon',
-                calories: Math.max(0, Math.round(i.calories * multiplier)),
+                // calories is smallint (max 32767) — clamp so one absurd value (parse
+                // error) can't overflow and 22003-fail the WHOLE item batch (#R4-14).
+                calories: Math.min(32767, Math.max(0, Math.round(i.calories * multiplier))),
                 protein_g: Math.max(0, i.protein_g), carbs_g: Math.max(0, i.carbs_g),
                 fat_g: Math.max(0, Math.round(i.fat_g * multiplier)),
                 data_source: 'ai_estimate',
@@ -3573,8 +3575,14 @@ async function checkOnboardingCompletion(userId: string) {
     const trainingMax = targetCal + Math.round(rangeWidth / 2);
     const restMin = Math.max(trainingMin - 250, data.gender === 'female' ? 1200 : 1400);
     const restMax = trainingMax - 250;
+    // The 1200/1400 floor lifts the MINs but not the maxes, so a low-TDEE user
+    // (small/older/female/sedentary) could get restMin > restMax — an inverted
+    // range that corrupts the weekly budget. Clamp each max up to its min, like
+    // src/lib/tdee.ts calculateTargets does (#R4-2).
+    const safeTrainingMax = Math.max(trainingMax, trainingMin);
+    const safeRestMax = Math.max(restMax, restMin);
     const waterTarget = Math.round(data.weight_kg * 0.033 * 10) / 10;
-    const weeklyBudget = 4 * Math.round((trainingMin + trainingMax) / 2) + 3 * Math.round((restMin + restMax) / 2);
+    const weeklyBudget = 4 * Math.round((trainingMin + safeTrainingMax) / 2) + 3 * Math.round((restMin + safeRestMax) / 2);
 
     // NOTE: protein_target_g is NOT a profiles column (it lives on daily_plans);
     // protein intensity is captured by protein_per_kg. Macro split columns are
@@ -3585,9 +3593,9 @@ async function checkOnboardingCompletion(userId: string) {
       tdee_last_weight: data.weight_kg,
       tdee_last_date: new Date().toISOString().split('T')[0],
       calorie_range_training_min: trainingMin,
-      calorie_range_training_max: trainingMax,
+      calorie_range_training_max: safeTrainingMax,
       calorie_range_rest_min: restMin,
-      calorie_range_rest_max: restMax,
+      calorie_range_rest_max: safeRestMax,
       protein_per_kg: 1.8,
       water_target_liters: waterTarget,
       weekly_calorie_budget: weeklyBudget,
@@ -3646,9 +3654,12 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
   const trainingMax = targetCal + Math.round(rangeWidth / 2);
   const restMin = Math.max(trainingMin - 250, profile.gender === 'female' ? 1200 : 1400);
   const restMax = trainingMax - 250;
+  // Clamp maxes up to floored mins so a low-TDEE user doesn't get restMin > restMax (#R4-3).
+  const safeTrainingMax = Math.max(trainingMax, trainingMin);
+  const safeRestMax = Math.max(restMax, restMin);
   const proteinG = Math.round(currentWeight * 1.8);
   const waterTarget = Math.round(currentWeight * 0.033 * 10) / 10;
-  const weeklyBudget = 4 * Math.round((trainingMin + trainingMax) / 2) + 3 * Math.round((restMin + restMax) / 2);
+  const weeklyBudget = 4 * Math.round((trainingMin + safeTrainingMax) / 2) + 3 * Math.round((restMin + safeRestMax) / 2);
 
   // protein_target_g is not a profiles column (it lives on daily_plans); record
   // protein intent via protein_per_kg (proteinG above derives from this 1.8 factor).
@@ -3663,9 +3674,9 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number) {
   if (!inMaintenance) {
     // Only the non-maintenance path may rewrite the calorie ranges / weekly budget.
     profileUpdate.calorie_range_training_min = trainingMin;
-    profileUpdate.calorie_range_training_max = trainingMax;
+    profileUpdate.calorie_range_training_max = safeTrainingMax;
     profileUpdate.calorie_range_rest_min = restMin;
-    profileUpdate.calorie_range_rest_max = restMax;
+    profileUpdate.calorie_range_rest_max = safeRestMax;
     profileUpdate.weekly_calorie_budget = weeklyBudget;
   }
   await supabaseAdmin.from('profiles').update(profileUpdate).eq('id', userId);

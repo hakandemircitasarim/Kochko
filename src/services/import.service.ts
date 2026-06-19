@@ -77,7 +77,9 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
       meal_log_id: log.id,
       food_name: foodName,
       portion_text: '1 porsiyon',
-      calories,
+      // calories is smallint — clamp arbitrary CSV values so one bad row can't
+      // 22003-overflow and fail the insert (#R4-14).
+      calories: Math.min(32767, Math.max(0, Math.round(calories || 0))),
       protein_g: protein || 0,
       carbs_g: 0,
       fat_g: 0,

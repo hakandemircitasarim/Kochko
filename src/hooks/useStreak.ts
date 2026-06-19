@@ -25,14 +25,15 @@ export function useStreak() {
     // Get weight data for milestone check
     const { data: profile } = await supabase.from('profiles').select('weight_kg').eq('id', user.id).single();
     const { data: firstMetric } = await supabase.from('daily_metrics').select('weight_kg').eq('user_id', user.id).order('date').limit(1).single();
-    const { data: goal } = await supabase.from('goals').select('target_weight_kg').eq('user_id', user.id).eq('is_active', true).single();
+    const { data: goal } = await supabase.from('goals').select('target_weight_kg, goal_type').eq('user_id', user.id).eq('is_active', true).single();
 
     const achievement = await checkMilestones(
       user.id,
       profile?.weight_kg ?? null,
       firstMetric?.weight_kg ?? null,
       goal?.target_weight_kg ?? null,
-      s
+      s,
+      (goal?.goal_type as string | null) ?? null,
     );
 
     if (achievement) {

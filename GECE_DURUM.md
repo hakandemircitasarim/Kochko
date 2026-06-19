@@ -103,9 +103,35 @@ regresyon YOK** (sadece 1 low: profile.tsx KVKK try/catch — düzeltildi).
 - **Ertelenenler (riskli/büyük, OpenAI kapalıyken test edilemez):** R2-3 offline kuyruk
   bağlama, R2-9 şüpheli-kilo onayı, R2-17/18/19 (low).
 
-### Tur 3 — UI/UX + akış denetimi (çalışıyor)
-Ekran durumları (loading/empty/error), navigasyon, safe-area/klavye, görsel tutarlılık +
-kalan notlar (#3 chat-arası bağlam, #11 biten görevler, #12 boş hafıza). Sonuçlar eklenecek.
+### Tur 3 — UI/UX denetimi → 24 bulgu, çoğu DÜZELTİLDİ (commit 199b993, 2aa2a6f)
+- **R3-1:** Raporlar sekmesi sonsuz spinner'da takılması düzeltildi (try/finally + pull-to-refresh).
+- **R3-2:** Chat'te klavye açıkken baloncuk-içi butonlar (onayla/quick-select/Neden) tek dokunuşta.
+- **R3-4 (#3):** Yeni sohbet artık alakasız "su iç" nudge'ıyla açılmıyor.
+- **TEMA (R3-6/7/23):** Ayarlar+Raporlar açık modda kırıktı → açık/sistem modu "Yakında"
+  kilitlendi (uygulama koyu-tasarım, tutarlı). Tam açık-mod desteği 52 ekranlık ayrı iş.
+- **R3-8/R3-11/R3-12/R3-13/R3-14/R3-16/R3-18/R3-19:** ölü buton Alert'i, nudge→aktif sohbet,
+  Raporlar top-inset, form klavyeleri, hafıza [{}] boş gösterimi, log klavye, dashboard padding.
+- **#11/#12 kök neden:** AI'ın Layer-2/profil alanlarını seyrek yazması + ai-extractor
+  cron'unun da OpenAI'a bağımlı olması (anahtar gelince hafıza dolacak). Prompt güçlendirildi,
+  validation gate doğru. UI tarafı sağlam.
+
+### Tur 4 — çekirdek özellik denetimi (çalışıyor)
+Plan taslak→onayla→revize yaşam döngüsü (DoD#2), TDEE/kalori/makro matematiği, premium
+kapısı, foto/vision/barkod akışı. Sonuçlar eklenecek.
+
+---
+
+## 📦 Commit'ler (hepsi YEREL, push ertelendi — hesap seçimi engeli)
+- `097c4f1` Tur 1: 21 bulgu + migration 045 + LLM provider config
+- `3ddebb7` Notlar batch 1 (UX) + R2-10 regresyon
+- `f36dbeb` Tur 2 edge (güvenlik sırası, enum whitelist, prompt)
+- `cc0afba` Tur 2 low (veri bütünlüğü, hafıza, rapor)
+- `199b993` Tur 3 UI/UX (ekran durumu, nav, klavye, tema, hafıza)
+- `2aa2a6f` Tur 3 polish (log klavye, dashboard padding)
+
+Toplam: **~60 doğrulanmış bug düzeltildi** (4 kritik/yüksek-güvenlik dahil) + 8 notun
+implementasyonu/prompt'u. Migration 045 canlıda, 5 edge function yeniden deploy edildi,
+client `tsc` 0 hata, tüm edge `deno check` temiz.
 
 ---
 

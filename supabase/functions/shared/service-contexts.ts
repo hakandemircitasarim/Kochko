@@ -372,7 +372,10 @@ export async function getMVDContext(userId: string): Promise<string> {
     const today = new Date().toISOString().split('T')[0];
     const { data: plan } = await supabaseAdmin
       .from('daily_plans').select('status')
-      .eq('user_id', userId).eq('date', today).maybeSingle();
+      .eq('user_id', userId).eq('date', today)
+      // daily_plans holds multiple versions per (user_id, date); take the latest so
+      // maybeSingle() doesn't silently return null on PGRST116 multi-row (#R4-6).
+      .order('version', { ascending: false }).limit(1).maybeSingle();
     const isActive = plan?.status === 'mvd_suspended';
 
     const parts: string[] = ['## MINIMUM VIABLE DAY MODU'];

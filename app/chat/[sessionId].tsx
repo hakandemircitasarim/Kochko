@@ -307,8 +307,11 @@ export default function SessionDetailScreen() {
     setSending(true);
     const result = await lookupBarcode(barcode);
     if (result.found) {
-      const serving = calculateServing(result, result.serving_size_g ?? 100);
-      const msg = `Barkod: ${result.product_name} (${result.brand ?? ''}) - ${serving?.calories ?? '?'} kcal, ${serving?.protein_g ?? '?'}g protein (100g bazında)`;
+      // Label the basis with the ACTUAL grams calculateServing used, not a fixed
+      // "100g bazında" — products with a real serving size were mislabeled (#R4-9).
+      const basisG = result.serving_size_g ?? 100;
+      const serving = calculateServing(result, basisG);
+      const msg = `Barkod: ${result.product_name} (${result.brand ?? ''}) - ${serving?.calories ?? '?'} kcal, ${serving?.protein_g ?? '?'}g protein (${basisG}g bazında)`;
       setInput(msg);
     } else {
       setInput(`Barkod ${barcode} bulunamadı. Bu ürünü metin olarak girebilirsin.`);
