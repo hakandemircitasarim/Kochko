@@ -11,13 +11,22 @@ En güncel özet en altta. Sabah ilk bakacağın yer: **"⚠️ SENİN YAPMAN GE
 canlı test edemiyordu — bu oturumda **gerçek AI ile** tüm kritik akışları uçtan uca test ettim.
 
 ### 🏁 OTURUM 2 GRAND TOTAL
-**3 multi-agent canlı-test turu (Round-1/2/3) + düşmanca doğrulama → 48 doğrulanmış bug DÜZELTİLDİ**
-(2 kritik, 14 yüksek, 14 orta, 18 düşük). Her bulgu ikinci bir ajanla düşmanca doğrulandı; her
-düzeltme canlı OpenAI+Supabase'e karşı yeniden test edildi. Round-3 ÖZ-regresyon turu bu oturumun
-kendi değişikliklerini taradı: guardrail/plan/rapor **regresyonsuz**, 3 kendi-net hatası yakalanıp
-düzeltildi. **2 migration (048 chat_sessions invariant, 049 weight_history unique) canlıda.**
-**6 edge function defalarca redeploy.** **client tsc 0 hata, 6/6 edge deno temiz.** **Kurulabilir
-APK Masaüstünde.** 3 commit yerelde (c394629, e48869e, 2067632). 23 throwaway test kullanıcısı temizlendi.
+**3 multi-agent canlı-test turu (Round-1/2/3) + uçtan-uca yeni-kullanıcı journey + düşmanca
+doğrulama → 50 doğrulanmış bug DÜZELTİLDİ** (2 kritik, 16 yüksek, 14 orta, 18 düşük). Her bulgu
+ikinci bir ajanla düşmanca doğrulandı; her düzeltme canlı OpenAI+Supabase'e karşı yeniden test
+edildi. Round-3 ÖZ-regresyon turu bu oturumun kendi değişikliklerini taradı: guardrail/plan/rapor
+**regresyonsuz**, 3 kendi-net hatası yakalanıp düzeltildi.
+
+**Kapanış journey'i (onboard→TDEE→plan→loglama→rapor→kriz) 2 gerçek HIGH entegrasyon hatası daha
+yakaladı:** (1) activity geç-kart'ta set edilince TDEE refresh olmuyordu (kalori %30 düşük) →
+düzeltildi (canlı: 2190→2829); (2) alerjik kullanıcı HİÇ plan alamıyordu (AI deniz ürünü koyuyor,
+guardrail bloklayıp kurtarmıyordu) → kesin-yasak exclusion-regen eklendi (canlı: deniz-ürünsüz,
+7/7 gün hedefte plan).
+
+**2 migration (048 chat_sessions invariant, 049 weight_history unique) canlıda. 6 edge function
+defalarca redeploy. client tsc 0 hata, 6/6 edge deno temiz. Kurulabilir APK Masaüstünde
+(`KOCHKO-test.apk`). 5 commit GitHub'a PUSH EDİLDİ (push blocker'ı da çözüldü). 24 throwaway test
+kullanıcısı temizlendi.**
 
 ### Round-1: 6 paralel canlı test ajanı + düşmanca doğrulama → 26 onaylı bug, hepsi DÜZELTİLDİ
 33 ajan / ~2M token. Onboarding, loglama, plan, hafıza, guardrail, rapor+hedef alanları
