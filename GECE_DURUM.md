@@ -10,6 +10,15 @@ En güncel özet en altta. Sabah ilk bakacağın yer: **"⚠️ SENİN YAPMAN GE
 **Büyük değişiklik:** OpenAI kredisi eklenmiş, AI artık canlı çalışıyor. Önceki turlar AI'ı
 canlı test edemiyordu — bu oturumda **gerçek AI ile** tüm kritik akışları uçtan uca test ettim.
 
+### 🏁 OTURUM 2 GRAND TOTAL
+**3 multi-agent canlı-test turu (Round-1/2/3) + düşmanca doğrulama → 48 doğrulanmış bug DÜZELTİLDİ**
+(2 kritik, 14 yüksek, 14 orta, 18 düşük). Her bulgu ikinci bir ajanla düşmanca doğrulandı; her
+düzeltme canlı OpenAI+Supabase'e karşı yeniden test edildi. Round-3 ÖZ-regresyon turu bu oturumun
+kendi değişikliklerini taradı: guardrail/plan/rapor **regresyonsuz**, 3 kendi-net hatası yakalanıp
+düzeltildi. **2 migration (048 chat_sessions invariant, 049 weight_history unique) canlıda.**
+**6 edge function defalarca redeploy.** **client tsc 0 hata, 6/6 edge deno temiz.** **Kurulabilir
+APK Masaüstünde.** 3 commit yerelde (c394629, e48869e, 2067632). 23 throwaway test kullanıcısı temizlendi.
+
 ### Round-1: 6 paralel canlı test ajanı + düşmanca doğrulama → 26 onaylı bug, hepsi DÜZELTİLDİ
 33 ajan / ~2M token. Onboarding, loglama, plan, hafıza, guardrail, rapor+hedef alanları
 gerçek Supabase+OpenAI'a karşı test edildi; her bulgu ikinci bir ajanla düşmanca doğrulandı.
@@ -77,32 +86,23 @@ antrenman ağırlığı karışmasın). Canlı doğrulandı: birth_year 1994→1
 
 ---
 
-## ⚠️ SENİN YAPMAN GEREKEN (tek harici blocker)
+## ⚠️ SENİN YAPMAN GEREKEN (OTURUM 2 sonrası — çok az şey kaldı)
 
-**OpenAI API kotası tükenmiş.** Tüm AI akışları (sohbet, plan üretimi, rapor, foto/vision)
-edge function'larda `429 insufficient_quota` ile dönüyor. Bu bir **billing** durumu — kod hatası değil.
-Edge function'lar sağlıklı boot ediyor, sadece çalışan bir LLM'e ulaşamıyorlar.
+**OpenAI artık ÇALIŞIYOR** (kredi eklenmişsin) — eski "kota tükendi" blocker'ı ÇÖZÜLDÜ.
+Bu gece tüm AI akışlarını gerçek OpenAI ile uçtan uca test edip 48 bug düzelttim.
 
-**Uygulamayı gerçek manada test edebilmen için yapman gereken tek şey:**
-- OpenAI hesabına kredi/kota ekle (platform.openai.com → Billing), **VEYA**
-- Bana çalışan bir anahtar bırak; sağlayıcıyı (OpenAI / OpenRouter / Azure) tek secret ile
-  değiştirebilmen için LLM katmanını yapılandırılabilir hale getiriyorum (aşağıda).
+**1) Uygulamayı telefonunda test et (HAZIR):**
+Masaüstünde **`KOCHKO-test.apk`** (118MB) var. Telefonuna at, kur (bilinmeyen kaynaklara izin ver),
+aç. Uygulama doğrudan **canlı backend'e** bağlanıyor — tüm düzeltmeler aktif. Test hesabı:
+**kochko.uitest@gmail.com / Kochko!Test2026** (premium, onboarded) ya da kendi hesabınla kayıt ol.
+Aşağıdaki "TEST SENARYOSU" 12 adımını izleyebilirsin.
 
-Bu çözülür çözülmez tüm AI akışları çalışır — geri kalan her şeyi bu gece kusursuzlaştırıyorum.
+**2) (Opsiyonel) git push:** 3 commit (c394629, e48869e, 2067632) + 2 migration YERELDE hazır.
+Push hâlâ Windows kimlik yöneticisi yüzünden engelli olabilir (GCM=irmakcaglayan). Backend zaten
+canlı deploy edildiği için push ŞART DEĞİL — sadece kaynak kodu GitHub'a yedeklemek için.
+GCM'i hakandemircitasarim olarak doğrula, sonra `git push origin claude/KOCHKO`.
 
-**SEÇENEK A — En basit:** OpenAI hesabına kredi ekle (platform.openai.com → Settings → Billing).
-Hiçbir kod/secret değişikliği gerekmez; mevcut `OPENAI_API_KEY` zaten kurulu.
-
-**SEÇENEK B — Farklı sağlayıcıya geç (kod artık buna hazır, REDEPLOY GEREKMEZ, sadece secret):**
-```bash
-# Örn. OpenRouter (Claude/GPT/Llama hepsini OpenAI-uyumlu sunar) ya da başka bir OpenAI hesabı:
-export SUPABASE_ACCESS_TOKEN=<senin sbp_ token>
-npx supabase secrets set OPENAI_API_KEY=<çalışan-anahtar> --project-ref ugoynltxwrkqjwrdxmzt
-npx supabase secrets set OPENAI_BASE_URL=https://openrouter.ai/api/v1 --project-ref ugoynltxwrkqjwrdxmzt
-# (OpenAI'da kalıyorsan OPENAI_BASE_URL'i hiç set etme — varsayılan api.openai.com.)
-```
-Secret değişikliği bir sonraki çağrıda etkin olur (edge function'lar env'i runtime okur).
-Test: `node TEMP/kk.mjs chat "merhaba"` → 200 ve Türkçe yanıt görmelisin.
+Başka HİÇBİR şey yapman gerekmiyor — backend, edge function'lar ve migration'lar canlıda ve doğrulandı.
 
 ---
 
