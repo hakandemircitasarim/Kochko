@@ -141,8 +141,10 @@ export default function QuickLogScreen() {
       setTranscribing(true);
       const uri = await stopRecording();
       if (uri) {
-        const transcribed = await transcribeAudio(uri);
-        if (transcribed) {
+        const { text: transcribed, premiumRequired } = await transcribeAudio(uri);
+        if (premiumRequired) {
+          Alert.alert('Premium özellik', 'Sesli giriş Premium bir özellik. Premium\'a geçince sesle de kayıt yapabilirsin.');
+        } else if (transcribed) {
           setText(transcribed);
           setScreen('main');
         } else {

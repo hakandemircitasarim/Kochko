@@ -40,8 +40,12 @@ export default function RootLayout() {
   // on an authed screen whose every query 401s (#R5-1).
   useEffect(() => {
     if (!authInitialized) return;
-    const inAuth = segments[0] === '(auth)';
-    if (!session && !inAuth) {
+    // Public routes that an unauthenticated user must be able to reach: the auth
+    // group AND the top-level password-recovery screen (kochko://reset-password,
+    // which runs with a null session until the recovery token lands). Excluding it
+    // prevents the guard from bouncing the user off the reset screen (#R7-1).
+    const isPublic = segments[0] === '(auth)' || segments[0] === 'reset-password';
+    if (!session && !isPublic) {
       router.replace('/(auth)/login');
     }
   }, [session, authInitialized, segments]);

@@ -54,7 +54,7 @@ export async function stopRecording(): Promise<string | null> {
  * Send audio to backend for transcription via Whisper API.
  * Returns transcribed text.
  */
-export async function transcribeAudio(audioUri: string): Promise<string | null> {
+export async function transcribeAudio(audioUri: string): Promise<{ text: string | null; premiumRequired: boolean }> {
   try {
     // Read audio file as blob
     const response = await fetch(audioUri);
@@ -81,10 +81,16 @@ export async function transcribeAudio(audioUri: string): Promise<string | null> 
       body: { audio_base64: audioBase64, transcribe_only: true },
     });
 
-    if (error || !data?.transcription) return null;
-    return data.transcription as string;
+    if (error) {
+      // Voice is a Premium feature — the server returns 403 PREMIUM_REQUIRED. Surface
+      // that distinctly so the UI shows an upsell, not a misleading "failed" (#R7-3).
+      const status = (error as { context?: { status?: number } })?.context?.status;
+      return { text: null, premiumRequired: status === 403 };
+    }
+    if (!data?.transcription) return { text: null, premiumRequired: false };
+    return { text: data.transcription as string, premiumRequired: false };
   } catch {
-    return null;
+    return { text: null, premiumRequired: false };
   }
 }
 
@@ -100,10 +106,10 @@ export function isRecording(): boolean {
  * Call startRecording first, then call this when user taps stop.
  * Returns the transcribed text ready to send to chat.
  */
-export async function stopAndTranscribe(): Promise<{ text: string | null; audioUri: string | null }> {
+export async function stopAndTranscribe(): Promise<{ text: string | null; audioUri: string | null; premiumRequired: boolean }> {
   const uri = await stopRecording();
-  if (!uri) return { text: null, audioUri: null };
+  if (!uri) return { text: null, audioUri: null, premiumRequired: false };
 
-  const text = await transcribeAudio(uri);
-  return { text, audioUri: uri };
+  const { text, premiumRequired } = await transcribeAudio(uri);
+  return { text, audioUri: uri, premiumRequired };
 }

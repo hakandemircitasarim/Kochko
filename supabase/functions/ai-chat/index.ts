@@ -71,10 +71,11 @@ serve(async (req: Request) => {
         if (audio_base64 && body.transcribe_only) {
           return respond({ error: 'Sesli giriş Premium özelliğidir.', code: 'PREMIUM_REQUIRED' }, 403);
         }
-        return respond({
-          message: 'Fotoğrafla otomatik öğün analizi Premium bir özellik. Premium\'a geçince fotoğraftan kalori ve makroları çıkarabilirim. Şimdilik öğününü yazarak da kaydedebilirsin.',
-          actions: [], task_mode: 'coaching',
-        });
+        const photoUpsell = 'Fotoğrafla otomatik öğün analizi Premium bir özellik. Premium\'a geçince fotoğraftan kalori ve makroları çıkarabilirim. Şimdilik öğününü yazarak da kaydedebilirsin.';
+        // Persist the turn so the photo attempt + upsell appears in chat history,
+        // like every other early-return path (#R7-4).
+        await storeMessages(userId, message?.trim() || '[Foto gönderildi]', photoUpsell, undefined, undefined, undefined, undefined, session_id);
+        return respond({ message: photoUpsell, actions: [], task_mode: 'coaching' });
       }
     }
 

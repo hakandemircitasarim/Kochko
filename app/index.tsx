@@ -1,13 +1,13 @@
 import { useEffect } from 'react';
 import { Redirect } from 'expo-router';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
-import { COLORS } from '@/lib/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 
 export default function Index() {
   const { session, initialized } = useAuthStore();
-  const { profile, fetch: fetchProfile, reactivateAccount } = useProfileStore();
+  const { profile, fetchError, fetch: fetchProfile, reactivateAccount } = useProfileStore();
 
   useEffect(() => {
     if (session?.user?.id) fetchProfile(session.user.id);
@@ -45,6 +45,23 @@ export default function Index() {
   // screen. Spin until the profile is present (mig 044 guarantees a row exists, so
   // a successful fetch always returns one).
   if (!profile) {
+    // If the fetch FAILED (transient/network) there's no prior profile to fall back
+    // on at cold start — offer a retry instead of spinning forever (#R7-2).
+    if (fetchError) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
+          <Text style={{ color: COLORS.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.lg }}>
+            Profilin yüklenemedi. İnternet bağlantını kontrol et.
+          </Text>
+          <TouchableOpacity
+            onPress={() => { if (session?.user?.id) fetchProfile(session.user.id); }}
+            style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl }}
+          >
+            <Text style={{ color: '#fff', fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
         <ActivityIndicator size="large" color={COLORS.primary} />

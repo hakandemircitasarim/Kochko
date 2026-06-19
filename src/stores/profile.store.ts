@@ -7,6 +7,7 @@ import { cancelAccountDeletion } from '@/services/privacy.service';
 interface ProfileState {
   profile: Profile | null;
   loading: boolean;
+  fetchError: boolean;
   fetch: (userId: string) => Promise<void>;
   update: (userId: string, data: Partial<Profile>) => Promise<void>;
   reactivateAccount: (userId: string) => Promise<void>;
@@ -16,19 +17,22 @@ interface ProfileState {
 export const useProfileStore = create<ProfileState>((set, get) => ({
   profile: null,
   loading: false,
+  fetchError: false,
 
   fetch: async (userId) => {
-    set({ loading: true });
+    set({ loading: true, fetchError: false });
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
     if (error) {
       // Transient/RLS error: keep any previously loaded profile rather than
       // wiping it to null (which would flip premium→free, blank the dashboard, etc.)
+      // Expose fetchError so the router can offer a retry instead of spinning forever
+      // when this is a cold start with no prior profile (#R7-2).
       if (__DEV__) console.warn('profile.fetch failed', error);
-      set({ loading: false });
+      set({ loading: false, fetchError: true });
       return;
     }
     // Only here is `data === null` a genuine "no row" signal.
-    set({ profile: data as Profile | null, loading: false });
+    set({ profile: data as Profile | null, loading: false, fetchError: false });
   },
 
   update: async (userId, updates) => {

@@ -333,8 +333,10 @@ export default function SessionDetailScreen() {
     if (isRecordingVoice) {
       try {
         setIsRecordingVoice(false);
-        const { text, audioUri } = await stopAndTranscribe();
-        if (text) {
+        const { text, audioUri, premiumRequired } = await stopAndTranscribe();
+        if (premiumRequired) {
+          Alert.alert('Premium özellik', 'Sesli giriş Premium bir özellik. Premium\'a geçince sesle de kayıt yapabilirsin.');
+        } else if (text) {
           setInput(text);
           const expiresAt = Date.now() + 5000;
           setVoiceConfirmation({ text, expiresAt });
