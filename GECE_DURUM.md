@@ -167,11 +167,24 @@ auth/session, KVKK/silme, periodik/regl/hamilelik, ai-report. Yüksek+orta hepsi
 
 ---
 
-## 🏆 5 TUR BİTTİ — GRAND TOTAL
-**5 multi-agent denetim turu (R1-R5) + senin 12 cihaz notun → ~95 doğrulanmış bulgu, ~80 düzeltildi.**
+### Tur 6 — component/store, sync, error-handling + ertelenenler → 11 bulgu (commit 77e3562)
+- **R6-1 (high):** Plan sekmesi bozuk bir onaylı planda (days=null) CRASH ediyordu —
+  PlanActiveView/FullPlanModal/AlternativeComparisonModal Array-guard'landı. **Test
+  kullanıcısının gerçek bozuk aktif planı temizlendi** (plan sekmesi artık temiz).
+- **R6-2 (high):** plan kaydı başarısızken chat "oluşturdum" yalanı atmıyor artık.
+- **R6-3 (high):** foto/ses artık server-side premium-gated (sınırsız Whisper maliyet
+  açığı kapandı). **Test hesabının premium'u geri yüklendi** (gece sub-testlerim trigger'la
+  düşürmüştü) → foto/ses test edebilirsin.
+- R6-4/6/8/9/10/11: offline banner dürüst, weekly_budget_status deterministik, auto-backup
+  launch'ta share-sheet açmıyor, conflict-resolver phantom kolon, repair count, edge hata sızıntısı.
+
+---
+
+## 🏆 6 TUR BİTTİ — GRAND TOTAL
+**6 multi-agent denetim turu (R1-R6) + senin 12 cihaz notun → ~106 doğrulanmış bulgu, ~88 düzeltildi.**
 Tüm aksiyon alınabilir kritik/yüksek HALLEDILDI. Migration 045/046/047 canlı+doğrulandı.
 5 edge function defalarca temiz deploy edildi. Client `tsc` 0 hata, tüm edge `deno check` temiz.
-12 commit yerelde (097c4f1..85ad2e5). Regresyon yok.
+16 commit yerelde (097c4f1..77e3562). Regresyon yok.
 
 **Denetlenen tüm yüzey:** DB yazma/okuma, edge function'lar, AI aksiyon pipeline, guardrail
 güvenliği, UI/UX ekran durumları, navigasyon, safe-area/klavye, tema, auth/oturum, KVKK/silme,
