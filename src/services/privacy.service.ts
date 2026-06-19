@@ -30,6 +30,13 @@ export async function requestAccountDeletion(userId: string): Promise<{ schedule
   } as never).eq('id', userId);
   if (error) throw new Error(error.message);
 
+  // KVKK audit trail — record the deletion request (#R5-3). Best-effort: the audit
+  // row lives in audit_logs (cascade-deleted with the account after the grace
+  // period), so it is a within-grace-window proof, not a post-deletion record.
+  await logAuditEvent(userId, 'account_delete_request', 'Kullanici hesap silme talebinde bulundu', {
+    scheduled_deletion_date: scheduledDate.toISOString().split('T')[0],
+  }).catch(() => {});
+
   return { scheduledDate: scheduledDate.toISOString().split('T')[0] };
 }
 
@@ -42,6 +49,8 @@ export async function cancelAccountDeletion(userId: string): Promise<void> {
     updated_at: new Date().toISOString(),
   } as never).eq('id', userId);
   if (error) throw new Error(error.message);
+
+  await logAuditEvent(userId, 'account_delete_cancel', 'Kullanici hesap silme talebini iptal etti').catch(() => {});
 }
 
 /**
@@ -168,13 +177,23 @@ export async function resetAISummary(userId: string): Promise<void> {
     menstrual_notes: null,
     weekly_budget_pattern: null,
     supplement_notes: null,
+    // Previously-missed learned fields — a "full" KVKK reset must clear these too (#R5-6).
+    learned_meal_times: {},
+    snacking_hours: [],
+    seasonal_notes: null,
+    tdee_notes: null,
     updated_at: new Date().toISOString(),
   } as never).eq('user_id', userId).select('user_id');
   if (error) throw new Error(error.message);
-  // A PostgREST UPDATE blocked by RLS returns success with 0 rows (no error).
-  // Treat a 0-row result as a hard failure so a KVKK reset can never silently
-  // no-op (e.g. if the ai_summary_upd policy regresses).
-  if (!data || data.length === 0) throw new Error('Hafıza sıfırlanamadı (kayıt güncellenmedi).');
+  // A PostgREST UPDATE affecting 0 rows is EITHER an RLS regression OR the user
+  // simply has no ai_summary row yet (nothing to reset). Distinguish: only fail if
+  // a row actually exists but wasn't updated — a missing row means already-clear,
+  // so we must NOT throw a false "reset failed" (#R5-10).
+  if (!data || data.length === 0) {
+    const { count } = await supabase.from('ai_summary')
+      .select('user_id', { count: 'exact', head: true }).eq('user_id', userId);
+    if ((count ?? 0) > 0) throw new Error('Hafıza sıfırlanamadı (kayıt güncellenmedi).');
+  }
 }
 
 // ─── Photo Cleanup (Phase 7) ───
@@ -206,12 +225,14 @@ export async function schedulePhotoCleanup(
 export async function logAuditEvent(
   userId: string,
   eventType: string,
-  description: string
+  description: string,
+  metadata?: Record<string, unknown>,
 ): Promise<void> {
   const { error } = await supabase.from('audit_logs').insert({
     user_id: userId,
     event_type: eventType,
     description,
+    ...(metadata ? { metadata } : {}),
   });
   if (error) console.error('[audit] log insert failed', eventType, error);
 }

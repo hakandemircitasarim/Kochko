@@ -91,7 +91,7 @@ export function validatePeriodicState(
   const errors: string[] = [];
   const config = PERIODIC_STATE_CONFIG[state];
 
-  if (config.requiresEndDate && !endDate) {
+  if (config?.requiresEndDate && !endDate) {
     errors.push(`${config.label_tr} için bitiş tarihi gerekli.`);
   }
 
@@ -145,13 +145,19 @@ export function getTransitionInfo(
   const today = new Date();
   const daysRemaining = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   const config = PERIODIC_STATE_CONFIG[state];
+  // ai-chat also writes 'mini_cut'/'maintenance' which are NOT in PERIODIC_STATE_CONFIG;
+  // config.label_tr would throw and CRASH the periodic-state screen (#R5-4). Fall back
+  // to the raw state token (and translate the common ones) instead of crashing.
+  const label = config?.label_tr
+    ?? ({ mini_cut: 'Mini Kesim', maintenance: 'Bakım Dönemi' } as Record<string, string>)[state]
+    ?? state;
 
   if (daysRemaining <= 0) {
     return {
       daysRemaining: 0,
       isExpiring: false,
       isExpired: true,
-      transitionMessage_tr: `${config.label_tr} doneminiz sona erdi. Normal programa donus plani hazirlanacak.`,
+      transitionMessage_tr: `${label} doneminiz sona erdi. Normal programa donus plani hazirlanacak.`,
     };
   }
 
@@ -160,7 +166,7 @@ export function getTransitionInfo(
       daysRemaining,
       isExpiring: true,
       isExpired: false,
-      transitionMessage_tr: `${config.label_tr} doneminiz ${daysRemaining} gun icinde sona erecek. Gecis plani hazirlanacak.`,
+      transitionMessage_tr: `${label} doneminiz ${daysRemaining} gun icinde sona erecek. Gecis plani hazirlanacak.`,
     };
   }
 

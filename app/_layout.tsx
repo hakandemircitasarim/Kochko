@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuthenticatedAppInit, useAppStateSync } from '@/services/app-init.service';
@@ -22,6 +22,9 @@ void initSentry();
 
 export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
+  const session = useAuthStore((s) => s.session);
+  const authInitialized = useAuthStore((s) => s.initialized);
+  const segments = useSegments();
   const systemScheme = useColorScheme();
   // App is designed as a flat dark theme (teal accent). Default to dark so a
   // light-mode device doesn't render authed screens light while the hardcoded
@@ -29,6 +32,19 @@ export default function RootLayout() {
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
 
   useEffect(() => { initialize(); }, [initialize]);
+
+  // Global protected-route guard: if the session is lost WHILE the user is inside
+  // the app (cross-device logout, admin revoke, failed silent refresh — all call
+  // signOut() without navigating), return them to login. app/index.tsx only guards
+  // the cold-start path; this covers in-app session loss so the user isn't stranded
+  // on an authed screen whose every query 401s (#R5-1).
+  useEffect(() => {
+    if (!authInitialized) return;
+    const inAuth = segments[0] === '(auth)';
+    if (!session && !inAuth) {
+      router.replace('/(auth)/login');
+    }
+  }, [session, authInitialized, segments]);
 
   useEffect(() => {
     safeGetString(THEME_KEY).then(saved => {
@@ -70,6 +86,7 @@ export default function RootLayout() {
       }}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="log" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="chat" options={{ headerShown: false }} />

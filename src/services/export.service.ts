@@ -9,6 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { supabase } from '@/lib/supabase';
+import { logAuditEvent } from '@/services/privacy.service';
 
 /**
  * Export all user data as JSON (Spec 18 / KVKK Md.20 taşınabilirlik).
@@ -81,6 +82,14 @@ export async function exportJSON(): Promise<void> {
     await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Kochko Veri Exportu' });
   } else {
     await Share.share({ title: 'Kochko Export', message: json });
+  }
+
+  // KVKK audit trail — record the data export (Md.20 taşınabilirlik) (#R5-3).
+  const exportUserId = (data.profile as { id?: string } | null)?.id;
+  if (exportUserId) {
+    await logAuditEvent(exportUserId, 'data_export', 'Kullanici tum verisini JSON olarak disa aktardi', {
+      table_count: keys.length, had_errors: errors.length > 0,
+    }).catch(() => {});
   }
 }
 

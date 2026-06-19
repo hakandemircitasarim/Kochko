@@ -194,9 +194,16 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
     if (p.waist_cm) bodyItems.push(`Bel: ${p.waist_cm}cm`);
     if (bodyItems.length > 0) parts.push(`\n## VUCUT OLCULERI\n${bodyItems.join(' | ')}`);
 
-    // Periodic state
+    // Periodic state — translate the internal token to a human label so the AI's
+    // Layer-1 context doesn't carry a raw 'maintenance'/'mini_cut' enum (#R5-7).
     if (p.periodic_state) {
-      parts.push(`\n*** DONEMSEL DURUM: ${p.periodic_state} (${p.periodic_state_start} - ${p.periodic_state_end ?? '?'}) ***`);
+      const PS_LABELS: Record<string, string> = {
+        ramadan: 'Ramazan', holiday: 'Tatil', illness: 'Hastalık', busy_work: 'Yoğun İş Dönemi',
+        exam: 'Sınav Dönemi', pregnancy: 'Hamilelik', breastfeeding: 'Emzirme', injury: 'Sakatlık',
+        travel: 'Seyahat', custom: 'Özel Durum', maintenance: 'Bakım Dönemi', mini_cut: 'Mini Kesim',
+      };
+      const psLabel = PS_LABELS[p.periodic_state as string] ?? p.periodic_state;
+      parts.push(`\n*** DONEMSEL DURUM: ${psLabel} (${p.periodic_state_start} - ${p.periodic_state_end ?? '?'}) ***`);
     }
 
     // Menstrual + Cycle Phase

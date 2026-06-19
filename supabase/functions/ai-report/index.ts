@@ -201,6 +201,11 @@ ${(() => {
     ? Math.max(0, Math.min(100, Math.round(rawCompliance)))
     : 0;
 
+  // steps_actual is an integer column written straight from the model — coerce so a
+  // non-numeric/absurd value can't 22P02/22003 the whole report upsert (#R5-8).
+  const rawSteps = Number(report.steps_actual ?? metrics?.steps);
+  report.steps_actual = Number.isFinite(rawSteps) ? Math.max(0, Math.min(2_000_000, Math.round(rawSteps))) : null;
+
   // Backfill NOT NULL columns so a model omission can't violate the constraint
   if (typeof report.tomorrow_action !== 'string' || !report.tomorrow_action) report.tomorrow_action = '-';
   if (typeof report.full_report !== 'string' || !report.full_report) report.full_report = 'Rapor oluşturulamadı.';
@@ -230,7 +235,7 @@ ${(() => {
     protein_target_met: proteinTargetMet,
     workout_completed: workoutCompleted,
     water_target_met: waterTargetMet,
-    steps_actual: report.steps_actual ?? metrics?.steps,
+    steps_actual: report.steps_actual,
     sleep_impact: report.sleep_impact,
     water_impact: report.water_impact,
     deviation_reason: report.deviation_reason,
