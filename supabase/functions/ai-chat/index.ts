@@ -16,7 +16,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2 } from '../shared/memory.ts';
-import { sanitizeText, detectEmergency, detectEDRisk, checkAllergens, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText } from '../shared/guardrails.ts';
+import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -108,12 +108,20 @@ serve(async (req: Request) => {
     if (message) {
       const emergency = detectEmergency(message);
       if (emergency.isEmergency) {
-        await storeMessages(userId, message, emergency.message, undefined, undefined, undefined, undefined, session_id);
+        await storeMessages(userId, message, emergency.message, 'emergency', undefined, undefined, undefined, session_id);
         return respond({ message: emergency.message, actions: [], task_mode: 'emergency' });
+      }
+      // Self-harm / suicide crisis — MUST run before the ED check so a suicidal
+      // message gets the acute crisis response (112 + professional help), never
+      // the milder eating-disorder dietitian referral (#R1-C2).
+      const crisis = detectCrisis(message);
+      if (crisis.isCrisis) {
+        await storeMessages(userId, message, crisis.message, 'safety', undefined, undefined, undefined, session_id);
+        return respond({ message: crisis.message, actions: [], task_mode: 'safety' });
       }
       const edRisk = detectEDRisk(message);
       if (edRisk.isRisk && edRisk.severity === 'high') {
-        await storeMessages(userId, message, edRisk.message, undefined, undefined, undefined, undefined, session_id);
+        await storeMessages(userId, message, edRisk.message, 'safety', undefined, undefined, undefined, session_id);
         return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
       }
       // Medium severity: continue normal flow but AI will see ED_REFERRAL in sanitized output
@@ -560,6 +568,73 @@ serve(async (req: Request) => {
       }
     }
 
+    // Weight-log safety net — deterministic (#R1-H3): "81.5 kg geldim/oldum/tartıldım".
+    // The model intermittently asserts the save in prose but omits the weight_log
+    // action. Gated to a clear bodyweight report (intent verb) and NOT an exercise
+    // weight ("bench press 60kg"), so a strength log can never be misread.
+    if (message
+      && !actions.some(a => a.type === 'weight_log')
+      && !actions.some(a => a.type === 'profile_update' && (a as Record<string, unknown>).weight_kg !== undefined)
+      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      const mW = message.toLocaleLowerCase('tr');
+      const exerciseCtx = /(bench|press|squat|deadlift|curl|lunge|set|tekrar|\brep\b|kaldir|kaldır|\d+\s*x\s*\d+|x\d)/.test(mW);
+      const bodyIntent = /(geldim|oldum|tartild|tartıld|tart[ıi]m|kiloyum|kilodayim|kilodayım|kiloya dust|kiloya düşt|sabah)/.test(mW);
+      if (!exerciseCtx && bodyIntent) {
+        const wm = mW.match(/\b(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)\b/);
+        if (wm) {
+          const w = parseFloat(wm[1].replace(',', '.'));
+          if (w >= 30 && w <= 300) { actions.push({ type: 'weight_log', value: w }); console.warn('[weight_safety_net] weight_log injected', { w }); }
+        }
+      }
+    }
+
+    // Sleep-log safety net — deterministic (#R1-H4): "7 saat uyudum".
+    if (message
+      && !actions.some(a => a.type === 'sleep_log')
+      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      const mS = message.toLocaleLowerCase('tr');
+      const sm = mS.match(/(\d{1,2}(?:[.,]\d)?)\s*saat\s*(?:uyu|uyku)/);
+      if (sm) {
+        const h = parseFloat(sm[1].replace(',', '.'));
+        if (h > 0 && h < 24) {
+          const quality = /(iyi|kaliteli|rahat|derin)/.test(mS) ? 'good' : /(kotu|kötü|berbat|kesik|huzursuz|az uyu)/.test(mS) ? 'bad' : undefined;
+          actions.push({ type: 'sleep_log', hours: h, quality });
+          console.warn('[sleep_safety_net] sleep_log injected', { h, quality });
+        }
+      }
+    }
+
+    // Water-log safety net — deterministic (#R1-H6): "2 litre su içtim", "3 bardak su".
+    if (message
+      && !actions.some(a => a.type === 'water_log')
+      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      const mWa = message.toLocaleLowerCase('tr');
+      if (/su\s*(ic|iç)|water|sivi ald|sıvı ald/.test(mWa)) {
+        const litreM = mWa.match(/(\d+(?:[.,]\d+)?)\s*(?:litre|lt|l)\b/);
+        const bardakM = mWa.match(/(\d+)\s*bardak/);
+        let liters = 0;
+        if (litreM) liters = parseFloat(litreM[1].replace(',', '.'));
+        else if (bardakM) liters = parseInt(bardakM[1]) * 0.25;
+        if (liters > 0 && liters <= 15) { actions.push({ type: 'water_log', liters }); console.warn('[water_safety_net] water_log injected', { liters }); }
+      }
+    }
+
+    // Supplement-log safety net — deterministic (#R1-H6): "her sabah kreatin alıyorum".
+    // NOT mode-gated: habitual present-tense supplement statements route to 'coaching',
+    // not 'register', so a register-only gate dropped them (live-verified). The strict
+    // intake-verb + KNOWN-supplement-keyword + not-an-advice-question guards keep it from
+    // misfiring on questions ("kreatin almalı mıyım?") or food protein mentions.
+    if (message
+      && !actions.some(a => a.type === 'supplement_log')) {
+      const mSup = message.toLocaleLowerCase('tr');
+      if (/(al[ıi]yorum|al[ıi]rim|kullan[ıi]yorum|ald[ıi]m|iç(iyorum|erim)|içtim)/.test(mSup) && !/almal[ıi]|al[sş]am m[ıi]|kullan(mal[ıi]|sam)/.test(mSup)) {
+        const SUPPS = ['multivitamin', 'kreatin', 'creatine', 'whey', 'protein tozu', 'omega 3', 'omega-3', 'balık yağı', 'balik yagi', 'magnezyum', 'çinko', 'cinko', 'd vitamini', 'vitamin d', 'b12', 'probiyotik', 'glutamin', 'bcaa'];
+        const found = SUPPS.filter((s) => mSup.includes(s));
+        for (const name of found) actions.push({ type: 'supplement_log', name });
+        if (found.length) console.warn('[supplement_safety_net] supplement_log injected', { found });
+      }
+    }
+
     // IF safety net — fully deterministic (no AI call): the model verbally
     // "configures" IF while emitting no action (live audit, twice). Window
     // times parse straight out of the user message.
@@ -588,29 +663,52 @@ serve(async (req: Request) => {
       }
     }
 
-    // Allergy safety net — deterministic: "çilek alerjim var", "laktoz
-    // intoleransım var". The allergen guardrails read ONLY food_preferences,
-    // and the model skips the food_preference action often enough (live audit)
-    // that a chat-declared allergy would otherwise protect nobody.
+    // Allergy safety net — deterministic: "çilek alerjim var", "deniz ürünleri
+    // alerjim var", "laktoz intoleransım var". The allergen guardrails read ONLY
+    // food_preferences, and the model skips the food_preference action often enough
+    // (live audit) that a chat-declared allergy would otherwise protect nobody.
+    // Two layers (#R1-H1/H8): (1) dictionary scan that captures multi-word/category
+    // allergens by their CANONICAL name ("deniz ürünleri", not the fragment
+    // "ürünlerine"); (2) single-noun fallback for allergens not in the dictionary
+    // (çilek, kivi, fasulye...).
     if (message && !actions.some(a => (a as Record<string, unknown>).type === 'food_preference')) {
       const mAll = message.toLocaleLowerCase('tr');
-      const negated = /(alerjim yok|alerjisi yok|intoleransim yok|intoleransım yok|alerji yok)/.test(mAll);
-      if (!negated) {
-        const allergyMatch = mAll.match(/([a-zçğıöşü]{3,})\s+alerji/);
-        const intoleranceMatch = mAll.match(/([a-zçğıöşü]{3,})\s+intolerans/);
-        const food = allergyMatch?.[1] ?? intoleranceMatch?.[1];
-        const STOPWORDS = new Set(['bir', 'hic', 'hiç', 'gida', 'gıda', 'besin', 'yok', 'ciddi', 'hafif', 'ayrica', 'ayrıca', 'bence', 'galiba', 'sanirim', 'sanırım', 'bende', 'benim']);
-        if (food && !STOPWORDS.has(food)) {
-          const severe = /(ciddi|şiddetli|siddetli|agir|ağır|anafilaksi)/.test(mAll);
-          actions.push({
-            type: 'food_preference',
-            food_name: food,
-            preference: 'never',
-            is_allergen: true,
-            allergen_severity: severe ? 'severe' : 'moderate',
-          });
-          console.warn('[allergy_safety_net] food_preference injected', { food, severe });
+      const negated = /(alerjim yok|alerjisi yok|intoleransim yok|intoleransım yok|alerji yok|intolerans yok)/.test(mAll);
+      const hasIntent = /(alerj|intolerans)/.test(mAll);
+      if (!negated && hasIntent) {
+        const severe = /(ciddi|şiddetli|siddetli|agir|ağır|anafilaksi)/.test(mAll);
+        const declared = extractDeclaredAllergens(message);
+        const emitted = new Set<string>();
+        for (const food of declared) {
+          emitted.add(food);
+          actions.push({ type: 'food_preference', food_name: food, preference: 'never', is_allergen: true, allergen_severity: severe ? 'severe' : 'moderate' });
         }
+        // Single-noun fallback ONLY when the dictionary found nothing (unknown allergen).
+        if (declared.length === 0) {
+          const allergyMatch = mAll.match(/([a-zçğıöşü]{3,})\s+alerji/);
+          const intoleranceMatch = mAll.match(/([a-zçğıöşü]{3,})\s+intolerans/);
+          const food = allergyMatch?.[1] ?? intoleranceMatch?.[1];
+          const STOPWORDS = new Set(['bir', 'hic', 'hiç', 'gida', 'gıda', 'besin', 'yok', 'ciddi', 'hafif', 'ayrica', 'ayrıca', 'bence', 'galiba', 'sanirim', 'sanırım', 'bende', 'benim', 'tum', 'tüm', 'her']);
+          if (food && !STOPWORDS.has(food) && !emitted.has(food)) {
+            actions.push({ type: 'food_preference', food_name: food, preference: 'never', is_allergen: true, allergen_severity: severe ? 'severe' : 'moderate' });
+            emitted.add(food);
+          }
+        }
+        if (emitted.size > 0) console.warn('[allergy_safety_net] food_preference injected', { foods: [...emitted], severe });
+      }
+    }
+
+    // Injury safety net — deterministic (#R1-M5): "belimde fıtık var", "dizim ağrıyor".
+    // The injury guardrail reads ONLY health_events; the model skips the health_event
+    // action often enough that a chat-declared injury would otherwise protect nobody.
+    // Fires only when an injury CUE word co-occurs with a recognised body part.
+    if (message && !actions.some(a => (a as Record<string, unknown>).type === 'health_event')) {
+      const mInj = message.toLocaleLowerCase('tr');
+      const injuryCue = /(sakat|incin|burkul|fitik|fıtık|agri|ağrı|agriy|ağrıy|tutuldu|zorlan|kirec|kireç|menisk|ameliyat|koptu|zedele|yirtild|yırtıld|ağrim|agrim|sorunum var)/.test(mInj);
+      const parts = injuryCue ? extractInjuredBodyParts([message]) : [];
+      if (parts.length > 0) {
+        actions.push({ type: 'health_event', event_type: 'injury', description: message.slice(0, 280), is_ongoing: true });
+        console.warn('[injury_safety_net] health_event injected', { parts });
       }
     }
 
@@ -653,7 +751,13 @@ serve(async (req: Request) => {
     // persist an unusable snapshot.
     const snapshotUsable = (snap: Record<string, unknown> | null): boolean => {
       if (!snap) return false;
-      if (!Array.isArray(snap.days) || snap.days.length === 0) return false;
+      // A KOCHKO plan is always a full 7-day week (day_index 0-6). Every plan turn —
+      // including a revision — must re-emit the FULL week, not a patch. Accepting a
+      // partial (e.g. 1-day) snapshot let a revision truncate the persisted 7-day plan
+      // to a single day (#R1-H7). Require >=7 days so an incomplete revision instead
+      // triggers the forced 7-day regen below; if that still fails, the snapshot is
+      // dropped and the existing full-week draft is preserved (never overwritten).
+      if (!Array.isArray(snap.days) || snap.days.length < 7) return false;
       if (task_mode_hint === 'plan_diet' && (!snap.targets || typeof snap.targets !== 'object')) return false;
       return true;
     };
@@ -1117,9 +1221,16 @@ serve(async (req: Request) => {
       if (allergens.length > 0 && !/alerj/i.test(assistantMessage)) {
         const scan = checkAllergens(assistantMessage, allergens);
         if (!scan.passed) {
-          // checkAllergens violations are full sentences — name just the foods.
+          // checkAllergens violations are full sentences — name just the foods. Resolve
+          // the displayed name via the SAME category expansion checkAllergens uses, so a
+          // category allergen ("deniz ürünleri") triggered by a member food ("somon") is
+          // named correctly instead of falling back to the literal "alerjen" (#R1-L5).
           const lowerReply = assistantMessage.toLocaleLowerCase('tr');
-          const matched = allergens.filter(a => lowerReply.includes(a.toLocaleLowerCase('tr')));
+          const matched = allergens.filter(a => {
+            const aName = a.toLocaleLowerCase('tr');
+            const tokens = [aName, ...((ALLERGEN_FOODS as Record<string, string[]>)[aName] ?? [])];
+            return tokens.some(t => t.length >= 3 && lowerReply.includes(t));
+          });
           const names = matched.length > 0 ? matched.join(', ') : 'alerjen';
           assistantMessage += `\n\n⚠️ Dikkat: profilinde ${names} alerjisi kayıtlı — yukarıdaki öneri buna uygun olmayabilir. Sana uygun bir alternatif isteyebilirsin.`;
         }
@@ -1636,11 +1747,20 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   // is almost always the target weight — the AI just asked "hedeflediğin kilo?"
   // and the user shorthand-answers. Without this, regex below requires the
   // "hedef" keyword and misses the most common phrasing.
-  if (taskModeHint === 'onboarding_goal') {
+  // In the "Hedefini belirle" (goal) chat, EVERY weight the user states is the TARGET
+  // — the prompt explicitly forbids writing current weight_kg here (#R1-C1). Capture
+  // the target from a bare number, "NN kg/kilo", or "hedefim NN" phrasings, and we will
+  // NOT run the current-weight extraction below for this chat.
+  const inGoalChat = taskModeHint === 'onboarding_goal';
+  if (inGoalChat) {
     const bare = msg.trim();
     if (/^\d{2,3}(?:[.,]\d)?$/.test(bare)) {
       const n = parseFloat(bare.replace(',', '.'));
       if (n >= 30 && n <= 300) result.target_weight_kg = n;
+    }
+    if (result.target_weight_kg == null) {
+      const gm = lower.match(/(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)/);
+      if (gm) { const n = parseFloat(gm[1].replace(',', '.')); if (n >= 30 && n <= 300) result.target_weight_kg = n; }
     }
   }
 
@@ -1653,19 +1773,22 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
     if (h >= 100 && h <= 250) result.height_cm = h;
   }
 
-  // Target weight: "hedef kilo 90", "hedef kilom 90", "90 kg hedef" — checked BEFORE
-  // plain weight so "hedef kilo 100" isn't misread as current weight.
-  const targetMatch = lower.match(/hedef\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)\s*hedef/);
-  if (targetMatch) {
-    const t = parseFloat(targetMatch[1] ?? targetMatch[2]);
+  // Target weight: "hedef kilo 90", "hedef kilom 90", "90 kg hedef", and the verb-less
+  // correction "hedefim 78" / "hedefim 78 olsun" (#R1-M8) — checked BEFORE plain weight
+  // so "hedef kilo 100" isn't misread as current weight. The \d{2,3} (2-3 digit) guard
+  // means an AMOUNT like "5 kilo vermek" can never be captured as a target.
+  const targetMatch = lower.match(/hedef\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:[.,]\d)?)|(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)\s*hedef|hedef\w*\s*[:=]?\s*(\d{2,3}(?:[.,]\d)?)\b/);
+  if (targetMatch && result.target_weight_kg == null) {
+    const t = parseFloat((targetMatch[1] ?? targetMatch[2] ?? targetMatch[3]).replace(',', '.'));
     if (t >= 30 && t <= 300) result.target_weight_kg = t;
   }
 
   // Current weight: "kilom 72", "72 kg", "72 kiloyum" — but not if we just matched it as target.
   // Prefer "mevcut kilo X" disambiguation when both appear in the same line.
   // Bodyweight is the ONLY ambiguous field (a workout "70kg" misreads as bodyweight),
-  // so skip it in safeOnly/regular-chat mode (#1/#2/#5).
-  if (!safeOnly) {
+  // so skip it in safeOnly/regular-chat mode (#1/#2/#5) AND in the goal chat where the
+  // prompt forbids touching current weight (#R1-C1).
+  if (!safeOnly && !inGoalChat) {
     const currentMatch = lower.match(/mevcut\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(kg|kilo)/);
     if (currentMatch) {
       const w = parseFloat(currentMatch[1] ?? currentMatch[2] ?? currentMatch[3]);
@@ -1687,10 +1810,35 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
     }
   }
 
-  // Gender. "erkeğim" mutates the final k→ğ (erke[kğ] covers erkek + erkeğim);
-  // \bmale\b prevents the substring in "female" from falsely matching male.
-  if (/erke[kğ]|\bmale\b/.test(lower)) result.gender = 'male';
+  // Gender. "erkeğim" mutates the final k→ğ; ASCII-keyboard users type "erkegim" (g),
+  // so the class is [gkğ] (#R1-M1). \bbay\b matches "bay/bayım" but not "bayan"
+  // (no trailing word boundary). \bmale\b prevents the substring in "female" matching male.
+  if (/erke[gkğ]|\bbay\b|\bmale\b/.test(lower)) result.gender = 'male';
   else if (/kad[iı]n|bayan|\bfemale\b/.test(lower)) result.gender = 'female';
+
+  // Activity level — previously NEVER extracted, so onboarding always fell back to the
+  // 'sedentary' column default and every TDEE used the 1.2 multiplier (~30% too low,
+  // #R1-H2). Weekly training frequency takes priority over occupation words like
+  // "masa başı" (a desk worker who trains 3-4x/week is moderate, not sedentary). The
+  // frequency inference is gated to messages with an exercise/activity context word so
+  // a meal/recipe log ("haftada 3 kez balık") can never misfire.
+  const hasActivityContext = /spor|antren|egzersiz|idman|hareket|aktivite|aktif|yuru|yürü|kosu|koşu|antrenman|gym|fitness/.test(lower);
+  const freqMatch = lower.match(/haftada\s*(\d)(?:\s*[-–—]\s*(\d))?\s*(?:gun|gün|kez|defa|kere)/);
+  if (freqMatch && hasActivityContext) {
+    const hi = parseInt(freqMatch[2] ?? freqMatch[1]);
+    if (hi <= 2) result.activity_level = 'light';
+    else if (hi <= 4) result.activity_level = 'moderate';
+    else if (hi <= 6) result.activity_level = 'active';
+    else result.activity_level = 'very_active';
+  } else if (/cok aktif|çok aktif|atletik|profesyonel sporcu|cok hareketli|çok hareketli/.test(lower)) {
+    result.activity_level = 'very_active';
+  } else if (/(orta|normal)\s*(seviye|derece|aktiv)/.test(lower)) {
+    result.activity_level = 'moderate';
+  } else if (/hareketsiz|masa basi|masa başı|sedanter|hic spor yapm|hiç spor yapm|gun boyu otur|gün boyu otur/.test(lower)) {
+    result.activity_level = 'sedentary';
+  } else if (hasActivityContext && /(duzenli|düzenli)\s*spor|aktif bir|cok hareketli|çok hareketli/.test(lower)) {
+    result.activity_level = 'active';
+  }
 
   // Goal type from Turkish phrases. Priority: explicit wins; combos (weight AND muscle)
   // resolve to lose_weight if body mass suggests deficit is the first move.
@@ -1706,12 +1854,17 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   else if (wantsCondition) result.goal_type = 'conditioning';
 
   // Motivation source keywords — captured as free text for motivation_source column.
-  const motivationBits: string[] = [];
-  if (/sagl[iı]k/.test(lower)) motivationBits.push('saglik');
-  if (/gor[uü]n[uü]m|iyi\s*g[oö]z[uü]k/.test(lower)) motivationBits.push('gorunum');
-  if (/enerj/.test(lower)) motivationBits.push('enerji');
-  if (/ozguven|özgüven|kendime\s*g[uü]ven/.test(lower)) motivationBits.push('ozguven');
-  if (motivationBits.length > 0) result.motivation_source = motivationBits.join('_');
+  // GATED to onboarding/goal capture (!safeOnly): in regular chat a transient mood
+  // report ("bugün enerjik hissediyorum") was being written as the PERMANENT
+  // motivation_source trait via the bare "enerj" substring (#R1-H5).
+  if (!safeOnly) {
+    const motivationBits: string[] = [];
+    if (/sagl[iı]k/.test(lower)) motivationBits.push('saglik');
+    if (/gor[uü]n[uü]m|iyi\s*g[oö]z[uü]k/.test(lower)) motivationBits.push('gorunum');
+    if (/motivasyon\w*\s+enerj|enerjik olmak|enerjim ol/.test(lower)) motivationBits.push('enerji');
+    if (/ozguven|özgüven|kendime\s*g[uü]ven/.test(lower)) motivationBits.push('ozguven');
+    if (motivationBits.length > 0) result.motivation_source = motivationBits.join('_');
+  }
 
   return Object.keys(result).length > 0 ? result : null;
 }
@@ -2329,6 +2482,9 @@ async function executeActions(
               { onConflict: 'user_id,date' }
             );
             await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
+            // weight_history is the canonical measurement store (export + trend source)
+            // but was never written by any code path before (#R1-M2). Record each weigh-in.
+            await supabaseAdmin.from('weight_history').insert({ user_id: userId, weight_kg: w, recorded_at: actionDate });
             // T1.19: Check if TDEE recalculation needed
             recalculateTDEEIfNeeded(userId, w).then(() => {}, () => {});
 
@@ -2558,11 +2714,6 @@ async function executeActions(
               user_id: userId,
               is_active: true,
             };
-            // Whitelist goal_type — a model-emitted profile_update bypasses both the
-            // regex safety-net and goal_suggestion's GOAL_TYPE_MAP, so an off-enum
-            // value (e.g. 'cut'/'kilo_verme') would 23514-fail the insert (#8).
-            if (action.goal_type && CANONICAL_GOAL_TYPES.has(action.goal_type as string)) goalPatch.goal_type = action.goal_type;
-            else if (!existing) goalPatch.goal_type = 'lose_weight'; // only set default on brand-new row
             if (action.target_weight_kg) goalPatch.target_weight_kg = action.target_weight_kg;
 
             // start_weight_kg: fixed baseline snapshot for progress math (DoD#7).
@@ -2577,6 +2728,26 @@ async function executeActions(
             const startW = (existing?.start_weight_kg as number | null) ?? currentWeight;
             if (!existing && currentWeight) goalPatch.start_weight_kg = currentWeight;
             else if (existing && !existing.start_weight_kg && currentWeight) goalPatch.start_weight_kg = currentWeight;
+
+            // Whitelist goal_type — a model-emitted profile_update bypasses both the
+            // regex safety-net and goal_suggestion's GOAL_TYPE_MAP, so an off-enum
+            // value (e.g. 'cut'/'kilo_verme') would 23514-fail the insert (#8).
+            // On an EXISTING goal, also DROP a model goal_type that contradicts the
+            // weights (#R1-L6: 'maintain'/'gain' emitted on a target-only weight-loss
+            // correction) so the correct existing goal_type is preserved.
+            const modelGoalType = (action.goal_type && CANONICAL_GOAL_TYPES.has(action.goal_type as string)) ? (action.goal_type as string) : null;
+            if (modelGoalType) {
+              let consistent = true;
+              if (existing && startW && targetW && Math.abs(startW - targetW) > 1) {
+                const losing = startW > targetW;
+                if (losing && (modelGoalType === 'maintain' || modelGoalType === 'gain_weight')) consistent = false;
+                if (!losing && (modelGoalType === 'lose_weight' || modelGoalType === 'maintain')) consistent = false;
+              }
+              if (consistent) goalPatch.goal_type = modelGoalType;
+            } else if (!existing) {
+              goalPatch.goal_type = 'lose_weight'; // only set default on brand-new row
+            }
+
             const derivedRate = (startW && targetW && weeks > 0)
               ? Math.round((Math.abs(startW - targetW) / weeks) * 100) / 100
               : null;

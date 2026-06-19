@@ -121,6 +121,50 @@ export function checkAllergens(
 }
 
 /**
+ * Detect allergens DECLARED by the user in a free-text chat message (#R1-H1/H8).
+ * Scans the WHOLE message against the ALLERGEN_FOODS vocabulary (category names +
+ * member foods) so multi-word/category allergens ("deniz ürünleri", "süt ürünleri")
+ * are captured as their canonical name — not the single inflected fragment the old
+ * "(word) alerji" regex grabbed ("ürünlerine"). Returns canonical allergen names to
+ * store in food_preferences. Returns [] if no allergy/intolerance intent or if negated.
+ * For allergens NOT in the dictionary (çilek, kivi...), the caller's single-noun
+ * fallback still applies.
+ */
+// Collapse the synonym/variant keys in ALLERGEN_FOODS to one canonical name per concept
+// so a single declaration ("deniz ürünleri alerjim var") stores ONE food_preferences row,
+// not 5 (deniz ürünleri/urunleri/mahsulleri/kabuklu/kabuklular). Each canonical value is
+// itself a key in ALLERGEN_FOODS, so checkAllergens still expands it correctly.
+const ALLERGEN_CANON: Record<string, string> = {
+  'deniz ürünleri': 'deniz ürünleri', 'deniz urunleri': 'deniz ürünleri', 'deniz mahsulleri': 'deniz ürünleri',
+  kabuklu: 'deniz ürünleri', kabuklular: 'deniz ürünleri',
+  laktoz: 'laktoz', 'süt': 'laktoz', sut: 'laktoz',
+  'fındık': 'fındık', findik: 'fındık', 'fıstık': 'fıstık', fistik: 'fıstık',
+  'balık': 'balık', balik: 'balık', gluten: 'gluten', yumurta: 'yumurta',
+};
+
+export function extractDeclaredAllergens(text: string): string[] {
+  const lower = text.toLocaleLowerCase('tr');
+  if (!/(alerj|intolerans)/.test(lower)) return [];
+  if (/(alerjim yok|alerjisi yok|intoleransim yok|intoleransım yok|alerji yok|intolerans yok)/.test(lower)) return [];
+  const found = new Set<string>();
+  const normText = stripTurkishSuffix(lower);
+  const tokens = lower.split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(stripTurkishSuffix);
+  for (const [aName, members] of Object.entries(ALLERGEN_FOODS)) {
+    const normName = stripTurkishSuffix(aName);
+    if (lower.includes(aName) || (normName.length >= 4 && normText.includes(normName))) {
+      found.add(ALLERGEN_CANON[aName] ?? aName);
+      continue;
+    }
+    for (const m of members) {
+      if (m.length < 3) continue;
+      const nm = stripTurkishSuffix(m);
+      if (lower.includes(m) || tokens.includes(nm)) { found.add(ALLERGEN_CANON[aName] ?? aName); break; }
+    }
+  }
+  return [...found];
+}
+
+/**
  * Validate calorie targets against absolute floors.
  */
 export function validateCalories(
@@ -284,17 +328,48 @@ export function detectEmergency(text: string): { isEmergency: boolean; message: 
 }
 
 /**
+ * Self-harm / suicide CRISIS detection (Spec 5.5 / 12.3).
+ * This is DISTINCT from eating-disorder risk: a suicidal/self-harm message is an
+ * acute psychological crisis and must receive an acute crisis response (immediate
+ * emergency contact + professional help), NOT the eating-disorder dietitian/
+ * psychologist referral. Must fire BEFORE detectEDRisk so these phrases can never
+ * be answered with the milder ED message. We do NOT invent any hotline number —
+ * 112 is Turkey's verified emergency line.
+ */
+export function detectCrisis(text: string): { isCrisis: boolean; message: string } {
+  const lower = text.toLocaleLowerCase('tr');
+  const crisisPhrases = [
+    'kendime zarar', 'kendime zarar vermek',
+    'intihar', 'intihar etmek', 'intihar etmeyi',
+    'olmek istiyorum', 'ölmek istiyorum', 'artik yasamak istemiyorum', 'artık yaşamak istemiyorum',
+    'yasamak istemiyorum', 'yaşamak istemiyorum',
+    'canima kiymak', 'canıma kıymak', 'canima kiyacagim', 'canıma kıyacağım',
+    'hayatima son', 'hayatıma son', 'yasamima son', 'yaşamıma son',
+    'kendimi oldurmek', 'kendimi öldürmek', 'kendimi olduregim', 'kendimi öldüreceğim',
+  ];
+  for (const phrase of crisisPhrases) {
+    if (lower.includes(phrase)) {
+      return {
+        isCrisis: true,
+        message: 'Soyledigin sey beni cok endiselendirdi ve bunu benimle paylastigin icin degerlisin. Yalniz degilsin. Lutfen su an guvende degilsen ya da kendine zarar verme dusuncen guicluyse HEMEN 112\'yi ara. Ayrica guvendigin birine — bir yakinina, bir doktora veya bir psikolog/psikiyatriste — hemen ulas; bu duygularla bas etmende profesyonel destek cok yardimci olur. Ben bir yasam tarzi kocuyum ve bu konuda profesyonel destegin yerini tutamam, ama senin icin gercekten endiseleniyorum. Hayatin cok degerli.',
+      };
+    }
+  }
+  return { isCrisis: false, message: '' };
+}
+
+/**
  * Eating Disorder Risk Detection (Spec 12.5).
  * Detects potential eating disorder language and returns appropriate response.
+ * NOTE: self-harm/suicide phrases live in detectCrisis (above), NOT here.
  */
 export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' | 'medium' | 'high'; message: string } {
   const lower = text.toLocaleLowerCase('tr');
 
-  // High severity — active purging/self-harm
+  // High severity — active purging
   const highPatterns = [
     'kusma', 'kustum', 'kusuyorum', 'kusmak istiyorum',
     'laksatif', 'müshil', 'mushil',
-    'kendime zarar', 'intihar', 'olmek istiyorum', 'ölmek istiyorum',
     'purging', 'binge and purge',
   ];
   for (const p of highPatterns) {
@@ -309,12 +384,13 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
 
   // Medium severity — restrictive patterns
   const mediumPatterns = [
-    'hic yemiyorum', 'hiç yemiyorum', 'hic bir sey yemiyorum',
-    'ac kalma', 'aç kalma', 'ac kalmak istiyorum',
+    'hic yemiyorum', 'hiç yemiyorum', 'hic bir sey yemiyorum', 'hicbir sey yemiyorum', 'hiçbir şey yemiyorum',
+    'ac kalma', 'aç kalma', 'ac kalmak istiyorum', 'kendimi ac birakiyorum', 'kendimi aç bırakıyorum',
     'yeme bozukluğu', 'yeme bozuklugu',
     'anoreksiya', 'anorexia', 'bulimiya', 'bulimia',
     'yemek yemekten korkuyorum', 'yemekten nefret',
-    'cok sismansim', 'çok şişmanım', 'igrenc gorunuyorum', 'iğrenç görünüyorum',
+    'cok sismanim', 'çok şişmanım', 'sisman hissediyorum', 'kilolu hissediyorum',
+    'igrenc gorunuyorum', 'iğrenç görünüyorum',
   ];
   for (const p of mediumPatterns) {
     if (lower.includes(p)) {

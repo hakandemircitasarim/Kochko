@@ -390,6 +390,14 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
     }).catch((err: Error) => console.error('[ai-report] Layer2 weekly learning write failed:', err.message));
   }
 
+  // Return the DETERMINISTIC values (not the LLM's guesses) so the API response matches
+  // the persisted weekly_reports row (#R1-L7). The client otherwise showed a different
+  // compliance % than the stored report.
+  report.avg_compliance = avgCompliance;
+  report.weekly_budget_compliance = weeklyBudgetCompliance;
+  report.weight_trend = weights;
+  report.best_day = bestDay;
+  report.worst_day = worstDay;
   return respond(report);
 }
 

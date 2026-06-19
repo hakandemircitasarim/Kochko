@@ -243,8 +243,13 @@ function analyzeAnalyst(lower: string): MessageAnalysis {
 function analyzeQA(lower: string): MessageAnalysis {
   // Personalized QA: references user's own situation
   const personalCues = /benim|bende|bana|durumum|kilom|boyum|yaşım|ameliyat|alerji|ilacım|ilaç|sorunum|problem|mide|hamile|emzir/;
+  // Nutrition-shaped questions ("kahvaltıda ne kadar yumurta?", "öğünlerde ne yemeliyim?")
+  // MUST load the user's nutrition prefs/allergens even without a first-person cue — a
+  // generic answer that ignores lactose intolerance / low morning appetite is wrong
+  // (#R1-M4). Route these to the personalized plan (focused L1 nutrition + L2 prefs).
+  const nutritionCues = /kahvalt|öğün|ogun|öğle|ogle|yemeli|ne\s*ye|porsiyon|kalori|protein|besin|diyet|atıştır|atistir|ara\s*öğün|tarif|yemek/;
 
-  if (personalCues.test(lower)) {
+  if (personalCues.test(lower) || nutritionCues.test(lower)) {
     return {
       taskMode: 'qa',
       subtype: 'qa_personalized',

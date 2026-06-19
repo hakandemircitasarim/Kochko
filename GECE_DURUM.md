@@ -5,6 +5,29 @@ En güncel özet en altta. Sabah ilk bakacağın yer: **"⚠️ SENİN YAPMAN GE
 
 ---
 
+## 🌙 OTURUM 2 (devam) — OpenAI ÇALIŞIYOR, GERÇEK uçtan uca test
+
+**Büyük değişiklik:** OpenAI kredisi eklenmiş, AI artık canlı çalışıyor. Önceki turlar AI'ı
+canlı test edemiyordu — bu oturumda **gerçek AI ile** tüm kritik akışları uçtan uca test ettim.
+
+### Round-1: 6 paralel canlı test ajanı + düşmanca doğrulama → 26 onaylı bug, hepsi DÜZELTİLDİ
+33 ajan / ~2M token. Onboarding, loglama, plan, hafıza, guardrail, rapor+hedef alanları
+gerçek Supabase+OpenAI'a karşı test edildi; her bulgu ikinci bir ajanla düşmanca doğrulandı.
+
+**2 KRİTİK (canlı doğrulandı):**
+- **C1:** "hedefim 78 kilo" diyince hedef-belirleme sohbeti MEVCUT kiloyu 78'e eziyordu (TDEE bozuluyordu) → düzeltildi. Canlı: weight=88 korunuyor, target=78, start=88. ✅
+- **C2:** "kendime zarar/intihar" mesajı yeme-bozukluğu yönlendirmesi alıyordu, **acil kriz hattı (112) YOKTU** → ayrı kriz dalı eklendi. Canlı: 112'li acil yanıt + task_mode 'safety'. ✅
+
+**8 YÜKSEK:** alerjen tek-kelime yakalama ("ürünlerine" → artık "deniz ürünleri" kanonik) · onboarding'de activity_level hiç set edilmiyordu (TDEE %30 düşük) → frekanstan çıkarım · kilo/uyku/su/supplement loglama için deterministik güvenlik-ağları (model action atlayınca kayıp) · plan revizyonu 7→1 güne kırpılması. **Hepsi canlı doğrulandı.**
+
+**8 ORTA / 8 DÜŞÜK:** gender ASCII "erkegim" · ED-typo (sismansim→sismanim) · weight_history hiç yazılmıyordu (M2) · progressive_overload dedup · injury güvenlik-ağı · goal_type yanlış flip koruması · beslenme Q&A hafıza geri-çağırma · ai-extractor dizi→string · chat_sessions invariant (mig 048) · çıktı-alerjen isim çözümü · weekly rapor yanıt paritesi · schema dump tazelendi.
+
+**Deploy:** 5 edge function redeploy edildi, mig 048 canlıda. deno check 5/5 temiz. M3 (plan kalori-hedef uyumsuzluğu) Round-2'ye ertelendi (regen-döngü riski, dikkatli canlı test gerekiyor).
+
+---
+
+---
+
 ## ✅ CANLI AI TESTLERİ YAPILDI (OpenAI kredisi eklendikten sonra, 2026-06-19)
 API çalışır hale gelince tüm kritik akışları gerçek OpenAI ile uçtan uca test ettim:
 | # | Akış | Sonuç |

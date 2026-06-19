@@ -87,6 +87,9 @@ Bilgi yoksa null döndür.
 Çıkarsanacak alanlar (parantezdeki değer listesi varsa SADECE o değerlerden birini kullan):
 ${fields.map(f => `- ${f}${FIELD_ENUMS[f] ? ` (SADECE: ${FIELD_ENUMS[f].join('|')})` : ''}`).join('\n')}
 
+Liste tipi alanlar (örn. kitchen_equipment) için DAİMA virgülle ayrılmış tek bir metin
+döndür (örn. "air fryer, mikrodalga"); ASLA dizi (array) verme.
+
 Ek olarak "_summary_update" anahtarı döndür: bu sohbetten kullanıcı hakkında
 öğrendiğin ÖNEMLİ ve KALICI şeyleri 1-2 cümleyle özetle (davranış kalıbı,
 yaşam koşulu, tercih). Kayda değer yeni bilgi yoksa null.
@@ -216,7 +219,12 @@ serve(async (req: Request) => {
           console.warn(`[Extractor] dropped unmappable enum value ${key}=${value} for ${userId}`);
           continue;
         }
-        profileUpdates[key] = normalized;
+        // Free-text profile columns (kitchen_equipment, etc.) are TEXT, not arrays. The
+        // LLM sometimes returns a JSON array; coerce to comma-separated text so it matches
+        // the ai-chat contract and the column type (#R1-L3).
+        profileUpdates[key] = Array.isArray(normalized)
+          ? (normalized as unknown[]).filter(Boolean).join(', ')
+          : normalized;
       }
 
       if (Object.keys(profileUpdates).length > 0) {

@@ -751,6 +751,18 @@ serve(async (req: Request) => {
         const localH = getUserLocalHour(profile);
         if (localH < 7 || localH > 10) continue;
 
+        // Avoid double-sending: the cron fires hourly across the 7-10 window, so without
+        // a guard the SAME progressive_overload nudge is inserted up to 4x/Monday
+        // (#R1-M7). Mirror the deload_suggestion guard — once per week per user.
+        const poWeekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+        const { count: poAlready } = await supabaseAdmin
+          .from('coaching_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('trigger_type', 'progressive_overload')
+          .gte('created_at', poWeekAgo);
+        if ((poAlready ?? 0) > 0) continue;
+
         for (const lift of COMPOUND_LIFTS) {
           try {
             // Scope to THIS user's sets via the workout_logs parent (strength_sets has no user_id).
