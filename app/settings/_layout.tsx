@@ -17,7 +17,10 @@ export default function SettingsLayout() {
       <Stack.Screen name="achievements" options={{ title: 'Başarımlar' }} />
       <Stack.Screen name="challenges" options={{ title: "Challenge'lar" }} />
       <Stack.Screen name="chat-history" options={{ title: 'Sohbet Geçmişi' }} />
-      <Stack.Screen name="coach-memory" options={{ title: 'Koç Hafızası' }} />
+      {/* FIX (audit native-titles): coach-memory had THREE names — native header "Koç Hafızası",
+          in-body H1 "Koçko Senin Hakkında Ne Biliyor", entry-point labels "Kochko'nun Senin Hakkında Bildikleri".
+          Unify native header to match the screen's body H1 (transparency/disclosure framing). */}
+      <Stack.Screen name="coach-memory" options={{ title: 'Koçko Senin Hakkında Ne Biliyor' }} />
       <Stack.Screen name="coach-sharing" options={{ title: 'Koç Paylaşımı' }} />
       <Stack.Screen name="coach-tone" options={{ title: 'Koç Tonu' }} />
       <Stack.Screen name="data-import" options={{ title: 'Veri İçeri Aktar' }} />

@@ -183,7 +183,9 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
   const metaBirthYear = Number((user as { user_metadata?: Record<string, unknown> })?.user_metadata?.birth_year);
   const nowYear = new Date().getFullYear();
   const needsBirthYear = !(Number.isFinite(metaBirthYear) && metaBirthYear > 1900);
-  const [birthYear, setBirthYear] = useState('');
+  // FIX (audit onboarding-birthyear): doğum yılını taslaktan rehidre et — uygulama
+  // mid-onboarding kapanırsa kullanıcı yeniden girmek zorunda kalmasın.
+  const [birthYear, setBirthYear] = useState(initialDraft?.birthYear ?? '');
 
   // Debounced save of form fields — every keystroke would be overkill, but
   // flushing at most once per 500ms survives a crash without churn.
@@ -193,11 +195,12 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
     saveTimer.current = setTimeout(() => {
       saveOnboardingDraft({
         step: (initialDraft?.step ?? SLIDES.length),
-        heightCm, weightKg, targetWeightKg, gender, goalType, activity,
+        // FIX (audit onboarding-birthyear): doğum yılını da taslağa yaz.
+        heightCm, weightKg, targetWeightKg, gender, goalType, activity, birthYear,
       });
     }, 500);
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
-  }, [heightCm, weightKg, targetWeightKg, gender, goalType, activity, initialDraft?.step]);
+  }, [heightCm, weightKg, targetWeightKg, gender, goalType, activity, birthYear, initialDraft?.step]);
 
   const needsTargetWeight = goalType === 'lose_weight' || goalType === 'gain_muscle';
   // FIX (audit onboarding-birthyear): doğum yılı eksikse zorunlu alana dahil et.

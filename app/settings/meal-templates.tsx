@@ -40,7 +40,8 @@ export default function MealTemplatesScreen() {
     });
 
     const { error } = await createTemplate(name.trim(), items);
-    if (error) { Alert.alert('Hata', error); return; }
+    // FIX (audit error-message-sweep): ham hata metnini gösterme; sabit Türkçe mesaj + konsola teknik detay.
+    if (error) { console.error('createTemplate error', error); Alert.alert('Hata', 'Şablon kaydedilemedi, lütfen tekrar dene.'); return; }
     setShowAdd(false); setName(''); setItemsText('');
     load();
   };
@@ -48,7 +49,9 @@ export default function MealTemplatesScreen() {
   const handleUse = async (t: MealTemplate) => {
     const { error } = await useTemplate(t.id);
     if (error) {
-      Alert.alert('Kayıt yapılamadı', error);
+      // FIX (audit error-message-sweep): ham hata metnini gösterme; sabit Türkçe mesaj + konsola teknik detay.
+      console.error('useTemplate error', error);
+      Alert.alert('Kayıt yapılamadı', 'Şablon bugüne kaydedilemedi, lütfen tekrar dene.');
       return;
     }
     Alert.alert('Kaydedildi', `"${t.name}" bugüne kaydedildi.`);

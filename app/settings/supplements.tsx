@@ -29,7 +29,8 @@ export default function SupplementsScreen() {
 
   const handleQuickAdd = async (name: string, amount: string) => {
     const { error } = await logSupplement(name, amount);
-    if (error) { haptics.error(); Alert.alert('Kaydedilemedi', error); return; }
+    // FIX (audit error-message-sweep): ham hata metnini gösterme; sabit Türkçe mesaj + konsola teknik detay.
+    if (error) { console.error('logSupplement error', error); haptics.error(); Alert.alert('Kaydedilemedi', 'Takviye kaydedilemedi, lütfen tekrar dene.'); return; }
     haptics.success();
     getTodaySupplements().then(setLogs);
   };
@@ -37,7 +38,8 @@ export default function SupplementsScreen() {
   const handleCustomAdd = async () => {
     if (!customName.trim()) return;
     const { error } = await logSupplement(customName.trim(), customAmount.trim() || '1');
-    if (error) { haptics.error(); Alert.alert('Kaydedilemedi', error); return; }
+    // FIX (audit error-message-sweep): ham hata metnini gösterme; sabit Türkçe mesaj + konsola teknik detay.
+    if (error) { console.error('logSupplement error', error); haptics.error(); Alert.alert('Kaydedilemedi', 'Takviye kaydedilemedi, lütfen tekrar dene.'); return; }
     haptics.success();
     setCustomName(''); setCustomAmount('');
     getTodaySupplements().then(setLogs);

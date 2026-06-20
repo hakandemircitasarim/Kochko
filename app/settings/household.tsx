@@ -62,8 +62,10 @@ export default function HouseholdScreen() {
     try {
       await createHousehold(userId, householdName.trim() || undefined);
       await loadData();
-    } catch (e: any) {
-      Alert.alert('Hata', e?.message ?? 'Aile oluşturulamadı, lütfen tekrar dene.');
+    } catch (e) {
+      // FIX (audit error-message-sweep): raw PostgREST/EN hata metnini kullanıcıya sızdırma; konsola bırak.
+      console.error('createHousehold error', e);
+      Alert.alert('Hata', 'Aile oluşturulamadı, lütfen tekrar dene.');
     } finally {
       setBusy(false);
     }
@@ -76,8 +78,10 @@ export default function HouseholdScreen() {
       await joinHousehold(userId, joinCode.trim());
       setJoinCode('');
       await loadData();
-    } catch (e: any) {
-      Alert.alert('Hata', e?.message ?? 'Aileye katılamadık — kodu kontrol edip tekrar dene.');
+    } catch (e) {
+      // FIX (audit error-message-sweep): raw PostgREST/EN hata metnini kullanıcıya sızdırma; konsola bırak.
+      console.error('joinHousehold error', e);
+      Alert.alert('Hata', 'Aileye katılamadık — kodu kontrol edip tekrar dene.');
     } finally {
       setBusy(false);
     }
@@ -103,8 +107,10 @@ export default function HouseholdScreen() {
               setHousehold(null);
               setMembers([]);
               setShoppingList([]);
-            } catch (e: any) {
-              Alert.alert('Hata', e?.message ?? 'Aileden ayrılamadık, lütfen tekrar dene.');
+            } catch (e) {
+              // FIX (audit error-message-sweep): raw PostgREST/EN hata metnini kullanıcıya sızdırma; konsola bırak.
+              console.error('leaveHousehold error', e);
+              Alert.alert('Hata', 'Aileden ayrılamadık, lütfen tekrar dene.');
             } finally {
               setBusy(false);
             }

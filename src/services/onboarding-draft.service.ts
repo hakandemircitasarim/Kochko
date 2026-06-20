@@ -18,6 +18,9 @@ export interface OnboardingDraft {
   gender?: string;
   goalType?: string;
   activity?: string;
+  // FIX (audit onboarding-birthyear): OAuth/metadata'sız kullanıcılarda onboarding'de
+  // toplanan doğum yılını taslağa kalıcı yaz; uygulama kapanırsa kullanıcı yeniden girmesin.
+  birthYear?: string;
 }
 
 export async function loadOnboardingDraft(): Promise<OnboardingDraft | null> {
