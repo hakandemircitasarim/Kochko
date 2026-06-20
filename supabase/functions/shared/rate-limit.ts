@@ -24,6 +24,11 @@ interface RateLimitResult {
 const FREE_DAILY_LIMIT = 50;
 const PREMIUM_DAILY_LIMIT = 200;
 const PREMIUM_HOURLY_LIMIT = 30;
+// Record-parse (logs) bypass the 50/day CONVERSATION cap, but free post-onboarding users
+// get this HIGH bounded daily cap so a user can't phrase every message as a "log" to get
+// truly unlimited paid LLM calls (audit AI/HIGH — "register" cost hole). Set well above any
+// realistic logging day (meals+water+sleep+workout+weight ≈ <20).
+const FREE_RECORD_PARSE_DAILY = 120;
 
 /**
  * Return an ISO timestamp for "start of today in the user's local day",
@@ -91,15 +96,39 @@ export async function checkRateLimit(
   // (premium=true but past expiry) must get the FREE cap, not 200/day.
   const isPremium = isActivePremium(profile);
 
-  // Record parse never counts against limits.
-  if (isRecordParse) return { allowed: true, remaining: -1 };
-
   // Onboarding bypass — free users get unlimited messages ONLY while still in the
   // initial onboarding flow (onboarding_completed != true). Keying this on the 13
   // OPTIONAL task-cards (the old isInOnboarding) let a fully-onboarded free user
   // (the normal state: core done, optional cards skipped) bypass the daily cap
-  // forever — an AI-cost / monetization hole.
+  // forever — an AI-cost / monetization hole. (Covers record-parse during onboarding too.)
   if (!isPremium && profile?.onboarding_completed !== true) {
+    return { allowed: true, remaining: -1 };
+  }
+
+  // Record parse (meal/workout/water/sleep/weight logs) is exempt from the 50/day
+  // CONVERSATION cap so logging stays frictionless. Premium → fully unlimited.
+  // FIX (audit AI/HIGH — "register" cost hole): a free user could phrase EVERY message as a
+  // log (detectTaskMode='register') to bypass the cap entirely. Free post-onboarding now gets
+  // a HIGH bounded daily cap on total messages so normal logging is never hit but abuse stops.
+  if (isRecordParse) {
+    if (isPremium) return { allowed: true, remaining: -1 };
+    const rpDayStart = localDayStartIso(
+      profile?.home_timezone as string | null,
+      profile?.day_boundary_hour as number | null,
+    );
+    const { count: rpCount } = await supabaseAdmin
+      .from('chat_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('role', 'user')
+      .gte('created_at', rpDayStart);
+    if ((rpCount ?? 0) >= FREE_RECORD_PARSE_DAILY) {
+      return {
+        allowed: false,
+        remaining: 0,
+        message: 'Bugünlük kayıt limitine ulaştın. Biraz sonra yenilenecek. Sınırsız kayıt için premium paketi deneyebilirsin.',
+      };
+    }
     return { allowed: true, remaining: -1 };
   }
 

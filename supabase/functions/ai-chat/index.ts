@@ -1564,12 +1564,23 @@ serve(async (req: Request) => {
             const tokens = [aName, ...((ALLERGEN_FOODS as Record<string, string[]>)[aName] ?? [])];
             return tokens.some(t => t.length >= 3 && lowerReply.includes(t));
           });
+          // FIX (audit AI/HIGH — allergen exit-warning false-negative): the warning was
+          // suppressed if ANY token's FIRST occurrence sat next to a decline phrase. That let a
+          // 2nd (actually-recommended) mention of the allergen — or an unrelated nearby decline
+          // word — wrongly silence the warning. Fail-safe: an allergen is "addressed" ONLY if
+          // EVERY occurrence of EVERY present token sits next to a decline phrase.
           const addressed = matched.length > 0 && matched.every(a => {
             const aName = a.toLocaleLowerCase('tr');
             const tokens = [aName, ...((ALLERGEN_FOODS as Record<string, string[]>)[aName] ?? [])].filter(t => t.length >= 3);
-            return tokens.some(t => {
-              const i = lowerReply.indexOf(t);
-              return i >= 0 && DECLINE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50));
+            return tokens.every(t => {
+              let from = 0;
+              let i = lowerReply.indexOf(t, from);
+              while (i >= 0) {
+                if (!DECLINE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50))) return false;
+                from = i + t.length;
+                i = lowerReply.indexOf(t, from);
+              }
+              return true;
             });
           });
           if (!addressed) {
@@ -1586,9 +1597,20 @@ serve(async (req: Request) => {
           // alternative phrase. A blanket "sakatl" mention is not a decline (#live-L4).
           const lowerReply = assistantMessage.toLocaleLowerCase('tr');
           const INJ_DECLINE = /(yerine|kaçın|kacin|önermiyor|onermiyor|öneremem|yapma|alternatif|uzak dur|uygun değil|uygun degil|çıkar|cikar|atla)/;
+          // FIX (audit AI/HIGH — same first-occurrence false-negative as allergens): a movement
+          // is "addressed" only if EVERY occurrence sits next to a decline/alternative phrase.
           const addressed = conflicts.every(c => {
-            const i = lowerReply.indexOf(c.toLocaleLowerCase('tr'));
-            return i >= 0 && INJ_DECLINE.test(lowerReply.slice(Math.max(0, i - 50), i + c.length + 50));
+            const t = c.toLocaleLowerCase('tr');
+            let i = lowerReply.indexOf(t);
+            if (i < 0) return false;
+            let from = 0;
+            i = lowerReply.indexOf(t, from);
+            while (i >= 0) {
+              if (!INJ_DECLINE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50))) return false;
+              from = i + t.length;
+              i = lowerReply.indexOf(t, from);
+            }
+            return true;
           });
           if (!addressed) {
             assistantMessage += `\n\n⚠️ Not: kayıtlı sakatlığın nedeniyle ${conflicts.join(', ')} hareket(ler)i senin için riskli olabilir. İstersen sakatlık-dostu bir alternatif programlayalım.`;
