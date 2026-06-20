@@ -132,11 +132,16 @@ function normalizeWeeklyPlan(row: Record<string, unknown> | null): WeeklyPlan | 
 }
 
 export async function getCurrentWeeklyPlan(): Promise<WeeklyPlan | null> {
-  const weekStart = getWeekStart();
+  // FIX (audit AI/HIGH: week_start TZ ayrışması): TAM EŞİTLİK (.eq week_start) yerine ARALIK
+  // kullan — week_start <= bugün. Sunucu ile istemcinin week_start ankrajı artık aynı algoritma
+  // ama gün-sınırı/TZ kaymasında bir gün ayrışabilir; aralık + generated_at DESC en güncel,
+  // başlamış haftalık menüyü güvenle döndürür. status='active' zaten arşivlenmiş eski satırları
+  // eler, dolayısıyla geçmiş bir haftanın aktif menüsünü yanlışlıkla seçme riski yok.
+  const today = getLocalToday();
   const { data, error } = await supabase
     .from('weekly_plans')
     .select('*')
-    .eq('week_start', weekStart)
+    .lte('week_start', today)
     .eq('status', 'active')
     .eq('plan_type', 'diet') // this path is the diet menu
     // FIX (audit AI/CRITICAL coord — migration 055): the legacy weekly MENU now lives in its own
@@ -200,9 +205,17 @@ export async function toggleShoppingItem(planId: string, itemIndex: number, chec
   }
 }
 
-function getWeekStart(): string {
+// FIX (audit AI/HIGH: week_start TZ ayrışması): cihazın YEREL takvim gününü (kullanıcının
+// "bugün"ü) bir YYYY-MM-DD dizisine sabitler. Eski getWeekStart cihaz-yerel new Date() +
+// getDay/getDate/setDate ile çalışıp sonunda toISOString'e (UTC) çeviriyordu; örn. Pazartesi
+// 00:30 IST'te bir önceki haftanın Pazar tarihini üretip sunucunun UTC week_start'ıyla
+// ayrışıyor, .eq eşleşmiyor ve menü ekranı boş kalıyordu. Artık sunucu (ai-plan) ile aynı
+// UTC-noon ankrajlı Pazartesi mantığı kullanılıyor ve getCurrentWeeklyPlan eşitlik yerine
+// aralık (week_start <= today) ile sorguluyor.
+function getLocalToday(): string {
   const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(now.setDate(diff)).toISOString().split('T')[0];
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }

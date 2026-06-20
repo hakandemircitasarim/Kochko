@@ -549,10 +549,15 @@ export async function evolvePatternConfidence(userId: string): Promise<void> {
       return (now - new Date(lastOcc).getTime()) < 30 * 86400000;
     });
 
-    await supabaseAdmin
-      .from('ai_summary')
-      .update({ behavioral_patterns: activePatterns, updated_at: new Date().toISOString() })
-      .eq('user_id', userId);
+    // FIX (audit AI/HIGH): route the write-back through the locked atomic merge
+    // (ai_summary_merge, mig 015 — FOR UPDATE) instead of a raw .update() that
+    // bypasses the row lock. ai-chat's processLayer2Updates writes behavioral_patterns
+    // through the same merge RPC, so unifying on it serializes these concurrent writers
+    // and removes the lock-bypass that let last-writer-win torn writes through. Semantics
+    // are preserved: ai_summary_merge replaces the array key (COALESCE replace) exactly
+    // as the old .update() did. (The read-modify-write of existing entries still needs a
+    // dedicated locked RPC for full atomicity — out of scope here, no new DB object.)
+    await updateLayer2(userId, { behavioral_patterns: activePatterns });
   }
 }
 

@@ -4,6 +4,26 @@
  * Each function queries supabaseAdmin and returns a prompt string (or empty string if n/a).
  */
 import { supabaseAdmin } from './supabase-admin.ts';
+import { getEffectiveDateForUser } from './day-boundary.ts';
+
+// FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
+// (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
+// user's *effective* day (tz + day_boundary_hour, Spec 2.8). Near the UTC date roll
+// or in wide-offset (US) zones this read the wrong calendar day → wrong "eaten today",
+// wrong excess/remaining/active flags. Resolve the same effective date here: prefer the
+// caller-supplied effectiveToday, else recompute from the profile's tz + day_boundary_hour.
+async function resolveEffectiveToday(
+  userId: string,
+  effectiveToday?: string,
+): Promise<string> {
+  if (effectiveToday) return effectiveToday;
+  const { data: profile } = await supabaseAdmin
+    .from('profiles').select('active_timezone, home_timezone, day_boundary_hour')
+    .eq('id', userId).maybeSingle();
+  // Same precedence as ai-chat index.ts: active (server-tracked travel tz) → home → UTC.
+  const tz = (profile?.active_timezone as string | null) ?? (profile?.home_timezone as string | null);
+  return getEffectiveDateForUser(tz, profile?.day_boundary_hour as number | null);
+}
 
 // ─────────────────────────────────────────────
 // 1. HABITS CONTEXT (habits.service.ts)
@@ -125,9 +145,10 @@ export async function getProgressiveDisclosureContext(userId: string): Promise<s
 // 3. RECOVERY CONTEXT (recovery.service.ts)
 // ─────────────────────────────────────────────
 
-export async function getRecoveryContext(userId: string): Promise<string> {
+export async function getRecoveryContext(userId: string, effectiveToday?: string): Promise<string> {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    // FIX (audit AI/HIGH): user-effective day, not raw UTC.
+    const today = await resolveEffectiveToday(userId, effectiveToday);
 
     // Get today's calorie total
     const { data: todayLogs } = await supabaseAdmin
@@ -148,13 +169,16 @@ export async function getRecoveryContext(userId: string): Promise<string> {
     const dailyTarget = Math.round(((profile?.calorie_range_rest_min as number ?? 1800) + (profile?.calorie_range_rest_max as number ?? 2200)) / 2);
     const excess = Math.max(0, todayCalories - dailyTarget);
 
-    // Weekly budget remaining
-    const weekStart = new Date();
-    // ISO week starts Monday. JS getDay() returns 0 for Sunday, so normalize it
+    // Weekly budget remaining.
+    // FIX (audit AI/HIGH): anchor the ISO week on the user-effective `today`, not the
+    // server's UTC clock, so the Monday-of-this-week math matches the effective day used
+    // for "logged_for_date" everywhere else (avoids off-by-one near the UTC date roll).
+    const weekStart = new Date(`${today}T00:00:00Z`);
+    // ISO week starts Monday. JS getUTCDay() returns 0 for Sunday, so normalize it
     // to 6 (offset from Monday) instead of letting -0+1 jump to NEXT Monday.
-    const weekDay = weekStart.getDay();
+    const weekDay = weekStart.getUTCDay();
     const mondayOffset = weekDay === 0 ? 6 : weekDay - 1;
-    weekStart.setDate(weekStart.getDate() - mondayOffset);
+    weekStart.setUTCDate(weekStart.getUTCDate() - mondayOffset);
     const weekStartStr = weekStart.toISOString().split('T')[0];
     const { data: weekLogs } = await supabaseAdmin
       .from('meal_logs').select('id').eq('user_id', userId).gte('logged_for_date', weekStartStr).eq('is_deleted', false);
@@ -287,7 +311,7 @@ export async function getReturnFlowContext(userId: string): Promise<string> {
 // 5. EATING OUT CONTEXT (eating-out.service.ts)
 // ─────────────────────────────────────────────
 
-export async function getEatingOutContext(userId: string): Promise<string> {
+export async function getEatingOutContext(userId: string, effectiveToday?: string): Promise<string> {
   try {
     // Get known venues
     const { data: venues } = await supabaseAdmin
@@ -297,8 +321,9 @@ export async function getEatingOutContext(userId: string): Promise<string> {
       .order('visit_count', { ascending: false })
       .limit(5);
 
-    // Get today's consumption so far
-    const today = new Date().toISOString().split('T')[0];
+    // Get today's consumption so far.
+    // FIX (audit AI/HIGH): user-effective day, not raw UTC.
+    const today = await resolveEffectiveToday(userId, effectiveToday);
     const { data: todayLogs } = await supabaseAdmin
       .from('meal_logs').select('id')
       .eq('user_id', userId).eq('logged_for_date', today).eq('is_deleted', false);
@@ -351,7 +376,7 @@ const MVD_GOALS = [
   { id: 'walk', title: '10 dakika yuru', desc: 'Kisa bir yuruyus yap' },
 ];
 
-export async function getMVDContext(userId: string): Promise<string> {
+export async function getMVDContext(userId: string, effectiveToday?: string): Promise<string> {
   try {
     // Check MVD eligibility signals
     const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
@@ -368,8 +393,10 @@ export async function getMVDContext(userId: string): Promise<string> {
       if (poorSleep.length >= 3) eligibilityReason = 'Uyku borcu birikti, hafif bir gun iyi olabilir.';
     }
 
-    // Check if MVD already active today
-    const today = new Date().toISOString().split('T')[0];
+    // Check if MVD already active today.
+    // FIX (audit AI/HIGH): user-effective day, not raw UTC — daily_plans.date is keyed
+    // on the effective day, so a UTC "today" misses the active plan near the date roll.
+    const today = await resolveEffectiveToday(userId, effectiveToday);
     const { data: plan } = await supabaseAdmin
       .from('daily_plans').select('status')
       .eq('user_id', userId).eq('date', today)
@@ -813,7 +840,10 @@ export interface ServiceContexts {
 export async function getAllServiceContexts(
   userId: string,
   taskMode: string,
-  options?: { message?: string; clientTimezone?: string }
+  // FIX (audit AI/HIGH): accept the caller's already-computed effectiveToday (ai-chat
+  // index.ts) so the day-keyed contexts (recovery/eating-out/MVD) share the exact same
+  // user-effective day as meal_logs writes. Optional — services recompute it if omitted.
+  options?: { message?: string; clientTimezone?: string; effectiveToday?: string }
 ): Promise<ServiceContexts> {
   // Always fetch these (lightweight)
   const [habits, progressiveDisclosure, caffeineSleep, adaptiveDifficulty, predictiveRisk, travel, conflicts] = await Promise.all([
@@ -833,17 +863,17 @@ export async function getAllServiceContexts(
   let mvd = '';
 
   if (taskMode === 'recovery') {
-    recovery = await getRecoveryContext(userId);
+    recovery = await getRecoveryContext(userId, options?.effectiveToday);
   }
   // Return flow is detected earlier in index.ts — but we provide richer context
   if (taskMode === 'coaching' || taskMode === 'onboarding') {
     returnFlow = await getReturnFlowContext(userId);
   }
   if (taskMode === 'eating_out') {
-    eatingOut = await getEatingOutContext(userId);
+    eatingOut = await getEatingOutContext(userId, options?.effectiveToday);
   }
   if (taskMode === 'mvd') {
-    mvd = await getMVDContext(userId);
+    mvd = await getMVDContext(userId, options?.effectiveToday);
   }
 
   return {

@@ -909,9 +909,16 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
   return weeklyPlan;
 }
 
+// FIX (audit AI/HIGH: week_start TZ ayrışması): UTC-noon ankrajlı, getUTCDay tabanlı
+// Pazartesi hesabı — ai-chat'teki kanonik getWeekStart (index.ts:1785) ile BİREBİR aynı.
+// Eski sürüm new Date(dateStr) (UTC gece-yarısı) + LOKAL getDay/getDate/setDate kullanıyordu;
+// runtime TZ'ye duyarlıydı ve istemcinin (cihaz-yerel) hesabıyla ayrışabiliyordu. UTC-noon
+// ankrajı gece-yarısı/DST kaymasını eler; istemci de aynı algoritmayı kullanacak şekilde
+// hizalandı (weekly-plan.service.ts) ve aralık sorgusuyla küçük TZ kaymalarını tolere eder.
 function getWeekStart(dateStr: string): string {
-  const d = new Date(dateStr);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff)).toISOString().split('T')[0];
+  const d = new Date(`${dateStr}T12:00:00.000Z`);
+  const day = d.getUTCDay(); // 0=Sun..6=Sat
+  const diff = d.getUTCDate() - day + (day === 0 ? -6 : 1);
+  d.setUTCDate(diff);
+  return d.toISOString().split('T')[0];
 }

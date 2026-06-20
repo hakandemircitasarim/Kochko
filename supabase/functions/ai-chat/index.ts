@@ -973,6 +973,11 @@ serve(async (req: Request) => {
     const { cleanMessage: afterNav, navigateTo } = extractNavigateTo(assistantMessage);
     assistantMessage = afterNav;
 
+    // <simulation> — "şunu yesem ne olur?" projection block. Strip server-side so the
+    // raw JSON never reaches the user; surface the parsed card data separately (audit AI/HIGH).
+    const { cleanMessage: afterSim, simulation } = extractSimulation(assistantMessage);
+    assistantMessage = afterSim;
+
     // A snapshot is only USABLE if it has a non-empty days array (and, for diet, a
     // targets object). A structurally-incomplete-but-valid-JSON snapshot would be
     // persisted and then CRASH the plan UI on render (PlanOverviewCards/PlanPreviewCard
@@ -1737,6 +1742,7 @@ serve(async (req: Request) => {
       plan_persist_error: planPersistError,
       plan_approved: planApproved,
       navigate_to: finalNavigateTo,
+      simulation,
     });
   } catch (err) {
     const msg = (err as Error).message;
@@ -2388,6 +2394,37 @@ function extractNavigateTo(text: string): { cleanMessage: string; navigateTo: st
   return {
     cleanMessage: text.replace(/<navigate_to>[\s\S]*?<\/navigate_to>/, '').trim(),
     navigateTo: route,
+  };
+}
+
+// FIX (audit AI/HIGH): <simulation> had no server-side extractor, so the raw JSON
+// block leaked through `message` to any consumer that doesn't strip it itself (older
+// clients, future readers). Mirror extractNavigateTo: parse the block, validate it
+// against the client SimulationData shape, STRIP it from the user-facing message
+// (global — the prompt only emits one, but be defensive against duplicates), and
+// surface the parsed object as a separate response field. simulation mode is
+// projection-only (no persistence), so there is nothing to write — just clean + carry.
+interface SimulationBlock {
+  foodName: string;
+  calories: number;
+  remaining: number;
+  weeklyImpact: string;
+}
+
+function extractSimulation(text: string): { cleanMessage: string; simulation: SimulationBlock | null } {
+  const match = text.match(/<simulation>([\s\S]*?)<\/simulation>/);
+  if (!match) return { cleanMessage: text, simulation: null };
+  let parsed: SimulationBlock | null = null;
+  try {
+    const obj = JSON.parse(match[1]);
+    if (obj && typeof obj.foodName === 'string' && typeof obj.calories === 'number'
+      && typeof obj.remaining === 'number' && typeof obj.weeklyImpact === 'string') {
+      parsed = obj as SimulationBlock;
+    }
+  } catch { /* malformed JSON, drop silently — never surface raw block to the user */ }
+  return {
+    cleanMessage: text.replace(/<simulation>[\s\S]*?<\/simulation>/g, '').trim(),
+    simulation: parsed,
   };
 }
 
