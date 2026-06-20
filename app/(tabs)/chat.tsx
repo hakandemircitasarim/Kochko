@@ -4,7 +4,7 @@
  * Handles prefill param by auto-creating session and redirecting
  */
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,6 +15,8 @@ import {
 } from '@/services/chat.service';
 import { getIncompleteTasks, getOnboardingProgress, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { OnboardingTaskCard } from '@/components/chat/OnboardingTaskCard';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
@@ -185,47 +187,41 @@ export default function SessionListScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header */}
-      <View style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: SPACING.sm,
-        paddingHorizontal: SPACING.xl,
-        paddingTop: Platform.OS === 'web' ? 16 : insets.top + 12,
-        paddingBottom: SPACING.md,
-      }}>
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: colors.primary + '22',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.primary + '44',
-          }}
-        >
-          <Ionicons name="sparkles" size={17} color={colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Kochko</Text>
-          <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 1 }}>
-            {sessions.filter(s => s.is_active).length > 0 ? 'Aktif sohbetin var' : 'Yeni bir sohbet başlat'}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={handleNewSession}
-          accessibilityRole="button"
-          accessibilityLabel="Yeni sohbet"
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-          style={{
-            width: 38, height: 38, borderRadius: 19,
-            backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="add" size={22} color={getContrastColor(colors.primary)} />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Kochko"
+        subtitle={sessions.filter(s => s.is_active).length > 0 ? 'Aktif sohbetin var' : 'Yeni bir sohbet başlat'}
+        statusColor={sessions.filter(s => s.is_active).length > 0 ? colors.primary : undefined}
+        left={
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 12,
+              backgroundColor: colors.primary + '22',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.primary + '44',
+            }}
+          >
+            <Ionicons name="sparkles" size={17} color={colors.primary} />
+          </View>
+        }
+        right={
+          <TouchableOpacity
+            onPress={handleNewSession}
+            accessibilityRole="button"
+            accessibilityLabel="Yeni sohbet"
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            style={{
+              width: 38, height: 38, borderRadius: 19,
+              backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="add" size={22} color={getContrastColor(colors.primary)} />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Profilini tamamla — onboarding progress + task cards. Rendered ABOVE the
           list/empty-state so the cards show even when there are no sessions yet
@@ -261,32 +257,13 @@ export default function SessionListScreen() {
 
       {/* Session list */}
       {sessions.length === 0 && !loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-          <View style={{
-            width: 72, height: 72, borderRadius: 36,
-            backgroundColor: colors.primary + '18',
-            alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xxl,
-          }}>
-            <Ionicons name="chatbubble-ellipses" size={32} color={colors.primary} />
-          </View>
-          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginBottom: SPACING.sm }}>
-            Kochko ile tanış
-          </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.xxl, lineHeight: 20 }}>
-            Beslenme, antrenman, uyku — her konuda{'\n'}sana yardımcı olabilirim.
-          </Text>
-          <TouchableOpacity
-            onPress={handleNewSession}
-            accessibilityRole="button"
-            accessibilityLabel="İlk sohbetine başla"
-            style={{
-              backgroundColor: colors.primary, borderRadius: RADIUS.sm,
-              paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl,
-            }}
-          >
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.md, fontWeight: '500' }}>İlk sohbetine başla</Text>
-          </TouchableOpacity>
-        </View>
+        <EmptyState
+          icon="chatbubble-ellipses-outline"
+          title="Kochko ile tanış"
+          subtitle="Beslenme, antrenman, uyku — her konuda sana yardımcı olabilirim."
+          ctaLabel="İlk sohbetine başla"
+          onPressCta={handleNewSession}
+        />
       ) : (
         <FlatList
           data={sessions}

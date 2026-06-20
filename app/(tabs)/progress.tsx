@@ -14,6 +14,7 @@ import { getEngagementMetrics, type EngagementMetrics } from '@/services/analyti
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
@@ -185,7 +186,7 @@ export default function ProgressScreen() {
     }
   };
 
-  if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
+  if (loading) return <SkeletonScreen cards={3} topGap={insets.top} />;
 
   const weights = metrics.filter(m => m.weight_kg != null);
   const fmtLabel = (d: string) => `${new Date(d).getDate()}/${new Date(d).getMonth() + 1}`;

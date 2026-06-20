@@ -1,4 +1,5 @@
-import { View, Text, ScrollView, Alert, TouchableOpacity, type ViewStyle } from 'react-native';
+import { useState } from 'react';
+import { View, Text, ScrollView, Alert, TouchableOpacity, Modal, TextInput, type ViewStyle } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,38 +21,53 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuthStore();
   const { isPremium, requirePremium } = usePremium();
 
+  // Typed-confirm gate for account deletion: the destructive call only fires
+  // after the user types "SIL" in the second modal.
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const canDelete = deleteConfirm.trim().toUpperCase() === 'SIL';
+
+  const closeDeleteModal = () => {
+    setDeleteOpen(false);
+    setDeleteConfirm('');
+  };
+
   // Route a gated row: premium users go straight in; free users are sent to the
   // paywall with the tapped feature name highlighted instead of hitting a dead end.
   const gated = (path: string, featureName: string) => () =>
     requirePremium(() => router.push(path as never), featureName);
 
+  // Step 1: open the typed-confirm modal (no destructive action yet).
   const handleDelete = () => {
-    Alert.alert(
-      'Hesabı Sil',
-      'Hesabın silinmek üzere işaretlenecek. 30 gün içinde tekrar giriş yaparsan hesabın otomatik olarak yeniden aktif olur. 30 gün sonra tüm verilerin kalıcı olarak silinecek.',
-      [
-        { text: 'İptal', style: 'cancel' },
-        { text: 'Hesabımı Sil', style: 'destructive', onPress: async () => {
-          if (user?.id) {
-            // Mark for the 30-day cron grace period (Spec 1.4 + migration 023).
-            // Both columns set: deletion_requested_at drives the hard-delete cron;
-            // deleted_at is the legacy soft-delete flag still read elsewhere in the app.
-            const now = new Date().toISOString();
-            const { data, error } = await supabase.from('profiles').update({
-              deletion_requested_at: now,
-              deleted_at: now,
-            }).eq('id', user.id).select('id');
-            if (error || !data || data.length === 0) {
-              haptics.error();
-              Alert.alert('Hata', 'Hesabın silinmek üzere işaretlenemedi. Lütfen tekrar dene.');
-              return; // do NOT sign out
-            }
-            haptics.warning();
-            await signOut();
-          }
-        }},
-      ]
-    );
+    setDeleteConfirm('');
+    setDeleteOpen(true);
+  };
+
+  // Step 2: only reachable once "SIL" is typed — runs the original deletion call.
+  const confirmDelete = async () => {
+    if (!canDelete || deleting) return;
+    if (user?.id) {
+      setDeleting(true);
+      // Mark for the 30-day cron grace period (Spec 1.4 + migration 023).
+      // Both columns set: deletion_requested_at drives the hard-delete cron;
+      // deleted_at is the legacy soft-delete flag still read elsewhere in the app.
+      const now = new Date().toISOString();
+      const { data, error } = await supabase.from('profiles').update({
+        deletion_requested_at: now,
+        deleted_at: now,
+      }).eq('id', user.id).select('id');
+      if (error || !data || data.length === 0) {
+        setDeleting(false);
+        haptics.error();
+        Alert.alert('Hata', 'Hesabın silinmek üzere işaretlenemedi. Lütfen tekrar dene.');
+        return; // do NOT sign out
+      }
+      haptics.warning();
+      closeDeleteModal();
+      setDeleting(false);
+      await signOut();
+    }
   };
 
   const handleExport = (fn: () => Promise<void>) => () => {
@@ -64,6 +80,7 @@ export default function SettingsScreen() {
   };
 
   return (
+    <>
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.lg }}>Ayarlar</Text>
 
@@ -180,6 +197,59 @@ export default function SettingsScreen() {
 
       <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xxl }}>Kochko v1.0.0</Text>
     </ScrollView>
+
+    {/* Typed-confirm gate: requires typing "SIL" before the irreversible deletion request. */}
+    <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={closeDeleteModal}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: SPACING.xl }}>
+        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.xl }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
+            <Ionicons name="warning-outline" size={22} color={colors.error} />
+            <Text style={{ color: colors.text, fontSize: FONT.xl2, fontWeight: '700', flexShrink: 1 }}>Hesabı Sil</Text>
+          </View>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.lg }}>
+            Hesabın silinmek üzere işaretlenecek. 30 gün içinde tekrar giriş yaparsan hesabın otomatik olarak yeniden aktif olur. 30 gün sonra tüm verilerin kalıcı olarak silinecek.
+          </Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>
+            Onaylamak için <Text style={{ color: colors.error, fontWeight: '700' }}>SIL</Text> yaz
+          </Text>
+          <TextInput
+            value={deleteConfirm}
+            onChangeText={setDeleteConfirm}
+            placeholder="SIL"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoFocus
+            style={{
+              backgroundColor: colors.inputBg,
+              borderRadius: RADIUS.md,
+              paddingHorizontal: SPACING.xl,
+              paddingVertical: SPACING.md,
+              color: colors.text,
+              fontSize: FONT.sm,
+              borderWidth: 0.5,
+              borderColor: canDelete ? colors.error : colors.border,
+              marginBottom: SPACING.lg,
+            }}
+          />
+          <View style={{ gap: SPACING.sm }}>
+            <Button
+              title="Hesabımı Sil"
+              variant="danger"
+              disabled={!canDelete || deleting}
+              loading={deleting}
+              onPress={confirmDelete}
+            />
+            <Button
+              title="İptal"
+              variant="ghost"
+              onPress={() => { haptics.tap(); closeDeleteModal(); }}
+            />
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 

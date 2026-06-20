@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
 import { DAY_LABELS_TR } from '@/services/plan.service';
@@ -223,21 +224,21 @@ export function AlternativeComparisonModal({
             {isDiet ? (
               <>
                 {/* Plan A = brand diet teal, Plan B = brand pink — distinct A/B accents, no off-palette hex */}
-                <DietSummary plan={planA as DietPlanData} label="A" accent={colors.primary} onPick={onPickA} colors={colors} />
-                <DietSummary plan={planB as DietPlanData} label="B" accent={colors.pink} onPick={onPickB} colors={colors} />
+                <DietSummary plan={planA as DietPlanData} label="A" accent={colors.primary} onPick={() => { haptics.success(); onPickA(); }} colors={colors} />
+                <DietSummary plan={planB as DietPlanData} label="B" accent={colors.pink} onPick={() => { haptics.success(); onPickB(); }} colors={colors} />
               </>
             ) : (
               <>
                 {/* Plan A = brand workout purple, Plan B = brand pink — distinct A/B accents, no off-palette hex */}
-                <WorkoutSummary plan={planA as WorkoutPlanData} label="A" accent={colors.purple} onPick={onPickA} colors={colors} />
-                <WorkoutSummary plan={planB as WorkoutPlanData} label="B" accent={colors.pink} onPick={onPickB} colors={colors} />
+                <WorkoutSummary plan={planA as WorkoutPlanData} label="A" accent={colors.purple} onPick={() => { haptics.success(); onPickA(); }} colors={colors} />
+                <WorkoutSummary plan={planB as WorkoutPlanData} label="B" accent={colors.pink} onPick={() => { haptics.success(); onPickB(); }} colors={colors} />
               </>
             )}
           </View>
 
           {onRequestMore ? (
             <TouchableOpacity
-              onPress={onRequestMore}
+              onPress={() => { haptics.tap(); onRequestMore(); }}
               accessibilityRole="button"
               accessibilityLabel="Hiçbiri olmadı, 2 alternatif daha göster"
               style={{

@@ -11,6 +11,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { calculateCycleStatus, updateMenstrualSettings, type CyclePhase } from '@/services/menstrual.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Card } from '@/components/ui/Card';
 import { ToggleRow } from '@/components/settings/ToggleRow';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -68,7 +69,7 @@ export default function MenstrualScreen() {
         <>
           <View style={{ marginTop: SPACING.lg }}>
             <Input label="Döngü Süresi (gün)" value={cycleLength} onChangeText={setCycleLength} keyboardType="number-pad" placeholder="28" hint="Genelde 21–35 gün" />
-            <Input label="Son Regl Başlangıcı" value={lastPeriod} onChangeText={setLastPeriod} keyboardType="number-pad" placeholder="2024-03-15" hint="YYYY-AA-GG (örn: 2024-03-15)" />
+            <DateTimeField label="Son Regl Başlangıcı" mode="date" value={lastPeriod} onChange={setLastPeriod} placeholder="Tarih seç" />
           </View>
 
           {/* Current phase display */}

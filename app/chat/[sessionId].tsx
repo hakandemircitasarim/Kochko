@@ -48,6 +48,20 @@ import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 
+// Plan-rejection reasons (Spec 7.1 — multi-turn refine). Each entry is the short,
+// human-facing chip label + the fuller engineered instruction sent to the model.
+// Previously rendered as a native Alert action sheet; now inline tappable chips in
+// the bubble. Reasons + effects are byte-for-byte identical — only presentation
+// changed (Alert -> chips).
+const PLAN_REJECT_REASONS: { label: string; instruction: string }[] = [
+  { label: 'Kahvaltı', instruction: 'Kahvaltı farklı olsun — yeni öneri ver' },
+  { label: 'Öğle', instruction: 'Öğle yemeğini değiştir — yeni öneri ver' },
+  { label: 'Akşam', instruction: 'Akşam yemeğini değiştir — yeni öneri ver' },
+  { label: 'Çok protein', instruction: 'Protein fazla geldi, biraz azalt' },
+  { label: 'Çok karb', instruction: 'Karbonhidrat fazla geldi, biraz azalt' },
+  { label: 'Tamamen değiştir', instruction: 'Planı tamamen farklı bir yaklaşımla yeniden üret' },
+];
+
 // Simulation data parsed from AI responses
 interface SimulationData {
   foodName: string;
@@ -799,22 +813,13 @@ export default function SessionDetailScreen() {
     handleQuickSelect('Evet, bu planı onayla', 'Planı onayla');
   }, [handleQuickSelect]);
 
-  // Plan rejection with chip-based reason selection (Spec 7.1 — multi-turn refine)
-  const handlePlanReject = useCallback(() => {
-    Alert.alert(
-      'Neyi değiştirelim?',
-      'Hangi kısmı beğenmedin?',
-      [
-        { text: 'Kahvaltı', onPress: () => handleQuickSelect('Kahvaltı farklı olsun — yeni öneri ver', 'Kahvaltı') },
-        { text: 'Öğle', onPress: () => handleQuickSelect('Öğle yemeğini değiştir — yeni öneri ver', 'Öğle') },
-        { text: 'Akşam', onPress: () => handleQuickSelect('Akşam yemeğini değiştir — yeni öneri ver', 'Akşam') },
-        { text: 'Çok protein', onPress: () => handleQuickSelect('Protein fazla geldi, biraz azalt', 'Çok protein') },
-        { text: 'Çok karb', onPress: () => handleQuickSelect('Karbonhidrat fazla geldi, biraz azalt', 'Çok karb') },
-        { text: 'Tamamen değiştir', onPress: () => handleQuickSelect('Planı tamamen farklı bir yaklaşımla yeniden üret', 'Tamamen değiştir') },
-        { text: 'İptal', style: 'cancel' },
-      ],
-      { cancelable: true },
-    );
+  // Plan rejection with chip-based reason selection (Spec 7.1 — multi-turn refine).
+  // The reason picker is now inline tappable chips rendered in the bubble (see
+  // MessageBubble → PlanRejectReasons) instead of a native Alert action sheet.
+  // Each chip calls handlePlanRejectReason(reason) with the SAME label/instruction
+  // pairs and the SAME handleQuickSelect effect — only presentation changed.
+  const handlePlanRejectReason = useCallback((reason: { label: string; instruction: string }) => {
+    handleQuickSelect(reason.instruction, reason.label);
   }, [handleQuickSelect]);
 
   // Low-confidence verification handlers (Spec 5.32)
@@ -1049,7 +1054,7 @@ export default function SessionDetailScreen() {
             renderItem={({ item }) => {
               if (item.kind === 'separator') return <DateSeparator label={item.label} />;
               const m = item.msg as UIMessage;
-              return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} />;
+              return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} />;
             }}
             contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
             onScroll={handleListScroll}
@@ -1505,14 +1510,14 @@ function MessageBubbleFrame({ isUser, children }: { isUser: boolean; children: R
   );
 }
 
-function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onReject, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry }: {
+function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
   macroTargets: { protein: number; carbs: number; fat: number };
   onQuickSelect: (option: string) => void;
   onConfirm: () => void;
-  onReject: () => void;
+  onPlanRejectReason: (reason: { label: string; instruction: string }) => void;
   onLowConfConfirm: () => void;
   onLowConfReject: () => void;
   onPersonaConfirm: () => void;
@@ -1527,6 +1532,11 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
   const [showReasoning, setShowReasoning] = useState(false);
+  // Inline plan-reject reason picker (replaces the old native Alert action sheet).
+  // Tapping "Değiştir" reveals the reason chips below the bubble; picking a chip
+  // fires the same handleQuickSelect refine flow; "İptal" just hides them (no-op,
+  // matching the old Alert's cancel).
+  const [showRejectReasons, setShowRejectReasons] = useState(false);
 
   // Detect which silent actions this message triggered (for visual badges)
   const allActions = [...(message.actions ?? []), ...(message.actions_executed ?? [])];
@@ -1669,9 +1679,21 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
           <QuickSelectButtons options={message.quickSelectOptions} onSelect={onQuickSelect} />
         )}
 
-        {/* Confirm/Reject buttons for plan suggestion (D14) */}
+        {/* Confirm/Reject buttons for plan suggestion (D14). Reject now reveals
+            inline reason chips (PlanRejectReasons) instead of a native Alert. */}
         {!isUser && message.hasPlanSuggestion && (
-          <ConfirmRejectButtons onConfirm={onConfirm} onReject={onReject} />
+          <>
+            <ConfirmRejectButtons
+              onConfirm={onConfirm}
+              onReject={() => setShowRejectReasons(v => !v)}
+            />
+            {showRejectReasons && (
+              <PlanRejectReasons
+                onPick={(reason) => { setShowRejectReasons(false); onPlanRejectReason(reason); }}
+                onCancel={() => setShowRejectReasons(false)}
+              />
+            )}
+          </>
         )}
 
         {/* Low-confidence verification buttons (Spec 5.32) */}
@@ -1785,6 +1807,55 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         </View>
       )}
     </MessageBubbleFrame>
+  );
+}
+
+/**
+ * PlanRejectReasons — inline reason chips for "Neyi değiştirelim?".
+ * Replaces the old native Alert action sheet (handlePlanReject) with tappable
+ * chips rendered directly in the chat. Reasons + their effects are identical;
+ * only presentation changed. "İptal" simply dismisses (no side effect), matching
+ * the old Alert's cancel button.
+ */
+function PlanRejectReasons({ onPick, onCancel }: {
+  onPick: (reason: { label: string; instruction: string }) => void;
+  onCancel: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ marginTop: SPACING.sm, gap: SPACING.xs }}>
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.5 }}>
+        Neyi değiştirelim?
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {PLAN_REJECT_REASONS.map((reason) => (
+          <TouchableOpacity
+            key={reason.label}
+            onPress={() => { haptics.tap(); onPick(reason); }}
+            accessibilityRole="button"
+            accessibilityLabel={reason.label}
+            style={{
+              paddingVertical: 8, paddingHorizontal: SPACING.md, minHeight: 36,
+              justifyContent: 'center', borderRadius: RADIUS.pill,
+              backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border,
+            }}
+          >
+            <Text style={{ color: colors.text, fontSize: FONT.sm }}>{reason.label}</Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); onCancel(); }}
+          accessibilityRole="button"
+          accessibilityLabel="İptal"
+          style={{
+            paddingVertical: 8, paddingHorizontal: SPACING.md, minHeight: 36,
+            justifyContent: 'center', borderRadius: RADIUS.pill,
+          }}
+        >
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 

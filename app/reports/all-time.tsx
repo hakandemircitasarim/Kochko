@@ -3,12 +3,13 @@
  * Spec 8.4: Başlangıçtan bugüne toplam ilerleme.
  */
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useStreak } from '@/hooks/useStreak';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -99,9 +100,7 @@ export default function AllTimeReportScreen() {
   }, [loadStats]);
 
   if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
-      <ActivityIndicator size="large" color={COLORS.primary} accessibilityLabel="Rapor yükleniyor" />
-    </View>;
+    return <SkeletonScreen cards={3} />;
   }
 
   if (error) {

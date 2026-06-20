@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 
 interface WeeklyReport {
   week_start: string;
@@ -120,7 +121,7 @@ export default function WeeklyReportScreen() {
     }
   };
 
-  if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} accessibilityLabel="Rapor yükleniyor" /></View>;
+  if (loading) return <SkeletonScreen cards={3} />;
 
   if (error) {
     return (

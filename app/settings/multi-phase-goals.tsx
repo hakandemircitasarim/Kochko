@@ -13,6 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 const PHASE_LABELS: Record<string, { label: string; color: string }> = {
   cut: { label: 'Cut (Kilo Ver)', color: COLORS.error },
@@ -43,7 +44,13 @@ export default function MultiPhaseGoalsScreen() {
   const handleAdd = async () => {
     if (!user?.id) return;
     const goalType = newPhaseLabel === 'cut' || newPhaseLabel === 'mini_cut' ? 'lose_weight' : newPhaseLabel === 'bulk' ? 'gain_weight' : 'maintain';
-    await addPhase(user.id, goalType, newTarget ? parseFloat(newTarget) : null, parseInt(newWeeks) || 12, newPhaseLabel);
+    try {
+      await addPhase(user.id, goalType, newTarget ? parseFloat(newTarget) : null, parseInt(newWeeks) || 12, newPhaseLabel);
+    } catch (e) {
+      haptics.error();
+      throw e;
+    }
+    haptics.success();
     setShowAdd(false); setNewTarget(''); setNewWeeks('12');
     load();
   };
@@ -57,11 +64,19 @@ export default function MultiPhaseGoalsScreen() {
 
   const handleAdvance = async () => {
     if (!user?.id) return;
-    const next = await advanceToNextPhase(user.id);
+    let next;
+    try {
+      next = await advanceToNextPhase(user.id);
+    } catch (e) {
+      haptics.error();
+      throw e;
+    }
     if (next) {
+      haptics.success();
       Alert.alert('Faz Geçişi', `"${next.phase_label}" fazına geçildi.`);
       load();
     } else {
+      haptics.success();
       Alert.alert('Bitti', 'Tüm fazlar tamamlandı!');
     }
   };
@@ -129,7 +144,7 @@ export default function MultiPhaseGoalsScreen() {
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Faz Tipi</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
             {Object.entries(PHASE_LABELS).map(([key, info]) => (
-              <TouchableOpacity key={key} onPress={() => setNewPhaseLabel(key)}
+              <TouchableOpacity key={key} onPress={() => { haptics.tap(); setNewPhaseLabel(key); }}
                 style={{ paddingVertical: 6, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
                   borderColor: newPhaseLabel === key ? info.color : COLORS.border,
                   backgroundColor: newPhaseLabel === key ? info.color : 'transparent' }}>

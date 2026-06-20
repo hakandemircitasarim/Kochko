@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getRecipes, deleteRecipe, updateRecipe, scaleRecipe, suggestSubstitution, toggleFavorite, incrementUseCount, getRecipesByIngredients, type SavedRecipe } from '@/services/recipes.service';
@@ -256,8 +257,8 @@ export default function RecipesScreen() {
                       accessibilityRole="button"
                       accessibilityLabel="Tarifi sil"
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={{ paddingHorizontal: SPACING.xs }}>
-                      <Text style={{ fontSize: 18, color: COLORS.textMuted }}>🗑</Text>
+                      style={{ width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }}>
+                      <Ionicons name="trash-outline" size={20} color={COLORS.textMuted} />
                     </TouchableOpacity>
                     <Text style={{ color: COLORS.textMuted, fontSize: FONT.md }}>{expanded === r.id ? '−' : '+'}</Text>
                   </View>

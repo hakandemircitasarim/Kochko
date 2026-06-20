@@ -7,6 +7,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
@@ -230,10 +231,10 @@ export default function EditProfileScreen() {
 
         {/* Program */}
         <Card title="Program">
-          <Input label="Uyku Saati" value={sleepTime} onChangeText={setSleepTime} placeholder="23:00" keyboardType="numbers-and-punctuation" hint="Saat formatı — örn: 23:00" />
-          <Input label="Uyanma Saati" value={wakeTime} onChangeText={setWakeTime} placeholder="07:00" keyboardType="numbers-and-punctuation" hint="Saat formatı — örn: 07:00" />
-          <Input label="İş Başlangıcı" value={workStart} onChangeText={setWorkStart} placeholder="09:00" keyboardType="numbers-and-punctuation" hint="Saat formatı — örn: 09:00" />
-          <Input label="İş Bitişi" value={workEnd} onChangeText={setWorkEnd} placeholder="18:00" keyboardType="numbers-and-punctuation" hint="Saat formatı — örn: 18:00" />
+          <DateTimeField label="Uyku Saati" mode="time" value={sleepTime} onChange={setSleepTime} placeholder="23:00" />
+          <DateTimeField label="Uyanma Saati" mode="time" value={wakeTime} onChange={setWakeTime} placeholder="07:00" />
+          <DateTimeField label="İş Başlangıcı" mode="time" value={workStart} onChange={setWorkStart} placeholder="09:00" />
+          <DateTimeField label="İş Bitişi" mode="time" value={workEnd} onChange={setWorkEnd} placeholder="18:00" />
           <Input label="Meslek" value={occupation} onChangeText={setOccupation} placeholder="Yazılımcı, öğrenci, vb." />
         </Card>
 

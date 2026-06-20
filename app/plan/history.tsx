@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth.store';
+import { EmptyState } from '@/components/ui/EmptyState';
 import {
   getHistory,
   type PlanRow,
@@ -123,12 +124,11 @@ export default function PlanHistoryScreen() {
           <ActivityIndicator color={colors.primary} />
         </View>
       ) : rows.length === 0 ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xxl }}>
-          <Ionicons name="archive-outline" size={48} color={colors.textMuted} />
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.md, textAlign: 'center' }}>
-            Henüz arşivde plan yok.{'\n'}Onayladığın planlar burada birikecek.
-          </Text>
-        </View>
+        <EmptyState
+          icon="archive-outline"
+          title="Henüz arşivde plan yok."
+          subtitle="Onayladığın planlar burada birikecek."
+        />
       ) : (
         <ScrollView
           contentContainerStyle={{

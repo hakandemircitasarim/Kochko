@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { createSession } from '@/services/chat.service';
 import type { MissingField } from '@/lib/plan-readiness';
 
@@ -148,6 +149,16 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
               </TouchableOpacity>
             ))}
           </View>
+        </View>
+      ) : null}
+
+      {/* Generation preview — content-shaped placeholder during the slow LLM wait */}
+      {creating ? (
+        <View style={{ marginTop: SPACING.md, gap: SPACING.xs }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
+            {planType === 'diet' ? 'MENÜN HAZIRLANIYOR' : 'PROGRAMIN HAZIRLANIYOR'}
+          </Text>
+          <SkeletonCard lines={4} />
         </View>
       ) : null}
 

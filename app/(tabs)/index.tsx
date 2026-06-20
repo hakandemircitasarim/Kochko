@@ -31,6 +31,7 @@ import { detectReturnLevel, type ReturnStatus } from '@/services/return-flow.ser
 import { syncStepsToDailyMetrics } from '@/services/health-connect.service';
 import { CoachingNudge } from '@/components/dashboard/CoachingNudge';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
+import { SkeletonBlock } from '@/components/ui/Skeleton';
 
 export default function TodayScreen() {
   const { colors } = useTheme();
@@ -176,16 +177,6 @@ export default function TodayScreen() {
   // like data loss. Pull-to-refresh (hasLoadedOnce=true) keeps the live content.
   const firstLoad = loading && !hasLoadedOnce;
 
-  // Inline skeleton block — muted rounded rectangle, no new shared component.
-  const SkeletonBlock = ({ height, width = '100%', radius = RADIUS.md, mt = 0 }: {
-    height: number; width?: number | string; radius?: number; mt?: number;
-  }) => (
-    <View style={{
-      height, width: width as number, borderRadius: radius, marginTop: mt,
-      backgroundColor: colors.surfaceLight,
-    }} />
-  );
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
@@ -308,9 +299,9 @@ export default function TodayScreen() {
               <SkeletonBlock height={84} width={'48%'} radius={RADIUS.md} />
               <SkeletonBlock height={84} width={'48%'} radius={RADIUS.md} />
             </View>
-            <SkeletonBlock height={96} radius={RADIUS.md} mt={SPACING.lg} />
-            <SkeletonBlock height={60} radius={RADIUS.md} mt={SPACING.lg} />
-            <SkeletonBlock height={60} radius={RADIUS.md} mt={SPACING.md} />
+            <SkeletonBlock height={96} radius={RADIUS.md} style={{ marginTop: SPACING.lg }} />
+            <SkeletonBlock height={60} radius={RADIUS.md} style={{ marginTop: SPACING.lg }} />
+            <SkeletonBlock height={60} radius={RADIUS.md} style={{ marginTop: SPACING.md }} />
           </View>
         ) : (
         <>

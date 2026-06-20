@@ -10,8 +10,8 @@ import {
   type PeriodicState,
 } from '@/services/periodic.service';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -161,13 +161,12 @@ export default function PeriodicStateScreen() {
       )}
 
       {/* End date input */}
-      <Input
+      <DateTimeField
         label="Bitiş tarihi"
-        placeholder="2026-04-10"
-        hint="YYYY-AA-GG (örn: 2026-04-10)"
-        keyboardType="number-pad"
+        mode="date"
         value={endDate}
-        onChangeText={setEndDate}
+        onChange={setEndDate}
+        placeholder="YYYY-AA-GG (örn: 2026-04-10)"
       />
       {config?.requiresEndDate && !endDate && (
         <Text style={{ color: COLORS.warning, fontSize: FONT.xs, marginTop: -SPACING.sm, marginBottom: SPACING.sm }}>

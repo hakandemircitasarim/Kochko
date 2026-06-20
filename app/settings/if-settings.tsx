@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
@@ -129,8 +129,8 @@ export default function IFSettingsScreen() {
           {/* Custom Times */}
           <Card title="Yeme Penceresi Saatleri">
             <View style={{ flexDirection: 'row', gap: SPACING.md }}>
-              <View style={{ flex: 1 }}><Input label="Başlangıç" value={eatingStart} onChangeText={setEatingStart} placeholder="12:00" hint="ÖRN: 12:00" keyboardType="numbers-and-punctuation" /></View>
-              <View style={{ flex: 1 }}><Input label="Bitiş" value={eatingEnd} onChangeText={setEatingEnd} placeholder="20:00" hint="ÖRN: 20:00" keyboardType="numbers-and-punctuation" /></View>
+              <View style={{ flex: 1 }}><DateTimeField label="Başlangıç" mode="time" value={eatingStart} onChange={setEatingStart} placeholder="12:00" /></View>
+              <View style={{ flex: 1 }}><DateTimeField label="Bitiş" mode="time" value={eatingEnd} onChange={setEatingEnd} placeholder="20:00" /></View>
             </View>
           </Card>
         </>

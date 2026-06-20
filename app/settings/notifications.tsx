@@ -4,8 +4,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getNotificationPrefs, updateNotificationPrefs, type NotificationPreferences } from '@/services/notifications.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { a11ySwitch, getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -103,8 +103,8 @@ export default function NotificationsScreen() {
           <Card title="Sessiz Saatler">
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Bu saatler arasında bildirim gönderilmez.</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.md }}>
-              <View style={{ flex: 1 }}><Input label="Başlangıç" value={prefs.quietStart} onChangeText={v => updateQuiet('quietStart', v)} placeholder="23:00" hint="ÖRN: 23:00" keyboardType="numbers-and-punctuation" maxLength={5} /></View>
-              <View style={{ flex: 1 }}><Input label="Bitiş" value={prefs.quietEnd} onChangeText={v => updateQuiet('quietEnd', v)} placeholder="07:00" hint="ÖRN: 07:00" keyboardType="numbers-and-punctuation" maxLength={5} /></View>
+              <View style={{ flex: 1 }}><DateTimeField label="Başlangıç" mode="time" value={prefs.quietStart} onChange={v => updateQuiet('quietStart', v)} placeholder="23:00" /></View>
+              <View style={{ flex: 1 }}><DateTimeField label="Bitiş" mode="time" value={prefs.quietEnd} onChange={v => updateQuiet('quietEnd', v)} placeholder="07:00" /></View>
             </View>
           </Card>
 

@@ -7,7 +7,7 @@ import { usePremium } from '@/hooks/usePremium';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
-import { initiatePurchase, restorePurchases } from '@/services/subscription.service';
+import { initiatePurchase, restorePurchases, startTrialIfEligible } from '@/services/subscription.service';
 import { supabase } from '@/lib/supabase';
 import { haptics } from '@/lib/haptics';
 
@@ -49,7 +49,7 @@ const PREMIUM = [
 export default function PremiumScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
-  const { profile, update } = useProfileStore();
+  const { profile, update, fetch: fetchProfile } = useProfileStore();
   const { isActive, isInTrial, trialDaysLeft, isExpired } = usePremium();
 
   const handleSubscribe = async () => {
@@ -100,9 +100,39 @@ export default function PremiumScreen() {
       return;
     }
 
+    // IAP not wired yet. Rather than a dead-end message, deliver what the copy
+    // promises: actually start the real 7-day trial via subscription.service
+    // (only for users who haven't used it / aren't already active — the service
+    // is idempotent and returns a reason otherwise).
     Alert.alert(
       'Satın alma yakında',
-      'Premium satın alma App Store / Google Play üzerinden çok yakında aktif olacak. Şimdilik ücretsiz deneme ile tüm özellikleri kullanabilirsin.',
+      'Premium satın alma App Store / Google Play üzerinden çok yakında aktif olacak. Şimdilik 7 günlük ücretsiz deneme ile tüm özellikleri kullanabilirsin.',
+      [
+        { text: 'İptal', style: 'cancel' },
+        { text: 'Ücretsiz denemeyi başlat', onPress: () => startFreeTrial() },
+      ],
+    );
+  };
+
+  const startFreeTrial = async () => {
+    if (!user?.id) return;
+    const result = await startTrialIfEligible(user.id);
+    if (result.started) {
+      await fetchProfile(user.id);
+      haptics.success();
+      Alert.alert('Deneme başladı', '7 günlük ücretsiz denemen aktif. Tüm Premium özellikler açık.', [
+        { text: 'Tamam' },
+      ]);
+      return;
+    }
+    haptics.error();
+    Alert.alert(
+      'Deneme başlatılamadı',
+      result.reason === 'trial_already_used'
+        ? 'Ücretsiz deneme hakkını daha önce kullanmışsın.'
+        : result.reason === 'already_active'
+          ? 'Zaten aktif bir aboneliğin var.'
+          : 'Deneme başlatılamadı. Lütfen daha sonra tekrar dene.',
       [{ text: 'Tamam' }],
     );
   };

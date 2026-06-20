@@ -4,7 +4,7 @@
  * KVKK Article 16/17: User can view, correct, and delete any data.
  */
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +17,7 @@ import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, CARD_SHADOW, COLORS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 
 type SummaryData = NonNullable<Awaited<ReturnType<typeof getAISummaryForReview>>>;
 
@@ -175,9 +176,9 @@ export default function CoachMemoryScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Stack.Screen options={{ title: 'Koçkonun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
-        <ActivityIndicator size="large" color={colors.primary} />
+        <SkeletonScreen cards={4} />
       </View>
     );
   }

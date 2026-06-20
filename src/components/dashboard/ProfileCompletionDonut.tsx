@@ -1,19 +1,28 @@
 /**
  * Profile completion donut — home screen hero (MASTER_PLAN §5 Phase 4).
  *
- * Reads profile from the store, computes weighted completion via
- * profile-completion.ts, renders an animated SVG donut with % in the center
- * and a one-line hint about the next biggest gap.
+ * The headline % is derived from the SAME 13-task source as the chat tab's
+ * "X/13 konu" progress (onboarding-tasks.service.getOnboardingProgress:
+ * completed/total) so the dashboard and chat never disagree. The donut
+ * self-fetches that progress for the signed-in user and re-fetches whenever the
+ * profile object changes (which is exactly when onboarding data lands).
  *
+ * profile-completion.ts is still used only for the one-line gap hint (which
+ * basic field / lowest category to fill next), not for the headline number.
+ *
+ * Renders an animated SVG donut with % in the center and the next-gap hint.
  * Tap routes to the Kochko tab's onboarding task list.
  */
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Animated, Easing } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useAuthStore } from '@/stores/auth.store';
+import { getOnboardingProgress } from '@/services/onboarding-tasks.service';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import {
   calculateProfileCompletion,
   CATEGORY_LABELS,
@@ -30,16 +39,39 @@ interface Props {
 
 export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Props) {
   const { colors } = useTheme();
+  const userId = useAuthStore(s => s.user?.id);
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const progress = useRef(new Animated.Value(0)).current;
 
+  // Headline % comes from the 13-task onboarding progress — the exact same
+  // source the chat tab uses for "X/13 konu" — so the two screens always agree.
+  // Re-fetch when the profile object changes (onboarding data landing is what
+  // moves the task count). null = not yet loaded.
+  const [taskProgress, setTaskProgress] = useState<{ completed: number; total: number } | null>(null);
+
+  useEffect(() => {
+    if (!userId) {
+      setTaskProgress(null);
+      return;
+    }
+    let cancelled = false;
+    getOnboardingProgress(userId)
+      .then((p) => { if (!cancelled) setTaskProgress(p); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [userId, profile]);
+
+  // Gap-hint text (which field/category to fill next) still uses the weighted
+  // profile-completion calc; only the headline number switched to task progress.
   const result = useMemo(() => {
     if (!profile) return null;
     return calculateProfileCompletion(profile);
   }, [profile]);
 
-  const pct = result?.percentage ?? 0;
+  const pct = taskProgress
+    ? Math.round((taskProgress.completed / taskProgress.total) * 100)
+    : 0;
 
   useEffect(() => {
     Animated.timing(progress, {
@@ -68,6 +100,12 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
     }
     return 'Profilin tamam — Koçko seni tam tanıyor';
   }, [result]);
+
+  // Until the 13-task progress lands, show a skeleton instead of flashing a
+  // misleading 0% / red ring on every cold load.
+  if (!taskProgress) {
+    return <SkeletonCard lines={2} />;
+  }
 
   return (
     <TouchableOpacity

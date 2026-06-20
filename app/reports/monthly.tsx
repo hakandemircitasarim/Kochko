@@ -3,7 +3,7 @@
  * Spec 8.3: Aylik rapor - hedefe yaklasma, trend, risk sinyalleri.
  */
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ComplianceScore } from '@/components/reports/ComplianceScore';
 import { ProgressChart } from '@/components/reports/ProgressChart';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 
@@ -110,12 +111,7 @@ export default function MonthlyReportScreen() {
   };
 
   if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.md, textAlign: 'center' }}>
-        Aylık raporun hazırlanıyor...
-      </Text>
-    </View>;
+    return <SkeletonScreen cards={3} />;
   }
 
   const weeklyAvgCompliance = weeklyReports.length > 0
