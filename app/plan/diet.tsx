@@ -88,6 +88,9 @@ export default function DietPlanScreen() {
   // ─── Data load ───
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
+  // FIX (audit regression): guard one-time session creation — load() depends on chatSessionId,
+  // so setChatSessionId re-runs it; the ref prevents creating two sessions in the race window.
+  const creatingSessionRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -112,9 +115,11 @@ export default function DietPlanScreen() {
         // FIX (audit Wave3): rehydrate chatSessionId for a persisted draft. Without this, a draft
         // reloaded on focus/mount had chatSessionId=null, so send/approve/alternative silently
         // returned (dead end). Derive a fresh session so the draft stays interactive.
-        if (!chatSessionId) {
+        if (!chatSessionId && !creatingSessionRef.current) {
+          creatingSessionRef.current = true;
           const sid = await createSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
           if (sid && mountedRef.current) setChatSessionId(sid);
+          else creatingSessionRef.current = false; // allow retry if creation failed
         }
       } else if (activeRow) setView('active');
       else setView('empty');

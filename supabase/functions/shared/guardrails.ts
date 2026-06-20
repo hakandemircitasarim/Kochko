@@ -127,7 +127,15 @@ export function checkAllergens(
       // Normal direction: meal text contains the token literally (covers multi-word
       // compounds like "yer fıstığı"), OR a normalized meal token equals the
       // normalized allergen stem (covers Turkish inflection + consonant softening).
-      if (lowerText.includes(token)) return true;
+      // FIX (audit regression): ASCII (English) tokens must match at a WORD BOUNDARY — plain
+      // substring let short English roots false-flag ('nut'⊂minute/donut, 'egg'⊂eggplant,
+      // 'tuna'=Turkish given name). Turkish tokens keep substring (agglutination: 'sütlü'⊃'süt').
+      const isAsciiToken = /^[a-z ]+$/.test(token);
+      if (isAsciiToken) {
+        if (new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(lowerText)) return true;
+      } else if (lowerText.includes(token)) {
+        return true;
+      }
       if (normToken.length >= 3 && normItems.includes(normToken)) return true;
       // Reverse direction: a short meal item is contained in a compound token
       // (e.g. item "süt" vs allergen token "süt ürünleri").
@@ -384,7 +392,11 @@ export function detectCrisis(text: string): { isCrisis: boolean; message: string
   // crisis message is harmless, while a missed acute crisis is the highest-impact failure.
   // Diacritic-free variants are included so broken Turkish spelling still matches.
   const CRISIS_RE = [
-    /(kendi(mi|me)|canı(mı|ma)|cani(mi|ma)|hayatı(mı|ma)|hayati(mi|ma)|yaşamı(mı|ma)|yasami(mi|ma)|her\s*şeye|her\s*seye).{0,30}(as[ae]|kes|kıy|kiy|son\s*ver|öldür|oldur|bitir|veda|yok\s*et)/u,
+    // FIX (audit regression): roots were bare substrings → false-positives ('kestane'⊃kes,
+    // 'kıyma'⊃kıy, 'asansör'⊃as[a], 'doldur'⊃oldur). Constrain each to real self-harm verb
+    // conjugations while preserving crisis recall (kıydım/astım/keseceğim still fire); the
+    // literal phrase list above + the wrist/"ölüp kurtul" patterns below remain the safety net.
+    /(kendi(mi|me)|canı(mı|ma)|cani(mi|ma)|hayatı(mı|ma)|hayati(mi|ma)|yaşamı(mı|ma)|yasami(mi|ma)|her\s*şeye|her\s*seye).{0,30}(as(acağ|acak|tım|tim|arak|ıyor|iyor)|kes(ece|ece[kğ]|eceğ|erim|iyor|tim|tım)|kıy(mak|acağ|acak|dım|dim|dı|arım|arim|amam)|kiy(mak|acag|acak|dim|di|arim|amam)|son\s*ver|öldür|\boldur(mek|ece|eyim)|bitir(mek|ece|di|eyim)|veda|yok\s*et)/u,
     /(ölüp\s*kurtul|olup\s*kurtul|hayata\s*veda|son\s*vermek\s*isti|yaşamak\s*istemiyorum|yasamak\s*istemiyorum|yok\s*olmak\s*isti)/u,
     /(bilek|damar|bileği?mi|bilegimi).{0,15}(kes)/u,
     /(ip|bıçak|bicak|hap).{0,15}(kendi|canı|cani)/u,

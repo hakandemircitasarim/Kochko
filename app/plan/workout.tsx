@@ -77,6 +77,9 @@ export default function WorkoutPlanScreen() {
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
+  // FIX (audit regression): guard one-time session creation — load() has chatSessionId in deps,
+  // so setChatSessionId re-runs it; without this ref two sessions could be created in the race.
+  const creatingSessionRef = useRef(false);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
@@ -97,9 +100,11 @@ export default function WorkoutPlanScreen() {
         setView('draft');
         // FIX (audit Wave3): rehydrate chatSessionId for a persisted draft — otherwise a reloaded
         // draft had chatSessionId=null and send/approve/alternative silently dead-ended.
-        if (!chatSessionId) {
+        if (!chatSessionId && !creatingSessionRef.current) {
+          creatingSessionRef.current = true;
           const sid = await createSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
           if (sid && mountedRef.current) setChatSessionId(sid);
+          else creatingSessionRef.current = false; // allow retry if creation failed
         }
       } else if (activeRow) setView('active');
       else setView('empty');
@@ -108,7 +113,8 @@ export default function WorkoutPlanScreen() {
     }
   }, [user?.id, profile, fetchProfile, chatSessionId]);
 
-  useEffect(() => { load(); }, [load]);
+  // FIX (audit regression): useFocusEffect already fires on mount, so a separate
+  // useEffect(()=>load(),[load]) double-loaded on every focus. Single source (matches diet.tsx).
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   useEffect(() => {

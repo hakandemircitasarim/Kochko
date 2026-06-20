@@ -33,11 +33,12 @@ export default function IFSettingsScreen() {
 
   const handleSave = async () => {
     if (!user?.id) return;
-    // FIX (audit inline-validation): 0 saatlik/mantıksız yeme penceresini engelle
-    // (HH:mm string karşılaştırması leksikografik olarak doğru çalışır).
-    if (active && eatingStart >= eatingEnd) {
+    // FIX (audit regression): an IF eating window can be OVERNIGHT (e.g. 20:00–04:00) where
+    // start > end lexicographically — that is VALID (intermittent fasting overnight windows are
+    // common), not an error. Only a ZERO-LENGTH window (start === end) is invalid.
+    if (active && eatingStart === eatingEnd) {
       haptics.error();
-      Alert.alert('Geçersiz pencere', 'Başlangıç saati bitişten önce olmalı.');
+      Alert.alert('Geçersiz pencere', 'Yeme penceresi sıfır uzunlukta olamaz; başlangıç ve bitiş saati aynı.');
       return;
     }
     try {

@@ -596,19 +596,20 @@ serve(async (req: Request) => {
     // carries exercise context but no explicit bodyweight cue, or when the value is outside the
     // plausible human range (30–300 kg). This makes weight_kg writes safe on EVERY path.
     {
-      const paIdx = actions.findIndex(a => a.type === 'profile_update');
-      if (paIdx >= 0) {
-        const pa = actions[paIdx] as Record<string, unknown>;
-        if (pa.weight_kg != null) {
-          const lo = (message ?? '').toLocaleLowerCase('tr');
-          const exerciseCtx = /(bench|press|squat|deadlift|curl|lat\b|biceps|triceps|halter|dumbbell|barbell|set\b|tekrar|\brep\b|kaldir|kaldır|antren|egzersiz|\d+\s*[x×]\s*\d+)/.test(lo);
-          const bodyweightCue = /(kilom|kiloyum|tartil|tartıl|mevcut\s*kilo|vücut\s*ağırlığ|vucut\s*agirlig|kg\s*(oldum|geldim|düştüm|dustum|çıktım|ciktim))/.test(lo);
-          const w = Number(pa.weight_kg);
-          if ((exerciseCtx && !bodyweightCue) || !(w >= 30 && w <= 300)) {
-            console.warn('[weight_guard] dropped ambiguous/implausible weight_kg', { weight_kg: pa.weight_kg, mode: effectiveMode });
-            delete pa.weight_kg;
-            if (Object.keys(pa).filter(k => k !== 'type').length === 0) actions.splice(paIdx, 1);
-          }
+      // FIX (audit regression — extractActions now parses MULTIPLE <actions> blocks → there can be
+      // >1 profile_update). Validate weight_kg on EVERY profile_update, back-to-front for safe splice.
+      const lo = (message ?? '').toLocaleLowerCase('tr');
+      const exerciseCtx = /(bench|press|squat|deadlift|curl|lat\b|biceps|triceps|halter|dumbbell|barbell|set\b|tekrar|\brep\b|kaldir|kaldır|antren|egzersiz|\d+\s*[x×]\s*\d+)/.test(lo);
+      const bodyweightCue = /(kilom|kiloyum|tartil|tartıl|mevcut\s*kilo|vücut\s*ağırlığ|vucut\s*agirlig|kg\s*(oldum|geldim|düştüm|dustum|çıktım|ciktim))/.test(lo);
+      for (let pi = actions.length - 1; pi >= 0; pi--) {
+        if (actions[pi].type !== 'profile_update') continue;
+        const pa = actions[pi] as Record<string, unknown>;
+        if (pa.weight_kg == null) continue;
+        const w = Number(pa.weight_kg);
+        if ((exerciseCtx && !bodyweightCue) || !(w >= 30 && w <= 300)) {
+          console.warn('[weight_guard] dropped ambiguous/implausible weight_kg', { weight_kg: pa.weight_kg, mode: effectiveMode });
+          delete pa.weight_kg;
+          if (Object.keys(pa).filter(k => k !== 'type').length === 0) actions.splice(pi, 1);
         }
       }
     }
@@ -977,10 +978,12 @@ serve(async (req: Request) => {
     const { cleanMessage: afterNav, navigateTo } = extractNavigateTo(assistantMessage);
     assistantMessage = afterNav;
 
-    // <simulation> — "şunu yesem ne olur?" projection block. Strip server-side so the
-    // raw JSON never reaches the user; surface the parsed card data separately (audit AI/HIGH).
-    const { cleanMessage: afterSim, simulation } = extractSimulation(assistantMessage);
-    assistantMessage = afterSim;
+    // <simulation> — "şunu yesem ne olur?" projection block. Parse it into a structured
+    // `simulation` response field, but KEEP the block in the message: the client renders the
+    // SimulationCard via parseSimulationData(message) on BOTH live and history paths and strips
+    // it from the displayed text itself. (FIX audit regression: stripping server-side removed the
+    // card AND lost it on history reload since the stored message would no longer carry the block.)
+    const { simulation } = extractSimulation(assistantMessage);
 
     // A snapshot is only USABLE if it has a non-empty days array (and, for diet, a
     // targets object). A structurally-incomplete-but-valid-JSON snapshot would be
@@ -1309,13 +1312,17 @@ serve(async (req: Request) => {
               // a. Fetch BOTH active plans (the just-approved one is one of them).
               const { data: activePlans } = await supabaseAdmin
                 .from('weekly_plans')
-                .select('plan_type, plan_data, week_start')
+                .select('plan_type, plan_subtype, plan_data, week_start')
                 .eq('user_id', userId)
                 .eq('status', 'active');
-              const dietRow = (activePlans ?? []).find((p: { plan_type: string }) => p.plan_type === 'diet') as
+              // FIX (audit regression — migration 055): after weekly_menu isolation a user can have
+              // TWO active diet rows (core: plan_subtype NULL, legacy menu: plan_subtype='weekly_menu').
+              // Project ONLY the chat-approved core diet — picking the flat-array weekly_menu row would
+              // make isUsableDietShape reject it and silently drop the real diet projection.
+              const dietRow = (activePlans ?? []).find((p: { plan_type: string; plan_subtype?: string | null }) => p.plan_type === 'diet' && p.plan_subtype !== 'weekly_menu') as
                 | { plan_type: string; plan_data: DietPlanData; week_start: string }
                 | undefined;
-              const workoutRow = (activePlans ?? []).find((p: { plan_type: string }) => p.plan_type === 'workout') as
+              const workoutRow = (activePlans ?? []).find((p: { plan_type: string; plan_subtype?: string | null }) => p.plan_type === 'workout' && p.plan_subtype !== 'weekly_menu') as
                 | { plan_type: string; plan_data: WorkoutPlanData; week_start: string }
                 | undefined;
 
@@ -1610,6 +1617,7 @@ serve(async (req: Request) => {
           // is "addressed" only if EVERY occurrence sits next to a decline/alternative phrase.
           const addressed = conflicts.every(c => {
             const t = c.toLocaleLowerCase('tr');
+            if (!t) return true; // defensive: empty token would make indexOf('') loop forever
             let i = lowerReply.indexOf(t);
             if (i < 0) return false;
             let from = 0;
@@ -3846,7 +3854,9 @@ async function executeActions(
             p_goal: {
               goal_type: gType,
               target_weight_kg: hasWeightTarget ? targetVal : null,
-              target_weeks: targetWeeks,
+              // FIX (audit low): coerce to integer — a fractional target_weeks would make the RPC's
+              // p_goal->>'target_weeks'::int cast throw and roll back the whole goal write.
+              target_weeks: Number.isFinite(Number(targetWeeks)) ? Math.round(Number(targetWeeks)) : null,
               start_weight_kg: startWeight,
               weekly_rate: weeklyRate,
             },

@@ -813,7 +813,7 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
   // Çözüm: legacy menüyü plan_subtype='weekly_menu' ALT-SATIRINA izole et — chat-onaylı diyet
   // satırı (plan_subtype IS NULL) ASLA bu yoldan dokunulmaz. Şema izolasyonu (plan_subtype
   // kolonu + uniq_active_plan_per_type'ın COALESCE(plan_subtype,'core') ile yeniden tanımı)
-  // ayrı migration 053 ile gelir; bu kod 053 olsun/olmasın güvenlidir (aşağıya bkz.).
+  // ayrı migration 055 ile gelir; bu kod 055 olsun/olmasın güvenlidir (aşağıya bkz.).
   const WEEKLY_MENU_SUBTYPE = 'weekly_menu';
 
   // Fetch existing active weekly-menu row to preserve approval state + increment revision_count.
@@ -830,12 +830,12 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
     .eq('plan_subtype', WEEKLY_MENU_SUBTYPE)
     .maybeSingle();
   // FIX (audit CRITICAL): koruyucu guard — plan_subtype kolonu canlıda henüz yoksa (migration
-  // 053 deploy edilmeden bu kod yayına girerse) PostgREST 42703 döner. O durumda eski davranışa
+  // 055 deploy edilmeden bu kod yayına girerse) PostgREST 42703 döner. O durumda eski davranışa
   // (chat satırını ezme) SESSİZCE geri dönmek tam da kapattığımız bug'dır; bunun yerine yazmayı
   // REDDEDIP açık bir hata döndür ki veri-bütünlüğü korunsun.
   if (existingErr) {
     throw new Error(
-      'weekly_plans plan_subtype isolation not available (migration 053 not applied?) — refusing to write weekly menu to avoid overwriting the chat-approved diet plan: ' +
+      'weekly_plans plan_subtype isolation not available (migration 055 not applied?) — refusing to write weekly menu to avoid overwriting the chat-approved diet plan: ' +
         existingErr.message,
     );
   }

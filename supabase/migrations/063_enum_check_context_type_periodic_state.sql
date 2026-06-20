@@ -51,7 +51,7 @@ BEGIN
       ADD CONSTRAINT profiles_periodic_state_check
       CHECK (periodic_state IS NULL OR periodic_state IN (
         'ramadan', 'holiday', 'illness', 'busy_work', 'exam', 'pregnancy',
-        'breastfeeding', 'injury', 'travel', 'custom'
+        'breastfeeding', 'injury', 'travel', 'custom', 'mini_cut', 'maintenance'
       ));
   END IF;
 END $$;
