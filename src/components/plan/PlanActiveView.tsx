@@ -7,6 +7,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
+import { getContrastColor } from '@/lib/accessibility';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { MealCard } from './MealCard';
 import { ExerciseCard } from './ExerciseCard';
@@ -20,6 +21,12 @@ interface Props {
   onStartRevision: () => void;
   onOpenHistory: () => void;
   creatingRevision?: boolean;
+}
+
+// 0 = Monday in our day_index convention (matches the dashboard helper).
+function todayIndex(): number {
+  const raw = new Date().getDay();
+  return raw === 0 ? 6 : raw - 1;
 }
 
 // Drift detection per MASTER_PLAN §4.8.
@@ -65,7 +72,8 @@ function detectDrift(
 
 export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, creatingRevision }: Props) {
   const { colors } = useTheme();
-  const [expandedDay, setExpandedDay] = useState(0);
+  // Default to today so the active plan never lands on a fully-collapsed day list.
+  const [expandedDay, setExpandedDay] = useState(todayIndex);
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
 
   const drift = useMemo(() => detectDrift(plan, profile, goal ?? null), [plan, profile, goal]);
@@ -96,7 +104,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           <Ionicons
             name={isDiet ? 'restaurant' : 'barbell'}
             size={20}
-            color={isDiet ? '#22C55E' : '#6366F1'}
+            color={isDiet ? colors.primary : colors.purple}
           />
           <View style={{ flex: 1, marginLeft: SPACING.sm }}>
             <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800' }}>
@@ -124,8 +132,8 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               opacity: creatingRevision ? 0.6 : 1,
             }}
           >
-            <Ionicons name="chatbubble-ellipses-outline" size={14} color="#fff" />
-            <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '700' }}>
+            <Ionicons name="chatbubble-ellipses-outline" size={14} color={getContrastColor(colors.primary)} />
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>
               Kochko ile konuş
             </Text>
           </TouchableOpacity>
@@ -153,16 +161,16 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
       {drift.hard.length > 0 ? (
         <View
           style={{
-            backgroundColor: '#EF444418',
+            backgroundColor: colors.errorLight,
             borderRadius: RADIUS.lg,
             borderWidth: 1,
-            borderColor: '#EF444444',
+            borderColor: colors.error,
             padding: SPACING.md,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="warning" size={16} color="#EF4444" />
-            <Text style={{ color: '#EF4444', fontSize: FONT.sm, fontWeight: '700' }}>
+            <Ionicons name="warning" size={16} color={colors.error} />
+            <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '700' }}>
               Güvenliğin için planı güncelleyelim
             </Text>
           </View>
@@ -174,14 +182,14 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           <TouchableOpacity
             onPress={onStartRevision}
             style={{
-              backgroundColor: '#EF4444',
+              backgroundColor: colors.error,
               borderRadius: RADIUS.md,
               paddingVertical: SPACING.sm,
               alignItems: 'center',
               marginTop: SPACING.sm,
             }}
           >
-            <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '700' }}>
+            <Text style={{ color: getContrastColor(colors.error), fontSize: FONT.sm, fontWeight: '700' }}>
               Planı güncelle
             </Text>
           </TouchableOpacity>
@@ -191,16 +199,16 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
       {drift.soft.length > 0 && drift.hard.length === 0 ? (
         <View
           style={{
-            backgroundColor: '#F59E0B18',
+            backgroundColor: colors.warningLight,
             borderRadius: RADIUS.lg,
             borderWidth: 1,
-            borderColor: '#F59E0B44',
+            borderColor: colors.warning,
             padding: SPACING.md,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="information-circle-outline" size={14} color="#F59E0B" />
-            <Text style={{ color: '#F59E0B', fontSize: FONT.xs, fontWeight: '700' }}>
+            <Ionicons name="information-circle-outline" size={14} color={colors.warning} />
+            <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '700' }}>
               Verilerinde değişiklik var
             </Text>
           </View>
@@ -210,7 +218,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             </Text>
           ))}
           <TouchableOpacity onPress={onStartRevision} style={{ marginTop: SPACING.xs }}>
-            <Text style={{ color: '#F59E0B', fontSize: FONT.xs, fontWeight: '700' }}>
+            <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '700' }}>
               Planı güncelle →
             </Text>
           </TouchableOpacity>

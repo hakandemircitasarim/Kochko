@@ -3,34 +3,34 @@ import { View, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
-
-const TEAL = '#1D9E75';
-const MUTED = '#66667A';
+import { getContrastColor } from '@/lib/accessibility';
 
 type IconName = 'home' | 'chatbubble-ellipses' | 'add' | 'bar-chart' | 'person';
 
 function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
+  const { colors } = useTheme();
   const outlineName = `${name}-outline` as keyof typeof Ionicons.glyphMap;
   return (
     <Ionicons
       name={focused ? name : outlineName}
       size={22}
-      color={focused ? TEAL : MUTED}
+      color={focused ? colors.primary : colors.textSecondary}
     />
   );
 }
 
 function FABButton() {
+  const { colors } = useTheme();
   return (
     <View style={styles.fabContainer}>
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: colors.primary }]}
         onPress={() => router.push('/log')}
         activeOpacity={0.8}
         accessibilityRole="button"
         accessibilityLabel="Hızlı kayıt — öğün, su, tartı, antrenman"
       >
-        <Ionicons name="add" size={28} color="#FFFFFF" />
+        <Ionicons name="add" size={28} color={getContrastColor(colors.primary)} />
       </TouchableOpacity>
     </View>
   );
@@ -54,10 +54,10 @@ export default function TabLayout() {
         paddingTop: 4,
         elevation: 0,
       },
-      tabBarActiveTintColor: TEAL,
-      tabBarInactiveTintColor: MUTED,
+      tabBarActiveTintColor: colors.primary,
+      tabBarInactiveTintColor: colors.textSecondary,
       tabBarLabelStyle: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '500',
         marginTop: 0,
       },
@@ -101,7 +101,6 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: TEAL,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: -16,

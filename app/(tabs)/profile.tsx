@@ -17,6 +17,7 @@ import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { deleteAISummaryNote, resetAISummary, requestAccountDeletion } from '@/services/privacy.service';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 const GOAL_LABELS: Record<string, string> = {
   lose_weight: 'Kilo Ver', gain_weight: 'Kilo Al', gain_muscle: 'Kas Kazan',
@@ -74,9 +75,11 @@ export default function ProfileScreen() {
           <Text style={{ color: colors.primary, fontSize: 22, fontWeight: '700' }}>{initials}</Text>
         </View>
         <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{displayName}</Text>
-        <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
-          {streak > 0 ? `${streak} gündür Kochko'da` : ''}
-        </Text>
+        {streak > 0 && (
+          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+            {`${streak} gündür Kochko'da`}
+          </Text>
+        )}
         {streak > 0 && <View style={{ marginTop: SPACING.sm }}><StreakBadge days={streak} /></View>}
       </View>
 
@@ -125,9 +128,11 @@ export default function ProfileScreen() {
                 if (!user?.id) return;
                 try {
                   const { scheduledDate } = await requestAccountDeletion(user.id);
+                  haptics.warning();
                   Alert.alert('Hesap Silme Planlandı', `Hesabın ${scheduledDate} tarihinde silinecek. Giriş yaparsan iptal olur.`);
                   signOut();
                 } catch {
+                  haptics.error();
                   Alert.alert('Hata', 'Hesap silme isteği oluşturulamadı.');
                 }
               },
@@ -170,6 +175,8 @@ export default function ProfileScreen() {
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, paddingVertical: SPACING.xl }}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Çıkış yap"
         onPress={() => Alert.alert('Çıkış', 'Emin misin?', [{ text: 'İptal' }, { text: 'Çıkış', style: 'destructive', onPress: signOut }])}
       >
         <Ionicons name="log-out-outline" size={16} color={colors.textMuted} />
@@ -211,7 +218,10 @@ function MenuRow({ icon, color, label, value, onPress, colors, last }: {
         padding: SPACING.lg,
         borderBottomWidth: last ? 0 : 0.5, borderBottomColor: colors.border,
       }}
-      onPress={onPress} activeOpacity={0.6}
+      onPress={() => { haptics.tap(); onPress(); }}
+      activeOpacity={0.6}
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label}, ${value}` : label}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 }}>
         <Ionicons name={icon as any} size={18} color={color} />

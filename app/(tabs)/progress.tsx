@@ -14,8 +14,10 @@ import { getEngagementMetrics, type EngagementMetrics } from '@/services/analyti
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { useTheme } from '@/lib/theme';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 const chartWidth = Dimensions.get('window').width - SPACING.md * 4;
 
@@ -126,10 +128,12 @@ export default function ProgressScreen() {
     const { error } = await supabase.from('profiles').update(profileUpdate).eq('id', user.id);
 
     if (error) {
+      haptics.error();
       Alert.alert('Hata', 'Strateji uygulanamadı, lütfen tekrar dene.', [{ text: 'Tamam' }]);
       return;
     }
 
+    haptics.success();
     useProfileStore.getState().fetch(user.id);
     Alert.alert('Strateji Uygulandı', result.instructions, [{ text: 'Tamam' }]);
     setStrategyRec(null);
@@ -170,9 +174,11 @@ export default function ProgressScreen() {
       });
       if (insErr) throw insErr;
 
+      haptics.success();
       Alert.alert('Mini-Cut Başlatıldı', `3 haftalık mini-cut: ${miniCutCalories - 100}-${miniCutCalories + 100} kcal. Sonra tekrar bakıma dönersin.`);
       setMiniCutOffered(false);
     } catch (e) {
+      haptics.error();
       Alert.alert('Hata', 'Mini-cut başlatılamadı, lütfen tekrar dene.\n\n' + ((e as { message?: string }).message ?? ''));
     } finally {
       setMiniCutLoading(false);
@@ -194,63 +200,75 @@ export default function ProgressScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 12, paddingBottom: SPACING.xxl + insets.bottom }}
+      contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 12, paddingBottom: 100 + insets.bottom }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { setLoading(true); load(); }} tintColor={colors.primary} />}
     >
       <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
 
       {/* Summary */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md, gap: SPACING.sm }}>
-        <SummaryBox icon="scale-outline" iconColor="#EC4899" value={latestW ? `${latestW}` : '-'} label="kg" delta={wChange} />
-        <SummaryBox icon="checkmark-circle-outline" iconColor="#22C55E" value={avgComp != null ? `${avgComp}` : '-'} label="uyum" />
-        <SummaryBox icon="water-outline" iconColor="#56CCF2" value={avgWater ?? '-'} label="L/gün" />
-        <SummaryBox icon="moon-outline" iconColor="#7F77DD" value={avgSleep ?? '-'} label="sa/gün" />
+        <SummaryBox icon="scale-outline" iconColor={colors.pink} value={latestW ? `${latestW}` : '-'} label="kg" delta={wChange} />
+        <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={avgComp != null ? `${avgComp}` : '-'} label="uyum" />
+        <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater ?? '-'} label="L/gün" />
+        <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep ?? '-'} label="sa/gün" />
       </View>
 
       {/* Weight Chart */}
       {weights.length >= 2 ? (
         <Card title="Kilo Trendi">
-          <LineChart
-            data={{
-              labels: weights.filter((_, i) => i % Math.max(1, Math.floor(weights.length / 5)) === 0).map(w => fmtLabel(w.date)),
-              datasets: [{ data: weights.map(w => w.weight_kg as number) }],
-            }}
-            width={chartWidth} height={180} chartConfig={chartConfig} bezier style={{ borderRadius: RADIUS.md }}
-          />
+          <View
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={`Kilo trendi grafiği. ${weights.length} kayıt. İlk ${firstW} kilogramdan son ${latestW} kilograma.`}
+          >
+            <LineChart
+              data={{
+                labels: weights.filter((_, i) => i % Math.max(1, Math.floor(weights.length / 5)) === 0).map(w => fmtLabel(w.date)),
+                datasets: [{ data: weights.map(w => w.weight_kg as number) }],
+              }}
+              width={chartWidth} height={180} chartConfig={chartConfig} bezier style={{ borderRadius: RADIUS.md }}
+            />
+          </View>
         </Card>
       ) : (
         <Card title="Kilo Trendi">
           <View style={{ alignItems: 'center', paddingVertical: SPACING.lg }}>
-            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: '#EC489915', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
-              <Ionicons name="analytics-outline" size={28} color="#EC4899" />
+            <View style={{ width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: colors.pink + '15', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
+              <Ionicons name="analytics-outline" size={28} color={colors.pink} />
             </View>
             <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginBottom: 4 }}>Henüz yeterli veri yok</Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>En az 2 tartı kaydı gerekli</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>En az 2 tartı kaydı gerekli</Text>
           </View>
         </Card>
       )}
 
       {/* Compliance Chart */}
       {compliance.length >= 2 ? (
-        <Card title="Uyum Puani Trendi">
-          <LineChart
-            data={{
-              labels: compliance.filter((_, i) => i % Math.max(1, Math.floor(compliance.length / 5)) === 0).map(c => fmtLabel(c.date)),
-              datasets: [{ data: compliance.map(c => c.compliance_score) }],
-            }}
-            width={chartWidth} height={180}
-            chartConfig={{ ...chartConfig, color: (o = 1) => `rgba(76, 175, 80, ${o})` }}
-            bezier style={{ borderRadius: RADIUS.md }}
-          />
+        <Card title="Uyum Puanı Trendi">
+          <View
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={`Uyum puanı trendi grafiği. ${compliance.length} kayıt.${avgComp != null ? ` Ortalama ${avgComp} puan.` : ''}`}
+          >
+            <LineChart
+              data={{
+                labels: compliance.filter((_, i) => i % Math.max(1, Math.floor(compliance.length / 5)) === 0).map(c => fmtLabel(c.date)),
+                datasets: [{ data: compliance.map(c => c.compliance_score) }],
+              }}
+              width={chartWidth} height={180}
+              chartConfig={chartConfig}
+              bezier style={{ borderRadius: RADIUS.md }}
+            />
+          </View>
         </Card>
       ) : (
         <Card title="Uyum">
           <View style={{ alignItems: 'center', paddingVertical: SPACING.lg }}>
-            <View style={{ width: 56, height: 56, borderRadius: 18, backgroundColor: '#22C55E15', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
-              <Ionicons name="checkmark-circle-outline" size={28} color="#22C55E" />
+            <View style={{ width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: colors.success + '15', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
+              <Ionicons name="checkmark-circle-outline" size={28} color={colors.success} />
             </View>
             <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginBottom: 4 }}>Henüz rapor yok</Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Gün sonu raporları oluşturuldukça görünecek</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Gün sonu raporları oluşturuldukça görünecek</Text>
           </View>
         </Card>
       )}
@@ -280,7 +298,7 @@ export default function ProgressScreen() {
 
       {/* Plateau Warning + D4: Strategy Cards */}
       {plateauMsg && (
-        <Card style={{ borderColor: colors.warning, borderWidth: 2, borderRadius: RADIUS.xl }}>
+        <Card style={{ borderColor: colors.warning, borderWidth: 2, borderRadius: RADIUS.md }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.sm }}>
             <View style={{ width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: colors.warningLight, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="warning" size={20} color={colors.warning} />
@@ -297,10 +315,12 @@ export default function ProgressScreen() {
 
               {/* Primary strategy */}
               <TouchableOpacity
-                onPress={() => handleApplyStrategy(strategyRec.primary.id)}
+                onPress={() => { haptics.tap(); handleApplyStrategy(strategyRec.primary.id); }}
+                accessibilityRole="button"
+                accessibilityLabel={`${strategyRec.primary.name} stratejisini onayla`}
                 style={{
                   backgroundColor: colors.card,
-                  borderRadius: RADIUS.xl,
+                  borderRadius: RADIUS.md,
                   padding: SPACING.md,
                   marginBottom: SPACING.sm,
                   borderWidth: 0.5, borderColor: colors.border,
@@ -312,17 +332,19 @@ export default function ProgressScreen() {
                 </View>
                 <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 20 }}>{strategyRec.primary.description}</Text>
                 <View style={{ backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm }}>
-                  <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Onayla</Text>
+                  <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Onayla</Text>
                 </View>
               </TouchableOpacity>
 
               {/* Secondary strategy */}
               {strategyRec.secondary && (
                 <TouchableOpacity
-                  onPress={() => handleApplyStrategy(strategyRec.secondary!.id)}
+                  onPress={() => { haptics.tap(); handleApplyStrategy(strategyRec.secondary!.id); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${strategyRec.secondary.name} stratejisini dene`}
                   style={{
                     backgroundColor: colors.card,
-                    borderRadius: RADIUS.xl,
+                    borderRadius: RADIUS.md,
                     padding: SPACING.md,
                     borderWidth: 0.5, borderColor: colors.border,
                   }}
@@ -348,7 +370,7 @@ export default function ProgressScreen() {
 
       {/* Maintenance Mode + D6: Mini-Cut UI */}
       {maintenanceMsg && (
-        <Card style={{ borderColor: colors.success, borderWidth: 2, borderRadius: RADIUS.xl }}>
+        <Card style={{ borderColor: colors.success, borderWidth: 2, borderRadius: RADIUS.md }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.sm }}>
             <View style={{ width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: colors.successLight, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="shield-checkmark" size={20} color={colors.success} />
@@ -360,7 +382,7 @@ export default function ProgressScreen() {
           {/* D6: Tolerance band info */}
           {maintenanceData?.toleranceBand && maintenanceData.toleranceBand.min != null && maintenanceData.toleranceBand.max != null && (
             <View style={{ marginTop: SPACING.sm, flexDirection: 'row', justifyContent: 'space-between', backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.sm }}>
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
                 Band: {maintenanceData.toleranceBand.min.toFixed(1)} - {maintenanceData.toleranceBand.max.toFixed(1)} kg
               </Text>
               <Text style={{
@@ -375,7 +397,7 @@ export default function ProgressScreen() {
 
           {/* D6: Mini-cut suggestion */}
           {miniCutOffered && (
-            <View style={{ marginTop: SPACING.md, backgroundColor: colors.errorLight, borderRadius: RADIUS.lg, padding: SPACING.md, borderWidth: 1, borderColor: colors.error }}>
+            <View style={{ marginTop: SPACING.md, backgroundColor: colors.errorLight, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: colors.error }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
                 <Ionicons name="cut" size={18} color={colors.error} />
                 <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '700' }}>Mini-Cut Önerisi</Text>
@@ -385,13 +407,16 @@ export default function ProgressScreen() {
               </Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
                 <TouchableOpacity onPress={handleMiniCut} disabled={miniCutLoading}
+                  accessibilityRole="button" accessibilityLabel="Mini-cut başlat"
+                  accessibilityState={{ disabled: miniCutLoading, busy: miniCutLoading }}
                   style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.primary, alignItems: 'center', opacity: miniCutLoading ? 0.6 : 1 }}>
                   {miniCutLoading
-                    ? <ActivityIndicator size="small" color="#fff" />
-                    : <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Mini-Cut Başlat</Text>
+                    ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
+                    : <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Mini-Cut Başlat</Text>
                   }
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setMiniCutOffered(false)}
+                <TouchableOpacity onPress={() => { haptics.tap(); setMiniCutOffered(false); }}
+                  accessibilityRole="button" accessibilityLabel="Mini-cut önerisini şimdilik kapat"
                   style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>
                   <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Şimdilik Değil</Text>
                 </TouchableOpacity>
@@ -405,17 +430,17 @@ export default function ProgressScreen() {
       {engagement && (
         <Card title="Etkileşim">
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm }}>
-            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
+            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
               <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.avgDailyMeals}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Öğün/Gün</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 2 }}>Öğün/Gün</Text>
             </View>
-            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
+            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
               <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.avgDailyMessages}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Mesaj/Gün</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 2 }}>Mesaj/Gün</Text>
             </View>
-            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center' }}>
+            <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
               <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.featureUsage.daily_tracking ?? 0}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 2 }}>Aktif Gün</Text>
+              <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 2 }}>Aktif Gün</Text>
             </View>
           </View>
         </Card>
@@ -436,8 +461,10 @@ export default function ProgressScreen() {
 function ReportLink({ label, icon, onPress, colors, last }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; colors: any; last?: boolean }) {
   return (
     <TouchableOpacity
-      onPress={onPress}
-      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm + 2, borderBottomWidth: last ? 0 : 0.5, borderBottomColor: colors.border }}
+      onPress={() => { haptics.tap(); onPress(); }}
+      accessibilityRole="button"
+      accessibilityLabel={`${label} raporunu aç`}
+      style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingVertical: SPACING.sm + 2, borderBottomWidth: last ? 0 : 0.5, borderBottomColor: colors.border }}
     >
       <Ionicons name={icon} size={20} color={colors.primary} style={{ marginRight: SPACING.sm }} />
       <Text style={{ flex: 1, color: colors.text, fontSize: FONT.md }}>{label}</Text>
@@ -452,7 +479,7 @@ function SummaryBox({ icon, iconColor, value, label, delta }: { icon: keyof type
   return (
     <View style={{
       backgroundColor: isDark ? colors.card : tint + '08',
-      borderRadius: RADIUS.xl,
+      borderRadius: RADIUS.md,
       padding: SPACING.sm + 2,
       alignItems: 'center',
       flex: 1,
@@ -461,7 +488,7 @@ function SummaryBox({ icon, iconColor, value, label, delta }: { icon: keyof type
       borderWidth: 0.5, borderColor: colors.border,
     }}>
       <View style={{
-        width: 36, height: 36, borderRadius: 10,
+        width: 36, height: 36, borderRadius: RADIUS.sm,
         backgroundColor: tint + '20',
         alignItems: 'center', justifyContent: 'center',
         marginBottom: SPACING.xs,
@@ -469,7 +496,7 @@ function SummaryBox({ icon, iconColor, value, label, delta }: { icon: keyof type
         <Ionicons name={icon} size={18} color={tint} />
       </View>
       <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.text }}>{value}</Text>
-      <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 1 }}>{label}</Text>
+      <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 1 }}>{label}</Text>
       {delta != null && <Text style={{ fontSize: FONT.xs, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.error }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1)}</Text>}
     </View>
   );

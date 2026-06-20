@@ -55,18 +55,18 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
     outputRange: [circumference, 0],
   });
 
-  // Color scale: < 40 red, 40-70 amber, > 70 green.
-  const ringColor = pct < 40 ? '#EF4444' : pct < 70 ? '#F59E0B' : '#22C55E';
+  // Color scale: < 40 red, 40-70 amber, > 70 green — mapped to theme tokens.
+  const ringColor = pct < 40 ? colors.error : pct < 70 ? colors.warning : colors.primary;
 
   const hintLine = useMemo(() => {
-    if (!result) return 'Profil yukleniyor…';
+    if (!result) return 'Profil yükleniyor…';
     if (result.missingRequired.length > 0) {
       return `${result.missingRequired.length} temel bilgi eksik`;
     }
     if (result.lowestCategory) {
       return `${CATEGORY_LABELS[result.lowestCategory as ProfileCategory]} tamamla`;
     }
-    return 'Profilin tamam — Kochko seni tam tanıyor';
+    return 'Profilin tamam — Koçko seni tam tanıyor';
   }, [result]);
 
   return (
@@ -116,7 +116,7 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
           <Text style={{ color: colors.text, fontSize: FONT.xxl, fontWeight: '800' }}>
             {pct}%
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 9, fontWeight: '600', letterSpacing: 1 }}>
+          <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600', letterSpacing: 1 }}>
             PROFIL
           </Text>
         </View>
@@ -127,7 +127,7 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
         <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>
           {pct === 100 ? 'Profilin hazır' : 'Profilini tamamla'}
         </Text>
-        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
           {hintLine}
         </Text>
         {pct < 100 ? (
@@ -144,8 +144,8 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
               paddingVertical: 3,
             }}
           >
-            <Ionicons name="arrow-forward-circle" size={11} color={ringColor} />
-            <Text style={{ color: ringColor, fontSize: 10, fontWeight: '700' }}>
+            <Ionicons name="arrow-forward-circle" size={13} color={ringColor} />
+            <Text style={{ color: ringColor, fontSize: FONT.xs, fontWeight: '700' }}>
               Görevlere git
             </Text>
           </View>

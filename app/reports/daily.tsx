@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -8,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { ComplianceScore } from '@/components/reports/ComplianceScore';
 import { DeviationTag } from '@/components/reports/DeviationTag';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 interface DailyReport {
   compliance_score: number;
@@ -39,14 +41,25 @@ export default function DailyReportScreen() {
   const user = useAuthStore(s => s.user);
   const [report, setReport] = useState<DailyReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [generating, setGenerating] = useState(false);
   const today = new Date().toISOString().split('T')[0];
 
-  useEffect(() => {
+  const loadReport = useCallback(async () => {
     if (!user?.id) return;
-    supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single()
-      .then(({ data }) => { if (data) setReport(data as DailyReport); setLoading(false); });
+    setLoading(true);
+    setError(false);
+    try {
+      const { data } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single();
+      if (data) setReport(data as DailyReport);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id, today]);
+
+  useEffect(() => { loadReport(); }, [loadReport]);
 
   const handleGenerate = async () => {
     if (!user?.id) return;
@@ -54,27 +67,53 @@ export default function DailyReportScreen() {
     // The ai-report response omits the computed actuals (calorie_actual, etc. — they
     // are only written to the row). Re-read the persisted row so the UI shows real
     // numbers instead of "undefined".
-    await supabase.functions.invoke('ai-report', { body: { report_type: 'daily', date: today, force: true } });
-    const { data } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single();
-    if (data) setReport(data as DailyReport);
-    setGenerating(false);
+    try {
+      const { error: invokeError } = await supabase.functions.invoke('ai-report', { body: { report_type: 'daily', date: today, force: true } });
+      if (invokeError) throw invokeError;
+      const { data } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single();
+      if (data) {
+        setReport(data as DailyReport);
+        haptics.success();
+      } else {
+        // Invoke succeeded but no row came back — don't leave the user on the empty
+        // state thinking nothing happened.
+        haptics.error();
+        Alert.alert('Rapor hazır değil', 'Koç bugün için yeterli veri bulamadı. Gün ilerledikçe tekrar dene.');
+      }
+    } catch {
+      haptics.error();
+      Alert.alert('Rapor oluşturulamadı', 'Koç şu an yanıt veremiyor, birazdan tekrar dene.');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+
+  if (error) return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
+      <Ionicons name="cloud-offline-outline" size={48} color={COLORS.textMuted} />
+      <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>Rapor yüklenemedi</Text>
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+      <Button title="Tekrar dene" onPress={loadReport} size="lg" />
+    </View>
+  );
 
   const scoreColor = (report?.compliance_score ?? 0) >= 70 ? COLORS.success : (report?.compliance_score ?? 0) >= 40 ? COLORS.warning : COLORS.error;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Gün Sonu Raporu</Text>
       <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
         {new Date(today).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
       </Text>
 
       {!report ? (
         <Card>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
           <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
+          {generating && (
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm, textAlign: 'center' }}>Koç günü değerlendiriyor, bu birkaç saniye sürebilir…</Text>
+          )}
         </Card>
       ) : (
         <>
@@ -94,9 +133,9 @@ export default function DailyReportScreen() {
           {/* Macros */}
           <Card title="Makro Dağılımı">
             <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-              <MacroCircle label="Protein" value={report.protein_actual} unit="g" color={COLORS.primary} />
-              <MacroCircle label="Karb" value={report.carbs_actual} unit="g" color={COLORS.success} />
-              <MacroCircle label="Yağ" value={report.fat_actual} unit="g" color={COLORS.warning} />
+              <MacroCircle label="Protein" value={report.protein_actual} unit="g" color={COLORS.protein} />
+              <MacroCircle label="Karb" value={report.carbs_actual} unit="g" color={COLORS.carbs} />
+              <MacroCircle label="Yağ" value={report.fat_actual} unit="g" color={COLORS.fat} />
               {report.alcohol_calories > 0 && <MacroCircle label="Alkol" value={report.alcohol_calories} unit="kcal" color={COLORS.error} />}
             </View>
           </Card>
@@ -140,8 +179,12 @@ export default function DailyReportScreen() {
 
 function CheckItem({ label, met, detail }: { label: string; met: boolean; detail?: string }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, gap: SPACING.sm }}>
-      <Text style={{ color: met ? COLORS.success : COLORS.error, fontSize: FONT.xl, fontWeight: '800', width: 24 }}>{met ? '+' : '-'}</Text>
+    <View
+      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, gap: SPACING.sm }}
+      accessibilityRole="text"
+      accessibilityLabel={`${label}: ${met ? 'hedef tutturuldu' : 'hedef tutturulmadı'}${detail ? `, ${detail}` : ''}`}
+    >
+      <Ionicons name={met ? 'checkmark-circle' : 'close-circle'} size={24} color={met ? COLORS.success : COLORS.error} />
       <Text style={{ color: COLORS.text, fontSize: FONT.md, flex: 1 }}>{label}</Text>
       {detail && <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{detail}</Text>}
     </View>
@@ -150,11 +193,12 @@ function CheckItem({ label, met, detail }: { label: string; met: boolean; detail
 
 function MacroCircle({ label, value, unit, color }: { label: string; value: number; unit: string; color: string }) {
   return (
-    <View style={{ alignItems: 'center' }}>
+    <View style={{ alignItems: 'center' }} accessibilityRole="text" accessibilityLabel={`${label}: ${value} ${unit}`}>
       <View style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 3, borderColor: color, justifyContent: 'center', alignItems: 'center' }}>
         <Text style={{ color, fontSize: FONT.md, fontWeight: '700' }}>{value}</Text>
       </View>
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>{label}</Text>
+      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{unit}</Text>
     </View>
   );
 }

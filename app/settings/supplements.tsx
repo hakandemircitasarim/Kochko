@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTodaySupplements, logSupplement, type SupplementLog } from '@/services/supplements.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 const QUICK_SUPPS = [
   { name: 'Protein Tozu', amount: '1 olcu' },
@@ -28,27 +29,32 @@ export default function SupplementsScreen() {
 
   const handleQuickAdd = async (name: string, amount: string) => {
     const { error } = await logSupplement(name, amount);
-    if (error) { Alert.alert('Kaydedilemedi', error); return; }
+    if (error) { haptics.error(); Alert.alert('Kaydedilemedi', error); return; }
+    haptics.success();
     getTodaySupplements().then(setLogs);
   };
 
   const handleCustomAdd = async () => {
     if (!customName.trim()) return;
     const { error } = await logSupplement(customName.trim(), customAmount.trim() || '1');
-    if (error) { Alert.alert('Kaydedilemedi', error); return; }
+    if (error) { haptics.error(); Alert.alert('Kaydedilemedi', error); return; }
+    haptics.success();
     setCustomName(''); setCustomAmount('');
     getTodaySupplements().then(setLogs);
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Supplement Takibi</Text>
 
       {/* Quick Add */}
-      <Card title="Hizli Ekle">
+      <Card title="Hızlı Ekle">
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
           {QUICK_SUPPS.map((s, i) => (
-            <TouchableOpacity key={i} onPress={() => handleQuickAdd(s.name, s.amount)}
+            <TouchableOpacity key={i} onPress={() => { haptics.tap(); handleQuickAdd(s.name, s.amount); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${s.name} ekle`}
               style={{ paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 8, backgroundColor: COLORS.surfaceLight }}>
               <Text style={{ color: COLORS.text, fontSize: FONT.xs }}>{s.name}</Text>
             </TouchableOpacity>
@@ -57,18 +63,18 @@ export default function SupplementsScreen() {
       </Card>
 
       {/* Custom */}
-      <Card title="Ozel Ekle">
+      <Card title="Özel Ekle">
         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-          <View style={{ flex: 2 }}><Input placeholder="Supplement adi" value={customName} onChangeText={setCustomName} /></View>
-          <View style={{ flex: 1 }}><Input placeholder="Miktar" value={customAmount} onChangeText={setCustomAmount} /></View>
+          <View style={{ flex: 2 }}><Input placeholder="Supplement adı" value={customName} onChangeText={setCustomName} returnKeyType="next" /></View>
+          <View style={{ flex: 1 }}><Input placeholder="Miktar" value={customAmount} onChangeText={setCustomAmount} returnKeyType="done" onSubmitEditing={handleCustomAdd} /></View>
         </View>
-        <Button title="Ekle" size="sm" onPress={handleCustomAdd} />
+        <Button title="Ekle" size="md" onPress={handleCustomAdd} />
       </Card>
 
       {/* Today's Logs */}
-      <Card title={`Bugunun Kayitlari (${logs.length})`}>
+      <Card title={`Bugünün Kayıtları (${logs.length})`}>
         {logs.length === 0 ? (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Bugun supplement kaydi yok.</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Bugün supplement kaydı yok.</Text>
         ) : (
           logs.map(l => (
             <View key={l.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
@@ -82,5 +88,6 @@ export default function SupplementsScreen() {
         )}
       </Card>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

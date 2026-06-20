@@ -3,12 +3,13 @@
  * CTA is disabled when prerequisites are missing; each missing field becomes
  * a clickable card routing to the correct onboarding task chat.
  */
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 import { createSession } from '@/services/chat.service';
 import type { MissingField } from '@/lib/plan-readiness';
 
@@ -34,7 +35,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
     }
   };
 
-  const accent = planType === 'diet' ? '#22C55E' : '#6366F1';
+  const accent = planType === 'diet' ? colors.primary : colors.purple;
 
   return (
     <ScrollView contentContainerStyle={{ padding: SPACING.lg, gap: SPACING.md }}>
@@ -92,7 +93,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
           }}
         >
           {planType === 'diet'
-            ? 'Profiline bakarak haftalık bir menu hazırlayacağım. İstediğin zaman değiştirebilirsin.'
+            ? 'Profiline bakarak haftalık bir menü hazırlayacağım. İstediğin zaman değiştirebilirsin.'
             : 'Seviyene ve ekipmanına göre haftalık bir program hazırlayacağım.'}
         </Text>
       </View>
@@ -104,14 +105,14 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
             backgroundColor: colors.card,
             borderRadius: RADIUS.lg,
             borderWidth: 1,
-            borderColor: '#F59E0B44',
+            borderColor: colors.warning + '44',
             padding: SPACING.md,
             marginTop: SPACING.md,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="alert-circle-outline" size={16} color="#F59E0B" />
-            <Text style={{ color: '#F59E0B', fontSize: FONT.sm, fontWeight: '700' }}>
+            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+            <Text style={{ color: colors.warning, fontSize: FONT.sm, fontWeight: '700' }}>
               Plan için eksik bilgiler
             </Text>
           </View>
@@ -139,7 +140,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
                   <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>
                     {f.field}
                   </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 10 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                     {f.taskTitle} kartından tamamla
                   </Text>
                 </View>
@@ -165,15 +166,20 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
           alignItems: 'center',
         }}
       >
-        <Text
-          style={{
-            color: ready && !creating ? '#fff' : colors.textMuted,
-            fontSize: FONT.md,
-            fontWeight: '800',
-          }}
-        >
-          {creating ? 'Hazırlanıyor...' : ready ? 'Plan oluştur' : 'Önce bilgileri tamamla'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+          {creating ? (
+            <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
+          ) : null}
+          <Text
+            style={{
+              color: ready && !creating ? getContrastColor(colors.primary) : colors.textMuted,
+              fontSize: FONT.md,
+              fontWeight: '800',
+            }}
+          >
+            {creating ? 'Hazırlanıyor...' : ready ? 'Plan oluştur' : 'Önce bilgileri tamamla'}
+          </Text>
+        </View>
       </TouchableOpacity>
 
       {/* Weak spots — optional */}
@@ -188,7 +194,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
             marginTop: SPACING.sm,
           }}
         >
-          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
             PLAN DAHA İYİ OLABİLİR
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>
@@ -212,7 +218,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
                 }}
               >
                 <Ionicons name="add-circle-outline" size={12} color={colors.primary} />
-                <Text style={{ color: colors.text, fontSize: 10, fontWeight: '600' }}>
+                <Text style={{ color: colors.text, fontSize: FONT.xs, fontWeight: '600' }}>
                   {f.field}
                 </Text>
               </TouchableOpacity>

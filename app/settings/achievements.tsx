@@ -6,6 +6,7 @@ import { shareMilestone } from '@/services/sharing.service';
 import { shareMilestoneCard, type MilestoneCardData } from '@/services/share-card.service';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 const TYPE_ICONS: Record<string, string> = {
   first_kg: '*', five_kg: '**', half_goal: '***', goal_reached: '!!!!',
@@ -42,7 +43,15 @@ export default function AchievementsScreen() {
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Başarımlar</Text>
 
       {items.length === 0 ? (
-        <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henüz başarım yok. Kayıt girmeye devam et!</Text></Card>
+        <Card>
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '800' }}>★</Text>
+            </View>
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz başarımın yok</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Kilo, antrenman ve seri kayıtların biriktikçe burada rozetlerin görünecek. Kayıt girmeye devam et!</Text>
+          </View>
+        </Card>
       ) : (
         items.map(a => (
           <View key={a.id} style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
@@ -58,7 +67,10 @@ export default function AchievementsScreen() {
                 </Text>
                 {/* D17: Share button */}
                 <TouchableOpacity
-                  onPress={async () => { const ok = await shareMilestoneCard(achievementToCard(a)); if (!ok) shareMilestone(a.title, a.description ?? ''); }}
+                  onPress={async () => { haptics.tap(); const ok = await shareMilestoneCard(achievementToCard(a)); if (!ok) shareMilestone(a.title, a.description ?? ''); }}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${a.title} başarımını paylaş`}
                   style={{
                     paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: 8,
                     backgroundColor: COLORS.primary + '15', borderWidth: 1, borderColor: COLORS.primary + '40',

@@ -4,6 +4,7 @@ import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 export default function Index() {
   const { session, initialized } = useAuthStore();
@@ -32,7 +33,11 @@ export default function Index() {
   if (!initialized) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator
+          size="large"
+          color={COLORS.primary}
+          accessibilityLabel="Yükleniyor"
+        />
       </View>
     );
   }
@@ -55,16 +60,22 @@ export default function Index() {
           </Text>
           <TouchableOpacity
             onPress={() => { if (session?.user?.id) fetchProfile(session.user.id); }}
-            style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl }}
+            accessibilityRole="button"
+            accessibilityLabel="Tekrar dene"
+            style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
           >
-            <Text style={{ color: '#fff', fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
+            <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
           </TouchableOpacity>
         </View>
       );
     }
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator
+          size="large"
+          color={COLORS.primary}
+          accessibilityLabel="Profilin yükleniyor"
+        />
       </View>
     );
   }

@@ -60,10 +60,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
       <View style={{ flex: 1, backgroundColor: '#0D0D12' }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>
-            Bir seyler ters gitti
+            Bir şeyler ters gitti
           </Text>
           <Text style={{ color: '#888', fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
-            Beklenmeyen bir hata olustu. Tekrar deneyebilir ya da hesaptan cikip yeniden girebilirsin.
+            Beklenmeyen bir hata oluştu. Tekrar deneyebilir ya da hesaptan çıkıp yeniden girebilirsin.
           </Text>
           <TouchableOpacity
             onPress={this.handleRetry}
@@ -77,7 +77,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             style={{ marginTop: 12, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#333', minWidth: 200, alignItems: 'center' }}
             accessibilityRole="button"
           >
-            <Text style={{ color: '#bbb', fontWeight: '500' }}>Cikis Yap</Text>
+            <Text style={{ color: '#bbb', fontWeight: '500' }}>Çıkış Yap</Text>
           </TouchableOpacity>
         </View>
         {devDetails && (

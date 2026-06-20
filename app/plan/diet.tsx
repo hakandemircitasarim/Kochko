@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
@@ -47,6 +48,7 @@ import { PlanActiveView } from '@/components/plan/PlanActiveView';
 import { FullPlanModal } from '@/components/plan/FullPlanModal';
 import { AlternativeComparisonModal } from '@/components/plan/AlternativeComparisonModal';
 import { PlanChatComposer } from '@/components/plan/PlanChatComposer';
+import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import type { PlanData } from '@/services/plan.service';
 
 type ViewState = 'loading' | 'empty' | 'draft' | 'active';
@@ -121,7 +123,9 @@ export default function DietPlanScreen() {
     if (!sid) return;
     setChatSessionId(sid);
     setSending(true);
-    setMessages([{ id: 'trigger', role: 'user', content: '[PLAN_INIT] Profile göre haftalık diyet planını oluştur.' }]);
+    // The [PLAN_INIT] sentinel is sent to the LLM only — never mounted as a
+    // visible bubble — so the assistant's reply is the first thing the user sees.
+    setMessages([]);
     const { data, error } = await invokePlanChat({
       sessionId: sid,
       message: '[PLAN_INIT] Profile göre haftalık diyet planını oluştur.',
@@ -232,12 +236,12 @@ export default function DietPlanScreen() {
     if (error || !data?.plan_approved) {
       // Surface a specific reason when we have one — e.g. the draft now
       // contains an allergen the user added after the draft was generated.
-      let reason = error ?? 'Plan onaylanamadi. Yeni bir taslak olustur ve tekrar dene.';
+      let reason = error ?? 'Plan onaylanamadı. Yeni bir taslak oluştur ve tekrar dene.';
       const persistErr = data?.plan_persist_error;
       if (persistErr?.startsWith('allergen_violation')) {
-        reason = 'Bu plan alerjen listenle cakisiyor. Kocuna tekrar yazip plani yenileyelim.';
+        reason = 'Bu plan alerjen listenle çakışıyor. Koçuna tekrar yazıp planı yenileyelim.';
       } else if (persistErr?.includes('plan_type mismatch')) {
-        reason = 'Plan turu uyusmadi. Koc ekranindan tekrar dene.';
+        reason = 'Plan türü uyuşmadı. Koç ekranından tekrar dene.';
       } else if (persistErr) {
         reason = `Plan kaydedilemedi: ${persistErr}`;
       }
@@ -288,7 +292,15 @@ export default function DietPlanScreen() {
     }
     const sid = await createSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
     if (sid) setChatSessionId(sid);
-    setMessages([]);
+    // Seed an assistant greeting so the revision chat opens with a clear prompt
+    // instead of an empty list that misleadingly reads "Plan hazırlanıyor...".
+    setMessages([
+      {
+        id: 'greet-' + Date.now(),
+        role: 'assistant',
+        content: 'Mevcut planında neyi değiştirelim? İstediğin öğünü ya da günü yaz, birlikte güncelleyelim.',
+      },
+    ]);
     await load();
   };
 
@@ -355,7 +367,9 @@ export default function DietPlanScreen() {
             plan={planData}
             planType="diet"
             onPress={() => setShowFullModal(true)}
-            updatedLabel={fullyViewed ? 'tamam' : 'yeni versiyon'}
+            // Reserve the label for a "new, needs review" cue; once read we drop
+            // it so the version line reads cleanly (no read-state/recency mix-up).
+            updatedLabel={fullyViewed ? undefined : 'yeni · incele'}
           />
         </View>
 
@@ -369,9 +383,18 @@ export default function DietPlanScreen() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) => <DraftChatBubble msg={item} />}
           ListEmptyComponent={
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.lg }}>
-              Plan hazırlanıyor...
-            </Text>
+            sending ? null : (
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.lg }}>
+                Değiştirmek istediğin şeyi yaz, birlikte düzenleyelim.
+              </Text>
+            )
+          }
+          ListFooterComponent={
+            sending ? (
+              <View style={{ paddingTop: SPACING.xs }}>
+                <TypingIndicator label="Koç düşünüyor" />
+              </View>
+            ) : null
           }
         />
 
@@ -383,7 +406,7 @@ export default function DietPlanScreen() {
           onRegenerate={handleRegenerate}
           onApprove={handleApprove}
           canApprove={fullyViewed}
-          approveHint={fullyViewed ? undefined : 'Önce tüm haftayı gözden geçir'}
+          approveHint={fullyViewed ? undefined : 'Plan güncellendi — yeni haftayı gözden geçir, sonra onayla'}
           sending={sending}
         />
 
@@ -422,17 +445,19 @@ export default function DietPlanScreen() {
 }
 
 function DraftChatBubble({ msg }: { msg: ChatMsg }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const isUser = msg.role === 'user';
   const hiddenTrigger = msg.content.startsWith('[PLAN_INIT]') || msg.content.startsWith('[ALT]');
   if (isUser && hiddenTrigger) return null;
+
+  const userFg = getContrastColor(colors.primary);
 
   return (
     <View
       style={{
         maxWidth: '86%',
         alignSelf: isUser ? 'flex-end' : 'flex-start',
-        backgroundColor: isUser ? '#1D9E75' : colors.card,
+        backgroundColor: isUser ? colors.primary : colors.card,
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
         borderBottomRightRadius: isUser ? 4 : 16,
@@ -441,10 +466,9 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
         paddingVertical: SPACING.md,
         borderWidth: isUser ? 0 : 0.5,
         borderColor: colors.border,
-        ...(isDark ? {} : { shadowColor: '#000', shadowOpacity: isUser ? 0.10 : 0.03, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 0 }),
       }}
     >
-      <Text selectable style={{ color: isUser ? '#fff' : colors.text, fontSize: 14, lineHeight: 20 }}>
+      <Text selectable style={{ color: isUser ? userFg : colors.text, fontSize: 14, lineHeight: 20 }}>
         {msg.content}
       </Text>
       {msg.reasoning ? (
@@ -453,13 +477,13 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
             marginTop: SPACING.sm,
             paddingTop: SPACING.sm,
             borderTopWidth: 0.5,
-            borderTopColor: isUser ? 'rgba(255,255,255,0.3)' : colors.divider,
+            borderTopColor: isUser ? (userFg === 'black' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.3)') : colors.divider,
           }}
         >
           <Text
             style={{
-              color: isUser ? 'rgba(255,255,255,0.75)' : colors.textMuted,
-              fontSize: 10,
+              color: isUser ? (userFg === 'black' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.75)') : colors.textMuted,
+              fontSize: 11,
               fontWeight: '700',
               letterSpacing: 1,
             }}
@@ -468,7 +492,7 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
           </Text>
           <Text
             style={{
-              color: isUser ? 'rgba(255,255,255,0.85)' : colors.textSecondary,
+              color: isUser ? (userFg === 'black' ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.85)') : colors.textSecondary,
               fontSize: 12,
               marginTop: 3,
               lineHeight: 17,

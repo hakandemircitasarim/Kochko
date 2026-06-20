@@ -29,11 +29,12 @@ const REASON_LABELS: Record<string, string> = {
   plan_drift: 'Profil değişti',
 };
 
-const REASON_COLORS: Record<string, string> = {
-  superseded: '#22C55E',
-  user_discarded: '#94A3B8',
-  alternative_rejected: '#94A3B8',
-  plan_drift: '#F59E0B',
+// Maps an archived-reason key to a theme color token (resolved at render time).
+const REASON_COLOR_TOKENS: Record<string, keyof ReturnType<typeof useTheme>['colors']> = {
+  superseded: 'success',
+  user_discarded: 'textMuted',
+  alternative_rejected: 'textMuted',
+  plan_drift: 'warning',
 };
 
 function formatDate(iso: string): string {
@@ -124,7 +125,7 @@ export default function PlanHistoryScreen() {
       ) : rows.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xxl }}>
           <Ionicons name="archive-outline" size={48} color={colors.textMuted} />
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.md, textAlign: 'center' }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.md, textAlign: 'center' }}>
             Henüz arşivde plan yok.{'\n'}Onayladığın planlar burada birikecek.
           </Text>
         </View>
@@ -146,11 +147,11 @@ export default function PlanHistoryScreen() {
 }
 
 function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false);
 
   const reason = row.archived_reason ?? 'superseded';
-  const reasonColor = REASON_COLORS[reason] ?? colors.textMuted;
+  const reasonColor = colors[REASON_COLOR_TOKENS[reason] ?? 'textMuted'];
   const reasonLabel = REASON_LABELS[reason] ?? reason;
 
   const summary = (() => {
@@ -184,9 +185,6 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
         padding: SPACING.md,
         borderWidth: 1,
         borderColor: colors.border,
-        ...(isDark
-          ? {}
-          : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 }),
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
@@ -206,7 +204,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
             paddingVertical: 3,
           }}
         >
-          <Text style={{ color: reasonColor, fontSize: 10, fontWeight: '700' }}>
+          <Text style={{ color: reasonColor, fontSize: 11, fontWeight: '700' }}>
             {reasonLabel}
           </Text>
         </View>

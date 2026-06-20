@@ -2,20 +2,22 @@
  * All-Time Report Screen
  * Spec 8.4: Başlangıçtan bugüne toplam ilerleme.
  */
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useStreak } from '@/hooks/useStreak';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 export default function AllTimeReportScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { streak } = useStreak();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [stats, setStats] = useState<{
     startWeight: number | null;
     currentWeight: number | null;
@@ -31,8 +33,10 @@ export default function AllTimeReportScreen() {
     daysActive: 0, achievements: 0,
   });
 
-  useEffect(() => {
+  const loadStats = useCallback(() => {
     if (!user?.id) return;
+    setLoading(true);
+    setError(false);
 
     Promise.all([
       supabase.from('profiles').select('weight_kg, created_at').eq('id', user.id).single(),
@@ -81,14 +85,41 @@ export default function AllTimeReportScreen() {
         daysActive,
         achievements: achievementsRes.count ?? 0,
       });
+    }).catch(() => {
+      // Network/auth failure must not strand the user on an infinite spinner — show a
+      // recoverable error state with a retry instead (#screen-states).
+      setError(true);
+    }).finally(() => {
       setLoading(false);
     });
   }, [user?.id, streak]);
 
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
   if (loading) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
+      <ActivityIndicator size="large" color={COLORS.primary} accessibilityLabel="Rapor yükleniyor" />
     </View>;
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
+        <Text style={{ color: COLORS.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.lg }}>
+          Rapor yüklenemedi. İnternet bağlantını kontrol et.
+        </Text>
+        <TouchableOpacity
+          onPress={loadStats}
+          accessibilityRole="button"
+          accessibilityLabel="Tekrar dene"
+          style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
+        >
+          <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
+        </TouchableOpacity>
+      </View>
+    );
   }
 
   const totalWeightChange = stats.startWeight && stats.currentWeight
@@ -96,7 +127,6 @@ export default function AllTimeReportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Tüm Zamanlar</Text>
 
       {/* Total Progress */}
       {totalWeightChange !== null && (
@@ -135,7 +165,7 @@ export default function AllTimeReportScreen() {
         {stats.longestStreak >= 30 && <MilestoneRow text="30 gün streak" done />}
         {stats.longestStreak >= 100 && <MilestoneRow text="100 gün streak" done />}
         {stats.totalMeals === 0 && stats.longestStreak < 7 && (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
         )}
       </Card>
     </ScrollView>

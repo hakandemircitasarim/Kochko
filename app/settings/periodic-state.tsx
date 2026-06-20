@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 export default function PeriodicStateScreen() {
   const insets = useSafeAreaInsets();
@@ -62,8 +64,10 @@ export default function PeriodicStateScreen() {
       const msg = ifPaused
         ? `${label} dönemi başlatıldı. IF otomatik durduruldu.`
         : `${label} dönemi başlatıldı.`;
+      haptics.success();
       Alert.alert('Aktif', msg, [{ text: 'Tamam', onPress: () => router.back() }]);
     } catch (err) {
+      haptics.error();
       Alert.alert('Hata', (err as Error).message);
     } finally {
       setLoading(false);
@@ -72,21 +76,28 @@ export default function PeriodicStateScreen() {
 
   const handleClear = async () => {
     if (!user?.id) return;
-    const { previousState } = await clearPeriodicState(user.id);
-    await fetchProfile(user.id);
-    setSelected(null);
-    setEndDate('');
-    const label = previousState ? PERIODIC_STATE_CONFIG[previousState as PeriodicState]?.label_tr : '';
-    Alert.alert('Temizlendi', `${label || 'Donemsel durum'} kaldirildi. Kocun normale donus plani hazirlayacak.`);
+    try {
+      const { previousState } = await clearPeriodicState(user.id);
+      await fetchProfile(user.id);
+      setSelected(null);
+      setEndDate('');
+      const label = previousState ? PERIODIC_STATE_CONFIG[previousState as PeriodicState]?.label_tr : '';
+      haptics.success();
+      Alert.alert('Temizlendi', `${label || 'Dönemsel durum'} kaldırıldı. Koçun normale dönüş planı hazırlayacak.`);
+    } catch (err) {
+      haptics.error();
+      Alert.alert('Hata', (err as Error).message);
+    }
   };
 
   const states = Object.entries(PERIODIC_STATE_CONFIG) as [PeriodicState, typeof PERIODIC_STATE_CONFIG[PeriodicState]][];
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Donemsel Durum</Text>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Dönemsel Durum</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Ozel bir donemdeysen (Ramazan, tatil, hastalik, hamilelik vs.) bunu bildir. Kocun planlarini ve tavsiyelerini buna gore ayarlar.
+        Özel bir dönemdeysen (Ramazan, tatil, hastalık, hamilelik vs.) bunu bildir. Koçun planlarını ve tavsiyelerini buna göre ayarlar.
       </Text>
 
       {/* Active state card */}
@@ -98,7 +109,7 @@ export default function PeriodicStateScreen() {
             </Text>
             {transition?.daysRemaining != null && transition.daysRemaining > 0 && (
               <View style={{ backgroundColor: COLORS.warning, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 2 }}>
-                <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '700' }}>{transition.daysRemaining} gun kaldi</Text>
+                <Text style={{ color: getContrastColor(COLORS.warning) === 'black' ? '#0D0D12' : '#fff', fontSize: FONT.xs, fontWeight: '700' }}>{transition.daysRemaining} gün kaldı</Text>
               </View>
             )}
           </View>
@@ -112,20 +123,23 @@ export default function PeriodicStateScreen() {
               {transition.transitionMessage_tr}
             </Text>
           )}
-          <Button title="Donemi Sonlandir" variant="ghost" onPress={handleClear} style={{ marginTop: SPACING.sm }} />
+          <Button title="Dönemi Sonlandır" variant="ghost" onPress={handleClear} style={{ marginTop: SPACING.sm }} />
         </Card>
       )}
 
       {/* State selection */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md }}>
         {states.map(([key, cfg]) => (
-          <TouchableOpacity key={key} onPress={() => setSelected(key)}
+          <TouchableOpacity key={key} onPress={() => { haptics.tap(); setSelected(key); }}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: selected === key }}
+            accessibilityLabel={cfg.label_tr}
             style={{
               paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md, borderRadius: 12, borderWidth: 1,
               borderColor: selected === key ? COLORS.primary : COLORS.border,
               backgroundColor: selected === key ? COLORS.primary : 'transparent',
             }}>
-            <Text style={{ color: selected === key ? '#fff' : COLORS.textSecondary, fontSize: FONT.sm }}>{cfg.label_tr}</Text>
+            <Text style={{ color: selected === key ? (getContrastColor(COLORS.primary) === 'black' ? '#0D0D12' : '#fff') : COLORS.textSecondary, fontSize: FONT.sm }}>{cfg.label_tr}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -141,25 +155,28 @@ export default function PeriodicStateScreen() {
             </Text>
           )}
           {!config.ifCompatible && (
-            <Text style={{ color: COLORS.error, fontSize: FONT.xs }}>IF ile uyumlu degil - otomatik durdurulur</Text>
+            <Text style={{ color: COLORS.error, fontSize: FONT.xs }}>IF ile uyumlu değil — otomatik durdurulur</Text>
           )}
         </Card>
       )}
 
       {/* End date input */}
       <Input
-        label="Bitis tarihi (YYYY-MM-DD)"
+        label="Bitiş tarihi"
         placeholder="2026-04-10"
+        hint="YYYY-AA-GG (örn: 2026-04-10)"
+        keyboardType="number-pad"
         value={endDate}
         onChangeText={setEndDate}
       />
       {config?.requiresEndDate && !endDate && (
         <Text style={{ color: COLORS.warning, fontSize: FONT.xs, marginTop: -SPACING.sm, marginBottom: SPACING.sm }}>
-          Bu durum icin bitis tarihi onerilir.
+          Bu durum için bitiş tarihi önerilir.
         </Text>
       )}
 
-      <Button title="Donemi Baslat" onPress={handleActivate} loading={loading} size="lg" disabled={!selected} />
+      <Button title="Dönemi Başlat" onPress={handleActivate} loading={loading} size="lg" disabled={!selected} />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

@@ -14,25 +14,27 @@ import { getAISummaryForReview, deleteAISummaryNote, resetAISummary } from '@/se
 import { logAuditEvent, logAISummaryAccess } from '@/services/audit-log.service';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { SPACING, FONT, RADIUS, CARD_SHADOW, COLORS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 type SummaryData = NonNullable<Awaited<ReturnType<typeof getAISummaryForReview>>>;
 
 const PATTERN_COLORS: Record<string, string> = {
-  night_eating: '#E91E63', weekend_binge: '#FF9800', stress_eating: '#9C27B0',
-  skipping_meals: '#FF5722', exercise_avoidance: '#607D8B', social_eating: '#2196F3',
-  alcohol_pattern: '#673AB7', late_caffeine: '#795548',
+  night_eating: COLORS.pink, weekend_binge: COLORS.warning, stress_eating: COLORS.purple,
+  skipping_meals: COLORS.coral, exercise_avoidance: COLORS.textMuted, social_eating: COLORS.protein,
+  alcohol_pattern: COLORS.purple, late_caffeine: COLORS.coral,
 };
 
 const RISK_COLORS: Record<string, string> = {
-  high: '#EF4444', medium: '#F59E0B', low: '#22C55E',
+  high: COLORS.error, medium: COLORS.warning, low: COLORS.success,
 };
 
 const HABIT_STATUS_ICON: Record<string, { icon: string; color: string }> = {
-  building: { icon: 'trending-up', color: '#3B82F6' },
-  established: { icon: 'checkmark-circle', color: '#22C55E' },
-  struggling: { icon: 'alert-circle', color: '#F59E0B' },
-  lost: { icon: 'close-circle', color: '#EF4444' },
+  building: { icon: 'trending-up', color: COLORS.protein },
+  established: { icon: 'checkmark-circle', color: COLORS.success },
+  struggling: { icon: 'alert-circle', color: COLORS.warning },
+  lost: { icon: 'close-circle', color: COLORS.error },
 };
 
 const MEAL_TIME_LABELS: Record<string, string> = {
@@ -46,6 +48,7 @@ export default function CoachMemoryScreen() {
   const { profile, fetch: fetchProfile } = useProfileStore();
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [menstrualTracking, setMenstrualTracking] = useState(false);
   const [activeGoal, setActiveGoal] = useState<{ goal_type?: string; target_weight_kg?: number; weekly_rate?: number } | null>(null);
   const [allergens, setAllergens] = useState<string[]>([]);
@@ -58,26 +61,31 @@ export default function CoachMemoryScreen() {
   const loadData = async () => {
     if (!user?.id) return;
     setLoading(true);
+    setLoadError(false);
 
-    // Fetch AI summary + profile menstrual_tracking + active goal + allergens in parallel
-    const [result, profileResult, goalResult, allergenResult] = await Promise.all([
-      getAISummaryForReview(user.id),
-      supabase.from('profiles').select('menstrual_tracking').eq('id', user.id).maybeSingle(),
-      supabase.from('goals').select('goal_type, target_weight_kg, weekly_rate').eq('user_id', user.id).eq('is_active', true).limit(1),
-      supabase.from('food_preferences').select('food_name').eq('user_id', user.id).eq('is_allergen', true),
-    ]);
+    try {
+      // Fetch AI summary + profile menstrual_tracking + active goal + allergens in parallel
+      const [result, profileResult, goalResult, allergenResult] = await Promise.all([
+        getAISummaryForReview(user.id),
+        supabase.from('profiles').select('menstrual_tracking').eq('id', user.id).maybeSingle(),
+        supabase.from('goals').select('goal_type, target_weight_kg, weekly_rate').eq('user_id', user.id).eq('is_active', true).limit(1),
+        supabase.from('food_preferences').select('food_name').eq('user_id', user.id).eq('is_allergen', true),
+      ]);
 
-    setData(result);
-    setMenstrualTracking(Boolean(profileResult.data?.menstrual_tracking));
-    setActiveGoal((goalResult.data as { goal_type?: string; target_weight_kg?: number; weekly_rate?: number }[] | null)?.[0] ?? null);
-    setAllergens(((allergenResult.data as { food_name: string }[] | null) ?? []).map(a => a.food_name));
-    // Make sure profile store is loaded too
-    if (!profile) await fetchProfile(user.id);
+      setData(result);
+      setMenstrualTracking(Boolean(profileResult.data?.menstrual_tracking));
+      setActiveGoal((goalResult.data as { goal_type?: string; target_weight_kg?: number; weekly_rate?: number }[] | null)?.[0] ?? null);
+      setAllergens(((allergenResult.data as { food_name: string }[] | null) ?? []).map(a => a.food_name));
+      // Make sure profile store is loaded too
+      if (!profile) await fetchProfile(user.id);
 
-    // KVKK audit: log that user viewed their AI summary
-    await logAISummaryAccess(user.id, 'view');
-
-    setLoading(false);
+      // KVKK audit: log that user viewed their AI summary
+      await logAISummaryAccess(user.id, 'view');
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { loadData(); }, [user?.id]);
@@ -85,15 +93,22 @@ export default function CoachMemoryScreen() {
   const handleDeleteNote = (field: string, note: string) => {
     Alert.alert(
       'Notu Sil',
-      'Bu bilgiyi Kochko\'nun hafızasından silmek istediğine emin misin?\n\nBu KVKK Madde 17 kapsamında hakkındır.',
+      'Bu bilgiyi Koçko\'nun hafızasından silmek istediğine emin misin?\n\nBu KVKK Madde 17 kapsamında hakkındır.',
       [
-        { text: 'İptal' },
+        { text: 'İptal', style: 'cancel' },
         {
           text: 'Sil', style: 'destructive',
           onPress: async () => {
             if (!user?.id) return;
-            await deleteAISummaryNote(user.id, field, note);
-            await logAuditEvent(user.id, 'ai_summary_delete', `Kullanici AI ozeti sildi: ${field}`, { field, note });
+            try {
+              await deleteAISummaryNote(user.id, field, note);
+              await logAuditEvent(user.id, 'ai_summary_delete', `Kullanici AI ozeti sildi: ${field}`, { field, note });
+              haptics.success();
+            } catch {
+              haptics.error();
+              Alert.alert('Silinemedi', 'Bilgi silinirken bir sorun oluştu. Lütfen tekrar dene.');
+              return;
+            }
             loadData();
           }
         },
@@ -104,9 +119,9 @@ export default function CoachMemoryScreen() {
   const handleClearField = (field: string, label: string) => {
     Alert.alert(
       `${label} Sil`,
-      `"${label}" bilgisini Kochko'nun hafızasından tamamen silmek istediğine emin misin?\n\nKVKK Madde 17 kapsamında hakkındır.`,
+      `"${label}" bilgisini Koçko'nun hafızasından tamamen silmek istediğine emin misin?\n\nKVKK Madde 17 kapsamında hakkındır.`,
       [
-        { text: 'İptal' },
+        { text: 'İptal', style: 'cancel' },
         {
           text: 'Sil', style: 'destructive',
           onPress: async () => {
@@ -119,10 +134,12 @@ export default function CoachMemoryScreen() {
             const { data: upd, error } = await supabase.from('ai_summary')
               .update({ [field]: emptyValue } as never).eq('user_id', user.id).select('user_id');
             if (error || !upd || upd.length === 0) {
+              haptics.error();
               Alert.alert('Silinemedi', 'Bilgi silinirken bir sorun oluştu. Lütfen tekrar dene.');
               return;
             }
             await logAuditEvent(user.id, 'ai_summary_delete', `Kullanici AI ozeti alani temizledi: ${field}`, { field });
+            haptics.success();
             loadData();
           }
         },
@@ -135,7 +152,7 @@ export default function CoachMemoryScreen() {
       'Tüm Hafızayı Sıfırla',
       'Koçun senin hakkında öğrendiği TÜM bilgiler silinecek. Sıfırdan öğrenmeye başlayacak.\n\nBu işlem geri alınamaz.',
       [
-        { text: 'İptal' },
+        { text: 'İptal', style: 'cancel' },
         {
           text: 'Hepsini Sıfırla', style: 'destructive',
           onPress: async () => {
@@ -143,10 +160,12 @@ export default function CoachMemoryScreen() {
             try {
               await resetAISummary(user.id);
             } catch {
+              haptics.error();
               Alert.alert('Sıfırlanamadı', 'Hafıza sıfırlanırken bir sorun oluştu. Lütfen tekrar dene.');
               return;
             }
             await logAuditEvent(user.id, 'ai_summary_delete', 'Kullanici tum AI hafizasini sifirladi');
+            haptics.success();
             loadData();
           }
         },
@@ -157,8 +176,31 @@ export default function CoachMemoryScreen() {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <Stack.Screen options={{ title: 'Kochkonun Senin Hakkinda Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
+        <Stack.Screen options={{ title: 'Koçkonun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
         <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: SPACING.xl }}>
+        <Stack.Screen options={{ title: 'Koçkonun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
+        <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
+        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginTop: SPACING.md, textAlign: 'center' }}>
+          Yüklenemedi
+        </Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center', lineHeight: 20 }}>
+          Bilgilerin yüklenirken bir sorun oluştu. Bağlantını kontrol edip tekrar dene.
+        </Text>
+        <TouchableOpacity
+          onPress={loadData}
+          accessibilityRole="button"
+          accessibilityLabel="Tekrar dene"
+          style={{ marginTop: SPACING.lg, backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm + 2 }}
+        >
+          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>Tekrar dene</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -217,16 +259,16 @@ export default function CoachMemoryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Stack.Screen options={{ title: 'Kochkonun Senin Hakkinda Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
+      <Stack.Screen options={{ title: 'Koçkonun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
 
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
-        <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: '#7F77DD20', alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="eye" size={24} color="#7F77DD" />
+        <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: colors.purple + '20', alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="eye" size={24} color={colors.purple} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>Kochko Senin Hakkinda Ne Biliyor</Text>
-          <Text style={{ fontSize: FONT.xs, color: colors.textMuted }}>Her konusmadan ogrenilenler. Uzun basarak silebilirsin.</Text>
+          <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>Koçko Senin Hakkında Ne Biliyor</Text>
+          <Text style={{ fontSize: FONT.xs, color: colors.textSecondary }}>Her konuşmadan öğrenilenler. Uzun basarak silebilirsin.</Text>
         </View>
       </View>
 
@@ -236,9 +278,9 @@ export default function CoachMemoryScreen() {
           <View style={{ width: 64, height: 64, borderRadius: 20, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
             <Ionicons name="chatbubble-ellipses-outline" size={32} color={colors.textMuted} />
           </View>
-          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.xs }}>Henuz bir sey ogrenilmedi</Text>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', lineHeight: 20 }}>
-            Kocunla konustukca, seni tanimaya baslayacak. Aliskanliklarini, tercihlerini ve hedeflerini ogrenecek.
+          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginBottom: SPACING.xs }}>Henüz bir şey öğrenilmedi</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', lineHeight: 20 }}>
+            Koçunla konuştukça, seni tanımaya başlayacak. Alışkanlıklarını, tercihlerini ve hedeflerini öğrenecek.
           </Text>
         </View>
       )}
@@ -249,9 +291,9 @@ export default function CoachMemoryScreen() {
           ═══════════════════════════════════════════ */}
       {profileRows.length > 0 && (
         <>
-          <CategoryTitle title="Profil Bilgileri" icon="person" color="#1D9E75" colors={colors} />
+          <CategoryTitle title="Profil Bilgileri" icon="person" color={colors.success} colors={colors} />
           <View style={cardStyle}>
-            <SectionHeader icon="id-card" color="#1D9E75" title="Koç Senin Hakkında Bunları Biliyor" colors={colors} badge={`${profileRows.length}`} />
+            <SectionHeader icon="id-card" color={colors.success} title="Koç Senin Hakkında Bunları Biliyor" colors={colors} badge={`${profileRows.length}`} />
             <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
               Profilinde kayıtlı bilgiler — plan ve önerilerde kullanılıyor
             </Text>
@@ -282,13 +324,17 @@ export default function CoachMemoryScreen() {
               ═══════════════════════════════════════════ */}
           {(data.userPersona || data.learnedTonePreference || data.nutritionLiteracy) && (
             <>
-              <CategoryTitle title="Kochko Seni Nasil Taniyor" icon="person-circle" color="#7F77DD" colors={colors} />
+              <CategoryTitle title="Koçko Seni Nasıl Tanıyor" icon="person-circle" color={colors.purple} colors={colors} />
 
               {/* General Summary */}
               {data.general ? (
                 <View style={cardStyle}>
-                  <SectionHeader icon="document-text" color="#1D9E75" title="Genel Ozet" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleDeleteNote('general_summary', data.general)}>
+                  <SectionHeader icon="document-text" color={colors.success} title="Genel Özet" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleDeleteNote('general_summary', data.general)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Genel Özet — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.general}</Text>
                   </TouchableOpacity>
                 </View>
@@ -297,16 +343,18 @@ export default function CoachMemoryScreen() {
               {/* User Persona */}
               {data.userPersona && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="sparkles" color="#8B5CF6" title="Kisilik Tipi" colors={colors} />
+                  <SectionHeader icon="sparkles" color={colors.purple} title="Kişilik Tipi" colors={colors} deletable />
                   <TouchableOpacity
-                    onLongPress={() => handleClearField('user_persona', 'Kisilik Tipi')}
+                    onLongPress={() => handleClearField('user_persona', 'Kişilik Tipi')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Kişilik Tipi — silmek için uzun bas"
                     style={{ alignSelf: 'flex-start' }}
                   >
                     <View style={{
-                      backgroundColor: '#8B5CF620', borderRadius: RADIUS.full,
+                      backgroundColor: colors.purple + '20', borderRadius: RADIUS.full,
                       paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs + 2,
                     }}>
-                      <Text style={{ color: '#8B5CF6', fontSize: FONT.sm, fontWeight: '700' }}>{data.userPersona}</Text>
+                      <Text style={{ color: colors.purple, fontSize: FONT.sm, fontWeight: '700' }}>{data.userPersona}</Text>
                     </View>
                   </TouchableOpacity>
                 </View>
@@ -315,8 +363,12 @@ export default function CoachMemoryScreen() {
               {/* Learned Tone Preference */}
               {data.learnedTonePreference && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="chatbubbles" color="#06B6D4" title="Iletisim Tercihi" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('learned_tone_preference', 'Iletisim Tercihi')}>
+                  <SectionHeader icon="chatbubbles" color={colors.protein} title="İletişim Tercihi" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('learned_tone_preference', 'İletişim Tercihi')}
+                    accessibilityRole="button"
+                    accessibilityLabel="İletişim Tercihi — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.learnedTonePreference}</Text>
                   </TouchableOpacity>
                 </View>
@@ -325,13 +377,13 @@ export default function CoachMemoryScreen() {
               {/* Nutrition Literacy */}
               {data.nutritionLiteracy && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="school" color="#2F80ED" title="Beslenme Bilgi Duzeyi" colors={colors} />
+                  <SectionHeader icon="school" color={colors.protein} title="Beslenme Bilgi Düzeyi" colors={colors} />
                   <View style={{
                     backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md,
                     paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, alignSelf: 'flex-start',
                   }}>
                     <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>
-                      {data.nutritionLiteracy === 'high' ? 'Yuksek' : data.nutritionLiteracy === 'medium' ? 'Orta' : 'Dusuk'}
+                      {data.nutritionLiteracy === 'high' ? 'Yüksek' : data.nutritionLiteracy === 'medium' ? 'Orta' : 'Düşük'}
                     </Text>
                   </View>
                 </View>
@@ -344,14 +396,16 @@ export default function CoachMemoryScreen() {
               ═══════════════════════════════════════════ */}
           {data.patterns.length > 0 && (
             <>
-              <CategoryTitle title="Davranis Kaliplari" icon="analytics" color="#F97316" colors={colors} />
+              <CategoryTitle title="Davranış Kalıpları" icon="analytics" color={colors.coral} colors={colors} />
 
               <View style={cardStyle}>
-                <SectionHeader icon="analytics" color="#F97316" title="Tespit Edilen Kaliplar" colors={colors} badge={`${data.patterns.length}`} />
+                <SectionHeader icon="analytics" color={colors.coral} title="Tespit Edilen Kalıplar" colors={colors} badge={`${data.patterns.length}`} deletable />
                 {data.patterns.map((p, i) => (
                   <TouchableOpacity
                     key={i}
                     onLongPress={() => handleDeleteNote('behavioral_patterns', p.description)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${p.description} — silmek için uzun bas`}
                     style={{
                       flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm,
                       paddingVertical: SPACING.sm,
@@ -362,13 +416,13 @@ export default function CoachMemoryScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{p.description}</Text>
                       {p.trigger && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>Tetikleyici: {p.trigger}</Text>}
-                      {p.intervention && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>Mudahale: {p.intervention}</Text>}
+                      {p.intervention && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>Müdahale: {p.intervention}</Text>}
                       {p.confidence != null && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
                           <View style={{ width: 40, height: 4, backgroundColor: colors.surfaceLight, borderRadius: 2, overflow: 'hidden' }}>
                             <View style={{ width: `${(p.confidence ?? 0) * 100}%` as any, height: '100%', backgroundColor: colors.primary, borderRadius: 2 }} />
                           </View>
-                          <Text style={{ fontSize: 9, color: colors.textMuted }}>%{Math.round((p.confidence ?? 0) * 100)} guven</Text>
+                          <Text style={{ fontSize: FONT.xs, color: colors.textMuted }}>%{Math.round((p.confidence ?? 0) * 100)} güven</Text>
                         </View>
                       )}
                     </View>
@@ -385,27 +439,29 @@ export default function CoachMemoryScreen() {
           {(Object.keys(data.portionCalibration).length > 0 || data.learnedMealTimes ||
             data.caffeineSleepNotes || data.alcoholPattern || data.socialEatingNotes) && (
             <>
-              <CategoryTitle title="Beslenme Hafızası" icon="nutrition" color="#22C55E" colors={colors} />
+              <CategoryTitle title="Beslenme Hafızası" icon="nutrition" color={colors.success} colors={colors} />
 
               {/* Portion Calibration */}
               {Object.keys(data.portionCalibration).length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="resize" color="#22C55E" title="Porsiyon Kalibrasyonu" colors={colors} />
+                  <SectionHeader icon="resize" color={colors.success} title="Porsiyon Kalibrasyonu" colors={colors} deletable />
                   <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
-                    Senin "1 porsiyon" dediginde ne kadar oldugunu ogrendi
+                    Senin "1 porsiyon" dediğinde ne kadar olduğunu öğrendi
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
                     {Object.entries(data.portionCalibration).map(([food, grams]) => (
                       <TouchableOpacity
                         key={food}
                         onLongPress={() => handleDeleteNote('portion_calibration', food)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${food} porsiyonu — silmek için uzun bas`}
                         style={{
                           backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md,
                           paddingHorizontal: SPACING.sm + 2, paddingVertical: SPACING.xs + 2,
                         }}
                       >
                         <Text style={{ color: colors.text, fontSize: FONT.sm }}>
-                          {food}: <Text style={{ fontWeight: '700', color: '#22C55E' }}>{String(grams)}g</Text>
+                          {food}: <Text style={{ fontWeight: '700', color: colors.success }}>{String(grams)}g</Text>
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -416,8 +472,12 @@ export default function CoachMemoryScreen() {
               {/* Learned Meal Times */}
               {data.learnedMealTimes && Object.keys(data.learnedMealTimes).length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="time" color="#10B981" title="Ogrenilen Ogun Saatleri" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('learned_meal_times', 'Ogun Saatleri')}>
+                  <SectionHeader icon="time" color={colors.success} title="Öğrenilen Öğün Saatleri" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('learned_meal_times', 'Öğün Saatleri')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Öğün Saatleri — silmek için uzun bas"
+                  >
                     <View style={{ gap: SPACING.xs }}>
                       {Object.entries(data.learnedMealTimes).map(([meal, time]) => (
                         <View key={meal} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
@@ -433,8 +493,12 @@ export default function CoachMemoryScreen() {
               {/* Caffeine-Sleep Notes */}
               {data.caffeineSleepNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="cafe" color="#795548" title="Kafein-Uyku" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('caffeine_sleep_notes', 'Kafein-Uyku')}>
+                  <SectionHeader icon="cafe" color={colors.coral} title="Kafein-Uyku" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('caffeine_sleep_notes', 'Kafein-Uyku')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Kafein-Uyku notu — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.caffeineSleepNotes}</Text>
                   </TouchableOpacity>
                 </View>
@@ -443,18 +507,22 @@ export default function CoachMemoryScreen() {
               {/* Alcohol Pattern */}
               {data.alcoholPattern && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="wine" color="#673AB7" title="Alkol Kalibi" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('alcohol_pattern', 'Alkol Kalibi')}>
+                  <SectionHeader icon="wine" color={colors.purple} title="Alkol Kalıbı" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('alcohol_pattern', 'Alkol Kalıbı')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Alkol Kalıbı — silmek için uzun bas"
+                  >
                     {typeof data.alcoholPattern === 'object' && data.alcoholPattern !== null ? (
                       <View style={{ gap: SPACING.xs }}>
                         {!!(data.alcoholPattern as Record<string, unknown>).pattern && (
                           <Text style={{ color: colors.text, fontSize: FONT.sm }}>
-                            Kalip: <Text style={{ fontWeight: '700' }}>{String((data.alcoholPattern as Record<string, unknown>).pattern)}</Text>
+                            Kalıp: <Text style={{ fontWeight: '700' }}>{String((data.alcoholPattern as Record<string, unknown>).pattern)}</Text>
                           </Text>
                         )}
                         {!!(data.alcoholPattern as Record<string, unknown>).frequency && (
                           <Text style={{ color: colors.text, fontSize: FONT.sm }}>
-                            Siklik: <Text style={{ fontWeight: '700' }}>{String((data.alcoholPattern as Record<string, unknown>).frequency)}</Text>
+                            Sıklık: <Text style={{ fontWeight: '700' }}>{String((data.alcoholPattern as Record<string, unknown>).frequency)}</Text>
                           </Text>
                         )}
                         {!!(data.alcoholPattern as Record<string, unknown>).impact && (
@@ -473,8 +541,12 @@ export default function CoachMemoryScreen() {
               {/* Social Eating Notes */}
               {data.socialEatingNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="people" color="#2196F3" title="Sosyal Yeme" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('social_eating_notes', 'Sosyal Yeme')}>
+                  <SectionHeader icon="people" color={colors.protein} title="Sosyal Yeme" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('social_eating_notes', 'Sosyal Yeme')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Sosyal Yeme notu — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.socialEatingNotes}</Text>
                   </TouchableOpacity>
                 </View>
@@ -489,13 +561,17 @@ export default function CoachMemoryScreen() {
           {(data.recoveryPattern || (menstrualTracking && data.menstrualNotes) ||
             data.microNutrientRisks.length > 0 || data.supplementNotes) && (
             <>
-              <CategoryTitle title="Saglik & Iyilesme" icon="heart" color="#EF4444" colors={colors} />
+              <CategoryTitle title="Sağlık & İyileşme" icon="heart" color={colors.error} colors={colors} />
 
               {/* Recovery Pattern */}
               {data.recoveryPattern && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="fitness" color="#F472B6" title="Toparlanma Deseni" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('recovery_pattern', 'Toparlanma Deseni')}>
+                  <SectionHeader icon="fitness" color={colors.pink} title="Toparlanma Deseni" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('recovery_pattern', 'Toparlanma Deseni')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Toparlanma Deseni — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.recoveryPattern}</Text>
                   </TouchableOpacity>
                 </View>
@@ -504,8 +580,12 @@ export default function CoachMemoryScreen() {
               {/* Menstrual Notes - only if tracking enabled */}
               {menstrualTracking && data.menstrualNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="calendar" color="#EC4899" title="Regl Notlari" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('menstrual_notes', 'Regl Notlari')}>
+                  <SectionHeader icon="calendar" color={colors.pink} title="Regl Notları" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('menstrual_notes', 'Regl Notları')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Regl Notları — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.menstrualNotes}</Text>
                   </TouchableOpacity>
                 </View>
@@ -514,14 +594,16 @@ export default function CoachMemoryScreen() {
               {/* Micro Nutrient Risks */}
               {data.microNutrientRisks.length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="warning" color="#F59E0B" title="Mikro Besin Riskleri" colors={colors} badge={`${data.microNutrientRisks.length}`} />
+                  <SectionHeader icon="warning" color={colors.warning} title="Mikro Besin Riskleri" colors={colors} badge={`${data.microNutrientRisks.length}`} deletable />
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
                     {data.microNutrientRisks.map((r, i) => (
                       <TouchableOpacity
                         key={i}
                         onLongPress={() => handleDeleteNote('micro_nutrient_risks', r.nutrient)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${r.nutrient} riski — silmek için uzun bas`}
                         style={{
-                          backgroundColor: (RISK_COLORS[r.risk_level] ?? '#6B7280') + '18',
+                          backgroundColor: (RISK_COLORS[r.risk_level] ?? colors.textMuted) + '18',
                           borderRadius: RADIUS.full,
                           paddingHorizontal: SPACING.sm + 2, paddingVertical: SPACING.xs + 2,
                           flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -529,9 +611,9 @@ export default function CoachMemoryScreen() {
                       >
                         <View style={{
                           width: 8, height: 8, borderRadius: 4,
-                          backgroundColor: RISK_COLORS[r.risk_level] ?? '#6B7280',
+                          backgroundColor: RISK_COLORS[r.risk_level] ?? colors.textMuted,
                         }} />
-                        <Text style={{ color: RISK_COLORS[r.risk_level] ?? '#6B7280', fontSize: FONT.sm, fontWeight: '600' }}>
+                        <Text style={{ color: RISK_COLORS[r.risk_level] ?? colors.textMuted, fontSize: FONT.sm, fontWeight: '600' }}>
                           {r.nutrient}
                         </Text>
                       </TouchableOpacity>
@@ -543,8 +625,12 @@ export default function CoachMemoryScreen() {
               {/* Supplement Notes */}
               {data.supplementNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="medkit" color="#14B8A6" title="Supplement Notlari" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('supplement_notes', 'Supplement Notlari')}>
+                  <SectionHeader icon="medkit" color={colors.primary} title="Supplement Notları" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('supplement_notes', 'Supplement Notları')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Supplement Notları — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.supplementNotes}</Text>
                   </TouchableOpacity>
                 </View>
@@ -558,18 +644,20 @@ export default function CoachMemoryScreen() {
               ═══════════════════════════════════════════ */}
           {(data.habitProgress.length > 0 || Object.keys(data.strengthRecords).length > 0 || data.weeklyBudgetPattern) && (
             <>
-              <CategoryTitle title="Ilerleme" icon="trending-up" color="#3B82F6" colors={colors} />
+              <CategoryTitle title="İlerleme" icon="trending-up" color={colors.protein} colors={colors} />
 
               {/* Habit Progress */}
               {data.habitProgress.length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="flame" color="#F97316" title="Aliskanlik Ilerlemesi" colors={colors} badge={`${data.habitProgress.length}`} />
+                  <SectionHeader icon="flame" color={colors.coral} title="Alışkanlık İlerlemesi" colors={colors} badge={`${data.habitProgress.length}`} deletable />
                   {data.habitProgress.map((h, i) => {
                     const statusInfo = HABIT_STATUS_ICON[h.status] ?? { icon: 'ellipse', color: colors.textMuted };
                     return (
                       <TouchableOpacity
                         key={i}
                         onLongPress={() => handleDeleteNote('habit_progress', h.habit)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${h.habit} — silmek için uzun bas`}
                         style={{
                           flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
                           paddingVertical: SPACING.sm,
@@ -581,11 +669,11 @@ export default function CoachMemoryScreen() {
                         {h.streak != null && h.streak > 0 && (
                           <View style={{
                             flexDirection: 'row', alignItems: 'center', gap: 2,
-                            backgroundColor: '#F9731618', borderRadius: RADIUS.full,
+                            backgroundColor: colors.coral + '18', borderRadius: RADIUS.full,
                             paddingHorizontal: SPACING.sm, paddingVertical: 2,
                           }}>
-                            <Ionicons name="flame" size={12} color="#F97316" />
-                            <Text style={{ color: '#F97316', fontSize: FONT.xs, fontWeight: '700' }}>{h.streak}</Text>
+                            <Ionicons name="flame" size={12} color={colors.coral} />
+                            <Text style={{ color: colors.coral, fontSize: FONT.xs, fontWeight: '700' }}>{h.streak}</Text>
                           </View>
                         )}
                       </TouchableOpacity>
@@ -597,7 +685,7 @@ export default function CoachMemoryScreen() {
               {/* Strength Records */}
               {Object.keys(data.strengthRecords).length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="barbell" color="#1D9E75" title="Guc Kayitlari" colors={colors} />
+                  <SectionHeader icon="barbell" color={colors.success} title="Güç Kayıtları" colors={colors} />
                   {Object.entries(data.strengthRecords).map(([exercise, record]) => {
                     const r = record as { last_weight?: number; last_reps?: number; '1rm'?: number };
                     return (
@@ -615,8 +703,12 @@ export default function CoachMemoryScreen() {
               {/* Weekly Budget Pattern */}
               {data.weeklyBudgetPattern && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="wallet" color="#8B5CF6" title="Haftalik Butce Kalibi" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('weekly_budget_pattern', 'Haftalik Butce Kalibi')}>
+                  <SectionHeader icon="wallet" color={colors.purple} title="Haftalık Bütçe Kalıbı" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('weekly_budget_pattern', 'Haftalık Bütçe Kalıbı')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Haftalık Bütçe Kalıbı — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.weeklyBudgetPattern}</Text>
                   </TouchableOpacity>
                 </View>
@@ -630,14 +722,14 @@ export default function CoachMemoryScreen() {
               ═══════════════════════════════════════════ */}
           {(data.featuresIntroduced.length > 0 || data.seasonalNotes || data.coachingNotes) && (
             <>
-              <CategoryTitle title="Sistem" icon="settings" color="#6B7280" colors={colors} />
+              <CategoryTitle title="Sistem" icon="settings" color={colors.textMuted} colors={colors} />
 
               {/* Features Introduced (read-only) */}
               {data.featuresIntroduced.length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="bulb" color="#FBBF24" title="Tanitilan Ozellikler" colors={colors} badge={`${data.featuresIntroduced.length}`} />
+                  <SectionHeader icon="bulb" color={colors.warning} title="Tanıtılan Özellikler" colors={colors} badge={`${data.featuresIntroduced.length}`} />
                   <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
-                    Sana daha once tanitilmis ozellikler (salt okunur)
+                    Sana daha önce tanıtılmış özellikler (salt okunur)
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
                     {data.featuresIntroduced.map((f, i) => (
@@ -658,8 +750,12 @@ export default function CoachMemoryScreen() {
               {/* Seasonal Notes */}
               {data.seasonalNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="leaf" color="#84CC16" title="Mevsimsel Notlar" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleClearField('seasonal_notes', 'Mevsimsel Notlar')}>
+                  <SectionHeader icon="leaf" color={colors.success} title="Mevsimsel Notlar" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleClearField('seasonal_notes', 'Mevsimsel Notlar')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Mevsimsel Notlar — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.seasonalNotes}</Text>
                   </TouchableOpacity>
                 </View>
@@ -668,8 +764,12 @@ export default function CoachMemoryScreen() {
               {/* Coaching Notes */}
               {data.coachingNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="journal" color="#F59E0B" title="Kocluk Notlari" colors={colors} />
-                  <TouchableOpacity onLongPress={() => handleDeleteNote('coaching_notes', data.coachingNotes)}>
+                  <SectionHeader icon="journal" color={colors.warning} title="Koçluk Notları" colors={colors} deletable />
+                  <TouchableOpacity
+                    onLongPress={() => handleDeleteNote('coaching_notes', data.coachingNotes)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Koçluk Notları — silmek için uzun bas"
+                  >
                     <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>{data.coachingNotes}</Text>
                   </TouchableOpacity>
                 </View>
@@ -680,10 +780,13 @@ export default function CoachMemoryScreen() {
           {/* Reset button */}
           <TouchableOpacity
             onPress={handleResetAll}
+            accessibilityRole="button"
+            accessibilityLabel="Tüm hafızayı sıfırla"
+            accessibilityHint="Koçun senin hakkında öğrendiği tüm bilgiler silinir"
             style={{ alignItems: 'center', paddingVertical: SPACING.md, marginTop: SPACING.md }}
           >
             <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '500' }}>Tüm hafızayı sıfırla</Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>KVKK Madde 17 - Veri silme hakki</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>KVKK Madde 17 - Veri silme hakkı</Text>
           </TouchableOpacity>
         </>
       )}
@@ -693,11 +796,11 @@ export default function CoachMemoryScreen() {
           Her kategoriyi her zaman göster — AI'nın hangi alanda ne öğrendiğini
           veya henüz öğrenmediğini şeffafça görmek için.
           ═══════════════════════════════════════════ */}
-      <CategoryTitle title="Tüm Hafıza Alanları (Şeffaflık)" icon="list" color="#6366F1" colors={colors} />
+      <CategoryTitle title="Tüm Hafıza Alanları (Şeffaflık)" icon="list" color={colors.purple} colors={colors} />
       <View style={cardStyle}>
-        <SectionHeader icon="eye-outline" color="#6366F1" title="Kocun Takip Ettigi Her Sey" colors={colors} />
+        <SectionHeader icon="eye-outline" color={colors.purple} title="Koçun Takip Ettiği Her Şey" colors={colors} />
         <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
-          AI bu alanlari konusmalardan takip ediyor. Dolu olanlar: ogrendigi seyler. Bos olanlar: henuz yeterli veri yok.
+          AI bu alanları konuşmalardan takip ediyor. Dolu olanlar: öğrendiği şeyler. Boş olanlar: henüz yeterli veri yok.
         </Text>
         <View>
           {AI_SUMMARY_FIELDS.map((f, i) => {
@@ -715,11 +818,11 @@ export default function CoachMemoryScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500' }}>{f.label}</Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }}>{f.desc}</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{f.desc}</Text>
                 </View>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                   {isFilled ? (
-                    <Text style={{ color: '#22C55E', fontSize: FONT.xs, fontWeight: '600', textAlign: 'right' }} numberOfLines={3}>
+                    <Text style={{ color: colors.success, fontSize: FONT.xs, fontWeight: '600', textAlign: 'right' }} numberOfLines={3}>
                       {display}
                     </Text>
                   ) : (
@@ -727,7 +830,7 @@ export default function CoachMemoryScreen() {
                       backgroundColor: colors.surfaceLight, borderRadius: RADIUS.full,
                       paddingHorizontal: SPACING.sm, paddingVertical: 2,
                     }}>
-                      <Text style={{ color: colors.textMuted, fontSize: 10 }}>Henuz ogrenilmedi</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Henüz öğrenilmedi</Text>
                     </View>
                   )}
                 </View>
@@ -743,26 +846,26 @@ export default function CoachMemoryScreen() {
 // ─── All ai_summary fields schema for transparency/debug view ───
 
 const AI_SUMMARY_FIELDS: { key: string; label: string; desc: string }[] = [
-  { key: 'general', label: 'Genel Ozet', desc: 'Senin hakkindaki serbest metin notu' },
-  { key: 'userPersona', label: 'Kisilik Tipi', desc: 'Iletisim ve motivasyon stili' },
-  { key: 'learnedTonePreference', label: 'Iletisim Tercihi', desc: 'Nasil konusulmasini sevdigin' },
-  { key: 'nutritionLiteracy', label: 'Beslenme Bilgi Duzeyi', desc: 'low / medium / high' },
-  { key: 'patterns', label: 'Davranis Kaliplari', desc: 'Gece yeme, stres atistirmasi vb.' },
-  { key: 'portionCalibration', label: 'Porsiyon Kalibrasyonu', desc: 'Senin "1 porsiyon"un kac gram' },
-  { key: 'learnedMealTimes', label: 'Ogrenilen Ogun Saatleri', desc: 'Genelde ne zaman yediginn' },
-  { key: 'caffeineSleepNotes', label: 'Kafein-Uyku Notu', desc: 'Kafein uykunu nasil etkiliyor' },
-  { key: 'alcoholPattern', label: 'Alkol Kalibi', desc: 'Siklik, miktar, ertesi gun etkisi' },
-  { key: 'socialEatingNotes', label: 'Sosyal Yeme', desc: 'Arkadas/aile yemeklerinde kalip' },
-  { key: 'recoveryPattern', label: 'Toparlanma Deseni', desc: 'Antrenman sonrasi yorgunluk/enerji' },
-  { key: 'menstrualNotes', label: 'Regl Donemi Notlari', desc: 'Sadece takip aciksa' },
+  { key: 'general', label: 'Genel Özet', desc: 'Senin hakkındaki serbest metin notu' },
+  { key: 'userPersona', label: 'Kişilik Tipi', desc: 'İletişim ve motivasyon stili' },
+  { key: 'learnedTonePreference', label: 'İletişim Tercihi', desc: 'Nasıl konuşulmasını sevdiğin' },
+  { key: 'nutritionLiteracy', label: 'Beslenme Bilgi Düzeyi', desc: 'low / medium / high' },
+  { key: 'patterns', label: 'Davranış Kalıpları', desc: 'Gece yeme, stres atıştırması vb.' },
+  { key: 'portionCalibration', label: 'Porsiyon Kalibrasyonu', desc: 'Senin "1 porsiyon"un kaç gram' },
+  { key: 'learnedMealTimes', label: 'Öğrenilen Öğün Saatleri', desc: 'Genelde ne zaman yediğin' },
+  { key: 'caffeineSleepNotes', label: 'Kafein-Uyku Notu', desc: 'Kafein uykunu nasıl etkiliyor' },
+  { key: 'alcoholPattern', label: 'Alkol Kalıbı', desc: 'Sıklık, miktar, ertesi gün etkisi' },
+  { key: 'socialEatingNotes', label: 'Sosyal Yeme', desc: 'Arkadaş/aile yemeklerinde kalıp' },
+  { key: 'recoveryPattern', label: 'Toparlanma Deseni', desc: 'Antrenman sonrası yorgunluk/enerji' },
+  { key: 'menstrualNotes', label: 'Regl Dönemi Notları', desc: 'Sadece takip açıksa' },
   { key: 'microNutrientRisks', label: 'Mikro Besin Riskleri', desc: 'Eksik olabilecek vitamin/mineraller' },
-  { key: 'supplementNotes', label: 'Supplement Notlari', desc: 'Aldigin/almadigin takviyeler' },
-  { key: 'habitProgress', label: 'Aliskanlik Ilerlemesi', desc: 'Olusturdugun/takip eden rutinler' },
-  { key: 'strengthRecords', label: 'Guc Kayitlari', desc: 'Egzersiz PRlari' },
-  { key: 'weeklyBudgetPattern', label: 'Haftalik Butce Kalibi', desc: 'Kalori butcesini nasil dagittigin' },
-  { key: 'seasonalNotes', label: 'Mevsimsel Notlar', desc: 'Yaz/kis yeme aliskanliklari' },
-  { key: 'featuresIntroduced', label: 'Tanitilan Ozellikler', desc: 'Sana hangi ozellikler anlatildi' },
-  { key: 'coachingNotes', label: 'Kocluk Notlari', desc: 'Ic gorusme gozlemi (sistem)' },
+  { key: 'supplementNotes', label: 'Supplement Notları', desc: 'Aldığın/almadığın takviyeler' },
+  { key: 'habitProgress', label: 'Alışkanlık İlerlemesi', desc: 'Oluşturduğun/takip eden rutinler' },
+  { key: 'strengthRecords', label: 'Güç Kayıtları', desc: 'Egzersiz PRları' },
+  { key: 'weeklyBudgetPattern', label: 'Haftalık Bütçe Kalıbı', desc: 'Kalori bütçesini nasıl dağıttığın' },
+  { key: 'seasonalNotes', label: 'Mevsimsel Notlar', desc: 'Yaz/kış yeme alışkanlıkları' },
+  { key: 'featuresIntroduced', label: 'Tanıtılan Özellikler', desc: 'Sana hangi özellikler anlatıldı' },
+  { key: 'coachingNotes', label: 'Koçluk Notları', desc: 'İç görüşme gözlemi (sistem)' },
 ];
 
 function isMeaningful(item: unknown): boolean {
@@ -781,12 +884,12 @@ function formatFieldValue(v: unknown): string | null {
     // / blank row (#R3-16/#R3-20).
     const nonEmpty = v.filter(isMeaningful);
     if (nonEmpty.length === 0) return null;
-    return `${nonEmpty.length} kayit`;
+    return `${nonEmpty.length} kayıt`;
   }
   if (typeof v === 'object') {
     const keys = Object.keys(v as Record<string, unknown>);
     if (keys.length === 0) return null;
-    return `${keys.length} kayit`;
+    return `${keys.length} kayıt`;
   }
   return String(v);
 }
@@ -826,7 +929,7 @@ function CategoryTitle({ title, icon, color, colors }: { title: string; icon: st
   );
 }
 
-function SectionHeader({ icon, color, title, colors, badge }: { icon: string; color: string; title: string; colors: any; badge?: string }) {
+function SectionHeader({ icon, color, title, colors, badge, deletable }: { icon: string; color: string; title: string; colors: any; badge?: string; deletable?: boolean }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm }}>
       <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: color + '18', alignItems: 'center', justifyContent: 'center' }}>
@@ -837,6 +940,9 @@ function SectionHeader({ icon, color, title, colors, badge }: { icon: string; co
         <View style={{ backgroundColor: color + '18', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 }}>
           <Text style={{ color, fontSize: FONT.xs, fontWeight: '700' }}>{badge}</Text>
         </View>
+      )}
+      {deletable && (
+        <Ionicons name="trash-outline" size={15} color={colors.textMuted} accessibilityLabel="Silmek için kartı uzun bas" />
       )}
     </View>
   );

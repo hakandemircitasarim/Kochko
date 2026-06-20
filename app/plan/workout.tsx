@@ -21,6 +21,7 @@ import { Stack, router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
@@ -41,6 +42,7 @@ import { PlanActiveView } from '@/components/plan/PlanActiveView';
 import { FullPlanModal } from '@/components/plan/FullPlanModal';
 import { AlternativeComparisonModal } from '@/components/plan/AlternativeComparisonModal';
 import { PlanChatComposer } from '@/components/plan/PlanChatComposer';
+import { TypingIndicator } from '@/components/chat/TypingIndicator';
 
 type ViewState = 'loading' | 'empty' | 'draft' | 'active';
 interface ChatMsg {
@@ -210,14 +212,14 @@ export default function WorkoutPlanScreen() {
     });
     setSending(false);
     if (error || !data?.plan_approved) {
-      let reason = error ?? 'Plan onaylanamadi. Yeni bir taslak olustur ve tekrar dene.';
+      let reason = error ?? 'Plan onaylanamadı. Yeni bir taslak oluştur ve tekrar dene.';
       const persistErr = data?.plan_persist_error;
       if (persistErr?.startsWith('allergen_violation')) {
-        reason = 'Bu plan alerjen listenle cakisiyor. Kocuna tekrar yazip plani yenileyelim.';
+        reason = 'Bu plan alerjen listenle çakışıyor. Koçuna tekrar yazıp planı yenileyelim.';
       } else if (persistErr?.includes('plan_type mismatch')) {
-        reason = 'Plan turu uyusmadi. Koc ekranindan tekrar dene.';
+        reason = 'Plan türü uyuşmadı. Koç ekranından tekrar dene.';
       } else if (persistErr?.startsWith('injury_violation')) {
-        reason = 'Bu plan sakatlik bildirimlerinle cakisan egzersizler iceriyor. Yeniden olusturalim.';
+        reason = 'Bu plan sakatlık bildirimlerinle çakışan egzersizler içeriyor. Yeniden oluşturalım.';
       } else if (persistErr) {
         reason = `Plan kaydedilemedi: ${persistErr}`;
       }
@@ -267,7 +269,13 @@ export default function WorkoutPlanScreen() {
     }
     const sid = await createSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
     if (sid) setChatSessionId(sid);
-    setMessages([]);
+    setMessages([
+      {
+        id: 'greet-' + Date.now(),
+        role: 'assistant',
+        content: 'Mevcut antrenman planında neyi değiştirelim?',
+      },
+    ]);
     await load();
   };
 
@@ -329,7 +337,7 @@ export default function WorkoutPlanScreen() {
             plan={planData}
             planType="workout"
             onPress={() => setShowFullModal(true)}
-            updatedLabel={fullyViewed ? 'tamam' : 'yeni versiyon'}
+            updatedLabel={fullyViewed ? 'okundu' : 'az önce güncellendi'}
           />
         </View>
 
@@ -342,11 +350,19 @@ export default function WorkoutPlanScreen() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) => <DraftChatBubble msg={item} />}
           ListEmptyComponent={
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.lg }}>
-              Plan hazırlanıyor...
-            </Text>
+            sending ? null : (
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.lg }}>
+                Değiştirmek istediğin şeyi yaz
+              </Text>
+            )
           }
         />
+
+        {sending ? (
+          <View style={{ paddingHorizontal: SPACING.md, paddingBottom: SPACING.xs }}>
+            <TypingIndicator label="Koç düşünüyor" />
+          </View>
+        ) : null}
 
         <PlanChatComposer
           onSend={sendUserMessage}
@@ -390,6 +406,7 @@ export default function WorkoutPlanScreen() {
 function DraftChatBubble({ msg }: { msg: ChatMsg }) {
   const { colors } = useTheme();
   const isUser = msg.role === 'user';
+  const onUser = getContrastColor(colors.purple);
   const hiddenTrigger = msg.content.startsWith('[PLAN_INIT]') || msg.content.startsWith('[ALT]');
   if (isUser && hiddenTrigger) return null;
   return (
@@ -397,7 +414,7 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
       style={{
         maxWidth: '86%',
         alignSelf: isUser ? 'flex-end' : 'flex-start',
-        backgroundColor: isUser ? '#6366F1' : colors.card,
+        backgroundColor: isUser ? colors.purple : colors.card,
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
         borderBottomRightRadius: isUser ? 4 : 16,
@@ -408,7 +425,7 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
         borderColor: colors.border,
       }}
     >
-      <Text selectable style={{ color: isUser ? '#fff' : colors.text, fontSize: 14, lineHeight: 20 }}>
+      <Text selectable style={{ color: isUser ? onUser : colors.text, fontSize: 14, lineHeight: 20 }}>
         {msg.content}
       </Text>
       {msg.reasoning ? (
@@ -423,7 +440,7 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
           <Text
             style={{
               color: isUser ? 'rgba(255,255,255,0.75)' : colors.textMuted,
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: '700',
               letterSpacing: 1,
             }}

@@ -5,8 +5,8 @@ import { getMonthSummaries, type DaySummary } from '@/services/calendar.service'
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
-const MONTH_NAMES = ['Ocak', 'Subat', 'Mart', 'Nisan', 'Mayis', 'Haziran', 'Temmuz', 'Agustos', 'Eylul', 'Ekim', 'Kasim', 'Aralik'];
-const DAY_NAMES = ['Pt', 'Sa', 'Ca', 'Pe', 'Cu', 'Ct', 'Pa'];
+const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const DAY_NAMES = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
@@ -34,13 +34,26 @@ export default function CalendarScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Takvim</Text>
 
       {/* Month navigation */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
-        <TouchableOpacity onPress={prevMonth}><Text style={{ color: COLORS.primary, fontSize: FONT.xl }}>{'<'}</Text></TouchableOpacity>
+        <TouchableOpacity
+          onPress={prevMonth}
+          accessibilityRole="button"
+          accessibilityLabel="Önceki ay"
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={{ color: COLORS.primary, fontSize: FONT.xl }}>{'<'}</Text>
+        </TouchableOpacity>
         <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{MONTH_NAMES[month - 1]} {year}</Text>
-        <TouchableOpacity onPress={nextMonth}><Text style={{ color: COLORS.primary, fontSize: FONT.xl }}>{'>'}</Text></TouchableOpacity>
+        <TouchableOpacity
+          onPress={nextMonth}
+          accessibilityRole="button"
+          accessibilityLabel="Sonraki ay"
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={{ color: COLORS.primary, fontSize: FONT.xl }}>{'>'}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Day headers */}
@@ -66,6 +79,9 @@ export default function CalendarScreen() {
 
           return (
             <TouchableOpacity key={day.date} onPress={() => setSelected(day)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              accessibilityLabel={`${dayNum} ${MONTH_NAMES[month - 1]}${isToday ? ', bugün' : ''}${day.hasData && day.compliance_score !== null ? `, uyum ${day.compliance_score}/100` : day.hasData ? '' : ', veri yok'}`}
               style={{ width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' }}>
               <View style={{
                 width: 36, height: 36, borderRadius: 18,
@@ -84,11 +100,32 @@ export default function CalendarScreen() {
         })}
       </View>
 
+      {/* Color legend */}
+      <View
+        style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.md }}
+        accessibilityLabel="Renk açıklaması: yeşil iyi, turuncu orta, kırmızı düşük uyum, boş hücre veri yok"
+      >
+        {[
+          { color: COLORS.success, label: 'İyi' },
+          { color: COLORS.warning, label: 'Orta' },
+          { color: COLORS.error, label: 'Düşük' },
+        ].map(item => (
+          <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.color }} />
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>{item.label}</Text>
+          </View>
+        ))}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+          <View style={{ width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: COLORS.textMuted }} />
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>Veri yok</Text>
+        </View>
+      </View>
+
       {/* Selected day detail */}
       {selected && (
         <Card title={new Date(selected.date).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })} style={{ marginTop: SPACING.lg }}>
           {!selected.hasData ? (
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Bu gun icin veri yok.</Text>
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Bu gün için veri yok.</Text>
           ) : (
             <View style={{ gap: 4 }}>
               {selected.compliance_score !== null && (
@@ -110,12 +147,12 @@ export default function CalendarScreen() {
                 </View>
               )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Ogun</Text>
-                <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{selected.meal_count} kayit</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Öğün</Text>
+                <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{selected.meal_count} kayıt</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Antrenman</Text>
-                <Text style={{ color: selected.workout_done ? COLORS.success : COLORS.textMuted, fontSize: FONT.md }}>{selected.workout_done ? 'Yapildi' : 'Yapilmadi'}</Text>
+                <Text style={{ color: selected.workout_done ? COLORS.success : COLORS.textMuted, fontSize: FONT.md }}>{selected.workout_done ? 'Yapıldı' : 'Yapılmadı'}</Text>
               </View>
             </View>
           )}

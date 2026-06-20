@@ -10,6 +10,7 @@ import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { SPACING, FONT, RADIUS, HERO } from '@/lib/constants';
+import { a11yProgress, formatProgressForScreenReader } from '@/lib/accessibility';
 
 interface Props {
   today: string;
@@ -36,12 +37,26 @@ function MacroBar({ label, value, target, color }: { label: string; value: numbe
   const pct = target > 0 ? Math.min(1, value / target) : 0;
 
   return (
-    <View style={{ flex: 1 }}>
-      <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: 4 }}>{label}</Text>
+    <View
+      style={{ flex: 1 }}
+      {...a11yProgress(label, value, target)}
+      accessibilityLabel={`${label}: ${formatProgressForScreenReader(value, target, 'g')}`}
+    >
+      <Text
+        style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 4 }}
+        maxFontSizeMultiplier={1.3}
+      >
+        {label}
+      </Text>
       <View style={{ height: 6, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
         <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 3 }} />
       </View>
-      <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 3 }}>{value}/{target}g</Text>
+      <Text
+        style={{ color: colors.textSecondary, fontSize: 11, marginTop: 3 }}
+        maxFontSizeMultiplier={1.3}
+      >
+        {value}/{target}g
+      </Text>
     </View>
   );
 }
@@ -88,7 +103,12 @@ export function HeroSection({
           borderWidth: 0.5, borderColor: colors.border,
         }}>
           <Ionicons name="cloud-offline-outline" size={14} color={colors.textMuted} />
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Çevrimdışı — kayıtların senkronize edilecek</Text>
+          <Text
+            style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', flexShrink: 1 }}
+            maxFontSizeMultiplier={1.3}
+          >
+            Çevrimdışı — kayıtların senkronize edilecek
+          </Text>
         </View>
       )}
 
@@ -104,14 +124,19 @@ export function HeroSection({
       }}>
         {hasTargets ? (
           <>
-            <CircularProgress
-              progress={pct}
-              size={HERO.RING_SIZE}
-              strokeWidth={HERO.RING_STROKE}
-              color={METRIC_COLORS.calories}
-              value={consumed}
-              label={`/ ${targetMid} kcal`}
-            />
+            <View
+              {...a11yProgress('Kalori', consumed, targetMid)}
+              accessibilityLabel={`Kalori: ${formatProgressForScreenReader(consumed, targetMid, 'kcal')}`}
+            >
+              <CircularProgress
+                progress={pct}
+                size={HERO.RING_SIZE}
+                strokeWidth={HERO.RING_STROKE}
+                color={METRIC_COLORS.calories}
+                value={consumed}
+                label={`/ ${targetMid} kcal`}
+              />
+            </View>
             <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xl, width: '100%' }}>
               <MacroBar label="Protein" value={protein} target={proteinTarget} color={METRIC_COLORS.protein} />
               <MacroBar label="Karbonhidrat" value={carbs} target={carbsTarget} color={METRIC_COLORS.carbs} />
@@ -141,7 +166,11 @@ export function HeroSection({
           alignSelf: 'center',
         }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary }} />
-          <Text style={{ color: colors.text, fontSize: 11, fontWeight: '500' }}>
+          <Text
+            style={{ color: colors.text, fontSize: 11, fontWeight: '500' }}
+            maxFontSizeMultiplier={1.3}
+            accessibilityLabel={`Yeme penceresi: ${ifEatingStart} - ${ifEatingEnd}`}
+          >
             {ifEatingStart} - {ifEatingEnd}
           </Text>
         </View>

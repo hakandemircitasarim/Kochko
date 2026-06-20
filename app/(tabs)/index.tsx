@@ -21,7 +21,9 @@ import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
-import { SPACING, RADIUS, WATER_INCREMENT } from '@/lib/constants';
+import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 import NetInfo from '@react-native-community/netinfo';
 import { setupAutoSync } from '@/services/offline-queue.service';
 import { getUnreadCoachingMessages, markMessageRead, type CoachingMessage } from '@/services/coaching-messages.service';
@@ -46,6 +48,10 @@ export default function TodayScreen() {
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
   const [isOffline, setIsOffline] = useState(false);
+  // Distinguishes "never fetched this session" from "fetched, genuinely empty day"
+  // so the very first cold load can show skeletons instead of a zeroed scaffold
+  // that reads like a real (and alarming) empty day.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [showWeightInput, setShowWeightInput] = useState(false);
   const [weightInput, setWeightInput] = useState('');
   const [coachingMessages, setCoachingMessages] = useState<CoachingMessage[]>([]);
@@ -91,7 +97,9 @@ export default function TodayScreen() {
   // ref gymnastics are needed.
   const refresh = useCallback(() => {
     if (!user?.id) return;
-    fetchToday(user.id, dayBoundaryHour).catch((err) => console.warn('fetchToday failed:', err));
+    fetchToday(user.id, dayBoundaryHour)
+      .catch((err) => console.warn('fetchToday failed:', err))
+      .finally(() => setHasLoadedOnce(true));
     checkForMilestones();
     getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {});
   }, [user?.id, fetchToday, checkForMilestones, dayBoundaryHour]);
@@ -109,8 +117,10 @@ export default function TodayScreen() {
     const saveWater = async () => {
       try {
         await addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
+        haptics.success();
       } catch (err) {
         console.warn('addWater failed:', err);
+        haptics.error();
         Alert.alert('Hata', 'Su kaydedilemedi. Lütfen tekrar deneyin.');
       }
     };
@@ -130,13 +140,21 @@ export default function TodayScreen() {
     const w = parseFloat(weightInput.replace(',', '.'));
     if (!w || w < 20 || w > 300 || !user?.id) return;
     const date = getEffectiveDate(new Date(), dayBoundaryHour);
-    await supabase.from('daily_metrics').upsert(
-      { user_id: user.id, date, weight_kg: w, synced: true },
-      { onConflict: 'user_id,date' }
-    );
-    setShowWeightInput(false);
-    setWeightInput('');
-    refresh();
+    try {
+      const { error } = await supabase.from('daily_metrics').upsert(
+        { user_id: user.id, date, weight_kg: w, synced: true },
+        { onConflict: 'user_id,date' }
+      );
+      if (error) throw error;
+      haptics.success();
+      setShowWeightInput(false);
+      setWeightInput('');
+      refresh();
+    } catch (err) {
+      console.warn('weight save failed:', err);
+      haptics.error();
+      Alert.alert('Hata', 'Tartı kaydedilemedi. Lütfen tekrar deneyin.');
+    }
   };
 
   // Weekly budget — prefer the projection's STORED weighted total/consumed (4 training +
@@ -152,6 +170,21 @@ export default function TodayScreen() {
   const rawRemaining = weeklyBudgetRemaining ?? Math.max(0, weeklyBudgetTotal - weeklyConsumed);
   const weeklyRemaining = isNaN(rawRemaining) ? 0 : rawRemaining;
   const weeklyPct = weeklyBudgetTotal > 0 ? Math.min(1, weeklyConsumed / weeklyBudgetTotal) : 0;
+
+  // Show skeleton placeholders only on the very first cold fetch of the session
+  // so a real-but-empty day reads as itself instead of a zeroed scaffold flashing
+  // like data loss. Pull-to-refresh (hasLoadedOnce=true) keeps the live content.
+  const firstLoad = loading && !hasLoadedOnce;
+
+  // Inline skeleton block — muted rounded rectangle, no new shared component.
+  const SkeletonBlock = ({ height, width = '100%', radius = RADIUS.md, mt = 0 }: {
+    height: number; width?: number | string; radius?: number; mt?: number;
+  }) => (
+    <View style={{
+      height, width: width as number, borderRadius: radius, marginTop: mt,
+      backgroundColor: colors.surfaceLight,
+    }} />
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -174,12 +207,17 @@ export default function TodayScreen() {
             }}>
               <Ionicons name="scale" size={24} color={METRIC_COLORS.weight} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Tartı Kaydı</Text>
+            <Text
+              accessibilityRole="header"
+              style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}
+            >
+              Tartı Kaydı
+            </Text>
             <TextInput
               style={{
                 backgroundColor: colors.inputBg, borderRadius: RADIUS.md,
                 paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md,
-                color: colors.text, fontSize: 24, fontWeight: '700',
+                color: colors.text, fontSize: FONT.xxl, fontWeight: '700',
                 textAlign: 'center', width: '100%', borderWidth: 0.5, borderColor: colors.border,
               }}
               placeholder="73.5"
@@ -187,21 +225,28 @@ export default function TodayScreen() {
               value={weightInput}
               onChangeText={setWeightInput}
               keyboardType="decimal-pad"
+              accessibilityLabel="Kilo (kg)"
+              returnKeyType="done"
+              onSubmitEditing={handleWeightSave}
               autoFocus
             />
-            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: SPACING.xs }}>kg</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>kg</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md, width: '100%' }}>
               <TouchableOpacity
-                onPress={() => setShowWeightInput(false)}
-                style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
+                onPress={() => { haptics.tap(); setShowWeightInput(false); }}
+                accessibilityRole="button"
+                accessibilityLabel="İptal"
+                style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
               >
-                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>İptal</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleWeightSave}
-                style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}
+                accessibilityRole="button"
+                accessibilityLabel="Tartıyı kaydet"
+                style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}
               >
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Kaydet</Text>
+                <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>Kaydet</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -220,29 +265,55 @@ export default function TodayScreen() {
             padding: SPACING.md, marginBottom: SPACING.md,
             borderLeftWidth: 3, borderLeftColor: colors.primary,
           }}>
-            <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600', marginBottom: 4 }}>
+            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600', marginBottom: 4 }}>
               {returnStatus.level === 'very_long_break' ? 'TEKRAR HOŞ GELDİN' : 'HOŞ GELDİN'}
             </Text>
-            <Text style={{ color: colors.text, fontSize: 13, lineHeight: 18 }}>
+            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 18 }}>
               {returnStatus.welcomeMessage}
             </Text>
             {returnStatus.needsReOnboarding && (
               <TouchableOpacity
                 onPress={() => router.push('/onboarding?mode=re_onboarding')}
+                accessibilityRole="button"
+                accessibilityLabel="Güncelleme yap"
                 style={{
                   marginTop: SPACING.sm, paddingVertical: SPACING.sm,
                   borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center',
                 }}
               >
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Güncelleme yap</Text>
+                <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>Güncelleme yap</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={() => setReturnStatus(null)} style={{ position: 'absolute', top: 8, right: 8, padding: 4 }}>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); setReturnStatus(null); }}
+              accessibilityRole="button"
+              accessibilityLabel="Kapat"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={{ position: 'absolute', top: 8, right: 8, padding: 4 }}
+            >
               <Ionicons name="close" size={14} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         )}
 
+        {firstLoad ? (
+          /* First cold load — skeleton placeholders so a zeroed scaffold never
+             flashes like a real (and alarming) empty day. */
+          <View
+            accessibilityLabel="Bugünün verileri yükleniyor"
+            style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}
+          >
+            <SkeletonBlock height={210} radius={RADIUS.lg} />
+            <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.lg }}>
+              <SkeletonBlock height={84} width={'48%'} radius={RADIUS.md} />
+              <SkeletonBlock height={84} width={'48%'} radius={RADIUS.md} />
+            </View>
+            <SkeletonBlock height={96} radius={RADIUS.md} mt={SPACING.lg} />
+            <SkeletonBlock height={60} radius={RADIUS.md} mt={SPACING.lg} />
+            <SkeletonBlock height={60} radius={RADIUS.md} mt={SPACING.md} />
+          </View>
+        ) : (
+        <>
         {/* 1. Hero: Greeting + Calorie Ring + Macros */}
         <HeroSection
           today={new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -302,17 +373,22 @@ export default function TodayScreen() {
               padding: SPACING.lg, borderWidth: 0.5, borderColor: colors.border,
             }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
-                <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   Haftalık bütçe
                 </Text>
-                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
+                <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>
                   {weeklyRemaining.toLocaleString('tr-TR')} kaldı
                 </Text>
               </View>
-              <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: SPACING.sm }}>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
                 {weeklyConsumed.toLocaleString('tr-TR')} / {weeklyBudgetTotal.toLocaleString('tr-TR')} kcal
               </Text>
-              <View style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}>
+              <View
+                accessibilityRole="progressbar"
+                accessibilityLabel={`Haftalık bütçe: ${weeklyConsumed.toLocaleString('tr-TR')} / ${weeklyBudgetTotal.toLocaleString('tr-TR')} kilokalori`}
+                accessibilityValue={{ min: 0, max: 100, now: Math.round(weeklyPct * 100) }}
+                style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}
+              >
                 <View style={{
                   height: '100%', width: `${weeklyPct * 100}%`,
                   backgroundColor: colors.primary, borderRadius: 4,
@@ -341,6 +417,8 @@ export default function TodayScreen() {
             onDeleteWorkout={deleteWorkout}
           />
         </View>
+        </>
+        )}
 
       </ScrollView>
     </View>

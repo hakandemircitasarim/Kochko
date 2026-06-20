@@ -11,6 +11,12 @@ export default function ReportsLayout() {
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.background },
       }}
-    />
+    >
+      <Stack.Screen name="daily" options={{ title: 'Gün Sonu Raporu' }} />
+      <Stack.Screen name="weekly" options={{ title: 'Haftalık Rapor' }} />
+      <Stack.Screen name="monthly" options={{ title: 'Aylık Rapor' }} />
+      <Stack.Screen name="all-time" options={{ title: 'Tüm Zamanlar' }} />
+      <Stack.Screen name="calendar" options={{ title: 'Takvim' }} />
+    </Stack>
   );
 }

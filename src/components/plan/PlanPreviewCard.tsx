@@ -38,17 +38,17 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
             flex: 1,
             height: 28,
             borderRadius: 6,
-            backgroundColor: hasMeals ? '#22C55E22' : colors.surfaceLight,
+            backgroundColor: hasMeals ? colors.primary + '22' : colors.surfaceLight,
             borderWidth: 0.5,
-            borderColor: hasMeals ? '#22C55E' : colors.border,
+            borderColor: hasMeals ? colors.primary : colors.border,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
           <Text
             style={{
-              fontSize: 9,
-              color: hasMeals ? '#22C55E' : colors.textMuted,
+              fontSize: 11,
+              color: hasMeals ? colors.primary : colors.textMuted,
               fontWeight: '700',
             }}
           >
@@ -69,7 +69,7 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
       {days.map(d => {
         const tone = d.rest_day
           ? { bg: colors.surfaceLight, bd: colors.border, fg: colors.textMuted }
-          : { bg: '#6366F122', bd: '#6366F1', fg: '#6366F1' };
+          : { bg: colors.purple + '22', bd: colors.purple, fg: colors.purple };
         return (
           <View
             key={d.day_index}
@@ -84,7 +84,7 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
               justifyContent: 'center',
             }}
           >
-            <Text style={{ fontSize: 9, color: tone.fg, fontWeight: '700' }}>
+            <Text style={{ fontSize: 11, color: tone.fg, fontWeight: '700' }}>
               {d.rest_day ? '–' : `${d.exercises?.length ?? 0}`}
             </Text>
           </View>
@@ -95,7 +95,7 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
 }
 
 export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   const summary = useMemo(() => {
     if (plan.plan_type === 'diet') {
@@ -128,7 +128,6 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props
         padding: SPACING.md,
         borderWidth: 1,
         borderColor: colors.border,
-        ...(isDark ? {} : { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 2, elevation: 1 }),
       }}
     >
       {/* Header row */}
@@ -136,13 +135,13 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props
         <Ionicons
           name={planType === 'diet' ? 'restaurant-outline' : 'barbell-outline'}
           size={18}
-          color={planType === 'diet' ? '#22C55E' : '#6366F1'}
+          color={planType === 'diet' ? colors.primary : colors.purple}
         />
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
             {planType === 'diet' ? 'Bu haftaki diyetin' : 'Bu haftaki sporun'}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>
             Hafta {plan.week_start} · v{plan.version ?? 1}
             {updatedLabel ? ` · ${updatedLabel}` : ''}
           </Text>
@@ -151,7 +150,7 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props
           <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
             {summary.primary}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 10 }}>{summary.secondary}</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>{summary.secondary}</Text>
         </View>
         <Ionicons name="expand-outline" size={14} color={colors.textMuted} />
       </View>
@@ -166,7 +165,7 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props
       <Text
         style={{
           color: colors.textMuted,
-          fontSize: 10,
+          fontSize: FONT.xs,
           marginTop: SPACING.xs,
           textAlign: 'center',
         }}

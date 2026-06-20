@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 import {
   getUserHousehold,
   createHousehold,
@@ -62,7 +63,7 @@ export default function HouseholdScreen() {
       await createHousehold(userId, householdName.trim() || undefined);
       await loadData();
     } catch (e: any) {
-      Alert.alert('Hata', e?.message ?? 'Aile olusturulamadi.');
+      Alert.alert('Hata', e?.message ?? 'Aile oluşturulamadı, lütfen tekrar dene.');
     } finally {
       setBusy(false);
     }
@@ -76,7 +77,7 @@ export default function HouseholdScreen() {
       setJoinCode('');
       await loadData();
     } catch (e: any) {
-      Alert.alert('Hata', e?.message ?? 'Katilim basarisiz.');
+      Alert.alert('Hata', e?.message ?? 'Aileye katılamadık — kodu kontrol edip tekrar dene.');
     } finally {
       setBusy(false);
     }
@@ -103,7 +104,7 @@ export default function HouseholdScreen() {
               setMembers([]);
               setShoppingList([]);
             } catch (e: any) {
-              Alert.alert('Hata', e?.message ?? 'Ayrilma basarisiz.');
+              Alert.alert('Hata', e?.message ?? 'Aileden ayrılamadık, lütfen tekrar dene.');
             } finally {
               setBusy(false);
             }
@@ -132,23 +133,23 @@ export default function HouseholdScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Aile Plani</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Aile Planı</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Aile uyelerini ekle, ortak alisveris listesi olustur.
+        Aile üyelerini ekle, ortak alışveriş listesi oluştur.
       </Text>
 
       {!household ? (
         <>
           {/* Create household */}
-          <Card title="Aile Olustur">
+          <Card title="Aile Oluştur">
             <Input
-              label="Aile Adi (opsiyonel)"
+              label="Aile Adı (opsiyonel)"
               value={householdName}
               onChangeText={setHouseholdName}
               placeholder="Ailem"
             />
             <Button
-              title={busy ? 'Olusturuluyor...' : 'Aile Olustur'}
+              title={busy ? 'Oluşturuluyor...' : 'Aile Oluştur'}
               onPress={handleCreate}
               disabled={busy}
               style={{ marginTop: SPACING.md }}
@@ -156,7 +157,7 @@ export default function HouseholdScreen() {
           </Card>
 
           {/* Join with code */}
-          <Card title="Davet Koduyla Katil" style={{ marginTop: SPACING.md }}>
+          <Card title="Davet Koduyla Katıl" style={{ marginTop: SPACING.md }}>
             <Input
               label="Davet Kodu"
               value={joinCode}
@@ -165,7 +166,7 @@ export default function HouseholdScreen() {
               autoCapitalize="characters"
             />
             <Button
-              title={busy ? 'Katiliniyor...' : 'Katil'}
+              title={busy ? 'Katılınıyor...' : 'Katıl'}
               onPress={handleJoin}
               disabled={busy || !joinCode.trim()}
               style={{ marginTop: SPACING.md }}
@@ -184,13 +185,13 @@ export default function HouseholdScreen() {
                 </View>
               </View>
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
-                Bu kodu paylasarak aile uyelerini davet edebilirsin.
+                Bu kodu paylaşarak aile üyelerini davet edebilirsin.
               </Text>
             </View>
           </Card>
 
           {/* Members */}
-          <Card title="Uyeler" style={{ marginTop: SPACING.md }}>
+          <Card title="Üyeler" style={{ marginTop: SPACING.md }}>
             {members.map((m, i) => (
               <View
                 key={m.userId}
@@ -205,17 +206,17 @@ export default function HouseholdScreen() {
               >
                 <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{m.displayName}</Text>
                 <Text style={{ color: m.role === 'owner' ? COLORS.primary : COLORS.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>
-                  {m.role === 'owner' ? 'Kurucu' : 'Uye'}
+                  {m.role === 'owner' ? 'Kurucu' : 'Üye'}
                 </Text>
               </View>
             ))}
           </Card>
 
           {/* Shopping list */}
-          <Card title="Ortak Alisveris Listesi" style={{ marginTop: SPACING.md }}>
+          <Card title="Ortak Alışveriş Listesi" style={{ marginTop: SPACING.md }}>
             {shoppingList.length === 0 ? (
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>
-                Henuz alisveris listesi yok. Haftalik menu olusturuldugunda burada gorunecek.
+                Henüz alışveriş listesi yok. Haftalık menü oluşturulduğunda burada görünecek.
               </Text>
             ) : (
               shoppingList.map((item) => {
@@ -246,7 +247,7 @@ export default function HouseholdScreen() {
                         alignItems: 'center',
                       }}
                     >
-                      {checked && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+                      {checked && <Text style={{ color: getContrastColor(COLORS.primary), fontSize: 12, fontWeight: '700' }}>✓</Text>}
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: checked ? COLORS.textMuted : COLORS.text, fontSize: FONT.md, textDecorationLine: checked ? 'line-through' : 'none' }}>
@@ -265,7 +266,7 @@ export default function HouseholdScreen() {
           {/* Leave */}
           <View style={{ marginTop: SPACING.xl }}>
             <Button
-              title="Aileden Ayril"
+              title="Aileden Ayrıl"
               variant="ghost"
               onPress={handleLeave}
               disabled={busy}

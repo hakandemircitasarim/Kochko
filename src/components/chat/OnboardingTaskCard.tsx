@@ -27,7 +27,7 @@ export function OnboardingTaskCard({ task, onPress }: Props) {
         borderRadius: RADIUS.lg,
         padding: SPACING.md,
         borderWidth: 1,
-        borderColor: task.color + '33',
+        borderColor: colors.primary + '33',
         width: 220,
         gap: SPACING.sm,
       }}
@@ -38,23 +38,23 @@ export function OnboardingTaskCard({ task, onPress }: Props) {
             width: 34,
             height: 34,
             borderRadius: 11,
-            backgroundColor: task.color + '22',
+            backgroundColor: colors.primary + '22',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Ionicons name={task.icon as keyof typeof Ionicons.glyphMap} size={17} color={task.color} />
+          <Ionicons name={task.icon as keyof typeof Ionicons.glyphMap} size={17} color={colors.primary} />
         </View>
         <View
           style={{
             marginLeft: 'auto',
-            backgroundColor: task.color + '15',
+            backgroundColor: colors.primary + '15',
             paddingHorizontal: 7,
             paddingVertical: 2,
             borderRadius: 999,
           }}
         >
-          <Text style={{ color: task.color, fontSize: 9, fontWeight: '700', letterSpacing: 0.5 }}>
+          <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
             BAŞLA
           </Text>
         </View>
@@ -62,7 +62,7 @@ export function OnboardingTaskCard({ task, onPress }: Props) {
       <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
         {task.title}
       </Text>
-      <Text style={{ color: colors.textMuted, fontSize: 11, lineHeight: 15 }} numberOfLines={2}>
+      <Text style={{ color: colors.textSecondary, fontSize: 11, lineHeight: 15 }} numberOfLines={2}>
         {task.description}
       </Text>
     </TouchableOpacity>

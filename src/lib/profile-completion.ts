@@ -44,26 +44,11 @@ export const COMPLETION_FIELDS: CompletionField[] = [
   { key: 'alcohol_frequency', weight: 1, category: 'preferences' },
 ];
 
-// Fields that have non-null defaults and should be treated as "filled" only when changed from default
-const DEFAULT_VALUES: Record<string, unknown> = {
-  cooking_skill: 'none',
-  budget_level: 'low',
-  diet_mode: 'standard',
-  alcohol_frequency: 'never',
-  unit_system: 'metric',
-  portion_language: 'grams',
-  meal_count_preference: 3,
-  equipment_access: 'home',
-  training_style: 'mixed',
-};
-
 function isFieldFilled(profile: Record<string, unknown>, key: string): boolean {
   const value = profile[key];
   if (value === null || value === undefined || value === '') return false;
 
-  // For fields with defaults, we consider them "filled" even with default
-  // because the user may intentionally keep the default
-  // Only truly null/empty fields count as unfilled
+  // Any non-null/non-empty value counts as filled.
   return true;
 }
 
@@ -78,10 +63,10 @@ export interface CompletionResult {
 
 const CATEGORY_LABELS: Record<ProfileCategory, string> = {
   physical: 'Fiziksel Bilgiler',
-  lifestyle: 'Yasam Tarzi',
+  lifestyle: 'Yaşam Tarzı',
   schedule: 'Program Bilgileri',
   preferences: 'Tercihler',
-  measurements: 'Vucut Olculeri',
+  measurements: 'Vücut Ölçüleri',
 };
 
 export { CATEGORY_LABELS };

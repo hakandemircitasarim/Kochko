@@ -14,15 +14,17 @@ import {
   type DataSharingConsent,
 } from '@/services/coach-mode.service';
 import { supabase } from '@/lib/supabase';
+import { a11ySwitch, getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 const DATA_TYPE_LABELS: Record<string, string> = {
-  meals: 'Ogun Kayitlari',
+  meals: 'Öğün Kayıtları',
   metrics: 'Profil Bilgileri',
   weight: 'Kilo Verileri',
   goals: 'Hedefler',
-  plans: 'Haftalik Planlar',
-  chat_summary: 'AI Ozeti',
-  reports: 'Sohbet Gecmisi',
+  plans: 'Haftalık Planlar',
+  chat_summary: 'AI Özeti',
+  reports: 'Sohbet Geçmişi',
 };
 
 export default function CoachSharingScreen() {
@@ -57,7 +59,7 @@ export default function CoachSharingScreen() {
           .select('id')
           .eq('id', c.coachId)
           .single();
-        setCoachName(coachProfile ? `Koc ${c.coachId.slice(0, 6)}` : null);
+        setCoachName(coachProfile ? `Koç ${c.coachId.slice(0, 6)}` : null);
       }
     } catch (e) {
       console.error('Coach sharing load error', e);
@@ -77,9 +79,10 @@ export default function CoachSharingScreen() {
     // (A real short-code mechanism is a future server feature — B2B, Spec 20.1.)
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!UUID_RE.test(coachId)) {
+      haptics.error();
       Alert.alert(
-        'Gecersiz kod',
-        'Koc baglantisi icin kocunun hesap kimligini (UUID formatinda) girmen gerekiyor. Kocundan uygulamadaki profil kimligini istemelisin.',
+        'Geçersiz kod',
+        'Koç bağlantısı için koçunun hesap kimliğini (UUID formatında) girmen gerekiyor. Koçundan uygulamadaki profil kimliğini iste.',
       );
       return;
     }
@@ -88,12 +91,14 @@ export default function CoachSharingScreen() {
       const allTypes = [...SHAREABLE_DATA_TYPES];
       await shareDataWithCoach(userId, coachId, allTypes);
       setInviteCode('');
+      haptics.success();
       await loadData();
     } catch (e: any) {
       const msg = String(e?.message ?? '');
+      haptics.error();
       Alert.alert('Hata', msg.includes('foreign key') || msg.includes('23503')
-        ? 'Bu kimlikle kayitli bir koc bulunamadi. Kimligi kontrol et.'
-        : msg || 'Koc baglantisi kurulamadi.');
+        ? 'Bu kimlikle kayıtlı bir koç bulunamadı, kimliği kontrol edip tekrar dene.'
+        : msg || 'Koç bağlantısı kurulamadı, tekrar dener misin?');
     } finally {
       setBusy(false);
     }
@@ -101,6 +106,7 @@ export default function CoachSharingScreen() {
 
   const handleToggle = async (dataType: string) => {
     if (!userId || !consent) return;
+    haptics.tap();
     const newToggles = { ...toggles, [dataType]: !toggles[dataType] };
     setToggles(newToggles);
 
@@ -111,7 +117,8 @@ export default function CoachSharingScreen() {
     if (activeTypes.length === 0) {
       // Can't have zero types — revert
       setToggles(toggles);
-      Alert.alert('Uyari', 'En az bir veri tipi paylasimda olmalidir. Erisimi tamamen kaldirmak icin "Koc Erisimini Kaldir" butonunu kullanin.');
+      haptics.warning();
+      Alert.alert('Uyarı', 'En az bir veri tipi paylaşımda olmalı. Erişimi tamamen kaldırmak için "Koç Erişimini Kaldır" butonunu kullan.');
       return;
     }
 
@@ -119,7 +126,8 @@ export default function CoachSharingScreen() {
       await shareDataWithCoach(userId, consent.coachId, activeTypes);
     } catch (e: any) {
       setToggles(toggles); // revert on error
-      Alert.alert('Hata', e?.message ?? 'Guncelleme basarisiz.');
+      haptics.error();
+      Alert.alert('Hata', e?.message ?? 'Güncelleme yapılamadı, tekrar dener misin?');
     }
   };
 
@@ -140,8 +148,10 @@ export default function CoachSharingScreen() {
               setConsent(null);
               setCoachName(null);
               setToggles({});
+              haptics.success();
             } catch (e: any) {
-              Alert.alert('Hata', e?.message ?? 'Islem basarisiz.');
+              haptics.error();
+              Alert.alert('Hata', e?.message ?? 'Erişim kaldırılamadı, tekrar dener misin?');
             } finally {
               setBusy(false);
             }
@@ -161,26 +171,26 @@ export default function CoachSharingScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Koc Paylasimi</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Koç Paylaşımı</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Profesyonel kocinizle verilerinizi guvenli sekilde paylasin.
+        Profesyonel koçunla verilerini güvenli şekilde paylaş.
       </Text>
 
       {!consent ? (
         <>
           {/* No coach linked */}
-          <Card title="Koc Baglantisi">
+          <Card title="Koç Bağlantısı">
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md, lineHeight: 20 }}>
-              Kocinizden aldiginiz davet kodunu girerek hesabinizi baglayabilirsiniz. Baglanti sonrasi hangi verilerin paylasilacagini siz belirlersiniz.
+              Koçundan aldığın davet kodunu girerek hesabını bağlayabilirsin. Bağlantı sonrası hangi verilerin paylaşılacağını sen belirlersin.
             </Text>
             <Input
-              label="Koc Davet Kodu"
+              label="Koç Davet Kodu"
               value={inviteCode}
               onChangeText={setInviteCode}
-              placeholder="Koc kodunu girin"
+              placeholder="Koç kodunu gir"
             />
             <Button
-              title={busy ? 'Baglaniyor...' : 'Koc Bagla'}
+              title={busy ? 'Bağlanıyor...' : 'Koç Bağla'}
               onPress={handleLink}
               disabled={busy || !inviteCode.trim()}
               style={{ marginTop: SPACING.md }}
@@ -190,12 +200,12 @@ export default function CoachSharingScreen() {
       ) : (
         <>
           {/* Coach info */}
-          <Card title="Bagli Koc">
+          <Card title="Bağlı Koç">
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View>
-                <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600' }}>{coachName ?? 'Koc'}</Text>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
-                  Baglanti: {new Date(consent.grantedAt).toLocaleDateString('tr-TR')}
+                <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600' }}>{coachName ?? 'Koç'}</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
+                  Bağlantı: {new Date(consent.grantedAt).toLocaleDateString('tr-TR')}
                 </Text>
               </View>
               <View style={{ backgroundColor: COLORS.successLight, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.pill }}>
@@ -205,18 +215,21 @@ export default function CoachSharingScreen() {
           </Card>
 
           {/* Data sharing toggles */}
-          <Card title="Veri Paylasim Izinleri" style={{ marginTop: SPACING.md }}>
+          <Card title="Veri Paylaşım İzinleri" style={{ marginTop: SPACING.md }}>
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md, lineHeight: 20 }}>
-              Kocinizin hangi verilerinizi gorebilecegini secin.
+              Koçunun hangi verilerini görebileceğini seç.
             </Text>
             {SHAREABLE_DATA_TYPES.map((dt, i) => (
               <TouchableOpacity
                 key={dt}
                 onPress={() => handleToggle(dt)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                {...a11ySwitch(DATA_TYPE_LABELS[dt] ?? dt, !!toggles[dt])}
                 style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
+                  minHeight: 44,
                   paddingVertical: SPACING.sm,
                   borderBottomWidth: i < SHAREABLE_DATA_TYPES.length - 1 ? 1 : 0,
                   borderBottomColor: COLORS.border,
@@ -224,27 +237,27 @@ export default function CoachSharingScreen() {
               >
                 <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{DATA_TYPE_LABELS[dt] ?? dt}</Text>
                 <View style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: toggles[dt] ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
-                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: toggles[dt] ? 'flex-end' : 'flex-start' }} />
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: getContrastColor(toggles[dt] ? COLORS.primary : COLORS.surfaceLight), alignSelf: toggles[dt] ? 'flex-end' : 'flex-start' }} />
                 </View>
               </TouchableOpacity>
             ))}
           </Card>
 
           {/* Active consent summary */}
-          <Card title="Onay Detaylari" style={{ marginTop: SPACING.md }}>
+          <Card title="Onay Detayları" style={{ marginTop: SPACING.md }}>
             <View style={{ gap: SPACING.xs }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Durum</Text>
                 <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600' }}>Aktif</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Paylasilan Veri</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Paylaşılan Veri</Text>
                 <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '600' }}>
                   {consent.dataTypes.length} / {SHAREABLE_DATA_TYPES.length} kategori
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Baslangic</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Başlangıç</Text>
                 <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>
                   {new Date(consent.grantedAt).toLocaleDateString('tr-TR')}
                 </Text>
@@ -255,7 +268,7 @@ export default function CoachSharingScreen() {
           {/* Revoke */}
           <View style={{ marginTop: SPACING.xl }}>
             <Button
-              title="Koc Erisimini Kaldir"
+              title="Koç Erişimini Kaldır"
               variant="ghost"
               onPress={handleRevoke}
               disabled={busy}

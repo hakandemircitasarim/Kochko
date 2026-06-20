@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 import { detectTimezone } from '@/lib/timezone';
 import { startTrialIfEligible } from '@/services/subscription.service';
@@ -62,7 +64,6 @@ const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
 // ─── Main Screen ───
 
 export default function OnboardingScreen() {
-  const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const [initialDraft, setInitialDraft] = useState<OnboardingDraft | null>(null);
   const [hydrated, setHydrated] = useState(false);
@@ -134,7 +135,11 @@ function WelcomeSlide({
       </Text>
 
       {/* Dot indicators */}
-      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xl }}>
+      <View
+        style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xl }}
+        accessibilityRole="progressbar"
+        accessibilityLabel={`Tanıtım adımı ${stepIndex + 1} / ${totalSlides}`}
+      >
         {Array.from({ length: totalSlides }).map((_, i) => (
           <View
             key={i}
@@ -149,8 +154,8 @@ function WelcomeSlide({
       </View>
 
       <View style={{ width: '100%', gap: SPACING.sm }}>
-        <Button title="İleri" onPress={onNext} size="lg" />
-        <Button title="Atla" onPress={onSkip} variant="ghost" size="sm" />
+        <Button title="İleri" onPress={() => { haptics.tap(); onNext(); }} size="lg" />
+        <Button title="Atla" onPress={() => { haptics.tap(); onSkip(); }} variant="ghost" size="sm" />
       </View>
     </View>
   );
@@ -188,6 +193,15 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
   const needsTargetWeight = goalType === 'lose_weight' || goalType === 'gain_muscle';
   const isValid = heightCm && weightKg && gender && goalType && activity && (!needsTargetWeight || targetWeightKg);
 
+  // First missing field, so the disabled button can say *what* is blocking instead of just greying out.
+  const missingLabel = !heightCm ? 'boyunu'
+    : !weightKg ? 'kilonu'
+    : !gender ? 'cinsiyetini'
+    : !goalType ? 'hedefini'
+    : (needsTargetWeight && !targetWeightKg) ? 'hedef kilonu'
+    : !activity ? 'aktivite seviyeni'
+    : null;
+
   const handleComplete = async () => {
     if (!user?.id || !isValid) return;
     setSaving(true);
@@ -219,6 +233,7 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
       });
 
       if (goalError) {
+        haptics.error();
         Alert.alert('Hata', 'Hedef oluşturulurken bir sorun oluştu. Tekrar deneyin.');
         setSaving(false);
         return;
@@ -266,9 +281,11 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
       // 4. Clear the resume draft — onboarding is done.
       await clearOnboardingDraft();
 
-      // 5. Navigate to chat
+      // 5. Celebrate the milestone, then navigate to chat
+      haptics.success();
       router.replace('/(tabs)/chat');
     } catch {
+      haptics.error();
       Alert.alert('Hata', 'Bir sorun oluştu. Tekrar deneyin.');
     } finally {
       setSaving(false);
@@ -277,12 +294,32 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.xs }}>
+      <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingTop: SPACING.md + insets.top, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+        {/* Son adım pill — the slide dots are gone here, so signal the form is finite. */}
+        <View style={{
+          alignSelf: 'flex-start',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: SPACING.xs,
+          paddingVertical: 4,
+          paddingHorizontal: SPACING.sm,
+          borderRadius: RADIUS.pill,
+          backgroundColor: COLORS.primary + '20',
+          marginBottom: SPACING.sm,
+        }}>
+          <Ionicons name="flag" size={12} color={COLORS.primary} />
+          <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: COLORS.primary }}>
+            Son adım
+          </Text>
+        </View>
+        <Text
+          style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.xs }}
+          accessibilityRole="header"
+        >
           Seni Tanıyalım
         </Text>
         <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
-          Sadece 5 bilgi ile başlayabilirsin. Geri kalanı zamanla öğreneceğiz.
+          Sadece 5 bilgi ile başlayalım — sonra Koç seni tanımaya başlayacak.
         </Text>
 
         {/* Physical */}
@@ -313,13 +350,27 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
         {/* Activity */}
         <ChipSelect label="Aktivite Seviyesi" options={ACTIVITY_OPTIONS} selected={activity} onChange={v => setActivity(v as ActivityLevel)} />
 
+        {/* AI-first promise: bridge the slide-2 "Sohbet Et" hero to the post-submit chat. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.lg, marginBottom: SPACING.sm }}>
+          <Ionicons name="chatbubble-ellipses" size={14} color={COLORS.primary} />
+          <Text style={{ flex: 1, fontSize: FONT.sm, color: COLORS.textSecondary }}>
+            Bunlar bitince Koç ile sohbete başlıyoruz.
+          </Text>
+        </View>
+
+        {/* Tell the user *what* is still missing instead of just a dead grey button. */}
+        {!isValid && missingLabel && (
+          <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginBottom: SPACING.xs }}>
+            Devam etmek için {missingLabel} seç.
+          </Text>
+        )}
+
         <Button
           title="Başlayalım!"
           onPress={handleComplete}
           loading={saving}
           disabled={!isValid}
           size="lg"
-          style={{ marginTop: SPACING.lg }}
         />
       </ScrollView>
     </KeyboardAvoidingView>
@@ -338,24 +389,32 @@ function ChipSelect({ label, options, selected, onChange }: {
     <View style={{ marginBottom: SPACING.md }}>
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
-        {options.map(opt => (
-          <TouchableOpacity
-            key={opt.value}
-            onPress={() => onChange(opt.value)}
-            style={{
-              paddingVertical: 8,
-              paddingHorizontal: SPACING.md,
-              borderRadius: RADIUS.pill,
-              borderWidth: 0.5,
-              borderColor: selected === opt.value ? COLORS.primary : COLORS.border,
-              backgroundColor: selected === opt.value ? COLORS.primary : 'transparent',
-            }}
-          >
-            <Text style={{ color: selected === opt.value ? '#fff' : COLORS.textSecondary, fontSize: FONT.sm }}>
-              {opt.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {options.map(opt => {
+          const isSelected = selected === opt.value;
+          return (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => { haptics.tap(); onChange(opt.value); }}
+              accessibilityRole="radio"
+              accessibilityLabel={`${label}: ${opt.label}`}
+              accessibilityState={{ selected: isSelected }}
+              style={{
+                minHeight: 44,
+                justifyContent: 'center',
+                paddingVertical: 8,
+                paddingHorizontal: SPACING.md,
+                borderRadius: RADIUS.pill,
+                borderWidth: 0.5,
+                borderColor: isSelected ? COLORS.primary : COLORS.border,
+                backgroundColor: isSelected ? COLORS.primary : 'transparent',
+              }}
+            >
+              <Text style={{ color: isSelected ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: isSelected ? '600' : '400' }}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );

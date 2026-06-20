@@ -27,12 +27,12 @@ const SCREEN_READER_UNITS: Record<string, string> = {
   ml: 'mililitre',
   kcal: 'kilokalori',
   cm: 'santimetre',
-  bpm: 'kalp atisi',
+  bpm: 'kalp atışı',
   dk: 'dakika',
   saat: 'saat',
-  gun: 'gun',
-  adim: 'adim',
-  '%': 'yuzde',
+  gun: 'gün',
+  adim: 'adım',
+  '%': 'yüzde',
 };
 
 // ────────────────────────────── Core a11y props ──────────────────────────────
@@ -243,7 +243,7 @@ export function formatRangeForScreenReader(
   unit: string
 ): string {
   const spoken = SCREEN_READER_UNITS[unit] ?? unit;
-  return `${min} ile ${max} ${spoken} arasi`;
+  return `${min} ile ${max} ${spoken} arası`;
 }
 
 /**
@@ -257,7 +257,7 @@ export function formatProgressForScreenReader(
 ): string {
   const spoken = SCREEN_READER_UNITS[unit] ?? unit;
   const pct = target > 0 ? Math.round((current / target) * 100) : 0;
-  return `${current} / ${target} ${spoken}, yuzde ${pct}`;
+  return `${current} / ${target} ${spoken}, yüzde ${pct}`;
 }
 
 // ────────────────────────────── Score Descriptions ──────────────────────────────
@@ -266,10 +266,10 @@ export function formatProgressForScreenReader(
  * Compliance score color for both visual and screen reader.
  */
 export function complianceDescription(score: number): string {
-  if (score >= 80) return `Cok iyi: ${score} puan`;
-  if (score >= 60) return `Iyi: ${score} puan`;
+  if (score >= 80) return `Çok iyi: ${score} puan`;
+  if (score >= 60) return `İyi: ${score} puan`;
   if (score >= 40) return `Orta: ${score} puan`;
-  return `Dusuk: ${score} puan`;
+  return `Düşük: ${score} puan`;
 }
 
 /**

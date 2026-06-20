@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 interface WeeklyReport {
   week_start: string;
@@ -35,19 +37,31 @@ export default function WeeklyReportScreen() {
   const [report, setReport] = useState<WeeklyReport | null>(null);
   const [alcohol, setAlcohol] = useState<AlcoholWeeklyData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  useEffect(() => {
+  const loadReport = useCallback(async () => {
     if (!user?.id) return;
-    (async () => {
+    setLoading(true);
+    setError(false);
+    try {
       const { data } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
       if (data) {
         setReport(data as WeeklyReport);
         await loadAlcoholData(user.id, (data as WeeklyReport).week_start);
       }
+    } catch {
+      // Network/auth failure must not strand the user on an infinite spinner — show a
+      // recoverable error state with a retry instead (#screen-states).
+      setError(true);
+    } finally {
       setLoading(false);
-    })();
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    loadReport();
+  }, [loadReport]);
 
   const loadAlcoholData = async (userId: string, weekStart: string) => {
     const ws = new Date(weekStart);
@@ -79,33 +93,68 @@ export default function WeeklyReportScreen() {
   const handleGenerate = async () => {
     if (!user?.id) return;
     setGenerating(true);
-    // The ai-report response omits persisted fields (weight_trend, actuals); reading
-    // the raw response left report.weight_trend undefined → crash at the .length check.
-    // Re-read the stored row (NOT NULL weight_trend default []) so the UI is safe + complete.
-    await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly', force: true } });
-    const { data } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
-    if (data) {
-      setReport(data as WeeklyReport);
-      if ((data as WeeklyReport).week_start) {
-        await loadAlcoholData(user.id, (data as WeeklyReport).week_start);
+    try {
+      // The ai-report response omits persisted fields (weight_trend, actuals); reading
+      // the raw response left report.weight_trend undefined → crash at the .length check.
+      // Re-read the stored row (NOT NULL weight_trend default []) so the UI is safe + complete.
+      const { error: invokeError } = await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly', force: true } });
+      if (invokeError) throw invokeError;
+      const { data } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
+      if (data) {
+        setReport(data as WeeklyReport);
+        if ((data as WeeklyReport).week_start) {
+          await loadAlcoholData(user.id, (data as WeeklyReport).week_start);
+        }
+        haptics.success();
+      } else {
+        // Invoke succeeded but no row came back — don't leave the user tapping into the void.
+        Alert.alert('Rapor hazır değil', 'Henüz yeterli veri yok gibi görünüyor, birazdan tekrar dene.');
       }
+    } catch {
+      haptics.error();
+      // AI-dependent surface: the coach (LLM) can be temporarily unavailable — make it
+      // clear it's not the user's fault and that retrying later is the right move.
+      Alert.alert('Koç şu an meşgul', 'Raporun oluşturulamadı. Lütfen birkaç dakika sonra tekrar dene.');
+    } finally {
+      setGenerating(false);
     }
-    setGenerating(false);
   };
 
-  if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} accessibilityLabel="Rapor yükleniyor" /></View>;
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
+        <Text style={{ color: COLORS.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.lg }}>
+          Rapor yüklenemedi. İnternet bağlantını kontrol et.
+        </Text>
+        <TouchableOpacity
+          onPress={loadReport}
+          accessibilityRole="button"
+          accessibilityLabel="Tekrar dene"
+          style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
+        >
+          <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const compColor = (report?.avg_compliance ?? 0) >= 70 ? COLORS.success : (report?.avg_compliance ?? 0) >= 40 ? COLORS.warning : COLORS.error;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Haftalık Rapor</Text>
-      {report && <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Hafta: {report.week_start}</Text>}
+      {report && <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Hafta: {new Date(report.week_start).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}</Text>}
 
       {!report ? (
         <Card>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Henüz haftalık rapor yok.</Text>
           <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
+          {generating && (
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.md }}>
+              Koç haftanı analiz ediyor, bu birkaç saniye sürebilir...
+            </Text>
+          )}
         </Card>
       ) : (
         <>
@@ -226,6 +275,11 @@ export default function WeeklyReportScreen() {
           )}
 
           <Button title="Yeniden Oluştur" variant="outline" onPress={handleGenerate} loading={generating} />
+          {generating && (
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.md }}>
+              Koç haftanı analiz ediyor, bu birkaç saniye sürebilir...
+            </Text>
+          )}
         </>
       )}
     </ScrollView>

@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { initiatePurchase, restorePurchases } from '@/services/subscription.service';
 import { supabase } from '@/lib/supabase';
+import { haptics } from '@/lib/haptics';
 
 const FREE = [
   'Kayıt girişi (öğün, spor, su, tartı)',
@@ -56,9 +57,10 @@ export default function PremiumScreen() {
     // Simdilik: Manual premium aktivasyonu (development)
     if (!user?.id) return;
 
+    haptics.tap();
     Alert.alert(
       'Premium Abonelik',
-      'Aylık ($9.99) veya yıllık ($79.99, %33 indirim) seçin.',
+      'Aylık ($9.99) ya da yıllık ($79.99, %33 indirim) seç.',
       [
         { text: 'İptal', style: 'cancel' },
         { text: 'Aylık - $9.99', onPress: () => activatePremium(1) },
@@ -67,24 +69,17 @@ export default function PremiumScreen() {
     );
   };
 
-  const handleBuy = () => {
-    Alert.alert(
-      'Geliştirici Modu',
-      'Uygulama içi satın alma (IAP) henüz bağlantılı değil. Gerçek ödeme altyapısı App Store / Google Play entegrasyonu ile aktif olacak. Şimdilik test için "Abone Ol" butonunu kullanabilirsin.',
-      [{ text: 'Tamam' }]
-    );
-  };
-
   const handleRestorePurchases = async () => {
     const result = await restorePurchases();
     if (result.ok) {
+      haptics.success();
       Alert.alert('Başarılı', 'Satın alımların yüklendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
       return;
     }
-    // Native SDK wired değil → dev fallback
+    // Native SDK wired değil → kullanıcıya dürüst "yakında" mesajı
     Alert.alert(
       'Satın Alımları Geri Yükle',
-      'Uygulama içi satın alma altyapısı henüz aktif edilmedi. Geliştiriciyle iletişime geç.',
+      'Premium satın alma çok yakında açılacak. O zaman önceki satın alımların otomatik olarak buradan geri yüklenebilecek.',
       [{ text: 'Tamam' }]
     );
   };
@@ -100,6 +95,7 @@ export default function PremiumScreen() {
     const productId = months === 1 ? 'monthly' : 'yearly';
     const result = await initiatePurchase(productId);
     if (result.ok) {
+      haptics.success();
       Alert.alert('Tebrikler!', 'Premium aktif.', [{ text: 'Tamam', onPress: () => router.back() }]);
       return;
     }
@@ -112,11 +108,12 @@ export default function PremiumScreen() {
   };
 
   const handleCancel = () => {
-    Alert.alert('İptal', 'Premium aboneliğini iptal etmek istiyor musun? Mevcut dönem sonuna kadar erişim devam eder.', [
-      { text: 'Vazgeç', style: 'cancel' },
+    Alert.alert('Aboneliği İptal Et', 'Premium aboneliğini iptal etmek istiyor musun? Mevcut dönem sonuna kadar erişimin devam eder.', [
+      { text: 'İptal', style: 'cancel' },
       { text: 'İptal Et', style: 'destructive', onPress: async () => {
         // In production: cancel via RevenueCat/IAP
         // Premium remains until premium_expires_at
+        haptics.warning();
         Alert.alert('İptal Edildi', 'Mevcut dönem sonuna kadar Premium devam eder.');
       }},
     ]);
@@ -129,12 +126,12 @@ export default function PremiumScreen() {
       : null;
 
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, justifyContent: 'center' }}>
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingTop: SPACING.lg + insets.top, paddingBottom: SPACING.xxl + insets.bottom, justifyContent: 'center' }}>
         <Card>
           <Text style={{ color: COLORS.success, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Premium Aktif</Text>
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>Tüm özelliklere erişimin var.</Text>
           {expiresDate && (
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>Geçerlilik: {expiresDate}</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>Geçerlilik: {expiresDate}</Text>
           )}
         </Card>
         <View style={{ marginTop: SPACING.lg }}>
@@ -147,7 +144,7 @@ export default function PremiumScreen() {
   // Trial period
   if (isInTrial) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md }}>
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
         {/* Trial expiry countdown banner */}
         <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md }}>
           <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>
@@ -174,13 +171,10 @@ export default function PremiumScreen() {
         </View>
 
         <View style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
             Deneme bitmeden abone olarak kesintisiz devam et.
           </Text>
-          <Button title="Satın Al" onPress={handleBuy} size="lg" />
-          <View style={{ marginTop: SPACING.sm }}>
-            <Button title="Şimdi Abone Ol (Test)" onPress={handleSubscribe} size="lg" variant="ghost" />
-          </View>
+          <Button title="Aboneliğe Geç" onPress={handleSubscribe} size="lg" />
           <View style={{ marginTop: SPACING.sm }}>
             <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />
           </View>
@@ -213,22 +207,19 @@ export default function PremiumScreen() {
         <Card style={{ flex: 1 }}>
           <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Aylık</Text>
           <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$9.99</Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center' }}>/ay</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>/ay</Text>
         </Card>
         <Card style={{ flex: 1, borderColor: COLORS.primary, borderWidth: 1 }}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>%33 İNDİRİM</Text>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>%33 İNDİRİM</Text>
           <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Yıllık</Text>
           <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$79.99</Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center' }}>$6.67/ay</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>$6.67/ay</Text>
         </Card>
       </View>
 
-      <Button title="Satın Al" onPress={handleBuy} size="lg" />
-      <View style={{ marginTop: SPACING.sm }}>
-        <Button title="Premium'u Başlat (Test)" onPress={handleSubscribe} size="lg" variant="ghost" />
-      </View>
-      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
-        7 gün ücretsiz deneme. İstediğin zaman iptal et.
+      <Button title="Premium'a Geç" onPress={handleSubscribe} size="lg" />
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+        7 gün ücretsiz deneme. İstediğin zaman iptal edebilirsin.
       </Text>
       <View style={{ marginTop: SPACING.md }}>
         <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />

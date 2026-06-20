@@ -5,15 +5,18 @@
 import { View, Text } from 'react-native';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
+// All deviation reasons are "slip/risk" signals, rendered with on-brand
+// semantic tokens (no off-palette Material rainbow). Two tiers:
+// medically relevant reasons -> COLORS.error, the rest -> COLORS.warning.
 const LABELS: Record<string, { text: string; color: string }> = {
-  stres: { text: 'Stres', color: '#E91E63' },
-  aclik: { text: 'Açlık Yönetimi', color: '#FF5722' },
-  disarida_yemek: { text: 'Dışarıda Yemek', color: '#FF9800' },
-  plansiz_atistirma: { text: 'Plansız Atıştırma', color: '#FFC107' },
-  sosyal: { text: 'Sosyal Ortam', color: '#9C27B0' },
-  alkol: { text: 'Alkol', color: '#673AB7' },
-  yorgunluk: { text: 'Yorgunluk', color: '#607D8B' },
-  hastalik: { text: 'Hastalık', color: '#795548' },
+  stres: { text: 'Stres', color: COLORS.warning },
+  aclik: { text: 'Açlık Yönetimi', color: COLORS.warning },
+  disarida_yemek: { text: 'Dışarıda Yemek', color: COLORS.warning },
+  plansiz_atistirma: { text: 'Plansız Atıştırma', color: COLORS.warning },
+  sosyal: { text: 'Sosyal Ortam', color: COLORS.warning },
+  alkol: { text: 'Alkol', color: COLORS.error },
+  yorgunluk: { text: 'Yorgunluk', color: COLORS.warning },
+  hastalik: { text: 'Hastalık', color: COLORS.error },
   yok: { text: 'Sapma Yok', color: COLORS.success },
 };
 
@@ -24,15 +27,19 @@ interface Props {
 export function DeviationTag({ reason }: Props) {
   if (!reason || reason === 'yok') return null;
 
-  const info = LABELS[reason] ?? { text: reason, color: COLORS.textMuted };
+  // Unknown reasons: textSecondary (AA-readable) instead of borderline textMuted.
+  const info = LABELS[reason] ?? { text: reason, color: COLORS.textSecondary };
 
   return (
-    <View style={{
-      flexDirection: 'row', alignItems: 'center', gap: SPACING.xs,
-      backgroundColor: info.color + '15', borderRadius: 8,
-      paddingHorizontal: SPACING.sm, paddingVertical: 4,
-      borderLeftWidth: 3, borderLeftColor: info.color,
-    }}>
+    <View
+      accessibilityRole="text"
+      accessibilityLabel={`Sapma nedeni: ${info.text}`}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: SPACING.xs,
+        backgroundColor: info.color + '15', borderRadius: 8,
+        paddingHorizontal: SPACING.sm, paddingVertical: 4,
+        borderLeftWidth: 3, borderLeftColor: info.color,
+      }}>
       <Text style={{ color: info.color, fontSize: FONT.sm, fontWeight: '600' }}>{info.text}</Text>
     </View>
   );

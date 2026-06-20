@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 export default function LabValuesScreen() {
   const insets = useSafeAreaInsets();
@@ -33,9 +35,11 @@ export default function LabValuesScreen() {
       measured_at: new Date().toISOString().split('T')[0],
     });
     if (!ok) {
+      haptics.error();
       Alert.alert('Kaydedilemedi', 'Değer eklenemedi, lütfen tekrar dene.');
       return;
     }
+    haptics.success();
     setShowAdd(false); setParamName(''); setValue(''); setUnit(''); setRefMin(''); setRefMax('');
     getLabValues().then(setEntries);
   };
@@ -49,8 +53,8 @@ export default function LabValuesScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Lab Değerleri</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yaşam tarzı takibi içindir. Tıbbi yorum için doktoruna danış.</Text>
+      {/* Native header (settings/_layout.tsx) already shows the Turkish "Lab Değerleri" title — redundant body heading dropped, disclaimer kept as the screen intro. */}
+      <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginBottom: SPACING.lg }}>Yaşam tarzı takibi içindir. Tıbbi yorum için doktoruna danış.</Text>
 
       <Button title={showAdd ? 'İptal' : 'Yeni Değer Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
 
@@ -58,14 +62,20 @@ export default function LabValuesScreen() {
         <Card style={{ marginTop: SPACING.md }}>
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>Hızlı Seçim</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
-            {COMMON_LAB_PARAMS.map(p => (
-              <TouchableOpacity key={p.name} onPress={() => selectParam(p)}
-                style={{ paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: 6, borderWidth: 1,
-                  borderColor: paramName === p.name ? COLORS.primary : COLORS.border,
-                  backgroundColor: paramName === p.name ? COLORS.primary : 'transparent' }}>
-                <Text style={{ color: paramName === p.name ? '#fff' : COLORS.textSecondary, fontSize: FONT.xs }}>{p.name}</Text>
-              </TouchableOpacity>
-            ))}
+            {COMMON_LAB_PARAMS.map(p => {
+              const selected = paramName === p.name;
+              return (
+                <TouchableOpacity key={p.name} onPress={() => { haptics.tap(); selectParam(p); }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={p.name}
+                  style={{ paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: 6, borderWidth: 1,
+                    borderColor: selected ? COLORS.primary : COLORS.border,
+                    backgroundColor: selected ? COLORS.primary : 'transparent' }}>
+                  <Text style={{ color: selected ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.xs }}>{p.name}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
           <Input label="Parametre" value={paramName} onChangeText={setParamName} placeholder="Vitamin D" />
           <View style={{ flexDirection: 'row', gap: SPACING.sm }}>

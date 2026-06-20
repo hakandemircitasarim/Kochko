@@ -5,9 +5,19 @@ import { DARK_COLORS } from './theme';
 export const COLORS = DARK_COLORS;
 
 export const SPACING = { xs: 4, sm: 8, md: 12, lg: 14, xl: 16, xxl: 24 } as const;
-export const FONT = { xs: 11, sm: 13, md: 14, lg: 16, xl: 20, xxl: 24, hero: 28 } as const;
+// `xl2: 18` fills the 16→20 gap so authors stop reaching for raw fontSize:18 on
+// sub-headings; existing steps are unchanged to avoid shifting current layouts.
+export const FONT = { xs: 11, sm: 13, md: 14, lg: 16, xl2: 18, xl: 20, xxl: 24, hero: 28 } as const;
 export const RADIUS = { sm: 8, md: 12, lg: 16, xl: 24, xxl: 24, pill: 99, full: 999 } as const;
 export const WATER_INCREMENT = 0.25;
+
+/**
+ * Max OS text-scale multiplier for Dynamic Type. Tightly-constrained chips,
+ * badges, fixed-height pills, and progress labels should pass this to
+ * <Text maxFontSizeMultiplier={MAX_FONT_SCALE}> so a raised system font size
+ * (130–150%) does not clip or overlap. Body/label copy can scale freely.
+ */
+export const MAX_FONT_SCALE = 1.3;
 
 /** Card border style for dark theme (no shadows, thin border) */
 export const CARD_BORDER = {

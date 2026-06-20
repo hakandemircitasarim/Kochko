@@ -13,7 +13,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, ScrollView,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Vibration, Animated,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Animated,
+  NativeSyntheticEvent, NativeScrollEvent,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,6 +45,8 @@ import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
+import { getContrastColor } from '@/lib/accessibility';
 
 // Simulation data parsed from AI responses
 interface SimulationData {
@@ -131,11 +134,11 @@ function DateSeparator({ label }: { label: string }) {
         style={{
           paddingHorizontal: SPACING.md,
           paddingVertical: 3,
-          borderRadius: 999,
+          borderRadius: RADIUS.full,
           backgroundColor: colors.surfaceLight,
         }}
       >
-        <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
+        <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
           {label}
         </Text>
       </View>
@@ -218,6 +221,23 @@ function parseRecipeData(content: string): { cleanContent: string; data: RecipeD
   }
 }
 
+// Map the active task mode / photo send to an intentional typing-indicator label,
+// so a multi-second wait reads as purposeful work rather than a dead spinner.
+function typingLabelFor(taskMode: string | undefined, isPhoto: boolean): string {
+  if (isPhoto) return 'Fotoğrafı inceliyorum';
+  switch (taskMode) {
+    case 'plan':
+    case 'plan_suggestion':
+    case 'plan_diet':
+    case 'plan_workout':
+      return 'Planını hazırlıyorum';
+    case 'recipe':
+      return 'Tarifini yazıyorum';
+    default:
+      return 'Kochko yazıyor';
+  }
+}
+
 function hasConfirmRejectIndicator(content: string, taskMode?: string): boolean {
   return !!content.match(/<confirm_reject\s*\/?>/) ||
     taskMode === 'plan_suggestion' ||
@@ -250,6 +270,9 @@ export default function SessionDetailScreen() {
   const [input, setInput] = useState('');
   const [prefillApplied, setPrefillApplied] = useState(false);
   const [sending, setSending] = useState(false);
+  // Intentional, context-aware label under the typing dots so long LLM waits read
+  // as purposeful ("Planını hazırlıyorum…") instead of a blank spinner.
+  const [typingLabel, setTypingLabel] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [photo, setPhoto] = useState<string | null>(null);
   const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
@@ -279,6 +302,18 @@ export default function SessionDetailScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
   const barcodeProcessingRef = useRef(false); // debounce repeated onBarcodeScanned (#R4-15)
+  // Track whether the user is near the live end of the conversation. Drives both the
+  // auto-scroll guard (don't yank the user down while they read older messages) and
+  // the "jump to latest" FAB visibility.
+  const nearBottomRef = useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const handleListScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const distanceFromBottom = contentSize.height - (layoutMeasurement.height + contentOffset.y);
+    const isNear = distanceFromBottom < 120;
+    nearBottomRef.current = isNear;
+    setShowScrollToBottom(prev => (prev === !isNear ? prev : !isNear));
+  }, []);
 
   const isOnboarding = profile && !profile.onboarding_completed;
   const isPremium = !!(profile as Record<string, unknown> | null)?.premium;
@@ -330,6 +365,7 @@ export default function SessionDetailScreen() {
   // Flow: record → transcribe → drop into input + show "Duydum: X" banner
   // for 5s so user can review/edit/cancel before sending.
   const handleVoiceToggle = async () => {
+    haptics.tap();
     if (isRecordingVoice) {
       try {
         setIsRecordingVoice(false);
@@ -374,6 +410,7 @@ export default function SessionDetailScreen() {
       if (data.length === 0 && taskModeHint) {
         // Card-triggered session: AI sends first message (not user)
         setLoading(false);
+        setTypingLabel(typingLabelFor(taskModeHint, false));
         setSending(true);
         const { data: response, error } = await sendMessageToSession(
           sessionId,
@@ -456,8 +493,13 @@ export default function SessionDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openCamera, loading]);
 
-  // Scroll to bottom helper
-  const scrollToBottom = useCallback(() => {
+  // Scroll to bottom helper. Pass force=true when the user just sent/tapped
+  // something (always follow their own action); otherwise only follow when they
+  // were already reading near the live end — so we never yank them mid-scroll.
+  const scrollToBottom = useCallback((force = false) => {
+    if (!force && !nearBottomRef.current) return;
+    nearBottomRef.current = true;
+    setShowScrollToBottom(false);
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 150);
   }, []);
 
@@ -468,7 +510,7 @@ export default function SessionDetailScreen() {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Izin gerekli', 'Galeriye erisim izni vermen gerek.');
+      Alert.alert('İzin gerekli', 'Galeriye erişim izni vermen gerek.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.5 });
@@ -478,7 +520,7 @@ export default function SessionDetailScreen() {
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Izin gerekli', 'Kameraya erisim izni vermen gerek.');
+      Alert.alert('İzin gerekli', 'Kameraya erişim izni vermen gerek.');
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.5 });
@@ -492,7 +534,7 @@ export default function SessionDetailScreen() {
     if (sending) return;
     if (rateLimitedUntil && Date.now() < rateLimitedUntil) return;
     if (!isOnline) {
-      Alert.alert('Internet yok', 'Bagli oldugundan emin olup tekrar dene.');
+      Alert.alert('İnternet yok', 'Bağlı olduğundan emin olup tekrar dene.');
       return;
     }
 
@@ -525,7 +567,7 @@ export default function SessionDetailScreen() {
         if (!counterResult.allowed) {
           Alert.alert(
             'Mesaj Limiti',
-            counterResult.message ?? 'Gunluk mesaj limitine ulastin. Premium\'a gecersen sinirsiz mesaj hakki kazanirsin.',
+            counterResult.message ?? 'Günlük mesaj limitine ulaştın. Premium\'a geçersen sınırsız mesaj hakkı kazanırsın.',
             [{ text: 'Tamam' }]
           );
           return;
@@ -553,8 +595,9 @@ export default function SessionDetailScreen() {
       setPhoto(null);
     }
 
+    setTypingLabel(typingLabelFor(effectiveTaskMode, !!img));
     setSending(true);
-    scrollToBottom();
+    scrollToBottom(true); // user's own send — always follow
 
     const { data, error } = img
       ? await sendPhotoToSession(sessionId, text || 'Bu yemeği analiz et.', img)
@@ -630,6 +673,7 @@ export default function SessionDetailScreen() {
 
       // Refresh dashboard AND profile if actions were executed
       if (data.actions.some(a => a.feedback) && user?.id) {
+        haptics.success(); // a log/save committed — tactile confirm
         refreshDashboard(user.id);
         // Refresh profile if profile_update or weight_log action
         if (data.actions.some(a => a.type === 'profile_update' || a.type === 'weight_log')) {
@@ -649,6 +693,7 @@ export default function SessionDetailScreen() {
     } else {
       // Flag the user's message as failed with a retry payload. The bubble
       // renders a "Yeniden dene" button that re-invokes handleSend(retryFrom).
+      haptics.error(); // send failed — tactile error cue
       const errMsg = error ?? 'Bağlantı hatası. Tekrar dene.';
       setMessages(prev => prev.map(m => m.id === userMsgId
         ? {
@@ -678,8 +723,9 @@ export default function SessionDetailScreen() {
   };
 
   const handleCopyConversation = async () => {
+    haptics.tap();
     if (messages.length === 0) {
-      Alert.alert('Bos sohbet', 'Henuz mesaj yok.');
+      Alert.alert('Boş sohbet', 'Henüz mesaj yok.');
       return;
     }
     const transcript = messages
@@ -693,22 +739,26 @@ export default function SessionDetailScreen() {
     try {
       await Share.share({ message: transcript });
     } catch (e) {
-      Alert.alert('Paylasilamadi', 'Sohbet kopyalanirken bir hata olustu.');
+      Alert.alert('Paylaşılamadı', 'Sohbet kopyalanırken bir hata oluştu.');
     }
   };
 
-  // QuickSelectButtons handler — user picks an option from AI's inline choices
-  const handleQuickSelect = useCallback((option: string) => {
-    setInput(option);
+  // QuickSelectButtons handler — user picks an option from AI's inline choices.
+  // `displayLabel` (when provided) is the short, human-facing bubble shown to the
+  // user; `option` is the fuller engineered instruction actually sent to the model.
+  // When omitted (genuine quick-select chips) the bubble matches the tapped chip.
+  const handleQuickSelect = useCallback((option: string, displayLabel?: string) => {
+    haptics.tap(); // chip tap — light tactile confirm
+    const bubbleText = displayLabel ?? option;
     // Auto-send after a short delay
     setTimeout(async () => {
       const userMsg: UIMessage = {
-        id: `u-${Date.now()}`, role: 'user', content: option, created_at: new Date().toISOString(),
+        id: `u-${Date.now()}`, role: 'user', content: bubbleText, created_at: new Date().toISOString(),
       };
       setMessages(prev => [...prev, userMsg]);
-      setInput('');
+      setTypingLabel(undefined);
       setSending(true);
-      scrollToBottom();
+      scrollToBottom(true); // user's own tap — always follow
       const { data, error } = await sendMessageToSession(sessionId, option);
       if (data) {
         let content = data.message;
@@ -728,11 +778,12 @@ export default function SessionDetailScreen() {
           quickSelectOptions: qsParsed.options, hasPlanSuggestion: hasPlan,
           hasLowConfidenceVerification: hasLowConf,
         }]);
-        if (data.actions.some(a => a.feedback) && user?.id) refreshDashboard(user.id);
+        if (data.actions.some(a => a.feedback) && user?.id) { haptics.success(); refreshDashboard(user.id); }
       } else {
         // Mirror the main send path: flip the user's own bubble to a failed state
         // with a 'Yeniden dene' retry, instead of printing the error as a fake
         // assistant reply (which looked like the coach said the error text).
+        haptics.error();
         setMessages(prev => prev.map(m => m.id === userMsg.id
           ? { ...m, failed: true, errorMessage: error ?? 'Bağlantı hatası.', retryPayload: { text: option, photoUri: null } }
           : m));
@@ -742,9 +793,10 @@ export default function SessionDetailScreen() {
     }, 0);
   }, [scrollToBottom, user?.id, refreshDashboard]);
 
-  // Confirm/Reject plan suggestion handlers
+  // Confirm/Reject plan suggestion handlers. The user-facing bubble stays short and
+  // natural while the model still receives the fuller engineered instruction.
   const handlePlanConfirm = useCallback(() => {
-    handleQuickSelect('Evet, bu planı onayla');
+    handleQuickSelect('Evet, bu planı onayla', 'Planı onayla');
   }, [handleQuickSelect]);
 
   // Plan rejection with chip-based reason selection (Spec 7.1 — multi-turn refine)
@@ -753,12 +805,12 @@ export default function SessionDetailScreen() {
       'Neyi değiştirelim?',
       'Hangi kısmı beğenmedin?',
       [
-        { text: 'Kahvaltı', onPress: () => handleQuickSelect('Kahvaltı farklı olsun — yeni öneri ver') },
-        { text: 'Öğle', onPress: () => handleQuickSelect('Öğle yemeğini değiştir — yeni öneri ver') },
-        { text: 'Akşam', onPress: () => handleQuickSelect('Akşam yemeğini değiştir — yeni öneri ver') },
-        { text: 'Çok protein', onPress: () => handleQuickSelect('Protein fazla geldi, biraz azalt') },
-        { text: 'Çok karb', onPress: () => handleQuickSelect('Karbonhidrat fazla geldi, biraz azalt') },
-        { text: 'Tamamen değiştir', onPress: () => handleQuickSelect('Planı tamamen farklı bir yaklaşımla yeniden üret') },
+        { text: 'Kahvaltı', onPress: () => handleQuickSelect('Kahvaltı farklı olsun — yeni öneri ver', 'Kahvaltı') },
+        { text: 'Öğle', onPress: () => handleQuickSelect('Öğle yemeğini değiştir — yeni öneri ver', 'Öğle') },
+        { text: 'Akşam', onPress: () => handleQuickSelect('Akşam yemeğini değiştir — yeni öneri ver', 'Akşam') },
+        { text: 'Çok protein', onPress: () => handleQuickSelect('Protein fazla geldi, biraz azalt', 'Çok protein') },
+        { text: 'Çok karb', onPress: () => handleQuickSelect('Karbonhidrat fazla geldi, biraz azalt', 'Çok karb') },
+        { text: 'Tamamen değiştir', onPress: () => handleQuickSelect('Planı tamamen farklı bir yaklaşımla yeniden üret', 'Tamamen değiştir') },
         { text: 'İptal', style: 'cancel' },
       ],
       { cancelable: true },
@@ -769,11 +821,11 @@ export default function SessionDetailScreen() {
   // Confirm → AI sees "evet" (confirmation_yes); meal already saved, just acknowledge.
   // Reject  → AI sees "yanlış" (confirmation_no + correction); triggers repair flow.
   const handleLowConfConfirm = useCallback(() => {
-    handleQuickSelect('Evet, doğru');
+    handleQuickSelect('Evet, doğru', 'Doğru');
   }, [handleQuickSelect]);
 
   const handleLowConfReject = useCallback(() => {
-    handleQuickSelect('Hayır, yanlış anladın — son kaydı sil');
+    handleQuickSelect('Hayır, yanlış anladın — son kaydı sil', 'Yanlış, düzelt');
   }, [handleQuickSelect]);
 
   // Save AI-generated recipe to library (Spec 7.7)
@@ -796,8 +848,10 @@ export default function SessionDetailScreen() {
         servings: recipe.servings,
         is_favorite: false,
       });
+      haptics.success(); // recipe saved to library
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, recipeSaved: true } : m));
     } catch (err) {
+      haptics.error();
       Alert.alert('Hata', (err as Error).message);
     }
   }, [user?.id]);
@@ -822,11 +876,11 @@ export default function SessionDetailScreen() {
   // Confirm → AI keeps persona; short acknowledgement.
   // Reject  → clear ai_summary.user_persona via chat; AI re-detects at next milestone.
   const handlePersonaConfirm = useCallback(() => {
-    handleQuickSelect('Evet, beni doğru tanımladın');
+    handleQuickSelect('Evet, beni doğru tanımladın', 'Doğru tanıdın');
   }, [handleQuickSelect]);
 
   const handlePersonaReject = useCallback(() => {
-    handleQuickSelect('Hayır, ben farklıyım — persona tipimi unut');
+    handleQuickSelect('Hayır, ben farklıyım — persona tipimi unut', 'Ben farklıyım');
   }, [handleQuickSelect]);
 
   // Dashboard macros for real-time MacroSummary after meal_log
@@ -852,6 +906,7 @@ export default function SessionDetailScreen() {
 
   // "Neden bu öneriyi yaptın?" handler
   const handleAskWhy = useCallback((messageContent: string) => {
+    haptics.tap();
     setInput('Neden bu öneriyi yaptın?');
     // Trigger send after state update
     setTimeout(async () => {
@@ -864,8 +919,9 @@ export default function SessionDetailScreen() {
       };
       setMessages(prev => [...prev, userMsg]);
       setInput('');
+      setTypingLabel(undefined);
       setSending(true);
-      scrollToBottom();
+      scrollToBottom(true);
 
       const { data, error } = await sendMessageToSession(sessionId, text);
       if (data) {
@@ -911,7 +967,10 @@ export default function SessionDetailScreen() {
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      // This screen is header-less (headerShown:false at both layout levels) and renders
+      // its own in-content header, so there is no native header to offset against. A
+      // non-zero offset would float the composer ~90px above the keyboard on iOS.
+      keyboardVerticalOffset={0}
     >
       {/* Header */}
       <View style={{
@@ -947,17 +1006,22 @@ export default function SessionDetailScreen() {
           <Ionicons name="sparkles" size={17} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Kochko</Text>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Kochko</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: sending ? '#F59E0B' : '#22C55E' }} />
-            <Text style={{ fontSize: 10, color: colors.textMuted }}>
-              {sending ? 'yazıyor…' : 'aktif'}
+            {/* Token-driven presence dot: offline → muted, sending → warning, online+idle → teal.
+                Matches the chat list's colors.primary "active" treatment instead of Tailwind green. */}
+            <View style={{
+              width: 6, height: 6, borderRadius: 3,
+              backgroundColor: !isOnline ? colors.textMuted : sending ? colors.warning : colors.primary,
+            }} />
+            <Text style={{ fontSize: 11, color: colors.textMuted }}>
+              {!isOnline ? 'çevrimdışı' : sending ? 'yazıyor…' : 'aktif'}
             </Text>
           </View>
         </View>
         <TouchableOpacity
           onPress={handleCopyConversation}
-          style={{ padding: 6, borderRadius: 999, backgroundColor: colors.surfaceLight }}
+          style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight }}
           accessibilityRole="button"
           accessibilityLabel="Sohbeti kopyala"
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -977,26 +1041,57 @@ export default function SessionDetailScreen() {
           showSuggestions={!taskModeHint}
         />
       ) : (
-        <FlatList
-          ref={listRef}
-          data={withDateSeparators(messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]'))))}
-          keyExtractor={item => item.kind === 'separator' ? `sep-${item.key}` : (item.msg as UIMessage).id}
-          renderItem={({ item }) => {
-            if (item.kind === 'separator') return <DateSeparator label={item.label} />;
-            const m = item.msg as UIMessage;
-            return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} />;
-          }}
-          contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        />
+        <View style={{ flex: 1 }}>
+          <FlatList
+            ref={listRef}
+            data={withDateSeparators(messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]'))))}
+            keyExtractor={item => item.kind === 'separator' ? `sep-${item.key}` : (item.msg as UIMessage).id}
+            renderItem={({ item }) => {
+              if (item.kind === 'separator') return <DateSeparator label={item.label} />;
+              const m = item.msg as UIMessage;
+              return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onReject={handlePlanReject} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} />;
+            }}
+            contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
+            onScroll={handleListScroll}
+            scrollEventThrottle={16}
+            // Only auto-follow new content when the user was already at the live end —
+            // so an inline card animating in (or a message mounting) never yanks them
+            // back down while they re-read earlier messages.
+            onContentSizeChange={() => { if (nearBottomRef.current) listRef.current?.scrollToEnd({ animated: false }); }}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          />
+          {/* Jump-to-latest FAB — appears only when scrolled away from the live end */}
+          {showScrollToBottom && (
+            <TouchableOpacity
+              onPress={() => scrollToBottom(true)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="En sona git"
+              style={{
+                position: 'absolute',
+                right: SPACING.xl,
+                bottom: SPACING.md,
+                width: 44,
+                height: 44,
+                borderRadius: RADIUS.full,
+                backgroundColor: colors.primary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 0.5,
+                borderColor: colors.border,
+              }}
+            >
+              <Ionicons name="chevron-down" size={22} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {/* Typing indicator */}
       {sending && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
-          <TypingIndicator />
+          <TypingIndicator label={typingLabel} />
         </View>
       )}
 
@@ -1012,9 +1107,12 @@ export default function SessionDetailScreen() {
           />
           <TouchableOpacity
             onPress={() => setShowBarcodeScanner(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Barkod tarayıcıyı kapat"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={{ position: 'absolute', top: 8, right: 8, backgroundColor: colors.error, borderRadius: RADIUS.full, width: 32, height: 32, justifyContent: 'center', alignItems: 'center' }}
           >
-            <Ionicons name="close" size={18} color="#fff" />
+            <Ionicons name="close" size={18} color={getContrastColor(colors.error) === 'black' ? '#0D0D12' : '#fff'} />
           </TouchableOpacity>
         </View>
       )}
@@ -1032,9 +1130,12 @@ export default function SessionDetailScreen() {
           <Image source={{ uri: photo }} style={{ width: 60, height: 60, borderRadius: RADIUS.md }} />
           <TouchableOpacity
             onPress={() => setPhoto(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Fotoğrafı kaldır"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={{ marginLeft: SPACING.sm, width: 24, height: 24, borderRadius: RADIUS.full, backgroundColor: colors.error, justifyContent: 'center', alignItems: 'center' }}
           >
-            <Ionicons name="close" size={14} color="#fff" />
+            <Ionicons name="close" size={14} color={getContrastColor(colors.error) === 'black' ? '#0D0D12' : '#fff'} />
           </TouchableOpacity>
           <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginLeft: SPACING.sm, flex: 1 }}>Foto eklendi. Mesajla birlikte gönderilebilir.</Text>
         </View>
@@ -1048,8 +1149,8 @@ export default function SessionDetailScreen() {
             <Text style={{ color: colors.textSecondary, fontSize: 11, flex: 1 }}>
               Kayıt tarihi: {new Date(backdateDate).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'short' })}
             </Text>
-            <TouchableOpacity onPress={() => setBackdateDate(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Bugun</Text>
+            <TouchableOpacity onPress={() => setBackdateDate(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Bugüne sıfırla">
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Bugün</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1061,10 +1162,10 @@ export default function SessionDetailScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.sm, borderWidth: 0.5, borderColor: colors.primary }}>
             <Ionicons name="mic" size={14} color={colors.primary} />
             <Text style={{ color: colors.textSecondary, fontSize: 11, flex: 1 }} numberOfLines={2}>
-              Duydum: "{voiceConfirmation.text}" — gonder veya duzenle
+              Duydum: "{voiceConfirmation.text}" — gönder veya düzenle
             </Text>
-            <TouchableOpacity onPress={() => { setInput(''); setVoiceConfirmation(null); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Iptal</Text>
+            <TouchableOpacity onPress={() => { setInput(''); setVoiceConfirmation(null); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="İptal">
+              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>İptal</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1083,8 +1184,10 @@ export default function SessionDetailScreen() {
               backgroundColor: colors.warning, borderRadius: RADIUS.pill,
               paddingVertical: 6, paddingHorizontal: SPACING.xl, alignSelf: 'center',
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Son kaydı geri al"
           >
-            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '500' }}>Geri Al (10sn)</Text>
+            <Text style={{ color: getContrastColor(colors.warning) === 'black' ? '#0D0D12' : '#fff', fontSize: 11, fontWeight: '500' }}>Geri Al (10sn)</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1109,7 +1212,7 @@ export default function SessionDetailScreen() {
           ) : (
             <Text style={{
               color: remainingMsgs <= 5 ? colors.warning : colors.textMuted,
-              fontSize: 10, textAlign: 'center',
+              fontSize: 11, textAlign: 'center',
             }}>
               {remainingMsgs} mesaj hakkı kaldı
             </Text>
@@ -1180,7 +1283,7 @@ export default function SessionDetailScreen() {
               onPress={takePhoto}
               accessibilityRole="button"
               accessibilityLabel="Foto çek"
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
                 width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
                 justifyContent: 'center', alignItems: 'center',
@@ -1191,7 +1294,7 @@ export default function SessionDetailScreen() {
               onPress={openBarcodeScanner}
               accessibilityRole="button"
               accessibilityLabel="Barkod okut"
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
                 width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
                 justifyContent: 'center', alignItems: 'center',
@@ -1202,27 +1305,27 @@ export default function SessionDetailScreen() {
               onPress={handleBackdateButton}
               accessibilityRole="button"
               accessibilityLabel={backdateDate ? `Kayıt tarihi: ${backdateDate}` : 'Geçmiş tarihe kaydet'}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
                 width: 32, height: 32, borderRadius: 16,
                 backgroundColor: backdateDate ? colors.warning : colors.cardElevated,
                 justifyContent: 'center', alignItems: 'center',
               }}>
               <Ionicons name="calendar-outline" size={16}
-                color={backdateDate ? '#fff' : colors.textSecondary} />
+                color={backdateDate ? (getContrastColor(colors.warning) === 'black' ? '#0D0D12' : '#fff') : colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleVoiceToggle}
               accessibilityRole="button"
               accessibilityLabel={isRecordingVoice ? 'Ses kaydını durdur' : 'Sesli giriş başlat'}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
                 width: 32, height: 32, borderRadius: 16,
                 backgroundColor: isRecordingVoice ? colors.error : colors.cardElevated,
                 justifyContent: 'center', alignItems: 'center',
               }}>
               <Ionicons name={isRecordingVoice ? 'stop' : 'mic-outline'} size={16}
-                color={isRecordingVoice ? '#fff' : colors.textSecondary} />
+                color={isRecordingVoice ? (getContrastColor(colors.error) === 'black' ? '#0D0D12' : '#fff') : colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity
               style={{
@@ -1231,11 +1334,15 @@ export default function SessionDetailScreen() {
                 justifyContent: 'center', alignItems: 'center',
                 opacity: sendDisabled ? 0.4 : 1,
               }}
-              onPress={() => { void handleSend(); }} disabled={sendDisabled}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Mesaj gönder"
+              accessibilityState={{ disabled: sendDisabled }}
+              onPress={() => { haptics.tap(); void handleSend(); }} disabled={sendDisabled}
             >
               {sending
-                ? <ActivityIndicator size="small" color="#fff" />
-                : <Ionicons name="arrow-up" size={16} color="#fff" />}
+                ? <ActivityIndicator size="small" color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
+                : <Ionicons name="arrow-up" size={16} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />}
             </TouchableOpacity>
           </View>
         </View>
@@ -1254,18 +1361,18 @@ function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = tr
   // example-starters ("2 yumurta yedim") are irrelevant noise — hide them there.
   showSuggestions?: boolean;
 }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   const onboardingSuggestions = [
-    { text: '30 yaşında, 80 kilo, 175 boy erkeğim', icon: 'person-outline' as const, color: '#22C55E' },
-    { text: 'Kilo vermek istiyorum', icon: 'trending-down-outline' as const, color: '#EF4444' },
-    { text: 'Kendimi tanıtmak istiyorum', icon: 'chatbubbles-outline' as const, color: '#6366F1' },
+    { text: '30 yaşında, 80 kilo, 175 boy erkeğim', icon: 'person-outline' as const, color: colors.success },
+    { text: 'Kilo vermek istiyorum', icon: 'trending-down-outline' as const, color: colors.error },
+    { text: 'Kendimi tanıtmak istiyorum', icon: 'chatbubbles-outline' as const, color: colors.purple },
   ];
   const regularSuggestions = [
-    { text: 'Bugün kahvaltıda 2 yumurta yedim', icon: 'restaurant-outline' as const, color: '#EF9F27' },
-    { text: 'Bugünkü planımı oluştur', icon: 'calendar-outline' as const, color: '#1D9E75' },
-    { text: 'Nereden başlayalım?', icon: 'compass-outline' as const, color: '#6366F1' },
-    { text: 'Evde yapabileceğim antrenman öner', icon: 'barbell-outline' as const, color: '#EC4899' },
+    { text: 'Bugün kahvaltıda 2 yumurta yedim', icon: 'restaurant-outline' as const, color: colors.warning },
+    { text: 'Bugünkü planımı oluştur', icon: 'calendar-outline' as const, color: colors.primary },
+    { text: 'Nereden başlayalım?', icon: 'compass-outline' as const, color: colors.purple },
+    { text: 'Evde yapabileceğim antrenman öner', icon: 'barbell-outline' as const, color: colors.pink },
   ];
   const suggestions = isOnboarding ? onboardingSuggestions : regularSuggestions;
 
@@ -1285,7 +1392,6 @@ function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = tr
           marginBottom: SPACING.xxl,
           borderWidth: 0.5,
           borderColor: colors.border,
-          ...(isDark ? {} : { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 }),
         }}>
           <Text style={{ color: colors.text, fontSize: 14, lineHeight: 21 }}>
             {messages[0].content}
@@ -1342,13 +1448,13 @@ function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = tr
               borderWidth: 0.5,
               borderColor: colors.border,
             }}
-            onPress={() => onSuggestion(s.text)}
+            onPress={() => { haptics.tap(); onSuggestion(s.text); }}
           >
             <View
               style={{
                 width: 32,
                 height: 32,
-                borderRadius: 10,
+                borderRadius: RADIUS.md,
                 backgroundColor: s.color + '18',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1357,7 +1463,9 @@ function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = tr
               <Ionicons name={s.icon} size={16} color={s.color} />
             </View>
             <Text style={{ color: colors.text, fontSize: 13, flex: 1 }}>{s.text}</Text>
-            <Ionicons name="arrow-forward" size={14} color={colors.textMuted} />
+            {/* Pencil (not a forward-arrow) so the chip signals "yazı kutusunu doldurur",
+                matching its actual fills-the-composer behavior rather than implying send. */}
+            <Ionicons name="create-outline" size={14} color={colors.textMuted} />
           </TouchableOpacity>
         ))}
       </View>
@@ -1427,14 +1535,14 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
   for (const a of allActions) {
     if (seen.has(a.type)) continue;
     seen.add(a.type);
-    if (a.type === 'profile_update') savedBadges.push({ icon: 'person-circle-outline', label: 'Profil güncellendi', color: '#1D9E75' });
-    else if (a.type === 'meal_log') savedBadges.push({ icon: 'restaurant-outline', label: 'Öğün kaydedildi', color: '#EF9F27' });
-    else if (a.type === 'weight_log') savedBadges.push({ icon: 'scale-outline', label: 'Tartı kaydedildi', color: '#E91E63' });
-    else if (a.type === 'water_log') savedBadges.push({ icon: 'water-outline', label: 'Su kaydedildi', color: '#2F80ED' });
-    else if (a.type === 'sleep_log') savedBadges.push({ icon: 'moon-outline', label: 'Uyku kaydedildi', color: '#7F77DD' });
-    else if (a.type === 'workout_log') savedBadges.push({ icon: 'fitness-outline', label: 'Antrenman kaydedildi', color: '#22C55E' });
-    else if (a.type === 'supplement_log') savedBadges.push({ icon: 'medical-outline', label: 'Takviye kaydedildi', color: '#14B8A6' });
-    else if (a.type === 'goal_suggestion') savedBadges.push({ icon: 'flag-outline', label: 'Hedef eklendi', color: '#F59E0B' });
+    if (a.type === 'profile_update') savedBadges.push({ icon: 'person-circle-outline', label: 'Profil güncellendi', color: colors.success });
+    else if (a.type === 'meal_log') savedBadges.push({ icon: 'restaurant-outline', label: 'Öğün kaydedildi', color: colors.carbs });
+    else if (a.type === 'weight_log') savedBadges.push({ icon: 'scale-outline', label: 'Tartı kaydedildi', color: colors.pink });
+    else if (a.type === 'water_log') savedBadges.push({ icon: 'water-outline', label: 'Su kaydedildi', color: colors.protein });
+    else if (a.type === 'sleep_log') savedBadges.push({ icon: 'moon-outline', label: 'Uyku kaydedildi', color: colors.purple });
+    else if (a.type === 'workout_log') savedBadges.push({ icon: 'fitness-outline', label: 'Antrenman kaydedildi', color: colors.success });
+    else if (a.type === 'supplement_log') savedBadges.push({ icon: 'medical-outline', label: 'Takviye kaydedildi', color: colors.primary });
+    else if (a.type === 'goal_suggestion') savedBadges.push({ icon: 'flag-outline', label: 'Hedef eklendi', color: colors.warning });
   }
 
   return (
@@ -1450,9 +1558,6 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         borderBottomRightRadius: isUser ? 4 : 18,
         borderBottomLeftRadius: isUser ? 18 : 4,
         ...(isUser ? {} : { borderWidth: 0.5, borderColor: colors.border }),
-        ...(isDark
-          ? {}
-          : { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isUser ? 0.12 : 0.04, shadowRadius: 2, elevation: 0 }),
       }}>
         {/* Message content (strip leaked XML, support **bold** inline formatting) */}
         <Text
@@ -1460,11 +1565,11 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
           onLongPress={() => {
             // No clipboard module in this repo; surface the native share sheet
             // so user can copy/forward through the OS UI.
+            haptics.tap();
             Share.share({ message: sanitizeAssistantText(message.content) }).catch(() => {});
-            Vibration.vibrate(20);
           }}
           style={{
-            color: isUser ? '#fff' : colors.text,
+            color: isUser ? getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff' : colors.text,
             fontSize: 14,
             lineHeight: 21,
           }}
@@ -1479,28 +1584,30 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         {/* Navigate-to chip — AI hints the user to a plan screen (Phase 5) */}
         {!isUser && message.navigateTo && (
           <TouchableOpacity
-            onPress={() => router.push(message.navigateTo as never)}
+            onPress={() => { haptics.tap(); router.push(message.navigateTo as never); }}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={message.navigateTo === '/plan/diet' ? 'Diyet planına git' : message.navigateTo === '/plan/workout' ? 'Spor planına git' : 'Aç'}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
               gap: 6,
               marginTop: SPACING.sm,
               alignSelf: 'flex-start',
-              backgroundColor: '#1D9E7518',
-              borderRadius: 999,
+              backgroundColor: colors.primary + '18',
+              borderRadius: RADIUS.full,
               paddingHorizontal: 10,
               paddingVertical: 5,
               borderWidth: 0.5,
-              borderColor: '#1D9E7544',
+              borderColor: colors.primary + '44',
             }}
           >
             <Ionicons
               name={message.navigateTo.includes('diet') ? 'restaurant-outline' : message.navigateTo.includes('workout') ? 'barbell-outline' : 'open-outline'}
               size={12}
-              color="#1D9E75"
+              color={colors.primary}
             />
-            <Text style={{ color: '#1D9E75', fontSize: 11, fontWeight: '700' }}>
+            <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
               {message.navigateTo === '/plan/diet'
                 ? 'Diyet planına git'
                 : message.navigateTo === '/plan/workout'
@@ -1580,7 +1687,12 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         {/* Timestamp + TTS button */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 6 }}>
           {!isUser && (
-            <TouchableOpacity onPress={() => onTTSToggle(message.id, message.content)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); onTTSToggle(message.id, message.content); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={speakingMsgId === message.id ? 'Sesli okumayı durdur' : 'Sesli oku'}
+            >
               <Ionicons
                 name={speakingMsgId === message.id ? 'stop-circle-outline' : 'volume-medium-outline'}
                 size={14}
@@ -1588,7 +1700,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
               />
             </TouchableOpacity>
           )}
-          <Text style={{ color: isUser ? 'rgba(255,255,255,0.6)' : colors.textMuted, fontSize: 10, alignSelf: 'flex-end' }}>
+          <Text style={{ color: isUser ? (getContrastColor(colors.primary) === 'black' ? 'rgba(13,13,18,0.6)' : 'rgba(255,255,255,0.6)') : colors.textSecondary, fontSize: 11, alignSelf: 'flex-end' }}>
             {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
@@ -1627,11 +1739,14 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
               just toggle it — no extra chat round-trip. Only fall back to asking
               the model when this message has no pre-emitted reasoning. */}
           <TouchableOpacity
-            onPress={() => { if (message.reasoning) setShowReasoning(v => !v); else onAskWhy(message.content); }}
+            onPress={() => { haptics.tap(); if (message.reasoning) setShowReasoning(v => !v); else onAskWhy(message.content); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={message.reasoning ? (showReasoning ? 'Düşünce akışını gizle' : 'Düşünce akışını göster') : 'Neden bu öneriyi yaptın?'}
             style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
-            <Ionicons name="bulb-outline" size={12} color={colors.textMuted} />
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
+            <Ionicons name="bulb-outline" size={12} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
               {message.reasoning ? (showReasoning ? 'Düşünce akışını gizle' : 'Neden bu öneriyi yaptım?') : 'Neden bu öneriyi yaptın?'}
             </Text>
           </TouchableOpacity>
@@ -1641,7 +1756,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
               backgroundColor: isDark ? '#FFFFFF0A' : '#0000000A',
               borderLeftWidth: 2, borderLeftColor: colors.primary,
             }}>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, lineHeight: 18, fontStyle: 'italic' }}>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20, fontStyle: 'italic' }}>
                 {message.reasoning}
               </Text>
             </View>
@@ -1656,15 +1771,16 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
             {message.errorMessage ?? 'Gönderilemedi.'}
           </Text>
           <TouchableOpacity
-            onPress={() => onRetry(message)}
+            onPress={() => { haptics.tap(); onRetry(message); }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={{
               paddingVertical: 4, paddingHorizontal: 10,
-              borderRadius: 14, backgroundColor: colors.primary,
+              borderRadius: RADIUS.md, backgroundColor: colors.primary,
             }}
             accessibilityRole="button"
-            accessibilityLabel="Mesaji yeniden gonder"
+            accessibilityLabel="Mesajı yeniden gönder"
           >
-            <Text style={{ color: '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Yeniden dene</Text>
+            <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Yeniden dene</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1686,12 +1802,12 @@ function TaskCompletionCard({
   colors: any;
 }) {
   // Phase 7: mini celebration on mount — scale-in bounce on the summary chip +
-  // a light vibration pulse. No confetti library (would need native rebuild);
+  // a milestone haptic. No confetti library (would need native rebuild);
   // Animated.spring is enough to feel rewarding without being noisy.
   const chipScale = useRef(new Animated.Value(0.6)).current;
   const chipOpacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    try { Vibration.vibrate([0, 40, 40, 30]); } catch { /* silent on devices without vibrator */ }
+    haptics.heavy(); // task completed — milestone celebration cue
     Animated.parallel([
       Animated.spring(chipScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
       Animated.timing(chipOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
@@ -1727,15 +1843,15 @@ function TaskCompletionCard({
         style={{
           flexDirection: 'row', alignItems: 'center', gap: 6,
           alignSelf: 'flex-start',
-          backgroundColor: '#1D9E7518',
-          borderRadius: 999,
+          backgroundColor: colors.success + '18',
+          borderRadius: RADIUS.full,
           paddingHorizontal: 10, paddingVertical: 5,
           transform: [{ scale: chipScale }],
           opacity: chipOpacity,
         }}
       >
-        <Ionicons name="checkmark-circle" size={14} color="#1D9E75" />
-        <Text style={{ color: '#1D9E75', fontSize: 11, fontWeight: '700' }}>
+        <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+        <Text style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}>
           {taskCompletion.summary ? `Kochko seni tanıdı — ${taskCompletion.summary}` : 'Bu konu tamamlandı'}
         </Text>
       </Animated.View>
@@ -1743,13 +1859,13 @@ function TaskCompletionCard({
       {/* Next-task suggestion cards */}
       {suggestionTasks.length > 0 && (
         <View style={{ gap: 6, marginTop: SPACING.xs }}>
-          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>
             DEVAM EDEBİLECEĞİN KONULAR
           </Text>
           {suggestionTasks.map((task) => (
             <TouchableOpacity
               key={task.key}
-              onPress={() => handleTap(task)}
+              onPress={() => { haptics.tap(); handleTap(task); }}
               activeOpacity={0.85}
               accessibilityRole="button"
               accessibilityLabel={`${task.title}: ${task.description}`}
@@ -1758,13 +1874,13 @@ function TaskCompletionCard({
                 backgroundColor: colors.background,
                 borderWidth: 1,
                 borderColor: task.color + '33',
-                borderRadius: 14,
+                borderRadius: RADIUS.md,
                 paddingHorizontal: SPACING.md,
                 paddingVertical: SPACING.sm + 2,
               }}
             >
               <View style={{
-                width: 32, height: 32, borderRadius: 10,
+                width: 32, height: 32, borderRadius: RADIUS.md,
                 backgroundColor: task.color + '20',
                 alignItems: 'center', justifyContent: 'center',
               }}>
@@ -1818,7 +1934,7 @@ function SavedBadge({ icon, label, color }: { icon: string; label: string; color
         alignItems: 'center',
         gap: 4,
         backgroundColor: color + '20',
-        borderRadius: 999,
+        borderRadius: RADIUS.full,
         paddingHorizontal: 9,
         paddingVertical: 4,
         borderWidth: 0.5,
@@ -1828,7 +1944,7 @@ function SavedBadge({ icon, label, color }: { icon: string; label: string; color
       }}
     >
       <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={12} color={color} />
-      <Text style={{ color, fontSize: 10, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color, fontSize: 11, fontWeight: '700' }}>{label}</Text>
     </Animated.View>
   );
 }

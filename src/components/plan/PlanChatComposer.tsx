@@ -16,10 +16,13 @@ import {
   TouchableOpacity,
   Keyboard,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 interface Props {
   onSend: (text: string) => void;
@@ -39,17 +42,29 @@ const Chip = ({
   color,
   onPress,
   disabled,
+  solid,
 }: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   onPress: () => void;
   disabled?: boolean;
+  solid?: boolean;
 }) => {
   const { colors } = useTheme();
+  // Solid (filled) chips get the brand color as the fill with a contrast-safe
+  // foreground; outline chips keep the subtle tinted background.
+  const fg = disabled
+    ? colors.textMuted
+    : solid
+      ? getContrastColor(color)
+      : color;
   return (
     <TouchableOpacity
-      onPress={onPress}
+      onPress={() => {
+        haptics.tap();
+        onPress();
+      }}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
@@ -57,21 +72,27 @@ const Chip = ({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
         gap: 4,
-        backgroundColor: disabled ? colors.surfaceLight : color + '18',
+        backgroundColor: disabled
+          ? colors.surfaceLight
+          : solid
+            ? color
+            : color + '18',
         borderRadius: RADIUS.full,
         paddingHorizontal: SPACING.sm + 2,
         paddingVertical: 6,
+        minHeight: 44,
         opacity: disabled ? 0.5 : 1,
       }}
       activeOpacity={0.7}
     >
-      <Ionicons name={icon} size={12} color={disabled ? colors.textMuted : color} />
+      <Ionicons name={icon} size={12} color={fg} />
       <Text
         style={{
-          color: disabled ? colors.textMuted : color,
+          color: fg,
           fontSize: 11,
-          fontWeight: '600',
+          fontWeight: solid ? '700' : '600',
         }}
       >
         {label}
@@ -102,6 +123,30 @@ export function PlanChatComposer({
     Keyboard.dismiss();
   };
 
+  // "Baştan başla" discards the whole draft — confirm before firing.
+  const handleRegenerate = () => {
+    Alert.alert(
+      'Baştan başla?',
+      'Şu anki taslak silinecek ve plan yeniden oluşturulacak. Emin misin?',
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Baştan başla',
+          style: 'destructive',
+          onPress: () => {
+            haptics.heavy();
+            onRegenerate();
+          },
+        },
+      ],
+    );
+  };
+
+  const handleApprove = () => {
+    haptics.success();
+    onApprove();
+  };
+
   return (
     <View
       style={{
@@ -113,43 +158,47 @@ export function PlanChatComposer({
         backgroundColor: colors.background,
       }}
     >
-      {/* Quick action chips */}
+      {/* Secondary / exploratory chips (non-committal actions) */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         <Chip
           label="Nasıl yaptın?"
           icon="help-circle-outline"
-          color="#6366F1"
+          color={colors.purple}
           onPress={onAskReasoning}
           disabled={disabled || sending}
         />
         <Chip
           label="Alternatif gör"
           icon="git-branch-outline"
-          color="#F59E0B"
+          color={colors.warning}
           onPress={onRequestAlternative}
           disabled={disabled || sending}
         />
         <Chip
           label="Baştan başla"
           icon="refresh"
-          color="#EC4899"
-          onPress={onRegenerate}
+          color={colors.pink}
+          onPress={handleRegenerate}
           disabled={disabled || sending}
         />
-        <Chip
-          label="Onayla ve kaydet"
-          icon="checkmark-circle"
-          color="#22C55E"
-          onPress={onApprove}
-          disabled={disabled || sending || !canApprove}
-        />
       </View>
+
+      {/* Primary commit action — own row, full-width solid, separated from the
+          destructive "Baştan başla" so the two can't be confused/mis-tapped. */}
+      <Chip
+        label="Onayla ve kaydet"
+        icon="checkmark-circle"
+        color={colors.success}
+        onPress={handleApprove}
+        disabled={disabled || sending || !canApprove}
+        solid
+      />
 
       {approveHint && !canApprove ? (
         <Text
           style={{
             color: colors.textMuted,
-            fontSize: 10,
+            fontSize: 11,
             fontStyle: 'italic',
             marginTop: -2,
           }}
@@ -207,7 +256,11 @@ export function PlanChatComposer({
           <Ionicons
             name={sending ? 'hourglass-outline' : 'arrow-up'}
             size={16}
-            color={!text.trim() || disabled || sending ? colors.textMuted : '#fff'}
+            color={
+              !text.trim() || disabled || sending
+                ? colors.textMuted
+                : getContrastColor(colors.primary)
+            }
           />
         </TouchableOpacity>
       </View>

@@ -8,12 +8,6 @@ import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
 import type { CoachingMessage } from '@/services/coaching-messages.service';
 
-const PRIORITY_COLORS: Record<string, string> = {
-  high: '#D85A30',
-  medium: '#EF9F27',
-  low: '#1D9E75',
-};
-
 export function CoachingNudge({
   messages,
   onDismiss,
@@ -24,6 +18,11 @@ export function CoachingNudge({
   onTap: (msg: CoachingMessage) => void;
 }) {
   const { colors } = useTheme();
+  const PRIORITY_COLORS: Record<string, string> = {
+    high: colors.error,
+    medium: colors.warning,
+    low: colors.success,
+  };
   if (messages.length === 0) return null;
 
   return (
@@ -35,6 +34,9 @@ export function CoachingNudge({
             key={msg.id}
             onPress={() => onTap(msg)}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={msg.content}
+            accessibilityHint="Koç ile bu konuda konuşmak için dokun"
             style={{
               flexDirection: 'row',
               alignItems: 'flex-start',
@@ -52,11 +54,16 @@ export function CoachingNudge({
               <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
                 {msg.content}
               </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 4 }}>
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
                 {new Date(msg.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
               </Text>
             </View>
-            <TouchableOpacity onPress={() => onDismiss(msg.id)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity
+              onPress={() => onDismiss(msg.id)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Bildirimi kapat"
+            >
               <Ionicons name="close" size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </TouchableOpacity>

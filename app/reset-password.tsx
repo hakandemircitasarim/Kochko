@@ -66,8 +66,8 @@ export default function ResetPasswordScreen() {
           Hesabın için yeni bir şifre gir.
         </Text>
 
-        <Input label="Yeni Şifre" value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••••" />
-        <Input label="Yeni Şifre (Tekrar)" value={confirm} onChangeText={setConfirm} secureTextEntry placeholder="••••••••" />
+        <Input label="Yeni Şifre" value={password} onChangeText={setPassword} secureToggle placeholder="••••••••" />
+        <Input label="Yeni Şifre (Tekrar)" value={confirm} onChangeText={setConfirm} secureToggle placeholder="••••••••" />
 
         <Button title="Şifreyi Güncelle" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.lg }} />
       </ScrollView>

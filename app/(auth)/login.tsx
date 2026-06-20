@@ -36,7 +36,7 @@ export default function LoginScreen() {
 
   const handleForgotPassword = () => {
     if (!email.trim()) {
-      Alert.alert('E-posta Gerekli', 'Şifre sıfırlama linki için e-posta adresinizi girin.');
+      Alert.alert('E-posta Gerekli', 'Şifre sıfırlama linki için e-posta adresini gir.');
       return;
     }
     Alert.alert('Şifre Sıfırlama', `${email.trim()} adresine sıfırlama linki gönderilsin mi?`, [
@@ -83,8 +83,28 @@ export default function LoginScreen() {
           <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
         </View>
 
-        <Input label="E-posta" placeholder="ornek@email.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-        <Input label="Şifre" placeholder="Şifreniz" value={password} onChangeText={setPassword} secureTextEntry />
+        <Input
+          label="E-posta"
+          placeholder="ornek@kochko.app"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          textContentType="emailAddress"
+          autoComplete="email"
+          returnKeyType="next"
+        />
+        <Input
+          label="Şifre"
+          placeholder="Şifreniz"
+          value={password}
+          onChangeText={setPassword}
+          secureToggle
+          textContentType="password"
+          autoComplete="password"
+          returnKeyType="go"
+          onSubmitEditing={handleLogin}
+        />
 
         {/* Forgot Password (Spec 1.2) */}
         <TouchableOpacity onPress={handleForgotPassword} style={{ alignSelf: 'flex-end', marginBottom: SPACING.md }}>

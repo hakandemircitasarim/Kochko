@@ -19,7 +19,7 @@ export default function MealTemplatesScreen() {
 
   const handleAdd = async () => {
     if (!name.trim() || !itemsText.trim()) {
-      Alert.alert('Hata', 'Sablon adi ve icerik gerekli.');
+      Alert.alert('Hata', 'Şablon adı ve içerik gerekli.');
       return;
     }
 
@@ -84,7 +84,7 @@ export default function MealTemplatesScreen() {
             style={{ minHeight: 70, textAlignVertical: 'top' }}
           />
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.md }}>
-            Format: yiyecek adi Xkcal Xg pro, ... (kocuna sorarak da sablon olusturabilirsin)
+            Format: yiyecek adı Xkcal Xg pro, ... (koçuna sorarak da şablon oluşturabilirsin)
           </Text>
           <Button title="Kaydet" onPress={handleAdd} />
         </Card>
@@ -93,7 +93,7 @@ export default function MealTemplatesScreen() {
       {templates.length === 0 && !showAdd ? (
         <Card style={{ marginTop: SPACING.md }}>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
-            Henuz sablon yok. Sik yedigin ogunleri kaydet veya kocuna "bunu sablona ekle" de.
+            Henüz şablon yok. Sık yediğin öğünleri kaydet veya koçuna "bunu şablona ekle" de.
           </Text>
         </Card>
       ) : (
@@ -113,7 +113,7 @@ export default function MealTemplatesScreen() {
                   <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{item.calories} kcal</Text>
                 </View>
               ))}
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>{t.use_count}x kullanildi | Uzun bas: sil</Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>{t.use_count}x kullanıldı | Uzun bas: sil</Text>
             </Card>
           </TouchableOpacity>
         ))

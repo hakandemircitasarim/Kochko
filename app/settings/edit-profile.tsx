@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
+import { getContrastColor } from '@/lib/accessibility';
 import type {
   ActivityLevel, Equipment, CookingSkill, BudgetLevel,
   TrainingStyle, DietMode, AlcoholFrequency, UnitSystem, PortionLanguage,
@@ -129,8 +131,34 @@ export default function EditProfileScreen() {
     if (profile.thigh_cm) setThigh(String(profile.thigh_cm));
   }, [profile]);
 
+  // Inline range validation (UX only — surfaces a friendly Turkish error under the field;
+  // empty stays valid, the save mapping already coerces empty -> null).
+  const rangeError = (val: string, min: number, max: number, unit: string): string | undefined => {
+    if (!val.trim()) return undefined;
+    const n = Number(val.replace(',', '.'));
+    if (Number.isNaN(n)) return 'Geçerli bir sayı gir';
+    if (n < min || n > max) return `${min}–${max} ${unit} aralığında olmalı`;
+    return undefined;
+  };
+
+  const heightErr = rangeError(heightCm, 100, 250, 'cm');
+  const weightErr = rangeError(weightKg, 30, 300, 'kg');
+  const birthYearErr = rangeError(birthYear, 1900, new Date().getFullYear(), '');
+  const bodyFatErr = rangeError(bodyFat, 3, 60, '%');
+  const muscleErr = rangeError(muscleMass, 10, 70, '%');
+  const waistErr = rangeError(waist, 40, 200, 'cm');
+  const hipErr = rangeError(hip, 40, 200, 'cm');
+  const chestErr = rangeError(chest, 40, 200, 'cm');
+  const thighErr = rangeError(thigh, 20, 120, 'cm');
+  const hasErrors = !!(heightErr || weightErr || birthYearErr || bodyFatErr || muscleErr || waistErr || hipErr || chestErr || thighErr);
+
   const handleSave = async () => {
     if (!user?.id) return;
+    if (hasErrors) {
+      haptics.error();
+      Alert.alert('Eksik bilgi', 'Lütfen kırmızı ile işaretlenen alanları düzelt.');
+      return;
+    }
     setSaving(true);
     try {
       await update(user.id, {
@@ -161,8 +189,10 @@ export default function EditProfileScreen() {
         chest_cm: chest ? parseFloat(chest) : null,
         thigh_cm: thigh ? parseFloat(thigh) : null,
       } as never);
+      haptics.success();
       Alert.alert('Kaydedildi', 'Profil güncellendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
     } catch {
+      haptics.error();
       Alert.alert('Kaydedilemedi', 'Profil güncellenemedi. Lütfen tekrar deneyin.');
     } finally {
       setSaving(false);
@@ -172,13 +202,14 @@ export default function EditProfileScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 12, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Profil Düzenle</Text>
+        {/* Native header (settings/_layout.tsx) already renders the Turkish "Profil Düzenle" title;
+            the in-body heading was a redundant duplicate and has been removed. */}
 
         {/* Fiziksel */}
         <Card title="Fiziksel">
-          <Input label="Boy (cm)" value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" placeholder="175" />
-          <Input label="Kilo (kg)" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="80" />
-          <Input label="Doğum Yılı" value={birthYear} onChangeText={setBirthYear} keyboardType="numeric" placeholder="1990" />
+          <Input label="Boy (cm)" value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" placeholder="175" hint="100–250 cm" error={heightErr} />
+          <Input label="Kilo (kg)" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="80" hint="30–300 kg" error={weightErr} />
+          <Input label="Doğum Yılı" value={birthYear} onChangeText={setBirthYear} keyboardType="numeric" placeholder="1990" hint="örn: 1990" error={birthYearErr} />
           <ChipSelect label="Cinsiyet" options={[{ value: 'male', label: 'Erkek' }, { value: 'female', label: 'Kadın' }, { value: 'other', label: 'Diğer' }]} selected={gender} onChange={setGender} />
         </Card>
 
@@ -199,10 +230,10 @@ export default function EditProfileScreen() {
 
         {/* Program */}
         <Card title="Program">
-          <Input label="Uyku Saati (örn: 23:00)" value={sleepTime} onChangeText={setSleepTime} placeholder="23:00" />
-          <Input label="Uyanma Saati (örn: 07:00)" value={wakeTime} onChangeText={setWakeTime} placeholder="07:00" />
-          <Input label="İş Başlangıcı (örn: 09:00)" value={workStart} onChangeText={setWorkStart} placeholder="09:00" />
-          <Input label="İş Bitişi (örn: 18:00)" value={workEnd} onChangeText={setWorkEnd} placeholder="18:00" />
+          <Input label="Uyku Saati" value={sleepTime} onChangeText={setSleepTime} placeholder="23:00" keyboardType="numbers-and-punctuation" hint="Saat formatı — örn: 23:00" />
+          <Input label="Uyanma Saati" value={wakeTime} onChangeText={setWakeTime} placeholder="07:00" keyboardType="numbers-and-punctuation" hint="Saat formatı — örn: 07:00" />
+          <Input label="İş Başlangıcı" value={workStart} onChangeText={setWorkStart} placeholder="09:00" keyboardType="numbers-and-punctuation" hint="Saat formatı — örn: 09:00" />
+          <Input label="İş Bitişi" value={workEnd} onChangeText={setWorkEnd} placeholder="18:00" keyboardType="numbers-and-punctuation" hint="Saat formatı — örn: 18:00" />
           <Input label="Meslek" value={occupation} onChangeText={setOccupation} placeholder="Yazılımcı, öğrenci, vb." />
         </Card>
 
@@ -216,12 +247,12 @@ export default function EditProfileScreen() {
 
         {/* Vucut Olculeri */}
         <Card title="Vücut Ölçüleri (Opsiyonel)">
-          <Input label="Yağ Oranı (%)" value={bodyFat} onChangeText={setBodyFat} keyboardType="decimal-pad" placeholder="20" />
-          <Input label="Kas Oranı (%)" value={muscleMass} onChangeText={setMuscleMass} keyboardType="decimal-pad" placeholder="35" />
-          <Input label="Bel Çevresi (cm)" value={waist} onChangeText={setWaist} keyboardType="decimal-pad" placeholder="85" />
-          <Input label="Kalça Çevresi (cm)" value={hip} onChangeText={setHip} keyboardType="decimal-pad" placeholder="100" />
-          <Input label="Göğüs Çevresi (cm)" value={chest} onChangeText={setChest} keyboardType="decimal-pad" placeholder="95" />
-          <Input label="Uyluk Çevresi (cm)" value={thigh} onChangeText={setThigh} keyboardType="decimal-pad" placeholder="55" />
+          <Input label="Yağ Oranı (%)" value={bodyFat} onChangeText={setBodyFat} keyboardType="decimal-pad" placeholder="20" hint="3–60 %" error={bodyFatErr} />
+          <Input label="Kas Oranı (%)" value={muscleMass} onChangeText={setMuscleMass} keyboardType="decimal-pad" placeholder="35" hint="10–70 %" error={muscleErr} />
+          <Input label="Bel Çevresi (cm)" value={waist} onChangeText={setWaist} keyboardType="decimal-pad" placeholder="85" hint="40–200 cm" error={waistErr} />
+          <Input label="Kalça Çevresi (cm)" value={hip} onChangeText={setHip} keyboardType="decimal-pad" placeholder="100" hint="40–200 cm" error={hipErr} />
+          <Input label="Göğüs Çevresi (cm)" value={chest} onChangeText={setChest} keyboardType="decimal-pad" placeholder="95" hint="40–200 cm" error={chestErr} />
+          <Input label="Uyluk Çevresi (cm)" value={thigh} onChangeText={setThigh} keyboardType="decimal-pad" placeholder="55" hint="20–120 cm" error={thighErr} />
         </Card>
 
         <Button title="Kaydet" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.md }} />
@@ -242,14 +273,23 @@ function ChipSelect({ label, options, selected, onChange }: {
     <View style={{ marginBottom: SPACING.md }}>
       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
-        {options.map(opt => (
-          <TouchableOpacity key={opt.value} onPress={() => onChange(opt.value)}
-            style={{ paddingVertical: 6, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
-              borderColor: selected === opt.value ? COLORS.primary : COLORS.border,
-              backgroundColor: selected === opt.value ? COLORS.primary : 'transparent' }}>
-            <Text style={{ color: selected === opt.value ? '#fff' : COLORS.textSecondary, fontSize: FONT.sm }}>{opt.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {options.map(opt => {
+          const isSelected = selected === opt.value;
+          return (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => { haptics.tap(); onChange(opt.value); }}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: isSelected }}
+              accessibilityLabel={`${label}: ${opt.label}`}
+              style={{ paddingVertical: 10, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
+                borderColor: isSelected ? COLORS.primary : COLORS.border,
+                backgroundColor: isSelected ? COLORS.primary : 'transparent' }}>
+              <Text style={{ color: isSelected ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm }}>{opt.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );

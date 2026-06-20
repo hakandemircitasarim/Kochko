@@ -57,7 +57,9 @@ export const DARK_COLORS: ThemeColors = {
   inputBg: '#1A1A24',
   text: '#EEEEF0',
   textSecondary: '#9999A8',
-  textMuted: '#66667A',
+  // #ux-audit: bumped from #66667A (2.8-3.5:1, WCAG AA FAIL for body text on every surface)
+  // to #8E8EA3 → ≥4.9:1 on bg/surface/surfaceLight. One global token fix → app-wide legibility.
+  textMuted: '#8E8EA3',
   success: '#1D9E75',
   successLight: '#1D9E7520',
   warning: '#EF9F27',

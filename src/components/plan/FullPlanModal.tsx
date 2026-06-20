@@ -109,18 +109,20 @@ export function FullPlanModal({
           </View>
           {fullyViewed ? (
             <View
+              accessibilityRole="text"
+              accessibilityLabel="Plan tümüyle okundu"
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 4,
-                backgroundColor: '#22C55E18',
+                backgroundColor: colors.successLight,
                 borderRadius: RADIUS.full,
                 paddingHorizontal: 8,
                 paddingVertical: 3,
               }}
             >
-              <Ionicons name="checkmark-circle" size={12} color="#22C55E" />
-              <Text style={{ color: '#22C55E', fontSize: 10, fontWeight: '700' }}>Okundu</Text>
+              <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+              <Text style={{ color: colors.success, fontSize: FONT.xs, fontWeight: '700' }}>Okundu</Text>
             </View>
           ) : null}
         </View>
@@ -140,10 +142,12 @@ export function FullPlanModal({
             return (
               <View key={day.day_index} style={{ marginBottom: SPACING.md }}>
                 <TouchableOpacity
-                  onPress={() => setExpandedDay(isOpen ? -1 : day.day_index)}
+                  // Keep at least one day expanded: re-tapping the open day is a no-op
+                  // so the user can't collapse into a blank screen with nothing to re-open.
+                  onPress={() => setExpandedDay(day.day_index)}
                   activeOpacity={0.8}
                   accessibilityRole="button"
-                  accessibilityLabel={`${day.day_label}, ${isOpen ? 'kapat' : 'aç'}`}
+                  accessibilityLabel={`${day.day_label}, ${isOpen ? 'açık' : 'aç'}`}
                   accessibilityState={{ expanded: isOpen }}
                   style={{
                     flexDirection: 'row',

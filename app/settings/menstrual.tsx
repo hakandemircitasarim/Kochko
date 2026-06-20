@@ -2,8 +2,8 @@
  * Menstrual Cycle Settings Screen
  * Spec 2.1: Kadınlara özel döngü takibi
  */
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { useState } from 'react';
+import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -14,12 +14,13 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { ToggleRow } from '@/components/settings/ToggleRow';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 const PHASE_LABELS: Record<CyclePhase, string> = {
-  follicular: 'Folikuler Faz', ovulation: 'Ovulasyon', luteal: 'Luteal Faz', menstrual: 'Menstruel Faz',
+  follicular: 'Foliküler Faz', ovulation: 'Ovülasyon', luteal: 'Luteal Faz', menstrual: 'Menstruel Faz',
 };
 const PHASE_COLORS: Record<CyclePhase, string> = {
-  follicular: COLORS.success, ovulation: COLORS.primary, luteal: COLORS.warning, menstrual: '#E91E63',
+  follicular: COLORS.success, ovulation: COLORS.primary, luteal: COLORS.warning, menstrual: COLORS.pink,
 };
 
 export default function MenstrualScreen() {
@@ -38,49 +39,56 @@ export default function MenstrualScreen() {
     if (!user?.id) return;
     try {
       await updateMenstrualSettings(user.id, tracking, parseInt(cycleLength) || 28, lastPeriod || undefined);
-      Alert.alert('Kaydedildi', tracking ? 'Dongü takibi aktif.' : 'Dongü takibi kapatildi.', [
+      haptics.success();
+      Alert.alert('Kaydedildi', tracking ? 'Döngü takibi aktif.' : 'Döngü takibi kapatıldı.', [
         { text: 'Tamam', onPress: () => router.back() },
       ]);
     } catch (e) {
-      Alert.alert('Hata', 'Ayarlar kaydedilemedi. Lutfen tekrar deneyin.');
+      haptics.error();
+      Alert.alert('Kaydedilemedi', 'Ayarlar kaydedilemedi, lütfen tekrar dene.');
     }
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Regl Dongusu</Text>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Regl Döngüsü</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Dongu takibi aktif oldugunda kocun beslenme ve antrenman planlarini dongu fazina gore otomatik ayarlar.
+        Döngü takibi aktif olduğunda koçun beslenme ve antrenman planlarını döngü fazına göre otomatik ayarlar.
       </Text>
 
       <ToggleRow
-        label="Dongu Takibi"
-        description="Aktif oldugunda AI beslenme/antrenman planlarini fazlara gore ayarlar"
+        label="Döngü Takibi"
+        description="Aktif olduğunda AI beslenme/antrenman planlarını fazlara göre ayarlar"
         value={tracking}
-        onToggle={setTracking}
+        onToggle={(newValue) => { haptics.tap(); setTracking(newValue); }}
       />
 
       {tracking && (
         <>
           <View style={{ marginTop: SPACING.lg }}>
-            <Input label="Dongu Suresi (gun)" value={cycleLength} onChangeText={setCycleLength} keyboardType="numeric" placeholder="28" />
-            <Input label="Son Regl Baslangici" value={lastPeriod} onChangeText={setLastPeriod} placeholder="2024-03-15" />
+            <Input label="Döngü Süresi (gün)" value={cycleLength} onChangeText={setCycleLength} keyboardType="number-pad" placeholder="28" hint="Genelde 21–35 gün" />
+            <Input label="Son Regl Başlangıcı" value={lastPeriod} onChangeText={setLastPeriod} keyboardType="number-pad" placeholder="2024-03-15" hint="YYYY-AA-GG (örn: 2024-03-15)" />
           </View>
 
           {/* Current phase display */}
           {status?.active && status.currentPhase && (
             <Card style={{ borderLeftWidth: 4, borderLeftColor: PHASE_COLORS[status.currentPhase] }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
+              <View
+                accessible
+                accessibilityLabel={`Mevcut faz: ${PHASE_LABELS[status.currentPhase]}, döngünün ${status.dayOfCycle}. günü, toplam ${status.cycleLength} gün`}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}
+              >
                 <Text style={{ color: PHASE_COLORS[status.currentPhase], fontSize: FONT.md, fontWeight: '700' }}>
                   {PHASE_LABELS[status.currentPhase]}
                 </Text>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Gun {status.dayOfCycle}/{status.cycleLength}</Text>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Gün {status.dayOfCycle}/{status.cycleLength}</Text>
               </View>
               {status.phaseAdvice && (
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>{status.phaseAdvice}</Text>
               )}
               {status.nextPeriodEstimate && (
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.sm }}>
                   Tahmini sonraki regl: {status.nextPeriodEstimate}
                 </Text>
               )}
@@ -88,17 +96,17 @@ export default function MenstrualScreen() {
           )}
 
           {/* Phase explanation */}
-          <Card title="Faz Aciklamalari">
+          <Card title="Faz Açıklamaları">
             {(['menstrual', 'follicular', 'ovulation', 'luteal'] as CyclePhase[]).map(phase => (
               <View key={phase} style={{ flexDirection: 'row', paddingVertical: SPACING.xs, gap: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
                 <View style={{ width: 3, backgroundColor: PHASE_COLORS[phase], borderRadius: 2 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '600' }}>{PHASE_LABELS[phase]}</Text>
                   <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 1 }}>
-                    {phase === 'menstrual' && 'Dusuk enerji. Hafif aktivite.'}
-                    {phase === 'follicular' && 'Enerji yukseliyor. Yogun antrenman uygun.'}
-                    {phase === 'ovulation' && 'Guc zirvesi. PR denemesi icin uygun.'}
-                    {phase === 'luteal' && 'Istah artar, su tutulumu olabilir. Kalori +100-200.'}
+                    {phase === 'menstrual' && 'Düşük enerji. Hafif aktivite.'}
+                    {phase === 'follicular' && 'Enerji yükseliyor. Yoğun antrenman uygun.'}
+                    {phase === 'ovulation' && 'Güç zirvesi. PR denemesi için uygun.'}
+                    {phase === 'luteal' && 'İştah artar, su tutulumu olabilir. Kalori +100-200.'}
                   </Text>
                 </View>
               </View>
@@ -108,6 +116,7 @@ export default function MenstrualScreen() {
       )}
 
       <Button title="Kaydet" onPress={handleSave} size="lg" style={{ marginTop: SPACING.md }} />
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

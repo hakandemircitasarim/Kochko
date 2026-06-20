@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -8,13 +8,17 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
+import { a11ySwitch } from '@/lib/accessibility';
 import { PERIODIC_STATE_CONFIG, type PeriodicState } from '@/services/periodic.service';
 
 const IF_WINDOWS = [
-  { label: '16:8', eating: '8 saat yeme, 16 saat oruc', start: '12:00', end: '20:00' },
-  { label: '18:6', eating: '6 saat yeme, 18 saat oruc', start: '12:00', end: '18:00' },
-  { label: '20:4', eating: '4 saat yeme, 20 saat oruc', start: '14:00', end: '18:00' },
-  { label: 'Ozel', eating: 'Kendi saatlerini belirle', start: '', end: '' },
+  { label: '16:8', eating: '8 saat yeme, 16 saat oruç', start: '12:00', end: '20:00' },
+  { label: '18:6', eating: '6 saat yeme, 18 saat oruç', start: '12:00', end: '18:00' },
+  { label: '20:4', eating: '4 saat yeme, 20 saat oruç', start: '14:00', end: '18:00' },
+  // label is persisted to profile.if_window and self-compared (selected === w.label),
+  // so it stays ASCII; titleTr carries the user-facing diacritics.
+  { label: 'Ozel', titleTr: 'Özel', eating: 'Kendi saatlerini belirle', start: '', end: '' },
 ];
 
 export default function IFSettingsScreen() {
@@ -29,26 +33,35 @@ export default function IFSettingsScreen() {
 
   const handleSave = async () => {
     if (!user?.id) return;
-    await update(user.id, {
-      if_active: active,
-      if_window: active ? selected : null,
-      if_eating_start: active ? eatingStart : null,
-      if_eating_end: active ? eatingEnd : null,
-    } as never);
-    Alert.alert('Kaydedildi', active ? 'IF modu aktif.' : 'IF modu kapatildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+    try {
+      await update(user.id, {
+        if_active: active,
+        if_window: active ? selected : null,
+        if_eating_start: active ? eatingStart : null,
+        if_eating_end: active ? eatingEnd : null,
+      } as never);
+      haptics.success();
+      Alert.alert('Kaydedildi', active ? 'IF modu aktif.' : 'IF modu kapatıldı.', [{ text: 'Tamam', onPress: () => router.back() }]);
+    } catch {
+      haptics.error();
+      Alert.alert('Kaydedilemedi', 'IF ayarların kaydedilemedi. Lütfen tekrar dene.');
+    }
   };
 
   const handleSelectWindow = (w: typeof IF_WINDOWS[0]) => {
+    haptics.tap();
     setSelected(w.label);
     if (w.start) setEatingStart(w.start);
     if (w.end) setEatingEnd(w.end);
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Aralikli Oruc (IF)</Text>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+      {/* Native header (settings/_layout.tsx) already renders the Turkish "Aralıklı Oruç (IF)"
+          title; the in-body heading was a redundant duplicate and has been removed. */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        IF aktif oldugunda kocun tum ogun onerilerini yeme penceresine sigdirir. Pencere disinda bildirim gondermez.
+        IF aktif olduğunda koçun tüm öğün önerilerini yeme penceresine sığdırır. Pencere dışında bildirim göndermez.
       </Text>
 
       {/* Periodic state conflict banner */}
@@ -58,10 +71,10 @@ export default function IFSettingsScreen() {
           return (
             <Card style={{ borderColor: COLORS.error, borderWidth: 2, marginBottom: SPACING.md }}>
               <Text style={{ color: COLORS.error, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>
-                IF Devre Disi
+                IF Devre Dışı
               </Text>
               <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
-                Mevcut donemsel durumunuz ({PERIODIC_STATE_CONFIG[ps]?.label_tr}) IF ile uyumlu degil. Donem bitene kadar IF devre disi kaldi.
+                Mevcut dönemsel durumun ({PERIODIC_STATE_CONFIG[ps]?.label_tr}) IF ile uyumlu değil. Dönem bitene kadar IF devre dışı kaldı.
               </Text>
             </Card>
           );
@@ -71,19 +84,22 @@ export default function IFSettingsScreen() {
 
       {/* Toggle */}
       <TouchableOpacity
+        {...a11ySwitch(`IF ${active ? 'Aktif' : 'Kapalı'}`, active)}
         onPress={() => {
           const ps = profile?.periodic_state as PeriodicState | null;
           if (ps && !PERIODIC_STATE_CONFIG[ps]?.ifCompatible) {
-            Alert.alert('IF Kullanilamaz', `${PERIODIC_STATE_CONFIG[ps]?.label_tr} doneminde IF uygun degil.`);
+            haptics.error();
+            Alert.alert('IF Kullanılamaz', `${PERIODIC_STATE_CONFIG[ps]?.label_tr} döneminde IF uygun değil.`);
             return;
           }
+          haptics.tap();
           setActive(!active);
         }}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg }}>
+        style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg, minHeight: 44 }}>
         <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: active ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
           <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: active ? 'flex-end' : 'flex-start' }} />
         </View>
-        <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>IF {active ? 'Aktif' : 'Kapali'}</Text>
+        <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>IF {active ? 'Aktif' : 'Kapalı'}</Text>
       </TouchableOpacity>
 
       {active && (
@@ -91,11 +107,16 @@ export default function IFSettingsScreen() {
           {/* Window Selection */}
           <View style={{ gap: SPACING.sm, marginBottom: SPACING.lg }}>
             {IF_WINDOWS.map(w => (
-              <TouchableOpacity key={w.label} onPress={() => handleSelectWindow(w)}>
+              <TouchableOpacity
+                key={w.label}
+                onPress={() => handleSelectWindow(w)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: selected === w.label }}
+                accessibilityLabel={`${w.titleTr ?? w.label} oruç penceresi, ${w.eating}`}>
                 <Card style={{ borderColor: selected === w.label ? COLORS.primary : COLORS.border, borderWidth: selected === w.label ? 2 : 1 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <View>
-                      <Text style={{ color: selected === w.label ? COLORS.primary : COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{w.label}</Text>
+                      <Text style={{ color: selected === w.label ? COLORS.primary : COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{w.titleTr ?? w.label}</Text>
                       <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{w.eating}</Text>
                     </View>
                     {w.start && <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>{w.start} - {w.end}</Text>}
@@ -108,8 +129,8 @@ export default function IFSettingsScreen() {
           {/* Custom Times */}
           <Card title="Yeme Penceresi Saatleri">
             <View style={{ flexDirection: 'row', gap: SPACING.md }}>
-              <View style={{ flex: 1 }}><Input label="Baslangic" value={eatingStart} onChangeText={setEatingStart} placeholder="12:00" /></View>
-              <View style={{ flex: 1 }}><Input label="Bitis" value={eatingEnd} onChangeText={setEatingEnd} placeholder="20:00" /></View>
+              <View style={{ flex: 1 }}><Input label="Başlangıç" value={eatingStart} onChangeText={setEatingStart} placeholder="12:00" hint="ÖRN: 12:00" keyboardType="numbers-and-punctuation" /></View>
+              <View style={{ flex: 1 }}><Input label="Bitiş" value={eatingEnd} onChangeText={setEatingEnd} placeholder="20:00" hint="ÖRN: 20:00" keyboardType="numbers-and-punctuation" /></View>
             </View>
           </Card>
         </>
@@ -117,5 +138,6 @@ export default function IFSettingsScreen() {
 
       <Button title="Kaydet" onPress={handleSave} size="lg" />
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

@@ -16,7 +16,9 @@ import {
 import { getIncompleteTasks, getOnboardingProgress, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { OnboardingTaskCard } from '@/components/chat/OnboardingTaskCard';
 import { useTheme } from '@/lib/theme';
-import { SPACING, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 function formatRelativeDate(dateStr: string): string {
   const date = new Date(dateStr);
@@ -150,6 +152,8 @@ export default function SessionListScreen() {
   };
 
   const handleDeleteSession = (session: ChatSessionSummary) => {
+    // Tactile cue so the long-press / delete affordance registers before the Alert.
+    haptics.tap();
     Alert.alert(
       'Sohbeti sil',
       'Bu sohbet ve tüm mesajları silinecek. Emin misin?',
@@ -158,8 +162,15 @@ export default function SessionListScreen() {
         {
           text: 'Sil', style: 'destructive',
           onPress: async () => {
-            await deleteSession(session.id);
-            setSessions(prev => prev.filter(s => s.id !== session.id));
+            try {
+              await deleteSession(session.id);
+              setSessions(prev => prev.filter(s => s.id !== session.id));
+              haptics.success();
+            } catch (err) {
+              console.warn('Delete session failed:', err);
+              haptics.error();
+              Alert.alert('Silinemedi', 'Sohbet silinirken bir sorun oluştu. Tekrar dene.');
+            }
           },
         },
       ]
@@ -197,8 +208,8 @@ export default function SessionListScreen() {
           <Ionicons name="sparkles" size={17} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text }}>Kochko</Text>
-          <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: -1 }}>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Kochko</Text>
+          <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 1 }}>
             {sessions.filter(s => s.is_active).length > 0 ? 'Aktif sohbetin var' : 'Yeni bir sohbet başlat'}
           </Text>
         </View>
@@ -206,12 +217,13 @@ export default function SessionListScreen() {
           onPress={handleNewSession}
           accessibilityRole="button"
           accessibilityLabel="Yeni sohbet"
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           style={{
             width: 38, height: 38, borderRadius: 19,
             backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
           }}
         >
-          <Ionicons name="add" size={22} color="#fff" />
+          <Ionicons name="add" size={22} color={getContrastColor(colors.primary)} />
         </TouchableOpacity>
       </View>
 
@@ -222,11 +234,11 @@ export default function SessionListScreen() {
       {tasks.length > 0 && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.md }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-            <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Profilini tamamla
             </Text>
             {progress && (
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '600' }}>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>
                 {progress.completed}/{progress.total} konu
               </Text>
             )}
@@ -257,20 +269,22 @@ export default function SessionListScreen() {
           }}>
             <Ionicons name="chatbubble-ellipses" size={32} color={colors.primary} />
           </View>
-          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600', marginBottom: SPACING.sm }}>
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginBottom: SPACING.sm }}>
             Kochko ile tanış
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: SPACING.xxl, lineHeight: 20 }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.xxl, lineHeight: 20 }}>
             Beslenme, antrenman, uyku — her konuda{'\n'}sana yardımcı olabilirim.
           </Text>
           <TouchableOpacity
             onPress={handleNewSession}
+            accessibilityRole="button"
+            accessibilityLabel="İlk sohbetine başla"
             style={{
               backgroundColor: colors.primary, borderRadius: RADIUS.sm,
               paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl,
             }}
           >
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '500' }}>İlk sohbetine başla</Text>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.md, fontWeight: '500' }}>İlk sohbetine başla</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -284,6 +298,9 @@ export default function SessionListScreen() {
               onPress={() => router.push(`/chat/${item.id}`)}
               onLongPress={() => handleDeleteSession(item)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.title || 'Yeni sohbet'} sohbeti`}
+              accessibilityHint="Açmak için dokun, silmek için basılı tut"
               style={{
                 backgroundColor: colors.card,
                 borderRadius: RADIUS.md,
@@ -305,29 +322,38 @@ export default function SessionListScreen() {
 
               {/* Content */}
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: 14, fontWeight: '500' }} numberOfLines={1}>
+                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }} numberOfLines={1}>
                   {item.title || 'Yeni sohbet'}
                 </Text>
                 {item.last_message && (
-                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 3 }} numberOfLines={1}>
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 3 }} numberOfLines={1}>
                     {item.last_message}
                   </Text>
                 )}
               </View>
 
-              {/* Date + chevron */}
+              {/* Date + count */}
               <View style={{ alignItems: 'flex-end', gap: 4 }}>
-                <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                   {formatRelativeDate(item.started_at)}
                 </Text>
                 {item.message_count > 0 && (
-                  <Text style={{ color: colors.textMuted, fontSize: 10 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                     {item.message_count} mesaj
                   </Text>
                 )}
               </View>
 
-              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+              {/* Visible delete affordance (long-press still works as a shortcut) */}
+              <TouchableOpacity
+                onPress={() => handleDeleteSession(item)}
+                accessibilityRole="button"
+                accessibilityLabel="Sohbeti sil"
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={{ padding: SPACING.xs, marginRight: -SPACING.xs }}
+              >
+                <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
+              </TouchableOpacity>
             </TouchableOpacity>
           )}
         />

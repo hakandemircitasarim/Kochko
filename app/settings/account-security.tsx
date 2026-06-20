@@ -3,7 +3,7 @@
  * Spec 1.2-1.4: Session management, password change, account linking, email change.
  */
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, Alert, Platform, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { SectionHeader } from '@/components/settings/SectionHeader';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 export default function AccountSecurityScreen() {
   const insets = useSafeAreaInsets();
@@ -60,8 +61,10 @@ export default function AccountSecurityScreen() {
           onPress: async () => {
             const { error } = await terminateSession(sessionId);
             if (error) {
+              haptics.error();
               Alert.alert('Hata', error);
             } else {
+              haptics.success();
               setSessions(prev => prev.filter(s => s.sessionId !== sessionId));
             }
           },
@@ -74,19 +77,24 @@ export default function AccountSecurityScreen() {
 
   const handleChangePassword = async () => {
     if (!newPassword || newPassword.length < 6) {
-      Alert.alert('Hata', 'Yeni sifre en az 6 karakter olmali.');
+      haptics.error();
+      Alert.alert('Hata', 'Yeni şifre en az 6 karakter olmalı.');
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      Alert.alert('Hata', 'Sifreler eslesmiyor.');
+      haptics.error();
+      Alert.alert('Hata', 'Şifreler eşleşmiyor.');
       return;
     }
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     setLoading(false);
-    if (error) Alert.alert('Hata', error.message);
-    else {
-      Alert.alert('Başarılı', 'Sifreniz degistirildi.');
+    if (error) {
+      haptics.error();
+      Alert.alert('Hata', error.message);
+    } else {
+      haptics.success();
+      Alert.alert('Başarılı', 'Şifren değiştirildi.');
       setNewPassword('');
       setConfirmNewPassword('');
     }
@@ -96,15 +104,19 @@ export default function AccountSecurityScreen() {
 
   const handleChangeEmail = async () => {
     if (!newEmail || !newEmail.includes('@')) {
-      Alert.alert('Hata', 'Gecerli bir e-posta adresi girin.');
+      haptics.error();
+      Alert.alert('Hata', 'Geçerli bir e-posta adresi gir.');
       return;
     }
     setEmailLoading(true);
     const { error } = await supabase.auth.updateUser({ email: newEmail });
     setEmailLoading(false);
-    if (error) Alert.alert('Hata', error.message);
-    else {
-      Alert.alert('Başarılı', 'Dogrulama e-postasi gonderildi. Yeni adresinizi onaylayin.');
+    if (error) {
+      haptics.error();
+      Alert.alert('Hata', error.message);
+    } else {
+      haptics.success();
+      Alert.alert('Başarılı', 'Doğrulama e-postası gönderildi. Yeni adresini onayla.');
       setNewEmail('');
     }
   };
@@ -114,15 +126,25 @@ export default function AccountSecurityScreen() {
   const handleLinkGoogle = async () => {
     const { signInWithGoogle } = useAuthStore.getState();
     const { error } = await signInWithGoogle();
-    if (error) Alert.alert('Hata', error);
-    else Alert.alert('Başarılı', 'Google hesabi baglandi.');
+    if (error) {
+      haptics.error();
+      Alert.alert('Hata', error);
+    } else {
+      haptics.success();
+      Alert.alert('Başarılı', 'Google hesabı bağlandı.');
+    }
   };
 
   const handleLinkApple = async () => {
     const { signInWithApple } = useAuthStore.getState();
     const { error } = await signInWithApple();
-    if (error) Alert.alert('Hata', error);
-    else Alert.alert('Başarılı', 'Apple hesabı bağlandı.');
+    if (error) {
+      haptics.error();
+      Alert.alert('Hata', error);
+    } else {
+      haptics.success();
+      Alert.alert('Başarılı', 'Apple hesabı bağlandı.');
+    }
   };
 
   // ─── Provider Unlinking ───
@@ -130,6 +152,7 @@ export default function AccountSecurityScreen() {
   const handleUnlinkProvider = async (provider: string) => {
     // At least 1 provider must remain active
     if (providers.length <= 1) {
+      haptics.error();
       Alert.alert('Hata', 'En az bir giriş yöntemi aktif olmalı.');
       return;
     }
@@ -151,8 +174,13 @@ export default function AccountSecurityScreen() {
               return;
             }
             const { error } = await supabase.auth.unlinkIdentity(identity as never);
-            if (error) Alert.alert('Hata', error.message);
-            else Alert.alert('Başarılı', `${provider} bağlantısı kaldırıldı.`);
+            if (error) {
+              haptics.error();
+              Alert.alert('Hata', error.message);
+            } else {
+              haptics.success();
+              Alert.alert('Başarılı', `${provider} bağlantısı kaldırıldı.`);
+            }
           },
         },
       ],
@@ -160,7 +188,8 @@ export default function AccountSecurityScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Hesap Güvenliği</Text>
 
       {/* Account Info */}
@@ -170,7 +199,7 @@ export default function AccountSecurityScreen() {
           <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{user?.email ?? '-'}</Text>
         </View>
         <View>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Giris Yontemleri</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Giriş Yöntemleri</Text>
           <Text style={{ color: COLORS.text, fontSize: FONT.md }}>
             {providers.length > 0 ? providers.join(', ') : 'email'}
           </Text>
@@ -178,28 +207,28 @@ export default function AccountSecurityScreen() {
       </Card>
 
       {/* Email Change (Spec 1.4) */}
-      <SectionHeader title="E-posta Degistir" />
+      <SectionHeader title="E-posta Değiştir" />
       <Card>
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
-          Yeni e-posta adresinize bir dogrulama linki gonderilecektir.
+          Yeni e-posta adresine bir doğrulama linki gönderilecek.
         </Text>
         <Input label="Yeni E-posta" placeholder="yeni@ornek.com" value={newEmail} onChangeText={setNewEmail} keyboardType="email-address" autoCapitalize="none" />
-        <Button title="E-postayi Degistir" onPress={handleChangeEmail} loading={emailLoading} />
+        <Button title="E-postayı Değiştir" onPress={handleChangeEmail} loading={emailLoading} />
       </Card>
 
       {/* Password Change (Spec 1.4) */}
-      <SectionHeader title="Sifre Degistir" />
+      <SectionHeader title="Şifre Değiştir" />
       <Card>
-        <Input label="Yeni Sifre" placeholder="En az 6 karakter" value={newPassword} onChangeText={setNewPassword} secureTextEntry />
-        <Input label="Yeni Sifre Tekrar" placeholder="Tekrar girin" value={confirmNewPassword} onChangeText={setConfirmNewPassword} secureTextEntry />
-        <Button title="Sifreyi Degistir" onPress={handleChangePassword} loading={loading} />
+        <Input label="Yeni Şifre" placeholder="En az 6 karakter" value={newPassword} onChangeText={setNewPassword} secureToggle />
+        <Input label="Yeni Şifre Tekrar" placeholder="Tekrar gir" value={confirmNewPassword} onChangeText={setConfirmNewPassword} secureToggle />
+        <Button title="Şifreyi Değiştir" onPress={handleChangePassword} loading={loading} />
       </Card>
 
       {/* Account Linking & Unlinking (Spec 1.4) */}
-      <SectionHeader title="Giris Yontemleri" />
+      <SectionHeader title="Giriş Yöntemleri" />
       <Card>
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md }}>
-          Birden fazla giris yontemi baglayabilirsiniz. En az bir yontem aktif olmalidir.
+          Birden fazla giriş yöntemi bağlayabilirsin. En az bir yöntem aktif olmalı.
         </Text>
 
         {/* Google */}
@@ -235,18 +264,18 @@ export default function AccountSecurityScreen() {
       <SectionHeader title="Aktif Oturumlar" />
       <Card>
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
-          Hesabiniza bagli aktif cihazlar. Tanimlamadiginiz bir oturumu kapatabilirsiniz.
+          Hesabına bağlı aktif cihazlar. Tanımlamadığın bir oturumu kapatabilirsin.
         </Text>
         {sessionsLoading ? (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Yukleniyor...</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Yükleniyor...</Text>
         ) : sessions.length === 0 ? (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Aktif oturum bulunamadi.</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Aktif oturum bulunamadı.</Text>
         ) : (
           sessions.map((session, index) => (
             <View key={session.sessionId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: index < sessions.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{session.deviceInfo}</Text>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
                   Son aktif: {new Date(session.lastActiveAt).toLocaleString('tr-TR')}
                 </Text>
               </View>
@@ -261,6 +290,7 @@ export default function AccountSecurityScreen() {
         )}
       </Card>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -284,13 +314,13 @@ function ProviderRow({
       <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{name}</Text>
       {linked ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-          <Text style={{ color: COLORS.success, fontSize: FONT.sm }}>Bagli</Text>
+          <Text style={{ color: COLORS.success, fontSize: FONT.sm }}>Bağlı</Text>
           {canUnlink && (
-            <Button title="Kaldir" variant="ghost" size="sm" onPress={onUnlink} />
+            <Button title="Kaldır" variant="ghost" size="sm" onPress={onUnlink} />
           )}
         </View>
       ) : (
-        <Button title="Bagla" variant="outline" size="sm" onPress={onLink} />
+        <Button title="Bağla" variant="outline" size="sm" onPress={onLink} />
       )}
     </View>
   );

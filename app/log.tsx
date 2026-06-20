@@ -2,9 +2,9 @@
  * Quick Log Modal — opened from center FAB
  * All data entry starts here: text, photo, barcode, voice, water, weight, sleep, workout
  */
-import { useState, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Modal } from 'react-native';
-import { router } from 'expo-router';
+import { useState, useRef, useCallback } from 'react';
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Modal, Animated } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,6 +18,8 @@ import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme } from '@/lib/theme';
+import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 
 type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery';
@@ -42,6 +44,14 @@ export default function QuickLogScreen() {
   const [screen, setScreen] = useState<Screen>('main');
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
+  // Which main-screen quick action is mid-navigation — gives the tapped row a
+  // brief busy state so it doesn't look dead while the modal-dismiss + tab-open
+  // round-trip resolves on slower devices.
+  const [navigatingIndex, setNavigatingIndex] = useState<number | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // #ux-regression: a returning/interrupted navigation must not leave the grid permanently
+  // disabled (navigatingIndex stuck). Reset whenever the modal regains focus.
+  useFocusEffect(useCallback(() => { setNavigatingIndex(null); }, []));
 
   // Barcode state
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -67,10 +77,22 @@ export default function QuickLogScreen() {
   // Single shared mutex — prevents two handlers firing at once (e.g. double-tap
   // the FAB, or tapping Save + Water before the first finishes).
   const submittingRef = useRef(false);
+  // Scale-spring for the success checkmark (matches the chat SavedBadge reward language).
+  const successScale = useRef(new Animated.Value(0.6)).current;
 
   const showSuccessAndClose = (msg: string) => {
+    haptics.success();
     setSuccessMsg(msg);
-    setTimeout(() => { setSuccessMsg(null); router.back(); }, 1200);
+    successScale.setValue(0.6);
+    Animated.spring(successScale, {
+      toValue: 1,
+      friction: 4,
+      tension: 130,
+      useNativeDriver: true,
+    }).start();
+    // #ux-regression: keep the timer id so a tap on the toast can cancel it — otherwise the
+    // tap's router.back() runs immediately AND the orphaned timer fires a SECOND back ~1.2s later.
+    closeTimer.current = setTimeout(() => { setSuccessMsg(null); router.back(); }, 1200);
   };
 
   const handleLog = async () => {
@@ -79,9 +101,10 @@ export default function QuickLogScreen() {
     setLoading(true);
     try {
       const { error } = await sendMessage(text.trim());
-      if (error) Alert.alert('Kayıt eklenemedi', error);
+      if (error) { haptics.error(); Alert.alert('Kayıt eklenemedi', error); }
       else { await fetchToday(user.id, dayBoundaryHour); router.back(); }
     } catch (err) {
+      haptics.error();
       const detail = err instanceof Error ? err.message : 'Bilinmeyen hata';
       Alert.alert(
         'Kayıt eklenemedi',
@@ -269,12 +292,12 @@ export default function QuickLogScreen() {
     if (!cameraPermission?.granted) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-          <Text style={{ color: colors.text, fontSize: 14, textAlign: 'center', marginBottom: SPACING.md }}>Barkod taramak için kamera izni gerekli</Text>
-          <TouchableOpacity onPress={requestCameraPermission} style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>İzin ver</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.md }}>Barkod taramak için kamera izni gerekli</Text>
+          <TouchableOpacity onPress={requestCameraPermission} accessibilityRole="button" accessibilityLabel="İzin ver" style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl }}>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>İzin ver</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setScreen('main')} style={{ marginTop: SPACING.md }}>
-            <Text style={{ color: colors.textMuted, fontSize: 13 }}>Geri</Text>
+          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginTop: SPACING.md }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Geri</Text>
           </TouchableOpacity>
         </View>
       );
@@ -289,10 +312,15 @@ export default function QuickLogScreen() {
         {/* Overlay */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl, paddingTop: insets.top + 12 }}>
-            <TouchableOpacity onPress={() => { setScreen('main'); setScannedBarcode(null); setBarcodeResult(null); }}>
+            <TouchableOpacity
+              onPress={() => { setScreen('main'); setScannedBarcode(null); setBarcodeResult(null); }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel="Kapat"
+            >
               <Ionicons name="close" size={28} color="#fff" />
             </TouchableOpacity>
-            <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Barkod Tara</Text>
+            <Text style={{ color: '#fff', fontSize: FONT.lg, fontWeight: '600' }}>Barkod Tara</Text>
             <View style={{ width: 28 }} />
           </View>
           {/* Result banner */}
@@ -300,12 +328,12 @@ export default function QuickLogScreen() {
             {barcodeLoading && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center' }}>
                 <ActivityIndicator color="#fff" />
-                <Text style={{ color: '#fff', fontSize: 13, marginTop: SPACING.sm }}>Ürün aranıyor...</Text>
+                <Text style={{ color: '#fff', fontSize: FONT.sm, marginTop: SPACING.sm }}>Ürün aranıyor...</Text>
               </View>
             )}
             {barcodeResult && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg }}>
-                <Text style={{ color: '#fff', fontSize: 13, textAlign: 'center' }}>{barcodeResult}</Text>
+                <Text style={{ color: '#fff', fontSize: FONT.sm, textAlign: 'center' }}>{barcodeResult}</Text>
               </View>
             )}
           </View>
@@ -318,19 +346,26 @@ export default function QuickLogScreen() {
   if (screen === 'voice') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity onPress={() => { setScreen('main'); setIsRecording(false); }} style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
+        <TouchableOpacity
+          onPress={() => { setScreen('main'); setIsRecording(false); }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Kapat"
+          style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
 
         {transcribing ? (
           <>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={{ color: colors.textSecondary, fontSize: 14, marginTop: SPACING.md }}>Ses tanınıyor...</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.md, marginTop: SPACING.md }}>Ses tanınıyor...</Text>
           </>
         ) : (
           <>
             <TouchableOpacity
-              onPress={handleVoiceToggle}
+              onPress={() => { haptics.tap(); void handleVoiceToggle(); }}
+              accessibilityRole="button"
+              accessibilityLabel={isRecording ? 'Kaydı durdur' : 'Kayda başla'}
               style={{
                 width: 96, height: 96, borderRadius: 48,
                 backgroundColor: isRecording ? colors.error : colors.pink,
@@ -338,12 +373,12 @@ export default function QuickLogScreen() {
                 marginBottom: SPACING.xxl,
               }}
             >
-              <Ionicons name={isRecording ? 'stop' : 'mic'} size={40} color="#fff" />
+              <Ionicons name={isRecording ? 'stop' : 'mic'} size={40} color={getContrastColor(isRecording ? colors.error : colors.pink)} />
             </TouchableOpacity>
-            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600', marginBottom: SPACING.sm }}>
+            <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginBottom: SPACING.sm }}>
               {isRecording ? 'Dinliyorum...' : 'Konuşmaya başla'}
             </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 13, textAlign: 'center' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>
               {isRecording ? 'Bitirince butona tekrar bas' : 'Örnek: "Öğlen yemekte 1 porsiyon mercimek çorbası, pilav ve ayran içtim"'}
             </Text>
           </>
@@ -356,31 +391,36 @@ export default function QuickLogScreen() {
   if (screen === 'weight') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity onPress={() => setScreen('main')} style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
+        <TouchableOpacity
+          onPress={() => setScreen('main')}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Kapat"
+          style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.pink + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="scale" size={24} color={colors.pink} />
         </View>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Tartı Kaydı</Text>
+        <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Tartı Kaydı</Text>
         <TextInput
           style={{
             backgroundColor: colors.card, borderRadius: RADIUS.md,
             paddingHorizontal: SPACING.xl, paddingVertical: SPACING.lg,
-            color: colors.text, fontSize: 28, fontWeight: '700',
+            color: colors.text, fontSize: FONT.hero, fontWeight: '700',
             textAlign: 'center', width: '70%', borderWidth: 0.5, borderColor: colors.border,
           }}
           placeholder="73.5" placeholderTextColor={colors.textMuted}
           value={weightInput} onChangeText={setWeightInput}
           keyboardType="decimal-pad" autoFocus
         />
-        <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: SPACING.xs, marginBottom: SPACING.xxl }}>kg</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.xs, marginBottom: SPACING.xxl }}>kg</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
-          <TouchableOpacity onPress={() => setScreen('main')} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>İptal</Text>
+          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleWeightSave} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Kaydet</Text>
+          <TouchableOpacity onPress={handleWeightSave} disabled={loading} accessibilityRole="button" accessibilityLabel="Kaydet" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: loading ? 0.5 : 1 }}>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -391,37 +431,42 @@ export default function QuickLogScreen() {
   if (screen === 'sleep') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity onPress={() => setScreen('main')} style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
+        <TouchableOpacity
+          onPress={() => setScreen('main')}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Kapat"
+          style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.purple + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="moon" size={24} color={colors.purple} />
         </View>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Uyku Kaydı</Text>
+        <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Uyku Kaydı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%', marginBottom: SPACING.xxl }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', marginBottom: SPACING.sm }}>Yatış</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.sm }}>Yatış</Text>
             <TextInput
-              style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, color: colors.text, fontSize: 20, fontWeight: '600', textAlign: 'center', borderWidth: 0.5, borderColor: colors.border }}
+              style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, color: colors.text, fontSize: FONT.xl, fontWeight: '600', textAlign: 'center', borderWidth: 0.5, borderColor: colors.border }}
               placeholder="23:00" placeholderTextColor={colors.textMuted}
               value={sleepTime} onChangeText={setSleepTime} keyboardType="numbers-and-punctuation"
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', marginBottom: SPACING.sm }}>Kalkış</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.sm }}>Kalkış</Text>
             <TextInput
-              style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, color: colors.text, fontSize: 20, fontWeight: '600', textAlign: 'center', borderWidth: 0.5, borderColor: colors.border }}
+              style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, color: colors.text, fontSize: FONT.xl, fontWeight: '600', textAlign: 'center', borderWidth: 0.5, borderColor: colors.border }}
               placeholder="07:00" placeholderTextColor={colors.textMuted}
               value={wakeTime} onChangeText={setWakeTime} keyboardType="numbers-and-punctuation"
             />
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
-          <TouchableOpacity onPress={() => setScreen('main')} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>İptal</Text>
+          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleSleepSave} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Kaydet</Text>
+          <TouchableOpacity onPress={handleSleepSave} disabled={loading} accessibilityRole="button" accessibilityLabel="Kaydet" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: loading ? 0.5 : 1 }}>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -432,49 +477,62 @@ export default function QuickLogScreen() {
   if (screen === 'recovery') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity onPress={() => setScreen('main')} style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
+        <TouchableOpacity
+          onPress={() => setScreen('main')}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Kapat"
+          style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.success + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="fitness" size={24} color={colors.success} />
         </View>
-        <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Toparlanma Kaydı</Text>
+        <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Toparlanma Kaydı</Text>
 
-        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Kas ağrısı</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Kas ağrısı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xl }}>
           {SORENESS_LEVELS.map(s => (
-            <TouchableOpacity key={s.value} onPress={() => setSoreness(s.value)}
+            <TouchableOpacity key={s.value} onPress={() => { haptics.tap(); setSoreness(s.value); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Kas ağrısı: ${s.label}`}
+              accessibilityState={{ selected: soreness === s.value }}
               style={{
                 flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, alignItems: 'center',
                 backgroundColor: soreness === s.value ? colors.warning : colors.card,
                 borderWidth: 0.5, borderColor: soreness === s.value ? colors.warning : colors.border,
               }}>
-              <Text style={{ color: soreness === s.value ? '#fff' : colors.textSecondary, fontSize: 12, fontWeight: '600' }}>{s.label}</Text>
+              <Text style={{ color: soreness === s.value ? getContrastColor(colors.warning) : colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>{s.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Genel toparlanma (1 kötü — 5 harika)</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Genel toparlanma (1 kötü — 5 harika)</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xxl }}>
           {[1, 2, 3, 4, 5].map(r => (
-            <TouchableOpacity key={r} onPress={() => setRecoveryScore(r)}
+            <TouchableOpacity key={r} onPress={() => { haptics.tap(); setRecoveryScore(r); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Toparlanma puanı: ${r}`}
+              accessibilityState={{ selected: recoveryScore === r }}
               style={{
                 flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, alignItems: 'center',
                 backgroundColor: recoveryScore === r ? colors.success : colors.card,
                 borderWidth: 0.5, borderColor: recoveryScore === r ? colors.success : colors.border,
               }}>
-              <Text style={{ color: recoveryScore === r ? '#fff' : colors.textSecondary, fontSize: 14, fontWeight: '700' }}>{r}</Text>
+              <Text style={{ color: recoveryScore === r ? getContrastColor(colors.success) : colors.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>{r}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
-          <TouchableOpacity onPress={() => setScreen('main')} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '500' }}>İptal</Text>
+          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleRecoverySave} disabled={loading || (soreness === null && recoveryScore === null)}
+            accessibilityRole="button" accessibilityLabel="Kaydet"
+            accessibilityState={{ disabled: loading || (soreness === null && recoveryScore === null) }}
             style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: loading || (soreness === null && recoveryScore === null) ? 0.5 : 1 }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -484,15 +542,22 @@ export default function QuickLogScreen() {
   // ====== SUCCESS TOAST ======
   if (successMsg) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={() => { if (closeTimer.current) clearTimeout(closeTimer.current); setSuccessMsg(null); router.back(); }}
+        accessibilityRole="button"
+        accessibilityLabel={`${successMsg}. Kapatmak için dokun`}
+        style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
         <View style={{
           backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl,
           alignItems: 'center', borderWidth: 0.5, borderColor: colors.border,
         }}>
-          <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
-          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600', marginTop: SPACING.md }}>{successMsg}</Text>
+          <Animated.View style={{ transform: [{ scale: successScale }] }}>
+            <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
+          </Animated.View>
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md }}>{successMsg}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   }
 
@@ -501,77 +566,118 @@ export default function QuickLogScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xxl }}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Geri">
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
-        <Text style={{ color: colors.text, fontSize: 18, fontWeight: '600' }}>Kayıt ekle</Text>
+        <Text style={{ color: colors.text, fontSize: FONT.lg + 2, fontWeight: '600' }}>Kayıt ekle</Text>
         <View style={{ width: 24 }} />
       </View>
 
       {/* Input methods card */}
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
         {[
-          { icon: 'create-outline' as const, title: 'Yazarak gir', desc: '2 yumurta, peynir, ekmek yedim', color: colors.primary, onPress: () => router.dismissTo('/(tabs)/chat') },
-          { icon: 'camera-outline' as const, title: 'Fotoğraf çek', desc: 'Tabağını fotoğrafla, AI tanısın', color: colors.protein, onPress: handlePhoto },
-          { icon: 'barcode-outline' as const, title: 'Barkod okut', desc: 'Paketli ürünü tara', color: colors.carbs, onPress: () => setScreen('barcode') },
-          { icon: 'mic-outline' as const, title: 'Sesli giriş', desc: 'Konuşarak kayıt gir', color: colors.pink, onPress: () => setScreen('voice') },
-        ].map((method, i) => (
+          // `navigates` rows fire a router intent that crosses the modal->tab
+          // boundary, so they get a transient busy state; in-screen rows don't.
+          { icon: 'create-outline' as const, title: 'Yazarak gir', desc: '2 yumurta, peynir, ekmek yedim', color: colors.primary, navigates: true, onPress: () => router.dismissTo('/(tabs)/chat') },
+          { icon: 'camera-outline' as const, title: 'Fotoğraf çek', desc: 'Tabağını fotoğrafla, AI tanısın', color: colors.protein, navigates: true, onPress: handlePhoto },
+          { icon: 'barcode-outline' as const, title: 'Barkod okut', desc: 'Paketli ürünü tara', color: colors.carbs, navigates: false, onPress: () => setScreen('barcode') },
+          { icon: 'mic-outline' as const, title: 'Sesli giriş', desc: 'Konuşarak kayıt gir', color: colors.pink, navigates: false, onPress: () => setScreen('voice') },
+        ].map((method, i) => {
+          const busy = navigatingIndex === i;
+          return (
           <TouchableOpacity
-            key={i} onPress={method.onPress}
+            key={i}
+            activeOpacity={0.7}
+            disabled={navigatingIndex !== null}
+            accessibilityRole="button"
+            accessibilityLabel={`${method.title}. ${method.desc}`}
+            accessibilityState={{ busy }}
+            onPress={() => {
+              haptics.tap();
+              if (method.navigates) setNavigatingIndex(i);
+              method.onPress();
+            }}
             style={{
               flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, gap: SPACING.md,
               borderBottomWidth: i < 3 ? 0.5 : 0, borderBottomColor: colors.border,
+              opacity: navigatingIndex !== null && !busy ? 0.5 : 1,
             }}
           >
             <View style={{ width: 36, height: 36, borderRadius: RADIUS.sm, backgroundColor: method.color + '18', alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name={method.icon} size={18} color={method.color} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontSize: 14, fontWeight: '500' }}>{method.title}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>{method.desc}</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }}>{method.title}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{method.desc}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            {busy
+              ? <ActivityIndicator size="small" color={colors.textMuted} />
+              : <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
           </TouchableOpacity>
-        ))}
+          );
+        })}
       </View>
 
       {/* Quick text input */}
-      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
         Hızlı kayıt
       </Text>
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.xxl }}>
         <TextInput
-          style={{ color: colors.text, fontSize: 13, minHeight: 50, textAlignVertical: 'top' }}
+          style={{ color: colors.text, fontSize: FONT.sm, minHeight: 50, textAlignVertical: 'top' }}
           placeholder="Örnek: 2 dilim ekmek, 1 yumurta, çay"
           placeholderTextColor={colors.textMuted}
           value={text} onChangeText={setText} multiline maxLength={2000}
         />
         {text.trim() ? (
           <TouchableOpacity onPress={handleLog} disabled={loading}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Kaydet"
+            accessibilityState={{ disabled: loading, busy: loading }}
             style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.md, opacity: loading ? 0.5 : 1 }}>
-            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
 
       {/* Other entries — 2x2 grid */}
-      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
         Diğer kayıtlar
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
         {[
-          { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
-          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, onPress: () => setScreen('weight') },
-          { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, onPress: () => setScreen('sleep') },
-          { icon: 'water-outline' as const, label: 'Su (+0.25L)', color: colors.protein, onPress: handleWaterAdd },
-          { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, onPress: () => setScreen('recovery') },
-        ].map((action, i) => (
-          <TouchableOpacity key={i} onPress={action.onPress}
-            style={{ width: '48%', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm }}>
-            <Ionicons name={action.icon} size={24} color={action.color} />
-            <Text style={{ color: colors.text, fontSize: 13, fontWeight: '500' }}>{action.label}</Text>
+          { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, navigates: true, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
+          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, onPress: () => setScreen('weight') },
+          { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, navigates: false, onPress: () => setScreen('sleep') },
+          { icon: 'water-outline' as const, label: 'Su (+0.25L)', color: colors.protein, navigates: false, onPress: handleWaterAdd },
+          { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, navigates: false, onPress: () => setScreen('recovery') },
+        ].map((action, i) => {
+          const busy = navigatingIndex === 100 + i;
+          return (
+          <TouchableOpacity key={i}
+            activeOpacity={0.7}
+            disabled={navigatingIndex !== null}
+            accessibilityRole="button"
+            accessibilityLabel={action.label}
+            accessibilityState={{ busy }}
+            onPress={() => {
+              haptics.tap();
+              if (action.navigates) setNavigatingIndex(100 + i);
+              action.onPress();
+            }}
+            style={{ width: '48%', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm, opacity: navigatingIndex !== null && !busy ? 0.5 : 1 }}>
+            {busy
+              ? <ActivityIndicator size="small" color={action.color} />
+              : <Ionicons name={action.icon} size={24} color={action.color} />}
+            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500' }}>{action.label}</Text>
           </TouchableOpacity>
-        ))}
+          );
+        })}
       </View>
     </ScrollView>
   );

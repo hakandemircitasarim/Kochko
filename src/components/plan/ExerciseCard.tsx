@@ -36,19 +36,19 @@ export function ExerciseCard({ exercise }: Props) {
             width: 32,
             height: 32,
             borderRadius: 8,
-            backgroundColor: '#6366F118',
+            backgroundColor: colors.purple + '18',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Ionicons name="barbell-outline" size={14} color="#6366F1" />
+          <Ionicons name="barbell-outline" size={14} color={colors.purple} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
             {exercise.name}
           </Text>
           {exercise.muscle_groups && exercise.muscle_groups.length > 0 ? (
-            <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
               {exercise.muscle_groups.join(' · ')}
             </Text>
           ) : null}
@@ -58,7 +58,7 @@ export function ExerciseCard({ exercise }: Props) {
             {loadText}
           </Text>
           {exercise.rest_sec ? (
-            <Text style={{ color: colors.textMuted, fontSize: 10 }}>
+            <Text style={{ color: colors.textMuted, fontSize: 11 }}>
               {exercise.rest_sec}s dinlenme
             </Text>
           ) : null}

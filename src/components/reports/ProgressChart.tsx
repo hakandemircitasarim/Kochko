@@ -1,10 +1,12 @@
 /**
- * Simple View-based bar chart (no external libraries).
- * Spec 8: Raporlama - visual progress display.
+ * Weight/metric trend chart (Spec 8: Raporlama - visual progress display).
+ * Line chart so a full month of daily readings reads as a smooth trend
+ * instead of an illegible picket-fence of thin bars.
  */
 import React from 'react';
-import { View, Text } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { View, Text, Dimensions } from 'react-native';
+import { LineChart } from 'react-native-chart-kit';
+import { COLORS, SPACING, RADIUS, FONT } from '@/lib/constants';
 
 interface DataPoint {
   label: string;
@@ -25,11 +27,11 @@ function formatShortDate(label: string): string {
   return label;
 }
 
-export function ProgressChart({ data, color = COLORS.primary, unit = '', height = 140 }: Props) {
+export function ProgressChart({ data, color = COLORS.primary, unit = '', height = 150 }: Props) {
   if (data.length === 0) {
     return (
       <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Veri yok</Text>
+        <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Henüz veri yok</Text>
       </View>
     );
   }
@@ -37,35 +39,61 @@ export function ProgressChart({ data, color = COLORS.primary, unit = '', height 
   const values = data.map(d => d.value);
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const range = max - min || 1;
-  const barAreaHeight = height - 36; // reserve space for labels
+  const last = values[values.length - 1];
+
+  // Pad the y-domain so small fluctuations (e.g. 0.3kg) don't read as a cliff.
+  // chart-kit auto-scales to the union of all datasets, so a hidden anchor
+  // dataset at [min-pad, max+pad] widens the range without distorting the line.
+  const pad = Math.max(0.5, (max - min) * 0.5);
+  const yAnchors = [min - pad, max + pad];
+
+  const chartWidth = Dimensions.get('window').width - SPACING.xl * 4;
+
+  // Thin x-axis labels to ~6 evenly-spaced ticks so 30 daily dates don't collide.
+  const step = Math.max(1, Math.floor(data.length / 6));
+  const labels = data.map((d, i) => (i % step === 0 ? formatShortDate(d.label) : ''));
 
   return (
-    <View style={{ height }}>
-      {/* Min/Max labels */}
+    <View>
+      {/* Summary labels — readable size + AA-contrast textSecondary */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{min.toFixed(1)}{unit}</Text>
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{max.toFixed(1)}{unit}</Text>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>
+          En düşük {min.toFixed(1)}{unit}
+        </Text>
+        <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '700' }}>
+          Son {last.toFixed(1)}{unit}
+        </Text>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>
+          En yüksek {max.toFixed(1)}{unit}
+        </Text>
       </View>
 
-      {/* Bars */}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', flex: 1, gap: 2 }}>
-        {data.map((d, i) => {
-          const normalized = ((d.value - min) / range) * barAreaHeight;
-          const barHeight = Math.max(4, normalized);
-          return (
-            <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={{ color: COLORS.textSecondary, fontSize: 9, marginBottom: 2 }}>
-                {d.value.toFixed(1)}
-              </Text>
-              <View style={{ width: '80%', height: barHeight, backgroundColor: color, borderRadius: 3 }} />
-              <Text style={{ color: COLORS.textMuted, fontSize: 8, marginTop: 2 }} numberOfLines={1}>
-                {formatShortDate(d.label)}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
+      <LineChart
+        data={{
+          labels,
+          datasets: [
+            { data: values, color: () => color, strokeWidth: 2 },
+            // Transparent anchor series only widens the y-domain (see `pad`).
+            { data: yAnchors, color: () => 'transparent', strokeWidth: 0, withDots: false },
+          ],
+        }}
+        width={chartWidth}
+        height={height}
+        chartConfig={{
+          backgroundColor: COLORS.card,
+          backgroundGradientFrom: COLORS.card,
+          backgroundGradientTo: COLORS.card,
+          decimalPlaces: 1,
+          color: () => color,
+          labelColor: () => COLORS.textSecondary,
+          propsForDots: { r: data.length > 20 ? '0' : '2' },
+        }}
+        bezier
+        style={{ borderRadius: RADIUS.sm, marginLeft: -SPACING.sm }}
+        withInnerLines={false}
+        withOuterLines={false}
+        withShadow={false}
+      />
     </View>
   );
 }

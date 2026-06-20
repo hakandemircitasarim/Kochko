@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { ComplianceScore } from '@/components/reports/ComplianceScore';
 import { ProgressChart } from '@/components/reports/ProgressChart';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 interface MonthlyAIReport {
   monthly_summary?: string;
@@ -93,8 +94,10 @@ export default function MonthlyReportScreen() {
       });
       if (error) throw error;
       setAiReport(data as MonthlyAIReport);
+      haptics.success();
     } catch (err) {
-      Alert.alert('Hata', 'Rapor olusturulamadi. Lutfen tekrar deneyin.');
+      haptics.error();
+      Alert.alert('Bir sorun oldu', 'Rapor oluşturulamadı, lütfen tekrar dene.');
     } finally {
       setGenerating(false);
     }
@@ -107,8 +110,11 @@ export default function MonthlyReportScreen() {
   };
 
   if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
       <ActivityIndicator size="large" color={COLORS.primary} />
+      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.md, textAlign: 'center' }}>
+        Aylık raporun hazırlanıyor...
+      </Text>
     </View>;
   }
 
@@ -127,7 +133,6 @@ export default function MonthlyReportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Aylık Rapor</Text>
 
       {/* Overall Compliance */}
       <Card title="Ortalama Uyum">
@@ -136,8 +141,14 @@ export default function MonthlyReportScreen() {
 
       {/* Weight Chart */}
       {weightData.length > 0 && (
-        <Card title="Kilo Grafigi">
-          <ProgressChart data={weightData} unit=" kg" color={COLORS.secondary} height={150} />
+        <Card title="Kilo Grafiği">
+          <View
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={`Kilo grafiği: ${firstWeight?.toFixed(1)} kilodan ${lastWeight?.toFixed(1)} kiloya`}
+          >
+            <ProgressChart data={weightData} unit=" kg" color={COLORS.secondary} height={150} />
+          </View>
         </Card>
       )}
 
@@ -147,7 +158,7 @@ export default function MonthlyReportScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View>
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Ay başı</Text>
-              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{firstWeight} kg</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{firstWeight?.toFixed(1)} kg</Text>
             </View>
             <View style={{ alignItems: 'center' }}>
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Değişim</Text>
@@ -157,7 +168,7 @@ export default function MonthlyReportScreen() {
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Ay sonu</Text>
-              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{lastWeight} kg</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{lastWeight?.toFixed(1)} kg</Text>
             </View>
           </View>
         </Card>
@@ -175,6 +186,11 @@ export default function MonthlyReportScreen() {
             loading={generating}
             disabled={generating}
           />
+          {generating && (
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
+              Koçun ayını analiz ediyor, bu birkaç saniye sürebilir...
+            </Text>
+          )}
         </Card>
       )}
 
@@ -242,6 +258,11 @@ export default function MonthlyReportScreen() {
             disabled={generating}
             style={{ marginTop: SPACING.sm }}
           />
+          {generating && (
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
+              Koçun ayını analiz ediyor, bu birkaç saniye sürebilir...
+            </Text>
+          )}
         </>
       )}
 
@@ -259,12 +280,22 @@ export default function MonthlyReportScreen() {
 
       {/* Weekly Summaries */}
       <Card title="Haftalık Özetler">
-        {weeklyReports.map((wr, i) => (
-          <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.sm, borderBottomWidth: i < weeklyReports.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{wr.week_start as string}</Text>
-            <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '600' }}>%{wr.avg_compliance as number ?? 0}</Text>
-          </View>
-        ))}
+        {weeklyReports.map((wr, i) => {
+          const compliance = (wr.avg_compliance as number) ?? 0;
+          const weekLabel = new Date(wr.week_start as string)
+            .toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+          return (
+            <View key={i} style={{ paddingVertical: SPACING.sm, borderBottomWidth: i < weeklyReports.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{weekLabel} haftası</Text>
+                <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '600' }}>%{compliance}</Text>
+              </View>
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: COLORS.border, overflow: 'hidden' }}>
+                <View style={{ width: `${Math.min(100, Math.max(0, compliance))}%`, height: '100%', borderRadius: 3, backgroundColor: COLORS.primary }} />
+              </View>
+            </View>
+          );
+        })}
         {weeklyReports.length === 0 && (
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>Henüz haftalık rapor yok.</Text>
         )}

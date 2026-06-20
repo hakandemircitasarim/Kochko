@@ -26,6 +26,7 @@ function todayIndex(): number {
 }
 
 export function PlanOverviewCards({ userId }: Props) {
+  const { colors } = useTheme();
   const [diet, setDiet] = useState<PlanRow | null>(null);
   const [workout, setWorkout] = useState<PlanRow | null>(null);
 
@@ -47,7 +48,7 @@ export function PlanOverviewCards({ userId }: Props) {
       <PlanCard
         title="Bu haftaki diyetin"
         icon="restaurant-outline"
-        color="#22C55E"
+        color={colors.primary}
         plan={diet}
         planType="diet"
         onPress={() => router.push('/plan/diet' as never)}
@@ -55,11 +56,31 @@ export function PlanOverviewCards({ userId }: Props) {
       <PlanCard
         title="Bu haftaki sporun"
         icon="barbell-outline"
-        color="#6366F1"
+        color={colors.purple}
         plan={workout}
         planType="workout"
         onPress={() => router.push('/plan/workout' as never)}
       />
+      <TouchableOpacity
+        onPress={() => router.push('/plan/history' as never)}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Geçmiş planlar"
+        accessibilityHint="Önceki diyet ve antrenman planlarını gör"
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          paddingVertical: SPACING.sm,
+        }}
+      >
+        <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>
+          Geçmiş planlar
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -79,7 +100,7 @@ function PlanCard({
   planType: 'diet' | 'workout';
   onPress: () => void;
 }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const idx = todayIndex();
 
   const { primary, secondary, chip } = (() => {
@@ -130,13 +151,10 @@ function PlanCard({
       accessibilityHint={plan ? 'Plan detayları için aç' : 'Yeni plan oluştur'}
       style={{
         backgroundColor: colors.card,
-        borderRadius: RADIUS.xl,
+        borderRadius: RADIUS.md,
         padding: SPACING.md,
         borderWidth: 1,
         borderColor: colors.border,
-        ...(isDark
-          ? {}
-          : { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }),
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
@@ -144,7 +162,7 @@ function PlanCard({
           style={{
             width: 52,
             height: 52,
-            borderRadius: 16,
+            borderRadius: RADIUS.lg,
             backgroundColor: color + '18',
             alignItems: 'center',
             justifyContent: 'center',
@@ -153,7 +171,7 @@ function PlanCard({
           <Ionicons name={icon} size={26} color={color} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
             {title.toUpperCase()}
           </Text>
           <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: 2 }}>
@@ -178,7 +196,7 @@ function PlanCard({
                 paddingVertical: 2,
               }}
             >
-              <Text style={{ color, fontSize: 10, fontWeight: '700' }} numberOfLines={1}>
+              <Text style={{ color, fontSize: FONT.xs, fontWeight: '700' }} numberOfLines={1}>
                 {chip}
               </Text>
             </View>

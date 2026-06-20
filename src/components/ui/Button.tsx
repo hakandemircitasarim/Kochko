@@ -2,6 +2,7 @@ import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, type ViewStyle } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 interface Props {
   title: string;
@@ -25,10 +26,12 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
     : variant === 'secondary' ? colors.secondary
     : colors.primary;
 
+  // Filled variants (primary / secondary / danger) pick the foreground that
+  // passes WCAG AA against their fill via getContrastColor (yields black on
+  // teal/secondary/error — all >= 5:1). Outline/ghost keep the teal label.
   const textColor = isGhost ? colors.primary
     : isOutline ? colors.primary
-    : isDanger ? '#fff'
-    : '#fff';
+    : getContrastColor(bgColor);
 
   const height = size === 'sm' ? 32 : size === 'lg' ? 48 : 40;
   const fontSize = size === 'sm' ? FONT.xs : size === 'lg' ? FONT.lg : FONT.sm;

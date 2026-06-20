@@ -12,13 +12,14 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 const PHASE_LABELS: Record<string, { label: string; color: string }> = {
   cut: { label: 'Cut (Kilo Ver)', color: COLORS.error },
   bulk: { label: 'Bulk (Kilo Al)', color: COLORS.success },
-  maintain: { label: 'Bakim', color: COLORS.primary },
+  maintain: { label: 'Bakım', color: COLORS.primary },
   mini_cut: { label: 'Mini Cut', color: COLORS.warning },
-  recomp: { label: 'Recomp', color: '#9C27B0' },
+  recomp: { label: 'Recomp', color: COLORS.purple },
 };
 
 export default function MultiPhaseGoalsScreen() {
@@ -69,7 +70,7 @@ export default function MultiPhaseGoalsScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Çok Fazlı Hedef</Text>
+      {/* Native Stack header (settings/_layout.tsx) already shows the Turkish title "Çok Fazlı Hedef" — body heading removed to avoid double-title */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Sıralı fazlar tanımla: örneğin "75 kg'a in (cut) → 3 ay bulk 80 kg → 77 kg'a in (mini cut)". Fazlar sırayla aktif olur.
       </Text>
@@ -100,7 +101,7 @@ export default function MultiPhaseGoalsScreen() {
                     <Text style={{ color: phase.is_active ? info.color : COLORS.text, fontSize: FONT.md, fontWeight: phase.is_active ? '700' : '400' }}>{info.label}</Text>
                     {phase.is_active && (
                       <View style={{ backgroundColor: info.color, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 }}>
-                        <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>AKTİF</Text>
+                        <Text style={{ color: getContrastColor(info.color), fontSize: 11, fontWeight: '700' }}>AKTİF</Text>
                       </View>
                     )}
                   </View>
@@ -132,17 +133,17 @@ export default function MultiPhaseGoalsScreen() {
                 style={{ paddingVertical: 6, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
                   borderColor: newPhaseLabel === key ? info.color : COLORS.border,
                   backgroundColor: newPhaseLabel === key ? info.color : 'transparent' }}>
-                <Text style={{ color: newPhaseLabel === key ? '#fff' : COLORS.textSecondary, fontSize: FONT.sm }}>{info.label}</Text>
+                <Text style={{ color: newPhaseLabel === key ? getContrastColor(info.color) : COLORS.textSecondary, fontSize: FONT.sm }}>{info.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
           <Input label="Hedef Kilo (opsiyonel)" placeholder="75" value={newTarget} onChangeText={setNewTarget} keyboardType="decimal-pad" />
-          <Input label="Sure (hafta)" placeholder="12" value={newWeeks} onChangeText={setNewWeeks} keyboardType="numeric" />
+          <Input label="Süre (hafta)" placeholder="12" value={newWeeks} onChangeText={setNewWeeks} keyboardType="numeric" />
           <Button title="Faz Ekle" onPress={handleAdd} />
         </Card>
       )}
 
-      <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Uzun bas: fazi sil</Text>
+      <Text style={{ color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.md }}>Uzun bas: fazı sil</Text>
     </ScrollView>
   );
 }

@@ -11,6 +11,7 @@ import { View, Text, ScrollView, TouchableOpacity, Modal, Platform } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
+import { getContrastColor } from '@/lib/accessibility';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
 import { DAY_LABELS_TR } from '@/services/plan.service';
@@ -66,7 +67,7 @@ function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanDa
 
       {sampleDay ? (
         <View style={{ marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
-          <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>
+          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>
             ÖRNEK GÜN ({sampleDay.day_label})
           </Text>
           {sampleDay.meals.slice(0, 3).map((m, i) => (
@@ -89,7 +90,7 @@ function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanDa
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '700' }}>Bunu seç</Text>
+        <Text style={{ color: getContrastColor(accent), fontSize: FONT.sm, fontWeight: '700' }}>Bunu seç</Text>
       </TouchableOpacity>
     </View>
   );
@@ -132,7 +133,7 @@ function WorkoutSummary({ plan, label, accent, onPick, colors }: { plan: Workout
       </Text>
 
       <View style={{ marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
-        <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1 }}>
+        <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>
           HAFTALIK BÖLÜM
         </Text>
         {active.slice(0, 4).map((d, i) => (
@@ -154,7 +155,7 @@ function WorkoutSummary({ plan, label, accent, onPick, colors }: { plan: Workout
           alignItems: 'center',
         }}
       >
-        <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '700' }}>Bunu seç</Text>
+        <Text style={{ color: getContrastColor(accent), fontSize: FONT.sm, fontWeight: '700' }}>Bunu seç</Text>
       </TouchableOpacity>
     </View>
   );
@@ -187,7 +188,13 @@ export function AlternativeComparisonModal({
             gap: SPACING.md,
           }}
         >
-          <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
+          <TouchableOpacity
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Kapat"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={{ padding: 4 }}
+          >
             <Ionicons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', flex: 1 }}>
@@ -215,13 +222,15 @@ export function AlternativeComparisonModal({
           <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
             {isDiet ? (
               <>
-                <DietSummary plan={planA as DietPlanData} label="A" accent="#22C55E" onPick={onPickA} colors={colors} />
-                <DietSummary plan={planB as DietPlanData} label="B" accent="#3B82F6" onPick={onPickB} colors={colors} />
+                {/* Plan A = brand diet teal, Plan B = brand pink — distinct A/B accents, no off-palette hex */}
+                <DietSummary plan={planA as DietPlanData} label="A" accent={colors.primary} onPick={onPickA} colors={colors} />
+                <DietSummary plan={planB as DietPlanData} label="B" accent={colors.pink} onPick={onPickB} colors={colors} />
               </>
             ) : (
               <>
-                <WorkoutSummary plan={planA as WorkoutPlanData} label="A" accent="#6366F1" onPick={onPickA} colors={colors} />
-                <WorkoutSummary plan={planB as WorkoutPlanData} label="B" accent="#EC4899" onPick={onPickB} colors={colors} />
+                {/* Plan A = brand workout purple, Plan B = brand pink — distinct A/B accents, no off-palette hex */}
+                <WorkoutSummary plan={planA as WorkoutPlanData} label="A" accent={colors.purple} onPick={onPickA} colors={colors} />
+                <WorkoutSummary plan={planB as WorkoutPlanData} label="B" accent={colors.pink} onPick={onPickB} colors={colors} />
               </>
             )}
           </View>
@@ -229,6 +238,8 @@ export function AlternativeComparisonModal({
           {onRequestMore ? (
             <TouchableOpacity
               onPress={onRequestMore}
+              accessibilityRole="button"
+              accessibilityLabel="Hiçbiri olmadı, 2 alternatif daha göster"
               style={{
                 marginTop: SPACING.lg,
                 alignSelf: 'center',

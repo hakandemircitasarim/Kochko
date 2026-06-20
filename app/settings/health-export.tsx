@@ -4,7 +4,7 @@
  * PDF/CSV format, selected date range, professional-facing format.
  */
 import { useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
@@ -12,7 +12,8 @@ import { exportPDF } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 export default function HealthExportScreen() {
   const insets = useSafeAreaInsets();
@@ -20,6 +21,13 @@ export default function HealthExportScreen() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [exporting, setExporting] = useState(false);
+
+  const applyQuickRange = (months: number) => {
+    haptics.tap();
+    const today = new Date();
+    setEndDate(today.toISOString().split('T')[0]);
+    setStartDate(new Date(Date.now() - months * 30 * 86400000).toISOString().split('T')[0]);
+  };
 
   const handleExport = async () => {
     if (!user?.id) return;
@@ -66,8 +74,8 @@ export default function HealthExportScreen() {
 
       // Build insights list
       const insights: string[] = [];
-      insights.push(`Hasta: Yas ${age ?? '-'} | Cinsiyet: ${profile?.gender ?? '-'} | Boy: ${profile?.height_cm ?? '-'} cm | Kilo: ${profile?.weight_kg ?? '-'} kg`);
-      if (avgCal > 0) insights.push(`Ortalama gunluk kalori: ${avgCal} kcal | Protein: ${avgPro} g`);
+      insights.push(`Hasta: Yaş ${age ?? '-'} | Cinsiyet: ${profile?.gender ?? '-'} | Boy: ${profile?.height_cm ?? '-'} cm | Kilo: ${profile?.weight_kg ?? '-'} kg`);
+      if (avgCal > 0) insights.push(`Ortalama günlük kalori: ${avgCal} kcal | Protein: ${avgPro} g`);
       const typedWorkouts = workouts as { duration_min: number }[];
       if (typedWorkouts.length > 0) {
         const totalMin = typedWorkouts.reduce((s, w) => s + w.duration_min, 0);
@@ -75,7 +83,7 @@ export default function HealthExportScreen() {
       }
       for (const l of labs as { parameter_name: string; value: number; unit: string; reference_min: number | null; reference_max: number | null; measured_at: string; is_out_of_range: boolean }[]) {
         if (l.is_out_of_range) {
-          insights.push(`[REFERANS DISI] ${l.parameter_name}: ${l.value} ${l.unit} (ref: ${l.reference_min ?? '-'}-${l.reference_max ?? '-'}) — ${l.measured_at}`);
+          insights.push(`[REFERANS DIŞI] ${l.parameter_name}: ${l.value} ${l.unit} (ref: ${l.reference_min ?? '-'}-${l.reference_max ?? '-'}) — ${l.measured_at}`);
         }
       }
 
@@ -87,13 +95,13 @@ export default function HealthExportScreen() {
       }));
 
       const summaryParts: string[] = [];
-      summaryParts.push(`Tarih araligi: ${start} - ${end}.`);
-      summaryParts.push(`Hasta bilgileri: Yas ${age ?? '-'}, ${profile?.gender ?? '-'}, ${profile?.height_cm ?? '-'} cm.`);
-      if (weightChange !== null) summaryParts.push(`Kilo degisimi: ${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)} kg.`);
-      summaryParts.push('Bu rapor Kochko yasam tarzi kocluk uygulamasi tarafindan olusturulmustur. Tibbi degerlendirme icin saglik profesyonelinin yorumu gereklidir.');
+      summaryParts.push(`Tarih aralığı: ${start} - ${end}.`);
+      summaryParts.push(`Hasta bilgileri: Yaş ${age ?? '-'}, ${profile?.gender ?? '-'}, ${profile?.height_cm ?? '-'} cm.`);
+      if (weightChange !== null) summaryParts.push(`Kilo değişimi: ${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)} kg.`);
+      summaryParts.push('Bu rapor Kochko yaşam tarzı koçluk uygulaması tarafından oluşturulmuştur. Tıbbi değerlendirme için sağlık profesyonelinin yorumu gereklidir.');
 
       await exportPDF({
-        title: 'Kochko Saglik Profesyoneli Raporu',
+        title: 'Kochko Sağlık Profesyoneli Raporu',
         period: `${start} - ${end}`,
         compliance: avgCompliance,
         weightChange,
@@ -101,8 +109,10 @@ export default function HealthExportScreen() {
         insights,
         weeklyData,
       });
+      haptics.success();
     } catch (err) {
-      Alert.alert('Hata', 'Export sirasinda hata olustu.');
+      haptics.error();
+      Alert.alert('Hata', 'Rapor oluşturulurken bir hata oluştu. Lütfen tekrar dene.');
     }
 
     setExporting(false);
@@ -110,32 +120,78 @@ export default function HealthExportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Saglik Profesyoneli Raporu</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Sağlık Profesyoneli Raporu</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Doktorunuza veya diyetisyeninize gosterebileceginiz formatta rapor olusturun. Kilo trendi, beslenme ozeti, lab degerleri ve egzersiz bilgileri icerir.
+        Doktoruna veya diyetisyenine gösterebileceğin formatta bir rapor oluştur. Kilo trendi, beslenme özeti, lab değerleri ve egzersiz bilgileri içerir.
       </Text>
 
-      <Card title="Tarih Araligi">
-        <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-          <View style={{ flex: 1 }}><Input label="Baslangic" placeholder="2024-01-01" value={startDate} onChangeText={setStartDate} /></View>
-          <View style={{ flex: 1 }}><Input label="Bitis" placeholder="2024-03-31" value={endDate} onChangeText={setEndDate} /></View>
+      <Card title="Tarih Aralığı">
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
+          {[
+            { label: 'Son 1 ay', months: 1 },
+            { label: 'Son 3 ay', months: 3 },
+            { label: 'Son 6 ay', months: 6 },
+          ].map(chip => (
+            <TouchableOpacity
+              key={chip.months}
+              onPress={() => applyQuickRange(chip.months)}
+              accessibilityRole="button"
+              accessibilityLabel={`${chip.label} aralığını seç`}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+              style={{
+                flex: 1,
+                paddingVertical: SPACING.sm,
+                borderRadius: RADIUS.pill,
+                borderWidth: 0.5,
+                borderColor: COLORS.border,
+                backgroundColor: COLORS.inputBg,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>{chip.label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Bos birakirsaniz son 3 ay kullanilir.</Text>
+        <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+          <View style={{ flex: 1 }}>
+            <Input
+              label="Başlangıç"
+              placeholder="2024-01-01"
+              value={startDate}
+              onChangeText={setStartDate}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+              accessibilityLabel="Başlangıç tarihi, yıl-ay-gün biçiminde"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Input
+              label="Bitiş"
+              placeholder="2024-03-31"
+              value={endDate}
+              onChangeText={setEndDate}
+              keyboardType="numbers-and-punctuation"
+              maxLength={10}
+              accessibilityLabel="Bitiş tarihi, yıl-ay-gün biçiminde"
+            />
+          </View>
+        </View>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Boş bırakırsan son 3 ay kullanılır.</Text>
       </Card>
 
-      <Card title="Rapor Icerigi">
+      <Card title="Rapor İçeriği">
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
-          - Hasta bilgileri (yas, cinsiyet, boy, kilo){'\n'}
-          - Kilo trendi (baslangic → son){'\n'}
-          - Beslenme ozeti (ortalama kalori/protein){'\n'}
-          - Lab degerleri (referans disi isareti ile){'\n'}
-          - Egzersiz ozeti{'\n'}
+          - Hasta bilgileri (yaş, cinsiyet, boy, kilo){'\n'}
+          - Kilo trendi (başlangıç → son){'\n'}
+          - Beslenme özeti (ortalama kalori/protein){'\n'}
+          - Lab değerleri (referans dışı işareti ile){'\n'}
+          - Egzersiz özeti{'\n'}
           {'\n'}
-          Not: Hassas veriler (sohbet gecmisi, ruh hali notlari, AI notlari) bu rapora dahil EDILMEZ.
+          Not: Hassas veriler (sohbet geçmişi, ruh hali notları, AI notları) bu rapora dahil EDİLMEZ.
         </Text>
       </Card>
 
-      <Button title="Rapor Olustur ve Paylas" onPress={handleExport} loading={exporting} size="lg" />
+      <Button title="Rapor Oluştur ve Paylaş" onPress={handleExport} loading={exporting} size="lg" />
     </ScrollView>
   );
 }

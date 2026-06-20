@@ -25,16 +25,19 @@ const MEAL_ICONS: Record<DietMeal['meal_type'], string> = {
   snack: 'cafe-outline',
 };
 
-const MEAL_COLORS: Record<DietMeal['meal_type'], string> = {
-  breakfast: '#F59E0B',
-  lunch: '#22C55E',
-  dinner: '#6366F1',
-  snack: '#EC4899',
-};
-
 export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress }: Props) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const glow = useRef(new Animated.Value(0)).current;
+
+  // Plan-domain palette mapped onto brand theme tokens (no off-brand hexes):
+  // breakfast → warning (amber), lunch → primary (diet teal),
+  // dinner → purple (workout accent), snack → pink.
+  const MEAL_COLORS: Record<DietMeal['meal_type'], string> = {
+    breakfast: colors.warning,
+    lunch: colors.primary,
+    dinner: colors.purple,
+    snack: colors.pink,
+  };
 
   useEffect(() => {
     if (highlighted) {
@@ -45,7 +48,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress }:
 
   const borderColor = glow.interpolate({
     inputRange: [0, 1],
-    outputRange: [colors.border, '#22C55E'],
+    outputRange: [colors.border, colors.success],
   });
 
   const color = MEAL_COLORS[meal.meal_type];
@@ -96,7 +99,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress }:
           <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
             {meal.total_kcal} kcal
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 10 }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
             P{meal.total_protein} · K{meal.total_carbs} · Y{meal.total_fat}
           </Text>
         </View>

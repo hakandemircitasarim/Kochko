@@ -38,13 +38,13 @@ export default function StrengthScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Guc Progresyon</Text>
+      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Güç Progresyonu</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Temel hareketlerin takibi ve 1RM tahminleri.</Text>
 
       {validExercises.length === 0 ? (
         <Card>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
-            Henuz guc antrenman kaydi yok. Kocuna "squat 3x8 80kg yaptim" gibi yazarak kayit girebilirsin.
+            Henüz güç antrenman kaydı yok. Koçuna "squat 3x8 80kg yaptım" gibi yazarak kayıt girebilirsin.
           </Text>
         </Card>
       ) : (
@@ -62,7 +62,7 @@ export default function StrengthScreen() {
                 </View>
                 <View style={{ alignItems: 'center' }}>
                   <Text style={{ color: COLORS.text, fontSize: FONT.xl, fontWeight: '700' }}>{ex.lastWeight}kg</Text>
-                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>Son agirlik</Text>
+                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>Son ağırlık</Text>
                 </View>
                 <View style={{ alignItems: 'center' }}>
                   <Text style={{ color: COLORS.text, fontSize: FONT.xl, fontWeight: '700' }}>{ex.lastReps}</Text>

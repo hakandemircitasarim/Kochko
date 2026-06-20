@@ -6,6 +6,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { useTheme } from '@/lib/theme';
+import { a11yProgress } from '@/lib/accessibility';
 import { FONT } from '@/lib/constants';
 
 interface Props {
@@ -19,6 +20,12 @@ interface Props {
   label?: string;
   sublabel?: string;
   variant?: 'default' | 'hero';
+  /** Spoken screen-reader label, e.g. "Kalori". When set, the ring announces
+   *  itself as a progressbar (e.g. "Kalori: 1450 / 1800, 81%"). Leave unset
+   *  if a parent already wraps this ring in its own accessible progressbar. */
+  a11yLabel?: string;
+  /** Target/max for the spoken progressbar value. Defaults to 100 (percent). */
+  a11yMax?: number;
 }
 
 export function CircularProgress({
@@ -32,16 +39,26 @@ export function CircularProgress({
   label,
   sublabel,
   variant = 'default',
+  a11yLabel,
+  a11yMax,
 }: Props) {
   const { colors } = useTheme();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference * (1 - Math.min(1, Math.max(0, progress)));
+  const clampedProgress = Math.min(1, Math.max(0, progress));
+  const strokeDashoffset = circumference * (1 - clampedProgress);
   const track = trackColor || colors.progressTrack;
 
+  // When a11yLabel is supplied, announce the ring as a single progressbar node
+  // (otherwise stay silent so a parent's own accessible wrapper takes over).
+  const a11yProps = a11yLabel
+    ? a11yProgress(a11yLabel, Math.round(clampedProgress * (a11yMax ?? 100)), a11yMax ?? 100)
+    : undefined;
+
   return (
-    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size}>
+    <View style={{ alignItems: 'center', justifyContent: 'center' }} {...a11yProps}>
+      {/* Decorative ring — the numbers are exposed via the Text nodes / a11yProps */}
+      <Svg width={size} height={size} accessible={false}>
         <Circle
           cx={size / 2} cy={size / 2} r={radius}
           stroke={track} strokeWidth={strokeWidth} fill="none"
