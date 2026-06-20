@@ -384,6 +384,7 @@ export async function getToneContext(userId: string): Promise<string> {
       data_driven: 'Veri ve rakamlarla konus. Grafikler ve yuzdelikler kullan. Duygusal dil minimize.',
       motivational: 'Motive edici ve enerjik ol. Basarilari kutla. "Harika gidiyorsun!" tonu.',
       strict: 'Net ve dogrudan ol. Gereksiz ovgu yapma. Hedeflere odaklan.',
+      balanced: 'Dengeli bir ton kullan: hem destekleyici hem net, asiriya kacma.',
     };
     parts.push(`TON TERCIHI: ${toneInstructions[tone] ?? tone}`);
   }

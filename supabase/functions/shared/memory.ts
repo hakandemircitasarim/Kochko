@@ -774,7 +774,12 @@ export async function refreshCorrectionMemory(userId: string): Promise<void> {
  *  - Question rate (often asks "why?" → analytical)
  *
  * Updates ai_summary.learned_tone_preference. Called by ai-extractor tier 3 (weekly).
- * Tone values: 'concise' | 'conversational' | 'supportive' | 'analytical' | 'balanced'
+ * FIX (audit AI/HIGH): use the CANONICAL tone vocabulary shared with the model
+ * (ai-chat/system-prompt.ts) and the reader (repair-handler toneInstructions) so the inferred
+ * tone always maps to a real instruction. Previously this wrote a SEPARATE vocabulary
+ * (concise/conversational/supportive/analytical) the reader had no instruction for, so the
+ * tone directive silently degraded to a bare word.
+ * Tone values: 'empathetic' | 'data_driven' | 'motivational' | 'strict' | 'balanced'
  */
 export async function inferTonePreference(userId: string): Promise<void> {
   const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString();
@@ -809,18 +814,18 @@ export async function inferTonePreference(userId: string): Promise<void> {
   const questionCount = userMsgs.filter(m => questionRe.test(m.content ?? '')).length;
   const questionRate = questionCount / userMsgs.length;
 
-  // Derive tone
-  let tone: 'concise' | 'conversational' | 'supportive' | 'analytical' | 'balanced' = 'balanced';
+  // Derive tone — CANONICAL vocabulary (shared with system-prompt + repair-handler).
+  let tone: 'empathetic' | 'data_driven' | 'motivational' | 'strict' | 'balanced' = 'balanced';
   if (correctionRate > 0.1) {
-    tone = 'analytical'; // user catches errors → wants precision
+    tone = 'data_driven'; // user catches errors → wants precision/data
   } else if (avgLen <= 20) {
-    tone = 'concise'; // terse user wants terse responses
+    tone = 'strict'; // terse user wants terse, direct responses
   } else if (avgLen > 80 && emojiRate > 0.1) {
-    tone = 'supportive'; // long messages with emoji → wants warmth
+    tone = 'empathetic'; // long messages with emoji → wants warmth
   } else if (questionRate > 0.2) {
-    tone = 'analytical'; // asks lots of why → wants data/reasoning
+    tone = 'data_driven'; // asks lots of why → wants data/reasoning
   } else if (avgLen > 80) {
-    tone = 'conversational'; // long messages without emoji → wants dialogue
+    tone = 'motivational'; // long engaged messages → wants energetic dialogue
   }
 
   // Persist via atomic merge helper

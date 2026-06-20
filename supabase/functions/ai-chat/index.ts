@@ -403,6 +403,10 @@ serve(async (req: Request) => {
     const serviceCtx = await getAllServiceContexts(userId, taskMode, {
       message: message ?? '',
       clientTimezone: client_timezone as string | undefined,
+      // FIX (audit AI/HIGH day-boundary): pass the already-computed user-effective "today" so
+      // recovery/eating-out/MVD contexts share ONE day definition (no redundant profile query,
+      // no UTC off-by-one vs the rest of the request).
+      effectiveToday,
     });
 
     // Task card context: when user taps an onboarding card, inject topic-specific instructions.
