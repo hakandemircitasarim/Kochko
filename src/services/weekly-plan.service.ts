@@ -139,6 +139,11 @@ export async function getCurrentWeeklyPlan(): Promise<WeeklyPlan | null> {
     .eq('week_start', weekStart)
     .eq('status', 'active')
     .eq('plan_type', 'diet') // this path is the diet menu
+    // FIX (audit AI/CRITICAL coord — migration 055): the legacy weekly MENU now lives in its own
+    // row (plan_subtype='weekly_menu'); the chat-approved "core" diet plan is plan_subtype NULL.
+    // Without this filter the menu screen could pick up the core row (or vice-versa) now that
+    // both can be active at once.
+    .eq('plan_subtype', 'weekly_menu')
     .order('generated_at', { ascending: false })
     .limit(1)
     .maybeSingle();

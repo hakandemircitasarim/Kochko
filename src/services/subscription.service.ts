@@ -58,28 +58,15 @@ export function isPremiumActive(sub: Subscription | null): boolean {
  * RevenueCat integration later will override provider + receipt.
  */
 export async function startTrialIfEligible(userId: string): Promise<{ started: boolean; reason?: string }> {
-  const { data: profile } = await supabase
-    .from('profiles').select('trial_used').eq('id', userId).maybeSingle();
-  if (profile?.trial_used) return { started: false, reason: 'trial_already_used' };
-
-  const { data: existing } = await supabase
-    .from('subscriptions').select('id').eq('user_id', userId)
-    .in('status', ['active', 'trial', 'grace_period']).limit(1).maybeSingle();
-  if (existing) return { started: false, reason: 'already_active' };
-
-  const expiresAt = new Date(Date.now() + 7 * 86400000).toISOString();
-  const { error } = await supabase.from('subscriptions').insert({
-    user_id: userId,
-    tier: 'trial',
-    status: 'active',
-    provider: 'manual',
-    started_at: new Date().toISOString(),
-    expires_at: expiresAt,
-  });
+  // FIX (audit DB/HIGH — trial self-grant): direct subscriptions INSERT is no longer permitted
+  // (migration 053 dropped the subscriptions_ins policy that didn't check trial_used). Trial
+  // creation now goes through the SECURITY DEFINER RPC start_trial_if_eligible, which locks the
+  // profile row, verifies trial_used + no active sub, then inserts the trial row AND flips
+  // trial_used in ONE transaction — race-free and not bypassable via raw PostgREST.
+  const { data, error } = await supabase.rpc('start_trial_if_eligible', { uid: userId });
   if (error) return { started: false, reason: error.message };
-
-  await supabase.from('profiles').update({ trial_used: true }).eq('id', userId);
-  return { started: true };
+  const res = (data ?? {}) as { started?: boolean; reason?: string };
+  return { started: !!res.started, reason: res.reason };
 }
 
 /**

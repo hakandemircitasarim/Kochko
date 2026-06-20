@@ -167,6 +167,34 @@ function rd(v: number, dp: number): number {
   return Math.round(v * f) / f;
 }
 
+/**
+ * FIX (audit CRITICAL: legacy menü uyumsuz şekil savunması): bu projeksiyon yalnız chat
+ * plan_diet'in yazdığı OBJE-şekilli snapshot'ı ({targets, days:[{day_index, total_kcal, items}]})
+ * okuyabilir. Legacy ai-plan haftalık-menü yolu DÜZ-DİZİ ({date, is_training_day,
+ * meals:[{name, calories}]}) yazardı; o satır eskiden aynı (diet/active) satırı paylaşıyordu ve
+ * buraya gelirse targets undefined → kalori KCAL_FLOOR(1000), day_index/total_kcal yok → makro 0
+ * üretir, yani DOĞRU bağlamı bozardı. Artık menü ayrı plan_subtype satırına izole edildi; yine de
+ * okuyucu defansif olsun: snapshot beklenmeyen (targets'sız) eski şekilse, uydurma 0/1000 değerler
+ * üretmek yerine veriyi YOK SAY (null'a düş) ki var olan daily_plans bozulmasın.
+ */
+function isUsableDietShape(d: DietPlanData | null | undefined): d is DietPlanData {
+  if (!d || typeof d !== 'object') return false;
+  // Canonical chat shape always carries either a `targets` object or day-level totals
+  // (`total_kcal`) on day_index-keyed days. The legacy flat shape has neither.
+  const hasTargets = d.targets != null && typeof d.targets === 'object'
+    && (Number.isFinite(Number(d.targets.kcal)) || Number.isFinite(Number(d.targets.protein)));
+  if (hasTargets) return true;
+  const days = Array.isArray(d.days) ? d.days : [];
+  // Accept if any day looks canonical: has a day_index AND a total_kcal (the legacy flat
+  // day shape uses `date`/`is_training_day`/`meals[].calories` and has neither).
+  return days.some((day) =>
+    day != null
+    && typeof day === 'object'
+    && Number.isFinite(Number((day as DietDay).day_index))
+    && Number.isFinite(Number((day as DietDay).total_kcal)),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main projection
 // ---------------------------------------------------------------------------
@@ -176,7 +204,19 @@ function rd(v: number, dp: number): number {
  * snapshots. Always returns exactly 7 rows (Monday..Sunday of `weekStart`).
  */
 export function projectDailyPlanRows(opts: ProjectDailyPlanOpts): DailyPlanInsert[] {
-  const { dietPlanData, workoutPlanData, weekStart, profile, weekConsumed } = opts;
+  const { dietPlanData: rawDietPlanData, workoutPlanData, weekStart, profile, weekConsumed } = opts;
+
+  // FIX (audit CRITICAL): beklenmeyen (legacy düz-dizi) diyet şekline karşı savun — okunamayan
+  // şekli YOK SAY ki sahte 1000kcal/0g makro üretip mevcut bağlamı bozmayalım.
+  const dietPlanData = isUsableDietShape(rawDietPlanData) ? rawDietPlanData : null;
+
+  // FIX (audit CRITICAL): ne kullanılabilir diyet ne de antrenman verisi varsa, hiç satır
+  // üretme. Çağıran yalnız writeRows.length > 0 iken yazdığından, boş dönüş var olan
+  // daily_plans'ı OLDUĞU GİBİ korur (eski planı bozmadan güvenli düş).
+  const hasWorkoutDays = Array.isArray(workoutPlanData?.days) && workoutPlanData!.days!.length > 0;
+  if (!dietPlanData && !hasWorkoutDays) {
+    return [];
+  }
 
   const targets = dietPlanData?.targets ?? {};
   const dietDays = Array.isArray(dietPlanData?.days) ? dietPlanData!.days! : [];

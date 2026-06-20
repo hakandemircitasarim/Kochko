@@ -41,18 +41,21 @@ export interface AllergenCheck {
  * Keys are stored lowercased (tr locale); both diacritic and ascii variants
  * are included so a stored allergen like "süt" or "sut" both resolve.
  */
+// FIX (audit guardrails_allergen): added English food names (peanut/milk/cheese/egg/fish/
+// bread/pasta/wheat...) and the "yer fıstığı" compound so an English meal label or the
+// peanut-butter compound can't slip past the allergen guardrail (anafilaksi riski).
 export const ALLERGEN_FOODS: Record<string, string[]> = {
-  gluten: ['ekmek', 'makarna', 'bulgur', 'simit', 'börek', 'borek', 'poğaça', 'pogaca', 'pasta', 'pizza', 'kek', 'bisküvi', 'biskuvi'],
-  laktoz: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
-  süt: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
-  sut: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag'],
-  fındık: ['fındık', 'findik'],
-  findik: ['fındık', 'findik'],
-  fıstık: ['fıstık', 'fistik'],
-  fistik: ['fıstık', 'fistik'],
-  yumurta: ['yumurta', 'omlet', 'menemen'],
-  balık: ['balık', 'balik', 'somon', 'levrek', 'hamsi'],
-  balik: ['balık', 'balik', 'somon', 'levrek', 'hamsi'],
+  gluten: ['ekmek', 'makarna', 'bulgur', 'simit', 'börek', 'borek', 'poğaça', 'pogaca', 'pasta', 'pizza', 'kek', 'bisküvi', 'biskuvi', 'bread', 'wheat', 'noodle', 'cereal', 'cracker'],
+  laktoz: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag', 'milk', 'cheese', 'butter', 'cream', 'yoghurt', 'yogurt', 'ice cream'],
+  süt: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag', 'milk', 'cheese', 'butter', 'cream', 'ice cream'],
+  sut: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'kaymak', 'krema', 'dondurma', 'ayran', 'kefir', 'tereyağ', 'tereyag', 'milk', 'cheese', 'butter', 'cream', 'ice cream'],
+  fındık: ['fındık', 'findik', 'hazelnut', 'badem', 'ceviz', 'antep fıstığı', 'antep fistigi', 'kaju', 'cashew', 'walnut', 'almond', 'kuruyemiş', 'kuruyemis', 'nut'],
+  findik: ['fındık', 'findik', 'hazelnut', 'badem', 'ceviz', 'antep fıstığı', 'antep fistigi', 'kaju', 'cashew', 'walnut', 'almond', 'kuruyemiş', 'kuruyemis', 'nut'],
+  fıstık: ['fıstık', 'fistik', 'yer fıstığı', 'yer fistigi', 'peanut'],
+  fistik: ['fıstık', 'fistik', 'yer fıstığı', 'yer fistigi', 'peanut'],
+  yumurta: ['yumurta', 'omlet', 'menemen', 'egg', 'omelet', 'omelette'],
+  balık: ['balık', 'balik', 'somon', 'levrek', 'hamsi', 'fish', 'salmon', 'tuna', 'ton balığı', 'ton baligi'],
+  balik: ['balık', 'balik', 'somon', 'levrek', 'hamsi', 'fish', 'salmon', 'tuna', 'ton balığı', 'ton baligi'],
   // Category-style allergens users actually say ("deniz ürünleri alerjim var") must
   // expand to concrete member foods (karides, midye...) or a shrimp suggestion would
   // slip past the allergen guardrail (#R2-12).
@@ -64,15 +67,29 @@ export const ALLERGEN_FOODS: Record<string, string[]> = {
 };
 
 /**
+ * FIX (audit guardrails_allergen): Turkish consonant softening (ünsüz yumuşaması).
+ * In inflected forms the stem-final hard consonant softens before a vowel suffix
+ * ("fıstık" → "fıstığı", "fındık" → "fındığa", "ekmek" → "ekmeği"). After we strip
+ * the suffix we are left with "fıstığ" / "fındığ", which would NOT match the bare
+ * "fıstık" / "fındık" token. Normalize the softened final consonant back to its hard
+ * form so the stems align.
+ */
+function softenLastConsonant(w: string): string {
+  return w.replace(/ğ$/u, 'k').replace(/b$/u, 'p').replace(/c$/u, 'ç').replace(/d$/u, 't');
+}
+
+/**
  * Strip common Turkish derivational/possessive suffixes so inflected
  * forms ("sütlü", "fındıklı") still match the bare token.
  */
 function stripTurkishSuffix(word: string): string {
-  return word
+  const s = word
     .replace(/(sız|siz|suz|süz)$/u, '')
     .replace(/(lı|li|lu|lü)$/u, '')
     .replace(/(lar|ler)$/u, '')
     .replace(/(ı|i|u|ü)$/u, '');
+  // FIX (audit guardrails_allergen): re-harden the softened stem consonant.
+  return softenLastConsonant(s);
 }
 
 /**
@@ -88,9 +105,13 @@ export function checkAllergens(
   if (allergens.length === 0) return { passed: true, violations: [] };
 
   const lowerText = mealText.toLocaleLowerCase('tr');
-  const normText = stripTurkishSuffix(lowerText);
   // Tokenize meal text for the reverse (short item vs compound allergen) check.
   const textItems = lowerText.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  // FIX (audit guardrails_allergen): normalize the meal text PER-TOKEN (not the whole
+  // string) so an inflected word like "fındığı"/"sütlü" reduces to its bare stem
+  // ("fındık"/"süt"). The old whole-string stripTurkishSuffix only trimmed the final
+  // character of the LAST word, so "fındığı ye" never matched "fındık".
+  const normItems = textItems.map(stripTurkishSuffix);
 
   const violations = allergens.filter(a => {
     const aName = a.toLocaleLowerCase('tr');
@@ -103,8 +124,11 @@ export function checkAllergens(
       // as the reverse direction below).
       if (token.length < 3) continue;
       const normToken = stripTurkishSuffix(token);
-      // Normal direction: meal text contains the (possibly suffixed) token.
-      if (lowerText.includes(token) || normText.includes(normToken)) return true;
+      // Normal direction: meal text contains the token literally (covers multi-word
+      // compounds like "yer fıstığı"), OR a normalized meal token equals the
+      // normalized allergen stem (covers Turkish inflection + consonant softening).
+      if (lowerText.includes(token)) return true;
+      if (normToken.length >= 3 && normItems.includes(normToken)) return true;
       // Reverse direction: a short meal item is contained in a compound token
       // (e.g. item "süt" vs allergen token "süt ürünleri").
       for (const item of textItems) {
@@ -346,14 +370,30 @@ export function detectCrisis(text: string): { isCrisis: boolean; message: string
     'canima kiymak', 'canıma kıymak', 'canima kiyacagim', 'canıma kıyacağım',
     'hayatima son', 'hayatıma son', 'yasamima son', 'yaşamıma son',
     'kendimi oldurmek', 'kendimi öldürmek', 'kendimi olduregim', 'kendimi öldüreceğim',
+    // FIX (audit guardrails_crisis): common despair / "I'm finished" idioms the literal
+    // list missed. These read as acute crisis and must trigger the 112 + professional
+    // response, never the milder ED referral.
+    'bittim ben', 'ben bittim', 'tukendim', 'tükendim',
+    'kendime kiymak', 'kendime kıymak', 'kendime kiyacagim', 'kendime kıyacağım',
+    'hayata veda', 'her seye son ver', 'her şeye son ver',
+    'olup kurtul', 'ölüp kurtul', 'yok olmak isti',
   ];
-  for (const phrase of crisisPhrases) {
-    if (lower.includes(phrase)) {
-      return {
-        isCrisis: true,
-        message: 'Soyledigin sey beni cok endiselendirdi ve bunu benimle paylastigin icin degerlisin. Yalniz degilsin. Lutfen su an guvende degilsen ya da kendine zarar verme dusuncen guicluyse HEMEN 112\'yi ara. Ayrica guvendigin birine — bir yakinina, bir doktora veya bir psikolog/psikiyatriste — hemen ulas; bu duygularla bas etmende profesyonel destek cok yardimci olur. Ben bir yasam tarzi kocuyum ve bu konuda profesyonel destegin yerini tutamam, ama senin icin gercekten endiseleniyorum. Hayatin cok degerli.',
-      };
-    }
+  // FIX (audit guardrails_crisis): hybrid match — literal list PLUS root-based regex so
+  // method-based ("kendimi asacağım", "bileğimi keseceğim") and indirect ("ölüp
+  // kurtulmak istiyorum") phrasings still fire. Bias toward false-positive: an empathetic
+  // crisis message is harmless, while a missed acute crisis is the highest-impact failure.
+  // Diacritic-free variants are included so broken Turkish spelling still matches.
+  const CRISIS_RE = [
+    /(kendi(mi|me)|canı(mı|ma)|cani(mi|ma)|hayatı(mı|ma)|hayati(mi|ma)|yaşamı(mı|ma)|yasami(mi|ma)|her\s*şeye|her\s*seye).{0,30}(as[ae]|kes|kıy|kiy|son\s*ver|öldür|oldur|bitir|veda|yok\s*et)/u,
+    /(ölüp\s*kurtul|olup\s*kurtul|hayata\s*veda|son\s*vermek\s*isti|yaşamak\s*istemiyorum|yasamak\s*istemiyorum|yok\s*olmak\s*isti)/u,
+    /(bilek|damar|bileği?mi|bilegimi).{0,15}(kes)/u,
+    /(ip|bıçak|bicak|hap).{0,15}(kendi|canı|cani)/u,
+  ];
+  if (crisisPhrases.some(p => lower.includes(p)) || CRISIS_RE.some(r => r.test(lower))) {
+    return {
+      isCrisis: true,
+      message: 'Soyledigin sey beni cok endiselendirdi ve bunu benimle paylastigin icin degerlisin. Yalniz degilsin. Lutfen su an guvende degilsen ya da kendine zarar verme dusuncen guicluyse HEMEN 112\'yi ara. Ayrica guvendigin birine — bir yakinina, bir doktora veya bir psikolog/psikiyatriste — hemen ulas; bu duygularla bas etmende profesyonel destek cok yardimci olur. Ben bir yasam tarzi kocuyum ve bu konuda profesyonel destegin yerini tutamam, ama senin icin gercekten endiseleniyorum. Hayatin cok degerli.',
+    };
   }
   return { isCrisis: false, message: '' };
 }

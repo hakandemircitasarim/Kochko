@@ -806,17 +806,39 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
     }
   } catch { /* non-critical */ }
 
-  // Fetch existing active diet plan to preserve approval state + increment revision_count.
+  // FIX (audit CRITICAL: legacy menü, chat-onaylı diyeti EZİYOR): bu legacy haftalık-menü
+  // yolu, chat plan_diet'in yazdığı OBJE-şekilli ({targets, days:[{day_index, total_kcal,
+  // items}]}) tek aktif diyet satırını DÜZ-DİZİ menü çıktısıyla eziyordu; plan-projection o
+  // satırı targets/day_index/total_kcal ile okuduğundan kalori 1000'e, protein 0'a düşüyordu.
+  // Çözüm: legacy menüyü plan_subtype='weekly_menu' ALT-SATIRINA izole et — chat-onaylı diyet
+  // satırı (plan_subtype IS NULL) ASLA bu yoldan dokunulmaz. Şema izolasyonu (plan_subtype
+  // kolonu + uniq_active_plan_per_type'ın COALESCE(plan_subtype,'core') ile yeniden tanımı)
+  // ayrı migration 053 ile gelir; bu kod 053 olsun/olmasın güvenlidir (aşağıya bkz.).
+  const WEEKLY_MENU_SUBTYPE = 'weekly_menu';
+
+  // Fetch existing active weekly-menu row to preserve approval state + increment revision_count.
   // Migration 030 dropped the (user_id, week_start) UNIQUE in favour of a partial unique
   // index (uniq_active_plan_per_type) of one active plan per (user, plan_type), so we
-  // scope to the active diet row instead of week_start (which could match archived rows).
-  const { data: existing } = await supabaseAdmin
+  // scope to the active row instead of week_start (which could match archived rows).
+  // FIX (audit CRITICAL): plan_subtype='weekly_menu' ile daralt — chat diyet satırını DEĞİL.
+  const { data: existing, error: existingErr } = await supabaseAdmin
     .from('weekly_plans')
     .select('id, revision_count, approved_at')
     .eq('user_id', userId)
     .eq('plan_type', 'diet')
     .eq('status', 'active')
+    .eq('plan_subtype', WEEKLY_MENU_SUBTYPE)
     .maybeSingle();
+  // FIX (audit CRITICAL): koruyucu guard — plan_subtype kolonu canlıda henüz yoksa (migration
+  // 053 deploy edilmeden bu kod yayına girerse) PostgREST 42703 döner. O durumda eski davranışa
+  // (chat satırını ezme) SESSİZCE geri dönmek tam da kapattığımız bug'dır; bunun yerine yazmayı
+  // REDDEDIP açık bir hata döndür ki veri-bütünlüğü korunsun.
+  if (existingErr) {
+    throw new Error(
+      'weekly_plans plan_subtype isolation not available (migration 053 not applied?) — refusing to write weekly menu to avoid overwriting the chat-approved diet plan: ' +
+        existingErr.message,
+    );
+  }
 
   const modLine = modificationRequest
     ? `\n\nMENU DEGISIKLIK TALEBI: "${modificationRequest}". Bu talebi dikkate alarak sadece ilgili ogun/gunleri degistir, kalanlari koru.`
@@ -844,9 +866,11 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
   }
 
   // Store in weekly_plans table. Regeneration resets approved_at and bumps revision_count.
-  // The uniq_active_plan_per_type partial index forbids two active diet rows per user, so on
-  // regeneration we UPDATE the existing active row in place rather than blind-inserting; a
-  // fresh user gets an explicit INSERT with status/plan_type set so the active index is honored.
+  // FIX (audit CRITICAL): the (now subtype-aware) uniq_active_plan_per_type partial index allows
+  // ONE active 'core' chat-diet row AND one active 'weekly_menu' row per user simultaneously
+  // (COALESCE(plan_subtype,'core')). On regeneration we UPDATE the existing active weekly_menu
+  // row in place; a fresh user gets an INSERT with plan_subtype='weekly_menu' so the chat-diet
+  // ('core') row is never touched.
   const nextRevision = (existing?.revision_count ?? 0) + (existing ? 1 : 0);
   if (existing?.id) {
     const { error: updateErr } = await supabaseAdmin
@@ -869,6 +893,8 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
         user_id: userId,
         week_start: weekStart,
         plan_type: 'diet',
+        // FIX (audit CRITICAL): legacy menüyü alt-satıra izole et — chat diyet satırını ezme.
+        plan_subtype: WEEKLY_MENU_SUBTYPE,
         status: 'active',
         plan_data: weeklyPlan.days,
         shopping_list: weeklyPlan.shopping_list ?? [],

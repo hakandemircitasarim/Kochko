@@ -255,7 +255,12 @@ serve(async (req: Request) => {
       : taskMode;
 
     // Analyze message for subtype + risk + retrieval needs (Retrieval Planner v2)
-    const analysis = analyzeMessage(message ?? '', taskMode);
+    // FIX (audit AI-HIGH): use effectiveMode, not taskMode. detectTaskMode can never produce
+    // daily_log/plan_diet/plan_workout, so passing taskMode left getRetrievalPlan's rich
+    // branches for those three modes UNREACHABLE — post-onboarding daily logging and plan
+    // negotiation silently fell back to a narrow coaching plan. effectiveMode honors the
+    // client hint; for every non-hint call effectiveMode === taskMode (no behavior change).
+    const analysis = analyzeMessage(message ?? '', effectiveMode);
     const retrievalPlan = getRetrievalPlan(analysis);
 
     // Build scoped context based on retrieval plan.
@@ -577,6 +582,29 @@ serve(async (req: Request) => {
           }
         } else if (Object.keys(regexExtracted).length > 0) {
           actions.push({ type: 'profile_update', ...regexExtracted });
+        }
+      }
+    }
+
+    // FIX (audit #1 CRITICAL — weight-corruption, layer 2): the MODEL itself may emit a
+    // profile_update.weight_kg derived from an exercise weight, which the regex guard above
+    // cannot catch. Validate any weight_kg about to be written: drop it when the user message
+    // carries exercise context but no explicit bodyweight cue, or when the value is outside the
+    // plausible human range (30–300 kg). This makes weight_kg writes safe on EVERY path.
+    {
+      const paIdx = actions.findIndex(a => a.type === 'profile_update');
+      if (paIdx >= 0) {
+        const pa = actions[paIdx] as Record<string, unknown>;
+        if (pa.weight_kg != null) {
+          const lo = (message ?? '').toLocaleLowerCase('tr');
+          const exerciseCtx = /(bench|press|squat|deadlift|curl|lat\b|biceps|triceps|halter|dumbbell|barbell|set\b|tekrar|\brep\b|kaldir|kaldır|antren|egzersiz|\d+\s*[x×]\s*\d+)/.test(lo);
+          const bodyweightCue = /(kilom|kiloyum|tartil|tartıl|mevcut\s*kilo|vücut\s*ağırlığ|vucut\s*agirlig|kg\s*(oldum|geldim|düştüm|dustum|çıktım|ciktim))/.test(lo);
+          const w = Number(pa.weight_kg);
+          if ((exerciseCtx && !bodyweightCue) || !(w >= 30 && w <= 300)) {
+            console.warn('[weight_guard] dropped ambiguous/implausible weight_kg', { weight_kg: pa.weight_kg, mode: effectiveMode });
+            delete pa.weight_kg;
+            if (Object.keys(pa).filter(k => k !== 'type').length === 0) actions.splice(paIdx, 1);
+          }
         }
       }
     }
@@ -1759,15 +1787,19 @@ function addCalendarDays(dateStr: string, days: number): string {
 }
 
 function extractActions(text: string): { cleanMessage: string; actions: Record<string, unknown>[] } {
-  let actions: Record<string, unknown>[] = [];
-  const match = text.match(/<actions>([\s\S]*?)<\/actions>/);
-  if (match) {
+  const actions: Record<string, unknown>[] = [];
+  // FIX (audit AI-HIGH): parse ALL <actions> blocks, not just the first. The model
+  // intermittently emits a second block (e.g. profile_update then meal_log); previously
+  // only the first was parsed AND the non-global replace left the second block leaking
+  // verbatim into the user-facing reply.
+  for (const m of text.matchAll(/<actions>([\s\S]*?)<\/actions>/g)) {
     try {
-      const parsed = JSON.parse(match[1]);
-      actions = Array.isArray(parsed) ? parsed : [parsed];
-    } catch { /* ignore */ }
+      const parsed = JSON.parse(m[1]);
+      if (Array.isArray(parsed)) actions.push(...parsed);
+      else actions.push(parsed);
+    } catch { /* ignore unparseable block */ }
   }
-  return { cleanMessage: text.replace(/<actions>[\s\S]*?<\/actions>/, '').trim(), actions };
+  return { cleanMessage: text.replace(/<actions>[\s\S]*?<\/actions>/g, '').trim(), actions };
 }
 
 /** Fallback: extract profile data from user message if AI didn't produce actions */
@@ -2137,12 +2169,19 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   // so skip it in safeOnly/regular-chat mode (#1/#2/#5) AND in the goal chat where the
   // prompt forbids touching current weight (#R1-C1).
   if (!safeOnly && !inGoalChat) {
+    // FIX (audit #1 CRITICAL — weight-corruption): even in onboarding/full extraction, a bare
+    // "NN kg" inside an EXERCISE statement ("4x8 bench press 70kg") was misread as bodyweight
+    // and silently overwrote profiles.weight_kg, corrupting TDEE/calorie/protein targets.
+    // Skip the current-weight extraction entirely when the message carries exercise context,
+    // mirroring the target-weight guard above. An unambiguous bodyweight statement ("kilom 72")
+    // has no exercise tokens, so it still persists.
+    const exerciseCtx = /(bench|press|squat|deadlift|curl|lat\b|biceps|triceps|halter|dumbbell|barbell|set\b|tekrar|\brep\b|kaldir|kaldır|antren|egzersiz|\d+\s*[x×]\s*\d+)/.test(lower);
     // #R3-net: the bare "NN kg/kilo" alternative must require the unit to END at a word
     // boundary, else "kilo" matches the PREFIX of "kilom" in "boyum 182 kilom 88" and the
     // leftmost match grabs the HEIGHT (182) as weight. The "kilo\w* NN" alt (2nd) then
     // correctly captures the real weight (88) that FOLLOWS "kilom". (kiloyum listed
     // explicitly so "88 kiloyum" still matches despite the suffix.)
-    const currentMatch = lower.match(/mevcut\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(?:kg|kiloyum|kilo)\b/);
+    const currentMatch = exerciseCtx ? null : lower.match(/mevcut\s*kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|kilo\w*\s*[:=]?\s*(\d{2,3}(?:\.\d)?)|(\d{2,3}(?:\.\d)?)\s*(?:kg|kiloyum|kilo)\b/);
     if (currentMatch) {
       const w = parseFloat(currentMatch[1] ?? currentMatch[2] ?? currentMatch[3]);
       // Skip if the value matches the target we already extracted, to avoid

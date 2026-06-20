@@ -10,7 +10,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
-import { denyIfNotCron } from '../shared/cron-auth.ts';
+import { denyIfNotCron, cronHeaders } from '../shared/cron-auth.ts';
 import { isIFCompatible, getSeasonalContext, type PeriodicState } from '../shared/periodic-config.ts';
 import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../shared/service-contexts.ts';
 
@@ -1404,11 +1404,11 @@ ${sentTodayContext}`;
             const reportUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-report`;
             await fetch(reportUrl, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-                'x-user-id': profile.id,
-              },
+              // FIX (audit cron-secret): forward x-cron-secret on the internal
+              // ai-report call so the chained report invoke isn't 401'd if a
+              // cron-secret guard is configured. CRON_SECRET unset → header
+              // value is undefined and the call stays fail-open as before.
+              headers: cronHeaders({ 'x-user-id': profile.id }),
               body: JSON.stringify({ report_type: 'daily', date: yesterdayStr }),
             });
           } catch { /* non-critical */ }
@@ -1425,7 +1425,11 @@ ${sentTodayContext}`;
     }
 
     // T1.38: Auto-trigger weekly report on Monday mornings (fleet-wide cron — server UTC hour).
-    if (dayOfWeek === 1 && utcHour >= 6 && utcHour <= 8) {
+    // FIX (audit cron weekly-report): the old 6-8 UTC window never overlapped any
+    // ai-proactive cron (014 fires only at 05:00/10:00/17:00 UTC), so weekly reports
+    // were NEVER auto-generated. Align to the daily block (4-6 UTC) so the existing
+    // Monday 05:00 cron triggers both; existingWeekly guard keeps it idempotent.
+    if (dayOfWeek === 1 && utcHour >= 4 && utcHour <= 6) {
       for (const profile of profiles as { id: string }[]) {
         const weekStart = new Date(now);
         weekStart.setDate(weekStart.getDate() - 7);
@@ -1440,11 +1444,8 @@ ${sentTodayContext}`;
             const reportUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-report`;
             await fetch(reportUrl, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-                'x-user-id': profile.id,
-              },
+              // FIX (audit cron-secret): forward x-cron-secret (see daily branch).
+              headers: cronHeaders({ 'x-user-id': profile.id }),
               body: JSON.stringify({ report_type: 'weekly' }),
             });
           } catch { /* non-critical */ }

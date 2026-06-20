@@ -21,3 +21,22 @@ export function denyIfNotCron(req: Request): Response | null {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+/**
+ * FIX (audit cron-secret): build the headers for an INTERNAL service-to-service
+ * call from a cron function (e.g. ai-proactive → ai-report). Mirrors the
+ * pg_cron→edge contract: service-role bearer + x-cron-secret. When CRON_SECRET
+ * is unset the x-cron-secret header is omitted entirely, so a missing env var
+ * stays fail-open (matches denyIfNotCron above) rather than sending a stale/empty
+ * secret. `extra` lets callers add per-call headers (e.g. x-user-id).
+ */
+export function cronHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''}`,
+    ...extra,
+  };
+  const secret = Deno.env.get('CRON_SECRET');
+  if (secret) headers['x-cron-secret'] = secret;
+  return headers;
+}
