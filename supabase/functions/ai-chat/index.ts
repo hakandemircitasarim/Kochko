@@ -1255,41 +1255,33 @@ serve(async (req: Request) => {
       }
 
       if (draft && !planPersistError) {
-        // Archive the previous active if present.
-        const { error: archiveErr } = await supabaseAdmin
-          .from('weekly_plans')
-          .update({ status: 'archived', archived_reason: 'superseded', superseded_by: draft.id })
+        // FIX (audit DB/HIGH — atomic archive→promote): single SECURITY DEFINER RPC
+        // transaction (migration 057 promote_weekly_plan). Archive-of-old + promote-of-draft
+        // can no longer half-fail and leave 0 active plans or an orphaned archived row.
+        // Snapshot profile/goal for drift detection BEFORE promotion (passed into the RPC).
+        const { data: profSnap } = await supabaseAdmin
+          .from('profiles')
+          .select('weight_kg, height_cm, activity_level, diet_mode')
+          .eq('id', userId)
+          .maybeSingle();
+        const { data: goalSnap } = await supabaseAdmin
+          .from('goals')
+          .select('goal_type, target_weight_kg')
           .eq('user_id', userId)
-          .eq('plan_type', expectedType)
-          .eq('status', 'active');
-        if (archiveErr) {
-          console.warn('[approve] archive previous active failed', archiveErr);
-          planPersistError = `archive failed: ${archiveErr.message}`;
+          .eq('is_active', true)
+          .limit(1);
+        const approval_snapshot = { ...(profSnap ?? {}), goal: goalSnap?.[0] ?? null };
+        const { data: activatedId, error: promoteErr } = await supabaseAdmin.rpc('promote_weekly_plan', {
+          p_user: userId,
+          p_plan_type: expectedType,
+          p_draft_id: draft.id,
+          p_snapshot: approval_snapshot,
+        });
+        if (promoteErr) {
+          console.warn('[approve] atomic promote failed', promoteErr);
+          planPersistError = `promote failed: ${promoteErr.message}`;
         } else {
-          // Snapshot profile for drift detection.
-          const { data: profSnap } = await supabaseAdmin
-            .from('profiles')
-            .select('weight_kg, height_cm, activity_level, diet_mode')
-            .eq('id', userId)
-            .maybeSingle();
-          const { data: goalSnap } = await supabaseAdmin
-            .from('goals')
-            .select('goal_type, target_weight_kg')
-            .eq('user_id', userId)
-            .eq('is_active', true)
-            .limit(1);
-          const approval_snapshot = { ...(profSnap ?? {}), goal: goalSnap?.[0] ?? null };
-          const { data: activated, error: promoteErr } = await supabaseAdmin
-            .from('weekly_plans')
-            .update({ status: 'active', approved_at: new Date().toISOString(), approval_snapshot })
-            .eq('id', draft.id)
-            .select('id')
-            .limit(1);
-          if (promoteErr) {
-            console.warn('[approve] promote draft failed', promoteErr);
-            planPersistError = `promote failed: ${promoteErr.message}`;
-          } else {
-            planApproved = (activated?.[0] as { id: string } | undefined) ?? null;
+          planApproved = activatedId ? { id: activatedId as string } : null;
             // Increment plans_used_free counter for free-tier gating (MASTER_PLAN §4.7).
             const { data: profUsed } = await supabaseAdmin
               .from('profiles')
@@ -1376,21 +1368,19 @@ serve(async (req: Request) => {
                 .map((r) => ({ ...r, user_id: userId, version: 1 }));
 
               if (writeRows.length > 0) {
-                const { error: delErr } = await supabaseAdmin
-                  .from('daily_plans')
-                  .delete()
-                  .eq('user_id', userId)
-                  .gte('date', lowerBound)
-                  .lte('date', weekEnd);
-                if (delErr) {
-                  console.error('[approve][projection] delete failed', delErr);
+                // FIX (audit DB/HIGH — atomic projection via RPC, migration 057/058):
+                // delete-range + insert run in ONE transaction so a failed insert can never
+                // leave the week with zero daily_plans rows (empty "kalan kalori" dashboard).
+                const { error: projErr2 } = await supabaseAdmin.rpc('project_daily_plans', {
+                  p_user: userId,
+                  p_lower: lowerBound,
+                  p_end: weekEnd,
+                  p_rows: writeRows,
+                });
+                if (projErr2) {
+                  console.error('[approve][projection] atomic projection failed', projErr2);
                 } else {
-                  const { error: insErr } = await supabaseAdmin.from('daily_plans').insert(writeRows);
-                  if (insErr) {
-                    console.error('[approve][projection] insert failed', insErr);
-                  } else {
-                    console.log(`[approve][projection] wrote ${writeRows.length} daily_plans rows (${lowerBound}..${weekEnd})`);
-                  }
+                  console.log(`[approve][projection] wrote ${writeRows.length} daily_plans rows (${lowerBound}..${weekEnd})`);
                 }
               } else {
                 console.log('[approve][projection] no rows in range to write (weekEnd in the past?)');
@@ -1399,7 +1389,6 @@ serve(async (req: Request) => {
               console.error('[approve][projection] unexpected error (non-blocking)', projErr);
             }
           }
-        }
       }
     }
 
@@ -3786,17 +3775,18 @@ async function executeActions(
             ? Math.round((Math.abs(startWeight - targetVal) / targetWeeks) * 100) / 100
             : null;
 
-          // Single-active-goal invariant (migration 033): deactivate current goal first.
-          await supabaseAdmin.from('goals').update({ is_active: false }).eq('user_id', userId).eq('is_active', true);
-          const { error: gsErr } = await supabaseAdmin.from('goals').insert({
-            user_id: userId,
-            goal_type: gType,
-            target_weight_kg: hasWeightTarget ? targetVal : null,
-            target_weeks: targetWeeks,
-            start_weight_kg: startWeight,
-            ...(weeklyRate ? { weekly_rate: weeklyRate } : {}),
-            is_active: true,
-            created_at: new Date().toISOString(),
+          // FIX (audit DB/HIGH — atomic set_active_goal, migration 057): deactivate-old +
+          // insert-new in ONE transaction (single-active invariant, migration 033) so a
+          // failed insert can never leave the user with 0 active goals.
+          const { error: gsErr } = await supabaseAdmin.rpc('set_active_goal', {
+            p_user: userId,
+            p_goal: {
+              goal_type: gType,
+              target_weight_kg: hasWeightTarget ? targetVal : null,
+              target_weeks: targetWeeks,
+              start_weight_kg: startWeight,
+              weekly_rate: weeklyRate,
+            },
           });
           if (gsErr) {
             console.error('[goal_suggestion] insert failed:', gsErr.message);
