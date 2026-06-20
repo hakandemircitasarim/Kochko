@@ -41,7 +41,8 @@ import {
   MacroSummary, MacroRing, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
   RecipeCard, ConfirmRejectButtons, PersonaCard, ConfidenceBadge,
 } from '@/components/chat/RichMessage';
-import { OfflineBanner } from '@/components/ui/OfflineBanner';
+// FIX (audit: çift offline banner) — inline ui/OfflineBanner kaldırıldı; çevrimdışı
+// göstergesi tek kaynak olan global common/OfflineBanner'a (app/_layout.tsx) bırakıldı.
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
@@ -276,7 +277,15 @@ export default function SessionDetailScreen() {
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
-  const { sessionId, prefill, taskModeHint, openCamera } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string; openCamera?: string }>();
+  const { sessionId, prefill, taskModeHint, openCamera, fromPrefill } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string; openCamera?: string; fromPrefill?: string }>();
+  // FIX (audit: prefill geri-tuş) — chat-tab prefill/openCamera akışı bu ekrana
+  // router.replace ile gelir (push değil); yığından çıkıldığı için koşulsuz
+  // router.back() kullanıcıyı oturum listesine değil replace-öncesi ekrana düşürür.
+  // fromPrefill işareti varsa açıkça liste sekmesine dön, normal push akışını bozma.
+  const handleBack = useCallback(() => {
+    if (fromPrefill) router.replace('/(tabs)/chat');
+    else router.back();
+  }, [fromPrefill]);
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const refreshDashboard = useDashboardStore(s => s.fetchToday);
@@ -316,6 +325,11 @@ export default function SessionDetailScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
   const barcodeProcessingRef = useRef(false); // debounce repeated onBarcodeScanned (#R4-15)
+  // FIX (audit: bayat is_active) — kapalı bir oturuma devam edildiğinde mesaj yazılır
+  // ama oturum is_active=false kalırdı (reopenSession import edilmiş ama hiç çağrılmıyordu).
+  // İlk gerçek gönderimden önce best-effort reopen et; ekran başına bir kez yeter
+  // (reopenSession diğer aktif oturumu kapatıp bunu açar, idempotent).
+  const reopenedRef = useRef(false);
   // Track whether the user is near the live end of the conversation. Drives both the
   // auto-scroll guard (don't yank the user down while they read older messages) and
   // the "jump to latest" FAB visibility.
@@ -612,6 +626,14 @@ export default function SessionDetailScreen() {
     setTypingLabel(typingLabelFor(effectiveTaskMode, !!img));
     setSending(true);
     scrollToBottom(true); // user's own send — always follow
+
+    // FIX (audit: bayat is_active) — reactivate a closed/auto-closed session on the
+    // first send so it doesn't stay "pasif" in the list after the user continues it.
+    // Best-effort (errors swallowed); only once per screen mount.
+    if (!reopenedRef.current) {
+      reopenedRef.current = true;
+      await reopenSession(sessionId).catch(() => {});
+    }
 
     const { data, error } = img
       ? await sendPhotoToSession(sessionId, text || 'Bu yemeği analiz et.', img)
@@ -989,7 +1011,7 @@ export default function SessionDetailScreen() {
         borderBottomColor: colors.divider,
       }}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={handleBack}
           accessibilityRole="button"
           accessibilityLabel="Geri"
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1035,7 +1057,8 @@ export default function SessionDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      <OfflineBanner />
+      {/* FIX (audit: çift offline banner) — inline <OfflineBanner/> kaldırıldı;
+          global common/OfflineBanner (app/_layout.tsx) bu ekranı zaten kapsıyor. */}
 
       {/* Messages or empty state */}
       {messages.length <= 1 && !sending ? (

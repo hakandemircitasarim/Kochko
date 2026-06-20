@@ -38,7 +38,8 @@ export default function DayBoundaryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Gün Dönümü</Text>
+      {/* FIX (audit duplicate-title): native header (settings/_layout.tsx) zaten "Gün Dönümü"
+          başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Senin için "yeni gün" hangi saatte başlasın? Bu saatten önce yaptığın kayıtlar (gece atıştırması gibi) bir önceki güne sayılır. Streak, günlük kalori bütçen ve oruç penceresi bu saate göre hesaplanır.
       </Text>

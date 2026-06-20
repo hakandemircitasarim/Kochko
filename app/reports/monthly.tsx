@@ -13,6 +13,7 @@ import { ComplianceScore } from '@/components/reports/ComplianceScore';
 import { ProgressChart } from '@/components/reports/ProgressChart';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { METRIC_COLORS } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
 interface MonthlyAIReport {
@@ -165,7 +166,8 @@ export default function MonthlyReportScreen() {
             accessibilityRole="image"
             accessibilityLabel={`Kilo grafiği: ${firstWeight?.toFixed(1)} kilodan ${lastWeight?.toFixed(1)} kiloya`}
           >
-            <ProgressChart data={weightData} unit=" kg" color={COLORS.secondary} height={150} />
+            {/* FIX (audit ui-weight-chart): kilo grafiği marka kilo rengiyle (METRIC_COLORS.weight, pembe) tutarlı; eskiden COLORS.secondary (mor) idi. */}
+            <ProgressChart data={weightData} unit=" kg" color={METRIC_COLORS.weight} height={150} />
           </View>
         </Card>
       )}

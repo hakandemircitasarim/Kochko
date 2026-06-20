@@ -2,7 +2,7 @@
  * Profil Sekmesi — flat dark design
  * Avatar, fiziksel bilgiler, hedefler, ayarlar, veri & gizlilik
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -101,15 +101,15 @@ export default function ProfileScreen() {
 
       {/* 5.4 Goals section */}
       <SectionTitle label="Hedefler" colors={colors} />
-      <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
+      <MenuGroup colors={colors}>
         <MenuRow icon="flag-outline" color={colors.primary} label={goal ? `${GOAL_LABELS[goal.goal_type] ?? goal.goal_type}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
         <MenuRow icon="barbell-outline" color={colors.purple} label="Güç hedefi" onPress={() => router.push('/settings/goals')} colors={colors} />
         <MenuRow icon="moon-outline" color={colors.purple} label="Uyku hedefi" onPress={() => router.push('/settings/goals')} colors={colors} last />
-      </View>
+      </MenuGroup>
 
       {/* 5.5 Settings section */}
       <SectionTitle label="Ayarlar" colors={colors} />
-      <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
+      <MenuGroup colors={colors}>
         <MenuRow icon="notifications-outline" color={colors.carbs} label="Bildirim tercihleri" onPress={() => router.push('/settings/notifications')} colors={colors} />
         <MenuRow icon="chatbubble-outline" color={colors.primary} label="Koç iletişim tonu" value={{ balanced: 'Dengeli', strict: 'Sıkı', friendly: 'Arkadaşça', motivating: 'Motive edici' }[(profile?.coach_tone as string) ?? 'balanced'] ?? (profile?.coach_tone as string) ?? 'Dengeli'} onPress={() => router.push('/settings/coach-tone')} colors={colors} />
         <MenuRow icon="timer-outline" color={colors.purple} label="IF penceresi" value={profile?.if_eating_start ? `${profile.if_eating_start}-${profile.if_eating_end}` : 'Kapalı'} onPress={() => router.push('/settings/if-settings')} colors={colors} />
@@ -122,11 +122,11 @@ export default function ProfileScreen() {
         <MenuRow icon="star-outline" color={colors.warning} label="Premium" onPress={() => router.push('/settings/premium')} colors={colors} />
         <MenuRow icon="shield-checkmark-outline" color={colors.primary} label="Hesap Güvenliği" onPress={() => router.push('/settings/account-security')} colors={colors} />
         <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tüm ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} last />
-      </View>
+      </MenuGroup>
 
       {/* 5.6 Data & Privacy section */}
       <SectionTitle label="Veri & gizlilik" colors={colors} />
-      <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, marginBottom: SPACING.xxl }}>
+      <MenuGroup colors={colors}>
         <MenuRow icon="eye-outline" color={colors.purple} label="Kochko'nun Senin Hakkında Bildikleri" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
         <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi dışa aktar" onPress={() => router.push('/settings/health-export')} colors={colors} />
         <MenuRow icon="create-outline" color={colors.primary} label="Profil düzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
@@ -134,7 +134,7 @@ export default function ProfileScreen() {
             tek-tık Alert + requestAccountDeletion akışı kaldırıldı; tek
             paylaşılan, typed-confirm korumalı silme akışına (settings) yönlendir. */}
         <MenuRow icon="trash-outline" color={colors.error} label="Hesabı sil" onPress={() => router.push('/settings' as never)} colors={colors} last />
-      </View>
+      </MenuGroup>
 
       {/* AI Summary */}
       {!!summary?.general_summary && (
@@ -186,6 +186,22 @@ function SectionTitle({ label, colors }: { label: string; colors: any }) {
     <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
       {label}
     </Text>
+  );
+}
+
+// FIX (audit profile-card-drift): menü grupları elle kopyalanan View yerine tek
+// paylaşılan MenuGroup ile çiziliyor (settings/index.tsx deseniyle aynı). Eksik
+// olan `overflow: 'hidden'` eklendi — yuvarlatılmış köşeler artık ilk/son satırın
+// kenarlığını düzgün kırpıyor; gruplar arası boşluk (SPACING.xxl) korundu.
+function MenuGroup({ children, colors }: { children: ReactNode; colors: any }) {
+  return (
+    <View style={{
+      backgroundColor: colors.card, borderRadius: RADIUS.md,
+      borderWidth: 0.5, borderColor: colors.border,
+      overflow: 'hidden', marginBottom: SPACING.xxl,
+    }}>
+      {children}
+    </View>
   );
 }
 

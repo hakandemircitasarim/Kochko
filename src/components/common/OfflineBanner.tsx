@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { syncQueue } from '@/services/offline-queue.service';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 export function OfflineBanner() {
   const { colors } = useTheme();
@@ -55,7 +56,12 @@ export function OfflineBanner() {
   // Don't render at all when fully online and not syncing
   if (isOnline && !syncing) return null;
 
-  const bg = syncing ? colors.primary + 'E6' : '#D85A30E6';
+  const bgBase = syncing ? colors.primary : '#D85A30';
+  const bg = bgBase + 'E6';
+  // FIX (audit: kontrast) — beyaz metin bu marka aksanları üstünde AA'yı geçmiyor
+  // (primary 3.39, #D85A30 ~3.87). getContrastColor ikisi için de 'black' döndürür;
+  // koyu metin/ikon kullanarak okunabilirliği AA'ya çıkar.
+  const fg = getContrastColor(bgBase) === 'black' ? '#0D0D12' : '#fff';
   // Don't promise local write-queueing for arbitrary logs — the structured offline
   // queue isn't wired (only chat messages queue). Keep the copy honest (#R6-4).
   const label = syncing ? 'Bekleyen kayıtlar senkronize ediliyor...' : 'Çevrimdışısın — internet gelince kaldığın yerden devam edebilirsin.';
@@ -78,8 +84,8 @@ export function OfflineBanner() {
         transform: [{ translateY }],
       }}
     >
-      <Ionicons name={icon} size={14} color="#fff" />
-      <Text style={{ color: '#fff', fontSize: FONT.xs, flex: 1 }} numberOfLines={2}>
+      <Ionicons name={icon} size={14} color={fg} />
+      <Text style={{ color: fg, fontSize: FONT.xs, flex: 1 }} numberOfLines={2}>
         {label}
       </Text>
     </Animated.View>

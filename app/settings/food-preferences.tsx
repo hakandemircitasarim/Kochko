@@ -40,14 +40,16 @@ export default function FoodPreferencesScreen() {
     const { error } = await supabase.from('food_preferences').upsert({
       user_id: user.id, food_name: newFood.trim().toLowerCase(), preference: newPref, is_allergen: isAllergen,
     }, { onConflict: 'user_id,food_name' });
-    if (error) { haptics.error(); Alert.alert('Kaydedilemedi', error.message ?? 'Bir hata oluştu, tekrar dene.'); return; }
+    // FIX (audit raw-error): ham (İngilizce) PostgREST hata metni sızdırılmıyor; kullanıcı-dostu Türkçe mesaj.
+    if (error) { haptics.error(); Alert.alert('Kaydedilemedi', 'Tercih kaydedilirken bir sorun oluştu. Lütfen tekrar dene.'); return; }
     haptics.success();
     setNewFood(''); setIsAllergen(false); load();
   };
 
   const handleDelete = async (id: string) => {
     const { error } = await supabase.from('food_preferences').delete().eq('id', id);
-    if (error) { haptics.error(); Alert.alert('Silinemedi', error.message ?? 'Bir hata oluştu, tekrar dene.'); return; }
+    // FIX (audit raw-error): ham (İngilizce) PostgREST hata metni sızdırılmıyor; kullanıcı-dostu Türkçe mesaj.
+    if (error) { haptics.error(); Alert.alert('Silinemedi', 'Tercih silinirken bir sorun oluştu. Lütfen tekrar dene.'); return; }
     haptics.success();
     setItems(prev => prev.filter(i => i.id !== id));
   };

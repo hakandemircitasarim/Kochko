@@ -43,7 +43,8 @@ export default function StrengthScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Güç Progresyonu</Text>
+      {/* FIX (audit duplicate-title): native header (settings/_layout.tsx) zaten "Güç Progresyon"
+          başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Temel hareketlerin takibi ve 1RM tahminleri.</Text>
 
       {/* FIX (audit strength-screen): veri gelmeden / hata anında 'kayıt yok' flaşını önle. */}

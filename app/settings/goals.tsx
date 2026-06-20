@@ -193,7 +193,8 @@ export default function GoalsScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Hedef Ayarları</Text>
+        {/* FIX (audit duplicate-title): native header (settings/_layout.tsx) zaten "Hedef Ayarları"
+            başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
 
         {profile?.weight_kg && (
           <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600', marginBottom: SPACING.md }}>Mevcut: {profile.weight_kg} kg</Text>

@@ -62,7 +62,8 @@ export default function AccountSecurityScreen() {
             const { error } = await terminateSession(sessionId);
             if (error) {
               haptics.error();
-              Alert.alert('Hata', error);
+              // FIX (audit raw-error): servisten gelen ham (İngilizce) hata metni yerine kullanıcı-dostu Türkçe mesaj.
+              Alert.alert('Oturum kapatılamadı', 'Oturum kapatılırken bir sorun oluştu. Lütfen tekrar dene.');
             } else {
               haptics.success();
               setSessions(prev => prev.filter(s => s.sessionId !== sessionId));
@@ -91,7 +92,8 @@ export default function AccountSecurityScreen() {
     setLoading(false);
     if (error) {
       haptics.error();
-      Alert.alert('Hata', error.message);
+      // FIX (audit raw-error): Supabase ham (İngilizce) hata metni yerine kullanıcı-dostu Türkçe mesaj.
+      Alert.alert('Şifre değiştirilemedi', 'Şifren güncellenirken bir sorun oluştu. Lütfen tekrar dene.');
     } else {
       haptics.success();
       Alert.alert('Başarılı', 'Şifren değiştirildi.');
@@ -113,7 +115,8 @@ export default function AccountSecurityScreen() {
     setEmailLoading(false);
     if (error) {
       haptics.error();
-      Alert.alert('Hata', error.message);
+      // FIX (audit raw-error): ham (İngilizce) hata metni yerine kullanıcı-dostu Türkçe mesaj.
+      Alert.alert('E-posta değiştirilemedi', 'E-posta adresin güncellenirken bir sorun oluştu. Lütfen tekrar dene.');
     } else {
       haptics.success();
       Alert.alert('Başarılı', 'Doğrulama e-postası gönderildi. Yeni adresini onayla.');
@@ -176,7 +179,8 @@ export default function AccountSecurityScreen() {
             const { error } = await supabase.auth.unlinkIdentity(identity as never);
             if (error) {
               haptics.error();
-              Alert.alert('Hata', error.message);
+              // FIX (audit raw-error): ham (İngilizce) hata metni yerine kullanıcı-dostu Türkçe mesaj.
+              Alert.alert('Bağlantı kaldırılamadı', 'Giriş yöntemi kaldırılırken bir sorun oluştu. Lütfen tekrar dene.');
             } else {
               haptics.success();
               Alert.alert('Başarılı', `${provider} bağlantısı kaldırıldı.`);
