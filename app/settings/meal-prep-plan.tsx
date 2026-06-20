@@ -77,7 +77,7 @@ export default function MealPrepPlanScreen() {
   if (prefsLoaded && !active) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Meal Prep Planı</Text>
+        {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
         <Card>
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md }}>
             Toplu hazırlık modunu aktif et ve hazırlık gününü seç — haftalık menünden otomatik prep planı çıkaralım.
@@ -103,8 +103,8 @@ export default function MealPrepPlanScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Meal Prep Planı</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Haftanın yemeklerini önceden hazırla, zamandan ve paradan tasarruf et.
       </Text>
 

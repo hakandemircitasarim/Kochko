@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { getExerciseHistory, estimate1RM, shouldDeload, suggestProgression, detectPlateauByExercise, type ExerciseHistory } from '@/services/strength.service';
 import { Card } from '@/components/ui/Card';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 const CORE_EXERCISES = ['squat', 'bench_press', 'deadlift', 'overhead_press', 'barbell_row'];
@@ -21,8 +22,12 @@ export default function StrengthScreen() {
 
   useEffect(() => {
     if (!user?.id) return;
+    // FIX (audit strength-screen): .catch yoktu — ağ hatasında setLoading(false)
+    // hiç çağrılmıyor ve loading hiç okunmadığından yanlış 'kayıt yok' boş-durumu
+    // flaşlanıyordu. Hatada da loading'i kapat.
     Promise.all(CORE_EXERCISES.map(e => getExerciseHistory(user.id, e)))
-      .then(results => { setExercises(results); setLoading(false); });
+      .then(results => { setExercises(results); setLoading(false); })
+      .catch(() => setLoading(false));
     // Load plateau detection for each exercise
     Promise.all(CORE_EXERCISES.map(async e => {
       const result = await detectPlateauByExercise(user.id, e);
@@ -41,7 +46,10 @@ export default function StrengthScreen() {
       <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Güç Progresyonu</Text>
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>Temel hareketlerin takibi ve 1RM tahminleri.</Text>
 
-      {validExercises.length === 0 ? (
+      {/* FIX (audit strength-screen): veri gelmeden / hata anında 'kayıt yok' flaşını önle. */}
+      {loading ? (
+        <SkeletonCard lines={4} />
+      ) : validExercises.length === 0 ? (
         <Card>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
             Henüz güç antrenman kaydı yok. Koçuna "squat 3x8 80kg yaptım" gibi yazarak kayıt girebilirsin.

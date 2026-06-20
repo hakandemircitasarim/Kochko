@@ -15,7 +15,6 @@ import { a11yProgress, formatProgressForScreenReader } from '@/lib/accessibility
 interface Props {
   today: string;
   streak: number;
-  isOffline: boolean;
   focusMessage: string | null;
   consumed: number;
   targetMin: number;
@@ -70,7 +69,7 @@ function getGreeting(): string {
 }
 
 export function HeroSection({
-  today, streak, isOffline, focusMessage,
+  today, streak, focusMessage,
   consumed, targetMin, targetMax, protein, proteinTarget,
   carbs, carbsTarget = 200, fat, fatTarget = 65,
   ifActive, ifEatingStart, ifEatingEnd, userName,
@@ -86,31 +85,23 @@ export function HeroSection({
     <View style={{ paddingTop: insets.top + 8, paddingHorizontal: SPACING.xl }}>
       {/* Header: Greeting + Streak */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
-        <View>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>
+        <View style={{ flexShrink: 1 }}>
+          {/* FIX (audit: tab başlık tutarlılığı) raw 18 → FONT.xl2 token hijyeni */}
+          <Text style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text }}>
             {getGreeting()}{userName ? `, ${userName}` : ''}
           </Text>
+          {/* FIX (audit: ölü prop) today selamlamanın altına alt-metin olarak render edilir */}
+          {today ? (
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }} maxFontSizeMultiplier={1.3}>
+              {today}
+            </Text>
+          ) : null}
         </View>
         <StreakBadge days={streak} />
       </View>
 
-      {/* Offline Banner */}
-      {isOffline && (
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-          backgroundColor: colors.cardElevated, borderRadius: RADIUS.md,
-          padding: SPACING.sm, marginBottom: SPACING.md,
-          borderWidth: 0.5, borderColor: colors.border,
-        }}>
-          <Ionicons name="cloud-offline-outline" size={14} color={colors.textMuted} />
-          <Text
-            style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', flexShrink: 1 }}
-            maxFontSizeMultiplier={1.3}
-          >
-            Çevrimdışı — kayıtların senkronize edilecek
-          </Text>
-        </View>
-      )}
+      {/* FIX (audit: üç offline banner) inline offline çip kaldırıldı —
+          tek kaynak: global common/OfflineBanner (app/_layout.tsx) */}
 
       {/* Calorie Ring Card */}
       <View style={{

@@ -270,30 +270,10 @@ export async function sendMessageWithPhoto(text: string, imageUri: string): Prom
 
 // ─── History with Cache ───
 
-export async function loadChatHistory(limit = 50): Promise<ChatMessage[]> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) return getCachedHistory();
-
-    const { data } = await supabase
-      .from('chat_messages')
-      .select('id, role, content, task_mode, created_at, actions_executed')
-      .eq('user_id', session.user.id)
-      .order('created_at', { ascending: true })
-      .limit(limit);
-    const messages = (data as ChatMessage[]) ?? [];
-
-    // Cache locally for offline access
-    if (messages.length > 0) {
-      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(messages.slice(-20)));
-    }
-
-    return messages;
-  } catch (err) {
-    console.warn('loadChatHistory: falling back to cache', err);
-    return getCachedHistory();
-  }
-}
+// FIX (audit: loadChatHistory dead + wrong order) removed loadChatHistory entirely —
+// it had no callers (grep-verified), lacked session scope, and fetched the OLDEST 50
+// (ascending+limit) instead of newest. The live path is loadSessionMessages (fixed below).
+// getCachedHistory remains an exported helper for offline cache reads.
 
 export async function getCachedHistory(): Promise<ChatMessage[]> {
   try {
@@ -395,16 +375,28 @@ export async function loadSessions(limit = 20): Promise<ChatSessionSummary[]> {
 
     const sessions = (data ?? []) as ChatSessionSummary[];
 
-    // Fetch last message for each session
-    for (const s of sessions) {
+    // FIX (audit: loadSessions N+1) was one last-message query per session (1+20
+    // sequential round-trips). Fetch all sessions' messages in a single .in() query
+    // ordered newest-first, then keep the first (latest) seen per session client-side.
+    // RLS on chat_messages still isolates rows to the current user.
+    if (sessions.length > 0) {
+      const ids = sessions.map(s => s.id);
       const { data: msgs } = await supabase
         .from('chat_messages')
-        .select('content')
-        .eq('session_id', s.id)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      if (msgs?.[0]) {
-        s.last_message = (msgs[0].content as string).substring(0, 80);
+        .select('session_id, content, created_at')
+        .in('session_id', ids)
+        .order('created_at', { ascending: false });
+      if (msgs) {
+        const lastBySession = new Map<string, string>();
+        for (const m of msgs as { session_id: string; content: string }[]) {
+          if (!lastBySession.has(m.session_id)) {
+            lastBySession.set(m.session_id, m.content);
+          }
+        }
+        for (const s of sessions) {
+          const c = lastBySession.get(s.id);
+          if (c) s.last_message = c.substring(0, 80);
+        }
       }
     }
 
@@ -483,13 +475,16 @@ export async function createSession(options?: { title?: string; topicTags?: stri
 
 export async function loadSessionMessages(sessionId: string, limit = 50): Promise<ChatMessage[]> {
   try {
+    // FIX (audit: oldest-50 bug) was ascending+limit → fetched the OLDEST 50 in a long
+    // session, hiding the most recent messages. Fetch newest 50 (descending) then reverse
+    // to chronological order for rendering.
     const { data } = await supabase
       .from('chat_messages')
       .select('id, role, content, task_mode, created_at, actions_executed')
       .eq('session_id', sessionId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(limit);
-    return (data as ChatMessage[]) ?? [];
+    return ((data as ChatMessage[]) ?? []).reverse();
   } catch {
     return [];
   }
@@ -544,8 +539,13 @@ export async function reopenSession(sessionId: string): Promise<void> {
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
-  await supabase.from('chat_messages').delete().eq('session_id', sessionId);
-  await supabase.from('chat_sessions').delete().eq('id', sessionId);
+  // FIX (audit: swallowed delete errors) supabase .delete() returns RLS/network refusals
+  // as an error object (doesn't throw); unchecked, the optimistic UI removal would drift
+  // from the DB (session reappears on refresh). Surface failures so the caller can Alert.
+  const { error: e1 } = await supabase.from('chat_messages').delete().eq('session_id', sessionId);
+  if (e1) throw e1;
+  const { error: e2 } = await supabase.from('chat_sessions').delete().eq('id', sessionId);
+  if (e2) throw e2;
 }
 
 // ─── AI Summary / Insights ───

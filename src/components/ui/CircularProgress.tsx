@@ -7,7 +7,7 @@ import { View, Text } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { useTheme } from '@/lib/theme';
 import { a11yProgress } from '@/lib/accessibility';
-import { FONT } from '@/lib/constants';
+import { FONT, MAX_FONT_SCALE } from '@/lib/constants';
 
 interface Props {
   progress: number; // 0-1
@@ -74,22 +74,23 @@ export function CircularProgress({
       </Svg>
       <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-          <Text style={{ fontSize: size > 120 ? 24 : FONT.xl, fontWeight: '700', color: colors.text, letterSpacing: -1 }}>
+          {/* FIX (audit ui-circularprogress): cap font scaling so large system fonts don't overflow the fixed-size ring. */}
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: size > 120 ? 24 : FONT.xl, fontWeight: '700', color: colors.text, letterSpacing: -1 }}>
             {value}
           </Text>
           {unit && (
-            <Text style={{ fontSize: FONT.sm, fontWeight: '500', color: colors.textSecondary, marginLeft: 2 }}>
+            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: FONT.sm, fontWeight: '500', color: colors.textSecondary, marginLeft: 2 }}>
               {unit}
             </Text>
           )}
         </View>
         {label && (
-          <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, fontWeight: '400', marginTop: 2 }}>
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: FONT.sm, color: colors.textSecondary, fontWeight: '400', marginTop: 2 }}>
             {label}
           </Text>
         )}
         {sublabel && (
-          <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 1 }}>
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 1 }}>
             {sublabel}
           </Text>
         )}

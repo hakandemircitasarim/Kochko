@@ -59,7 +59,9 @@ export default function SessionListScreen() {
     if (active) {
       // A dashboard nudge / quick-log should continue the ongoing conversation and
       // its Layer-4 thread, not abandon it for a fresh empty chat (#R3-11/#3).
-      const params: Record<string, string> = {};
+      // FIX (audit: prefill geri-tuş) — replace ile gelindiğini işaretle ki
+      // chat detay geri tuşu listeye dönebilsin (yığından çıkıldığından back yetmez).
+      const params: Record<string, string> = { fromPrefill: '1' };
       if (prefill) params.prefill = prefill;
       if (openCamera) params.openCamera = openCamera;
       router.replace({ pathname: `/chat/${active.id}`, params });
@@ -68,7 +70,8 @@ export default function SessionListScreen() {
     {
       createSession().then(id => {
         if (id) {
-          const params: Record<string, string> = {};
+          // FIX (audit: prefill geri-tuş) — replace işaretini new-session yoluna da ekle
+          const params: Record<string, string> = { fromPrefill: '1' };
           if (prefill) params.prefill = prefill;
           if (openCamera) params.openCamera = openCamera;
           router.replace({ pathname: `/chat/${id}`, params });
@@ -81,10 +84,12 @@ export default function SessionListScreen() {
           );
         }
       }).catch((err) => {
+        // FIX (audit: ham hata sızıntısı) — ham/İngilizce err.message'ı kullanıcıya
+        // basma; sabit Türkçe metin göster, orijinali yalnız konsola yaz.
         console.warn('Chat session creation failed:', err);
         Alert.alert(
           'Sohbet başlatılamadı',
-          err instanceof Error ? err.message : 'Bilinmeyen hata. Tekrar dene.',
+          'Bir sorun oluştu, lütfen tekrar dene.',
           [{ text: 'Tamam', onPress: () => setPrefillHandled(false) }],
         );
       });
@@ -142,6 +147,16 @@ export default function SessionListScreen() {
   };
 
   const handleTaskPress = async (task: OnboardingTask) => {
+    // FIX (audit: çoğalan yarım oturumlar) — koşulsuz createSession yerine, bu
+    // göreve ait açık oturum varsa onu yeniden kullan (prefill akışıyla simetri).
+    const existing = sessions.find(s => s.is_active && s.topic_tags?.includes(task.key));
+    if (existing) {
+      router.push({
+        pathname: `/chat/${existing.id}`,
+        params: { prefill: task.prefillMessage, taskModeHint: task.taskModeHint },
+      });
+      return;
+    }
     const id = await createSession({ title: task.title, topicTags: [task.key] });
     if (id) {
       router.push({
@@ -218,7 +233,9 @@ export default function SessionListScreen() {
               backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center',
             }}
           >
-            <Ionicons name="add" size={22} color={getContrastColor(colors.primary)} />
+            {/* FIX (audit: iki '+' aynı görsel dil) — chat yeni-sohbet ikonu
+                'add' → 'create-outline'; merkezi tab FAB '+' kalır, görsel ayrım sağlanır */}
+            <Ionicons name="create-outline" size={22} color={getContrastColor(colors.primary)} />
           </TouchableOpacity>
         }
       />

@@ -17,6 +17,9 @@ interface Props {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  // FIX (audit ui-datetimefield): allow callers to bound the picker (e.g. no future dates).
+  minimumDate?: Date;
+  maximumDate?: Date;
 }
 
 function parse(value: string, mode: 'time' | 'date'): Date {
@@ -36,7 +39,7 @@ function format(d: Date, mode: 'time' | 'date'): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function DateTimeField({ label, mode, value, onChange, placeholder }: Props) {
+export function DateTimeField({ label, mode, value, onChange, placeholder, minimumDate, maximumDate }: Props) {
   const { colors } = useTheme();
   const [show, setShow] = useState(false);
   const display = value || placeholder || (mode === 'time' ? 'Saat seç' : 'Tarih seç');
@@ -65,6 +68,8 @@ export function DateTimeField({ label, mode, value, onChange, placeholder }: Pro
           value={parse(value, mode)}
           mode={mode}
           is24Hour
+          {...(minimumDate ? { minimumDate } : {})}
+          {...(maximumDate ? { maximumDate } : {})}
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           themeVariant="dark"
           onChange={(event, selected) => {

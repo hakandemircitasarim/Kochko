@@ -11,9 +11,10 @@ import { SPACING, FONT } from '@/lib/constants';
 // light shell — a broken split. Until those screens are migrated to useTheme, light
 // and system are gated ("Yakında") so the experience stays consistently dark (#R3-6).
 const THEME_OPTIONS: { mode: ThemeMode; label: string; desc: string; comingSoon?: boolean }[] = [
-  { mode: 'dark', label: 'Her Zaman Koyu', desc: 'Goz yorgunlugunu azaltir, OLED pil tasarrufu' },
-  { mode: 'system', label: 'Sistemi Takip Et', desc: 'Cihazin tema ayarina gore otomatik degisir', comingSoon: true },
-  { mode: 'light', label: 'Her Zaman Acik', desc: 'Aydinlik ortamlarda daha rahat okunur', comingSoon: true },
+  // FIX (audit diakritik)
+  { mode: 'dark', label: 'Her Zaman Koyu', desc: 'Göz yorgunluğunu azaltır, OLED pil tasarrufu' },
+  { mode: 'system', label: 'Sistemi Takip Et', desc: 'Cihazın tema ayarına göre otomatik değişir', comingSoon: true },
+  { mode: 'light', label: 'Her Zaman Açık', desc: 'Aydınlık ortamlarda daha rahat okunur', comingSoon: true },
 ];
 
 export default function ThemeScreen() {
@@ -21,7 +22,8 @@ export default function ThemeScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, padding: SPACING.md }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.lg }}>Tema</Text>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <View style={{ marginTop: SPACING.xs }} />
       {THEME_OPTIONS.map(opt => {
         const active = mode === opt.mode && !opt.comingSoon;
         return (
@@ -30,6 +32,9 @@ export default function ThemeScreen() {
           disabled={opt.comingSoon}
           activeOpacity={opt.comingSoon ? 1 : 0.7}
           onPress={() => { if (!opt.comingSoon) setMode(opt.mode); }}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: active, disabled: !!opt.comingSoon }}
+          accessibilityLabel={opt.label}
           style={{
             backgroundColor: active ? colors.primary + '20' : colors.card,
             borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm,

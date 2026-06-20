@@ -107,13 +107,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       return { error: 'Giriş tamamlanamadı.' };
     } catch (e) {
       set({ loading: false });
-      return { error: 'Google ile giris sirasinda hata olustu.' };
+      // FIX (audit accent-sweep): aksanlı Türkçe hata metni
+      return { error: 'Google ile giriş sırasında hata oluştu.' };
     }
   },
 
   signInWithApple: async () => {
     if (Platform.OS !== 'ios') {
-      return { error: 'Apple ile giris sadece iOS cihazlarda kullanilabilir.' };
+      // FIX (audit accent-sweep): aksanlı Türkçe hata metni
+      return { error: 'Apple ile giriş sadece iOS cihazlarda kullanılabilir.' };
     }
     set({ loading: true });
     try {
@@ -146,7 +148,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       return { error: 'Giriş tamamlanamadı.' };
     } catch (e) {
       set({ loading: false });
-      return { error: 'Apple ile giris sirasinda hata olustu.' };
+      // FIX (audit accent-sweep): aksanlı Türkçe hata metni
+      return { error: 'Apple ile giriş sırasında hata oluştu.' };
     }
   },
 

@@ -14,9 +14,9 @@ import { calculateStreak } from '@/services/achievements.service';
 import { supabase } from '@/lib/supabase';
 import { InsightCard } from '@/components/profile/InsightCard';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
-import { deleteAISummaryNote, resetAISummary, requestAccountDeletion } from '@/services/privacy.service';
+import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
 import { useTheme } from '@/lib/theme';
-import { SPACING, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 
 const GOAL_LABELS: Record<string, string> = {
@@ -64,7 +64,16 @@ export default function ProfileScreen() {
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 120 + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 8, paddingBottom: 120 + insets.bottom }}>
+      {/* FIX (audit: tab başlık tutarlılığı) — Profil sekmesinde de diğer
+          sekmelerle aynı başlık deseni (FONT.xl2/700, insets.top+8) */}
+      <Text
+        accessibilityRole="header"
+        style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text, marginBottom: SPACING.lg }}
+      >
+        Profil
+      </Text>
+
       {/* 5.1 User card */}
       <View style={{ alignItems: 'center', marginBottom: SPACING.xxl, marginTop: Platform.OS === 'web' ? 16 : 20 }}>
         <View style={{
@@ -106,7 +115,13 @@ export default function ProfileScreen() {
         <MenuRow icon="timer-outline" color={colors.purple} label="IF penceresi" value={profile?.if_eating_start ? `${profile.if_eating_start}-${profile.if_eating_end}` : 'Kapalı'} onPress={() => router.push('/settings/if-settings')} colors={colors} />
         <MenuRow icon="time-outline" color={colors.textSecondary} label="Gün dönümü" value={`${(profile?.day_boundary_hour as number) ?? 4}:00`} onPress={() => router.push('/settings/day-boundary')} colors={colors} />
         <MenuRow icon="restaurant-outline" color={colors.fat} label="Alerjenler" value={allergens.length ? allergens.join(', ') : 'Yok'} onPress={() => router.push('/settings/food-preferences')} colors={colors} />
-        <MenuRow icon="calendar-outline" color={colors.pink} label="Dönemsel durum" value={(profile?.periodic_state as string) ?? 'Normal'} onPress={() => router.push('/settings/periodic-state')} colors={colors} last />
+        <MenuRow icon="calendar-outline" color={colors.pink} label="Dönemsel durum" value={(profile?.periodic_state as string) ?? 'Normal'} onPress={() => router.push('/settings/periodic-state')} colors={colors} />
+        {/* FIX (audit: keşfedilemez IA) — Premium ve Hesap Güvenliği birinci-sınıf
+            satırlar; 'Tüm ayarlar' Veri&gizlilik yerine semantik olarak doğru
+            Ayarlar bölümünde, scroll gerektirmeden bulunabilir. */}
+        <MenuRow icon="star-outline" color={colors.warning} label="Premium" onPress={() => router.push('/settings/premium')} colors={colors} />
+        <MenuRow icon="shield-checkmark-outline" color={colors.primary} label="Hesap Güvenliği" onPress={() => router.push('/settings/account-security')} colors={colors} />
+        <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tüm ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} last />
       </View>
 
       {/* 5.6 Data & Privacy section */}
@@ -115,30 +130,10 @@ export default function ProfileScreen() {
         <MenuRow icon="eye-outline" color={colors.purple} label="Kochko'nun Senin Hakkında Bildikleri" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
         <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi dışa aktar" onPress={() => router.push('/settings/health-export')} colors={colors} />
         <MenuRow icon="create-outline" color={colors.primary} label="Profil düzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
-        <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tüm ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} />
-        <MenuRow icon="trash-outline" color={colors.error} label="Hesabı sil" onPress={() => Alert.alert(
-          'Hesap Silme',
-          '30 gün içinde giriş yaparsan silme iptal olur. Bu süre sonunda tüm verilerin kalıcı olarak silinecek.',
-          [
-            { text: 'İptal' },
-            {
-              text: 'Hesabımı sil',
-              style: 'destructive',
-              onPress: async () => {
-                if (!user?.id) return;
-                try {
-                  const { scheduledDate } = await requestAccountDeletion(user.id);
-                  haptics.warning();
-                  Alert.alert('Hesap Silme Planlandı', `Hesabın ${scheduledDate} tarihinde silinecek. Giriş yaparsan iptal olur.`);
-                  signOut();
-                } catch {
-                  haptics.error();
-                  Alert.alert('Hata', 'Hesap silme isteği oluşturulamadı.');
-                }
-              },
-            },
-          ]
-        )} colors={colors} last />
+        {/* FIX (audit: tutarsız hesap-silme sürtünmesi) — profil sekmesindeki
+            tek-tık Alert + requestAccountDeletion akışı kaldırıldı; tek
+            paylaşılan, typed-confirm korumalı silme akışına (settings) yönlendir. */}
+        <MenuRow icon="trash-outline" color={colors.error} label="Hesabı sil" onPress={() => router.push('/settings' as never)} colors={colors} last />
       </View>
 
       {/* AI Summary */}

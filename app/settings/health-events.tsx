@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { getHealthEvents, addHealthEvent, type HealthEvent } from '@/services/health.service';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
@@ -33,22 +34,31 @@ export default function HealthEventsScreen() {
     getHealthEvents().then(setEvents);
   };
 
-  const handleDelete = async (id: string) => {
-    await supabase.from('health_events').delete().eq('id', id);
-    setEvents(prev => prev.filter(e => e.id !== id));
+  // FIX (audit ui-destructive-delete): yıkıcı silmeye onay diyaloğu eklendi (yanlışlıkla silmeyi önler).
+  const handleDelete = (id: string) => {
+    Alert.alert('Sil', 'Bu kaydı silmek istediğine emin misin?', [
+      { text: 'İptal', style: 'cancel' },
+      { text: 'Sil', style: 'destructive', onPress: async () => {
+        await supabase.from('health_events').delete().eq('id', id);
+        setEvents(prev => prev.filter(e => e.id !== id));
+      }},
+    ]);
   };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Sağlık Geçmişi</Text>
-
-      <Button title={showAdd ? 'İptal' : 'Yeni Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
+      {/* FIX (audit ui-settings-duplicate-title): native header (settings/_layout.tsx) renders the title; in-body H1 removed as redundant. */}
+      <Button title={showAdd ? 'İptal' : 'Yeni Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} style={{ marginTop: SPACING.lg }} />
 
       {showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
             {EVENT_TYPES.map(t => (
+              // FIX (audit ui-chip-a11y): seçilebilir tür chip'ine radio rolü + selected state + label.
               <TouchableOpacity key={t} onPress={() => setType(t)}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: type === t }}
+                accessibilityLabel={EVENT_LABELS[t]}
                 style={{ paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 8, borderWidth: 1,
                   borderColor: type === t ? COLORS.primary : COLORS.border,
                   backgroundColor: type === t ? COLORS.primary : 'transparent' }}>
@@ -58,7 +68,8 @@ export default function HealthEventsScreen() {
           </View>
           <Input label="Açıklama" placeholder="Diz ameliyatı, 2022" value={desc} onChangeText={setDesc} multiline />
           <Input label="Tarih (opsiyonel)" placeholder="2022-06-15" value={date} onChangeText={setDate} />
-          <TouchableOpacity onPress={() => setOngoing(!ongoing)} style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
+          {/* FIX (audit ui-toggles): onay kutusuna checkbox rolü + checked state + label. */}
+          <TouchableOpacity onPress={() => setOngoing(!ongoing)} accessibilityRole="checkbox" accessibilityState={{ checked: ongoing }} accessibilityLabel="Devam ediyor" style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Text style={{ color: COLORS.primary }}>{ongoing ? '[x]' : '[ ]'}</Text>
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Devam ediyor</Text>
           </TouchableOpacity>
@@ -69,9 +80,21 @@ export default function HealthEventsScreen() {
       {events.map(e => (
         <TouchableOpacity key={e.id} onLongPress={() => handleDelete(e.id)}
           style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 1, borderColor: COLORS.border }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase' }}>{EVENT_LABELS[e.event_type] ?? e.event_type}</Text>
-            {e.is_ongoing && <Text style={{ color: COLORS.warning, fontSize: FONT.xs }}>Devam ediyor</Text>}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase', flex: 1 }}>{EVENT_LABELS[e.event_type] ?? e.event_type}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+              {e.is_ongoing && <Text style={{ color: COLORS.warning, fontSize: FONT.xs }}>Devam ediyor</Text>}
+              {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}
+              <TouchableOpacity
+                onPress={() => handleDelete(e.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`${EVENT_LABELS[e.event_type] ?? e.event_type} kaydını sil`}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={{ padding: SPACING.xs }}
+              >
+                <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
           </View>
           <Text style={{ color: COLORS.text, fontSize: FONT.md, marginTop: 4 }}>{e.description}</Text>
           {e.event_date && <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{e.event_date}</Text>}

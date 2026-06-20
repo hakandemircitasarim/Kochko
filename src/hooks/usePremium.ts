@@ -35,14 +35,15 @@ export function usePremium() {
       action();
       return;
     }
+    // FIX (audit: accent sweep) restore Turkish diacritics in premium-upsell Alert.
     Alert.alert(
-      'Premium Ozellik',
+      'Premium Özellik',
       featureName
         ? `"${featureName}" Premium abonelik gerektirir.`
-        : 'Bu ozellik Premium abonelik gerektirir.',
+        : 'Bu özellik Premium abonelik gerektirir.',
       [
-        { text: 'Iptal', style: 'cancel' },
-        { text: "Premium'a Gec", onPress: () => router.push('/settings/premium' as never) },
+        { text: 'İptal', style: 'cancel' },
+        { text: "Premium'a Geç", onPress: () => router.push('/settings/premium' as never) },
       ]
     );
   };

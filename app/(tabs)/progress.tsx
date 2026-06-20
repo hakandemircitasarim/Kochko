@@ -53,6 +53,14 @@ export default function ProgressScreen() {
     propsForBackgroundLines: { stroke: colors.border },
   };
 
+  // FIX (audit weight-chart-color): kilo trendi her yerde METRIC_COLORS.weight (pembe)
+  // ile gösterilsin (özet ikonu colors.pink ile tutarlı). Uyum grafiği teal'de kalır.
+  const weightChartConfig = {
+    ...chartConfig,
+    color: (o = 1) => `rgba(212, 83, 126, ${o})`, // #D4537E (METRIC_COLORS.weight)
+    propsForDots: { r: '3', strokeWidth: '1.5', stroke: colors.pink },
+  };
+
   const load = useCallback(async () => {
     if (!user?.id) { setLoading(false); return; }
     const from = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
@@ -224,10 +232,12 @@ export default function ProgressScreen() {
           >
             <LineChart
               data={{
-                labels: weights.filter((_, i) => i % Math.max(1, Math.floor(weights.length / 5)) === 0).map(w => fmtLabel(w.date)),
+                // FIX (audit ui-progress-charts): labels must be SAME length as data so
+                // chart-kit aligns each tick to its data index (was filtered → left-clustered).
+                labels: (() => { const step = Math.max(1, Math.floor(weights.length / 5)); return weights.map((w, i) => (i % step === 0 ? fmtLabel(w.date) : '')); })(),
                 datasets: [{ data: weights.map(w => w.weight_kg as number) }],
               }}
-              width={chartWidth} height={180} chartConfig={chartConfig} bezier style={{ borderRadius: RADIUS.md }}
+              width={chartWidth} height={180} chartConfig={weightChartConfig} bezier style={{ borderRadius: RADIUS.md }}
             />
           </View>
         </Card>
@@ -253,7 +263,8 @@ export default function ProgressScreen() {
           >
             <LineChart
               data={{
-                labels: compliance.filter((_, i) => i % Math.max(1, Math.floor(compliance.length / 5)) === 0).map(c => fmtLabel(c.date)),
+                // FIX (audit ui-progress-charts): labels veri ile EŞİT uzunlukta (sola kümelenme giderildi).
+                labels: (() => { const step = Math.max(1, Math.floor(compliance.length / 5)); return compliance.map((c, i) => (i % step === 0 ? fmtLabel(c.date) : '')); })(),
                 datasets: [{ data: compliance.map(c => c.compliance_score) }],
               }}
               width={chartWidth} height={180}

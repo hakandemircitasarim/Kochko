@@ -3,11 +3,13 @@
  * Replaces the ~10 hand-rolled empty states. Flat dark design, WCAG-AA copy colors.
  */
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { getContrastColor } from '@/lib/accessibility';
+import { SPACING, FONT } from '@/lib/constants';
+// FIX (audit ui-emptystate): route the CTA through the shared Button primitive so it
+// inherits Button's touch-target/hitSlop + a11y policy instead of a hand-rolled button.
+import { Button } from '@/components/ui/Button';
 
 interface Props {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -31,14 +33,9 @@ export function EmptyState({ icon = 'sparkles-outline', title, subtitle, ctaLabe
         </Text>
       ) : null}
       {ctaLabel && onPressCta ? (
-        <TouchableOpacity
-          onPress={onPressCta}
-          accessibilityRole="button"
-          accessibilityLabel={ctaLabel}
-          style={{ marginTop: SPACING.xl, backgroundColor: colors.primary, paddingHorizontal: SPACING.xxl, paddingVertical: SPACING.md, borderRadius: RADIUS.md }}
-        >
-          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>{ctaLabel}</Text>
-        </TouchableOpacity>
+        <View style={{ marginTop: SPACING.xl }}>
+          <Button title={ctaLabel} onPress={onPressCta} />
+        </View>
       ) : null}
     </View>
   );

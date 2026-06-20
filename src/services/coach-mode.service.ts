@@ -150,7 +150,8 @@ export async function shareDataWithCoach(
   );
 
   if (validTypes.length === 0) {
-    throw new Error('En az bir gecerli veri tipi secilmelidir.');
+    // FIX (audit: accent sweep) restore Turkish diacritics in user-facing throw.
+    throw new Error('En az bir geçerli veri tipi seçilmelidir.');
   }
 
   // Upsert consent record. The relationship is carried entirely by this row

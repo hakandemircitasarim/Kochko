@@ -120,8 +120,8 @@ export default function HealthExportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Sağlık Profesyoneli Raporu</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Doktoruna veya diyetisyenine gösterebileceğin formatta bir rapor oluştur. Kilo trendi, beslenme özeti, lab değerleri ve egzersiz bilgileri içerir.
       </Text>
 

@@ -91,6 +91,10 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
   const ringColor = pct < 40 ? colors.error : pct < 70 ? colors.warning : colors.primary;
 
   const hintLine = useMemo(() => {
+    // FIX (audit: donut 13-görev vs 24-alan çelişkisi) headline pct=100 iken
+    // gap-ipucu (24-alan calc) hâlâ "X tamamla" diyebiliyordu. Headline tek
+    // kaynak (13-görev) olduğundan pct=100'de ipucunu olumlu metne sabitle.
+    if (pct === 100) return 'Profilin tamam — Koçko seni tam tanıyor';
     if (!result) return 'Profil yükleniyor…';
     if (result.missingRequired.length > 0) {
       return `${result.missingRequired.length} temel bilgi eksik`;
@@ -99,7 +103,7 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
       return `${CATEGORY_LABELS[result.lowestCategory as ProfileCategory]} tamamla`;
     }
     return 'Profilin tamam — Koçko seni tam tanıyor';
-  }, [result]);
+  }, [result, pct]);
 
   // Until the 13-task progress lands, show a skeleton instead of flashing a
   // misleading 0% / red ring on every cold load.

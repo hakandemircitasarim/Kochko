@@ -7,6 +7,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 // The "day boundary" is the local hour at which a new day starts for streaks,
 // the daily calorie budget and IF windows. Late-night logs before this hour count
@@ -49,7 +50,13 @@ export default function DayBoundaryScreen() {
             <TouchableOpacity
               key={h}
               onPress={() => setSelected(h)}
+              // FIX (audit a11y): seçim rolü/durumu + min 44dp dokunma hedefi
+              accessibilityRole="radio"
+              accessibilityState={{ selected: selected === h }}
+              accessibilityLabel={`Gün dönümü saati ${String(h).padStart(2, '0')}:00`}
               style={{
+                minHeight: 44,
+                justifyContent: 'center',
                 paddingVertical: 10,
                 paddingHorizontal: SPACING.md,
                 borderRadius: RADIUS.pill,
@@ -58,7 +65,8 @@ export default function DayBoundaryScreen() {
                 backgroundColor: selected === h ? COLORS.primary : 'transparent',
               }}
             >
-              <Text style={{ color: selected === h ? '#fff' : COLORS.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>
+              {/* FIX (audit theme-token): sabit #fff yerine kontrast token'ı */}
+              <Text style={{ color: selected === h ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>
                 {String(h).padStart(2, '0')}:00
               </Text>
             </TouchableOpacity>

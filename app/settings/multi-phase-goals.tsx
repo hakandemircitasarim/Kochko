@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
 import { getGoalPhases, addPhase, deletePhase, advanceToNextPhase, getTimelineData, type GoalPhase } from '@/services/goals.service';
 import { Button } from '@/components/ui/Button';
@@ -124,7 +125,17 @@ export default function MultiPhaseGoalsScreen() {
                     {phase.target_weight_kg ? `Hedef: ${phase.target_weight_kg}kg` : 'Koru'} · {phase.target_weeks ?? '?'} hafta
                   </Text>
                 </View>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.md }}>#{phase.phase_order}</Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: FONT.md, marginRight: SPACING.sm }}>#{phase.phase_order}</Text>
+                {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu; long-press kısayolu korundu. */}
+                <TouchableOpacity
+                  onPress={() => handleDelete(phase.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${info.label} fazını sil`}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={{ padding: SPACING.xs }}
+                >
+                  <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+                </TouchableOpacity>
               </TouchableOpacity>
             );
           })}

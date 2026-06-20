@@ -107,7 +107,14 @@ export default function LoginScreen() {
         />
 
         {/* Forgot Password (Spec 1.2) */}
-        <TouchableOpacity onPress={handleForgotPassword} style={{ alignSelf: 'flex-end', marginBottom: SPACING.md }}>
+        {/* FIX (audit a11y): min 44dp dokunma hedefi + erişilebilirlik etiketi */}
+        <TouchableOpacity
+          onPress={handleForgotPassword}
+          style={{ alignSelf: 'flex-end', marginBottom: SPACING.md, minHeight: 44, justifyContent: 'center' }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Şifremi unuttum"
+        >
           <Text style={{ color: COLORS.primary, fontSize: FONT.sm }}>Şifremi Unuttum</Text>
         </TouchableOpacity>
 

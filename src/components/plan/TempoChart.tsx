@@ -49,8 +49,13 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
     }
   }
 
-  // ETA: project based on pace of last 3 weeks
-  const recentWeeks = actualSeries.slice(-3);
+  // ETA: project based on pace of last 3 weeks.
+  // FIX (audit ui-tempochart): carry-forward'lu actualSeries yerine yalnızca GERÇEK ölçüm
+  // olan haftaların son değerlerini kullan; aksi halde boş haftalardaki yatay sahte kilo
+  // tempoyu (ve ETA'yı) bozuyordu.
+  const realWeeks = Object.keys(actualByWeek).map(Number).sort((a, b) => a - b);
+  const realVals = realWeeks.map((w) => actualByWeek[w][actualByWeek[w].length - 1]);
+  const recentWeeks = realVals.slice(-3);
   let etaWeeks: number | null = null;
   if (recentWeeks.length >= 2) {
     const delta = recentWeeks[recentWeeks.length - 1] - recentWeeks[0];
@@ -63,6 +68,9 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
   }
 
   const labels = Array.from({ length: weeks + 1 }, (_, i) => `${i}h`);
+  // FIX (audit ui-tempo-chart): step bir kez hesapla; labels veri ile EŞİT uzunlukta
+  // (boşluklar '' ile) üretilip chart-kit etiketlerinin doğru indekslere hizalanması sağlanır.
+  const labelStep = Math.max(1, Math.floor(weeks / 6));
 
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 0.5, borderColor: colors.border }}>
@@ -74,7 +82,7 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
       </View>
       <LineChart
         data={{
-          labels: labels.filter((_, i) => i % Math.max(1, Math.floor(weeks / 6)) === 0),
+          labels: labels.map((l, i) => (i % labelStep === 0 ? l : '')),
           datasets: [
             { data: plannedPoints, color: () => colors.textMuted, strokeWidth: 2 },
             { data: actualSeries, color: () => colors.primary, strokeWidth: 2 },

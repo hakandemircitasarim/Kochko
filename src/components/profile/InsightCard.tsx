@@ -12,13 +12,13 @@ interface Props {
   coachingNotes: string; onDeleteNote?: (note: string) => void; onResetAll?: () => void;
 }
 
-const PATTERN_COLORS: Record<string, string> = {
-  night_eating: '#E91E63', weekend_binge: '#FF9800', stress_eating: '#9C27B0',
-  skipping_meals: '#FF5722', exercise_avoidance: '#607D8B', social_eating: '#2196F3',
-};
-
 export function InsightCard({ generalSummary, patterns, portionCalibration, coachingNotes, onDeleteNote, onResetAll }: Props) {
   const { colors, isDark } = useTheme();
+  // FIX (audit insightcard-palette): tema-dışı Material tonlarını marka token'larına eşle.
+  const PATTERN_COLORS: Record<string, string> = {
+    night_eating: colors.purple, weekend_binge: colors.carbs, stress_eating: colors.pink,
+    skipping_meals: colors.coral, exercise_avoidance: colors.textMuted, social_eating: colors.protein,
+  };
   const handleDeleteNote = (note: string) => {
     Alert.alert('Notu Sil', `Bu notu silmek istediginize emin misiniz?`,
       [{ text: 'İptal' }, { text: 'Sil', style: 'destructive', onPress: () => onDeleteNote?.(note) }]);
@@ -26,7 +26,8 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
 
   return (
     <View style={{
-      backgroundColor: colors.card, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.md,
+      // FIX (audit radius-scale): kart yarıçapını Card primitive ile tutarlı RADIUS.md yap.
+      backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md,
       ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
     }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
@@ -44,9 +45,23 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
       </View>
 
       {generalSummary ? (
-        <TouchableOpacity onLongPress={() => handleDeleteNote(generalSummary)}>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.md }}>{generalSummary}</Text>
-        </TouchableOpacity>
+        // FIX (audit destructive-delete): long-press-only yerine görünür/a11y sil butonu (chat.tsx deseni).
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: SPACING.md }}>
+          <TouchableOpacity style={{ flex: 1 }} onLongPress={() => handleDeleteNote(generalSummary)}>
+            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{generalSummary}</Text>
+          </TouchableOpacity>
+          {onDeleteNote && (
+            <TouchableOpacity
+              onPress={() => handleDeleteNote(generalSummary)}
+              accessibilityRole="button"
+              accessibilityLabel="Özet notunu sil"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: SPACING.xs, marginTop: -10 }}
+            >
+              <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
       ) : (
         <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginBottom: SPACING.md }}>Henüz yeterli bilgi yok.</Text>
       )}
@@ -55,14 +70,25 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
         <View style={{ marginBottom: SPACING.md }}>
           <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', marginBottom: SPACING.xs, textTransform: 'uppercase' }}>Kalıplar</Text>
           {patterns.map((p, i) => (
-            <TouchableOpacity key={i} onLongPress={() => handleDeleteNote(p.description)}
-              style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 4, gap: SPACING.xs }}>
+            // FIX (audit destructive-delete): görünür/a11y sil butonu ekle, long-press kısayolu korunur.
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 4, gap: SPACING.xs }}>
               <View style={{ width: 3, height: 14, backgroundColor: PATTERN_COLORS[p.type] ?? colors.textMuted, borderRadius: 2, marginTop: 3 }} />
-              <View style={{ flex: 1 }}>
+              <TouchableOpacity style={{ flex: 1 }} onLongPress={() => handleDeleteNote(p.description)}>
                 <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{p.description}</Text>
                 {p.intervention && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>Müdahale: {p.intervention}</Text>}
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+              {onDeleteNote && (
+                <TouchableOpacity
+                  onPress={() => handleDeleteNote(p.description)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Kalıbı sil"
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginTop: -12 }}
+                >
+                  <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
           ))}
         </View>
       )}
@@ -81,10 +107,26 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
       )}
 
       {coachingNotes && (
-        <TouchableOpacity onLongPress={() => handleDeleteNote(coachingNotes)}>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', marginBottom: SPACING.xs, textTransform: 'uppercase' }}>Koçluk Notları</Text>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, lineHeight: 18 }}>{coachingNotes}</Text>
-        </TouchableOpacity>
+        // FIX (audit destructive-delete): başlık satırına görünür/a11y sil butonu; long-press korunur.
+        <View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', marginBottom: SPACING.xs, textTransform: 'uppercase' }}>Koçluk Notları</Text>
+            {onDeleteNote && (
+              <TouchableOpacity
+                onPress={() => handleDeleteNote(coachingNotes)}
+                accessibilityRole="button"
+                accessibilityLabel="Koçluk notlarını sil"
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginTop: -12 }}
+              >
+                <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity onLongPress={() => handleDeleteNote(coachingNotes)}>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, lineHeight: 18 }}>{coachingNotes}</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );

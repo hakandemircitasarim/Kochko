@@ -44,35 +44,36 @@ export default function DebugModeScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.md }}>Gelistirici Modu</Text>
-      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.lg }}>AI sisteminin iç yapısı ve performans metrikleri.</Text>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>AI sisteminin iç yapısı ve performans metrikleri.</Text>
 
       {/* Profile Summary */}
       <Card title="Katman 1 (Profil)">
         <DebugRow label="TDEE" value={`${profile?.tdee_calculated ?? '-'} kcal`} />
-        <DebugRow label="Kalori Araligi" value={`${profile?.calorie_range_training_min ?? '-'} - ${profile?.calorie_range_training_max ?? '-'} kcal`} />
+        {/* FIX (audit diakritik) */}
+        <DebugRow label="Kalori Aralığı" value={`${profile?.calorie_range_training_min ?? '-'} - ${profile?.calorie_range_training_max ?? '-'} kcal`} />
         <DebugRow label="Kilo" value={`${profile?.weight_kg ?? '-'} kg`} />
-        <DebugRow label="Premium" value={profile?.premium ? 'Aktif' : 'Hayir'} />
-        <DebugRow label="Onboarding" value={profile?.onboarding_completed ? 'Tamamlandi' : 'Devam Ediyor'} />
+        <DebugRow label="Premium" value={profile?.premium ? 'Aktif' : 'Hayır'} />
+        <DebugRow label="Onboarding" value={profile?.onboarding_completed ? 'Tamamlandı' : 'Devam Ediyor'} />
       </Card>
 
       {/* AI Summary */}
-      <Card title="Katman 2 (AI Ozeti)">
-        <DebugRow label="Genel Ozet" value={summary?.general_summary ? `${(summary.general_summary as string).substring(0, 80)}...` : 'Bos'} />
-        <DebugRow label="Kaliplar" value={`${(summary?.behavioral_patterns as unknown[] ?? []).length} kalip`} />
+      <Card title="Katman 2 (AI Özeti)">
+        <DebugRow label="Genel Özet" value={summary?.general_summary ? `${(summary.general_summary as string).substring(0, 80)}...` : 'Boş'} />
+        <DebugRow label="Kalıplar" value={`${(summary?.behavioral_patterns as unknown[] ?? []).length} kalıp`} />
         <DebugRow label="Persona" value={(summary?.user_persona as string) ?? 'Belirlenmedi'} />
-        <DebugRow label="Beslenme Okuryazarlik" value={(summary?.nutrition_literacy as string) ?? 'medium'} />
+        <DebugRow label="Beslenme Okuryazarlığı" value={(summary?.nutrition_literacy as string) ?? 'medium'} />
       </Card>
 
       {/* Usage Stats */}
-      <Card title="Kullanim Istatistikleri">
+      <Card title="Kullanım İstatistikleri">
         <DebugRow label="Toplam Mesaj" value={`${stats.totalMessages}`} />
-        <DebugRow label="Bugunki Mesaj" value={`${stats.todayMessages}`} />
+        <DebugRow label="Bugünkü Mesaj" value={`${stats.todayMessages}`} />
         <DebugRow label="Ort. Token/Mesaj" value={`${stats.avgTokens}`} />
       </Card>
 
       {/* Recent Messages Debug */}
-      <Card title="Son 10 Mesaj (Gorev Modlari)">
+      <Card title="Son 10 Mesaj (Görev Modları)">
         {lastMessages.map((m, i) => (
           <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: i < lastMessages.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>{String(m.task_mode ?? '-')}</Text>
@@ -80,19 +81,19 @@ export default function DebugModeScreen() {
             <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{String(m.token_count ?? '-')} tok</Text>
           </View>
         ))}
-        {lastMessages.length === 0 && <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Henuz mesaj yok.</Text>}
+        {lastMessages.length === 0 && <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Henüz mesaj yok.</Text>}
       </Card>
 
       {/* System Info */}
       <Card title="Sistem">
         <DebugRow label="Birincil Model" value="gpt-4o-mini" />
-        <DebugRow label="Goruntu Modeli" value="gpt-4o" />
+        <DebugRow label="Görüntü Modeli" value="gpt-4o" />
         <DebugRow label="Fallback Model" value="gpt-4o-mini" />
-        <DebugRow label="Token Butcesi" value="130.000 (toplam context)" />
-        <DebugRow label="K1 Butcesi" value="%15 (19.500 token)" />
-        <DebugRow label="K2 Butcesi" value="%10 (13.000 token)" />
-        <DebugRow label="K3 Butcesi" value="%25 (32.500 token)" />
-        <DebugRow label="K4 Butcesi" value="%35 (45.500 token)" />
+        <DebugRow label="Token Bütçesi" value="130.000 (toplam context)" />
+        <DebugRow label="K1 Bütçesi" value="%15 (19.500 token)" />
+        <DebugRow label="K2 Bütçesi" value="%10 (13.000 token)" />
+        <DebugRow label="K3 Bütçesi" value="%25 (32.500 token)" />
+        <DebugRow label="K4 Bütçesi" value="%35 (45.500 token)" />
       </Card>
     </ScrollView>
   );

@@ -31,6 +31,8 @@ export default function MenstrualScreen() {
   const [tracking, setTracking] = useState(Boolean(profile?.menstrual_tracking));
   const [cycleLength, setCycleLength] = useState(String(profile?.menstrual_cycle_length ?? 28));
   const [lastPeriod, setLastPeriod] = useState(String(profile?.menstrual_last_period_start ?? ''));
+  // FIX (audit settings-save-guards): çift-gönderim + kalıcı kilit önlemek için saving state.
+  const [saving, setSaving] = useState(false);
 
   const status = tracking && lastPeriod
     ? calculateCycleStatus(lastPeriod, parseInt(cycleLength) || 28)
@@ -38,8 +40,16 @@ export default function MenstrualScreen() {
 
   const handleSave = async () => {
     if (!user?.id) return;
+    // FIX (audit inline-validation): döngü süresi 21–45 gün aralığı doğrulaması.
+    const cl = parseInt(cycleLength);
+    if (tracking && (!Number.isFinite(cl) || cl < 21 || cl > 45)) {
+      haptics.error();
+      Alert.alert('Geçersiz süre', 'Döngü süresi 21–45 gün olmalı.');
+      return;
+    }
     try {
-      await updateMenstrualSettings(user.id, tracking, parseInt(cycleLength) || 28, lastPeriod || undefined);
+      setSaving(true);
+      await updateMenstrualSettings(user.id, tracking, cl || 28, lastPeriod || undefined);
       haptics.success();
       Alert.alert('Kaydedildi', tracking ? 'Döngü takibi aktif.' : 'Döngü takibi kapatıldı.', [
         { text: 'Tamam', onPress: () => router.back() },
@@ -47,6 +57,8 @@ export default function MenstrualScreen() {
     } catch (e) {
       haptics.error();
       Alert.alert('Kaydedilemedi', 'Ayarlar kaydedilemedi, lütfen tekrar dene.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -69,7 +81,8 @@ export default function MenstrualScreen() {
         <>
           <View style={{ marginTop: SPACING.lg }}>
             <Input label="Döngü Süresi (gün)" value={cycleLength} onChangeText={setCycleLength} keyboardType="number-pad" placeholder="28" hint="Genelde 21–35 gün" />
-            <DateTimeField label="Son Regl Başlangıcı" mode="date" value={lastPeriod} onChange={setLastPeriod} placeholder="Tarih seç" />
+            {/* FIX (audit ui-datetimefield): son regl gelecekte olamaz — picker'ı bugüne sınırla. */}
+            <DateTimeField label="Son Regl Başlangıcı" mode="date" value={lastPeriod} onChange={setLastPeriod} placeholder="Tarih seç" maximumDate={new Date()} />
           </View>
 
           {/* Current phase display */}
@@ -116,7 +129,7 @@ export default function MenstrualScreen() {
         </>
       )}
 
-      <Button title="Kaydet" onPress={handleSave} size="lg" style={{ marginTop: SPACING.md }} />
+      <Button title="Kaydet" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.md }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

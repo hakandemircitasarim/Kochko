@@ -33,6 +33,13 @@ export default function IFSettingsScreen() {
 
   const handleSave = async () => {
     if (!user?.id) return;
+    // FIX (audit inline-validation): 0 saatlik/mantıksız yeme penceresini engelle
+    // (HH:mm string karşılaştırması leksikografik olarak doğru çalışır).
+    if (active && eatingStart >= eatingEnd) {
+      haptics.error();
+      Alert.alert('Geçersiz pencere', 'Başlangıç saati bitişten önce olmalı.');
+      return;
+    }
     try {
       await update(user.id, {
         if_active: active,

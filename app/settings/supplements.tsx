@@ -9,12 +9,12 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 
 const QUICK_SUPPS = [
-  { name: 'Protein Tozu', amount: '1 olcu' },
+  { name: 'Protein Tozu', amount: '1 ölçü' }, // FIX (audit diakritik)
   { name: 'Kreatin', amount: '5g' },
-  { name: 'Omega-3', amount: '1 kapsul' },
+  { name: 'Omega-3', amount: '1 kapsül' }, // FIX (audit diakritik)
   { name: 'Vitamin D', amount: '1 tablet' },
   { name: 'Multivitamin', amount: '1 tablet' },
-  { name: 'BCAA', amount: '1 olcu' },
+  { name: 'BCAA', amount: '1 ölçü' }, // FIX (audit diakritik)
   { name: 'Magnezyum', amount: '1 tablet' },
   { name: 'Zinc', amount: '1 tablet' },
 ];
@@ -46,7 +46,7 @@ export default function SupplementsScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Supplement Takibi</Text>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
       {/* Quick Add */}
       <Card title="Hızlı Ekle">

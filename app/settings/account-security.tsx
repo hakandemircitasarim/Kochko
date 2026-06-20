@@ -190,7 +190,7 @@ export default function AccountSecurityScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Hesap Güvenliği</Text>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
       {/* Account Info */}
       <Card title="Hesap Bilgileri">

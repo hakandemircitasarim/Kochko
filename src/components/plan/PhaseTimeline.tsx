@@ -6,6 +6,7 @@
  */
 import { View, Text } from 'react-native';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 interface Phase {
   id: string;
@@ -21,13 +22,14 @@ interface PhaseTimelineProps {
   currentWeek: number; // overall week count
 }
 
+// FIX (audit phase-palette): tema-dışı Material tonlarını mevcut marka token'larına eşle.
 const GOAL_COLORS: Record<string, string> = {
   lose_weight: COLORS.primary,
   gain_weight: COLORS.success,
-  gain_muscle: '#8B5CF6',
+  gain_muscle: COLORS.purple,
   maintain: COLORS.warning,
-  health: '#06B6D4',
-  conditioning: '#F97316',
+  health: COLORS.protein,
+  conditioning: COLORS.coral,
 };
 
 const GOAL_LABELS: Record<string, string> = {
@@ -82,7 +84,9 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
               borderRightColor: COLORS.background,
             }}>
               <Text style={{
-                color: phase.isActive ? '#fff' : COLORS.textSecondary,
+                // FIX (audit accent-contrast): aktif faz metnini sabit beyaz yerine faz
+                // rengine göre kontrast-güvenli seç (WCAG AA).
+                color: phase.isActive ? (getContrastColor(color) === 'black' ? COLORS.background : '#fff') : COLORS.textSecondary,
                 fontSize: FONT.xs,
                 fontWeight: phase.isActive ? '700' : '500',
               }}>
@@ -115,7 +119,9 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm }}>
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary, marginRight: SPACING.xs }} />
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>
-          Hafta {currentWeek} / {totalWeeks}
+          {/* FIX (audit phase-overflow): currentWeek totalWeeks'i aşarsa 'Hafta 20 / 16' yerine
+              clamp + aşım ek metni göster. */}
+          Hafta {Math.min(currentWeek, totalWeeks)} / {totalWeeks}{currentWeek > totalWeeks ? ` (+${currentWeek - totalWeeks} hafta)` : ''}
         </Text>
       </View>
     </View>

@@ -133,8 +133,8 @@ export default function HouseholdScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Aile Planı</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Aile üyelerini ekle, ortak alışveriş listesi oluştur.
       </Text>
 
@@ -226,10 +226,14 @@ export default function HouseholdScreen() {
                   <TouchableOpacity
                     key={key}
                     onPress={() => toggleCheck(key)}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked }}
+                    accessibilityLabel={item.ingredient}
                     style={{
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: SPACING.md,
+                      minHeight: 44,
                       paddingVertical: SPACING.sm,
                       borderBottomWidth: 1,
                       borderBottomColor: COLORS.border,

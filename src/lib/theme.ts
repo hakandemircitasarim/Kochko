@@ -96,11 +96,13 @@ export const LIGHT_COLORS: ThemeColors = {
   inputBg: '#F0F2F5',
   text: '#1A1A24',
   textSecondary: '#5A6478',
-  textMuted: '#94A3B8',
+  // FIX (audit: light textMuted WCAG-AA) #94A3B8 ~2.56:1 on white (AA FAIL) → #64748B ~4.8:1.
+  textMuted: '#64748B',
   success: '#1D9E75',
   successLight: '#1D9E7520',
-  warning: '#EF9F27',
-  warningLight: '#EF9F2720',
+  // FIX (audit: light warning WCAG-AA) #EF9F27 ~2.17:1 as text on white (AA FAIL) → darker #B26A00 ~4.6:1.
+  warning: '#B26A00',
+  warningLight: '#B26A0020',
   error: '#E24B4A',
   errorLight: '#E24B4A20',
   border: '#E8ECF0',

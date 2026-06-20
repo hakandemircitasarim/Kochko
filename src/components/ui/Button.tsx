@@ -13,9 +13,13 @@ interface Props {
   disabled?: boolean;
   style?: ViewStyle;
   icon?: React.ReactNode;
+  // FIX (audit ui-button-primitive): expose a11y + test hooks so consumers can override.
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  testID?: string;
 }
 
-export function Button({ title, onPress, variant = 'primary', size = 'md', loading, disabled, style, icon }: Props) {
+export function Button({ title, onPress, variant = 'primary', size = 'md', loading, disabled, style, icon, accessibilityLabel, accessibilityHint, testID }: Props) {
   const { colors } = useTheme();
   const isOutline = variant === 'outline';
   const isGhost = variant === 'ghost';
@@ -36,6 +40,14 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
   const height = size === 'sm' ? 32 : size === 'lg' ? 48 : 40;
   const fontSize = size === 'sm' ? FONT.xs : size === 'lg' ? FONT.lg : FONT.sm;
 
+  // FIX (audit ui-button): sm/md visual heights are < 44dp (WCAG 2.5.5); extend the
+  // effective touch target via hitSlop without shifting layout (visual height unchanged).
+  const hitSlop = size === 'sm'
+    ? { top: 6, bottom: 6, left: 4, right: 4 }
+    : size === 'md'
+      ? { top: 2, bottom: 2 }
+      : undefined;
+
   return (
     <TouchableOpacity
       style={[{
@@ -54,6 +66,12 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.7}
+      hitSlop={hitSlop}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityHint={accessibilityHint}
+      testID={testID}
     >
       {loading ? (
         <ActivityIndicator color={textColor} size="small" />

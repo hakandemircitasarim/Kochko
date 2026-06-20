@@ -24,14 +24,16 @@ import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
-import NetInfo from '@react-native-community/netinfo';
 import { setupAutoSync } from '@/services/offline-queue.service';
 import { getUnreadCoachingMessages, markMessageRead, type CoachingMessage } from '@/services/coaching-messages.service';
 import { detectReturnLevel, type ReturnStatus } from '@/services/return-flow.service';
 import { syncStepsToDailyMetrics } from '@/services/health-connect.service';
 import { CoachingNudge } from '@/components/dashboard/CoachingNudge';
-import { OfflineBanner } from '@/components/ui/OfflineBanner';
+// FIX (audit: üç offline banner) ui/OfflineBanner inline render kaldırıldı —
+// global common/OfflineBanner (app/_layout.tsx) tek kaynak.
 import { SkeletonBlock } from '@/components/ui/Skeleton';
+import { usePremium } from '@/hooks/usePremium';
+import { checkAndScheduleTrialReminder } from '@/services/notifications.service';
 
 export default function TodayScreen() {
   const { colors } = useTheme();
@@ -48,7 +50,9 @@ export default function TodayScreen() {
     loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
   const { streak, checkForMilestones } = useStreak();
-  const [isOffline, setIsOffline] = useState(false);
+  // FIX (audit: deneme geri-sayımı dashboard) trial state'i dashboard'da yüzeye çıkar
+  const { isInTrial, trialDaysLeft } = usePremium();
+  const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
   // Distinguishes "never fetched this session" from "fetched, genuinely empty day"
   // so the very first cold load can show skeletons instead of a zeroed scaffold
   // that reads like a real (and alarming) empty day.
@@ -107,11 +111,19 @@ export default function TodayScreen() {
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
+  // FIX (audit: üç offline banner) inline isOffline state kaldırıldı; offline
+  // göstergesi global common/OfflineBanner'a bırakıldı. NetInfo dinleyici yalnız
+  // otomatik senkron kurulumu için kalıyor.
   useEffect(() => {
-    const unsub1 = NetInfo.addEventListener(s => setIsOffline(!s.isConnected));
-    const unsub2 = setupAutoSync();
-    return () => { unsub1(); unsub2(); };
+    const unsub = setupAutoSync();
+    return () => { unsub(); };
   }, []);
+
+  // FIX (audit: ölü trial reminder) deneme bildirimini dashboard focus'ta bağla
+  // (best-effort; izin reddedilirse sessizce yutulur).
+  useEffect(() => {
+    checkAndScheduleTrialReminder(isInTrial, trialDaysLeft).catch(() => {});
+  }, [isInTrial, trialDaysLeft]);
 
   const handleAddWater = () => {
     if (!user?.id) return;
@@ -244,7 +256,6 @@ export default function TodayScreen() {
         </TouchableOpacity>
       </Modal>
 
-      <OfflineBanner />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.primary} />}
@@ -287,6 +298,38 @@ export default function TodayScreen() {
           </View>
         )}
 
+        {/* FIX (audit: deneme geri-sayımı dashboard'da yüzeye çıkmıyor) — trial
+            countdown banner, returnStatus kalıbını yeniden kullanır */}
+        {isInTrial && trialDaysLeft <= 3 && !trialBannerDismissed && (
+          <TouchableOpacity
+            onPress={() => { haptics.tap(); router.push('/settings/premium'); }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Denemen ${trialDaysLeft} gün sonra bitiyor. Premium'a geçmek için dokun`}
+            style={{
+              backgroundColor: colors.card, borderRadius: RADIUS.md,
+              padding: SPACING.md, marginBottom: SPACING.md,
+              borderLeftWidth: 3, borderLeftColor: colors.warning,
+            }}
+          >
+            <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '600', marginBottom: 4 }}>
+              DENEME SÜRESİ
+            </Text>
+            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 18, paddingRight: 24 }}>
+              Denemen {trialDaysLeft} gün sonra bitiyor — Premium'a geç
+            </Text>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); setTrialBannerDismissed(true); }}
+              accessibilityRole="button"
+              accessibilityLabel="Kapat"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={{ position: 'absolute', top: 8, right: 8, padding: 4 }}
+            >
+              <Ionicons name="close" size={14} color={colors.textMuted} />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        )}
+
         {firstLoad ? (
           /* First cold load — skeleton placeholders so a zeroed scaffold never
              flashes like a real (and alarming) empty day. */
@@ -309,7 +352,6 @@ export default function TodayScreen() {
         <HeroSection
           today={new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
           streak={streak}
-          isOffline={isOffline}
           focusMessage={focusMessage}
           consumed={totalCalories}
           targetMin={calorieTargetMin}
@@ -344,7 +386,7 @@ export default function TodayScreen() {
           </View>
         )}
 
-        {/* 2. Quick Stats: Su + Adim */}
+        {/* 2. Quick Stats: Su + Adım / Uyku + Kilo (2x2) */}
         <View style={{ marginTop: SPACING.md }}>
           <StatStrip
             waterLiters={waterLiters}

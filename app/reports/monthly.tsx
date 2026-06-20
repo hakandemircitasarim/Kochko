@@ -2,7 +2,7 @@
  * Monthly Report Screen
  * Spec 8.3: Aylik rapor - hedefe yaklasma, trend, risk sinyalleri.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -31,6 +31,9 @@ export default function MonthlyReportScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [loading, setLoading] = useState(true);
+  // FIX (audit Wave3): error state — the Promise.all loader had no catch, so a network reject
+  // never ran setLoading(false) and the SkeletonScreen spun forever.
+  const [error, setError] = useState(false);
   const [weeklyReports, setWeeklyReports] = useState<Record<string, unknown>[]>([]);
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
   const [aiReport, setAiReport] = useState<MonthlyAIReport | null>(null);
@@ -38,8 +41,10 @@ export default function MonthlyReportScreen() {
   const [weightData, setWeightData] = useState<{ label: string; value: number }[]>([]);
   const [dailyAvgCompliance, setDailyAvgCompliance] = useState<number>(0);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     if (!user?.id) return;
+    setLoading(true);
+    setError(false);
     const now = new Date();
     // #S13: build month bounds as plain calendar strings, NOT via Date->toISOString (which
     // converts LOCAL midnight to UTC and rolls back a day in UTC+ zones, e.g. Turkey gave
@@ -83,8 +88,14 @@ export default function MonthlyReportScreen() {
         .map(m => ({ label: m.date, value: m.weight_kg as number }));
       setWeightData(weights);
       setLoading(false);
+    }).catch(() => {
+      // FIX (audit Wave3): surface the error branch instead of spinning forever.
+      setError(true);
+      setLoading(false);
     });
   }, [user?.id]);
+
+  useEffect(() => { loadData(); }, [loadData]);
 
   const handleGenerateReport = async () => {
     if (!user?.id) return;
@@ -112,6 +123,17 @@ export default function MonthlyReportScreen() {
 
   if (loading) {
     return <SkeletonScreen cards={3} />;
+  }
+
+  // FIX (audit Wave3): error state with retry — mirrors reports/daily.tsx & weekly.tsx.
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
+        <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>Rapor yüklenemedi</Text>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+        <Button title="Tekrar dene" onPress={loadData} size="lg" />
+      </View>
+    );
   }
 
   const weeklyAvgCompliance = weeklyReports.length > 0

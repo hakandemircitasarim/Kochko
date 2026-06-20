@@ -2,6 +2,11 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { trackEvent } from '@/services/analytics.service';
+// FIX (audit ui-errorboundary): replace hand-rolled (drifted) hex colors with theme tokens.
+// Class component can't call useTheme(); use DARK_COLORS directly (light theme is gated, so
+// dark is the correct fallback even if the crash happens before ThemeProvider mounts).
+import { DARK_COLORS as c } from '@/lib/theme';
+import { getContrastColor } from '@/lib/accessibility';
 
 interface Props {
   children: React.ReactNode;
@@ -57,36 +62,39 @@ export class ErrorBoundary extends React.Component<Props, State> {
     const devDetails = __DEV__ && (this.state.error || this.state.errorInfo);
 
     return (
-      <View style={{ flex: 1, backgroundColor: '#0D0D12' }}>
+      <View style={{ flex: 1, backgroundColor: c.background }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 }}>
+          <Text style={{ color: c.text, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>
             Bir şeyler ters gitti
           </Text>
-          <Text style={{ color: '#888', fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
+          <Text style={{ color: c.textMuted, fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
             Beklenmeyen bir hata oluştu. Tekrar deneyebilir ya da hesaptan çıkıp yeniden girebilirsin.
           </Text>
           <TouchableOpacity
             onPress={this.handleRetry}
-            style={{ backgroundColor: '#14B8A6', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, minWidth: 200, alignItems: 'center' }}
+            style={{ backgroundColor: c.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, minWidth: 200, alignItems: 'center' }}
             accessibilityRole="button"
+            accessibilityLabel="Tekrar Dene"
           >
-            <Text style={{ color: '#fff', fontWeight: '600' }}>Tekrar Dene</Text>
+            {/* FIX (audit ui-errorboundary): contrast-correct foreground (matches Button primitive). */}
+            <Text style={{ color: getContrastColor(c.primary), fontWeight: '600' }}>Tekrar Dene</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={this.handleSignOut}
-            style={{ marginTop: 12, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#333', minWidth: 200, alignItems: 'center' }}
+            style={{ marginTop: 12, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: c.border, minWidth: 200, alignItems: 'center' }}
             accessibilityRole="button"
+            accessibilityLabel="Çıkış Yap"
           >
-            <Text style={{ color: '#bbb', fontWeight: '500' }}>Çıkış Yap</Text>
+            <Text style={{ color: c.textSecondary, fontWeight: '500' }}>Çıkış Yap</Text>
           </TouchableOpacity>
         </View>
         {devDetails && (
-          <ScrollView style={{ maxHeight: 200, backgroundColor: '#1a1a24', padding: 12 }}>
-            <Text style={{ color: '#f87171', fontSize: 11, fontFamily: 'monospace' }}>
+          <ScrollView style={{ maxHeight: 200, backgroundColor: c.surface, padding: 12 }}>
+            <Text style={{ color: c.error, fontSize: 11, fontFamily: 'monospace' }}>
               {this.state.error?.message}
             </Text>
             {this.state.errorInfo && (
-              <Text style={{ color: '#666', fontSize: 10, fontFamily: 'monospace', marginTop: 8 }}>
+              <Text style={{ color: c.textMuted, fontSize: 10, fontFamily: 'monospace', marginTop: 8 }}>
                 {this.state.errorInfo}
               </Text>
             )}

@@ -177,7 +177,7 @@ export default function CoachMemoryScreen() {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <Stack.Screen options={{ title: 'Koçkonun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
+        <Stack.Screen options={{ title: 'Kochko\'nun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
         <SkeletonScreen cards={4} />
       </View>
     );
@@ -186,7 +186,7 @@ export default function CoachMemoryScreen() {
   if (loadError) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: SPACING.xl }}>
-        <Stack.Screen options={{ title: 'Koçkonun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
+        <Stack.Screen options={{ title: 'Kochko\'nun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
         <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
         <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginTop: SPACING.md, textAlign: 'center' }}>
           Yüklenemedi
@@ -260,7 +260,7 @@ export default function CoachMemoryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Stack.Screen options={{ title: 'Koçkonun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
+      <Stack.Screen options={{ title: 'Kochko\'nun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
 
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
@@ -269,7 +269,7 @@ export default function CoachMemoryScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>Koçko Senin Hakkında Ne Biliyor</Text>
-          <Text style={{ fontSize: FONT.xs, color: colors.textSecondary }}>Her konuşmadan öğrenilenler. Uzun basarak silebilirsin.</Text>
+          <Text style={{ fontSize: FONT.xs, color: colors.textSecondary }}>Her konuşmadan öğrenilenler. Çöp ikonuna dokunarak veya uzun basarak silebilirsin.</Text>
         </View>
       </View>
 
@@ -330,7 +330,7 @@ export default function CoachMemoryScreen() {
               {/* General Summary */}
               {data.general ? (
                 <View style={cardStyle}>
-                  <SectionHeader icon="document-text" color={colors.success} title="Genel Özet" colors={colors} deletable />
+                  <SectionHeader icon="document-text" color={colors.success} title="Genel Özet" colors={colors} deletable onDelete={() => handleDeleteNote('general_summary', data.general)} />
                   <TouchableOpacity
                     onLongPress={() => handleDeleteNote('general_summary', data.general)}
                     accessibilityRole="button"
@@ -344,7 +344,7 @@ export default function CoachMemoryScreen() {
               {/* User Persona */}
               {data.userPersona && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="sparkles" color={colors.purple} title="Kişilik Tipi" colors={colors} deletable />
+                  <SectionHeader icon="sparkles" color={colors.purple} title="Kişilik Tipi" colors={colors} deletable onDelete={() => handleClearField('user_persona', 'Kişilik Tipi')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('user_persona', 'Kişilik Tipi')}
                     accessibilityRole="button"
@@ -364,7 +364,7 @@ export default function CoachMemoryScreen() {
               {/* Learned Tone Preference */}
               {data.learnedTonePreference && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="chatbubbles" color={colors.protein} title="İletişim Tercihi" colors={colors} deletable />
+                  <SectionHeader icon="chatbubbles" color={colors.protein} title="İletişim Tercihi" colors={colors} deletable onDelete={() => handleClearField('learned_tone_preference', 'İletişim Tercihi')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('learned_tone_preference', 'İletişim Tercihi')}
                     accessibilityRole="button"
@@ -400,7 +400,7 @@ export default function CoachMemoryScreen() {
               <CategoryTitle title="Davranış Kalıpları" icon="analytics" color={colors.coral} colors={colors} />
 
               <View style={cardStyle}>
-                <SectionHeader icon="analytics" color={colors.coral} title="Tespit Edilen Kalıplar" colors={colors} badge={`${data.patterns.length}`} deletable />
+                <SectionHeader icon="analytics" color={colors.coral} title="Tespit Edilen Kalıplar" colors={colors} badge={`${data.patterns.length}`} deletable onDelete={() => handleClearField('behavioral_patterns', 'Tespit Edilen Kalıplar')} />
                 {data.patterns.map((p, i) => (
                   <TouchableOpacity
                     key={i}
@@ -445,7 +445,7 @@ export default function CoachMemoryScreen() {
               {/* Portion Calibration */}
               {Object.keys(data.portionCalibration).length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="resize" color={colors.success} title="Porsiyon Kalibrasyonu" colors={colors} deletable />
+                  <SectionHeader icon="resize" color={colors.success} title="Porsiyon Kalibrasyonu" colors={colors} deletable onDelete={() => handleClearField('portion_calibration', 'Porsiyon Kalibrasyonu')} />
                   <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
                     Senin "1 porsiyon" dediğinde ne kadar olduğunu öğrendi
                   </Text>
@@ -473,7 +473,7 @@ export default function CoachMemoryScreen() {
               {/* Learned Meal Times */}
               {data.learnedMealTimes && Object.keys(data.learnedMealTimes).length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="time" color={colors.success} title="Öğrenilen Öğün Saatleri" colors={colors} deletable />
+                  <SectionHeader icon="time" color={colors.success} title="Öğrenilen Öğün Saatleri" colors={colors} deletable onDelete={() => handleClearField('learned_meal_times', 'Öğün Saatleri')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('learned_meal_times', 'Öğün Saatleri')}
                     accessibilityRole="button"
@@ -494,7 +494,7 @@ export default function CoachMemoryScreen() {
               {/* Caffeine-Sleep Notes */}
               {data.caffeineSleepNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="cafe" color={colors.coral} title="Kafein-Uyku" colors={colors} deletable />
+                  <SectionHeader icon="cafe" color={colors.coral} title="Kafein-Uyku" colors={colors} deletable onDelete={() => handleClearField('caffeine_sleep_notes', 'Kafein-Uyku')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('caffeine_sleep_notes', 'Kafein-Uyku')}
                     accessibilityRole="button"
@@ -508,7 +508,7 @@ export default function CoachMemoryScreen() {
               {/* Alcohol Pattern */}
               {data.alcoholPattern && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="wine" color={colors.purple} title="Alkol Kalıbı" colors={colors} deletable />
+                  <SectionHeader icon="wine" color={colors.purple} title="Alkol Kalıbı" colors={colors} deletable onDelete={() => handleClearField('alcohol_pattern', 'Alkol Kalıbı')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('alcohol_pattern', 'Alkol Kalıbı')}
                     accessibilityRole="button"
@@ -542,7 +542,7 @@ export default function CoachMemoryScreen() {
               {/* Social Eating Notes */}
               {data.socialEatingNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="people" color={colors.protein} title="Sosyal Yeme" colors={colors} deletable />
+                  <SectionHeader icon="people" color={colors.protein} title="Sosyal Yeme" colors={colors} deletable onDelete={() => handleClearField('social_eating_notes', 'Sosyal Yeme')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('social_eating_notes', 'Sosyal Yeme')}
                     accessibilityRole="button"
@@ -567,7 +567,7 @@ export default function CoachMemoryScreen() {
               {/* Recovery Pattern */}
               {data.recoveryPattern && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="fitness" color={colors.pink} title="Toparlanma Deseni" colors={colors} deletable />
+                  <SectionHeader icon="fitness" color={colors.pink} title="Toparlanma Deseni" colors={colors} deletable onDelete={() => handleClearField('recovery_pattern', 'Toparlanma Deseni')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('recovery_pattern', 'Toparlanma Deseni')}
                     accessibilityRole="button"
@@ -581,7 +581,7 @@ export default function CoachMemoryScreen() {
               {/* Menstrual Notes - only if tracking enabled */}
               {menstrualTracking && data.menstrualNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="calendar" color={colors.pink} title="Regl Notları" colors={colors} deletable />
+                  <SectionHeader icon="calendar" color={colors.pink} title="Regl Notları" colors={colors} deletable onDelete={() => handleClearField('menstrual_notes', 'Regl Notları')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('menstrual_notes', 'Regl Notları')}
                     accessibilityRole="button"
@@ -595,7 +595,7 @@ export default function CoachMemoryScreen() {
               {/* Micro Nutrient Risks */}
               {data.microNutrientRisks.length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="warning" color={colors.warning} title="Mikro Besin Riskleri" colors={colors} badge={`${data.microNutrientRisks.length}`} deletable />
+                  <SectionHeader icon="warning" color={colors.warning} title="Mikro Besin Riskleri" colors={colors} badge={`${data.microNutrientRisks.length}`} deletable onDelete={() => handleClearField('micro_nutrient_risks', 'Mikro Besin Riskleri')} />
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
                     {data.microNutrientRisks.map((r, i) => (
                       <TouchableOpacity
@@ -626,7 +626,7 @@ export default function CoachMemoryScreen() {
               {/* Supplement Notes */}
               {data.supplementNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="medkit" color={colors.primary} title="Supplement Notları" colors={colors} deletable />
+                  <SectionHeader icon="medkit" color={colors.primary} title="Supplement Notları" colors={colors} deletable onDelete={() => handleClearField('supplement_notes', 'Supplement Notları')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('supplement_notes', 'Supplement Notları')}
                     accessibilityRole="button"
@@ -650,7 +650,7 @@ export default function CoachMemoryScreen() {
               {/* Habit Progress */}
               {data.habitProgress.length > 0 && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="flame" color={colors.coral} title="Alışkanlık İlerlemesi" colors={colors} badge={`${data.habitProgress.length}`} deletable />
+                  <SectionHeader icon="flame" color={colors.coral} title="Alışkanlık İlerlemesi" colors={colors} badge={`${data.habitProgress.length}`} deletable onDelete={() => handleClearField('habit_progress', 'Alışkanlık İlerlemesi')} />
                   {data.habitProgress.map((h, i) => {
                     const statusInfo = HABIT_STATUS_ICON[h.status] ?? { icon: 'ellipse', color: colors.textMuted };
                     return (
@@ -704,7 +704,7 @@ export default function CoachMemoryScreen() {
               {/* Weekly Budget Pattern */}
               {data.weeklyBudgetPattern && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="wallet" color={colors.purple} title="Haftalık Bütçe Kalıbı" colors={colors} deletable />
+                  <SectionHeader icon="wallet" color={colors.purple} title="Haftalık Bütçe Kalıbı" colors={colors} deletable onDelete={() => handleClearField('weekly_budget_pattern', 'Haftalık Bütçe Kalıbı')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('weekly_budget_pattern', 'Haftalık Bütçe Kalıbı')}
                     accessibilityRole="button"
@@ -751,7 +751,7 @@ export default function CoachMemoryScreen() {
               {/* Seasonal Notes */}
               {data.seasonalNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="leaf" color={colors.success} title="Mevsimsel Notlar" colors={colors} deletable />
+                  <SectionHeader icon="leaf" color={colors.success} title="Mevsimsel Notlar" colors={colors} deletable onDelete={() => handleClearField('seasonal_notes', 'Mevsimsel Notlar')} />
                   <TouchableOpacity
                     onLongPress={() => handleClearField('seasonal_notes', 'Mevsimsel Notlar')}
                     accessibilityRole="button"
@@ -765,7 +765,7 @@ export default function CoachMemoryScreen() {
               {/* Coaching Notes */}
               {data.coachingNotes && (
                 <View style={cardStyle}>
-                  <SectionHeader icon="journal" color={colors.warning} title="Koçluk Notları" colors={colors} deletable />
+                  <SectionHeader icon="journal" color={colors.warning} title="Koçluk Notları" colors={colors} deletable onDelete={() => handleDeleteNote('coaching_notes', data.coachingNotes)} />
                   <TouchableOpacity
                     onLongPress={() => handleDeleteNote('coaching_notes', data.coachingNotes)}
                     accessibilityRole="button"
@@ -930,7 +930,7 @@ function CategoryTitle({ title, icon, color, colors }: { title: string; icon: st
   );
 }
 
-function SectionHeader({ icon, color, title, colors, badge, deletable }: { icon: string; color: string; title: string; colors: any; badge?: string; deletable?: boolean }) {
+function SectionHeader({ icon, color, title, colors, badge, deletable, onDelete }: { icon: string; color: string; title: string; colors: any; badge?: string; deletable?: boolean; onDelete?: () => void }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm }}>
       <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: color + '18', alignItems: 'center', justifyContent: 'center' }}>
@@ -942,9 +942,18 @@ function SectionHeader({ icon, color, title, colors, badge, deletable }: { icon:
           <Text style={{ color, fontSize: FONT.xs, fontWeight: '700' }}>{badge}</Text>
         </View>
       )}
-      {deletable && (
-        <Ionicons name="trash-outline" size={15} color={colors.textMuted} accessibilityLabel="Silmek için kartı uzun bas" />
-      )}
+      {/* FIX (audit ui-destructive-delete): dekoratif trash ikonu gerçek onPress'li görünür/erişilebilir sil butonuna çevrildi. */}
+      {deletable && onDelete ? (
+        <TouchableOpacity
+          onPress={onDelete}
+          accessibilityRole="button"
+          accessibilityLabel={`${title} sil`}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={{ padding: SPACING.xs }}
+        >
+          <Ionicons name="trash-outline" size={15} color={colors.textMuted} />
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }

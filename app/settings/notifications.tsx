@@ -66,8 +66,8 @@ export default function NotificationsScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Bildirimler</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Koçunun sana ne zaman, ne sıklıkta mesaj göndereceğini ayarla.
       </Text>
 
@@ -117,8 +117,9 @@ export default function NotificationsScreen() {
                 {...a11ySwitch(label, !!isOn)}
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
                 <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{label}</Text>
-                <View style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: isOn ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
-                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: isOn ? 'flex-end' : 'flex-start' }} />
+                {/* FIX (audit toggle-size): standardize switch to 48x28 (matches main toggle / ToggleRow primitive). */}
+                <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: isOn ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
+                  <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: isOn ? 'flex-end' : 'flex-start' }} />
                 </View>
               </TouchableOpacity>
               );

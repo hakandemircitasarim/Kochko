@@ -33,23 +33,24 @@ export default function DataImportScreen() {
     setImporting(false);
 
     if (res.success) {
-      Alert.alert('Basarili', `${res.recordsImported} kayit iceri aktarildi.`);
+      Alert.alert('Başarılı', `${res.recordsImported} kayıt içeri aktarıldı.`); // FIX (audit diakritik)
     } else {
-      Alert.alert('Hata', `Import basarisiz. ${res.errors.length} hata.`);
+      Alert.alert('Hata', `İçe aktarma başarısız. ${res.errors.length} hata.`); // FIX (audit diakritik)
     }
   };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Veri Iceri Aktar</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
-        Baska uygulamalardan (MyFitnessPal, Fatsecret, Samsung Health) disa aktardigin CSV verisini buraya yapistir.
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+        {/* FIX (audit diakritik) */}
+        Başka uygulamalardan (MyFitnessPal, Fatsecret, Samsung Health) dışa aktardığın CSV verisini buraya yapıştır.
       </Text>
 
       {/* Import type selection */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
         <Button
-          title="Ogun Verisi"
+          title="Öğün Verisi"
           variant={importType === 'meals' ? 'primary' : 'outline'}
           size="sm"
           onPress={() => setImportType('meals')}
@@ -80,7 +81,7 @@ export default function DataImportScreen() {
       {/* CSV input */}
       <Input
         label="CSV Verisi"
-        placeholder="CSV icerigini buraya yapistirin..."
+        placeholder="CSV içeriğini buraya yapıştırın..."
         value={csvText}
         onChangeText={setCsvText}
         multiline
@@ -88,13 +89,13 @@ export default function DataImportScreen() {
         style={{ minHeight: 150, textAlignVertical: 'top', fontFamily: 'monospace' }}
       />
 
-      <Button title="Iceri Aktar" onPress={handleImport} loading={importing} size="lg" />
+      <Button title="İçeri Aktar" onPress={handleImport} loading={importing} size="lg" />
 
       {/* Results */}
       {result && (
-        <Card title="Sonuc" style={{ marginTop: SPACING.md }}>
+        <Card title="Sonuç" style={{ marginTop: SPACING.md }}>
           <Text style={{ color: result.success ? COLORS.success : COLORS.error, fontSize: FONT.md, fontWeight: '600' }}>
-            {result.recordsImported} kayit aktarildi
+            {result.recordsImported} kayıt aktarıldı
           </Text>
           {result.errors.length > 0 && (
             <View style={{ marginTop: SPACING.sm }}>

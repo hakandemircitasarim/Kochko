@@ -57,13 +57,16 @@ export default function CoachToneScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Koç Tonu</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Koçunun seninle nasıl konuşmasını istediğini seç. AI zamanla tepkilerinden otomatik de öğrenir.
       </Text>
 
       {TONES.map(tone => (
-        <TouchableOpacity key={tone.value} onPress={() => setSelected(tone.value)}>
+        <TouchableOpacity key={tone.value} onPress={() => setSelected(tone.value)}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: selected === tone.value }}
+          accessibilityLabel={tone.label}>
           <Card style={{ borderColor: selected === tone.value ? COLORS.primary : COLORS.border, borderWidth: selected === tone.value ? 2 : 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs }}>
               <Text style={{ color: selected === tone.value ? COLORS.primary : COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{tone.label}</Text>

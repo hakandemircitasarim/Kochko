@@ -12,7 +12,9 @@
 import * as Haptics from 'expo-haptics';
 
 function safe(fn: () => Promise<unknown>) {
-  try { void fn(); } catch { /* no taptic engine — no-op */ }
+  // FIX (audit: haptics async rejection) expo-haptics rejects (doesn't sync-throw) on
+  // unsupported devices/web; `void fn()` left the rejection unhandled. Catch the promise.
+  try { fn().catch(() => {}); } catch { /* no taptic engine — no-op */ }
 }
 
 export const haptics = {

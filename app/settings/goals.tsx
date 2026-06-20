@@ -18,6 +18,7 @@ import { Card } from '@/components/ui/Card';
 import { TempoChart } from '@/components/plan/TempoChart';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 import type { Goal } from '@/types/database';
 
 type GoalType = 'lose_weight' | 'gain_weight' | 'gain_muscle' | 'health' | 'maintain' | 'conditioning';
@@ -163,20 +164,30 @@ export default function GoalsScreen() {
     }
 
     setSaving(true);
-    // Deactivate existing active goals before creating new phase
-    await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
-    const phaseLabel = goalType === 'lose_weight' ? 'Yağ Yakım'
-      : goalType === 'gain_weight' ? 'Kilo Alma'
-      : goalType === 'gain_muscle' ? 'Kas Geliştirme'
-      : goalType === 'maintain' ? 'Koruma'
-      : goalType === 'conditioning' ? 'Kondisyon'
-      : 'Sağlık';
-    // Single-goal "replace" intent: the deactivate above cleared the old active
-    // goal, so this new one must be active (else the user is left with ZERO active
-    // goals and the dashboard / plan-gen / streak / progress all read nothing).
-    await addPhase(user.id, goalType, tw || null, weeks, phaseLabel, true);
-    setSaving(false);
-    Alert.alert('Başarılı', 'Hedef kaydedildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+    // FIX (audit settings-save-guards): iki ardışık await try/catch'siz çalışıyordu —
+    // biri throw ederse setSaving(false) hiç çalışmaz, Button kalıcı spinner'da kilitlenir
+    // ve kullanıcıya hata gösterilmezdi. finally + Türkçe hata Alert ekle.
+    try {
+      // Deactivate existing active goals before creating new phase
+      await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
+      const phaseLabel = goalType === 'lose_weight' ? 'Yağ Yakım'
+        : goalType === 'gain_weight' ? 'Kilo Alma'
+        : goalType === 'gain_muscle' ? 'Kas Geliştirme'
+        : goalType === 'maintain' ? 'Koruma'
+        : goalType === 'conditioning' ? 'Kondisyon'
+        : 'Sağlık';
+      // Single-goal "replace" intent: the deactivate above cleared the old active
+      // goal, so this new one must be active (else the user is left with ZERO active
+      // goals and the dashboard / plan-gen / streak / progress all read nothing).
+      await addPhase(user.id, goalType, tw || null, weeks, phaseLabel, true);
+      haptics.success();
+      Alert.alert('Başarılı', 'Hedef kaydedildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+    } catch (e) {
+      haptics.error();
+      Alert.alert('Kaydedilemedi', 'Hedef kaydedilemedi, lütfen tekrar dene.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (

@@ -79,9 +79,10 @@ export default function RegisterScreen() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={{ alignItems: 'center', marginBottom: SPACING.lg }}>
-          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary }}>Kochko</Text>
-          <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary }}>Hesap Oluştur</Text>
+        {/* FIX (audit ui-auth-header): login.tsx ile birebir aynı logo/başlık bloğu (letterSpacing/boşluk) */}
+        <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
+          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary, letterSpacing: 2 }}>Kochko</Text>
+          <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary, marginTop: SPACING.xs }}>Hesap Oluştur</Text>
         </View>
 
         {/* KVKK / consent — sits above all signup paths (form + social) so it's visible before any commitment. */}

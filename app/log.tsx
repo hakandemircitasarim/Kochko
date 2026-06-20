@@ -20,6 +20,7 @@ import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 
 type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery';
@@ -210,7 +211,10 @@ export default function QuickLogScreen() {
   const handleWeightSave = async () => {
     if (submittingRef.current) return;
     const w = parseFloat(weightInput.replace(',', '.'));
-    if (!w || w < 20 || w > 300 || !user?.id) return;
+    if (!user?.id) return;
+    // FIX (audit Wave3): inline feedback for invalid weight instead of a silent return (matches the
+    // edit-profile rangeError pattern + handleSleepSave's Alert).
+    if (!w || w < 20 || w > 300) { haptics.error(); return Alert.alert('Geçersiz kilo', '20–300 kg arası bir değer gir.'); }
     submittingRef.current = true;
     setLoading(true);
     try {
@@ -260,7 +264,8 @@ export default function QuickLogScreen() {
     const [sh, sm] = sleepTime.split(':').map(Number);
     const [wh, wm] = wakeTime.split(':').map(Number);
     if (!Number.isFinite(sh) || !Number.isFinite(sm) || !Number.isFinite(wh) || !Number.isFinite(wm)) {
-      return Alert.alert('Hata', 'Saat formati gecersiz. Örnek: 23:00');
+      // FIX (audit Wave3): restore Turkish diacritics.
+      return Alert.alert('Hata', 'Saat formatı geçersiz. Örnek: 23:00');
     }
     let sleepMin = sh * 60 + sm;
     let wakeMin = wh * 60 + wm;
@@ -444,21 +449,16 @@ export default function QuickLogScreen() {
         </View>
         <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Uyku Kaydı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%', marginBottom: SPACING.xxl }}>
+          {/* FIX (audit Wave3): native time picker instead of free-text TextInput — invalid HH:mm
+              becomes impossible to enter (iOS numbers-and-punctuation keyboard lacked ':'). The
+              handleSleepSave split(':') validation stays as a safety net. DateTimeField returns 'HH:mm'. */}
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.sm }}>Yatış</Text>
-            <TextInput
-              style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, color: colors.text, fontSize: FONT.xl, fontWeight: '600', textAlign: 'center', borderWidth: 0.5, borderColor: colors.border }}
-              placeholder="23:00" placeholderTextColor={colors.textMuted}
-              value={sleepTime} onChangeText={setSleepTime} keyboardType="numbers-and-punctuation"
-            />
+            <DateTimeField mode="time" value={sleepTime} onChange={setSleepTime} placeholder="23:00" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.sm }}>Kalkış</Text>
-            <TextInput
-              style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, color: colors.text, fontSize: FONT.xl, fontWeight: '600', textAlign: 'center', borderWidth: 0.5, borderColor: colors.border }}
-              placeholder="07:00" placeholderTextColor={colors.textMuted}
-              value={wakeTime} onChangeText={setWakeTime} keyboardType="numbers-and-punctuation"
-            />
+            <DateTimeField mode="time" value={wakeTime} onChange={setWakeTime} placeholder="07:00" />
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>

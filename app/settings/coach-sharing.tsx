@@ -171,8 +171,8 @@ export default function CoachSharingScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Koç Paylaşımı</Text>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
+      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Profesyonel koçunla verilerini güvenli şekilde paylaş.
       </Text>
 
@@ -236,8 +236,9 @@ export default function CoachSharingScreen() {
                 }}
               >
                 <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{DATA_TYPE_LABELS[dt] ?? dt}</Text>
-                <View style={{ width: 40, height: 24, borderRadius: 12, backgroundColor: toggles[dt] ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
-                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: getContrastColor(toggles[dt] ? COLORS.primary : COLORS.surfaceLight), alignSelf: toggles[dt] ? 'flex-end' : 'flex-start' }} />
+                {/* FIX (audit toggle-size): standardize switch to 48x28 (matches ToggleRow primitive). */}
+                <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: toggles[dt] ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
+                  <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: getContrastColor(toggles[dt] ? COLORS.primary : COLORS.surfaceLight), alignSelf: toggles[dt] ? 'flex-end' : 'flex-start' }} />
                 </View>
               </TouchableOpacity>
             ))}

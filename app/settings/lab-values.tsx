@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { getLabValues, addLabValue, COMMON_LAB_PARAMS, type LabValue } from '@/services/health.service';
@@ -29,9 +29,25 @@ export default function LabValuesScreen() {
 
   const handleAdd = async () => {
     if (!paramName.trim() || !value.trim()) return;
+    // FIX (audit lab-values-screen): 'Değer' alanında sayısal doğrulama —
+    // 'yüksek'→NaN, '45 ng'→45 sessizce geçip DB'ye bozuk veri yazıyordu.
+    const n = parseFloat(value.replace(',', '.'));
+    if (!Number.isFinite(n)) {
+      haptics.error();
+      Alert.alert('Geçersiz değer', 'Lütfen sayısal bir değer gir.');
+      return;
+    }
+    // Ref Min/Max boş değilse onlar da sayısal olmalı.
+    const rMin = refMin.trim() ? parseFloat(refMin.replace(',', '.')) : null;
+    const rMax = refMax.trim() ? parseFloat(refMax.replace(',', '.')) : null;
+    if ((refMin.trim() && !Number.isFinite(rMin as number)) || (refMax.trim() && !Number.isFinite(rMax as number))) {
+      haptics.error();
+      Alert.alert('Geçersiz aralık', 'Referans değerleri sayısal olmalı.');
+      return;
+    }
     const ok = await addLabValue({
-      parameter_name: paramName, value: parseFloat(value), unit: unit || '-',
-      reference_min: refMin ? parseFloat(refMin) : null, reference_max: refMax ? parseFloat(refMax) : null,
+      parameter_name: paramName, value: n, unit: unit || '-',
+      reference_min: rMin, reference_max: rMax,
       measured_at: new Date().toISOString().split('T')[0],
     });
     if (!ok) {
@@ -52,7 +68,10 @@ export default function LabValuesScreen() {
   }, {});
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    // FIX (audit lab-values-screen): KeyboardAvoidingView + keyboardShouldPersistTaps —
+    // Ref Min/Max + Kaydet klavyenin altında kalıyordu (menstrual.tsx kalıbı).
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Native header (settings/_layout.tsx) already shows the Turkish "Lab Değerleri" title — redundant body heading dropped, disclaimer kept as the screen intro. */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginBottom: SPACING.lg }}>Yaşam tarzı takibi içindir. Tıbbi yorum için doktoruna danış.</Text>
 
@@ -107,5 +126,6 @@ export default function LabValuesScreen() {
         </Card>
       ))}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

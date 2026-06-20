@@ -216,7 +216,7 @@ export default function PremiumScreen() {
   // Expired or never subscribed
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text }}>Premium'a Geç</Text>
+      {/* FIX (audit duplicate-title): Native header (title "Premium'a Geç") renders the title; in-body H1 removed as redundant. */}
       {isExpired && (
         <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.sm, marginTop: SPACING.sm }}>
           <Text style={{ color: COLORS.warning, fontSize: FONT.sm, textAlign: 'center' }}>Premium süren doldu. Yenile.</Text>

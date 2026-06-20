@@ -61,9 +61,14 @@ export default function PlanHistoryScreen() {
   const load = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
-    const list = await getHistory(user.id, planType, 30);
-    setRows(list);
-    setLoading(false);
+    // FIX (audit Wave3): try/finally so an unexpected reject can't leave the spinner stuck forever.
+    // getHistory already swallows Supabase errors and returns [], so a throw is the only risk here.
+    try {
+      const list = await getHistory(user.id, planType, 30);
+      setRows(list);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id, planType]);
 
   useEffect(() => { load(); }, [load]);

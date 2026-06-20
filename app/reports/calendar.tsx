@@ -16,7 +16,9 @@ export default function CalendarScreen() {
   const [days, setDays] = useState<DaySummary[]>([]);
   const [selected, setSelected] = useState<DaySummary | null>(null);
 
-  useEffect(() => { getMonthSummaries(year, month).then(setDays); }, [year, month]);
+  // FIX (audit Wave3): catch loader rejection so a network failure degrades to an empty month grid
+  // instead of an unhandled promise rejection.
+  useEffect(() => { getMonthSummaries(year, month).then(setDays).catch(() => setDays([])); }, [year, month]);
 
   const prevMonth = () => { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); };

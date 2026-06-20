@@ -176,6 +176,15 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
   const [goalType, setGoalType] = useState<GoalType | ''>((initialDraft?.goalType as GoalType) ?? '');
   const [activity, setActivity] = useState<ActivityLevel | ''>((initialDraft?.activity as ActivityLevel) ?? '');
 
+  // FIX (audit onboarding-birthyear): OAuth (Google/Apple) kullanıcılarında
+  // user_metadata.birth_year YOKtur (sadece e-posta kaydında toplanır). Yaş
+  // olmadan TDEE age=30'a düşer, introduce_yourself görevi tamamlanmaz ve
+  // plan-readiness bloklanır. Yaş eksikse doğum yılını burada koşullu olarak topla.
+  const metaBirthYear = Number((user as { user_metadata?: Record<string, unknown> })?.user_metadata?.birth_year);
+  const nowYear = new Date().getFullYear();
+  const needsBirthYear = !(Number.isFinite(metaBirthYear) && metaBirthYear > 1900);
+  const [birthYear, setBirthYear] = useState('');
+
   // Debounced save of form fields — every keystroke would be overkill, but
   // flushing at most once per 500ms survives a crash without churn.
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -191,7 +200,8 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
   }, [heightCm, weightKg, targetWeightKg, gender, goalType, activity, initialDraft?.step]);
 
   const needsTargetWeight = goalType === 'lose_weight' || goalType === 'gain_muscle';
-  const isValid = heightCm && weightKg && gender && goalType && activity && (!needsTargetWeight || targetWeightKg);
+  // FIX (audit onboarding-birthyear): doğum yılı eksikse zorunlu alana dahil et.
+  const isValid = heightCm && weightKg && gender && goalType && activity && (!needsTargetWeight || targetWeightKg) && (!needsBirthYear || birthYear);
 
   // First missing field, so the disabled button can say *what* is blocking instead of just greying out.
   const missingLabel = !heightCm ? 'boyunu'
@@ -200,10 +210,28 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
     : !goalType ? 'hedefini'
     : (needsTargetWeight && !targetWeightKg) ? 'hedef kilonu'
     : !activity ? 'aktivite seviyeni'
+    : (needsBirthYear && !birthYear) ? 'doğum yılını'
     : null;
 
   const handleComplete = async () => {
     if (!user?.id || !isValid) return;
+
+    // FIX (audit onboarding-birthyear): doğum yılı bu ekranda toplanıyorsa
+    // signUp'taki gibi 18+ doğrulaması yap (OAuth yolunda signUp guard'ı çalışmaz).
+    if (needsBirthYear) {
+      const by = parseInt(birthYear);
+      if (!Number.isFinite(by) || by <= 1900 || by > nowYear) {
+        haptics.error();
+        Alert.alert('Geçersiz doğum yılı', 'Lütfen geçerli bir doğum yılı gir.');
+        return;
+      }
+      if (nowYear - by < 18) {
+        haptics.error();
+        Alert.alert('Yaş sınırı', 'Bu uygulama 18 yaş ve üzeri içindir.');
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {
@@ -245,10 +273,12 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
       //    profiles since migration 044) — the old hardcoded age=30 skewed TDEE ~100 kcal for
       //    older users.
       const heightNum = parseInt(heightCm);
-      const metaBirthYear = Number((user as { user_metadata?: Record<string, unknown> })?.user_metadata?.birth_year);
-      const nowYear = new Date().getFullYear();
-      const age = Number.isFinite(metaBirthYear) && metaBirthYear > 1900 && metaBirthYear <= nowYear
-        ? Math.max(18, nowYear - metaBirthYear)
+      // FIX (audit onboarding-birthyear): doğum yılı bu ekranda toplandıysa onu,
+      // yoksa signup metadata'sındaki değeri kullan (metaBirthYear/nowYear bileşen
+      // kapsamında tanımlı). Hiçbiri yoksa age=30 fallback'ine düş.
+      const by = needsBirthYear ? parseInt(birthYear) : metaBirthYear;
+      const age = Number.isFinite(by) && by > 1900 && by <= nowYear
+        ? Math.max(18, nowYear - by)
         : 30;
       const bmr = calculateBMR(w, heightNum, age, gender as Gender);
       const tdee = calculateTDEE(bmr, activity as ActivityLevel);
@@ -273,6 +303,9 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
         weekly_calorie_budget: targets.weeklyBudget,
         protein_per_kg: Math.round((targets.proteinG / w) * 100) / 100,
         onboarding_completed: true,
+        // FIX (audit onboarding-birthyear): OAuth kullanıcısının doğum yılını
+        // profiles'a kalıcı yaz; aksi halde birth_year süresiz NULL kalırdı.
+        ...(needsBirthYear && birthYear ? { birth_year: parseInt(birthYear) } : {}),
       } as never);
 
       // 3. Start 7-day free trial if eligible (Spec 19.0)
@@ -326,6 +359,10 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
         <View style={{ marginBottom: SPACING.md }}>
           <Input label="Boy (cm)" value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" placeholder="175" />
           <Input label="Kilo (kg)" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="80" />
+          {/* FIX (audit onboarding-birthyear): yaş yalnızca OAuth/metadata'sız kullanıcılarda sorulur. */}
+          {needsBirthYear && (
+            <Input label="Doğum Yılı" value={birthYear} onChangeText={setBirthYear} keyboardType="number-pad" placeholder="1995" />
+          )}
         </View>
 
         {/* Gender */}

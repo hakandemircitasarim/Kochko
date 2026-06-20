@@ -1,5 +1,5 @@
 /**
- * Quick stat grid — 2 column layout (water + steps)
+ * Quick stat grid — 2x2 layout (su + adım / uyku + kilo)
  * Flat design, no gradients
  */
 import React from 'react';
@@ -75,25 +75,43 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress }: St
   );
 }
 
-export function StatStrip({ waterLiters, waterTarget, steps, onAddWater }: Props) {
+// FIX (audit: ölü prop) sleepHours/weightKg artık imzada destructure edilip
+// 2x2 grid'de render ediliyor (eskiden tanımlı ama hiç gösterilmiyordu).
+export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, onAddWater }: Props) {
   const waterPct = waterTarget > 0 ? waterLiters / waterTarget : 0;
 
   return (
-    <View style={{ flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.xl }}>
-      <StatCard
-        icon="water"
-        value={waterTarget > 0 ? `${waterLiters.toFixed(1)} / ${waterTarget.toFixed(1)}L` : `${waterLiters.toFixed(1)}L`}
-        label="Su"
-        color={METRIC_COLORS.water}
-        progress={waterTarget > 0 ? waterPct : undefined}
-        onPress={onAddWater}
-      />
-      <StatCard
-        icon="footsteps"
-        value={steps ? steps.toLocaleString('tr-TR') : '-'}
-        label="Adım"
-        color={METRIC_COLORS.steps}
-      />
+    <View style={{ paddingHorizontal: SPACING.xl, gap: SPACING.sm }}>
+      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+        <StatCard
+          icon="water"
+          value={waterTarget > 0 ? `${waterLiters.toFixed(1)} / ${waterTarget.toFixed(1)}L` : `${waterLiters.toFixed(1)}L`}
+          label="Su"
+          color={METRIC_COLORS.water}
+          progress={waterTarget > 0 ? waterPct : undefined}
+          onPress={onAddWater}
+        />
+        <StatCard
+          icon="footsteps"
+          value={steps ? steps.toLocaleString('tr-TR') : '-'}
+          label="Adım"
+          color={METRIC_COLORS.steps}
+        />
+      </View>
+      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+        <StatCard
+          icon="moon"
+          value={sleepHours != null ? `${sleepHours} sa` : '-'}
+          label="Uyku"
+          color={METRIC_COLORS.sleep}
+        />
+        <StatCard
+          icon="scale"
+          value={weightKg != null ? `${weightKg} kg` : '-'}
+          label="Kilo"
+          color={METRIC_COLORS.weight}
+        />
+      </View>
     </View>
   );
 }

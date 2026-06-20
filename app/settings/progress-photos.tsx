@@ -9,9 +9,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
+import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { a11yImage } from '@/lib/accessibility';
 
 interface ProgressPhoto {
   id: string;
@@ -49,7 +51,7 @@ export default function ProgressPhotosScreen() {
   const takePhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Izin Gerekli', 'Kamera izni verin.');
+      Alert.alert('İzin Gerekli', 'Kamera izni verin.');
       return;
     }
 
@@ -122,15 +124,20 @@ export default function ProgressPhotosScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.sm }}>Ilerleme Fotograflari</Text>
+      {/* FIX (audit ui-settings-duplicate-title): native header (settings/_layout.tsx) renders the title; in-body H1 removed as redundant. */}
+      {/* FIX (audit diakritik-sweep): Türkçe diakritik geri yüklendi. */}
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.lg }}>
-        Fotograflar sadece senin cihazinda saklanir. AI'a veya ucuncu tarafa gonderilmez.
+        Fotoğraflar sadece senin cihazında saklanır. AI'a veya üçüncü tarafa gönderilmez.
       </Text>
 
       {/* Pose Selection */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
         {POSE_TYPES.map(pose => (
+          // FIX (audit ui-chip-a11y): seçilebilir poz chip'ine radio rolü + selected state + label.
           <TouchableOpacity key={pose} onPress={() => setSelectedPose(pose)}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: selectedPose === pose }}
+            accessibilityLabel={pose}
             style={{
               flex: 1, padding: SPACING.sm, borderRadius: 8, alignItems: 'center',
               backgroundColor: selectedPose === pose ? COLORS.primary : COLORS.card,
@@ -144,17 +151,17 @@ export default function ProgressPhotosScreen() {
       {/* Capture Buttons */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg }}>
         <View style={{ flex: 1 }}>
-          <Button title="Foto Cek" onPress={takePhoto} />
+          <Button title="Foto Çek" onPress={takePhoto} />
         </View>
         <View style={{ flex: 1 }}>
-          <Button title="Galeriden Sec" variant="outline" onPress={pickPhoto} />
+          <Button title="Galeriden Seç" variant="outline" onPress={pickPhoto} />
         </View>
       </View>
 
       {/* Comparison Button */}
       {comparisonPhotos && (
         <View style={{ marginBottom: SPACING.lg }}>
-          <Button title="Fotograflari Karsilastir" variant="outline" onPress={() => setShowComparison(true)} />
+          <Button title="Fotoğrafları Karşılaştır" variant="outline" onPress={() => setShowComparison(true)} />
         </View>
       )}
 
@@ -162,7 +169,7 @@ export default function ProgressPhotosScreen() {
       <Modal visible={showComparison} animationType="slide" presentationStyle="pageSheet">
         <View style={{ flex: 1, backgroundColor: COLORS.background, padding: SPACING.md }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
-            <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>Karsilastirma ({selectedPose})</Text>
+            <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>Karşılaştırma ({selectedPose})</Text>
             <TouchableOpacity onPress={() => setShowComparison(false)}>
               <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>Kapat</Text>
             </TouchableOpacity>
@@ -170,23 +177,25 @@ export default function ProgressPhotosScreen() {
           {comparisonPhotos && (
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               <View style={{ width: comparisonWidth }}>
-                <Image source={{ uri: comparisonPhotos.earliest.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} />
+                {/* FIX (audit ui-a11y-images): anlamlı <Image> etiketi. */}
+                <Image source={{ uri: comparisonPhotos.earliest.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} {...a11yImage(`Başlangıç fotoğrafı, ${new Date(comparisonPhotos.earliest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`)} />
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
                   {new Date(comparisonPhotos.earliest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </Text>
-                <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Baslangic</Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Başlangıç</Text>
               </View>
               <View style={{ width: comparisonWidth }}>
-                <Image source={{ uri: comparisonPhotos.latest.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} />
+                {/* FIX (audit ui-a11y-images): anlamlı <Image> etiketi. */}
+                <Image source={{ uri: comparisonPhotos.latest.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} {...a11yImage(`Güncel fotoğraf, ${new Date(comparisonPhotos.latest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`)} />
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
                   {new Date(comparisonPhotos.latest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </Text>
-                <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Guncel</Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Güncel</Text>
               </View>
             </View>
           )}
           <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.lg }}>
-            Bu fotograflar AI'a gonderilmez ve ucuncu taraflarla paylasilmaz.
+            Bu fotoğraflar AI'a gönderilmez ve üçüncü taraflarla paylaşılmaz.
           </Text>
         </View>
       </Modal>
@@ -201,7 +210,18 @@ export default function ProgressPhotosScreen() {
             {datePhotos.map(photo => (
               <TouchableOpacity key={photo.id} onLongPress={() => deletePhoto(photo.id)}
                 style={{ width: (screenWidth - SPACING.md * 2 - SPACING.sm * 2) / 3, borderRadius: 8, overflow: 'hidden' }}>
-                <Image source={{ uri: photo.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4 }} />
+                {/* FIX (audit ui-a11y-images): anlamlı <Image> etiketi. */}
+                <Image source={{ uri: photo.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4 }} {...a11yImage(`${photo.pose_type} pozu`)} />
+                {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}
+                <TouchableOpacity
+                  onPress={() => deletePhoto(photo.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${photo.pose_type} pozu fotoğrafını sil`}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ position: 'absolute', top: 4, right: 4, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Ionicons name="trash-outline" size={15} color="#fff" />
+                </TouchableOpacity>
                 <Text style={{ color: COLORS.textMuted, fontSize: 9, textAlign: 'center', marginTop: 2, textTransform: 'capitalize' }}>{photo.pose_type}</Text>
               </TouchableOpacity>
             ))}
@@ -212,12 +232,12 @@ export default function ProgressPhotosScreen() {
       {photos.length === 0 && !loading && (
         <Card>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>
-            Henuz ilerleme fotoğrafı yok. Duzenlı foto cekerek degisimini takip et.
+            Henüz ilerleme fotoğrafı yok. Düzenli foto çekerek değişimini takip et.
           </Text>
         </Card>
       )}
 
-      <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Uzun bas: sil</Text>
+      <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Sil butonuna dokun veya uzun bas</Text>
     </ScrollView>
   );
 }

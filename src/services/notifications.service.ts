@@ -419,7 +419,9 @@ export async function scheduleLocalNotifications(
 }
 
 export async function scheduleTrialReminder(trialDaysLeft: number): Promise<void> {
-  if (trialDaysLeft !== 2) return;
+  // FIX (audit: dead trial reminder) was `!== 2` → silently no-op'd the 1-day-left
+  // case that checkAndScheduleTrialReminder explicitly forwards. Allow 1–2 days left.
+  if (trialDaysLeft < 1 || trialDaysLeft > 2) return;
 
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   for (const n of scheduled) {
@@ -431,7 +433,8 @@ export async function scheduleTrialReminder(trialDaysLeft: number): Promise<void
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'Deneme Süren Bitiyor',
-      body: "Deneme süren 2 gün sonra bitiyor. Premium'a geç!",
+      // FIX (audit: dead trial reminder) dynamic day count instead of hard-coded "2 gün".
+      body: `Deneme süren ${trialDaysLeft} gün sonra bitiyor. Premium'a geç!`,
       data: { type: 'trial_reminder' },
     },
     trigger: {

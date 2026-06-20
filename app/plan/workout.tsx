@@ -18,10 +18,12 @@ import {
   Alert,
 } from 'react-native';
 import { Stack, router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
@@ -44,7 +46,8 @@ import { AlternativeComparisonModal } from '@/components/plan/AlternativeCompari
 import { PlanChatComposer } from '@/components/plan/PlanChatComposer';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
 
-type ViewState = 'loading' | 'empty' | 'draft' | 'active';
+// FIX (audit Wave3): 'error' state for network-failure recovery (was missing → infinite spinner).
+type ViewState = 'loading' | 'empty' | 'draft' | 'active' | 'error';
 interface ChatMsg {
   id: string;
   role: 'user' | 'assistant';
@@ -77,20 +80,33 @@ export default function WorkoutPlanScreen() {
 
   const load = useCallback(async () => {
     if (!user?.id) return;
-    if (!profile) await fetchProfile(user.id);
-    const [activeRow, draftRow, goalRes] = await Promise.all([
-      getActive(user.id, 'workout'),
-      getDraft(user.id, 'workout'),
-      supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1),
-    ]);
-    if (!mountedRef.current) return;
-    setActive(activeRow);
-    setDraft(draftRow);
-    setGoal((goalRes.data as { goal_type?: string; target_weight_kg?: number }[] | null)?.[0] ?? null);
-    if (draftRow) setView('draft');
-    else if (activeRow) setView('active');
-    else setView('empty');
-  }, [user?.id, profile, fetchProfile]);
+    // FIX (audit Wave3): wrap load in try/catch so a network/Supabase reject lands on the 'error'
+    // branch (retry button) instead of leaving `view` stuck on 'loading' forever.
+    try {
+      if (!profile) await fetchProfile(user.id);
+      const [activeRow, draftRow, goalRes] = await Promise.all([
+        getActive(user.id, 'workout'),
+        getDraft(user.id, 'workout'),
+        supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1),
+      ]);
+      if (!mountedRef.current) return;
+      setActive(activeRow);
+      setDraft(draftRow);
+      setGoal((goalRes.data as { goal_type?: string; target_weight_kg?: number }[] | null)?.[0] ?? null);
+      if (draftRow) {
+        setView('draft');
+        // FIX (audit Wave3): rehydrate chatSessionId for a persisted draft — otherwise a reloaded
+        // draft had chatSessionId=null and send/approve/alternative silently dead-ended.
+        if (!chatSessionId) {
+          const sid = await createSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
+          if (sid && mountedRef.current) setChatSessionId(sid);
+        }
+      } else if (activeRow) setView('active');
+      else setView('empty');
+    } catch {
+      if (mountedRef.current) { haptics.error(); setView('error'); }
+    }
+  }, [user?.id, profile, fetchProfile, chatSessionId]);
 
   useEffect(() => { load(); }, [load]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -248,6 +264,23 @@ export default function WorkoutPlanScreen() {
 
   const handleStartRevision = async () => {
     if (!user?.id || !active) return;
+    // FIX (audit Wave3): guard against the migration-030 partial UNIQUE(user_id, plan_type) WHERE
+    // status='draft' — a blind INSERT over an existing draft threw 23505 and leaked raw SQL into the
+    // chat bubble. Continue the existing draft instead.
+    const existing = await getDraft(user.id, 'workout');
+    if (existing) {
+      const sid = await createSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
+      if (sid) setChatSessionId(sid);
+      setMessages([
+        {
+          id: 'greet-' + Date.now(),
+          role: 'assistant',
+          content: 'Zaten devam eden bir taslağın var — kaldığın yerden düzenleyelim. Neyi değiştirelim?',
+        },
+      ]);
+      await load();
+      return;
+    }
     const { data: inserted, error } = await supabase
       .from('weekly_plans')
       .insert({
@@ -261,9 +294,10 @@ export default function WorkoutPlanScreen() {
       .select('id')
       .limit(1);
     if (error || !inserted?.[0]) {
+      // FIX (audit Wave3): never surface raw error.message — fixed Turkish line only.
       setMessages(prev => [
         ...prev,
-        { id: 'err-' + Date.now(), role: 'assistant', content: error?.message ?? 'Revizyon başlatılamadı, tekrar dene.' },
+        { id: 'err-' + Date.now(), role: 'assistant', content: 'Revizyon başlatılamadı, tekrar dene.' },
       ]);
       return;
     }
@@ -286,6 +320,27 @@ export default function WorkoutPlanScreen() {
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
         <Stack.Screen options={{ title: 'Antrenman planı', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
         <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
+
+  // FIX (audit Wave3): error state with retry — mirrors diet.tsx / reports/daily.tsx.
+  if (view === 'error') {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
+        <Stack.Screen options={{ title: 'Antrenman planı', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
+        <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
+        <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>Plan yüklenemedi</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); setView('loading'); load(); }}
+          accessibilityRole="button"
+          accessibilityLabel="Tekrar dene"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
+        >
+          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Tekrar dene</Text>
+        </TouchableOpacity>
       </View>
     );
   }

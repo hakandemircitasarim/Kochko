@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 interface ChatSession {
   id: string;
@@ -142,7 +143,7 @@ export default function ChatHistoryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.lg }}>Sohbet Geçmişi</Text>
+      {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
       {/* Search */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
@@ -169,6 +170,10 @@ export default function ChatHistoryScreen() {
             <TouchableOpacity
               key={tag}
               onPress={() => setSelectedTag(prev => prev === tag ? null : tag)}
+              accessibilityRole="button"
+              accessibilityLabel={`Konu: ${tag}`}
+              accessibilityState={{ selected: selectedTag === tag }}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
               style={{
                 paddingVertical: 4,
                 paddingHorizontal: SPACING.sm,
@@ -178,7 +183,8 @@ export default function ChatHistoryScreen() {
                 borderColor: selectedTag === tag ? COLORS.primary : COLORS.border,
               }}
             >
-              <Text style={{ color: selectedTag === tag ? '#fff' : COLORS.textSecondary, fontSize: FONT.xs }}>{tag}</Text>
+              {/* FIX (audit accent-contrast): selected chip text via getContrastColor instead of hardcoded #fff. */}
+              <Text style={{ color: selectedTag === tag ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.xs }}>{tag}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
