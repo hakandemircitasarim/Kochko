@@ -5,6 +5,20 @@
 > vizyonuna (düz koyu tema, teal accent, AI-öncelikli sohbet) göre değerlendirildi.
 > Kontrast oranları hex token'lardan kesin hesaplandı.
 
+> ## ✅ ÇÖZÜM DURUMU (2026-06-20 — uygulandı)
+> Tüm bulgular **2 paralel düzeltme turunda** giderildi (75-dosya + 22-dosya, dosya-bazlı
+> çakışmasız partition), her tur **düşmanca regresyon-incelemesiyle** doğrulandı (toplam
+> 6 regresyon yakalanıp düzeltildi). Sonuç: **client `tsc` 0 hata**, release APK temiz derlendi,
+> yeni `KOCHKO-test.apk` Masaüstünde. Commit'ler: `1750ce0` (385+ fix), `1ca4590` (101 fix + primitive'ler).
+> - **Global:** textMuted WCAG-AA token (#8E8EA3), getContrastColor ile buton/baloncuk kontrastı,
+>   expo-haptics + haptik lib, marka-dışı palet → token, ASCII-Türkçe → diakritik.
+> - **Yeni paylaşılan primitive'ler:** Skeleton (shimmer yükleyiciler), EmptyState, ScreenHeader, DateTimeField.
+> - **Logic/UX:** native tarih-saat picker'ları (5 ekran), plan-red inline chip'leri, profile-completion
+>   tek-kaynak, typed "SİL" silme onayı, dürüst premium CTA + 7-gün deneme, settings premium-kilit işareti.
+> - **Bilinçli ertelendi (defect değil, cila):** token streaming (canlı ai-chat'i yeniden mimari ister),
+>   bazı paylaşılan-bileşen DRY-refactor'ları (altta yatan kontrast/boyut/a11y zaten inline düzeltildi).
+> _Aşağıdaki rapor orijinal denetim bulgularıdır (tarihsel kayıt)._
+
 ## 📊 Genel Skor: **2.9 / 5**
 
 | Boyut | Skor | Tek-cümle |
