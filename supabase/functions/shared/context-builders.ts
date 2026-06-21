@@ -8,7 +8,7 @@
  */
 
 import { supabaseAdmin } from './supabase-admin.ts';
-import { getLocalParts, getEffectiveDateForUser } from './day-boundary.ts';
+import { getLocalParts, getEffectiveDateForUser, shiftDateString } from './day-boundary.ts';
 import type {
   RetrievalPlan, Layer1Focus, Layer2Focus, Layer3DataType,
   ContextMeta, DataConfidence,
@@ -31,13 +31,28 @@ export interface BuiltContext {
  * Build context according to retrieval plan.
  * This replaces the old buildFullContext() with plan-aware fetching.
  */
-export async function buildContextFromPlan(userId: string, plan: RetrievalPlan, sessionId?: string): Promise<BuiltContext> {
-  const [layer1, layer2, layer3, layer4] = await Promise.all([
+export async function buildContextFromPlan(
+  userId: string,
+  plan: RetrievalPlan,
+  sessionId?: string,
+  // FIX (audit AI-CTX-01): the caller (ai-chat) computes the user's day-boundary-aware
+  // effectiveToday and keys every WRITE (logged_for_date / daily_metrics.date) to it.
+  // Thread it in so the read-side "today"/"dün"/per-day filters agree with the write-side
+  // date. Optional: when omitted, buildLayer3Scoped derives it from the profile's tz +
+  // day_boundary_hour (still effective-day arithmetic, never raw server UTC).
+  effectiveToday?: string,
+): Promise<BuiltContext> {
+  const [layer1, layer2, layer3raw, layer4] = await Promise.all([
     buildLayer1Scoped(userId, plan),
     buildLayer2Scoped(userId, plan),
-    buildLayer3Scoped(userId, plan),
+    buildLayer3Scoped(userId, plan, effectiveToday),
     buildLayer4Scoped(userId, plan, sessionId),
   ]);
+
+  // FIX (audit AI-CTX-03): cap total Layer 1-3 size. Only Layer 4 was budget-trimmed
+  // before; Layers 1-3 had no ceiling. Trim the oldest Layer-3 detail first when the
+  // static layers blow past the budget (rare on 128k models, but bounds cost/latency).
+  const layer3 = trimLayer3ToBudget(layer1, layer2, layer3raw);
 
   // Refine context meta based on actual data
   const meta = refineContextMeta(plan.contextMeta, layer1, layer3);
@@ -456,28 +471,53 @@ function computePatternScore(p: Record<string, unknown>): number {
 
 // ─── Layer 3: Scoped Recent Data ───
 
-async function buildLayer3Scoped(userId: string, plan: RetrievalPlan): Promise<string> {
+async function buildLayer3Scoped(userId: string, plan: RetrievalPlan, effectiveToday?: string): Promise<string> {
   const { daysBack, scope, detailLevel } = plan.layer3;
 
   if (daysBack === 0 || scope.length === 0) return '';
 
-  const today = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - daysBack * 86400000).toISOString().split('T')[0];
+  // FIX (audit AI-CTX-01): anchor the reference day on the user's day-boundary-aware
+  // effective day, NOT raw server UTC. The write-side keys logged_for_date / daily_metrics.date
+  // to this same effective day; using UTC here made a freshly-logged meal (effective = UTC-yesterday
+  // for late-night / negative-offset users) fall outside the read filters, so the coach claimed
+  // nothing was logged today. Prefer the caller-supplied value; else derive it from the profile.
+  let today = effectiveToday;
+  if (!today) {
+    const { data: p } = await supabaseAdmin
+      .from('profiles')
+      .select('active_timezone, home_timezone, day_boundary_hour')
+      .eq('id', userId)
+      .maybeSingle();
+    const tz = (p?.active_timezone as string | null) || (p?.home_timezone as string | null) || null;
+    today = getEffectiveDateForUser(tz, p?.day_boundary_hour as number | null);
+  }
+  // daysBack counts from "today" inclusive (today + the prior daysBack-1 days).
+  const startDate = shiftDateString(today, -(daysBack - 1));
+
+  // FIX (audit AI-CTX-03): cap meals/workouts to what formatLayer3 actually renders
+  // (today + dün + günler 2-7 = 8 distinct days). Full-detail plans (daysBack=14) used to
+  // fetch every meal in the window, then formatLayer3 silently discarded day 8+. Bound the
+  // rows so we don't fetch-and-drop. ~12 meals/day * 8 days ≈ 96; round to a safe ceiling.
+  const renderedDays = Math.min(daysBack, 8);
+  const MEALS_LIMIT = renderedDays * 12;
+  const WORKOUTS_LIMIT = renderedDays * 4;
 
   // Parallel fetch only what's needed
   const queries: Record<string, PromiseLike<{ data: unknown[] | null }>> = {};
 
   if (scope.includes('meals')) {
+    // Order DESC so .limit() keeps the most-recent rows (today/dün) when the cap bites;
+    // formatLayer3 re-groups by date so intra-day join order is cosmetic.
     queries.meals = supabaseAdmin.from('meal_logs')
       .select('raw_input, meal_type, logged_for_date')
       .eq('user_id', userId).gte('logged_for_date', startDate).eq('is_deleted', false)
-      .order('logged_at');
+      .order('logged_at', { ascending: false }).limit(MEALS_LIMIT);
   }
   if (scope.includes('workouts')) {
     queries.workouts = supabaseAdmin.from('workout_logs')
       .select('raw_input, duration_min, workout_type, logged_for_date')
       .eq('user_id', userId).gte('logged_for_date', startDate)
-      .order('logged_at');
+      .order('logged_at', { ascending: false }).limit(WORKOUTS_LIMIT);
   }
   if (scope.includes('metrics')) {
     queries.metrics = supabaseAdmin.from('daily_metrics')
@@ -545,7 +585,9 @@ function formatLayer3(
   }
 
   // Yesterday — medium detail
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+  // FIX (audit AI-CTX-01): effective-day arithmetic anchored on `today` (which is now the
+  // user's day-boundary-aware effective day), not raw server UTC.
+  const yesterday = shiftDateString(today, -1);
   if (daysBack >= 2) {
     const yMeals = meals.filter(m => m.logged_for_date === yesterday);
     const yWorkouts = workouts.filter(w => w.logged_for_date === yesterday);
@@ -573,7 +615,7 @@ function formatLayer3(
       // lines ("06-08: 1 ogun") made the model answer "hangi yemekleri
       // kaydettim?" with "kayıt yapmamışsın" even though records existed.
       for (let d = 2; d < Math.min(daysBack, 8); d++) {
-        const date = new Date(Date.now() - d * 86400000).toISOString().split('T')[0];
+        const date = shiftDateString(today, -d); // FIX (audit AI-CTX-01): effective-day anchored
         const dayMeals = meals.filter(m => m.logged_for_date === date);
         const dayWorkouts = workouts.filter(w => w.logged_for_date === date);
         const dayReport = reports.find(r => r.date === date);
@@ -590,8 +632,10 @@ function formatLayer3(
 
       // Days 8+ — weekly reference only
       if (daysBack > 7 && reports.length > 0) {
+        // FIX (audit AI-CTX-01): bucket by effective-day distance from `today`, not server UTC.
+        const todayMs = new Date(`${today}T00:00:00Z`).getTime();
         const olderReports = reports.filter(r => {
-          const dayDiff = Math.floor((Date.now() - new Date(r.date).getTime()) / 86400000);
+          const dayDiff = Math.floor((todayMs - new Date(`${r.date}T00:00:00Z`).getTime()) / 86400000);
           return dayDiff >= 7;
         });
         if (olderReports.length > 0) {
@@ -655,8 +699,33 @@ function formatLayer3(
 const LAYER4_TOKEN_BUDGET = 6000;
 const CHARS_PER_TOKEN = 3.5;
 
+// FIX (audit AI-CTX-03): ceiling for the static layers (1+2+3). gpt-4o has a 128k
+// window so this almost never bites; it bounds cost/latency on pathological histories.
+// Generous relative to LAYER4_TOKEN_BUDGET so normal turns are untouched.
+const STATIC_LAYERS_TOKEN_BUDGET = 12000;
+
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);
+}
+
+/**
+ * FIX (audit AI-CTX-03): total-budget guard for Layers 1-3. Only Layer 4 was trimmed
+ * before. When layer1+layer2+layer3 blow past STATIC_LAYERS_TOKEN_BUDGET, drop the
+ * OLDEST Layer-3 content first by truncating at the "## DUN"/older-days boundary —
+ * the BUGUN block (today's data, the write-side-relevant rows) is always preserved.
+ */
+function trimLayer3ToBudget(layer1: string, layer2: string, layer3: string): string {
+  const total = estimateTokens(layer1) + estimateTokens(layer2) + estimateTokens(layer3);
+  if (total <= STATIC_LAYERS_TOKEN_BUDGET) return layer3;
+
+  // formatLayer3 always emits the "## BUGUN" block first, then prefixes every older
+  // section ("## DUN", per-day lines, trends, labs, commitments) with a leading "\n".
+  // Cut at the first such boundary after BUGUN to keep today intact, drop the rest.
+  const dunIdx = layer3.indexOf('\n## DUN');
+  const cutIdx = dunIdx >= 0 ? dunIdx : layer3.indexOf('\n\n');
+  if (cutIdx <= 0) return layer3; // nothing safe to drop (only BUGUN present)
+
+  return `${layer3.slice(0, cutIdx)}\n[Eski gun detaylari baglam butcesi icin kirpildi.]`;
 }
 
 async function buildLayer4Scoped(userId: string, plan: RetrievalPlan, sessionId?: string): Promise<{ role: string; content: string }[]> {

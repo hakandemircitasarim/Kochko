@@ -186,6 +186,15 @@ function mapActionTypeToSyncType(actionType: QueuedAction['type']): SyncDataType
     case 'workout_log': return 'workout_log';
     case 'supplement_log': return 'supplement_log';
     case 'profile_update': return 'profile';
+    // FIX (audit UX-OFF-06): water/weight/sleep/mood logs are daily_metrics rows
+    // (one per user+date). Route them through the date-aware 'daily_metrics' branch
+    // so the upsert uses onConflict:'user_id,date' instead of hitting the bare
+    // else-branch upsert (no onConflict → uniqueness violation → item stuck forever).
+    case 'water_log':
+    case 'weight_log':
+    case 'sleep_log':
+    case 'mood_log':
+      return 'daily_metrics';
     default: return null;
   }
 }

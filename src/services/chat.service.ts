@@ -318,16 +318,26 @@ export async function processOfflineQueue(): Promise<number> {
     const queue: QueuedMessage[] = JSON.parse(existing);
     let sent = 0;
 
-    for (const msg of queue) {
+    // FIX (audit UX-OFF-02): track which messages actually succeeded by index, not by a
+    // running count. The old `queue.slice(sent)` dropped the FIRST `sent` items positionally
+    // — unrelated to which ones really sent. If msg[0] failed but msg[1]/msg[2] succeeded,
+    // slice(2) kept only msg[2]: the failed msg[0] was lost, the sent msg[1] dropped, and
+    // msg[2] re-sent as a duplicate. Now we keep exactly the items that did NOT succeed.
+    const succeededIndexes = new Set<number>();
+    for (let i = 0; i < queue.length; i++) {
+      const msg = queue[i];
       const { error } = msg.targetDate
         ? await sendMessageForDate(msg.text, msg.targetDate)
         : await sendMessage(msg.text);
-      if (!error) sent++;
+      if (!error) {
+        sent++;
+        succeededIndexes.add(i);
+      }
     }
 
-    // Clear processed messages
+    // Persist only the messages that genuinely failed (preserving their original order).
     if (sent > 0) {
-      const remaining = queue.slice(sent);
+      const remaining = queue.filter((_, i) => !succeededIndexes.has(i));
       await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
     }
 

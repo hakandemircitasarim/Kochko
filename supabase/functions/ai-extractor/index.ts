@@ -79,6 +79,36 @@ function normalizeEnumValue(field: string, value: unknown): unknown {
   return null; // unmappable → drop the field rather than persist junk
 }
 
+// FIX (audit AI-EXT-03): non-enum typed columns. work_*/sleep_time/wake_time are
+// Postgres TIME, meal_count_preference is SMALLINT. These have no FIELD_ENUMS
+// entry, so a model emitting "sabah 9" or "3 öğün" reaches the UPDATE raw and
+// 22P02-fails the WHOLE batch — and because the checkpoint never advances on
+// error, that user's Tier-2 extraction sticks forever. Coerce/validate here and
+// drop the single bad field instead, letting the rest of the batch persist.
+const TIME_FIELDS = new Set(['work_start', 'work_end', 'sleep_time', 'wake_time']);
+
+// Accept HH:MM or H:MM (optionally with :SS) and zero-pad to HH:MM:SS; anything
+// else (free text like "sabah 9", "akşam") returns null and is dropped.
+function coerceTimeValue(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const m = value.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return null;
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  const ss = m[3] !== undefined ? Number(m[3]) : 0;
+  if (hh > 23 || mm > 59 || ss > 59) return null;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+}
+
+// meal_count_preference is SMALLINT; clamp the model's value to a sane 1-8 range.
+// Returns null for non-numeric / out-of-range so the field is dropped.
+function coerceMealCount(value: unknown): number | null {
+  const n = typeof value === 'number' ? value : parseInt(String(value).trim(), 10);
+  if (!Number.isInteger(n) || n < 1 || n > 8) return null;
+  return n;
+}
+
 const EXTRACTION_PROMPT = (fields: string[], messages: string) => `
 Aşağıdaki sohbet mesajlarından kullanıcı hakkında şu bilgileri çıkars.
 Sadece AÇIKÇA belirtilen bilgileri çıkars. Tahmin YAPMA.
@@ -89,6 +119,11 @@ ${fields.map(f => `- ${f}${FIELD_ENUMS[f] ? ` (SADECE: ${FIELD_ENUMS[f].join('|'
 
 Liste tipi alanlar (örn. kitchen_equipment) için DAİMA virgülle ayrılmış tek bir metin
 döndür (örn. "air fryer, mikrodalga"); ASLA dizi (array) verme.
+
+Saat alanları (work_start, work_end, sleep_time, wake_time) için DAİMA 24 saat
+biçiminde "HH:MM" döndür (örn. "09:00", "23:30"); "sabah 9" gibi metin verme.
+meal_count_preference için SADECE 1-8 arası bir tam sayı döndür (örn. 3); "3 öğün"
+gibi metin verme.
 
 Ek olarak "_summary_update" anahtarı döndür: bu sohbetten kullanıcı hakkında
 öğrendiğin ÖNEMLİ ve KALICI şeyleri 1-2 cümleyle özetle (davranış kalıbı,
@@ -222,6 +257,29 @@ serve(async (req: Request) => {
       const profileUpdates: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(nonNull)) {
         if (!profileFields.includes(key)) continue;
+
+        // FIX (audit AI-EXT-03): validate non-enum typed columns BEFORE the UPDATE so a
+        // single malformed TIME / SMALLINT value can't 22P02 the whole batch (which would
+        // block the checkpoint and freeze this user's extraction forever). Drop on failure.
+        if (TIME_FIELDS.has(key)) {
+          const t = coerceTimeValue(value);
+          if (t === null) {
+            console.warn(`[Extractor] dropped unparseable time ${key}=${value} for ${userId}`);
+            continue;
+          }
+          profileUpdates[key] = t;
+          continue;
+        }
+        if (key === 'meal_count_preference') {
+          const n = coerceMealCount(value);
+          if (n === null) {
+            console.warn(`[Extractor] dropped invalid meal_count_preference=${value} for ${userId}`);
+            continue;
+          }
+          profileUpdates[key] = n;
+          continue;
+        }
+
         const normalized = normalizeEnumValue(key, value);
         if (normalized === null) {
           console.warn(`[Extractor] dropped unmappable enum value ${key}=${value} for ${userId}`);

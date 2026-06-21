@@ -153,7 +153,9 @@ export default function AllTimeReportScreen() {
 
       {/* Milestones */}
       <Card title="Kilometre Taşları">
-        {totalWeightChange !== null && totalWeightChange < 0 && (
+        {/* FIX (audit UI-PLN-03): gate on !== 0 (not < 0) so weight-gain / muscle-gain
+            goal users (positive totalWeightChange) also see their kg milestones. */}
+        {totalWeightChange !== null && totalWeightChange !== 0 && (
           <>
             {Math.abs(totalWeightChange) >= 1 && <MilestoneRow text="İlk 1 kg" done />}
             {Math.abs(totalWeightChange) >= 5 && <MilestoneRow text="5 kg" done />}
@@ -163,7 +165,9 @@ export default function AllTimeReportScreen() {
         {stats.longestStreak >= 7 && <MilestoneRow text="7 gün streak" done />}
         {stats.longestStreak >= 30 && <MilestoneRow text="30 gün streak" done />}
         {stats.longestStreak >= 100 && <MilestoneRow text="100 gün streak" done />}
-        {stats.totalMeals === 0 && stats.longestStreak < 7 && (
+        {/* FIX (audit UI-PLN-03): only show the empty-state when there is genuinely no kg
+            milestone either — otherwise a gaining user with >=1 kg saw an empty card. */}
+        {(totalWeightChange === null || Math.abs(totalWeightChange) < 1) && stats.longestStreak < 7 && (
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
         )}
       </Card>

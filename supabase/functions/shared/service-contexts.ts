@@ -569,6 +569,17 @@ export async function getCaffeineSleepContext(userId: string): Promise<string> {
   try {
     const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
 
+    // FIX (audit AI-CTX-04): resolve the user's own timezone instead of hardcoding
+    // 'Europe/Istanbul' for the 15:00 late-caffeine cutoff. A user whose home/active zone
+    // isn't Istanbul had the cutoff evaluated at the wrong wall-clock hour. Precedence
+    // matches resolveEffectiveToday: active (travel) → home → Europe/Istanbul fallback.
+    const { data: tzProfile } = await supabaseAdmin
+      .from('profiles').select('active_timezone, home_timezone').eq('id', userId).maybeSingle();
+    const userTimezone =
+      (tzProfile?.active_timezone as string | null) ??
+      (tzProfile?.home_timezone as string | null) ??
+      'Europe/Istanbul';
+
     const [mealsRes, metricsRes] = await Promise.all([
       // #S3: meal_logs has logged_at (timestamptz), NOT created_at. The phantom column made
       // PostgREST reject the whole select → meals=[] → this caffeine-sleep insight was
@@ -587,12 +598,13 @@ export async function getCaffeineSleepContext(userId: string): Promise<string> {
     const CAFFEINE_KEYWORDS = ['kahve', 'espresso', 'latte', 'cappuccino', 'americano', 'cay', 'enerji', 'red bull', 'monster', 'cola', 'kola'];
 
     // Find days with late caffeine (after 15:00). logged_at is UTC — evaluate the hour in the
-    // user's local zone (Istanbul default) so the 15:00 cutoff isn't off by the UTC offset.
+    // user's resolved local zone (active → home → Istanbul) so the 15:00 cutoff isn't off by
+    // the UTC offset for non-Istanbul users. FIX (audit AI-CTX-04).
     const lateCaffeineDates = new Set<string>();
     for (const meal of meals) {
       let hour: number;
       try {
-        hour = new Date(new Date(meal.logged_at).toLocaleString('en-US', { timeZone: 'Europe/Istanbul' })).getHours();
+        hour = new Date(new Date(meal.logged_at).toLocaleString('en-US', { timeZone: userTimezone })).getHours();
       } catch {
         hour = new Date(meal.logged_at).getHours();
       }

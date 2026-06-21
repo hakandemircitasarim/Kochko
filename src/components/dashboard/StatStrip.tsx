@@ -64,7 +64,8 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress }: St
         </View>
         <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{label}</Text>
       </View>
-      <Text style={{ color, fontSize: 16, fontWeight: '700' }}>{value}</Text>
+      {/* FIX (audit UI-TAB-03) numberOfLines={1} — değer hücresi tek satırda kalsın, taşmayı kırpsın */}
+      <Text numberOfLines={1} style={{ color, fontSize: 16, fontWeight: '700' }}>{value}</Text>
       {sublabel && <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{sublabel}</Text>}
       {progress !== undefined && (
         <View style={{ height: 4, backgroundColor: colors.progressTrack, borderRadius: 2, overflow: 'hidden', marginTop: SPACING.sm }}>
@@ -101,13 +102,15 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
       <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
         <StatCard
           icon="moon"
-          value={sleepHours != null ? `${sleepHours} sa` : '-'}
+          // FIX (audit UI-TAB-03) ham DB sayısını biçimlendir — diğer kartlarla tutarlı (DECIMAL(3,1) → 1 ondalık)
+          value={sleepHours != null ? `${Number(sleepHours).toFixed(1)} sa` : '-'}
           label="Uyku"
           color={METRIC_COLORS.sleep}
         />
         <StatCard
           icon="scale"
-          value={weightKg != null ? `${weightKg} kg` : '-'}
+          // FIX (audit UI-TAB-03) ham DB sayısını biçimlendir — diğer kartlarla tutarlı (DECIMAL(5,2) → 1 ondalık)
+          value={weightKg != null ? `${Number(weightKg).toFixed(1)} kg` : '-'}
           label="Kilo"
           color={METRIC_COLORS.weight}
         />

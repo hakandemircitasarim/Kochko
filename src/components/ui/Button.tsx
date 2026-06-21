@@ -1,7 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, type ViewStyle } from 'react-native';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
 interface Props {
@@ -78,7 +78,9 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
       ) : (
         <>
           {icon}
-          <Text style={{ color: textColor, fontSize, fontWeight: '500' }}>{title}</Text>
+          {/* FIX (audit UI-PR-04): truncate long Turkish labels (ellipsis) and cap font
+              scaling so a raised system font size can't blow out the fixed button height. */}
+          <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ color: textColor, fontSize, fontWeight: '500' }}>{title}</Text>
         </>
       )}
     </TouchableOpacity>

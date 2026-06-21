@@ -66,6 +66,8 @@ export default function RecipesScreen() {
 
   const saveEdit = async () => {
     if (!editingId) return;
+    // FIX (audit UX-FRM-05): guard against blank title overwriting the saved recipe name
+    if (!editTitle.trim()) { haptics.error(); Alert.alert('Eksik', 'Tarif adı boş olamaz.'); return; }
     const servingsNum = parseInt(editServings, 10);
     try {
       await updateRecipe(editingId, {

@@ -57,7 +57,7 @@ serve(async (req: Request) => {
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
 
-    const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id, idempotency_key } = body;
+    const { message, image_base64, target_date: target_date_raw, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id, idempotency_key } = body;
 
     // Voice (Whisper STT) and photo (gpt-4o vision) are declared Premium features
     // (premium-gate.ts photo_logging/voice_input) but were never enforced anywhere —
@@ -114,9 +114,25 @@ serve(async (req: Request) => {
     // it so coaching continues (soft tone) but the referral is appended to the final reply.
     let edMediumReferral: string | null = null;
     if (message) {
+      // FIX (audit AI-ORC-04): persistence MUST NOT gate an acute-safety reply.
+      // storeMessages throws SESSION_NOT_FOUND (fail-closed on a deleted/stale
+      // session_id — KVKK reset or closeSession race) or on a transient
+      // chat_messages insert error. In the safety branches that throw would
+      // unwind to the outer catch and return 404/500, so a user in acute crisis
+      // would NEVER get the 112 / professional-help referral. Best-effort the
+      // history write and ALWAYS return the safety response.
+      const safeStore = async (
+        u: string, m: string, a: string, mode: string, sid?: string,
+      ): Promise<void> => {
+        try {
+          await storeMessages(u, m, a, mode, undefined, undefined, undefined, sid);
+        } catch (storeErr) {
+          console.error('[ai-chat] safety-branch storeMessages failed (response still returned):', storeErr);
+        }
+      };
       const emergency = detectEmergency(message);
       if (emergency.isEmergency) {
-        await storeMessages(userId, message, emergency.message, 'emergency', undefined, undefined, undefined, session_id);
+        await safeStore(userId, message, emergency.message, 'emergency', session_id);
         return respond({ message: emergency.message, actions: [], task_mode: 'emergency' });
       }
       // Self-harm / suicide crisis — MUST run before the ED check so a suicidal
@@ -124,12 +140,12 @@ serve(async (req: Request) => {
       // the milder eating-disorder dietitian referral (#R1-C2).
       const crisis = detectCrisis(message);
       if (crisis.isCrisis) {
-        await storeMessages(userId, message, crisis.message, 'safety', undefined, undefined, undefined, session_id);
+        await safeStore(userId, message, crisis.message, 'safety', session_id);
         return respond({ message: crisis.message, actions: [], task_mode: 'safety' });
       }
       const edRisk = detectEDRisk(message);
       if (edRisk.isRisk && edRisk.severity === 'high') {
-        await storeMessages(userId, message, edRisk.message, 'safety', undefined, undefined, undefined, session_id);
+        await safeStore(userId, message, edRisk.message, 'safety', session_id);
         return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
       }
       // Medium severity: keep coaching but ensure the referral reaches the user (appended
@@ -241,6 +257,29 @@ serve(async (req: Request) => {
       ?? (profile?.active_timezone as string | null)
       ?? (profile?.home_timezone as string | null);
     const effectiveToday = getEffectiveDateForUser(userTz, profile?.day_boundary_hour as number | null);
+
+    // FIX (audit AI-ORC-05): validate the client-supplied target_date server-side.
+    // validateChatRequest never checks it, so an absurd-but-valid date ('3026-01-01',
+    // '1900-01-01') would be written silently and a malformed string ('2026-13-99')
+    // would reach the date column and 23xxx-fail the action. Require ISO YYYY-MM-DD,
+    // reject NaN, and clamp to the same window philosophy as the days_ago backdater:
+    // never in the future (relative to the user's effective day) and at most 30 days
+    // back (the regex/days_ago backdate ceiling is 7; 30 leaves headroom for explicit
+    // client backfill without allowing arbitrary historical rewrites). Out-of-window or
+    // malformed values fall back to effectiveToday.
+    let target_date: string | undefined;
+    if (typeof target_date_raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(target_date_raw)) {
+      const parsed = new Date(`${target_date_raw}T00:00:00Z`);
+      // Reject NaN AND round-trip mismatches (e.g. '2026-13-99' / '2026-02-31' that
+      // Date silently rolls over into a different valid date).
+      if (!Number.isNaN(parsed.getTime()) && parsed.toISOString().split('T')[0] === target_date_raw) {
+        const minDate = shiftDateString(effectiveToday, -30);
+        if (target_date_raw <= effectiveToday && target_date_raw >= minDate) {
+          target_date = target_date_raw;
+        }
+        // else: out of window — leave undefined so it falls back to effectiveToday.
+      }
+    }
 
     // Return-flow detection is now handled by service-contexts.ts (richer context with weight, compliance history)
 
@@ -3065,12 +3104,19 @@ async function executeActions(
               { user_id: userId, date: actionDate, weight_kg: w, water_liters: await waterFor(actionDate), synced: true },
               { onConflict: 'user_id,date' }
             );
-            await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
             // weight_history is the canonical measurement store (export + trend source)
             // but was never written by any code path before (#R1-M2). Record each weigh-in.
             await supabaseAdmin.from('weight_history').upsert({ user_id: userId, weight_kg: w, recorded_at: actionDate }, { onConflict: 'user_id,recorded_at' });
-            // T1.19: Check if TDEE recalculation needed
-            recalculateTDEEIfNeeded(userId, w).then(() => {}, () => {});
+            // FIX (audit AI-INT-04): only the CURRENT-day weight is the live weight.
+            // A backdated weigh-in ("geçen hafta 95 kiloydum", days_ago set) must record
+            // history but must NOT overwrite profiles.weight_kg or trigger a TDEE recalc —
+            // otherwise an old weight clobbers the real current one and re-derives BMR/TDEE
+            // and every calorie range from a stale value.
+            if (actionDate === today) {
+              await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
+              // T1.19: Check if TDEE recalculation needed
+              recalculateTDEEIfNeeded(userId, w).then(() => {}, () => {});
+            }
 
             // Creatine water retention check
             const { data: recentCreatine } = await supabaseAdmin
@@ -3175,7 +3221,6 @@ async function executeActions(
           // Core demographics
           if (action.height_cm) updates.height_cm = action.height_cm;
           if (action.weight_kg) {
-            updates.weight_kg = action.weight_kg;
             // Mirror into daily_metrics + TDEE check — the model routes plain
             // "85.5 kiloyum" statements here (not weight_log), and without this
             // the weight HISTORY (reports, trend, goal ETA) never got a row
@@ -3194,7 +3239,16 @@ async function executeActions(
                 { user_id: userId, weight_kg: wv, recorded_at: actionDate },
                 { onConflict: 'user_id,recorded_at' }
               );
-              recalculateTDEEIfNeeded(userId, wv).then(() => {}, () => {});
+              // FIX (audit AI-INT-04): only a CURRENT-day weigh-in is the live weight.
+              // A backdated profile_update weight (days_ago set, "geçen hafta 95 kiloydum")
+              // must record history but must NOT overwrite profiles.weight_kg or recalc TDEE,
+              // or an old weight clobbers the real current one and re-derives every calorie
+              // range from a stale value. Mirrors the system-prompt/regex-backdater intent
+              // that excludes weight from backdating.
+              if (actionDate === today) {
+                updates.weight_kg = action.weight_kg;
+                recalculateTDEEIfNeeded(userId, wv).then(() => {}, () => {});
+              }
             }
           }
           if (action.birth_year) updates.birth_year = action.birth_year;

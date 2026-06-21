@@ -119,9 +119,17 @@ export default function GoalsScreen() {
     setLoadingSuggestions(false);
   };
 
+  // FIX (audit UX-FRM-02): decimal-pad tr-TR Android'de virgül üretir ('70,5'); çıplak
+  // parseFloat virgülde kesip 70 döndürür. Tek noktada normalize + makul aralık (30-300 kg)
+  // koruması; aynı değer tempo gösterimi, agresif kontrol ve handleSave'de tekrar kullanılır.
+  const parsedTargetWeight = (() => {
+    const n = parseFloat(targetWeight.replace(',', '.'));
+    return Number.isFinite(n) && n >= 30 && n <= 300 ? n : null;
+  })();
+
   // Safety check for weekly rate
-  const weeklyRate = targetWeight && profile?.weight_kg
-    ? Math.abs((profile.weight_kg as number) - parseFloat(targetWeight)) / (parseInt(targetWeeks) || 12)
+  const weeklyRate = parsedTargetWeight && profile?.weight_kg
+    ? Math.abs((profile.weight_kg as number) - parsedTargetWeight) / (parseInt(targetWeeks) || 12)
     : 0;
   const safety = validateGoalSafety(goalType, weeklyRate, profile?.weight_kg as number ?? 70, profile?.height_cm as number | null);
 
@@ -133,7 +141,8 @@ export default function GoalsScreen() {
 
   // Check aggressive goal rate when target weight or weeks change
   useEffect(() => {
-    const tw = parseFloat(targetWeight);
+    // FIX (audit UX-FRM-02): virgül-normalize edilmiş tek değeri kullan (çıplak parseFloat değil).
+    const tw = parsedTargetWeight;
     const weeks = parseInt(targetWeeks) || 12;
     if (tw && profile?.weight_kg && (goalType === 'lose_weight' || goalType === 'gain_weight')) {
       const rate = Math.abs((profile.weight_kg as number) - tw) / weeks;
@@ -142,11 +151,13 @@ export default function GoalsScreen() {
     } else {
       setAggressiveWarning(null);
     }
-  }, [targetWeight, targetWeeks, goalType, profile]);
+  }, [parsedTargetWeight, targetWeeks, goalType, profile]);
 
   const handleSave = async () => {
     if (!user?.id) return;
-    const tw = parseFloat(targetWeight);
+    // FIX (audit UX-FRM-02): virgül-normalize + aralık-korumalı tek değer; validateWeeklyRate
+    // ve addPhase artık bozuk sayı yerine doğru kiloyu (ya da geçersizse null) alır.
+    const tw = parsedTargetWeight;
     const weeks = parseInt(targetWeeks) || 12;
 
     if (tw && profile?.weight_kg && (goalType === 'lose_weight' || goalType === 'gain_weight')) {

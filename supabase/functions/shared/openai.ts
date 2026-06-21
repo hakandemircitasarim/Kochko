@@ -45,6 +45,31 @@ interface CompletionOptions {
   maxTokens?: number;
   jsonMode?: boolean;
   stream?: boolean;
+  // FIX (audit AI-MDL-03) internal recursion flag: true once the current model
+  // has already been retried once for a transient failure. Callers never set this.
+  _sameModelRetried?: boolean;
+}
+
+// FIX (audit AI-MDL-03) Resolve the backoff delay (ms) before a transient retry.
+// Honours Retry-After when present (seconds OR HTTP-date), otherwise an exponential
+// step (500ms on the first transient hit, 1s on the second) so a single hiccup does
+// not silently downgrade quality and 5xx is never hammered without a pause.
+function resolveBackoffMs(response: Response, sameModelRetried: boolean): number {
+  const baseline = sameModelRetried ? 1000 : 500;
+  const raw = response.headers.get('retry-after');
+  if (raw) {
+    const asSeconds = Number(raw);
+    if (Number.isFinite(asSeconds) && asSeconds > 0) {
+      return Math.max(baseline, asSeconds * 1000);
+    }
+    // HTTP-date form (e.g. "Wed, 21 Oct 2026 07:28:00 GMT") — Number() yields NaN.
+    const asDate = Date.parse(raw);
+    if (Number.isFinite(asDate)) {
+      const deltaMs = asDate - Date.now();
+      if (deltaMs > 0) return Math.max(baseline, deltaMs);
+    }
+  }
+  return baseline;
 }
 
 /**
@@ -101,15 +126,24 @@ export async function chatCompletion<T = string>(
   if (!response.ok) {
     const err = await response.text();
     const transient = response.status === 429 || response.status >= 500;
-    // Retry with fallback model only on transient failures (Spec 5.25); re-throw 4xx immediately
+    // FIX (audit AI-MDL-03) On a transient failure (429 OR 5xx), first retry the
+    // SAME model once after a bounded backoff — a single hiccup must not silently
+    // downgrade gpt-4o to mini, and 5xx must not be retried instantly (which would
+    // hammer an already-struggling provider). Backoff now applies to 5xx too.
+    if (transient && !options?._sameModelRetried) {
+      const delayMs = resolveBackoffMs(response, false);
+      console.error(`OpenAI ${model} failed (${response.status}), retrying same model after ${delayMs}ms: ${err.substring(0, 200)}`);
+      await new Promise((r) => setTimeout(r, delayMs));
+      return chatCompletion<T>(messages, { ...options, model, _sameModelRetried: true });
+    }
+    // Same-model retry also failed (or it was the first failure on the fallback path):
+    // downgrade to the cheap fallback model, again after a bounded backoff (Spec 5.25).
     if (model !== MODELS.fallback && transient) {
-      if (response.status === 429) {
-        // respect Retry-After if present, else short backoff
-        const ra = Number(response.headers.get('retry-after'));
-        await new Promise((r) => setTimeout(r, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 500));
-      }
-      console.error(`OpenAI ${model} failed (${response.status}), falling back to ${MODELS.fallback}: ${err.substring(0, 200)}`);
-      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback });
+      const delayMs = resolveBackoffMs(response, true);
+      console.error(`OpenAI ${model} failed again (${response.status}), falling back to ${MODELS.fallback} after ${delayMs}ms: ${err.substring(0, 200)}`);
+      await new Promise((r) => setTimeout(r, delayMs));
+      // Reset the per-model retry flag so the fallback model also gets its own single retry.
+      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false });
     }
     throw new Error(`OpenAI error (${model}): ${response.status} - ${err}`);
   }
@@ -142,7 +176,9 @@ export async function chatCompletion<T = string>(
     const refusal = choice?.message?.refusal;
     // Empty completion (content_filter / refusal / length). Try fallback model once.
     if (model !== MODELS.fallback) {
-      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback });
+      // FIX (audit AI-MDL-03) reset the per-model HTTP-retry flag so the fallback
+      // model still gets its own single transient-retry budget when reached this way.
+      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false });
     }
     throw new Error(`OpenAI returned empty content (finish_reason=${finish}${refusal ? `, refusal=${refusal}` : ''})`);
   }

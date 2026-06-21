@@ -92,6 +92,15 @@ export function analyzeMessage(message: string, taskMode: TaskMode): MessageAnal
   switch (taskMode) {
     case 'register':
       return analyzeRegister(lower);
+    // FIX (audit AI-MDL-06): daily_log used to hit the default branch and return
+    // subtype:'general_coaching' (a SMART_SUBTYPE), routing even a simple "su içtim"
+    // log to gpt-4o and defeating the two-tier cost split. Detect logs here so they
+    // get a fast-tier subtype, but keep taskMode:'daily_log' so getRetrievalPlan's
+    // rich daily_log branch still fires (delegating straight to analyzeRegister
+    // would mislabel taskMode as 'register' and lose that scope). Non-log
+    // conversational turns stay on general_coaching (smart) — unchanged behavior.
+    case 'daily_log':
+      return analyzeDailyLog(lower);
     case 'plan':
       return analyzePlan(lower);
     case 'coaching':
@@ -153,6 +162,34 @@ function analyzeRegister(lower: string): MessageAnalysis {
     return { ...base, subtype: 'weight_log', recencyNeed: 'week' };
   }
   return { ...base, subtype: 'water_sleep_mood_log' };
+}
+
+// FIX (audit AI-MDL-06): daily_log log-detection. Same keyword signals as
+// analyzeRegister so simple logs land on a fast-tier subtype, but taskMode stays
+// 'daily_log' (preserving getRetrievalPlan's rich daily_log scope) and anything
+// that is not clearly a log keeps general_coaching/smart, matching prior behavior.
+function analyzeDailyLog(lower: string): MessageAnalysis {
+  const base: Omit<MessageAnalysis, 'subtype'> = {
+    taskMode: 'daily_log',
+    riskLevel: 'low',
+    requiresPersonalization: true,
+    recencyNeed: 'today',
+  };
+
+  if (/yedim|ictim|içtim|kahvalt|ogle|öğle|aksam|akşam|atistir|atıştır/.test(lower)) {
+    return { ...base, subtype: 'meal_log' };
+  }
+  if (/yaptim|yaptım|kostum|koştum|yurudum|yürüdüm|antrenman|salon|egzersiz/.test(lower)) {
+    return { ...base, subtype: 'workout_log' };
+  }
+  if (/\d+\s*k(g|ilo)|tartildim|tartıldım/.test(lower)) {
+    return { ...base, subtype: 'weight_log', recencyNeed: 'week' };
+  }
+  if (/su\s*ic|su\s*iç|uyku|uyudum|uyandim|uyandım|ruh\s*hal|moralim|kendimi/.test(lower)) {
+    return { ...base, subtype: 'water_sleep_mood_log' };
+  }
+  // Not a log → keep the prior smart-tier coaching default (no behavior change).
+  return { ...base, subtype: 'general_coaching' };
 }
 
 function analyzePlan(lower: string): MessageAnalysis {

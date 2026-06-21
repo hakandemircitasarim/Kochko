@@ -39,7 +39,10 @@ function localDayStartIso(
   tz: string | null | undefined,
   dayBoundaryHour: number | null | undefined,
 ): string {
-  const boundary = typeof dayBoundaryHour === 'number' ? dayBoundaryHour : 0;
+  // FIX (audit AI-MDL-07): default to 4 (not 0) when day_boundary_hour is explicitly
+  // NULL, matching src/lib/day-boundary.ts and the DB column default + this file's header.
+  // An explicit-NULL profile otherwise got a cap window resetting at 00:00 instead of 04:00.
+  const boundary = typeof dayBoundaryHour === 'number' ? dayBoundaryHour : 4;
   const now = new Date();
   try {
     if (tz) {

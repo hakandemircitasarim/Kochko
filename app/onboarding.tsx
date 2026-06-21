@@ -268,6 +268,45 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
       }
     }
 
+    // FIX (audit UX-ONB-03): tek bir yazım hatası (boy '17', kilo '8') doğrudan
+    // calculateBMR/TDEE'ye akıp profili çöp kalori aralıklarıyla bozuyordu. DB
+    // sütunları çok geniş ve istemci-tarafı clamp yoktu; doğum yılındaki 18+
+    // koruma kalıbını aynalayarak makul sınırlarla reddet.
+    const heightVal = parseInt(heightCm);
+    const weightVal = parseFloat(weightKg);
+    if (!Number.isFinite(heightVal) || heightVal < 100 || heightVal > 230) {
+      haptics.error();
+      Alert.alert('Geçersiz boy', 'Lütfen 100-230 cm arasında geçerli bir boy gir.');
+      return;
+    }
+    if (!Number.isFinite(weightVal) || weightVal < 30 || weightVal > 300) {
+      haptics.error();
+      Alert.alert('Geçersiz kilo', 'Lütfen 30-300 kg arasında geçerli bir kilo gir.');
+      return;
+    }
+    if (needsTargetWeight) {
+      const targetVal = parseFloat(targetWeightKg);
+      if (!Number.isFinite(targetVal) || targetVal < 30 || targetVal > 300) {
+        haptics.error();
+        Alert.alert('Geçersiz hedef kilo', 'Lütfen 30-300 kg arasında geçerli bir hedef kilo gir.');
+        return;
+      }
+      // FIX (audit UX-ONB-02): hedef yönünü doğrula. 'Kilo Vermek' seçen biri mevcuttan
+      // yüksek (veya 'Kas Kazanmak' mevcuttan düşük) hedef girerse handleComplete
+      // Math.abs ile tutarsız bir tempo/ETA üretiyordu. goals tablosunda yön CHECK'i
+      // yok ve validateWeeklyRate onboarding'den çağrılmıyor; burada inline engelle.
+      if (goalType === 'lose_weight' && targetVal >= weightVal) {
+        haptics.error();
+        Alert.alert('Hedef kilo tutarsız', 'Kilo vermek için hedef kilo mevcut kilonun altında olmalı.');
+        return;
+      }
+      if (goalType === 'gain_muscle' && targetVal <= weightVal) {
+        haptics.error();
+        Alert.alert('Hedef kilo tutarsız', 'Kas kazanmak için hedef kilo mevcut kilonun üstünde olmalı.');
+        return;
+      }
+    }
+
     setSaving(true);
 
     try {

@@ -442,7 +442,10 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
   // These phrasings ("günde 500 kalori yemek istiyorum", "çok hızlı zayıflamak istiyorum")
   // matched no ED pattern, so the spec-required professional-support framing depended
   // entirely on the LLM (which omitted it). Make it deterministic.
-  const EATING_CTX = /(ye|yi?yec|yemek|alaca|alıyor|aliyor|gün(de)?|gun(de)?|diyet|beslen|tüket|tuket)/;
+  // FIX (audit AI-GRD-02): bare "yiyorum"/"yiyom" present-tense conjugations matched
+  // none of the prior alternatives (only "ye"/"yiyec" roots), so "sadece 600 kalori
+  // yiyorum" slipped past. Add the "yiyor" stem + common eating conjugations.
+  const EATING_CTX = /(ye|yiyor|yedim|yiyom|yicem|yicek|öğün|ogun|yi?yec|yemek|alaca|alıyor|aliyor|gün(de)?|gun(de)?|diyet|beslen|tüket|tuket)/;
   const DEFICIT_CTX = /(açık|acik|defisit|yak|harca)/; // "500 kalori açık" is a deficit, not intake
   const kcalMatch = lower.match(/(\d{2,4})\s*(kalori|kcal|kal\b|cal\b)/);
   if (kcalMatch && !DEFICIT_CTX.test(lower)) {
@@ -460,6 +463,17 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
       isRisk: true,
       severity: 'medium',
       message: 'Cok hizli kilo verme istegini anliyorum ama saglikli kayip haftada 0.5-1 kg arasidir; daha hizlisi kas kaybi ve saglik riski getirir. Istersen bir uzman diyetisyen/psikolog destegiyle guvenli ve kalici bir plan kuralim.',
+    };
+  }
+
+  // FIX (audit AI-GRD-03): literal "hiç yemiyorum" substrings missed "hiç yemek
+  // yemiyorum" — the object ("yemek"/"bir şey") sits between "hiç" and "yemiyorum"
+  // and breaks lower.includes(). Match with an optional-object regex instead.
+  if (/hi[cç]\s*(bir\s*[sş]ey|yemek)?\s*yemiyorum/.test(lower) || /hi[cç]bir\s*[sş]ey\s*yemiyorum/.test(lower)) {
+    return {
+      isRisk: true,
+      severity: 'medium',
+      message: 'Anlattiklarin beni endiselendiiriyor. Bir uzman diyetisyen veya psikolog ile gorusmeni oneririm. Bu konuda profesyonel destek almak guclu bir adimdir.',
     };
   }
 
@@ -734,6 +748,14 @@ const EXERCISE_BODY_PART_MAP: Record<string, string[]> = {
   'olu kaldiris': ['back', 'hamstring', 'hip'],
   'ölü kaldırma': ['back', 'hamstring', 'hip'],
   'barfiks': ['shoulder', 'elbow'],
+  // FIX (audit AI-GRD-04): Turkish machine/compound leg names were missing, so a
+  // coach writing "bacak presi yap" to a knee-injured user produced no conflict.
+  'bacak presi': ['knee', 'quad'],
+  'bacak pres': ['knee', 'quad'],
+  'bacak ekstansiyon': ['knee', 'quad'],
+  'bacak ekstansiyonu': ['knee', 'quad'],
+  'bacak curl': ['hamstring', 'knee'],
+  'arka bacak': ['hamstring', 'knee'],
 };
 
 /**

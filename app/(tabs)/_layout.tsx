@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { Tabs, router } from 'expo-router';
 import { View, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
+import { useProfileStore } from '@/stores/profile.store';
 
 type IconName = 'home' | 'chatbubble-ellipses' | 'add' | 'bar-chart' | 'person';
 
@@ -39,6 +41,18 @@ function FABButton() {
 export default function TabLayout() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  // FIX (audit UX-ONB-04): defense-in-depth onboarding gate. index.tsx is the
+  // primary guard, but any navigation that reaches a (tabs) route without passing
+  // through it (future deep link, router.replace) would otherwise enter the authed
+  // app with onboarding incomplete. Only redirect when the profile is loaded AND
+  // onboarding_completed is explicitly false — never while it's null/loading, so
+  // this can't fight index.tsx's routing or loop.
+  const profile = useProfileStore((s) => s.profile);
+  const onboardingIncomplete = !!profile && !profile.onboarding_completed;
+  useEffect(() => {
+    if (onboardingIncomplete) router.replace('/onboarding');
+  }, [onboardingIncomplete]);
+
   const isWeb = Platform.OS === 'web';
   const tabBarPaddingBottom = isWeb ? 4 : Math.max(insets.bottom, 12);
   const tabBarHeight = isWeb ? 56 : 56 + tabBarPaddingBottom;

@@ -647,8 +647,26 @@ export async function analyzeLateMealSleep(userId: string): Promise<void> {
 
   if (diff < 0.5) return; // no meaningful correlation
 
-  const note = `Gec yemek (21:00+) → uyku kalitesi gozleminde ortalama ${avgLate.toFixed(1)}sa vs erken yemek gunlerinde ${avgEarly.toFixed(1)}sa (fark ${diff.toFixed(1)}sa).`;
-  await updateLayer2(userId, { caffeine_sleep_notes: note }).then(() => {}, () => {});
+  // FIX (audit AI-MEM-03): caffeine_sleep_notes is a shared scalar/TEXT column —
+  // the chat path APPENDS real caffeine notes to it (ai-chat/index.ts:4334-4336).
+  // A bare updateLayer2({ caffeine_sleep_notes }) goes through ai_summary_merge's
+  // COALESCE-replace and would OVERWRITE every accumulated caffeine note with this
+  // single late-meal sentence on each weekly extractor run. Mirror the chat path:
+  // read the existing value, strip only our own prior "[date] Gec yemek-uyku:" line
+  // (so we don't stack one per week — same de-dup approach as line 795), date-stamp
+  // and self-label the insight, then append. Real caffeine notes are preserved.
+  const dateStr = new Date().toISOString().split('T')[0];
+  const note = `[${dateStr}] Gec yemek-uyku: gec yemek (21:00+) gunlerinde uyku ortalama ${avgLate.toFixed(1)}sa vs erken yemek gunlerinde ${avgEarly.toFixed(1)}sa (fark ${diff.toFixed(1)}sa).`;
+  const { data: existing } = await supabaseAdmin
+    .from('ai_summary').select('caffeine_sleep_notes').eq('user_id', userId).maybeSingle();
+  const prior = (existing?.caffeine_sleep_notes as string) ?? '';
+  const cleaned = prior
+    .split('\n')
+    .filter(line => !line.includes('Gec yemek-uyku:'))
+    .join('\n')
+    .trim();
+  const merged = cleaned ? `${cleaned}\n${note}` : note;
+  await updateLayer2(userId, { caffeine_sleep_notes: merged }).then(() => {}, () => {});
 }
 
 /**

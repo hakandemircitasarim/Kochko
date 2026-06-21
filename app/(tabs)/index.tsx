@@ -264,7 +264,10 @@ export default function TodayScreen() {
         {returnStatus && returnStatus.level !== 'active' && (
           <View style={{
             backgroundColor: colors.card, borderRadius: RADIUS.md,
-            padding: SPACING.md, marginBottom: SPACING.md,
+            // FIX (audit UI-LAY-02) bu banner HeroSection'ın üstünde, ScrollView'ın
+            // ilk çocuğu olarak render olur; üst güvenli-alan inset'i HeroSection'a
+            // ait olduğundan burada kendi inset'ini eklemezse çentik altına kayar.
+            padding: SPACING.md, marginTop: insets.top, marginBottom: SPACING.md,
             borderLeftWidth: 3, borderLeftColor: colors.primary,
           }}>
             <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600', marginBottom: 4 }}>
@@ -308,7 +311,10 @@ export default function TodayScreen() {
             accessibilityLabel={`Denemen ${trialDaysLeft} gün sonra bitiyor. Premium'a geçmek için dokun`}
             style={{
               backgroundColor: colors.card, borderRadius: RADIUS.md,
-              padding: SPACING.md, marginBottom: SPACING.md,
+              // FIX (audit UI-LAY-02) return banner yoksa bu banner ScrollView'ın
+              // ilk çocuğu olabilir; üst inset'i kendi içinde uygular ki çentik
+              // altına kaymasın (marginTop sadece return banner gizliyken devreye girer).
+              padding: SPACING.md, marginTop: returnStatus && returnStatus.level !== 'active' ? 0 : insets.top, marginBottom: SPACING.md,
               borderLeftWidth: 3, borderLeftColor: colors.warning,
             }}
           >
@@ -335,7 +341,10 @@ export default function TodayScreen() {
              flashes like a real (and alarming) empty day. */
           <View
             accessibilityLabel="Bugünün verileri yükleniyor"
-            style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}
+            // FIX (audit UI-LAY-02) cold-load skeleton HeroSection'ın yerine geçer
+            // ve banner'lar genelde yokken ScrollView'ın ilk çocuğudur; üst güvenli-
+            // alan inset'ini ekleyerek çentik altına kaymasını önler.
+            style={{ paddingHorizontal: SPACING.xl, marginTop: insets.top + SPACING.xxl }}
           >
             <SkeletonBlock height={210} radius={RADIUS.lg} />
             <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.lg }}>

@@ -248,13 +248,19 @@ ${(() => {
     ? ((metrics?.water_liters ?? 0) >= plan.water_target_liters)
     : (report.water_target_met ?? false);
 
+  // FIX (audit AI-PRO-01): calorie/protein/carbs/fat/alcohol_calories are SMALLINT
+  // columns (max 32767). A single mis-parsed meal item (e.g. scaled to '10000g')
+  // could push a summed total past 32767 and 22003 the whole upsert, so the day's
+  // report is never saved. Clamp them like compliance_score/steps_actual already are.
+  const clampSmallInt = (n: number) => Math.max(0, Math.min(32767, Math.round(Number.isFinite(n) ? n : 0)));
+
   // Store
   const { error: upsertErr } = await supabaseAdmin.from('daily_reports').upsert({
     user_id: userId, date: reportDate,
     compliance_score: report.compliance_score,
-    calorie_actual: totalCal, protein_actual: Math.round(totalPro),
-    carbs_actual: Math.round(totalCarb), fat_actual: Math.round(totalFat),
-    alcohol_calories: totalAlcCal,
+    calorie_actual: clampSmallInt(totalCal), protein_actual: clampSmallInt(totalPro),
+    carbs_actual: clampSmallInt(totalCarb), fat_actual: clampSmallInt(totalFat),
+    alcohol_calories: clampSmallInt(totalAlcCal),
     calorie_target_met: calorieTargetMet,
     protein_target_met: proteinTargetMet,
     workout_completed: workoutCompleted,

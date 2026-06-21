@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 const EVENT_TYPES = ['surgery', 'injury', 'illness', 'medication', 'allergy', 'other'];
 const EVENT_LABELS: Record<string, string> = { surgery: 'Ameliyat', injury: 'Sakatlık', illness: 'Hastalık', medication: 'İlaç', allergy: 'Alerji', other: 'Diğer' };
@@ -62,7 +63,8 @@ export default function HealthEventsScreen() {
                 style={{ paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 8, borderWidth: 1,
                   borderColor: type === t ? COLORS.primary : COLORS.border,
                   backgroundColor: type === t ? COLORS.primary : 'transparent' }}>
-                <Text style={{ color: type === t ? '#fff' : COLORS.textSecondary, fontSize: FONT.xs }}>{EVENT_LABELS[t]}</Text>
+                {/* FIX (audit UI-STA-04): seçili chip metni '#fff' yerine getContrastColor(COLORS.primary) (siyah, teal üzerinde WCAG AA geçer; beyaz 3.39:1 idi). */}
+                <Text style={{ color: type === t ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.xs }}>{EVENT_LABELS[t]}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -74,6 +76,14 @@ export default function HealthEventsScreen() {
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Devam ediyor</Text>
           </TouchableOpacity>
           <Button title="Kaydet" onPress={handleAdd} />
+        </Card>
+      )}
+
+      {/* FIX (audit UI-STA-04): boş durumda (yeni kullanıcı / kayıt yok) form altında hiçbir şey çıkmıyordu; kardeş liste ekranları gibi açıklayıcı boş-durum kartı eklendi. */}
+      {events.length === 0 && (
+        <Card style={{ marginTop: SPACING.md }}>
+          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz sağlık olayın yok</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Ameliyat, sakatlık, kronik hastalık veya alerji gibi kayıtları buraya ekle; koçun planı bunlara göre güvenli tutar.</Text>
         </Card>
       )}
 

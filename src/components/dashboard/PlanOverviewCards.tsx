@@ -29,6 +29,9 @@ export function PlanOverviewCards({ userId }: Props) {
   const { colors } = useTheme();
   const [diet, setDiet] = useState<PlanRow | null>(null);
   const [workout, setWorkout] = useState<PlanRow | null>(null);
+  // FIX (audit UI-STA-02): track first-fetch completion so we don't flash the
+  // 'planın yok' empty state before getActive() resolves on initial mount.
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -38,6 +41,7 @@ export function PlanOverviewCards({ userId }: Props) {
     ]);
     setDiet(d);
     setWorkout(w);
+    setLoaded(true);
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
@@ -51,6 +55,7 @@ export function PlanOverviewCards({ userId }: Props) {
         color={colors.primary}
         plan={diet}
         planType="diet"
+        loaded={loaded}
         onPress={() => router.push('/plan/diet' as never)}
       />
       <PlanCard
@@ -59,6 +64,7 @@ export function PlanOverviewCards({ userId }: Props) {
         color={colors.purple}
         plan={workout}
         planType="workout"
+        loaded={loaded}
         onPress={() => router.push('/plan/workout' as never)}
       />
       <TouchableOpacity
@@ -91,6 +97,7 @@ function PlanCard({
   color,
   plan,
   planType,
+  loaded,
   onPress,
 }: {
   title: string;
@@ -98,6 +105,7 @@ function PlanCard({
   color: string;
   plan: PlanRow | null;
   planType: 'diet' | 'workout';
+  loaded: boolean;
   onPress: () => void;
 }) {
   const { colors } = useTheme();
@@ -105,6 +113,12 @@ function PlanCard({
 
   const { primary, secondary, chip } = (() => {
     if (!plan) {
+      // FIX (audit UI-STA-02): until the first fetch resolves we can't tell an
+      // empty plan from a not-yet-loaded one, so show a neutral placeholder
+      // instead of flashing the 'planın yok' empty state on initial mount.
+      if (!loaded) {
+        return { primary: 'Yükleniyor…', secondary: '', chip: null };
+      }
       return {
         primary: planType === 'diet' ? 'Diyet planın yok' : 'Antrenman planın yok',
         secondary: 'Oluşturmak için dokun',

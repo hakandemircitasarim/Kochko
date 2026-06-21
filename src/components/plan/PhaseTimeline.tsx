@@ -5,7 +5,7 @@
  * Mevcut faz konumunu, geçiş bölgelerini ve gelecek fazları gösterir.
  */
 import { View, Text } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { COLORS, SPACING, FONT, MAX_FONT_SCALE } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
 interface Phase {
@@ -102,12 +102,20 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
         {phases.map((phase) => {
           const widthPct = (phase.targetWeeks / totalWeeks) * 100;
           return (
-            <View key={phase.id} style={{ width: `${widthPct}%`, alignItems: 'center' }}>
-              <Text style={{
-                color: phase.isActive ? COLORS.text : COLORS.textMuted,
-                fontSize: 10,
-                fontWeight: phase.isActive ? '600' : '400',
-              }}>
+            // FIX (audit UI-PLN-01): dar fazlarda serbest-metin etiketin komşu hücrelere
+            // taşmaması için hücreyi clip'le.
+            <View key={phase.id} style={{ width: `${widthPct}%`, alignItems: 'center', overflow: 'hidden' }}>
+              <Text
+                // FIX (audit UI-PLN-01): tek satır + ellipsis ve büyük sistem fontunda taşma artmasın.
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                maxFontSizeMultiplier={MAX_FONT_SCALE}
+                style={{
+                  color: phase.isActive ? COLORS.text : COLORS.textMuted,
+                  fontSize: 10,
+                  fontWeight: phase.isActive ? '600' : '400',
+                }}
+              >
                 {phase.label ?? `${phase.targetWeeks}h`}
               </Text>
             </View>

@@ -10,7 +10,9 @@ interface Props {
 
 export function SectionHeader({ title }: Props) {
   return (
-    <Text style={{
+    <Text
+      accessibilityRole="header" // FIX (audit UI-PR-02): mark section title as header so screen-reader rotor/TalkBack can jump between sections, matching ScreenHeader
+      style={{
       color: COLORS.textSecondary,
       fontSize: FONT.xs,
       fontWeight: '600',

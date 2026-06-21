@@ -13,6 +13,7 @@ import { sanitizeText } from '../shared/guardrails.ts';
 import { denyIfNotCron, cronHeaders } from '../shared/cron-auth.ts';
 import { isIFCompatible, getSeasonalContext, type PeriodicState } from '../shared/periodic-config.ts';
 import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../shared/service-contexts.ts';
+import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 
 const NUDGE_PROMPT = `Sen Kochko kocusun. Kullanicinin durumunu degerlendir.
 SADECE gercekten gerekli oldugunda mesaj uret. Spam YAPMA.
@@ -36,7 +37,7 @@ serve(async (req: Request) => {
 
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length')
+      .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone, day_boundary_hour, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length')
       .eq('onboarding_completed', true)
       .order('id'); // #L19: stable order so the rotating window below covers the whole fleet
 
@@ -57,7 +58,13 @@ serve(async (req: Request) => {
     let fleet = profiles as typeof profiles;
     if (fleet.length > FLEET_WINDOW) {
       const windowCount = Math.ceil(fleet.length / FLEET_WINDOW);
-      const startIdx = (utcHour % windowCount) * FLEET_WINDOW;
+      // FIX (audit AI-PRO-02): rotate by a full hour-epoch counter, not utcHour.
+      // utcHour only ranges 0..23, so once the fleet exceeds 24*FLEET_WINDOW=960
+      // users, windowCount > 24 and (utcHour % windowCount) could never reach
+      // windows 24..windowCount-1 — those tail users were starved every hour of
+      // every day. The hour-epoch slot cycles through ALL windows over time.
+      const slot = Math.floor(now.getTime() / 3600000) % windowCount;
+      const startIdx = slot * FLEET_WINDOW;
       fleet = fleet.slice(startIdx, startIdx + FLEET_WINDOW);
     }
 
@@ -1268,11 +1275,12 @@ ${(() => {
       const daysLeft = Math.ceil((new Date(profile.periodic_state_end).getTime() - now.getTime()) / 86400000);
       if (daysLeft <= 0) {
         triggers.push(`TETIK: DONEM DOLDU - ${ps} donemi sona erdi, gecis plani olustur`);
-        // Auto-clear expired state
-        supabaseAdmin.from('profiles').update({
-          periodic_state: null, periodic_state_start: null, periodic_state_end: null,
-          updated_at: new Date().toISOString(),
-        }).eq('id', profile.id).then(() => {});
+        // FIX (audit AI-PRO-03): emit the trigger text ONLY — do NOT clear state here.
+        // This partial clear nulled the three columns but skipped the seasonal_notes
+        // snapshot and the paused-challenge resume that the morning block (lines
+        // ~455-517) performs. Whichever path fired first won; when this windowed loop
+        // won, the period summary + challenge resume were lost permanently. The single
+        // full morning block now owns the complete clear (snapshot + null + resume).
       } else if (daysLeft <= 3) {
         triggers.push(`TETIK: GECIS YAKLASYOR - ${ps} donemi ${daysLeft} gun icinde bitiyor`);
       }
@@ -1409,11 +1417,21 @@ ${sentTodayContext}`;
       yesterday.setDate(yesterday.getDate() - 1);
       const yesterdayStr = yesterday.toISOString().split('T')[0];
 
-      for (const profile of profiles as { id: string }[]) {
-        // Check if yesterday's report already exists
+      for (const profile of profiles as { id: string; home_timezone: string | null; active_timezone: string | null; day_boundary_hour: number | null }[]) {
+        // FIX (audit AI-PRO-05): aggregate the report over the USER's effective
+        // yesterday, not the raw UTC yesterday. meal_logs.logged_for_date is
+        // written on the user's effective day (tz + day_boundary_hour), and
+        // generateDailyReport sums meals with eq('logged_for_date', reportDate).
+        // For non-UTC+3 / custom-boundary users, 'UTC yesterday' is not their
+        // yesterday, so the auto-report aggregated the wrong calendar day.
+        const tz = profile.active_timezone ?? profile.home_timezone;
+        const effectiveToday = getEffectiveDateForUser(tz, profile.day_boundary_hour, now);
+        const reportDate = shiftDateString(effectiveToday, -1);
+
+        // Check if the user's effective-yesterday report already exists
         const { data: existingReport } = await supabaseAdmin
           .from('daily_reports').select('id')
-          .eq('user_id', profile.id).eq('date', yesterdayStr).maybeSingle();
+          .eq('user_id', profile.id).eq('date', reportDate).maybeSingle();
 
         if (!existingReport) {
           // Trigger report generation by calling ai-report function internally
@@ -1426,7 +1444,7 @@ ${sentTodayContext}`;
               // cron-secret guard is configured. CRON_SECRET unset → header
               // value is undefined and the call stays fail-open as before.
               headers: cronHeaders({ 'x-user-id': profile.id }),
-              body: JSON.stringify({ report_type: 'daily', date: yesterdayStr }),
+              body: JSON.stringify({ report_type: 'daily', date: reportDate }),
             });
           } catch { /* non-critical */ }
         }

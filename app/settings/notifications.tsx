@@ -34,12 +34,25 @@ export default function NotificationsScreen() {
 
   if (!prefs) return null;
 
+  // FIX (audit UX-FBK-03): updateNotificationPrefs returns false when the DB write fails.
+  // Optimistically apply `updated`, then await the result; on failure roll back to `previous`
+  // and signal the error (haptics.error + Alert) instead of leaving a lying toggle + success tap.
+  const persistPrefs = async (previous: NotificationPreferences, updated: NotificationPreferences) => {
+    setPrefs(updated);
+    if (!userId) return;
+    const ok = await updateNotificationPrefs(userId, updated);
+    if (!ok) {
+      setPrefs(previous);
+      haptics.error();
+      Alert.alert('Kaydedilemedi', 'Bildirim ayarın kaydedilemedi. Lütfen tekrar dene.');
+    }
+  };
+
   const toggleType = (key: string) => {
     haptics.tap();
     const types = { ...prefs.types, [key]: !prefs.types[key as keyof typeof prefs.types] };
     const updated = { ...prefs, types };
-    setPrefs(updated);
-    if (userId) updateNotificationPrefs(userId, updated);
+    void persistPrefs(prefs, updated); // FIX (audit UX-FBK-03): await + rollback on failure
   };
 
   const toggleMain = async () => {
@@ -66,22 +79,25 @@ export default function NotificationsScreen() {
       }
     }
     const updated = { ...prefs, enabled: next };
-    setPrefs(updated);
-    if (userId) updateNotificationPrefs(userId, updated);
+    await persistPrefs(prefs, updated); // FIX (audit UX-FBK-03): await + rollback on failure
   };
 
   // P3: persist daily-limit + quiet-hours (previously only setPrefs, never saved server-side).
   const persist = (updated: NotificationPreferences) => {
     haptics.tap();
-    setPrefs(updated);
-    if (userId) updateNotificationPrefs(userId, updated);
+    void persistPrefs(prefs, updated); // FIX (audit UX-FBK-03): await + rollback on failure
   };
   const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
   const updateQuiet = (key: 'quietStart' | 'quietEnd', value: string) => {
     const updated = { ...prefs, [key]: value };
-    setPrefs(updated);
     // Persist (and reschedule) only once a full HH:MM is typed, to avoid thrashing per keystroke.
-    if (userId && TIME_RE.test(value)) updateNotificationPrefs(userId, updated);
+    // FIX (audit UX-FBK-03): when valid, route through persistPrefs (await + rollback on failure);
+    // otherwise just reflect the partial input locally without a DB write.
+    if (userId && TIME_RE.test(value)) {
+      void persistPrefs(prefs, updated);
+    } else {
+      setPrefs(updated);
+    }
   };
 
   return (

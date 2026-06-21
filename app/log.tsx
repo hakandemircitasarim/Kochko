@@ -103,7 +103,9 @@ export default function QuickLogScreen() {
     try {
       const { error } = await sendMessage(text.trim());
       if (error) { haptics.error(); Alert.alert('Kayıt eklenemedi', error); }
-      else { await fetchToday(user.id, dayBoundaryHour); router.back(); }
+      // FIX (audit UX-FBK-06): route the primary text-log success through showSuccessAndClose so it
+      // fires haptics.success() + the animated confirmation card like water/weight/sleep/recovery do.
+      else { await fetchToday(user.id, dayBoundaryHour); showSuccessAndClose('Kaydın eklendi!'); }
     } catch (err) {
       haptics.error();
       const detail = err instanceof Error ? err.message : 'Bilinmeyen hata';
@@ -395,7 +397,10 @@ export default function QuickLogScreen() {
   // ====== WEIGHT SCREEN ======
   if (screen === 'weight') {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
+      // FIX (audit UI-LAY-03): pin content to the top (flex-start + paddingTop) instead of vertical
+      // centering. The autoFocused decimal-pad keyboard opens immediately and, in this modal, its top
+      // edge reaches above center on small devices and would cover the İptal/Kaydet buttons.
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'flex-start', alignItems: 'center', padding: SPACING.xl, paddingTop: insets.top + 64 }}>
         <TouchableOpacity
           onPress={() => setScreen('main')}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

@@ -343,6 +343,10 @@ export async function shouldDetectPersona(userId: string): Promise<boolean> {
 /**
  * Build persona detection instruction for the AI.
  */
+// FIX (audit AI-SYS-03): emit VALID JSON in the <layer2_update> block — matching
+// system-prompt.ts:311-313 and the extractLayer2Updates JSON.parse in ai-chat
+// index.ts:2471-2477. The old form (literal `user_persona: [tespit edilen persona]`)
+// is not JSON, so JSON.parse threw and the persona update was silently dropped.
 export function buildPersonaDetectionPrompt(messageCount: number): string {
   return `
 PERSONA TESPITI GEREKLI (${messageCount}+ mesaj).
@@ -354,9 +358,8 @@ Kullanicinin davranis kaliplarina bakarak asagidakilerden birini sec:
 - sosyal_yiyici: Disarida yemek ve sosyal etkinlikler etkiler
 - stres_yiyici: Stres ve duygusal tetikleyicilerle fazla yer
 
-<layer2_update>
-user_persona: [tespit edilen persona]
-</layer2_update> blogu ile kaydet.`;
+Tespit ettiginde mesajin SONUNA su blogu ekle (gecerli JSON, ekstractor JSON.parse eder):
+<layer2_update>{"user_persona": "disiplinli|motivasyon_bagimlisi|minimalist|veri_odakli|sosyal_yiyici|stres_yiyici"}</layer2_update>`;
 }
 
 // ─── Tone Adjustment ───

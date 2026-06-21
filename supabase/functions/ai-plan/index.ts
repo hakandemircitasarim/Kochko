@@ -434,6 +434,13 @@ serve(async (req: Request) => {
           calorie_range_rest_max: interpMax,
         }).eq('id', userId);
         if (transitionErr) throw new Error('profiles transition update failed: ' + transitionErr.message);
+        // FIX (audit AI-PLN-04): in-memory profile, transition UPDATE'inden sonra BAYAT kalıyordu;
+        // velocity maintenance tabanı (calorie_range_rest_min) ve haftalık-bütçe restMid fallback'i
+        // geçiş-öncesi aralıktan hesaplanıyordu. In-memory nesneyi de interpolated değerlere senkronla.
+        if (profile) {
+          profile.calorie_range_rest_min = interpMin;
+          profile.calorie_range_rest_max = interpMax;
+        }
       } else if (daysSince > 6) {
         // Transition complete: snap to final and clear transition markers
         const { error: transitionDoneErr } = await supabaseAdmin.from('profiles').update({
@@ -446,6 +453,12 @@ serve(async (req: Request) => {
           phase_transition_to_rest_max: null,
         }).eq('id', userId);
         if (transitionDoneErr) throw new Error('profiles transition completion update failed: ' + transitionDoneErr.message);
+        // FIX (audit AI-PLN-04): geçiş tamamlandığında da in-memory profile'ı final değerlere senkronla
+        // (aksi halde son geçiş gününde velocity tabanı/restMid hâlâ geçiş-öncesi aralıktan hesaplanırdı).
+        if (profile) {
+          profile.calorie_range_rest_min = tProfile.phase_transition_to_rest_min as number;
+          profile.calorie_range_rest_max = tProfile.phase_transition_to_rest_max as number;
+        }
       }
     }
 
@@ -514,6 +527,13 @@ serve(async (req: Request) => {
     // Structured output validation (Spec 5.29)
     const validated = validatePlanOutput(plan);
     Object.assign(plan, validated.corrected);
+    // FIX (audit AI-PLN-03/AI-EXT-06): validated.errors içindeki öğün-kalorisi-vs-hedef,
+    // makro-kalori tutarlılığı ve protein-eşit-dağılım uyarıları output'u mutate etmediği için
+    // sessizce kayboluyordu. Retry döngüsü ekleyip plan üretimini ağırlaştırmadan en azından bu
+    // sapmaları logla — böylece hedeften kayan/proteini yığan planlar gözlemlenebilir kalsın.
+    if (!validated.valid && validated.errors.length > 0) {
+      console.warn('[ai-plan] plan validation warnings:', validated.errors.join(' | '));
+    }
 
     // Guardrail: apply periodic calorie adjustment (code-enforced, not prompt-dependent)
     const periodicAdj = getPeriodicCalorieAdjustment(profile?.periodic_state, {

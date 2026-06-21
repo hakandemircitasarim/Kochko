@@ -16,6 +16,7 @@ import {
 import { getIncompleteTasks, getOnboardingProgress, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { OnboardingTaskCard } from '@/components/chat/OnboardingTaskCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
@@ -195,7 +196,11 @@ export default function SessionListScreen() {
   };
 
   // If prefill redirect is happening, show nothing
-  if ((prefill || openCamera) && !sessions.length) {
+  // FIX (audit UX-NAV-02) — boş-render'ı oturum sayısına değil yönlendirme
+  // durumunun kendisine bağla; aksi halde zaten oturumu olan kullanıcı için
+  // router.replace ateşlenmeden önce liste bir kare parlar. prefill/openCamera
+  // varken bu ekran yalnızca yönlendirme ara-noktasıdır, hep bastırılmalı.
+  if (prefill || openCamera) {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
@@ -273,7 +278,12 @@ export default function SessionListScreen() {
       )}
 
       {/* Session list */}
-      {sessions.length === 0 && !loading ? (
+      {/* FIX (audit UI-STA-01) — üç yollu dal: cold load'da (loading + boş liste)
+          boş ekran yerine skeleton göster; aksi halde herkes fetch çözülene kadar
+          ScreenHeader altında boş ekran görüyordu. */}
+      {sessions.length === 0 && loading ? (
+        <SkeletonScreen cards={3} />
+      ) : sessions.length === 0 && !loading ? (
         <EmptyState
           icon="chatbubble-ellipses-outline"
           title="Kochko ile tanış"

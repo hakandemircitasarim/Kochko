@@ -9,7 +9,7 @@
  * - Onboarding awareness (new user intro)
  * - Dashboard refresh after actions
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, ScrollView,
@@ -48,6 +48,7 @@ import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
+import { isActivePremium } from '@/lib/premium-gate';
 
 // Plan-rejection reasons (Spec 7.1 — multi-turn refine). Each entry is the short,
 // human-facing chip label + the fuller engineered instruction sent to the model.
@@ -97,6 +98,10 @@ interface UIMessage extends ChatMessage {
   failed?: boolean;
   errorMessage?: string;
   retryPayload?: { text: string; photoUri: string | null; taskMode?: string; backdate?: string | null };
+  // FIX (audit UI-CHT-05): local device URI of a photo the user just sent, so the
+  // optimistic user bubble can show the actual meal photo thumbnail instead of the
+  // literal '[Foto gönderildi]' placeholder. Client-only; not persisted/loaded.
+  localPhotoUri?: string;
 }
 
 function parseSimulationData(content: string): { cleanContent: string; data: SimulationData | null } {
@@ -344,7 +349,12 @@ export default function SessionDetailScreen() {
   }, []);
 
   const isOnboarding = profile && !profile.onboarding_completed;
-  const isPremium = !!(profile as Record<string, unknown> | null)?.premium;
+  // FIX (audit UX-PRM-03): use the duration-aware isActivePremium gate (honors
+  // premium_expires_at) instead of the raw profiles.premium boolean — which stays
+  // true for ~1-2 days past expiry during the cron grace window. The server's
+  // checkRateLimit uses isActivePremium, so the raw boolean made an expired-premium
+  // user see "unlimited" in the UI while the server enforced the free 50/day cap.
+  const isPremium = isActivePremium(profile);
 
   // Fetch remaining messages for free users on mount
   useEffect(() => {
@@ -617,6 +627,9 @@ export default function SessionDetailScreen() {
         role: 'user',
         content: photo ? (text ? `[Foto] ${text}` : '[Foto gönderildi]') : text,
         created_at: new Date().toISOString(),
+        // FIX (audit UI-CHT-05): keep the local photo URI on the optimistic bubble
+        // so the actual meal photo renders in-conversation (URI in hand here).
+        localPhotoUri: photo ?? undefined,
       };
       setMessages(prev => [...prev, userMsg]);
       setInput('');
@@ -916,10 +929,18 @@ export default function SessionDetailScreen() {
   const totalFat = useDashboardStore(s => s.totalFat);
   const totalCalories = useDashboardStore(s => s.totalCalories);
   const weeklyBudgetRemaining = useDashboardStore(s => s.weeklyBudgetRemaining);
-  const dashboardMacros = { protein: totalProtein, carbs: totalCarbs, fat: totalFat };
+  // FIX (audit UI-CHT-06): memoize so a stable object identity is passed to every
+  // MessageBubble — unrelated re-renders (keyboard, rate-limit countdown) no longer
+  // hand React.memo'd bubbles a fresh object each pass.
+  const dashboardMacros = useMemo(
+    () => ({ protein: totalProtein, carbs: totalCarbs, fat: totalFat }),
+    [totalProtein, totalCarbs, totalFat],
+  );
 
   // Compute macro gram targets from profile
-  const macroTargets = (() => {
+  // FIX (audit UI-CHT-06): memoize on the profile fields it derives from so the
+  // target object identity is stable across unrelated re-renders.
+  const macroTargets = useMemo(() => {
     const tdee = profile?.tdee_calculated ?? 2000;
     const pPct = profile?.macro_protein_pct ?? 30;
     const cPct = profile?.macro_carb_pct ?? 40;
@@ -929,7 +950,7 @@ export default function SessionDetailScreen() {
       carbs: Math.round((tdee * cPct / 100) / 4),
       fat: Math.round((tdee * fPct / 100) / 9),
     };
-  })();
+  }, [profile?.tdee_calculated, profile?.macro_protein_pct, profile?.macro_carb_pct, profile?.macro_fat_pct]);
 
   // "Neden bu öneriyi yaptın?" handler
   const handleAskWhy = useCallback((messageContent: string) => {
@@ -974,6 +995,64 @@ export default function SessionDetailScreen() {
     }, 0);
   }, [scrollToBottom]);
 
+  // Undo handler — routed through the SAME visible send path as a normal message
+  // (FIX audit UX-CHT-02). The old banner onPress fire-and-forget'd the request and
+  // discarded {data,error}: no user/assistant bubble, no typing, no error — tapping
+  // "Geri Al" just made the banner vanish with no visible feedback. Now we push a
+  // user bubble, show typing, append the AI reply, refresh the dashboard when the
+  // delete commits, and surface a failure if the request errors or no action lands.
+  const handleUndo = useCallback((undo: { type: string; messageId: string; expiresAt: number }) => {
+    if (sending) return;
+    haptics.tap();
+    const undoText = `Son ${undo.type === 'meal_log' ? 'ogun' : undo.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydini geri al`;
+    setUndoAction(null);
+    setTimeout(async () => {
+      const userMsg: UIMessage = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: undoText,
+        created_at: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, userMsg]);
+      setTypingLabel(undefined);
+      setSending(true);
+      scrollToBottom(true);
+
+      const { data, error } = await sendMessageToSession(sessionId, undoText);
+      if (data) {
+        const reply: UIMessage = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: data.message,
+          task_mode: data.task_mode,
+          created_at: new Date().toISOString(),
+          actions: data.actions,
+          showFeedback: false,
+        };
+        setMessages(prev => [...prev, reply]);
+        const committed = data.actions.some(a => a.feedback);
+        if (committed && user?.id) {
+          haptics.success(); // delete committed — tactile confirm
+          refreshDashboard(user.id);
+        } else if (!committed) {
+          // Request succeeded but the model produced no delete action — don't leave
+          // the user believing the record was removed. Verify before assuming.
+          haptics.error();
+          Alert.alert('Geri alınamadı', 'Kaydı silemedim — son kaydını kontrol edip gerekirse tekrar dene.');
+        }
+      } else {
+        // Mirror the main send path: flip the user's own bubble to a failed/retry
+        // state instead of silently dropping the error.
+        haptics.error();
+        setMessages(prev => prev.map(m => m.id === userMsg.id
+          ? { ...m, failed: true, errorMessage: error ?? 'Geri alma başarısız. Tekrar dene.', retryPayload: { text: undoText, photoUri: null } }
+          : m));
+      }
+      setSending(false);
+      scrollToBottom();
+    }, 0);
+  }, [sending, sessionId, scrollToBottom, user?.id, refreshDashboard]);
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
@@ -989,6 +1068,14 @@ export default function SessionDetailScreen() {
   const taskSessionClosed = !!taskModeHint && messages.some(m => (m as UIMessage).taskCompletion?.completed);
 
   const sendDisabled = (!input.trim() && !photo) || sending || taskSessionClosed;
+
+  // FIX (audit UI-CHT-06): build the separator-decorated row list once per messages
+  // change instead of re-running filter+withDateSeparators (new array/object
+  // identities) on every unrelated re-render (keyboard, rate-limit countdown).
+  const messageRows = useMemo(
+    () => withDateSeparators(messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]')))),
+    [messages],
+  );
 
   return (
     <KeyboardAvoidingView
@@ -1075,7 +1162,7 @@ export default function SessionDetailScreen() {
         <View style={{ flex: 1 }}>
           <FlatList
             ref={listRef}
-            data={withDateSeparators(messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]'))))}
+            data={messageRows}
             keyExtractor={item => item.kind === 'separator' ? `sep-${item.key}` : (item.msg as UIMessage).id}
             renderItem={({ item }) => {
               if (item.kind === 'separator') return <DateSeparator label={item.label} />;
@@ -1206,11 +1293,10 @@ export default function SessionDetailScreen() {
       {undoAction && Date.now() < undoAction.expiresAt && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
           <TouchableOpacity
-            onPress={async () => {
-              const undoText = `Son ${undoAction.type === 'meal_log' ? 'ogun' : undoAction.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydini geri al`;
-              setUndoAction(null);
-              await sendMessageToSession(sessionId, undoText);
-            }}
+            // FIX (audit UX-CHT-02): route undo through handleUndo (visible send
+            // path with typing + AI bubble + dashboard refresh + error surfacing)
+            // instead of a fire-and-forget request that discarded its result.
+            onPress={() => handleUndo(undoAction)}
             style={{
               backgroundColor: colors.warning, borderRadius: RADIUS.pill,
               paddingVertical: 6, paddingHorizontal: SPACING.xl, alignSelf: 'center',
@@ -1430,6 +1516,28 @@ function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = tr
         </View>
       )}
 
+      {/* FIX (audit UI-CHT-04): a session that loads with exactly one persisted
+          USER message (e.g. the assistant reply failed to persist server-side) used
+          to be dropped here — EmptyState only rendered a lone assistant message, so
+          the user saw the generic "Kochko ile konuş" starter as if they'd never
+          written anything. Render that lone user message instead of losing it. */}
+      {messages.length === 1 && messages[0].role === 'user' && (
+        <View style={{
+          alignSelf: 'flex-end',
+          maxWidth: '86%',
+          backgroundColor: colors.primary,
+          borderRadius: 18,
+          borderBottomRightRadius: 4,
+          paddingHorizontal: SPACING.lg,
+          paddingVertical: SPACING.md,
+          marginBottom: SPACING.xxl,
+        }}>
+          <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', fontSize: 14, lineHeight: 21 }}>
+            {messages[0].content}
+          </Text>
+        </View>
+      )}
+
       {/* Fresh chat header — only when there are zero messages */}
       {messages.length === 0 && (
         <View style={{ marginBottom: SPACING.lg }}>
@@ -1536,7 +1644,11 @@ function MessageBubbleFrame({ isUser, children }: { isUser: boolean; children: R
   );
 }
 
-function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry }: {
+// FIX (audit UI-CHT-06): wrapped in memo so a bubble only re-renders when its own
+// props change. With the now-stable (useMemo/useCallback) props from the parent,
+// unrelated re-renders (keyboard, per-second rate-limit countdown, dashboard totals)
+// no longer re-render every visible bubble.
+const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
@@ -1595,7 +1707,22 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
         borderBottomLeftRadius: isUser ? 18 : 4,
         ...(isUser ? {} : { borderWidth: 0.5, borderColor: colors.border }),
       }}>
-        {/* Message content (strip leaked XML, support **bold** inline formatting) */}
+        {/* FIX (audit UI-CHT-05): render the user's just-sent meal photo as a
+            thumbnail inside their own bubble. The local URI is carried on the
+            optimistic message (localPhotoUri); persisted/loaded messages have no
+            URI and fall back to the placeholder text below. */}
+        {isUser && message.localPhotoUri && (
+          <Image
+            source={{ uri: message.localPhotoUri }}
+            accessibilityLabel="Gönderilen fotoğraf"
+            style={{ width: 180, height: 180, borderRadius: RADIUS.md, marginBottom: SPACING.xs }}
+          />
+        )}
+
+        {/* Message content (strip leaked XML, support **bold** inline formatting).
+            FIX (audit UI-CHT-05): hide the bare '[Foto gönderildi]' placeholder when
+            the photo thumbnail is already shown — keep any real caption text. */}
+        {!(isUser && message.localPhotoUri && message.content === '[Foto gönderildi]') && (
         <Text
           selectable
           onLongPress={() => {
@@ -1616,6 +1743,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
             </Text>
           ))}
         </Text>
+        )}
 
         {/* Navigate-to chip — AI hints the user to a plan screen (Phase 5) */}
         {!isUser && message.navigateTo && (
@@ -1834,7 +1962,7 @@ function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQui
       )}
     </MessageBubbleFrame>
   );
-}
+}); // FIX (audit UI-CHT-06): close memo() wrapper
 
 /**
  * PlanRejectReasons — inline reason chips for "Neyi değiştirelim?".

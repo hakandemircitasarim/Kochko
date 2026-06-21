@@ -260,7 +260,11 @@ export default function CoachMemoryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Stack.Screen options={{ title: 'Kochko\'nun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
+      {/* FIX (audit UI-SET-02): dropped redundant per-screen `title` override that silently
+          shadowed _layout.tsx and conflicted with the body H1 (and used a different brand spelling).
+          Header title now falls through to _layout.tsx ('Koçko Senin Hakkında Ne Biliyor'),
+          matching the body H1 below. */}
+      <Stack.Screen options={{ headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
 
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>

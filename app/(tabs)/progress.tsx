@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, useWindowDimensions, ActivityIndicator, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
@@ -20,19 +20,24 @@ import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
-const chartWidth = Dimensions.get('window').width - SPACING.md * 4;
-
 interface MetricPt { date: string; weight_kg: number | null; water_liters: number; sleep_hours: number | null; steps: number | null; }
 interface CompPt { date: string; compliance_score: number; }
 
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
+  // FIX (audit UI-TAB-01/UI-TAB-02): derive chart width per-render from useWindowDimensions
+  // (recomputes on rotate/split-screen) and subtract the REAL inset — ScrollView pad
+  // (SPACING.md*2) + Card inner pad (SPACING.lg*2) — so the chart isn't clipped by the
+  // overflow:'hidden' Card. (was a stale module constant of window − SPACING.md*4).
+  const { width: windowWidth } = useWindowDimensions();
+  const chartWidth = windowWidth - SPACING.md * 2 - SPACING.lg * 2;
   const { colors, isDark } = useTheme();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const [metrics, setMetrics] = useState<MetricPt[]>([]);
   const [compliance, setCompliance] = useState<CompPt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false); // FIX (audit UI-STA-05): distinguish load failure from empty data
   const [plateauMsg, setPlateauMsg] = useState<string | null>(null);
   const [plateauStatus, setPlateauStatus] = useState<PlateauStatus | null>(null);
   const [strategyRec, setStrategyRec] = useState<StrategyRecommendation | null>(null);
@@ -64,6 +69,7 @@ export default function ProgressScreen() {
   const load = useCallback(async () => {
     if (!user?.id) { setLoading(false); return; }
     const from = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
+    setError(false); // FIX (audit UI-STA-05): reset before each attempt
     try {
       const [m, c, plateau, maintenance, timeline, engagementData] = await Promise.all([
         supabase.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps').eq('user_id', user.id).gte('date', from).order('date'),
@@ -107,6 +113,7 @@ export default function ProgressScreen() {
       // Never leave the primary Raporlar tab stuck on the spinner — a single
       // rejected promise (e.g. a network drop) must still clear loading (#R3-1).
       console.warn('[progress] load failed', err);
+      setError(true); // FIX (audit UI-STA-05): surface a retry path instead of looking like an empty new-user screen
     } finally {
       setLoading(false);
     }
@@ -196,6 +203,18 @@ export default function ProgressScreen() {
 
   if (loading) return <SkeletonScreen cards={3} topGap={insets.top} />;
 
+  // FIX (audit UI-STA-05): when the load failed AND we have no data to show, render a
+  // retry surface (matching the sibling report screens) instead of empty zero-value cards
+  // that look identical to a brand-new user. Stale data, if any, is kept silently.
+  if (error && metrics.length === 0 && compliance.length === 0) return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: SPACING.xl }}>
+      <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
+      <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>Veriler yüklenemedi</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+      <Button title="Tekrar dene" onPress={() => { setLoading(true); load(); }} size="lg" />
+    </View>
+  );
+
   const weights = metrics.filter(m => m.weight_kg != null);
   const fmtLabel = (d: string) => `${new Date(d).getDate()}/${new Date(d).getMonth() + 1}`;
   const latestW = weights.length > 0 ? weights[weights.length - 1].weight_kg : null;
@@ -209,10 +228,11 @@ export default function ProgressScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 12, paddingBottom: 100 + insets.bottom }}
+      contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 8, paddingBottom: 100 + insets.bottom }}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { setLoading(true); load(); }} tintColor={colors.primary} />}
     >
-      <Text style={{ fontSize: 18, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
+      {/* FIX (audit UI-TAB-05): match the shared tab-title pattern (FONT.xl2/700, insets.top+8, accessibilityRole="header") used by profile.tsx + HeroSection. */}
+      <Text accessibilityRole="header" style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
 
       {/* Summary */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md, gap: SPACING.sm }}>

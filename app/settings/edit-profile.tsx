@@ -132,11 +132,16 @@ export default function EditProfileScreen() {
     if (profile.thigh_cm) setThigh(String(profile.thigh_cm));
   }, [profile]);
 
+  // FIX (audit UX-FRM-01): single comma-normalizing parser shared by the inline
+  // validator and the save mapping. tr-TR decimal-pad emits ',', so parseFloat('80,5')
+  // would stop at the comma and silently drop the fraction; normalize first.
+  const parseNum = (v: string): number => Number(v.replace(',', '.'));
+
   // Inline range validation (UX only — surfaces a friendly Turkish error under the field;
   // empty stays valid, the save mapping already coerces empty -> null).
   const rangeError = (val: string, min: number, max: number, unit: string): string | undefined => {
     if (!val.trim()) return undefined;
-    const n = Number(val.replace(',', '.'));
+    const n = parseNum(val); // FIX (audit UX-FRM-01)
     if (Number.isNaN(n)) return 'Geçerli bir sayı gir';
     if (n < min || n > max) return `${min}–${max} ${unit} aralığında olmalı`;
     return undefined;
@@ -164,7 +169,7 @@ export default function EditProfileScreen() {
     try {
       await update(user.id, {
         height_cm: heightCm ? parseInt(heightCm) : null,
-        weight_kg: weightKg ? parseFloat(weightKg) : null,
+        weight_kg: weightKg ? parseNum(weightKg) : null, // FIX (audit UX-FRM-01): normalize ',' like the validator
         birth_year: birthYear ? parseInt(birthYear) : null,
         gender: gender || null,
         activity_level: activity as ActivityLevel,
@@ -183,12 +188,13 @@ export default function EditProfileScreen() {
         portion_language: portionLang as PortionLanguage,
         alcohol_frequency: alcoholFreq as AlcoholFrequency,
         day_boundary_hour: parseInt(dayBoundary),
-        body_fat_pct: bodyFat ? parseFloat(bodyFat) : null,
-        muscle_mass_pct: muscleMass ? parseFloat(muscleMass) : null,
-        waist_cm: waist ? parseFloat(waist) : null,
-        hip_cm: hip ? parseFloat(hip) : null,
-        chest_cm: chest ? parseFloat(chest) : null,
-        thigh_cm: thigh ? parseFloat(thigh) : null,
+        // FIX (audit UX-FRM-01): normalize ',' so tr-TR decimals don't lose their fraction
+        body_fat_pct: bodyFat ? parseNum(bodyFat) : null,
+        muscle_mass_pct: muscleMass ? parseNum(muscleMass) : null,
+        waist_cm: waist ? parseNum(waist) : null,
+        hip_cm: hip ? parseNum(hip) : null,
+        chest_cm: chest ? parseNum(chest) : null,
+        thigh_cm: thigh ? parseNum(thigh) : null,
       } as never);
       haptics.success();
       Alert.alert('Kaydedildi', 'Profil güncellendi.', [{ text: 'Tamam', onPress: () => router.back() }]);

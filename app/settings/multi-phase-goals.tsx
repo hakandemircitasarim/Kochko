@@ -3,7 +3,7 @@
  * Spec 6.7: Cut/bulk/maintain döngüsü
  */
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
@@ -46,10 +46,13 @@ export default function MultiPhaseGoalsScreen() {
     if (!user?.id) return;
     const goalType = newPhaseLabel === 'cut' || newPhaseLabel === 'mini_cut' ? 'lose_weight' : newPhaseLabel === 'bulk' ? 'gain_weight' : 'maintain';
     try {
-      await addPhase(user.id, goalType, newTarget ? parseFloat(newTarget) : null, parseInt(newWeeks) || 12, newPhaseLabel);
+      // FIX (audit UX-FRM-03): virgül normalizasyonu — '77,5' tr-TR/Android'de sessizce 77'ye düşüyordu.
+      await addPhase(user.id, goalType, newTarget ? parseFloat(newTarget.replace(',', '.')) : null, parseInt(newWeeks) || 12, newPhaseLabel);
     } catch (e) {
+      // FIX (audit UX-FBK-05): async onPress'ten throw yakalanmamış reddetme olur, kullanıcıya mesaj çıkmazdı.
       haptics.error();
-      throw e;
+      Alert.alert('İşlem başarısız', 'Faz eklenemedi, tekrar dene.');
+      return;
     }
     haptics.success();
     setShowAdd(false); setNewTarget(''); setNewWeeks('12');
@@ -69,8 +72,10 @@ export default function MultiPhaseGoalsScreen() {
     try {
       next = await advanceToNextPhase(user.id);
     } catch (e) {
+      // FIX (audit UX-FBK-05): async onPress'ten throw yakalanmamış reddetme olur, kullanıcıya mesaj çıkmazdı.
       haptics.error();
-      throw e;
+      Alert.alert('İşlem başarısız', 'Faza geçilemedi, tekrar dene.');
+      return;
     }
     if (next) {
       haptics.success();
@@ -85,7 +90,9 @@ export default function MultiPhaseGoalsScreen() {
   const activePhase = phases.find(p => p.is_active);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    // FIX (audit UI-LAY-04): KeyboardAvoidingView + keyboardShouldPersistTaps — 'Yeni Faz Ekle' formu en altta, klavye altında kalıyordu (lab-values.tsx kalıbı).
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Native Stack header (settings/_layout.tsx) already shows the Turkish title "Çok Fazlı Hedef" — body heading removed to avoid double-title */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Sıralı fazlar tanımla: örneğin "75 kg'a in (cut) → 3 ay bulk 80 kg → 77 kg'a in (mini cut)". Fazlar sırayla aktif olur.
@@ -171,5 +178,6 @@ export default function MultiPhaseGoalsScreen() {
 
       <Text style={{ color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.md }}>Uzun bas: fazı sil</Text>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

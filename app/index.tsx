@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
@@ -7,28 +7,15 @@ import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
 export default function Index() {
-  const { session, initialized } = useAuthStore();
+  const { session, initialized, signOut } = useAuthStore();
   const { profile, fetchError, fetch: fetchProfile, reactivateAccount } = useProfileStore();
+  // FIX (audit DB-PRV-05): true while the user is canceling a pending deletion, so the
+  // reactivation spinner shows instead of the confirmation screen re-appearing mid-write.
+  const [reactivating, setReactivating] = useState(false);
 
   useEffect(() => {
     if (session?.user?.id) fetchProfile(session.user.id);
   }, [session?.user?.id, fetchProfile]);
-
-  // Reactivate soft-deleted accounts on re-login (30-day recovery window).
-  // Checks BOTH columns: the profile-tab deletion path sets only
-  // deletion_requested_at (deleted_at stays null), and gating on deleted_at
-  // alone meant a returning user was still hard-deleted by the day-30 cron.
-  useEffect(() => {
-    const p = profile as Record<string, unknown> | null;
-    if ((p?.deleted_at || p?.deletion_requested_at) && session?.user?.id) {
-      reactivateAccount(session.user.id);
-    }
-  }, [
-    (profile as Record<string, unknown> | null)?.deleted_at,
-    (profile as Record<string, unknown> | null)?.deletion_requested_at,
-    session?.user?.id,
-    reactivateAccount,
-  ]);
 
   if (!initialized) {
     return (
@@ -76,6 +63,60 @@ export default function Index() {
           color={COLORS.primary}
           accessibilityLabel="Profilin yükleniyor"
         />
+      </View>
+    );
+  }
+
+  // FIX (audit DB-PRV-05): a re-login no longer SILENTLY reactivates a profile that is
+  // pending deletion. Strict KVKK/GDPR practice is to confirm intent before reversing a
+  // documented deletion request — a user logging in only to take an export should not have
+  // their request quietly canceled. Detect the pending state (BOTH columns: the profile-tab
+  // path sets deletion_requested_at, the settings path sets both) and ask explicitly; only
+  // an explicit "cancel deletion" choice calls reactivateAccount(). "Keep deleting" signs out
+  // so the day-30 cron proceeds as scheduled.
+  const pendingProfile = profile as Record<string, unknown>;
+  const deletionRequestedRaw =
+    (pendingProfile.deletion_requested_at as string | null | undefined) ??
+    (pendingProfile.deleted_at as string | null | undefined);
+  if (deletionRequestedRaw && !reactivating) {
+    const requestedAt = new Date(deletionRequestedRaw);
+    const completesAt = new Date(requestedAt.getTime());
+    completesAt.setDate(completesAt.getDate() + 30); // 30-day grace window (Spec 1.4)
+    const fmt = (d: Date) =>
+      isNaN(d.getTime()) ? '' : d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const requestedStr = fmt(requestedAt);
+    const completesStr = fmt(completesAt);
+
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
+        <Text style={{ color: COLORS.text, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.lg }}>
+          Hesap silme talebi bekliyor
+        </Text>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, lineHeight: 22, textAlign: 'center', marginBottom: SPACING.xxl }}>
+          {requestedStr
+            ? `${requestedStr} tarihinde hesabını silmek istedin. Talep ${completesStr} tarihinde tamamlanacak ve tüm verilerin kalıcı olarak silinecek.`
+            : `Hesabın silinmek üzere işaretli. Talep tamamlandığında tüm verilerin kalıcı olarak silinecek.`}
+        </Text>
+        <TouchableOpacity
+          onPress={() => {
+            if (!session?.user?.id) return;
+            setReactivating(true);
+            reactivateAccount(session.user.id);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Silmeyi iptal et"
+          style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignSelf: 'stretch', alignItems: 'center', marginBottom: SPACING.md }}
+        >
+          <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Silmeyi iptal et</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => { signOut(); }}
+          accessibilityRole="button"
+          accessibilityLabel="Silmeye devam et"
+          style={{ borderColor: COLORS.error, borderWidth: 1, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignSelf: 'stretch', alignItems: 'center' }}
+        >
+          <Text style={{ color: COLORS.error, fontSize: FONT.md, fontWeight: '600' }}>Silmeye devam et</Text>
+        </TouchableOpacity>
       </View>
     );
   }

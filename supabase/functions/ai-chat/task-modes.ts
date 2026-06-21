@@ -478,6 +478,10 @@ ZORUNLU JSON KURALLARI (uymazsan plan parse edilemez ve KAYBOLUR):
 3. MUTLAKA full <plan_snapshot> emit et, version+1.
 4. Sakatlik/tercih profile kaydet:
    <actions>[{"type":"profile_update","disliked_exercises":"squat (diz sakatligi)"}]</actions>
+   // FIX (audit AI-SYS-04): disliked_exercises handler bu alani DUZ EZER (append etmez) — bu yuzden
+   // profilde kayitli ESKI disliked_exercises ne ise, yeni kisiti ona EKLEYIP TAM birlesik string'i yaz
+   // (virgulle ayir, tekrar etme). Ornek: eskiden "deadlift (bel)" varsa -> "deadlift (bel), squat (diz sakatligi)".
+   // ASLA sadece yeni kisiti tek basina yazma; yoksa onceden kaydedilmis tum sakatlik/dislike kaybolur.
 5. Kisa aciklama: "Squati leg press ile degistirdim, pazartesiyi cumartesiye aldim."
 
 ### "NASIL YAPTIN?"

@@ -40,7 +40,7 @@ function format(d: Date, mode: 'time' | 'date'): string {
 }
 
 export function DateTimeField({ label, mode, value, onChange, placeholder, minimumDate, maximumDate }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme(); // FIX (audit UI-DS-08): also read isDark for native picker themeVariant
   const [show, setShow] = useState(false);
   const display = value || placeholder || (mode === 'time' ? 'Saat seç' : 'Tarih seç');
 
@@ -71,7 +71,7 @@ export function DateTimeField({ label, mode, value, onChange, placeholder, minim
           {...(minimumDate ? { minimumDate } : {})}
           {...(maximumDate ? { maximumDate } : {})}
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          themeVariant="dark"
+          themeVariant={isDark ? 'dark' : 'light'} // FIX (audit UI-DS-08): match app theme instead of hardcoded dark
           onChange={(event, selected) => {
             // Android fires once and auto-dismisses; iOS keeps the spinner open until done.
             if (Platform.OS !== 'ios') setShow(false);

@@ -5,8 +5,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { usePremium } from '@/hooks/usePremium';
-import { supabase } from '@/lib/supabase';
 import { exportJSON, exportCSV } from '@/services/export.service';
+// FIX (audit DB-PRV-04): share the audited deletion path (sets flags + writes the
+// KVKK 'account_delete_request' audit event) instead of inlining the profiles UPDATE.
+import { requestAccountDeletion } from '@/services/privacy.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { useTheme, type ThemeColors } from '@/lib/theme';
@@ -49,15 +51,14 @@ export default function SettingsScreen() {
     if (!canDelete || deleting) return;
     if (user?.id) {
       setDeleting(true);
-      // Mark for the 30-day cron grace period (Spec 1.4 + migration 023).
-      // Both columns set: deletion_requested_at drives the hard-delete cron;
-      // deleted_at is the legacy soft-delete flag still read elsewhere in the app.
-      const now = new Date().toISOString();
-      const { data, error } = await supabase.from('profiles').update({
-        deletion_requested_at: now,
-        deleted_at: now,
-      }).eq('id', user.id).select('id');
-      if (error || !data || data.length === 0) {
+      // FIX (audit DB-PRV-04): route through privacy.service.requestAccountDeletion so this
+      // (the surviving UI delete path) shares the SAME flag-setting (deletion_requested_at +
+      // deleted_at for the 30-day grace cron, Spec 1.4 + migration 023) AND writes the KVKK
+      // 'account_delete_request' audit event — previously the inline UPDATE skipped the audit
+      // trail entirely. It throws on write failure, so keep the "do NOT sign out" guard.
+      try {
+        await requestAccountDeletion(user.id);
+      } catch {
         setDeleting(false);
         haptics.error();
         Alert.alert('Hata', 'Hesabın silinmek üzere işaretlenemedi. Lütfen tekrar dene.');
@@ -82,7 +83,9 @@ export default function SettingsScreen() {
   return (
     <>
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.lg }}>Ayarlar</Text>
+      {/* FIX (audit UI-SET-01): removed inline "Ayarlar" H1 — the native Stack header
+          (settings/_layout.tsx → title:'Ayarlar') is the single source of the screen title,
+          matching every other settings screen that dropped its duplicate in-body title. */}
 
       {/* Premium */}
       <Card>

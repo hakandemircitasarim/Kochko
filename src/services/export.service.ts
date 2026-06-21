@@ -57,6 +57,15 @@ export async function exportJSON(options?: { share?: boolean }): Promise<void> {
     household_members: supabase.from('household_members').select('*'),
     subscriptions: supabase.from('subscriptions').select('*'),
     progress_photos: supabase.from('progress_photos').select('*'),
+    // FIX (audit DB-PRV-01): KVKK Md.20 taşınabilirliği — kullanıcıya-ait PII
+    // tabloları export dışı kalıyordu. Üçü de user_id FK + RLS ile kullanıcıya
+    // ait ve hesapla ON DELETE CASCADE silindiği için taşınabilirliğe tabidir:
+    //   repair_history     — öğün/düzeltme metni (original_text/corrected_text)
+    //   user_sessions      — device_info/app_version/push_token
+    //   barcode_corrections — kişisel besin düzeltmeleri
+    repair_history: supabase.from('repair_history').select('*').order('created_at'),
+    user_sessions: supabase.from('user_sessions').select('*').order('created_at'),
+    barcode_corrections: supabase.from('barcode_corrections').select('*').order('created_at'),
   } as const;
 
   const keys = Object.keys(queries) as (keyof typeof queries)[];

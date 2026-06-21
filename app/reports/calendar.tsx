@@ -27,6 +27,12 @@ export default function CalendarScreen() {
   const firstDay = new Date(year, month - 1, 1).getDay();
   const offset = firstDay === 0 ? 6 : firstDay - 1;
 
+  // FIX (audit UI-PLN-04): build today's string from LOCAL components, not UTC.
+  // now.toISOString() is UTC, but day.date is built from local calendar values
+  // (calendar.service.ts). In UTC+3, local 00:00-03:00 the UTC date is still
+  // yesterday, so the "today" ring landed on the wrong cell. Same fix as monthly.tsx #S13.
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
   const getScoreColor = (score: number | null) => {
     if (score === null) return COLORS.surfaceLight;
     if (score >= 70) return COLORS.success;
@@ -76,7 +82,7 @@ export default function CalendarScreen() {
 
         {days.map(day => {
           const dayNum = new Date(day.date).getDate();
-          const isToday = day.date === now.toISOString().split('T')[0];
+          const isToday = day.date === todayStr; // FIX (audit UI-PLN-04): compare against local-built todayStr
           const isSelected = selected?.date === day.date;
 
           return (

@@ -137,11 +137,17 @@ function WorkoutSummary({ plan, label, accent, onPick, colors }: { plan: Workout
         <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>
           HAFTALIK BÖLÜM
         </Text>
-        {active.slice(0, 4).map((d, i) => (
-          <Text key={i} style={{ color: colors.text, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
-            • {DAY_LABELS_TR[d.day_index]}: {d.focus ?? `${d.exercises?.length ?? 0} egzersiz`}
-          </Text>
-        ))}
+        {/* FIX (audit UI-PLN-05): candidate is raw LLM JSON — skip empty days and
+            fall back when day_index is out of DAY_LABELS_TR range (0-6) to avoid
+            rendering 'undefined: Push'. */}
+        {active
+          .filter(d => (d.exercises?.length ?? 0) > 0)
+          .slice(0, 4)
+          .map((d, i) => (
+            <Text key={i} style={{ color: colors.text, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
+              • {DAY_LABELS_TR[d.day_index] ?? d.day_label ?? `Gün ${(d.day_index ?? 0) + 1}`}: {d.focus ?? `${d.exercises?.length ?? 0} egzersiz`}
+            </Text>
+          ))}
       </View>
 
       <TouchableOpacity
