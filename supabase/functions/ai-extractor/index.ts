@@ -191,7 +191,15 @@ serve(async (req: Request) => {
       try {
         // Handle potential markdown code blocks
         const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-        extracted = JSON.parse(jsonStr);
+        const parsed = JSON.parse(jsonStr);
+        // FIX (audit AI-EXT-02/HIGH): the model can return literal `null` (the prompt invites
+        // "sadece JSON" with all-null fields) or a non-object. JSON.parse accepts those, then
+        // Object.entries(null) below threw OUTSIDE this try → crashed the ENTIRE cron batch and
+        // skipped every remaining user. Coerce anything that isn't a plain object to {} so it
+        // flows to the "no data extracted" branch and just advances the checkpoint.
+        extracted = (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+          ? parsed as Record<string, unknown>
+          : {};
       } catch {
         continue; // Skip if parse fails
       }

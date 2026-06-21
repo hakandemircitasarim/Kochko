@@ -95,7 +95,7 @@ export async function addPhase(
  */
 export async function advanceToNextPhase(userId: string): Promise<GoalPhase | null> {
   try {
-    // Deactivate current
+    // Current active phase
     const { data: current, error: currentError } = await supabase
       .from('goals')
       .select('phase_order')
@@ -106,18 +106,27 @@ export async function advanceToNextPhase(userId: string): Promise<GoalPhase | nu
     if (currentError || !current) { console.error('advanceToNextPhase: no active phase', currentError?.message); return null; }
 
     const currentOrder = current.phase_order as number;
-    await supabase.from('goals').update({ is_active: false }).eq('user_id', userId).eq('phase_order', currentOrder);
 
-    // Activate next
+    // FIX (audit DB-TRG-01/HIGH): find the next phase BEFORE deactivating anything. The old
+    // code deactivated unconditionally then tried to activate phase+1 — so on the FINAL phase
+    // (no next) the user was left with ZERO active goals, and the two separate writes were
+    // non-atomic (a failed activate also left zero active). Now: bail if no next phase, else
+    // deactivate-current + activate-next in ONE transaction via the swap_active_goal RPC.
     const { data: next } = await supabase
       .from('goals')
-      .update({ is_active: true })
+      .select('*')
       .eq('user_id', userId)
-      .eq('phase_order', currentOrder + 1)
-      .select()
-      .single();
+      .gt('phase_order', currentOrder)
+      .order('phase_order', { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-    return next as GoalPhase | null;
+    if (!next) return null; // already on the final phase — keep it active
+
+    const { error: swapError } = await supabase.rpc('swap_active_goal', { p_user: userId, p_next_id: next.id });
+    if (swapError) { console.error('advanceToNextPhase swap failed:', swapError.message); return null; }
+
+    return { ...(next as GoalPhase), is_active: true };
   } catch (err) {
     console.error('advanceToNextPhase unexpected error:', err);
     return null;

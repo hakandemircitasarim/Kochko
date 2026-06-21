@@ -57,7 +57,7 @@ serve(async (req: Request) => {
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
 
-    const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id } = body;
+    const { message, image_base64, target_date, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id, idempotency_key } = body;
 
     // Voice (Whisper STT) and photo (gpt-4o vision) are declared Premium features
     // (premium-gate.ts photo_logging/voice_input) but were never enforced anywhere —
@@ -1266,6 +1266,34 @@ serve(async (req: Request) => {
         }
       }
 
+      // FIX (audit AI-ORC-02/HIGH): re-run the INJURY guardrail on the WORKOUT draft
+      // before promoting — symmetric with the allergen re-scan above. A draft may
+      // predate an injury the user declared afterward; without this, approving a
+      // stale workout draft promotes→activates→projects exercises that load the
+      // injured joint. Mirrors the generation-time injury scan (filterExercisesByInjury).
+      if (draft && expectedType === 'workout') {
+        const { data: injRows } = await supabaseAdmin
+          .from('health_events')
+          .select('description')
+          .eq('user_id', userId)
+          .eq('is_ongoing', true);
+        const injuredParts = extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? ''));
+        if (injuredParts.length > 0) {
+          const days = (draft.plan_data?.days as Array<Record<string, unknown>> | undefined) ?? [];
+          const conflicts: string[] = [];
+          for (const d of days) {
+            if (d.rest_day) continue;
+            const names = ((d.exercises as Array<{ name?: string }> | undefined) ?? []).map(e => e.name ?? '');
+            const { excluded } = filterExercisesByInjury(names, injuredParts);
+            if (excluded.length > 0) conflicts.push(...excluded.map(e => `${d.day_label ?? ''}: ${e.exercise}`));
+          }
+          if (conflicts.length > 0) {
+            planPersistError = `injury_violation: ${conflicts.slice(0, 3).join('; ')}`;
+            console.warn('[approve] blocked by injury guardrail', { count: conflicts.length, injuredParts });
+          }
+        }
+      }
+
       if (draft && !planPersistError) {
         // FIX (audit DB/HIGH — atomic archive→promote): single SECURITY DEFINER RPC
         // transaction (migration 057 promote_weekly_plan). Archive-of-old + promote-of-draft
@@ -1535,7 +1563,7 @@ serve(async (req: Request) => {
     // Execute actions (use target_date for batch entry, T1.17)
     // Source of log: photo > voice (transcribed) > default text/chat
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
-    const actionFeedback = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource);
+    const actionFeedback = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined);
 
     // A8: Low confidence proactive verification — append confirmation question
     const mealActions = actions.filter((a) => (a as { type?: string }).type === 'meal_log');
@@ -2644,7 +2672,8 @@ async function executeActions(
   actions: Record<string, unknown>[],
   gender: string | null,
   targetDate?: string,
-  inputMethod: 'text' | 'photo' | 'barcode' | 'voice' | 'template' | 'ai_chat' = 'ai_chat'
+  inputMethod: 'text' | 'photo' | 'barcode' | 'voice' | 'template' | 'ai_chat' = 'ai_chat',
+  idempotencyKey?: string,
 ): Promise<(string | null)[]> {
   if (!actions || !Array.isArray(actions) || actions.length === 0) return [];
   const today = targetDate ?? new Date().toISOString().split('T')[0];
@@ -2675,7 +2704,25 @@ async function executeActions(
     else backdatedWater.set(date, v);
   };
 
+  // FIX (audit AI-INT-01/HIGH): idempotency guard against double-applied action side-effects.
+  // The client retries on timeout while the first attempt may STILL be processing server-side, so
+  // the same actions (water/supplement/recovery calorie-cut/commitment…) were applied TWICE.
+  // Claim the request's idempotency_key via a UNIQUE insert BEFORE any side-effect; a unique
+  // violation (a retry, or a concurrent duplicate) means another attempt already owns this
+  // request, so we skip the side-effecting loop and writes happen exactly once.
+  let duplicateRequest = false;
+  if (typeof idempotencyKey === 'string' && idempotencyKey) {
+    const { error: idemErr } = await supabaseAdmin
+      .from('processed_chat_requests')
+      .insert({ user_id: userId, idempotency_key: idempotencyKey });
+    if (idemErr) {
+      duplicateRequest = true;
+      console.warn('[idempotency] duplicate chat request — skipping action side-effects', { key: idempotencyKey });
+    }
+  }
+
   for (const action of actions) {
+    if (duplicateRequest) break;
     try {
       // Spec 3.1: natural-language backdating ("dün akşam pizza yedim" →
       // days_ago:1 in the action JSON). Clamped to 7 days back, never future.
@@ -2714,9 +2761,13 @@ async function executeActions(
               .eq('user_id', userId)
               .eq('is_allergen', true);
             if (allergens && allergens.length > 0) {
-              const itemNames = items.map(i => i.name.toLocaleLowerCase('tr'));
-              const matched = allergens.filter(a =>
-                itemNames.some(n => n.includes(a.food_name.toLocaleLowerCase('tr')))
+              // FIX (audit AI-ORC-03/HIGH): use checkAllergens (category→member expansion
+              // via ALLERGEN_FOODS) instead of a naive substring match. The old `.includes`
+              // missed category allergens — a "deniz ürünleri" allergen never fired for a
+              // logged member food like "somon"/"karides". checkAllergens expands the category.
+              const itemText = items.map(i => (i.name ?? '')).join(' ');
+              const matched = (allergens as Array<{ food_name: string; allergen_severity?: string }>).filter(
+                a => !checkAllergens(itemText, [a.food_name]).passed
               );
               if (matched.length > 0) {
                 const warns = matched.map(m =>
@@ -2807,14 +2858,22 @@ async function executeActions(
             };
             const multiplier = cookingMethod ? (COOKING_MULTIPLIERS[cookingMethod.toLowerCase()] ?? 1.0) : 1.0;
 
+            // FIX (audit AI-ORC-01/EXT-04/INT-03/HIGH): sanitize via the (previously imported-
+            // but-unused) validateMealParse so NaN/string/undefined macros become finite numbers
+            // and macro–calorie inconsistency is corrected. Then clamp to each column's REAL
+            // range: calories smallint [0,32767]; protein/carbs/fat numeric(5,1) [0,9999.9].
+            // Before this, Math.max(0, NaN)=NaN and a >9999.9 macro 22003-failed the WHOLE
+            // meal_log_items insert → the meal showed "saved" with ZERO items.
+            const safeItems = ((validateMealParse({ items: mealItems }).corrected?.items) as typeof mealItems | undefined) ?? mealItems;
+            const clampInt = (v: number, max: number) => Math.min(max, Math.max(0, Math.round(Number.isFinite(v) ? v : 0)));
+            const clampDec = (v: number, max: number) => Math.min(max, Math.max(0, Math.round((Number.isFinite(v) ? v : 0) * 10) / 10));
             const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(
-              mealItems.map(i => ({
+              safeItems.map(i => ({
                 meal_log_id: log.id, food_name: i.name ?? 'Yiyecek', portion_text: i.portion ?? '1 porsiyon',
-                // calories is smallint (max 32767) — clamp so one absurd value (parse
-                // error) can't overflow and 22003-fail the WHOLE item batch (#R4-14).
-                calories: Math.min(32767, Math.max(0, Math.round(i.calories * multiplier))),
-                protein_g: Math.max(0, i.protein_g), carbs_g: Math.max(0, i.carbs_g),
-                fat_g: Math.max(0, Math.round(i.fat_g * multiplier)),
+                calories: clampInt(i.calories * multiplier, 32767),
+                protein_g: clampDec(i.protein_g, 9999.9),
+                carbs_g: clampDec(i.carbs_g, 9999.9),
+                fat_g: clampDec(i.fat_g * multiplier, 9999.9),
                 data_source: 'ai_estimate',
               }))
             );

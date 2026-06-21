@@ -100,6 +100,19 @@ export async function requestNotificationPermissionIfNeeded(): Promise<string | 
   }
 }
 
+/**
+ * Current OS notification permission status. (audit UX-FBK-02) Lets the settings screen
+ * tell the user when in-app toggles can't actually deliver because the OS permission is off.
+ */
+export async function getNotificationPermissionStatus(): Promise<'granted' | 'denied' | 'undetermined'> {
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status as 'granted' | 'denied' | 'undetermined';
+  } catch {
+    return 'undetermined';
+  }
+}
+
 export async function setupAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {

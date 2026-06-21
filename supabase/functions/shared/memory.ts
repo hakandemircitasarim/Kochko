@@ -11,6 +11,19 @@
  */
 
 import { supabaseAdmin } from './supabase-admin.ts';
+import { getLocalParts } from './day-boundary.ts';
+
+/**
+ * User's effective IANA timezone (active travel tz → home tz → null=UTC).
+ * FIX (audit AI-MEM-02/HIGH): learned meal/snack hours were bucketed from the UTC
+ * edge-runtime hour, so for any non-UTC user the "late meal (≥21:00)" correlation and
+ * the snacking-hour nudge fired at the wrong local hour (offset by the UTC offset).
+ */
+async function getUserTz(userId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from('profiles').select('active_timezone, home_timezone').eq('id', userId).maybeSingle();
+  return (data?.active_timezone as string | null) || (data?.home_timezone as string | null) || null;
+}
 
 // Token budget allocation (Spec 5.1)
 const TOKEN_BUDGET = {
@@ -208,7 +221,30 @@ async function buildLayer2(userId: string): Promise<string> {
     parts.push(`## MIKRO BESIN RISKLERI\n${microRisks.map(r => `- ${r.nutrient}: ${r.risk_level}`).join('\n')}`);
   }
 
-  return parts.join('\n\n') || 'AI ozeti bos.';
+  // FIX (audit AI-MEM-01/HIGH): enforce the Layer-2 token budget. ai_summary fields grow over
+  // time (general_summary, coaching_notes, patterns, learned notes…); unbounded, Layer 2 would
+  // exceed its allocation and crowd out Layer 3 (recent data) / Layer 4 (chat history) in the
+  // final prompt. Honor the per-user ai_summary.max_token_budget (default 13k) — falling back to
+  // the global LAYER2 allocation — keeping the highest-priority sections (parts are already
+  // ordered general→specific) and dropping the lowest-priority tail when over budget.
+  const layer2Budget = (typeof s.max_token_budget === 'number' && s.max_token_budget > 0)
+    ? s.max_token_budget as number
+    : Math.floor(TOKEN_BUDGET.TOTAL * TOKEN_BUDGET.LAYER2_PCT);
+  const kept: string[] = [];
+  let usedTokens = 0;
+  let dropped = 0;
+  for (const part of parts) {
+    const cost = estimateTokens(part) + 1; // +1 ≈ the '\n\n' separator
+    if (kept.length > 0 && usedTokens + cost > layer2Budget) { dropped++; continue; }
+    kept.push(part);
+    usedTokens += cost;
+  }
+  if (dropped > 0) console.warn(`[memory] Layer-2 over budget (${layer2Budget}t) — dropped ${dropped} lower-priority section(s)`);
+  let result = kept.join('\n\n') || 'AI ozeti bos.';
+  // Hard cap (covers the case where the single top section alone exceeds the budget).
+  const maxChars = Math.floor(layer2Budget * 3.5); // estimateTokens ≈ chars / 3.5
+  if (result.length > maxChars) result = result.slice(0, Math.max(0, maxChars - 16)).trimEnd() + '\n…(kisaltildi)';
+  return result;
 }
 
 /**
@@ -570,6 +606,7 @@ export async function evolvePatternConfidence(userId: string): Promise<void> {
  */
 export async function analyzeLateMealSleep(userId: string): Promise<void> {
   const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
+  const tz = await getUserTz(userId); // FIX (audit AI-MEM-02): local hour, not UTC
 
   const [mealsRes, metricsRes] = await Promise.all([
     supabaseAdmin.from('meal_logs').select('logged_at, logged_for_date')
@@ -585,7 +622,8 @@ export async function analyzeLateMealSleep(userId: string): Promise<void> {
   // Latest meal per date
   const latestByDate: Record<string, number> = {};
   for (const m of meals) {
-    const h = new Date(m.logged_at).getHours() + new Date(m.logged_at).getMinutes() / 60;
+    const lp = getLocalParts(tz, new Date(m.logged_at));
+    const h = lp.hour + lp.minute / 60;
     if (!latestByDate[m.logged_for_date] || latestByDate[m.logged_for_date] < h) {
       latestByDate[m.logged_for_date] = h;
     }
@@ -675,6 +713,7 @@ export async function calibrateActivityMultiplier(userId: string): Promise<void>
  */
 export async function detectSnackingHours(userId: string): Promise<void> {
   const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString();
+  const tz = await getUserTz(userId); // FIX (audit AI-MEM-02): local hour, not UTC
 
   const { data: snacks } = await supabaseAdmin
     .from('meal_logs')
@@ -688,7 +727,7 @@ export async function detectSnackingHours(userId: string): Promise<void> {
 
   const hourCounts: Record<number, number> = {};
   for (const s of snacks as { logged_at: string }[]) {
-    const hour = new Date(s.logged_at).getHours();
+    const hour = getLocalParts(tz, new Date(s.logged_at)).hour;
     hourCounts[hour] = (hourCounts[hour] ?? 0) + 1;
   }
 

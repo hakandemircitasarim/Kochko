@@ -172,6 +172,15 @@ async function invokeChat(
   if (body.client_timezone === undefined) {
     try { body.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* tz unavailable */ }
   }
+  // FIX (audit AI-INT-01/HIGH): attach a STABLE idempotency key, generated ONCE here so EVERY
+  // retry of this logical send (the loop below) carries the SAME key. On a timeout the first
+  // attempt may keep processing server-side; the server dedupes on this key so the retry can't
+  // double-apply actions (water/supplement/recovery calorie-cut/commitment).
+  if (body.idempotency_key === undefined) {
+    let key = '';
+    try { key = (globalThis.crypto as { randomUUID?: () => string } | undefined)?.randomUUID?.() ?? ''; } catch { /* no crypto */ }
+    body.idempotency_key = key || `idem-${Date.now()}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  }
   let lastFriendly = 'Bağlantı hatası. Lütfen tekrar dene.';
   let serverRetries = 0; // 5xx/AI-down attempts already spent (cap at 1 extra)
 

@@ -121,12 +121,19 @@ export interface Revision {
 
 // ─── Reads ───────────────────────────────────────────────────────────────
 
+// FIX (audit DB-PHC-01/HIGH): the "core" chat-approved diet/workout plan is plan_subtype NULL;
+// the weekly menu is a SEPARATE weekly_plans row with plan_subtype='weekly_menu' (loaded by
+// weekly-plan.service). Without the subtype filter, getActive/getDraft('diet') could return the
+// weekly_menu row — a structurally different plan — and the diet screen would render garbage.
+// Restrict these core-plan reads to plan_subtype IS NULL. (.is(null), NOT .neq — .neq would
+// drop the NULL core rows since NULL <> x is NULL/false in SQL.)
 export async function getActive(userId: string, planType: PlanType): Promise<PlanRow | null> {
   const { data } = await supabase
     .from('weekly_plans')
     .select('*')
     .eq('user_id', userId)
     .eq('plan_type', planType)
+    .is('plan_subtype', null)
     .eq('status', 'active')
     .limit(1);
   return (data as PlanRow[] | null)?.[0] ?? null;
@@ -138,6 +145,7 @@ export async function getDraft(userId: string, planType: PlanType): Promise<Plan
     .select('*')
     .eq('user_id', userId)
     .eq('plan_type', planType)
+    .is('plan_subtype', null)
     .eq('status', 'draft')
     .limit(1);
   return (data as PlanRow[] | null)?.[0] ?? null;
@@ -149,6 +157,7 @@ export async function getHistory(userId: string, planType: PlanType, limit = 20)
     .select('*')
     .eq('user_id', userId)
     .eq('plan_type', planType)
+    .is('plan_subtype', null) // FIX (audit DB-PHC-01): core-plan history only, not weekly_menu rows
     .eq('status', 'archived')
     .order('generated_at', { ascending: false })
     .limit(limit);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert, TouchableOpacity, Linking } from 'react-native';
 import { Link, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -7,11 +7,19 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
+// Hosted legal documents (KVKK aydınlatma / kullanım koşulları) — same as register.tsx.
+const TERMS_URL = 'https://kochko.app/kullanim-kosullari';
+const PRIVACY_URL = 'https://kochko.app/gizlilik';
+
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { signIn, signInWithGoogle, signInWithApple, resetPassword, loading } = useAuthStore();
+
+  const openLink = (url: string) => {
+    Linking.openURL(url).catch(() => Alert.alert('Hata', 'Bağlantı açılamadı.'));
+  };
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) { Alert.alert('Hata', 'E-posta ve şifre gerekli.'); return; }
@@ -65,6 +73,31 @@ export default function LoginScreen() {
           <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary, letterSpacing: 2 }}>Kochko</Text>
           <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
         </View>
+
+        {/* FIX (audit UX-ONB-01/HIGH): social sign-in CREATES an account on first use, so the
+            KVKK/Terms consent must be shown here too (not only on the register screen) — it sits
+            above the social buttons so it's visible before any account is created. */}
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', lineHeight: 19, marginBottom: SPACING.lg }}>
+          Devam ederek{' '}
+          <Text
+            style={{ color: COLORS.primary, fontWeight: '600' }}
+            onPress={() => openLink(TERMS_URL)}
+            accessibilityRole="link"
+            accessibilityLabel="Kullanım Koşulları'nı aç"
+          >
+            Kullanım Koşulları
+          </Text>
+          {"'nı ve "}
+          <Text
+            style={{ color: COLORS.primary, fontWeight: '600' }}
+            onPress={() => openLink(PRIVACY_URL)}
+            accessibilityRole="link"
+            accessibilityLabel="Gizlilik Politikası'nı aç"
+          >
+            Gizlilik Politikası
+          </Text>
+          {"'nı kabul etmiş olursun."}
+        </Text>
 
         {/* Social Login Buttons (Spec 1.1) */}
         <Button title="Google ile Giriş Yap" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />

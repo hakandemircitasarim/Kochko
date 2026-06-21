@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getNotificationPrefs, updateNotificationPrefs, type NotificationPreferences } from '@/services/notifications.service';
+import { getNotificationPrefs, updateNotificationPrefs, requestNotificationPermissionIfNeeded, getNotificationPermissionStatus, type NotificationPreferences } from '@/services/notifications.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -42,9 +42,30 @@ export default function NotificationsScreen() {
     if (userId) updateNotificationPrefs(userId, updated);
   };
 
-  const toggleMain = () => {
+  const toggleMain = async () => {
     haptics.tap();
-    const updated = { ...prefs, enabled: !prefs.enabled };
+    const next = !prefs.enabled;
+    // FIX (audit UX-FBK-02/HIGH): enabling in-app notifications is meaningless if the OS
+    // permission is off — the old toggle flipped on and saved, but nothing was ever delivered
+    // and the user got no signal. When turning ON, ensure OS permission; if it can't be
+    // obtained (denied/undetermined→denied), explain and offer to open system settings, and do
+    // NOT flip the toggle on (it would lie about delivery).
+    if (next) {
+      await requestNotificationPermissionIfNeeded();
+      const status = await getNotificationPermissionStatus();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Bildirim izni kapalı',
+          'Bildirimleri açabilmek için telefonunun ayarlarından Kochko bildirimlerine izin vermen gerekiyor.',
+          [
+            { text: 'Vazgeç', style: 'cancel' },
+            { text: 'Ayarları aç', onPress: () => { Linking.openSettings().catch(() => {}); } },
+          ],
+        );
+        return;
+      }
+    }
+    const updated = { ...prefs, enabled: next };
     setPrefs(updated);
     if (userId) updateNotificationPrefs(userId, updated);
   };

@@ -123,12 +123,29 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
             <TouchableOpacity
               key={activity.id}
               activeOpacity={0.7}
-              onLongPress={async () => {
-                try {
-                  await (activity.type === 'meal' ? onDeleteMeal(activity.id) : onDeleteWorkout(activity.id));
-                } catch {
-                  Alert.alert('Silinemedi', 'Bir şeyler ters gitti, lütfen tekrar dene.');
-                }
+              onLongPress={() => {
+                // FIX (audit UX-FBK-01/HIGH): a long-press used to delete the meal/workout
+                // INSTANTLY with no confirmation and no undo (workout delete is a hard delete) —
+                // far too easy to wipe a log by accident. Require an explicit destructive confirm.
+                const isMeal = activity.type === 'meal';
+                Alert.alert(
+                  isMeal ? 'Öğünü sil' : 'Antrenmanı sil',
+                  `"${activity.label}" kaydını silmek istediğine emin misin? Bu işlem geri alınamaz.`,
+                  [
+                    { text: 'Vazgeç', style: 'cancel' },
+                    {
+                      text: 'Sil',
+                      style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await (isMeal ? onDeleteMeal(activity.id) : onDeleteWorkout(activity.id));
+                        } catch {
+                          Alert.alert('Silinemedi', 'Bir şeyler ters gitti, lütfen tekrar dene.');
+                        }
+                      },
+                    },
+                  ],
+                );
               }}
               style={{
                 flexDirection: 'row', alignItems: 'center',

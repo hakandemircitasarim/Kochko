@@ -4,18 +4,31 @@
  * the WHOLE user fleet (LLM calls + push). Without a guard, anyone holding the
  * public anon key could POST and trigger fleet-wide cost / abuse.
  *
- * The pg_cron jobs pass `x-cron-secret: <CRON_SECRET>`. We reject any
- * request whose header doesn't match the configured secret.
+ * The pg_cron jobs pass `x-cron-secret: <CRON_SECRET>` AND
+ * `Authorization: Bearer <service_role_key>`. We accept either proof.
  *
- * FAIL-OPEN when CRON_SECRET is unset: a missing env var must never lock
- * out the crons. Once the secret is configured (and the cron commands send the
- * header), the guard is effectively fail-closed for everyone else.
+ * FIX (audit AI-PRO-04/HIGH): NO fail-open. The old code returned null (allow)
+ * whenever CRON_SECRET was unset — so in any deploy that forgot to set the env
+ * var, ANYONE holding the public anon key could POST and trigger fleet-wide
+ * LLM/push cost & abuse. We now also reject when the secret is unconfigured,
+ * EXCEPT for a caller presenting the SECRET service-role key as bearer (exactly
+ * what pg_cron sends). The anon key shipped in the app does NOT match the
+ * service-role key, so fleet abuse stays blocked even with CRON_SECRET unset —
+ * and the crons keep working with zero extra configuration.
  */
 export function denyIfNotCron(req: Request): Response | null {
+  // Preferred proof: matching cron secret header (when configured).
   const expected = Deno.env.get('CRON_SECRET');
-  if (!expected) return null; // not configured → allow (fail open)
   const got = req.headers.get('x-cron-secret');
-  if (got === expected) return null;
+  if (expected && got === expected) return null;
+
+  // Fallback proof (fail-CLOSED): the server-only service-role key as bearer.
+  // pg_cron sends `Authorization: Bearer <service_role_key>`; the public anon
+  // key never matches, so this rejects external callers without locking out crons.
+  const srk = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const auth = req.headers.get('Authorization');
+  if (srk && auth === `Bearer ${srk}`) return null;
+
   return new Response(JSON.stringify({ error: 'forbidden' }), {
     status: 401,
     headers: { 'Content-Type': 'application/json' },

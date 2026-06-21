@@ -3,10 +3,14 @@
  * Spec 18.4: JSON body schema validation, payload size limits.
  */
 
-const MAX_PAYLOAD_BYTES = 1_000_000; // 1MB
 const MAX_MESSAGE_LENGTH = 5000;
 const MAX_IMAGE_BASE64_LENGTH = 10_000_000; // ~7.5MB image
 const MAX_AUDIO_BASE64_LENGTH = 10_000_000; // ~7.5MB audio
+// FIX (audit AI-EXT-01/CRITICAL): eski 1MB kapağı alan limitleriyle (her biri 10M base64 char)
+// çelişiyordu — 1MB'ı aşan her foto/sesli öğün-kaydı checkPayloadSize'da 413 ile reddediliyordu.
+// Kapağı, alan doğrulayıcıların kabul ettiği en büyük gövdeyi (image + audio + message + JSON
+// ek yükü ≈ 20MB) örtecek şekilde hizala; böylece alan-içi limitler asıl kontrolü yapar.
+const MAX_PAYLOAD_BYTES = 21_000_000; // ~21MB: image(10M)+audio(10M)+message+JSON overhead
 
 export interface ValidationResult {
   valid: boolean;
@@ -72,7 +76,7 @@ export function validateReportRequest(body: unknown): ValidationResult {
  */
 export function checkPayloadSize(contentLength: string | null): ValidationResult {
   if (contentLength && parseInt(contentLength) > MAX_PAYLOAD_BYTES) {
-    return { valid: false, error: `Payload too large. Max ${MAX_PAYLOAD_BYTES / 1000}KB.` };
+    return { valid: false, error: `Payload too large. Max ${Math.round(MAX_PAYLOAD_BYTES / 1_000_000)}MB.` };
   }
   return { valid: true };
 }

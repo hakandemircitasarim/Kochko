@@ -908,13 +908,19 @@ serve(async (req: Request) => {
               .eq('user_id', profile.id).eq('is_active', false)
               .gt('phase_order', 1).order('phase_order').limit(1).maybeSingle();
             if (nextPhase) {
-              // Auto-advance to next phase
-              await supabaseAdmin.from('goals').update({ is_active: false }).eq('user_id', profile.id).eq('is_active', true);
-              await supabaseAdmin.from('goals').update({ is_active: true }).eq('id', nextPhase.id);
-              maintenanceInfo += ` | FAZ GECISI: Sonraki faz aktif edildi: ${nextPhase.phase_label ?? nextPhase.goal_type}`;
+              // FIX (audit AI-INT-02/HIGH): atomic deactivate-current + activate-next in ONE
+              // transaction (RPC swap_active_goal). The old two-statement path could leave the
+              // user with ZERO active goals if the second update failed.
+              const { data: swapped, error: swapErr } = await supabaseAdmin.rpc('swap_active_goal', { p_user: profile.id, p_next_id: nextPhase.id });
+              if (swapErr || swapped !== true) {
+                console.error('[phase-advance] atomic swap failed', swapErr?.message);
+              } else {
+                maintenanceInfo += ` | FAZ GECISI: Sonraki faz aktif edildi: ${nextPhase.phase_label ?? nextPhase.goal_type}`;
+              }
 
-              // Gradual 7-day calorie transition: interpolate from old phase to new phase (day 1 of 7)
-              try {
+              // Gradual 7-day calorie transition (ONLY when the atomic swap actually advanced
+              // the phase — otherwise we'd shift calories for a phase change that didn't happen).
+              if (swapped === true) try {
                 const { data: profileCalories } = await supabaseAdmin
                   .from('profiles')
                   .select('calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, tdee_calculated')
@@ -1352,12 +1358,23 @@ ${sentTodayContext}`;
         // Insert with push_sent=false; flip to true only after Expo accepts the
         // push (the old optimistic !!push_token wrote true even when the push
         // was suppressed by quiet hours/prefs or failed).
-        const { data: inserted } = await supabaseAdmin.from('coaching_messages').insert({
+        // FIX (audit DB-CON-01/HIGH): the LLM-derived priority is free text, but
+        // coaching_messages.priority has a CHECK in ('low','medium','high'). An off-enum value
+        // (e.g. "urgent") made the INSERT fail — and the error was never read, so commitments were
+        // still marked followed_up, totalSent incremented, and a PHANTOM push was sent for a
+        // message that was never stored. Clamp to the allowed set and skip side-effects on failure.
+        const priority = (['low', 'medium', 'high'] as const).includes(result.priority as never)
+          ? (result.priority as string) : 'medium';
+        const { data: inserted, error: insertErr } = await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id, content: clean,
           trigger_type: result.trigger ?? 'proactive',
-          priority: result.priority ?? 'medium', read: false,
+          priority, read: false,
           push_sent: false,
         }).select('id').maybeSingle();
+        if (insertErr || !inserted) {
+          console.error('[proactive] coaching_message insert failed — skipping push & commitment follow-up', insertErr?.message);
+          continue;
+        }
 
         // Mark commitments as followed up
         for (const c of dueCommitments) {

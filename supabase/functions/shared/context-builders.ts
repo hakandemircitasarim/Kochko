@@ -8,6 +8,7 @@
  */
 
 import { supabaseAdmin } from './supabase-admin.ts';
+import { getLocalParts, getEffectiveDateForUser } from './day-boundary.ts';
 import type {
   RetrievalPlan, Layer1Focus, Layer2Focus, Layer3DataType,
   ContextMeta, DataConfidence,
@@ -75,16 +76,23 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
   if (!p) return 'Profil henuz olusturulmamis.';
 
   const now = new Date();
-  const age = p.birth_year ? now.getFullYear() - p.birth_year : null;
-  const dayName = now.toLocaleDateString('tr-TR', { weekday: 'long' });
-  const hour = now.getHours();
-  const minute = now.getMinutes().toString().padStart(2, '0');
+  // FIX (audit AI-CTX-02/HIGH): the edge runtime is UTC, so getHours()/toISOString()/
+  // toLocaleDateString emitted UTC time+date — the coach reasoned about the wrong hour and
+  // wrong "today" (off by the user's UTC offset). Use the user's timezone (active travel tz
+  // → home tz) for wall-clock time and the day-boundary-aware effective date for "today".
+  const tz = (p.active_timezone as string | null) || (p.home_timezone as string | null) || null;
+  const local = getLocalParts(tz, now);
+  const effectiveDate = getEffectiveDateForUser(tz, p.day_boundary_hour as number | null, now);
+  const age = p.birth_year ? local.year - p.birth_year : null;
+  const dayName = new Intl.DateTimeFormat('tr-TR', { timeZone: 'UTC', weekday: 'long' }).format(new Date(`${effectiveDate}T12:00:00Z`));
+  const hour = local.hour;
+  const minute = local.minute.toString().padStart(2, '0');
   const isOnboarding = !p.onboarding_completed;
 
   const parts: string[] = [];
 
-  // Time context — always include
-  parts.push(`## ZAMAN\n${dayName}, ${hour}:${minute} | ${now.toISOString().split('T')[0]}`);
+  // Time context — always include (user-local wall-clock + day-boundary effective date)
+  parts.push(`## ZAMAN\n${dayName}, ${hour}:${minute} | ${effectiveDate}`);
 
   // Demographics — always include at minimum
   const demoLine = `Cinsiyet: ${p.gender ?? '?'} | Yas: ${age ?? '?'} | Boy: ${p.height_cm ?? '?'}cm | Kilo: ${p.weight_kg ?? '?'}kg`;
@@ -247,17 +255,21 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
 async function buildLayer1Minimal(userId: string): Promise<string> {
   const { data: p } = await supabaseAdmin
     .from('profiles')
-    .select('gender, birth_year, height_cm, weight_kg, coach_tone, onboarding_completed, display_name')
+    .select('gender, birth_year, height_cm, weight_kg, coach_tone, onboarding_completed, display_name, active_timezone, home_timezone, day_boundary_hour')
     .eq('id', userId)
     .maybeSingle();
 
   if (!p) return 'Profil henuz olusturulmamis.';
 
   const now = new Date();
-  const age = p.birth_year ? now.getFullYear() - p.birth_year : null;
-  const dayName = now.toLocaleDateString('tr-TR', { weekday: 'long' });
-  const hour = now.getHours();
-  const minute = now.getMinutes().toString().padStart(2, '0');
+  // FIX (audit AI-CTX-02/HIGH): user-local wall-clock + day-boundary effective date, not UTC.
+  const tz = (p.active_timezone as string | null) || (p.home_timezone as string | null) || null;
+  const local = getLocalParts(tz, now);
+  const effectiveDate = getEffectiveDateForUser(tz, p.day_boundary_hour as number | null, now);
+  const age = p.birth_year ? local.year - p.birth_year : null;
+  const dayName = new Intl.DateTimeFormat('tr-TR', { timeZone: 'UTC', weekday: 'long' }).format(new Date(`${effectiveDate}T12:00:00Z`));
+  const hour = local.hour;
+  const minute = local.minute.toString().padStart(2, '0');
 
   return `${dayName}, ${hour}:${minute}\n${p.display_name ? `Ad: ${p.display_name} | ` : ''}Cinsiyet: ${p.gender ?? '?'} | Yas: ${age ?? '?'} | Kilo: ${p.weight_kg ?? '?'}kg | Ton: ${p.coach_tone ?? 'balanced'}`;
 }

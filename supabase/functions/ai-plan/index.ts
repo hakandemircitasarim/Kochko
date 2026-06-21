@@ -122,6 +122,30 @@ serve(async (req: Request) => {
 
     // === DAILY PLAN GENERATION ===
 
+    // FIX (audit AI-MDL-04/HIGH): the daily-plan path ran a gpt-4o generation with NO rate limit
+    // and NO free-tier cap — a free account could spam this edge function for unbounded AI cost.
+    // Premium is unlimited; free users get a generous rolling-24h cap on plan generations
+    // (normal use — one weekly projection ≈7 rows + a few regens — never reaches it). Reject
+    // BEFORE building context / calling the model so abuse costs nothing.
+    {
+      const { data: tierP } = await supabaseAdmin
+        .from('profiles').select('premium, premium_expires_at').eq('id', userId).maybeSingle();
+      if (!isActivePremium(tierP)) {
+        const since = new Date(Date.now() - 86400000).toISOString();
+        const { count: genCount } = await supabaseAdmin
+          .from('daily_plans')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', userId)
+          .gte('generated_at', since);
+        if ((genCount ?? 0) >= 30) {
+          return new Response(
+            JSON.stringify({ error: 'rate_limited', message: 'Bugünlük plan oluşturma limitine ulaştın. Biraz sonra yenilenecek — sınırsız plan için Premium\'a geçebilirsin.' }),
+            { status: 429, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+      }
+    }
+
     // Build context
     const ctx = await buildFullContext(userId);
 

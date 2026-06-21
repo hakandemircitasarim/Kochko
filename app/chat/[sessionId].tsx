@@ -993,7 +993,10 @@ export default function SessionDetailScreen() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      // FIX (audit UI-CHT-01/HIGH): use 'padding' on BOTH platforms. Under Expo SDK 55's
+      // mandatory edge-to-edge, Android 'height' mis-measures the window and could leave the
+      // composer hidden behind the keyboard; 'padding' resizes correctly with the keyboard inset.
+      behavior="padding"
       // This screen is header-less (headerShown:false at both layout levels) and renders
       // its own in-content header, so there is no native header to offset against. A
       // non-zero offset would float the composer ~90px above the keyboard on iOS.

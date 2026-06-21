@@ -245,8 +245,11 @@ ONEMLI: Yanıtının sonuna asagidaki formatta bir <simulation> blogu ekle:
 4. "Bugun bozuldu ama HAFTA BITMEDI" mesajini AKTIF ver.
 5. Yarin ve sonraki gunler icin DENGELEME stratejisi oner:
    "Kalan Z gunde gunluk W kcal azaltirsan hafta dengelenir."
-6. Takip taahhut ekle:
-   <actions>[{"type": "commitment", "text": "Kurtarma takibi", "follow_up_days": 1}]</actions>
+6. KURTARMA PLANINI MUTLAKA KAYDET — yanitinin sonuna su action'i ekle. Eklemezsen ne takip
+   hatirlatmasi ne de kalori dengeleme OLUSUR (sadece laf kalir):
+   <actions>[{"type": "recovery_plan", "excess_kcal": <bugun hedefinin ustune yedigin tahmini fazla kalori; bilmiyorsan 0>}]</actions>
+   Bu action otomatik olarak: (a) yarin sabah icin takip hatirlatmasi kurar, (b) fazla kaloriyi
+   sonraki 2 gune dagitir ve o gunlerin kalori hedeflerini (guvenli alt sinirin uzerinde) gunceller.
 
 ASLA:
 - "Neden boyle yaptin?" deme

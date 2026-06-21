@@ -396,7 +396,11 @@ export function detectCrisis(text: string): { isCrisis: boolean; message: string
     // 'kıyma'⊃kıy, 'asansör'⊃as[a], 'doldur'⊃oldur). Constrain each to real self-harm verb
     // conjugations while preserving crisis recall (kıydım/astım/keseceğim still fire); the
     // literal phrase list above + the wrist/"ölüp kurtul" patterns below remain the safety net.
-    /(kendi(mi|me)|canı(mı|ma)|cani(mi|ma)|hayatı(mı|ma)|hayati(mi|ma)|yaşamı(mı|ma)|yasami(mi|ma)|her\s*şeye|her\s*seye).{0,30}(as(acağ|acak|tım|tim|arak|ıyor|iyor)|kes(ece|ece[kğ]|eceğ|erim|iyor|tim|tım)|kıy(mak|acağ|acak|dım|dim|dı|arım|arim|amam)|kiy(mak|acag|acak|dim|di|arim|amam)|son\s*ver|öldür|\boldur(mek|ece|eyim)|bitir(mek|ece|di|eyim)|veda|yok\s*et)/u,
+    // FIX (audit AI-GRD-01/CRITICAL): mastar/ulaç biçimleri eklendi — "kendimi asmak/asmayı/asmaya",
+    // "kendimi kesmek/kesmeyi" gibi en doğal intihar ifadeleri yalnız çekimli (asacağım/astım)
+    // biçimleri yakaladığı için kaçıyordu. Self-harm öznesi (kendimi/canımı/hayatımı) 30 karakter
+    // içinde zorunlu olduğundan "asma katı"/"asma (üzüm)" gibi masum kullanımlar tetiklenmez.
+    /(kendi(mi|me)|canı(mı|ma)|cani(mi|ma)|hayatı(mı|ma)|hayati(mi|ma)|yaşamı(mı|ma)|yasami(mi|ma)|her\s*şeye|her\s*seye).{0,30}(as(acağ|acak|tım|tim|arak|ıyor|iyor|mak|may|maya)|kes(ece|ece[kğ]|eceğ|erim|iyor|tim|tım|mek|meyi|meye)|kıy(mak|acağ|acak|dım|dim|dı|arım|arim|amam)|kiy(mak|acag|acak|dim|di|arim|amam)|son\s*ver|öldür|oldur|\boldur(mek|ece|eyim)|bitir(mek|ece|di|eyim)|veda|yok\s*et)/u,
     /(ölüp\s*kurtul|olup\s*kurtul|hayata\s*veda|son\s*vermek\s*isti|yaşamak\s*istemiyorum|yasamak\s*istemiyorum|yok\s*olmak\s*isti)/u,
     /(bilek|damar|bileği?mi|bilegimi).{0,15}(kes)/u,
     /(ip|bıçak|bicak|hap).{0,15}(kendi|canı|cani)/u,

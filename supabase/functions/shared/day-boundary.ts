@@ -52,3 +52,42 @@ export function shiftDateString(dateStr: string, offsetDays: number): string {
   d.setUTCDate(d.getUTCDate() + offsetDays);
   return d.toISOString().split('T')[0];
 }
+
+/**
+ * User-local wall-clock parts honoring tz. The Deno edge runtime is UTC, so
+ * Date.prototype.getHours()/toISOString() yield UTC — wrong for "morning/evening"
+ * reasoning and for bucketing learned meal/snack hours. (audit AI-CTX-02 / AI-MEM-02)
+ */
+export function getLocalParts(
+  tz: string | null | undefined,
+  now: Date = new Date(),
+): { year: number; month: number; day: number; hour: number; minute: number; dateStr: string } {
+  try {
+    if (tz) {
+      const fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      const parts = fmt.formatToParts(now).reduce((acc, p) => {
+        if (p.type !== 'literal') acc[p.type] = p.value;
+        return acc;
+      }, {} as Record<string, string>);
+      const hour = parseInt(parts.hour ?? '0', 10) % 24; // some ICU builds render midnight as "24"
+      const minute = parseInt(parts.minute ?? '0', 10);
+      return {
+        year: +parts.year, month: +parts.month, day: +parts.day,
+        hour, minute, dateStr: `${parts.year}-${parts.month}-${parts.day}`,
+      };
+    }
+  } catch { /* invalid tz name → UTC fallback */ }
+  return {
+    year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, day: now.getUTCDate(),
+    hour: now.getUTCHours(), minute: now.getUTCMinutes(),
+    dateStr: now.toISOString().split('T')[0],
+  };
+}
+
+/** User-local hour (0-23) of a timestamp, honoring tz. */
+export function getLocalHour(tz: string | null | undefined, when: Date): number {
+  return getLocalParts(tz, when).hour;
+}

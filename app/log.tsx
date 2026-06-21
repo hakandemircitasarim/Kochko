@@ -3,7 +3,7 @@
  * All data entry starts here: text, photo, barcode, voice, water, weight, sleep, workout
  */
 import { useState, useRef, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Modal, Animated } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Modal, Animated, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -563,6 +563,9 @@ export default function QuickLogScreen() {
 
   // ====== MAIN SCREEN ======
   return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    {/* FIX (audit UI-LAY-01/HIGH): wrap the quick-log scroll in KeyboardAvoidingView so the
+        free-text input and its "Kaydet" button are pushed above the keyboard instead of hidden behind it. */}
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xxl }}>
@@ -680,5 +683,6 @@ export default function QuickLogScreen() {
         })}
       </View>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

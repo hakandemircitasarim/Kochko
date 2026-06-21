@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
@@ -64,9 +64,20 @@ const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
 // ─── Main Screen ───
 
 export default function OnboardingScreen() {
+  const insets = useSafeAreaInsets();
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const isReOnboarding = mode === 're_onboarding';
   const [step, setStep] = useState(0);
   const [initialDraft, setInitialDraft] = useState<OnboardingDraft | null>(null);
   const [hydrated, setHydrated] = useState(false);
+
+  // FIX (audit UX-NAV-01): non-destructive exit from OPTIONAL re-onboarding — return to the app
+  // WITHOUT running the goal/profile-rewriting save flow.
+  const handleExit = () => {
+    haptics.tap();
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  };
 
   useEffect(() => {
     loadOnboardingDraft().then((draft) => {
@@ -88,8 +99,8 @@ export default function OnboardingScreen() {
     return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
   }
 
-  if (step < SLIDES.length) {
-    return (
+  const body = step < SLIDES.length
+    ? (
       <WelcomeSlide
         slide={SLIDES[step]}
         stepIndex={step}
@@ -97,10 +108,32 @@ export default function OnboardingScreen() {
         onNext={() => setStep(s => s + 1)}
         onSkip={() => setStep(SLIDES.length)}
       />
-    );
-  }
+    )
+    : <QuickForm initialDraft={initialDraft} />;
 
-  return <QuickForm initialDraft={initialDraft} />;
+  // FIX (audit UX-NAV-01/HIGH): re-onboarding (dashboard "Güncelleme yap") is OPTIONAL, but the
+  // screen had no back button and swipe-back is disabled (layout gestureEnabled:false), so the
+  // ONLY exit was completing the form — which destructively rewrites the user's goal + profile.
+  // Overlay a non-destructive close on every step so the user can leave with their data intact.
+  if (!isReOnboarding) return body;
+  return (
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+      {body}
+      <TouchableOpacity
+        onPress={handleExit}
+        accessibilityRole="button"
+        accessibilityLabel="Kapat ve geri dön"
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        style={{
+          position: 'absolute', top: insets.top + 8, right: SPACING.md, zIndex: 20,
+          width: 40, height: 40, borderRadius: 20,
+          alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary + '20',
+        }}
+      >
+        <Ionicons name="close" size={24} color={COLORS.text} />
+      </TouchableOpacity>
+    </View>
+  );
 }
 
 // ─── Welcome Slide ───
