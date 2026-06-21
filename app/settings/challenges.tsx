@@ -1,18 +1,35 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getActiveChallenges, getCompletedChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { usePremium } from '@/hooks/usePremium';
+import { useProfileStore } from '@/stores/profile.store';
 
 export default function ChallengesScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  // FIX (audit UX-PRM-06): ekranın kendisi premium-koruması yapsın — menü ternary'sine güvenme
+  // (deep link / chat navigate / deneme bitişi free kullanıcıyı içeride bırakıyordu).
+  const { isPremium } = usePremium();
+  const profileLoading = useProfileStore(s => s.loading);
+  const profile = useProfileStore(s => s.profile);
   const [active, setActive] = useState<Challenge[]>([]);
   const [completed, setCompleted] = useState<Challenge[]>([]);
   const [showSystem, setShowSystem] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
+  // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium, router]);
 
   // Custom challenge form
   const [customTitle, setCustomTitle] = useState('');
@@ -67,6 +84,11 @@ export default function ChallengesScreen() {
       Alert.alert('Hata', (e as Error).message);
     }
   };
+
+  // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
 
   if (loading) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;

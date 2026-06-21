@@ -10,6 +10,14 @@
  */
 import { supabase } from '@/lib/supabase';
 
+// FIX (audit UX-PRM-08): single source of truth for "is the native IAP purchase path live?".
+// While the RevenueCat SDK is not wired, initiatePurchase/restorePurchases can only fail, so the
+// paywall must NOT advertise live $9.99/$79.99 pricing or a Subscribe/Restore button that always
+// dead-ends — that is an App Store / Play review blocker. The premium screen reads this flag to
+// hide the pricing + Subscribe + Restore affordances and surface the 7-day free trial CTA instead.
+// Flip to true (and wire @revenuecat/purchases-react-native) when the native build ships IAP.
+export const PURCHASE_ENABLED = false;
+
 export type SubscriptionTier = 'free' | 'trial' | 'monthly' | 'yearly' | 'lifetime';
 export type SubscriptionStatus = 'active' | 'expired' | 'cancelled' | 'grace_period' | 'paused';
 

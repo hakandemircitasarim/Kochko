@@ -72,9 +72,6 @@ function detectDrift(
 
 export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, creatingRevision }: Props) {
   const { colors } = useTheme();
-  // Default to today so the active plan never lands on a fully-collapsed day list.
-  const [expandedDay, setExpandedDay] = useState(todayIndex);
-  const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
 
   const drift = useMemo(() => detectDrift(plan, profile, goal ?? null), [plan, profile, goal]);
 
@@ -87,6 +84,17 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
   const days: AnyDay[] = Array.isArray((data as { days?: unknown }).days)
     ? ((data as { days: AnyDay[] }).days)
     : [];
+
+  // FIX (audit UI-PLN-06): track the expanded day by ARRAY POSITION, not the
+  // untrusted LLM-authored day_index (duplicate indices would collide on key +
+  // toggle). Lazy-init to the array slot whose day_index is today so the active
+  // plan still opens on today and never lands on a fully-collapsed list.
+  const [expandedDay, setExpandedDay] = useState(() => {
+    const t = todayIndex();
+    const i = days.findIndex(d => d.day_index === t);
+    return i >= 0 ? i : 0;
+  });
+  const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
 
   return (
     <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: SPACING.sm }}>
@@ -230,12 +238,13 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
           Bu planın içeriği eksik görünüyor. Plan sekmesinden yeni bir plan oluşturabilirsin.
         </Text>
-      ) : days.map(day => {
-        const isOpen = expandedDay === day.day_index;
+      ) : days.map((day, dayIdx) => {
+        // FIX (audit UI-PLN-06): compare/key by array position, not day.day_index.
+        const isOpen = expandedDay === dayIdx;
         return (
-          <View key={day.day_index}>
+          <View key={`${day.day_index}-${dayIdx}`}>
             <TouchableOpacity
-              onPress={() => setExpandedDay(isOpen ? -1 : day.day_index)}
+              onPress={() => setExpandedDay(isOpen ? -1 : dayIdx)}
               activeOpacity={0.8}
               style={{
                 flexDirection: 'row',
@@ -252,7 +261,8 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               </Text>
               {isDiet ? (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-                  {(day as DietPlanData['days'][number]).total_kcal} kcal
+                  {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals) */}
+                  {Math.round((day as DietPlanData['days'][number]).total_kcal)} kcal
                 </Text>
               ) : (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
@@ -271,7 +281,9 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               <View style={{ marginTop: SPACING.sm }}>
                 {isDiet ? (
                   ((day as DietPlanData['days'][number]).meals ?? []).map(meal => {
-                    const key = `${day.day_index}-${meal.meal_type}`;
+                    // FIX (audit UI-PLN-06): scope meal key by array position so
+                    // duplicate day_index values can't share expand-state.
+                    const key = `${dayIdx}-${meal.meal_type}`;
                     return (
                       <MealCard
                         key={key}

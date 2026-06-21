@@ -94,6 +94,17 @@ export interface WorkoutPlanData {
 export interface ProjectionProfile {
   weight_kg: number | null;
   weekly_calorie_budget: number | null;
+  // FIX (audit AI-PLN-05): the CANONICAL weekly budget (used by ai-plan/index.ts,
+  // widget.service.ts, service-contexts.ts and tdee.ts when weekly_calorie_budget is
+  // unset) is 4×training-mid + 3×rest-mid — NOT caloriePoint*7. Carry the per-day
+  // calorie ranges so this projection can reproduce that exact fallback and every
+  // reader (dashboard ← daily_plans, home widget) agrees for a null-budget user.
+  // Optional so existing callers that don't yet pass them still type-check; when
+  // absent the projection degrades to the legacy caloriePoint*7 fallback.
+  calorie_range_training_min?: number | null;
+  calorie_range_training_max?: number | null;
+  calorie_range_rest_min?: number | null;
+  calorie_range_rest_max?: number | null;
 }
 
 export interface ProjectDailyPlanOpts {
@@ -168,6 +179,26 @@ function rd(v: number, dp: number): number {
 }
 
 /**
+ * FIX (audit AI-PLN-05): canonical weekly-budget fallback = 4×training-mid + 3×rest-mid,
+ * matching ai-plan/index.ts (#S20), widget.service.ts (#14), service-contexts.ts and
+ * tdee.ts (Spec 2.6). Returns 0 when the per-day ranges are unavailable so the caller can
+ * fall back to the legacy caloriePoint*7 only as a last resort (keeps the dashboard, which
+ * reads daily_plans, and the home widget in agreement for a null weekly_calorie_budget user).
+ */
+function canonicalWeeklyBudget(profile: ProjectionProfile): number {
+  const trainMin = num(profile.calorie_range_training_min, NaN);
+  const trainMax = num(profile.calorie_range_training_max, NaN);
+  const restMin = num(profile.calorie_range_rest_min, NaN);
+  const restMax = num(profile.calorie_range_rest_max, NaN);
+  if (![trainMin, trainMax, restMin, restMax].every((v) => Number.isFinite(v) && v > 0)) {
+    return 0;
+  }
+  const trainMid = Math.round((trainMin + trainMax) / 2);
+  const restMid = Math.round((restMin + restMax) / 2);
+  return (trainMid > 0 && restMid > 0) ? (4 * trainMid + 3 * restMid) : 0;
+}
+
+/**
  * FIX (audit CRITICAL: legacy menü uyumsuz şekil savunması): bu projeksiyon yalnız chat
  * plan_diet'in yazdığı OBJE-şekilli snapshot'ı ({targets, days:[{day_index, total_kcal, items}]})
  * okuyabilir. Legacy ai-plan haftalık-menü yolu DÜZ-DİZİ ({date, is_training_day,
@@ -229,6 +260,11 @@ export function projectDailyPlanRows(opts: ProjectDailyPlanOpts): DailyPlanInser
 
   const weeklyConsumed = Math.max(0, ri(weekConsumed, 0));
   const weightKg = num(profile.weight_kg, 70);
+
+  // FIX (audit AI-PLN-05): precompute the canonical 4×train-mid + 3×rest-mid budget once
+  // (profile-level, not per-day) so the null-weekly_calorie_budget fallback below matches
+  // ai-plan/widget instead of diverging via caloriePoint*7. 0 ⇒ ranges unavailable.
+  const canonicalBudget = canonicalWeeklyBudget(profile);
 
   const rows: DailyPlanInsert[] = [];
 
@@ -312,9 +348,14 @@ export function projectDailyPlanRows(opts: ProjectDailyPlanOpts): DailyPlanInser
     }
 
     // --- weekly budget ---
+    // FIX (audit AI-PLN-05): prefer profiles.weekly_calorie_budget; when it is null, use the
+    // CANONICAL 4×train-mid + 3×rest-mid (same as ai-plan #S20 / widget.service.ts #14 /
+    // service-contexts.ts / tdee.ts Spec 2.6) so the dashboard (← daily_plans) and the home
+    // widget agree. Only when the per-day ranges are also unavailable do we degrade to the
+    // legacy caloriePoint*7 last resort.
     const weeklyTotal = profile.weekly_calorie_budget != null && Number.isFinite(Number(profile.weekly_calorie_budget))
       ? ri(profile.weekly_calorie_budget, caloriePoint * 7)
-      : caloriePoint * 7;
+      : (canonicalBudget > 0 ? canonicalBudget : caloriePoint * 7);
     const weeklyRemaining = Math.max(0, weeklyTotal - weeklyConsumed);
 
     rows.push({

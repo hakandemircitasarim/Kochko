@@ -137,7 +137,9 @@ export default function DailyReportScreen() {
               <MacroCircle label="Protein" value={report.protein_actual} unit="g" color={COLORS.protein} />
               <MacroCircle label="Karb" value={report.carbs_actual} unit="g" color={COLORS.carbs} />
               <MacroCircle label="Yağ" value={report.fat_actual} unit="g" color={COLORS.fat} />
-              {report.alcohol_calories > 0 && <MacroCircle label="Alkol" value={report.alcohol_calories} unit="kcal" color={COLORS.error} />}
+              {/* FIX (audit UI-STA-06): use the lighter `errorText` tone (>=4.5:1 on card) for the
+                  accent value text instead of base `error` (4.39:1, below AA-small). */}
+              {report.alcohol_calories > 0 && <MacroCircle label="Alkol" value={report.alcohol_calories} unit="kcal" color={COLORS.errorText} />}
             </View>
           </Card>
 

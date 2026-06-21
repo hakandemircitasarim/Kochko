@@ -20,16 +20,21 @@
 -- ── S16: household_members RLS ────────────────────────────────────────────────
 DROP POLICY IF EXISTS "Users can manage own membership" ON public.household_members;
 
+-- FIX (audit DB-MIG-03): CREATE POLICY has no IF NOT EXISTS form, so a replay aborts with 42710.
+-- Match the project's standard DROP-then-CREATE convention (045/046/047/053).
+DROP POLICY IF EXISTS hm_select_own ON public.household_members;
 CREATE POLICY hm_select_own ON public.household_members
   FOR SELECT TO authenticated
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS hm_delete_own ON public.household_members;
 CREATE POLICY hm_delete_own ON public.household_members
   FOR DELETE TO authenticated
   USING (user_id = auth.uid());
 
 -- Client INSERT only into a household the caller OWNS (createHousehold bootstrap writes
 -- role='owner'). Members are added exclusively via join_household_by_code (SECURITY DEFINER).
+DROP POLICY IF EXISTS hm_insert_owned ON public.household_members;
 CREATE POLICY hm_insert_owned ON public.household_members
   FOR INSERT TO authenticated
   WITH CHECK (

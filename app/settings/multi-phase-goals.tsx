@@ -3,7 +3,8 @@
  * Spec 6.7: Cut/bulk/maintain döngüsü
  */
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
@@ -15,6 +16,8 @@ import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { usePremium } from '@/hooks/usePremium';
+import { useProfileStore } from '@/stores/profile.store';
 
 const PHASE_LABELS: Record<string, { label: string; color: string }> = {
   cut: { label: 'Cut (Kilo Ver)', color: COLORS.error },
@@ -26,20 +29,40 @@ const PHASE_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function MultiPhaseGoalsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const user = useAuthStore(s => s.user);
+  // FIX (audit UX-PRM-06): ekranın kendisi premium-koruması yapsın — menü ternary'sine güvenme
+  // (deep link / chat navigate / deneme bitişi free kullanıcıyı içeride bırakıyordu).
+  const { isPremium } = usePremium();
+  const profileLoading = useProfileStore(s => s.loading);
+  const profile = useProfileStore(s => s.profile);
   const [phases, setPhases] = useState<GoalPhase[]>([]);
   const [timelineData, setTimelineData] = useState<{ phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]; currentWeek: number } | null>(null);
+  // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya boş ekran/yanlış durum gösterilmiyordu.
+  const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newPhaseLabel, setNewPhaseLabel] = useState('cut');
   const [newTarget, setNewTarget] = useState('');
   const [newWeeks, setNewWeeks] = useState('12');
 
+  // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
+  // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium, router]);
+
   useEffect(() => { if (user?.id) load(); }, [user?.id]);
   const load = async () => {
     if (!user?.id) return;
-    const [p, t] = await Promise.all([getGoalPhases(user.id), getTimelineData(user.id)]);
-    setPhases(p);
-    setTimelineData(t);
+    try {
+      const [p, t] = await Promise.all([getGoalPhases(user.id), getTimelineData(user.id)]);
+      setPhases(p);
+      setTimelineData(t);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAdd = async () => {
@@ -62,7 +85,19 @@ export default function MultiPhaseGoalsScreen() {
   const handleDelete = (id: string) => {
     Alert.alert('Sil', 'Bu fazı silmek istediğine emin misin?', [
       { text: 'İptal' },
-      { text: 'Sil', style: 'destructive', onPress: () => { deletePhase(id); load(); } },
+      // FIX (audit UX-FBK-04): silmeyi await + try/catch ile sar; başarıda haptics.success,
+      // başarısızlıkta haptics.error + Alert — uygulamadaki tek geri-bildirimsiz silme idi.
+      { text: 'Sil', style: 'destructive', onPress: async () => {
+        try {
+          await deletePhase(id);
+        } catch {
+          haptics.error();
+          Alert.alert('Silinemedi', 'Faz silinemedi. Aktif bir faz olabilir veya bağlantı sorunu yaşanıyor olabilir, lütfen tekrar dene.');
+          return;
+        }
+        haptics.success();
+        await load();
+      } },
     ]);
   };
 
@@ -89,6 +124,11 @@ export default function MultiPhaseGoalsScreen() {
 
   const activePhase = phases.find(p => p.is_active);
 
+  // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
+
   return (
     // FIX (audit UI-LAY-04): KeyboardAvoidingView + keyboardShouldPersistTaps — 'Yeni Faz Ekle' formu en altta, klavye altında kalıyordu (lab-values.tsx kalıbı).
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -98,15 +138,22 @@ export default function MultiPhaseGoalsScreen() {
         Sıralı fazlar tanımla: örneğin "75 kg'a in (cut) → 3 ay bulk 80 kg → 77 kg'a in (mini cut)". Fazlar sırayla aktif olur.
       </Text>
 
+      {/* FIX (audit UI-STA-03): ilk fetch sürerken boş ekran yerine yükleniyor göstergesi. */}
+      {loading && (
+        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      )}
+
       {/* Horizontal timeline bar (Spec 6.7) */}
-      {timelineData && timelineData.phases.length > 1 && (
+      {!loading && timelineData && timelineData.phases.length > 1 && (
         <View style={{ marginBottom: SPACING.md }}>
           <PhaseTimeline phases={timelineData.phases} currentWeek={timelineData.currentWeek} />
         </View>
       )}
 
       {/* Phase timeline */}
-      {phases.length > 0 && (
+      {!loading && phases.length > 0 && (
         <Card title="Faz Zaman Çizelgesi">
           {phases.map((phase, i) => {
             const info = PHASE_LABELS[phase.phase_label ?? ''] ?? { label: phase.phase_label ?? phase.goal_type, color: COLORS.textMuted };

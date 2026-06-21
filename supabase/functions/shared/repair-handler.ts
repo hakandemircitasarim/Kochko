@@ -44,6 +44,19 @@ const UNDO_PHRASES = [
   'son girisi sil', 'son girişi sil', 'son ogunu sil', 'son öğünü sil',
 ];
 
+// FIX (audit AI-EXT-05): map type-specific undo phrases to the log type they mean, so
+// handleUndo deletes what the user actually asked for. Generic phrases ('geri al',
+// 'iptal et', 'son kaydı sil', 'son girişi sil') map to null = newest-across-types.
+export type UndoTargetType = 'meal' | 'workout' | 'supplement';
+const UNDO_PHRASE_TYPE: Record<string, UndoTargetType> = {
+  'son ogunu sil': 'meal',
+  'son öğünü sil': 'meal',
+};
+export function undoTypeForPhrase(phrase: string | null | undefined): UndoTargetType | null {
+  if (!phrase) return null;
+  return UNDO_PHRASE_TYPE[phrase] ?? null;
+}
+
 const CONFIRMATION_POSITIVE = ['evet', 'dogru', 'doğru', 'tamam', 'aynen', 'he', 'ehe'];
 const CONFIRMATION_NEGATIVE = ['hayir', 'hayır', 'yanlis', 'yanlış', 'degil', 'değil', 'yok'];
 
@@ -97,35 +110,46 @@ export function detectRepairIntent(message: string): RepairDetection {
 /**
  * Undo the last action for a user.
  * Supports: meal_log, workout_log, supplement_log.
+ *
+ * FIX (audit AI-EXT-05): `intendedType` constrains the candidate set to what the user
+ * actually asked to undo. Type-specific phrases ('son öğünü sil') pass 'meal' so a meal
+ * undo after a workout log no longer hard-deletes the (unrecoverable) workout. Generic
+ * phrases ('geri al' / 'iptal et') pass null → newest-across-types fallback (unchanged).
  */
-export async function handleUndo(userId: string): Promise<RepairResult> {
+export async function handleUndo(userId: string, intendedType: UndoTargetType | null = null): Promise<RepairResult> {
+  // Only query the log types relevant to the user's intent. When intendedType is null
+  // (generic undo) we consider all three and pick the newest.
+  const wantMeal = intendedType === null || intendedType === 'meal';
+  const wantWorkout = intendedType === null || intendedType === 'workout';
+  const wantSupplement = intendedType === null || intendedType === 'supplement';
+
   // Try undoing the most recent meal log
-  const { data: lastMeal, error: lastMealErr } = await supabaseAdmin
+  const { data: lastMeal, error: lastMealErr } = wantMeal ? await supabaseAdmin
     .from('meal_logs')
     .select('id, raw_input, meal_type, logged_at')
     .eq('user_id', userId)
     .eq('is_deleted', false)
     .order('logged_at', { ascending: false })
     .limit(1)
-    .maybeSingle();
+    .maybeSingle() : { data: null, error: null };
   if (lastMealErr) console.error('[handleUndo] meal_logs fetch failed', lastMealErr);
 
-  const { data: lastWorkout, error: lastWorkoutErr } = await supabaseAdmin
+  const { data: lastWorkout, error: lastWorkoutErr } = wantWorkout ? await supabaseAdmin
     .from('workout_logs')
     .select('id, raw_input, logged_at')
     .eq('user_id', userId)
     .order('logged_at', { ascending: false })
     .limit(1)
-    .maybeSingle();
+    .maybeSingle() : { data: null, error: null };
   if (lastWorkoutErr) console.error('[handleUndo] workout_logs fetch failed', lastWorkoutErr);
 
-  const { data: lastSupplement, error: lastSupplementErr } = await supabaseAdmin
+  const { data: lastSupplement, error: lastSupplementErr } = wantSupplement ? await supabaseAdmin
     .from('supplement_logs')
     .select('id, supplement_name, logged_at')
     .eq('user_id', userId)
     .order('logged_at', { ascending: false })
     .limit(1)
-    .maybeSingle();
+    .maybeSingle() : { data: null, error: null };
   if (lastSupplementErr) console.error('[handleUndo] supplement_logs fetch failed', lastSupplementErr);
 
   // Find the most recent one
@@ -158,9 +182,11 @@ export async function handleUndo(userId: string): Promise<RepairResult> {
   }
 
   if (candidates.length === 0) {
+    // Intent-specific "nothing found" wording when the user named a type.
+    const typeLabel = intendedType === 'meal' ? 'öğün' : intendedType === 'workout' ? 'antrenman' : intendedType === 'supplement' ? 'takviye' : null;
     return {
       handled: true,
-      response: 'Geri alinacak bir kayit bulunamadi.',
+      response: typeLabel ? `Geri alinacak bir ${typeLabel} kaydi bulunamadi.` : 'Geri alinacak bir kayit bulunamadi.',
       undoneAction: null,
       shouldContinueNormal: false,
     };

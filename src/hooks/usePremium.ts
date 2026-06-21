@@ -16,14 +16,23 @@ export function usePremium() {
   const isExpired = premiumExpiresAt ? new Date(premiumExpiresAt) < new Date() : false;
   const isActive = isActivePremium(profile as { premium?: boolean | null; premium_expires_at?: string | null } | null);
 
-  // Trial state: trial_used flips to true the instant a trial STARTS (subscription.service),
-  // so it can't mean "currently in trial". Derive trial from the ACTIVE timed-premium window
-  // inside the first 7 days instead — this re-enables the trial countdown UI + 2-day reminder
-  // that were permanently dead while keyed on trial_used.
-  const createdAt = (profile as Record<string, unknown>)?.created_at as string | null;
-  const daysSinceSignup = createdAt
-    ? Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000) : 0;
-  const isInTrial = isActive && premiumExpiresAt != null && daysSinceSignup < 7;
+  // FIX (audit UX-PRM-04): the old heuristic was `isActive && premiumExpiresAt != null &&
+  // daysSinceSignup < 7`, which misclassified a PAID subscriber as a trialist — a monthly
+  // payer also has premium_expires_at set, and if they subscribe within 7 days of signup
+  // (common) daysSinceSignup<7 holds, so the screen showed "Deneme Süresi / Aboneliğe Geç"
+  // to someone who already paid. We can't query the subscriptions.tier here (sync hook), but
+  // we can use signals that ONLY a trial satisfies:
+  //   1. trial_used must be true (it flips true the instant a trial starts; a never-trialed
+  //      paid subscriber has trial_used=false), AND
+  //   2. the remaining premium window is ≤ ~8 days. A trial's premium_expires_at is
+  //      started_at + 7 days (migration 053); a paid monthly window is ~30d and yearly ~365d,
+  //      so this also excludes a user who trialed earlier and has since upgraded to a paid tier.
+  const trialUsed = (profile as Record<string, unknown>)?.trial_used === true;
+  const TRIAL_WINDOW_DAYS = 8; // 7-day trial + 1-day buffer for clock skew
+  const premiumDaysLeft = premiumExpiresAt
+    ? (new Date(premiumExpiresAt).getTime() - Date.now()) / 86400000
+    : Infinity;
+  const isInTrial = isActive && premiumExpiresAt != null && trialUsed && premiumDaysLeft <= TRIAL_WINDOW_DAYS;
   const trialDaysLeft = isInTrial && premiumExpiresAt
     ? Math.max(0, Math.ceil((new Date(premiumExpiresAt).getTime() - Date.now()) / 86400000))
     : 0;

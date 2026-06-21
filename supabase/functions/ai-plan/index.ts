@@ -14,6 +14,15 @@ import { validatePlanOutput } from '../shared/output-validator.ts';
 import { getPeriodicCalorieAdjustment, isIFCompatible, buildPeriodicPlanContext, getSeasonalContext } from '../shared/periodic-config.ts';
 import { isActivePremium } from '../shared/premium.ts';
 
+// FIX (audit AI-PLN-02): master switch for the DORMANT daily-plan generator. Daily plans are now
+// produced by the chat plan flow → shared/plan-projection.ts (the single source of truth for
+// daily_plans), so this edge function's daily branch must NOT run — a row written here lands in
+// the legacy shape with a higher version and overrides the projection. Kept `false`; flipping it
+// on would resurrect ~600 lines of guardrails that duplicate plan-projection.ts. Typed as
+// `boolean` (not the literal `false`) so the dormant block below stays type-checked rather than
+// being seen as unreachable. Re-enable ONLY together with a scheduler + routing through projection.
+const DAILY_GENERATOR_ENABLED: boolean = false;
+
 const PLAN_SYSTEM = `Sen Kochko plan yapicisisin. Kullanicinin profiline, hedefine ve gecmis verilerine gore gunluk beslenme + antrenman plani olustur.
 
 KURALLAR:
@@ -120,7 +129,28 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify(result), { headers: { 'Content-Type': 'application/json' } });
     }
 
-    // === DAILY PLAN GENERATION ===
+    // FIX (audit AI-PLN-02): the DAILY generator below is DORMANT. The only production caller is
+    // weekly-plan.service.ts (always body={type:'weekly'}, handled above); no cron or other edge
+    // function invokes ai-plan with a daily body, and periodic.service.ts:217-222 deliberately
+    // REMOVED the legacy daily auto-invocation because a daily_plans row written here lands in the
+    // OLD shape with a higher version and OVERRIDES the chat-plan projection — now the single source
+    // of truth (shared/plan-projection.ts). The whole daily branch (~600 lines: goal/TDEE/allergy/
+    // injury/periodic/velocity guardrails that duplicate plan-projection.ts) therefore runs for no
+    // user. To prevent accidental reactivation from writing a divergent legacy row, the daily entry
+    // point is gated off and refuses early. The code is kept (behind `DAILY_GENERATOR_ENABLED`)
+    // for reference / future cron wiring; if re-enabled it MUST be routed through the projection
+    // path so live daily_plans honor goal/velocity/injury/equipment constraints in one place.
+    if (!DAILY_GENERATOR_ENABLED) {
+      return new Response(
+        JSON.stringify({
+          error: 'daily_plan_disabled',
+          message: 'Günlük plan üretimi sohbet planı üzerinden yapılıyor; bu uç nokta yalnızca haftalık menü içindir.',
+        }),
+        { status: 410, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // === DAILY PLAN GENERATION (DORMANT — see AI-PLN-02 note above) ===
 
     // FIX (audit AI-MDL-04/HIGH): the daily-plan path ran a gpt-4o generation with NO rate limit
     // and NO free-tier cap — a free account could spam this edge function for unbounded AI cost.

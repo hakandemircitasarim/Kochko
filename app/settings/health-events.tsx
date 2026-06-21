@@ -80,7 +80,8 @@ export default function HealthEventsScreen() {
       )}
 
       {/* FIX (audit UI-STA-04): boş durumda (yeni kullanıcı / kayıt yok) form altında hiçbir şey çıkmıyordu; kardeş liste ekranları gibi açıklayıcı boş-durum kartı eklendi. */}
-      {events.length === 0 && (
+      {/* FIX (audit UI-SET-04): form açıkken boş-durum kartını gizle (form zaten görünüyor). */}
+      {events.length === 0 && !showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
           <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz sağlık olayın yok</Text>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Ameliyat, sakatlık, kronik hastalık veya alerji gibi kayıtları buraya ekle; koçun planı bunlara göre güvenli tutar.</Text>

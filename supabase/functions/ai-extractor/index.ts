@@ -18,6 +18,26 @@ const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 // Same provider-config knob as shared/openai.ts — point at any OpenAI-compatible
 // endpoint via the OPENAI_BASE_URL secret (defaults to OpenAI).
 const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
+// FIX (audit AI-MDL-01): route the extractor's model through KOCHKO_MODEL_FAST so a backend
+// swap (OPENAI_BASE_URL → OpenRouter/Azure/self-host) doesn't leave this cron pinned to the
+// literal 'gpt-4o-mini' (a model name the gateway may not recognize → 404/400). Defaults to the
+// previous literal on OpenAI.
+const EXTRACTOR_MODEL = Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-4o-mini';
+
+// FIX (audit AI-MDL-02): hard timeout on the extraction fetch. Without it a hung upstream
+// (custom gateway stall) blocks the whole cron run until the edge wall-clock kills it. 45s is
+// well above p99; on timeout we skip this user (the checkpoint is not advanced) so the next run
+// retries cleanly instead of leaving an indefinite hang.
+const EXTRACTOR_TIMEOUT_MS = 45_000;
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = EXTRACTOR_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const TIER2_FIELDS = [
   'occupation', 'work_start', 'work_end', 'sleep_time', 'wake_time', 'sleep_quality',
@@ -198,23 +218,31 @@ serve(async (req: Request) => {
         .map(m => `[${m.role}]: ${(m.content as string).substring(0, 500)}`)
         .join('\n');
 
-      // 4. Call GPT-4o-mini for extraction
-      const openaiRes = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENAI_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          temperature: 0.1,
-          max_tokens: 1000,
-          messages: [
-            { role: 'system', content: 'Sen bir veri çıkarsama asistanısın. Sohbet metinlerinden yapılandırılmış veri çıkarsıyorsun. Sadece JSON döndür.' },
-            { role: 'user', content: EXTRACTION_PROMPT(fields, messagesText) },
-          ],
-        }),
-      });
+      // 4. Call the fast model for extraction (env-driven + timeout-wrapped)
+      let openaiRes: Response;
+      try {
+        openaiRes = await fetchWithTimeout(`${OPENAI_BASE_URL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${OPENAI_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: EXTRACTOR_MODEL,
+            temperature: 0.1,
+            max_tokens: 1000,
+            messages: [
+              { role: 'system', content: 'Sen bir veri çıkarsama asistanısın. Sohbet metinlerinden yapılandırılmış veri çıkarsıyorsun. Sadece JSON döndür.' },
+              { role: 'user', content: EXTRACTION_PROMPT(fields, messagesText) },
+            ],
+          }),
+        });
+      } catch (fetchErr) {
+        // Timeout/abort or network error — skip this user without advancing the checkpoint
+        // so the next cron run retries the same window.
+        console.error(`[Extractor] OpenAI fetch failed for ${userId}:`, (fetchErr as Error).message);
+        continue;
+      }
 
       if (!openaiRes.ok) continue;
 

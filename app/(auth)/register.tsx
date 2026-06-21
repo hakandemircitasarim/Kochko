@@ -13,6 +13,45 @@ import { haptics } from '@/lib/haptics';
 const TERMS_URL = 'https://kochko.app/kullanim-kosullari';
 const PRIVACY_URL = 'https://kochko.app/gizlilik';
 
+// FIX (audit UX-FRM-04): basic client-side e-posta format kontrolü — bozuk bir
+// e-posta sunucuya ulaşıp İngilizce bir hata döndürmeden önce yakalanır.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isValidEmail = (v: string) => EMAIL_RE.test(v);
+
+// FIX (audit UX-FRM-04): Supabase auth mesajları İngilizce gelir ('User already
+// registered', 'Unable to validate email address: invalid format' ...). Türkçe-only
+// kitleye Türkçe göster. login.tsx ile birebir aynı eşleme.
+function localizeAuthError(message?: string | null): string {
+  const m = (message ?? '').toLowerCase();
+  if (!m) return 'Bir sorun oluştu. Lütfen tekrar dene.';
+  if (m.includes('invalid login credentials') || m.includes('invalid credentials')) return 'E-posta veya şifre hatalı.';
+  if (m.includes('email not confirmed') || m.includes('not confirmed')) return 'E-postanı henüz doğrulamadın. Lütfen gelen kutunu kontrol et.';
+  if (m.includes('user already registered') || m.includes('already registered')) return 'Bu e-posta zaten kayıtlı.';
+  if (m.includes('invalid email') || m.includes('invalid format') || m.includes('unable to validate email')) return 'Geçerli bir e-posta gir.';
+  if (m.includes('password should be at least') || (m.includes('password') && m.includes('at least'))) return 'Şifre en az 6 karakter olmalı.';
+  if (m.includes('rate limit') || m.includes('too many requests')) return 'Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar dene.';
+  if (m.includes('network') || m.includes('fetch')) return 'Bağlantı hatası. İnternetini kontrol et.';
+  return message ?? 'Bir sorun oluştu. Lütfen tekrar dene.';
+}
+
+// FIX (audit UX-ONB-05): tek bir paylaşılan 18+ doğum yılı doğrulayıcısı. register.tsx ve
+// onboarding.tsx aynı 18+ politikası için FARKLI alt sınırlar kullanıyordu (register <1920,
+// onboarding <=1900 → 1901 kabul). Bu yardımcı tek kural: min 1920, max currentYear, yaş>=18.
+// Dönen 'error' Türkçe ve null ise yıl geçerli. NOT: onboarding.tsx aynı mantığı kendi içinde
+// kopyalar (sahip olunan dosyalar arası paylaşılan modül oluşturulamadığı için).
+const MIN_BIRTH_YEAR = 1920;
+function validateBirthYear(raw: string): { year: number | null; error: string | null } {
+  const year = parseInt(raw, 10);
+  const currentYear = new Date().getFullYear();
+  if (!Number.isFinite(year) || year < MIN_BIRTH_YEAR || year > currentYear) {
+    return { year: null, error: 'Geçerli doğum yılı gir.' };
+  }
+  if (currentYear - year < 18) {
+    return { year: null, error: 'Bu uygulama 18 yaş ve üzeri içindir.' };
+  }
+  return { year, error: null };
+}
+
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
@@ -32,15 +71,22 @@ export default function RegisterScreen() {
 
   const handleRegister = async () => {
     if (!email.trim() || !password.trim()) { haptics.error(); Alert.alert('Hata', 'Tüm alanları doldurun.'); return; }
+    // FIX (audit UX-FRM-04): istemci-tarafı e-posta format kontrolü — bozuk e-posta
+    // sunucuya gitmeden Türkçe hata göster.
+    if (!isValidEmail(email.trim())) { haptics.error(); Alert.alert('Hata', 'Geçerli bir e-posta gir.'); return; }
     if (password !== confirmPassword) { haptics.error(); Alert.alert('Hata', 'Şifreler eşleşmiyor.'); return; }
     if (password.length < 6) { haptics.error(); Alert.alert('Hata', 'Şifre en az 6 karakter olmalı.'); return; }
-    const year = parseInt(birthYear);
-    const currentYear = new Date().getFullYear();
-    if (!year || year < 1920 || year > currentYear) { haptics.error(); Alert.alert('Hata', 'Geçerli doğum yılı gir.'); return; }
-    if (currentYear - year < 18) { haptics.error(); Alert.alert('Yaş Sınırı', 'Bu uygulama 18 yaş ve üzeri içindir.'); return; }
+    // FIX (audit UX-ONB-05): paylaşılan doğum yılı doğrulayıcısı (min 1920, yaş>=18) —
+    // onboarding.tsx ile aynı kural; eski lokal <1920/yaş kontrolünün yerine geçer.
+    const { year, error: birthYearError } = validateBirthYear(birthYear);
+    if (birthYearError !== null || year === null) {
+      haptics.error();
+      Alert.alert('Hata', birthYearError ?? 'Geçerli doğum yılı gir.');
+      return;
+    }
 
     const { error, needsConfirmation } = await signUp(email.trim(), password, year);
-    if (error) { haptics.error(); Alert.alert('Hata', error); return; }
+    if (error) { haptics.error(); Alert.alert('Hata', localizeAuthError(error)); return; } // FIX (audit UX-FRM-04)
     haptics.success();
     if (needsConfirmation) {
       // Email confirmation is on → no session yet, user must verify first.
@@ -56,14 +102,14 @@ export default function RegisterScreen() {
   const handleGoogle = async () => {
     const { error, cancelled } = await signInWithGoogle();
     if (cancelled) return;
-    if (error) { haptics.error(); Alert.alert('Hata', error); }
+    if (error) { haptics.error(); Alert.alert('Hata', localizeAuthError(error)); } // FIX (audit UX-FRM-04)
     else { haptics.success(); router.replace('/'); }
   };
 
   const handleApple = async () => {
     const { error, cancelled } = await signInWithApple();
     if (cancelled) return;
-    if (error) { haptics.error(); Alert.alert('Hata', error); }
+    if (error) { haptics.error(); Alert.alert('Hata', localizeAuthError(error)); } // FIX (audit UX-FRM-04)
     else { haptics.success(); router.replace('/'); }
   };
 

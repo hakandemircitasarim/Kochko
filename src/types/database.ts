@@ -38,7 +38,9 @@ export type ChatRole = 'user' | 'assistant' | 'system';
 export type TaskMode = 'register' | 'plan' | 'coaching' | 'analyst' | 'qa' | 'recipe' | 'eating_out' | 'mvd' | 'plateau' | 'simulation' | 'recovery' | 'onboarding' | 'periodic';
 export type FeedbackType = 'helpful' | 'not_for_me';
 export type ContextType = 'meal_suggestion' | 'workout_plan' | 'coaching_message' | 'recipe';
-export type PeriodicState = 'ramadan' | 'holiday' | 'illness' | 'busy_work' | 'exam' | 'pregnancy' | 'breastfeeding' | 'injury' | 'travel' | 'custom';
+// FIX (audit DB-CON-02): mirror the live profiles.periodic_state CHECK (mig 070) + edge enum —
+// both include 'mini_cut'/'maintenance' (written by the AI's mini_cut_start/maintenance_start).
+export type PeriodicState = 'ramadan' | 'holiday' | 'illness' | 'busy_work' | 'exam' | 'pregnancy' | 'breastfeeding' | 'injury' | 'travel' | 'custom' | 'mini_cut' | 'maintenance';
 export type NutritionLiteracy = 'low' | 'medium' | 'high';
 
 // ============ TABLE TYPES ============

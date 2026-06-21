@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { usePremium } from '@/hooks/usePremium';
+import { useProfileStore } from '@/stores/profile.store';
 
 const CAT_LABELS: Record<string, string> = {
   breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Atıştırmalık', dessert: 'Tatlı',
@@ -17,7 +19,14 @@ const CAT_LABELS: Record<string, string> = {
 export default function RecipesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // FIX (audit UX-PRM-06): ekranın kendisi premium-koruması yapsın — menü ternary'sine güvenme
+  // (deep link / chat navigate / deneme bitişi free kullanıcıyı içeride bırakıyordu).
+  const { isPremium } = usePremium();
+  const profileLoading = useProfileStore(s => s.loading);
+  const profile = useProfileStore(s => s.profile);
   const [recipes, setRecipes] = useState<SavedRecipe[]>([]);
+  // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya yanlış 'boş' kartı gösterilmiyordu.
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -33,8 +42,16 @@ export default function RecipesScreen() {
   const [ingredientQuery, setIngredientQuery] = useState('');
   const [ingredientMatches, setIngredientMatches] = useState<{ recipe: SavedRecipe; matchPercent: number }[] | null>(null);
 
+  // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
+  // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium, router]);
+
   useEffect(() => { load(); }, [filter]);
-  const load = () => getRecipes(filter ?? undefined).then(setRecipes);
+  const load = () => getRecipes(filter ?? undefined).then(setRecipes).finally(() => setLoading(false));
 
   const handleDelete = (id: string) => {
     Alert.alert('Sil', 'Tarifi silmek istediğine emin misin?', [
@@ -134,6 +151,11 @@ export default function RecipesScreen() {
   // Get display recipe (scaled or original)
   const getDisplayRecipe = (r: SavedRecipe): SavedRecipe => scaledRecipes[r.id] ?? r;
 
+  // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
+
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
@@ -184,7 +206,12 @@ export default function RecipesScreen() {
         </Text>
       )}
 
-      {recipes.length === 0 ? (
+      {/* FIX (audit UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi. */}
+      {loading ? (
+        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : recipes.length === 0 ? (
         <Card><Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henüz kayıtlı tarif yok. Koçundan tarif iste ve "Kaydet" de.</Text></Card>
       ) : (
         recipes.map(r => (

@@ -891,7 +891,7 @@ serve(async (req: Request) => {
       let maintenanceInfo = '';
       let goalTempoInfo = '';
       const { data: activeGoal } = await supabaseAdmin
-        .from('goals').select('target_weight_kg, start_weight_kg, goal_type, weekly_rate, target_weeks, created_at')
+        .from('goals').select('target_weight_kg, start_weight_kg, goal_type, weekly_rate, target_weeks, created_at, phase_order')
         .eq('user_id', profile.id).eq('is_active', true).maybeSingle();
       if (activeGoal?.target_weight_kg) {
         const { data: latestWeight } = await supabaseAdmin
@@ -909,11 +909,15 @@ serve(async (req: Request) => {
           if (goalReached && activeGoal.goal_type !== 'maintain') {
             // Goal reached - celebrate + suggest maintenance
             maintenanceInfo = `TETIK: HEDEFE ULASILDI - hedef ${activeGoal.target_weight_kg}kg, simdi ${latestWeight.weight_kg}kg. Tebrik et ve bakim modunu oner!`;
-            // Check for multi-phase: auto-advance
+            // Check for multi-phase: auto-advance to the phase IMMEDIATELY AFTER the current one.
+            // FIX (audit DB-TRG-02): the old `.gt('phase_order', 1)` picked the lowest inactive
+            // phase>1, so a user on phase 3 could be moved BACKWARD to phase 2. Anchor on the
+            // current active phase_order so we only ever advance forward.
             const { data: nextPhase } = await supabaseAdmin
               .from('goals').select('id, goal_type, phase_label, weekly_rate')
               .eq('user_id', profile.id).eq('is_active', false)
-              .gt('phase_order', 1).order('phase_order').limit(1).maybeSingle();
+              .gt('phase_order', (activeGoal.phase_order as number | null) ?? 1)
+              .order('phase_order').limit(1).maybeSingle();
             if (nextPhase) {
               // FIX (audit AI-INT-02/HIGH): atomic deactivate-current + activate-next in ONE
               // transaction (RPC swap_active_goal). The old two-statement path could leave the

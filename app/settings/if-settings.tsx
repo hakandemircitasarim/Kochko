@@ -7,9 +7,10 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Card } from '@/components/ui/Card';
+import { Toggle } from '@/components/settings/ToggleRow'; // FIX (audit UI-DS-03): shared toggle primitive
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
-import { a11ySwitch, getContrastColor } from '@/lib/accessibility';
+import { a11ySwitch } from '@/lib/accessibility'; // FIX (audit UI-DS-03): getContrastColor moved into shared <Toggle/>
 import { PERIODIC_STATE_CONFIG, type PeriodicState } from '@/services/periodic.service';
 
 const IF_WINDOWS = [
@@ -104,10 +105,9 @@ export default function IFSettingsScreen() {
           setActive(!active);
         }}
         style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg, minHeight: 44 }}>
-        <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: active ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
-          {/* FIX (audit theme-token): sabit #fff yerine kontrast token'ı (knob aktifken primary üstünde) */}
-          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: active ? getContrastColor(COLORS.primary) : COLORS.text, alignSelf: active ? 'flex-end' : 'flex-start' }} />
-        </View>
+        {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns switch role + guarded press).
+            Theme-token knob (contrast over primary when active) is built into the primitive. */}
+        <Toggle value={active} onToggle={() => setActive(!active)} />
         <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>IF {active ? 'Aktif' : 'Kapalı'}</Text>
       </TouchableOpacity>
 

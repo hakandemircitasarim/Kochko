@@ -7,7 +7,7 @@ import { usePremium } from '@/hooks/usePremium';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
-import { initiatePurchase, restorePurchases, startTrialIfEligible } from '@/services/subscription.service';
+import { initiatePurchase, restorePurchases, startTrialIfEligible, PURCHASE_ENABLED } from '@/services/subscription.service';
 import { supabase } from '@/lib/supabase';
 import { haptics } from '@/lib/haptics';
 
@@ -155,8 +155,11 @@ export default function PremiumScreen() {
       ? new Date((profile as Record<string, unknown>).premium_expires_at as string).toLocaleDateString('tr-TR')
       : null;
 
+    // FIX (audit UI-SET-03): native Stack header already owns the top safe-area inset; the old
+    // paddingTop: SPACING.lg + insets.top double-counted it (and the Trial/Expired branches use
+    // plain padding: SPACING.md). Match the suite convention — plain padding, bottom inset only.
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingTop: SPACING.lg + insets.top, paddingBottom: SPACING.xxl + insets.bottom, justifyContent: 'center' }}>
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom, justifyContent: 'center' }}>
         <Card>
           <Text style={{ color: COLORS.success, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Premium Aktif</Text>
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>Tüm özelliklere erişimin var.</Text>
@@ -200,14 +203,26 @@ export default function PremiumScreen() {
           </Card>
         </View>
 
+        {/* FIX (audit UX-PRM-08): the in-app purchase path (RevenueCat) is not wired yet, so a live
+            "Aboneliğe Geç" / "Satın Alımları Geri Yükle" button can only dead-end. While
+            PURCHASE_ENABLED is false we show an honest "coming soon" note instead of buttons that
+            always fail; once IAP ships we restore the Subscribe + Restore CTAs. */}
         <View style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
-            Deneme bitmeden abone olarak kesintisiz devam et.
-          </Text>
-          <Button title="Aboneliğe Geç" onPress={handleSubscribe} size="lg" />
-          <View style={{ marginTop: SPACING.sm }}>
-            <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />
-          </View>
+          {PURCHASE_ENABLED ? (
+            <>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
+                Deneme bitmeden abone olarak kesintisiz devam et.
+              </Text>
+              <Button title="Aboneliğe Geç" onPress={handleSubscribe} size="lg" />
+              <View style={{ marginTop: SPACING.sm }}>
+                <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />
+              </View>
+            </>
+          ) : (
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>
+              Ücretli abonelik App Store / Google Play üzerinden çok yakında açılacak. Deneme süren boyunca tüm Premium özellikler açık kalır.
+            </Text>
+          )}
         </View>
       </ScrollView>
     );
@@ -232,28 +247,44 @@ export default function PremiumScreen() {
         {PREMIUM.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.primary} />)}
       </Card>
 
-      {/* Pricing */}
-      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
-        <Card style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Aylık</Text>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$9.99</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>/ay</Text>
-        </Card>
-        <Card style={{ flex: 1, borderColor: COLORS.primary, borderWidth: 1 }}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>%33 İNDİRİM</Text>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Yıllık</Text>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$79.99</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>$6.67/ay</Text>
-        </Card>
-      </View>
+      {/* FIX (audit UX-PRM-08): while the native IAP path (RevenueCat) is unwired, showing live
+          $9.99/$79.99 pricing + a "Premium'a Geç" Subscribe button + "Satın Alımları Geri Yükle"
+          that always dead-end is a misleading monetization UX and an App Store / Play review
+          blocker. Until PURCHASE_ENABLED flips true we surface the working 7-day free-trial CTA and
+          an honest "paid subscription coming soon" note instead. */}
+      {PURCHASE_ENABLED ? (
+        <>
+          {/* Pricing */}
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
+            <Card style={{ flex: 1 }}>
+              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Aylık</Text>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$9.99</Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>/ay</Text>
+            </Card>
+            <Card style={{ flex: 1, borderColor: COLORS.primary, borderWidth: 1 }}>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>%33 İNDİRİM</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Yıllık</Text>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$79.99</Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>$6.67/ay</Text>
+            </Card>
+          </View>
 
-      <Button title="Premium'a Geç" onPress={handleSubscribe} size="lg" />
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
-        7 gün ücretsiz deneme. İstediğin zaman iptal edebilirsin.
-      </Text>
-      <View style={{ marginTop: SPACING.md }}>
-        <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />
-      </View>
+          <Button title="Premium'a Geç" onPress={handleSubscribe} size="lg" />
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+            7 gün ücretsiz deneme. İstediğin zaman iptal edebilirsin.
+          </Text>
+          <View style={{ marginTop: SPACING.md }}>
+            <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />
+          </View>
+        </>
+      ) : (
+        <>
+          <Button title="7 gün ücretsiz dene" onPress={startFreeTrial} size="lg" />
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+            7 günlük ücretsiz deneme ile tüm Premium özellikleri kullan. Ücretli abonelik App Store / Google Play üzerinden çok yakında açılacak.
+          </Text>
+        </>
+      )}
     </ScrollView>
   );
 }

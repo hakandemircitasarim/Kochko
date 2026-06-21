@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMonthSummaries, type DaySummary } from '@/services/calendar.service';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 
 const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const DAY_NAMES = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
@@ -97,7 +98,8 @@ export default function CalendarScreen() {
                 borderWidth: isToday ? 2 : 0, borderColor: COLORS.primary,
                 justifyContent: 'center', alignItems: 'center',
               }}>
-                <Text style={{ color: isSelected ? '#fff' : day.hasData ? COLORS.text : COLORS.textMuted, fontSize: FONT.sm, fontWeight: isToday ? '700' : '400' }}>{dayNum}</Text>
+                {/* FIX (audit UI-DS-01): seçili gün metni '#fff' yerine getContrastColor(COLORS.primary) (siyah; teal üzerinde WCAG AA geçer, beyaz 3.39:1 idi). */}
+                <Text style={{ color: isSelected ? getContrastColor(COLORS.primary) : day.hasData ? COLORS.text : COLORS.textMuted, fontSize: FONT.sm, fontWeight: isToday ? '700' : '400' }}>{dayNum}</Text>
               </View>
               {/* Dot indicator */}
               {day.hasData && !isSelected && (

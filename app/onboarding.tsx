@@ -19,6 +19,24 @@ import { calculateBMR, calculateTDEE, calculateTargets } from '@/lib/tdee';
 
 const { width } = Dimensions.get('window');
 
+// FIX (audit UX-ONB-05): tek bir 18+ doğum yılı kuralı. Bu ekrandaki OAuth doğum-yılı
+// yakalama eskiden yalnızca '<=1900' reddediyordu (yani 1901 kabul ediliyordu) — register.tsx
+// ise '<1920' reddediyordu, aynı 18+ politikasının iki farklı alt sınırı. register.tsx ile
+// AYNI kuralı burada da uygula: min 1920, max currentYear, yaş>=18. (Sahip olunan dosyalar
+// arası paylaşılan modül oluşturulamadığı için mantık register.tsx'i aynalar.)
+const MIN_BIRTH_YEAR = 1920;
+function validateBirthYear(raw: string): { year: number | null; error: string | null } {
+  const year = parseInt(raw, 10);
+  const currentYear = new Date().getFullYear();
+  if (!Number.isFinite(year) || year < MIN_BIRTH_YEAR || year > currentYear) {
+    return { year: null, error: 'Geçerli doğum yılı gir.' };
+  }
+  if (currentYear - year < 18) {
+    return { year: null, error: 'Bu uygulama 18 yaş ve üzeri içindir.' };
+  }
+  return { year, error: null };
+}
+
 // ─── Welcome Slides ───
 
 const SLIDES = [
@@ -215,7 +233,9 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
   // plan-readiness bloklanır. Yaş eksikse doğum yılını burada koşullu olarak topla.
   const metaBirthYear = Number((user as { user_metadata?: Record<string, unknown> })?.user_metadata?.birth_year);
   const nowYear = new Date().getFullYear();
-  const needsBirthYear = !(Number.isFinite(metaBirthYear) && metaBirthYear > 1900);
+  // FIX (audit UX-ONB-05): metadata yılını da MIN_BIRTH_YEAR (1920) eşiğiyle değerlendir —
+  // imkansız bir yıl (örn. 1905) metadata'da varsa kullanıcıya yeniden sorulur.
+  const needsBirthYear = !(Number.isFinite(metaBirthYear) && metaBirthYear >= MIN_BIRTH_YEAR && metaBirthYear <= nowYear);
   // FIX (audit onboarding-birthyear): doğum yılını taslaktan rehidre et — uygulama
   // mid-onboarding kapanırsa kullanıcı yeniden girmek zorunda kalmasın.
   const [birthYear, setBirthYear] = useState(initialDraft?.birthYear ?? '');
@@ -254,16 +274,13 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
 
     // FIX (audit onboarding-birthyear): doğum yılı bu ekranda toplanıyorsa
     // signUp'taki gibi 18+ doğrulaması yap (OAuth yolunda signUp guard'ı çalışmaz).
+    // FIX (audit UX-ONB-05): register.tsx ile AYNI paylaşılan kuralı kullan (min 1920,
+    // yaş>=18) — eski '<=1900' alt sınırı 1901-1919 arası imkansız yılları kabul ediyordu.
     if (needsBirthYear) {
-      const by = parseInt(birthYear);
-      if (!Number.isFinite(by) || by <= 1900 || by > nowYear) {
+      const { error: birthYearError } = validateBirthYear(birthYear);
+      if (birthYearError !== null) {
         haptics.error();
-        Alert.alert('Geçersiz doğum yılı', 'Lütfen geçerli bir doğum yılı gir.');
-        return;
-      }
-      if (nowYear - by < 18) {
-        haptics.error();
-        Alert.alert('Yaş sınırı', 'Bu uygulama 18 yaş ve üzeri içindir.');
+        Alert.alert('Geçersiz doğum yılı', birthYearError);
         return;
       }
     }
@@ -351,8 +368,9 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
       // FIX (audit onboarding-birthyear): doğum yılı bu ekranda toplandıysa onu,
       // yoksa signup metadata'sındaki değeri kullan (metaBirthYear/nowYear bileşen
       // kapsamında tanımlı). Hiçbiri yoksa age=30 fallback'ine düş.
+      // FIX (audit UX-ONB-05): yaş türetiminde de aynı MIN_BIRTH_YEAR (1920) eşiğini kullan.
       const by = needsBirthYear ? parseInt(birthYear) : metaBirthYear;
-      const age = Number.isFinite(by) && by > 1900 && by <= nowYear
+      const age = Number.isFinite(by) && by >= MIN_BIRTH_YEAR && by <= nowYear
         ? Math.max(18, nowYear - by)
         : 30;
       const bmr = calculateBMR(w, heightNum, age, gender as Gender);

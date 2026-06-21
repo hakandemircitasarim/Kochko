@@ -1,132 +1,17 @@
 /**
  * Real-time Sync Service
- * Spec 14: Çoklu cihaz desteği — gerçek zamanlı senkronizasyon
+ * Spec 14/16.4: Çoklu cihaz — oturum (session) yönetimi.
  *
- * Supabase Realtime kanalları ile meal_logs, daily_metrics, chat_messages senkronize eder.
- * Çakışma çözümü: son zaman damgası kazanır.
+ * NOTE (audit UX-OFF-05): The previous Supabase Realtime subscription /
+ * forceSync / sync-state-machine / local conflict-resolver code paths were
+ * never wired to any caller in app/ or src/ (the only real `resolveConflict`
+ * in use lives in conflict-resolver.service.ts with a different signature).
+ * That dead machinery was removed; this module now scopes the multi-device
+ * claim to session management only (register / heartbeat / validity / list /
+ * terminate), which IS actually consumed by app-init + account-security.
  */
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// ─── Types ───
-
-export type SyncStatus = 'connected' | 'disconnected' | 'syncing' | 'error';
-
-export interface SyncState {
-  status: SyncStatus;
-  lastSyncAt: string | null;
-  pendingChanges: number;
-  deviceCount: number;
-}
-
-type ChangeCallback = (table: string, payload: Record<string, unknown>) => void;
-
-const SYNC_KEY = '@kochko_last_sync';
-const TABLES_TO_SYNC = ['meal_logs', 'daily_metrics', 'chat_messages', 'daily_plans', 'weekly_plans'];
-
-// ─── Subscription Management ───
-
-let activeChannels: ReturnType<typeof supabase.channel>[] = [];
-let onChangeCallback: ChangeCallback | null = null;
-
-/**
- * Subscribe to real-time changes for a user's data.
- */
-export function subscribeToChanges(userId: string, onChange: ChangeCallback): void {
-  unsubscribeAll(); // Clean up previous subscriptions
-  onChangeCallback = onChange;
-
-  for (const table of TABLES_TO_SYNC) {
-    const channel = supabase
-      .channel(`${table}_${userId}`)
-      .on(
-        'postgres_changes' as 'system',
-        {
-          event: '*',
-          schema: 'public',
-          table,
-          filter: `user_id=eq.${userId}`,
-        } as Record<string, unknown>,
-        (payload: Record<string, unknown>) => {
-          onChangeCallback?.(table, payload);
-          updateLastSync();
-        }
-      )
-      .subscribe();
-
-    activeChannels.push(channel);
-  }
-
-  updateSyncStatus('connected');
-}
-
-/**
- * Unsubscribe from all real-time channels.
- */
-export function unsubscribeAll(): void {
-  for (const channel of activeChannels) {
-    supabase.removeChannel(channel);
-  }
-  activeChannels = [];
-  onChangeCallback = null;
-  updateSyncStatus('disconnected');
-}
-
-// ─── Sync State ───
-
-let currentSyncState: SyncState = {
-  status: 'disconnected',
-  lastSyncAt: null,
-  pendingChanges: 0,
-  deviceCount: 1,
-};
-
-function updateSyncStatus(status: SyncStatus): void {
-  currentSyncState = { ...currentSyncState, status };
-}
-
-async function updateLastSync(): Promise<void> {
-  const now = new Date().toISOString();
-  currentSyncState = { ...currentSyncState, lastSyncAt: now };
-  await AsyncStorage.setItem(SYNC_KEY, now);
-}
-
-/**
- * Get current sync state.
- */
-export function getSyncState(): SyncState {
-  return { ...currentSyncState };
-}
-
-/**
- * Get last sync timestamp.
- */
-export async function getLastSyncTime(): Promise<string | null> {
-  return AsyncStorage.getItem(SYNC_KEY);
-}
-
-// ─── Conflict Resolution ───
-
-/**
- * Resolve sync conflict between local and remote data.
- * Strategy: last-write-wins for profiles, append for logs.
- */
-export function resolveConflict(
-  table: string,
-  localData: Record<string, unknown>,
-  remoteData: Record<string, unknown>
-): Record<string, unknown> {
-  const localTime = new Date(localData.updated_at as string ?? localData.logged_at as string ?? 0).getTime();
-  const remoteTime = new Date(remoteData.updated_at as string ?? remoteData.logged_at as string ?? 0).getTime();
-
-  // For log tables, both are kept (append strategy)
-  if (['meal_logs', 'workout_logs', 'supplement_logs'].includes(table)) {
-    return remoteData; // Accept remote, local is already persisted
-  }
-
-  // For metric/profile tables, latest wins
-  return remoteTime >= localTime ? remoteData : localData;
-}
 
 // ─── Session Management ───
 
@@ -145,11 +30,17 @@ export async function registerSession(deviceInfo: string, pushToken: string | nu
     // Reuse existing id if we already registered on this device
     const existingId = await AsyncStorage.getItem(SESSION_ID_KEY);
     if (existingId) {
-      await supabase.from('user_sessions').update({
+      // FIX (audit UX-OFF-04): the row may have been pruned for inactivity
+      // (30-day prune cron) even though the local id is still cached. Verify
+      // the update actually hit a row; if not, fall through to a fresh insert
+      // rather than silently keeping a dangling id that would later read as
+      // "terminated by another device".
+      const { data: updated } = await supabase.from('user_sessions').update({
         last_active_at: new Date().toISOString(),
         push_token: pushToken,
-      }).eq('id', existingId);
-      return existingId;
+      }).eq('id', existingId).select('id').maybeSingle();
+      if (updated) return existingId;
+      await AsyncStorage.removeItem(SESSION_ID_KEY);
     }
 
     const { data, error } = await supabase.from('user_sessions').insert({
@@ -183,18 +74,48 @@ export async function heartbeatSession(): Promise<void> {
 }
 
 /**
- * Check whether our session row still exists. If missing, another device
- * remotely terminated us — caller should sign the user out.
+ * Result of a session liveness check.
+ * - 'valid'      : our session row still exists; carry on.
+ * - 'missing'    : the cached id no longer resolves. This is AMBIGUOUS — it can
+ *                  mean another device terminated us OR the inactivity-prune
+ *                  cron removed a stale row. The caller MUST NOT sign out on
+ *                  this alone; it should clear + re-register a fresh session.
+ * - 'unknown'    : transient/network error — treat as valid (do nothing).
  */
-export async function isSessionStillValid(): Promise<boolean> {
+export type SessionLiveness = 'valid' | 'missing' | 'unknown';
+
+/**
+ * Check whether our session row still exists.
+ *
+ * FIX (audit UX-OFF-04): previously returned a bare boolean and the caller
+ * signed the user out whenever it was false. But a row can vanish for two very
+ * different reasons — an active remote termination from another device, OR the
+ * 30-day inactivity prune cron deleting a stale row while the local
+ * SESSION_ID_KEY is never cleared. Conflating them silently logged out anyone
+ * who hadn't opened the app for 30+ days. We now report 'missing' as a distinct
+ * state so the caller can re-register instead of signing out.
+ */
+export async function isSessionStillValid(): Promise<SessionLiveness> {
   try {
     const id = await AsyncStorage.getItem(SESSION_ID_KEY);
-    if (!id) return true; // first run, will register
+    if (!id) return 'valid'; // first run, will register
     const { data } = await supabase.from('user_sessions').select('id').eq('id', id).maybeSingle();
-    return !!data;
+    return data ? 'valid' : 'missing';
   } catch {
-    return true;
+    return 'unknown';
   }
+}
+
+/**
+ * Recover from a 'missing' session: clear the stale cached id and register a
+ * fresh row. Used when isSessionStillValid() reports 'missing' so an
+ * inactivity-pruned user is silently re-registered rather than signed out.
+ *
+ * FIX (audit UX-OFF-04).
+ */
+export async function reregisterSession(deviceInfo: string, pushToken: string | null): Promise<string | null> {
+  await AsyncStorage.removeItem(SESSION_ID_KEY);
+  return registerSession(deviceInfo, pushToken);
 }
 
 /**
@@ -227,32 +148,4 @@ export async function terminateSession(sessionId: string): Promise<{ error: stri
     .delete()
     .eq('id', sessionId);
   return { error: error?.message ?? null };
-}
-
-/**
- * Force sync — pull latest data from server.
- */
-export async function forceSync(userId: string): Promise<{ synced: boolean; error: string | null }> {
-  try {
-    updateSyncStatus('syncing');
-
-    // Pull latest data for key tables
-    const [mealsRes, metricsRes, plansRes] = await Promise.all([
-      supabase.from('meal_logs').select('*').eq('user_id', userId).order('logged_at', { ascending: false }).limit(50),
-      supabase.from('daily_metrics').select('*').eq('user_id', userId).order('date', { ascending: false }).limit(14),
-      supabase.from('daily_plans').select('*').eq('user_id', userId).order('date', { ascending: false }).limit(7),
-    ]);
-
-    if (mealsRes.error || metricsRes.error || plansRes.error) {
-      updateSyncStatus('error');
-      return { synced: false, error: 'Senkronizasyon basarisiz' };
-    }
-
-    await updateLastSync();
-    updateSyncStatus('connected');
-    return { synced: true, error: null };
-  } catch {
-    updateSyncStatus('error');
-    return { synced: false, error: 'Baglanti hatasi' };
-  }
 }

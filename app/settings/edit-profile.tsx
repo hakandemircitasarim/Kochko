@@ -208,7 +208,10 @@ export default function EditProfileScreen() {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 12, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+      {/* FIX (audit UI-SET-03): the native Stack header already owns the top safe-area inset;
+          adding paddingTop: insets.top here double-counted it. Use the suite-standard plain
+          padding (SPACING.md) with only the bottom inset. */}
+      <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
         {/* Native header (settings/_layout.tsx) already renders the Turkish "Profil Düzenle" title;
             the in-body heading was a redundant duplicate and has been removed. */}
 

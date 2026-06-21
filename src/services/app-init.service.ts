@@ -11,19 +11,25 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { initializeNotifications, savePushToken, scheduleNotificationsOnStartup } from '@/services/notifications.service';
 import { checkAndRunBackup } from '@/services/auto-backup.service';
-import { registerSession, heartbeatSession, isSessionStillValid } from '@/services/realtime-sync.service';
+import { registerSession, reregisterSession, heartbeatSession, isSessionStillValid } from '@/services/realtime-sync.service';
 import { getWidgetData, serializeForNativeWidget } from '@/services/widget.service';
 import { detectTimezone } from '@/lib/timezone';
 
 const WIDGET_STORAGE_KEY = '@kochko_widget_data';
+
+// FIX (audit UX-OFF-04): shared so the foreground liveness handler can
+// re-register a fresh session (with the same device label) when the cached
+// row was pruned for inactivity.
+function buildDeviceInfo(): string {
+  return `${Device.modelName ?? 'Unknown'} · ${Device.osName ?? ''} ${Device.osVersion ?? ''}`.trim();
+}
 
 async function initNotificationsAndSession(userId: string) {
   try {
     const token = await initializeNotifications();
     if (token) savePushToken(userId, token);
     await scheduleNotificationsOnStartup(userId).catch(() => {});
-    const deviceInfo = `${Device.modelName ?? 'Unknown'} · ${Device.osName ?? ''} ${Device.osVersion ?? ''}`.trim();
-    await registerSession(deviceInfo, token ?? null);
+    await registerSession(buildDeviceInfo(), token ?? null);
   } catch (err) {
     console.warn('Notification/session init failed:', err);
   }
@@ -76,10 +82,16 @@ export function useAppStateSync() {
 
       if (nextState === 'active') {
         try {
-          const valid = await isSessionStillValid();
-          if (!valid) {
-            await useAuthStore.getState().signOut();
-          } else {
+          // FIX (audit UX-OFF-04): a missing session row is ambiguous — it can
+          // mean the 30-day inactivity-prune cron deleted our (stale) row, NOT
+          // that another device terminated us. Signing out on every 'missing'
+          // silently logged out anyone who hadn't opened the app for 30+ days.
+          // Instead, re-register a fresh session and clear the stale id; only
+          // 'valid' heartbeats, and transient errors ('unknown') are ignored.
+          const liveness = await isSessionStillValid();
+          if (liveness === 'missing') {
+            await reregisterSession(buildDeviceInfo(), null);
+          } else if (liveness === 'valid') {
             await heartbeatSession();
           }
         } catch { /* non-critical */ }

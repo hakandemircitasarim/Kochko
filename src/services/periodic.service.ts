@@ -6,9 +6,13 @@
  */
 import { supabase } from '@/lib/supabase';
 
+// FIX (audit DB-CON-02): include 'mini_cut' and 'maintenance' to stay a faithful mirror of the
+// live profiles.periodic_state CHECK (migration 070) and shared/periodic-config.ts — the AI writes
+// these via mini_cut_start / maintenance_start, so the client config must define them too.
 export type PeriodicState =
   | 'ramadan' | 'holiday' | 'illness' | 'busy_work' | 'exam'
-  | 'pregnancy' | 'breastfeeding' | 'injury' | 'travel' | 'custom';
+  | 'pregnancy' | 'breastfeeding' | 'injury' | 'travel' | 'custom'
+  | 'mini_cut' | 'maintenance';
 
 // ─── Config (client-side mirror of server periodic-config.ts) ───
 
@@ -74,6 +78,17 @@ export const PERIODIC_STATE_CONFIG: Record<PeriodicState, PeriodicStateConfig> =
     calorieAdjustment: 0, proteinMultiplier: 1.0, workoutIntensityMax: 'high',
     ifCompatible: true, waterMultiplier: 1.0, requiresEndDate: false, maxDurationDays: null,
     label_tr: 'Özel Durum', description_tr: 'Kullanıcı tanımlı özel dönem.',
+  },
+  // FIX (audit DB-CON-02): mirror shared/periodic-config.ts mini_cut / maintenance.
+  mini_cut: {
+    calorieAdjustment: 0, proteinMultiplier: 1.1, workoutIntensityMax: 'high',
+    ifCompatible: true, waterMultiplier: 1.0, requiresEndDate: true, maxDurationDays: 28,
+    label_tr: 'Mini Kesim', description_tr: 'Kısa süreli agresif kalori açığı; kalori bandı mini_cut_start tarafından ayarlanır.',
+  },
+  maintenance: {
+    calorieAdjustment: 0, proteinMultiplier: 1.0, workoutIntensityMax: 'high',
+    ifCompatible: true, waterMultiplier: 1.0, requiresEndDate: false, maxDurationDays: null,
+    label_tr: 'Bakım', description_tr: 'Kilo koruma dönemi; kalori bakım seviyesinde tutulur.',
   },
 };
 

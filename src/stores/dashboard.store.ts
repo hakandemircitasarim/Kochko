@@ -7,6 +7,10 @@ import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { calculateGoalProgress, type GoalProgress } from '@/lib/goal-progress';
 import { calculateWaterTarget } from '@/lib/tdee';
+// FIX (audit UX-OFF-03) offline kuyruğu — su/öğün/antrenman yazımları çevrimdışıyken
+// doğrudan supabase'e gidip patlıyordu; artık yapısal kuyruğa düşüp reconnect'te
+// setupAutoSync ile işlenir.
+import { enqueue, isOnline } from '@/services/offline-queue.service';
 import type { Goal } from '@/types/database';
 
 interface MealEntry {
@@ -196,6 +200,21 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
     const current = get().waterLiters;
     const newTotal = Math.round((current + amount) * 100) / 100;
 
+    // FIX (audit UX-OFF-03) çevrimdışıyken doğrudan upsert reddedilir ve artış
+    // kaybolurdu. Bağlantı yoksa yapısal offline kuyruğa düş (water_log → daily_metrics
+    // dalı, onConflict:'user_id,date'); reconnect'te setupAutoSync drenajı yapar.
+    // Optimistik UI'yi yine güncelle ki kullanıcı artışı görsün.
+    if (!(await isOnline())) {
+      await enqueue({
+        type: 'water_log',
+        table: 'daily_metrics',
+        data: { user_id: userId, date, water_liters: newTotal },
+        userId,
+      });
+      set({ waterLiters: newTotal });
+      return;
+    }
+
     const { error } = await supabase.from('daily_metrics').upsert(
       { user_id: userId, date, water_liters: newTotal, synced: true },
       { onConflict: 'user_id,date' }
@@ -205,6 +224,13 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   },
 
   deleteMeal: async (mealId) => {
+    // FIX (audit UX-OFF-03) yapısal offline kuyruğu yalnız upsert/update-by-key destekler;
+    // DELETE/soft-delete'i güvenli kuyruğa alamayız (meal_logs upsert'ü eksik NOT-NULL
+    // sütunlar yüzünden patlayabilir). Çevrimdışıyken sessizce kaybetmek yerine net bir
+    // hatayla başarısız ol — UI zaten "Silinemedi" gösterir, kayıt korunur.
+    if (!(await isOnline())) {
+      throw new Error('offline: silme işlemi internet bağlantısı gerektirir');
+    }
     // Soft delete (Spec 3.2)
     const { error } = await supabase.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', mealId);
     if (error) throw error;
@@ -221,6 +247,11 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   },
 
   deleteWorkout: async (workoutId) => {
+    // FIX (audit UX-OFF-03) hard DELETE yapısal kuyruğa alınamaz (queue yalnız upsert
+    // çalıştırır). Çevrimdışıyken net hatayla başarısız ol; UI "Silinemedi" gösterir.
+    if (!(await isOnline())) {
+      throw new Error('offline: silme işlemi internet bağlantısı gerektirir');
+    }
     const { error } = await supabase.from('workout_logs').delete().eq('id', workoutId);
     if (error) throw error;
     set(state => ({ workouts: state.workouts.filter(w => w.id !== workoutId) }));

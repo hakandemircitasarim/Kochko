@@ -36,7 +36,8 @@ export const CARD_BORDER = {
   borderColor: 'rgba(255,255,255,0.08)',
 } as const;
 
-/** @deprecated Use CARD_BORDER instead — flat design, no shadows */
+/** @deprecated Use CARD_BORDER instead — flat design, no shadows.
+ *  Kept only because ActivityTimeline.tsx + settings/coach-memory.tsx still import it. */
 export const CARD_SHADOW = CARD_BORDER;
 
 /** Hero section sizing */
@@ -49,5 +50,7 @@ export const HERO = {
   TIMELINE_LINE_WIDTH: 2,
 } as const;
 
-/** @deprecated No elevation in flat design */
-export const ELEVATED_SHADOW = CARD_BORDER;
+// FIX (audit UI-DS-05): Button derived its sm/md/lg heights as inline literals
+// (32/40/48). Tokenize them so the touch-target sizes live with the other scale
+// constants and can be referenced/audited in one place.
+export const BUTTON_HEIGHTS = { sm: 32, md: 40, lg: 48 } as const;

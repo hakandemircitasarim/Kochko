@@ -122,8 +122,32 @@ export default function WorkoutPlanScreen() {
     if (v !== undefined) setFullyViewed(false);
   }, [(draft?.plan_data as WorkoutPlanData | undefined)?.version]);
 
+  // FIX (audit UX-PRM-07): surface the premium quota BEFORE the user invests a full
+  // conversational draft session. canApprovePlan only blocked at the final 'Onayla' tap,
+  // so a free user who'd already used their 1 free plan built an entire plan in chat just
+  // to hit the paywall on approval. We now warn up-front (reason === 'free_quota_used') and
+  // let them make an informed choice. Draft creation itself stays free, so we resolve `true`
+  // when the user chooses to continue and `false` when they back out / go to premium.
+  const ensurePlanQuotaAcknowledged = (): Promise<boolean> => {
+    if (canApprovePlan('workout').reason !== 'free_quota_used') return Promise.resolve(true);
+    return new Promise<boolean>(resolve => {
+      Alert.alert(
+        'Premium gerekiyor',
+        'Ücretsiz planda 1 spor planı hakkın doldu. Yeni bir plan oluşturabilirsin ama onaylamak için premium gerekiyor.',
+        [
+          { text: 'Vazgeç', style: 'cancel', onPress: () => resolve(false) },
+          { text: "Premium'a bak", onPress: () => { router.push('/settings/premium' as never); resolve(false); } },
+          { text: 'Yine de devam et', onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+  };
+
   const startDraftCreation = async () => {
     if (!user?.id) return;
+    // FIX (audit UX-PRM-07): inform the free user their quota is used before they invest effort.
+    if (!(await ensurePlanQuotaAcknowledged())) return;
     const sid = await createSession({ title: 'Antrenman planı oluşturma', topicTags: ['plan_workout'] });
     if (!sid) return;
     setChatSessionId(sid);

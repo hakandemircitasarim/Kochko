@@ -169,7 +169,8 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
       const avg = Math.round(
         days.reduce((s, x) => s + (x.total_kcal ?? 0), 0) / Math.max(1, days.length)
       );
-      return `${avg} kcal/gün ort. · ${d?.targets?.protein ?? 0}g protein`;
+      // FIX (audit UI-PLN-02): round raw LLM-authored protein target so decimals don't leak in
+      return `${avg} kcal/gün ort. · ${Math.round(d?.targets?.protein ?? 0)}g protein`;
     }
     const w = row.plan_data as WorkoutPlanData;
     const days = Array.isArray(w?.days) ? w.days : [];
@@ -237,13 +238,15 @@ function DietExpanded({ plan }: { plan: DietPlanData }) {
   const { colors } = useTheme();
   return (
     <View style={{ gap: 4 }}>
-      {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map(day => (
-        <View key={day.day_index} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+      {/* FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index */}
+      {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map((day, i) => (
+        <View key={`${day.day_index}-${i}`} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
             {day.day_label}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-            {day.meals?.length ?? 0} öğün · {day.total_kcal ?? 0} kcal
+            {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals) */}
+            {day.meals?.length ?? 0} öğün · {Math.round(day.total_kcal ?? 0)} kcal
           </Text>
         </View>
       ))}
@@ -255,8 +258,9 @@ function WorkoutExpanded({ plan }: { plan: WorkoutPlanData }) {
   const { colors } = useTheme();
   return (
     <View style={{ gap: 4 }}>
-      {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map(day => (
-        <View key={day.day_index} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+      {/* FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index */}
+      {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map((day, i) => (
+        <View key={`${day.day_index}-${i}`} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
             {day.day_label}
           </Text>

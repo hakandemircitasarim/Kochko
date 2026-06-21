@@ -29,11 +29,12 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
   const days = Array.isArray(plan?.days) ? plan.days : [];
   return (
     <View style={{ flexDirection: 'row', gap: 4, marginTop: SPACING.xs }}>
-      {days.map(d => {
+      {days.map((d, i) => {
         const hasMeals = (d.meals?.length ?? 0) > 0;
         return (
         <View
-          key={d.day_index}
+          // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
+          key={`${d.day_index}-${i}`}
           style={{
             flex: 1,
             height: 28,
@@ -66,13 +67,14 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
   const days = Array.isArray(plan?.days) ? plan.days : [];
   return (
     <View style={{ flexDirection: 'row', gap: 4, marginTop: SPACING.xs }}>
-      {days.map(d => {
+      {days.map((d, i) => {
         const tone = d.rest_day
           ? { bg: colors.surfaceLight, bd: colors.border, fg: colors.textMuted }
           : { bg: colors.purple + '22', bd: colors.purple, fg: colors.purple };
         return (
           <View
-            key={d.day_index}
+            // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
+            key={`${d.day_index}-${i}`}
             style={{
               flex: 1,
               height: 28,
@@ -105,7 +107,8 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props
       const avgKcal = Math.round(totalKcal / Math.max(1, days.filter(x => (x.meals?.length ?? 0) > 0).length));
       return {
         primary: `${avgKcal} kcal/gün`,
-        secondary: `P ${d?.targets?.protein ?? 0}g · K ${d?.targets?.carbs ?? 0}g · Y ${d?.targets?.fat ?? 0}g`,
+        // FIX (audit UI-PLN-02): round raw LLM-authored macro targets so decimals don't leak into the UI
+        secondary: `P ${Math.round(d?.targets?.protein ?? 0)}g · K ${Math.round(d?.targets?.carbs ?? 0)}g · Y ${Math.round(d?.targets?.fat ?? 0)}g`,
       };
     }
     const w = plan as WorkoutPlanData;

@@ -11,6 +11,27 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 const TERMS_URL = 'https://kochko.app/kullanim-kosullari';
 const PRIVACY_URL = 'https://kochko.app/gizlilik';
 
+// FIX (audit UX-FRM-04): basic client-side e-posta format kontrolü — bozuk bir
+// e-posta sunucuya ulaşıp İngilizce bir hata döndürmeden önce yakalanır.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isValidEmail = (v: string) => EMAIL_RE.test(v);
+
+// FIX (audit UX-FRM-04): Supabase auth mesajları İngilizce gelir ('Invalid login
+// credentials', 'User already registered', 'Unable to validate email address: invalid
+// format' ...). Türkçe-only kitleye Türkçe göster. register.tsx ile birebir aynı eşleme.
+function localizeAuthError(message?: string | null): string {
+  const m = (message ?? '').toLowerCase();
+  if (!m) return 'Bir sorun oluştu. Lütfen tekrar dene.';
+  if (m.includes('invalid login credentials') || m.includes('invalid credentials')) return 'E-posta veya şifre hatalı.';
+  if (m.includes('email not confirmed') || m.includes('not confirmed')) return 'E-postanı henüz doğrulamadın. Lütfen gelen kutunu kontrol et.';
+  if (m.includes('user already registered') || m.includes('already registered')) return 'Bu e-posta zaten kayıtlı.';
+  if (m.includes('invalid email') || m.includes('invalid format') || m.includes('unable to validate email')) return 'Geçerli bir e-posta gir.';
+  if (m.includes('password should be at least') || (m.includes('password') && m.includes('at least'))) return 'Şifre en az 6 karakter olmalı.';
+  if (m.includes('rate limit') || m.includes('too many requests')) return 'Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar dene.';
+  if (m.includes('network') || m.includes('fetch')) return 'Bağlantı hatası. İnternetini kontrol et.';
+  return message ?? 'Bir sorun oluştu. Lütfen tekrar dene.';
+}
+
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
@@ -23,22 +44,25 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) { Alert.alert('Hata', 'E-posta ve şifre gerekli.'); return; }
+    // FIX (audit UX-FRM-04): istemci-tarafı e-posta format kontrolü — bozuk e-posta
+    // sunucuya gitmeden Türkçe inline hata göster.
+    if (!isValidEmail(email.trim())) { Alert.alert('Hata', 'Geçerli bir e-posta gir.'); return; }
     const { error } = await signIn(email.trim(), password);
-    if (error) Alert.alert('Hata', error);
+    if (error) Alert.alert('Hata', localizeAuthError(error)); // FIX (audit UX-FRM-04): Supabase İngilizce hatasını Türkçeleştir
     else router.replace('/');
   };
 
   const handleGoogle = async () => {
     const { error, cancelled } = await signInWithGoogle();
     if (cancelled) return;
-    if (error) Alert.alert('Hata', error);
+    if (error) Alert.alert('Hata', localizeAuthError(error)); // FIX (audit UX-FRM-04)
     else router.replace('/');
   };
 
   const handleApple = async () => {
     const { error, cancelled } = await signInWithApple();
     if (cancelled) return;
-    if (error) Alert.alert('Hata', error);
+    if (error) Alert.alert('Hata', localizeAuthError(error)); // FIX (audit UX-FRM-04)
     else router.replace('/');
   };
 
@@ -47,11 +71,13 @@ export default function LoginScreen() {
       Alert.alert('E-posta Gerekli', 'Şifre sıfırlama linki için e-posta adresini gir.');
       return;
     }
+    // FIX (audit UX-FRM-04): sıfırlama isteğinden önce de e-posta formatını doğrula.
+    if (!isValidEmail(email.trim())) { Alert.alert('Hata', 'Geçerli bir e-posta gir.'); return; }
     Alert.alert('Şifre Sıfırlama', `${email.trim()} adresine sıfırlama linki gönderilsin mi?`, [
       { text: 'İptal', style: 'cancel' },
       { text: 'Gönder', onPress: async () => {
         const { error } = await resetPassword(email.trim());
-        if (error) Alert.alert('Hata', error);
+        if (error) Alert.alert('Hata', localizeAuthError(error)); // FIX (audit UX-FRM-04)
         else Alert.alert('Başarılı', 'Şifre sıfırlama linki e-posta adresinize gönderildi. Link 1 saat geçerlidir.');
       }},
     ]);

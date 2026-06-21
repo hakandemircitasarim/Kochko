@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,8 +16,10 @@ export default function VenuesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [venues, setVenues] = useState<Venue[]>([]);
+  // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya yanlış 'boş' kartı gösterilmiyordu.
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { getVenues().then(setVenues); }, []);
+  useEffect(() => { getVenues().then(setVenues).finally(() => setLoading(false)); }, []);
 
   const navigateToEatingOut = () => {
     router.push('/(tabs)/chat');
@@ -40,7 +42,12 @@ export default function VenuesScreen() {
         <Button title="Dışarıda Yemek Planlıyorum" onPress={navigateToEatingOut} variant="outline" />
       </View>
 
-      {venues.length === 0 ? (
+      {/* FIX (audit UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi. */}
+      {loading ? (
+        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : venues.length === 0 ? (
         <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henüz kayıtlı mekan yok. Koçuna "Simit Sarayı'nda yedim" gibi yazdığında mekan otomatik öğrenilir.</Text></Card>
       ) : (
         venues.map(v => (

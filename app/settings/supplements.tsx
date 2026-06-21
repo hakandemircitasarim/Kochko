@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getTodaySupplements, logSupplement, type SupplementLog } from '@/services/supplements.service';
 import { Button } from '@/components/ui/Button';
@@ -22,10 +22,12 @@ const QUICK_SUPPS = [
 export default function SupplementsScreen() {
   const insets = useSafeAreaInsets();
   const [logs, setLogs] = useState<SupplementLog[]>([]);
+  // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar yanlış 'kayıt yok' metni gösterilmiyordu.
+  const [loading, setLoading] = useState(true);
   const [customName, setCustomName] = useState('');
   const [customAmount, setCustomAmount] = useState('');
 
-  useEffect(() => { getTodaySupplements().then(setLogs); }, []);
+  useEffect(() => { getTodaySupplements().then(setLogs).finally(() => setLoading(false)); }, []);
 
   const handleQuickAdd = async (name: string, amount: string) => {
     const { error } = await logSupplement(name, amount);
@@ -75,7 +77,12 @@ export default function SupplementsScreen() {
 
       {/* Today's Logs */}
       <Card title={`Bugünün Kayıtları (${logs.length})`}>
-        {logs.length === 0 ? (
+        {/* FIX (audit UI-STA-03): ilk fetch sürerken 'kayıt yok' yerine yükleniyor göstergesi. */}
+        {loading ? (
+          <View style={{ paddingVertical: SPACING.md, alignItems: 'center' }}>
+            <ActivityIndicator color={COLORS.primary} />
+          </View>
+        ) : logs.length === 0 ? (
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Bugün supplement kaydı yok.</Text>
         ) : (
           logs.map(l => (

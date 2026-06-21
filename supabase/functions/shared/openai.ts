@@ -13,11 +13,31 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 // e.g. to recover from a quota outage without waiting on a deploy.
 const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
 
+// FIX (audit AI-MDL-01): drive MODELS from env so a non-OpenAI gateway swap is a single
+// secret-set, not a code edit. The transient/empty-content fallback below uses MODELS.fallback —
+// hardcoded 'gpt-4o-mini' broke the moment OPENAI_BASE_URL pointed at OpenRouter/Azure/self-host
+// (the override only covered the primary call; the first hiccup downgraded to an unknown model →
+// 404/400). KOCHKO_MODEL_* mirror model-router.ts; current literals stay as defaults.
 const MODELS = {
-  primary: 'gpt-4o',
-  vision: 'gpt-4o',
-  fallback: 'gpt-4o-mini',
+  primary: Deno.env.get('KOCHKO_MODEL_SMART') || 'gpt-4o',
+  vision: Deno.env.get('KOCHKO_MODEL_VISION') || 'gpt-4o',
+  fallback: Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-4o-mini',
 };
+
+// FIX (audit AI-MDL-02): hard per-request timeout. Without an AbortController a hung upstream
+// (custom gateway stall / OpenAI incident) blocks until the edge platform wall-clock kills the
+// whole function, and the transient-retry path would stack a SECOND timeout-less hang. 45s is well
+// above the p99 latency; on abort we surface a clean error (callers map to a Turkish message).
+const OPENAI_TIMEOUT_MS = 45_000;
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = OPENAI_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // Temperature presets per task mode (Spec 5.27)
 export const TEMPERATURE: Record<string, number> = {
@@ -114,14 +134,30 @@ export async function chatCompletion<T = string>(
     body.response_format = { type: 'json_object' };
   }
 
-  const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  // FIX (audit AI-MDL-02): wrap in AbortController. On a timeout, fall back ONCE to the
+  // fast model (cheaper + often a different node) before surfacing a clean Turkish error,
+  // mirroring the transient-failure fallback below.
+  let response: Response;
+  try {
+    response = await fetchWithTimeout(`${OPENAI_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (fetchErr) {
+    const isAbort = (fetchErr as Error)?.name === 'AbortError';
+    if (isAbort && model !== MODELS.fallback) {
+      console.error(`OpenAI ${model} timed out after ${OPENAI_TIMEOUT_MS}ms, falling back to ${MODELS.fallback}`);
+      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false });
+    }
+    if (isAbort) {
+      throw new Error(`OpenAI error (${model}): istek zaman aşımına uğradı (timeout)`);
+    }
+    throw fetchErr;
+  }
 
   if (!response.ok) {
     const err = await response.text();

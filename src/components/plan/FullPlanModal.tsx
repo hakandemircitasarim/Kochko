@@ -137,14 +137,16 @@ export function FullPlanModal({
             paddingBottom: Math.max(insets.bottom, SPACING.lg) + SPACING.lg,
           }}
         >
-          {(Array.isArray(plan.days) ? plan.days : []).map(day => {
-            const isOpen = expandedDay === day.day_index;
+          {(Array.isArray(plan.days) ? plan.days : []).map((day, dayIdx) => {
+            // FIX (audit UI-PLN-06): key + expand-state by array position, not the
+            // untrusted LLM-authored day.day_index (duplicate indices would collide).
+            const isOpen = expandedDay === dayIdx;
             return (
-              <View key={day.day_index} style={{ marginBottom: SPACING.md }}>
+              <View key={`${day.day_index}-${dayIdx}`} style={{ marginBottom: SPACING.md }}>
                 <TouchableOpacity
                   // Keep at least one day expanded: re-tapping the open day is a no-op
                   // so the user can't collapse into a blank screen with nothing to re-open.
-                  onPress={() => setExpandedDay(day.day_index)}
+                  onPress={() => setExpandedDay(dayIdx)}
                   activeOpacity={0.8}
                   accessibilityRole="button"
                   accessibilityLabel={`${day.day_label}, ${isOpen ? 'açık' : 'aç'}`}
@@ -164,7 +166,8 @@ export function FullPlanModal({
                   </Text>
                   {isDiet ? (
                     <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-                      {(day as DietPlanData['days'][number]).total_kcal} kcal
+                      {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals) */}
+                      {Math.round((day as DietPlanData['days'][number]).total_kcal)} kcal
                     </Text>
                   ) : (
                     <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
@@ -197,7 +200,9 @@ export function FullPlanModal({
                         </Text>
                       ) : (
                         ((day as DietPlanData['days'][number]).meals ?? []).map(meal => {
-                          const key = `${day.day_index}-${meal.meal_type}`;
+                          // FIX (audit UI-PLN-06): scope meal key by array position so
+                          // duplicate day_index values can't share expand-state.
+                          const key = `${dayIdx}-${meal.meal_type}`;
                           const isHl = !!highlightedCells?.find(
                             c => c.dayIndex === day.day_index && c.mealType === meal.meal_type,
                           );

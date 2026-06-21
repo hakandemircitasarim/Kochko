@@ -299,13 +299,27 @@ interface QueuedMessage {
   text: string;
   queuedAt: string;
   targetDate?: string;
+  // FIX (audit UX-OFF-01): carry the session (and task mode) the message was typed in, so
+  // it replays into the SAME conversation on reconnect — not whatever session happens to be
+  // active at drain time. Legacy entries without sessionId fall back to the active session.
+  sessionId?: string;
+  taskMode?: string;
 }
 
-export async function queueMessageOffline(text: string, targetDate?: string): Promise<void> {
+export async function queueMessageOffline(
+  text: string,
+  opts?: { targetDate?: string; sessionId?: string; taskMode?: string },
+): Promise<void> {
   try {
     const existing = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
     const queue: QueuedMessage[] = existing ? JSON.parse(existing) : [];
-    queue.push({ text, queuedAt: new Date().toISOString(), targetDate });
+    queue.push({
+      text,
+      queuedAt: new Date().toISOString(),
+      targetDate: opts?.targetDate,
+      sessionId: opts?.sessionId,
+      taskMode: opts?.taskMode,
+    });
     await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
   } catch (err) { console.warn('queueMessageOffline failed:', err); }
 }
@@ -326,9 +340,13 @@ export async function processOfflineQueue(): Promise<number> {
     const succeededIndexes = new Set<number>();
     for (let i = 0; i < queue.length; i++) {
       const msg = queue[i];
-      const { error } = msg.targetDate
-        ? await sendMessageForDate(msg.text, msg.targetDate)
-        : await sendMessage(msg.text);
+      // FIX (audit UX-OFF-01): route session-scoped messages back to their own session so
+      // the reply lands in the conversation the user typed in.
+      const { error } = msg.sessionId
+        ? await sendMessageToSession(msg.sessionId, msg.text, msg.taskMode, msg.targetDate)
+        : msg.targetDate
+          ? await sendMessageForDate(msg.text, msg.targetDate)
+          : await sendMessage(msg.text);
       if (!error) {
         sent++;
         succeededIndexes.add(i);
@@ -394,17 +412,13 @@ export async function loadSessions(limit = 20): Promise<ChatSessionSummary[]> {
 
     const sessions = (data ?? []) as ChatSessionSummary[];
 
-    // FIX (audit: loadSessions N+1) was one last-message query per session (1+20
-    // sequential round-trips). Fetch all sessions' messages in a single .in() query
-    // ordered newest-first, then keep the first (latest) seen per session client-side.
-    // RLS on chat_messages still isolates rows to the current user.
+    // FIX (audit DB-IDX-03): the old path fetched EVERY message of all 20 sessions in one
+    // .in()+order query and kept only the latest per session client-side — the DB returned (and
+    // the device downloaded) the entire history of 20 sessions. The get_session_last_messages RPC
+    // returns exactly ONE last-message row per session (DISTINCT ON) and is auth.uid()-scoped.
     if (sessions.length > 0) {
       const ids = sessions.map(s => s.id);
-      const { data: msgs } = await supabase
-        .from('chat_messages')
-        .select('session_id, content, created_at')
-        .in('session_id', ids)
-        .order('created_at', { ascending: false });
+      const { data: msgs } = await supabase.rpc('get_session_last_messages', { p_session_ids: ids });
       if (msgs) {
         const lastBySession = new Map<string, string>();
         for (const m of msgs as { session_id: string; content: string }[]) {
@@ -501,6 +515,30 @@ export async function loadSessionMessages(sessionId: string, limit = 50): Promis
       .from('chat_messages')
       .select('id, role, content, task_mode, created_at, actions_executed')
       .eq('session_id', sessionId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    return ((data as ChatMessage[]) ?? []).reverse();
+  } catch {
+    return [];
+  }
+}
+
+// FIX (audit UX-CHT-06): upward pagination. loadSessionMessages fetches only the newest
+// 50; for sessions exceeding that, all older coaching context silently disappeared on
+// resume. This fetches the page of messages STRICTLY OLDER than `beforeCreatedAt`
+// (newest-first then reversed to chronological), so the chat screen can prepend an older
+// page when the user taps "Daha eski mesajları yükle" / scrolls to the top.
+export async function loadOlderSessionMessages(
+  sessionId: string,
+  beforeCreatedAt: string,
+  limit = 50,
+): Promise<ChatMessage[]> {
+  try {
+    const { data } = await supabase
+      .from('chat_messages')
+      .select('id, role, content, task_mode, created_at, actions_executed')
+      .eq('session_id', sessionId)
+      .lt('created_at', beforeCreatedAt)
       .order('created_at', { ascending: false })
       .limit(limit);
     return ((data as ChatMessage[]) ?? []).reverse();

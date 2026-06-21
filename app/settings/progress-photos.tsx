@@ -5,15 +5,18 @@
  */
 import { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, Image, TouchableOpacity, Alert, Dimensions, Modal } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
+import { usePremium } from '@/hooks/usePremium';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
-import { a11yImage } from '@/lib/accessibility';
+import { a11yImage, getContrastColor } from '@/lib/accessibility';
 
 interface ProgressPhoto {
   id: string;
@@ -31,11 +34,25 @@ const screenWidth = Dimensions.get('window').width;
 
 export default function ProgressPhotosScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const user = useAuthStore(s => s.user);
+  // FIX (audit UX-PRM-06): ekranın kendisi premium-koruması yapsın — menü ternary'sine güvenme
+  // (deep link / chat navigate / deneme bitişi free kullanıcıyı içeride bırakıyordu).
+  const { isPremium } = usePremium();
+  const profileLoading = useProfileStore(s => s.loading);
+  const profile = useProfileStore(s => s.profile);
   const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPose, setSelectedPose] = useState<string>('on');
   const [showComparison, setShowComparison] = useState(false);
+
+  // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
+  // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium, router]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -122,6 +139,11 @@ export default function ProgressPhotosScreen() {
 
   const comparisonWidth = (screenWidth - SPACING.md * 2 - SPACING.sm) / 2;
 
+  // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit ui-settings-duplicate-title): native header (settings/_layout.tsx) renders the title; in-body H1 removed as redundant. */}
@@ -143,7 +165,8 @@ export default function ProgressPhotosScreen() {
               backgroundColor: selectedPose === pose ? COLORS.primary : COLORS.card,
               borderWidth: 1, borderColor: selectedPose === pose ? COLORS.primary : COLORS.border,
             }}>
-            <Text style={{ color: selectedPose === pose ? '#fff' : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600', textTransform: 'capitalize' }}>{pose}</Text>
+            {/* FIX (audit UI-DS-01): seçili poz metni '#fff' yerine getContrastColor(COLORS.primary) (siyah; teal üzerinde WCAG AA geçer, beyaz 3.39:1 idi). */}
+            <Text style={{ color: selectedPose === pose ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600', textTransform: 'capitalize' }}>{pose}</Text>
           </TouchableOpacity>
         ))}
       </View>

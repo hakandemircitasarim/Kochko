@@ -160,6 +160,11 @@ export async function getCurrentWeeklyPlan(): Promise<WeeklyPlan | null> {
 }
 
 export async function generateWeeklyPlan(modificationRequest?: string): Promise<{ data: WeeklyPlan | null; error: string | null }> {
+  // FIX (audit AI-PLN-02): this is the SOLE production caller of the ai-plan edge function, and it
+  // ALWAYS sends body.type='weekly'. The edge function's daily branch is dormant (it would write a
+  // legacy-shape daily_plans row that overrides the chat-plan projection — the single source of
+  // truth) and now refuses non-weekly bodies with 410. Daily plans come from the chat plan flow
+  // (plan-projection), NOT from here. Do not add a daily invocation to this service.
   const body: Record<string, unknown> = { type: 'weekly' };
   if (modificationRequest) body.modification_request = modificationRequest;
   const { error } = await supabase.functions.invoke('ai-plan', { body });

@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -11,6 +12,8 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
+import { usePremium } from '@/hooks/usePremium';
 import { generateMealPrepPlan, getMealPrepPrefs, setMealPrepPrefs, type MealPrepPlan } from '@/services/meal-prep.service';
 import { getCurrentWeeklyPlan } from '@/services/weekly-plan.service';
 
@@ -21,13 +24,27 @@ const PREP_DAY_OPTIONS = [
 
 export default function MealPrepPlanScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const user = useAuthStore(s => s.user);
+  // FIX (audit UX-PRM-06): ekranın kendisi premium-koruması yapsın — menü ternary'sine güvenme
+  // (deep link / chat navigate / deneme bitişi free kullanıcıyı içeride bırakıyordu).
+  const { isPremium } = usePremium();
+  const profileLoading = useProfileStore(s => s.loading);
+  const profile = useProfileStore(s => s.profile);
   const [plan, setPlan] = useState<MealPrepPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [active, setActive] = useState(false);
   const [prepDay, setPrepDay] = useState(0);
+
+  // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
+  // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium, router]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -71,6 +88,11 @@ export default function MealPrepPlanScreen() {
       setLoading(false);
     }
   };
+
+  // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
 
   // Activation gate: meal_prep_active was previously impossible to enable from
   // ANY screen (the feature was a permanent dead-end) — this is the toggle.

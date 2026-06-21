@@ -24,15 +24,15 @@ import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
-  sendMessageToSession, sendPhotoToSession, loadSessionMessages,
-  reopenSession, createSession,
+  sendMessageToSession, sendPhotoToSession, loadSessionMessages, loadOlderSessionMessages,
+  reopenSession, createSession, queueMessageOffline, processOfflineQueue, getOfflineQueueSize,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { getTaskByKey } from '@/services/onboarding-tasks.service';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { saveRecipe, type RecipeIngredient } from '@/services/recipes.service';
 import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
-import { incrementAndCheck, getRemainingMessages, refundDailyMessage } from '@/services/message-counter.service';
+import { getRemainingMessages, syncRemainingFromServer } from '@/services/message-counter.service';
 import { speak, stopSpeaking, isSpeaking } from '@/services/tts.service';
 import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
@@ -302,6 +302,10 @@ export default function SessionDetailScreen() {
   // as purposeful ("Planını hazırlıyorum…") instead of a blank spinner.
   const [typingLabel, setTypingLabel] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  // FIX (audit UX-CHT-06): upward pagination state. hasMoreOlder is set when the initial
+  // load returns a full page (PAGE_SIZE), implying older history exists beyond the window.
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
   const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -360,6 +364,31 @@ export default function SessionDetailScreen() {
   useEffect(() => {
     getRemainingMessages(isPremium).then(setRemainingMsgs);
   }, [isPremium]);
+
+  // FIX (audit UX-OFF-01): drain the offline chat queue on reconnect. When the network
+  // comes back, replay any messages queued while offline (processOfflineQueue routes each
+  // back to its own session) and reload this session so the just-sent turns + AI replies
+  // appear. Guarded by a ref so it only fires on the offline→online transition.
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    const cameOnline = isOnline && !wasOnlineRef.current;
+    wasOnlineRef.current = isOnline;
+    if (!cameOnline || !sessionId) return;
+    let cancelled = false;
+    (async () => {
+      const queued = await getOfflineQueueSize();
+      if (queued === 0) return;
+      const sent = await processOfflineQueue();
+      if (cancelled || sent === 0) return;
+      const fresh = await loadSessionMessages(sessionId);
+      if (cancelled) return;
+      setMessages(fresh.map(m => ({ ...m })));
+      setHasMoreOlder(fresh.length >= 50);
+      scrollToBottom(true);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline, sessionId]);
 
   // TTS toggle handler
   const handleTTSToggle = useCallback(async (msgId: string, text: string) => {
@@ -481,30 +510,18 @@ export default function SessionDetailScreen() {
       } else {
         if (!cancelled) {
           setMessages(data.map(m => ({ ...m })));
+          // FIX (audit UX-CHT-06): a full first page (50 rows) means older history exists
+          // beyond the window — enable the "Daha eski mesajları yükle" affordance.
+          setHasMoreOlder(data.length >= 50);
           setLoading(false);
 
-          // Phase 5: proactive greet — if it's been >4h since the last assistant
-          // message AND the chat is non-task (general/daily_log), inject a gentle
-          // "merhaba tekrar" starter. Silent no-op otherwise.
-          if (!taskModeHint && data.length > 0) {
-            const last = [...data].reverse().find(m => m.role === 'assistant');
-            if (last) {
-              const ageMs = Date.now() - new Date(last.created_at).getTime();
-              if (ageMs > 4 * 60 * 60 * 1000) {
-                // Fire-and-forget: add a small client-only bubble; doesn't hit the DB
-                // until user replies, so no noise if they just leave the screen.
-                setMessages(prev => [
-                  ...prev,
-                  {
-                    id: 'greet-' + Date.now(),
-                    role: 'assistant',
-                    content: 'Uzun zamandır konuşmadık. Bugünü konuşalım mı — ne yediğin, enerjin nasıldı?',
-                    created_at: new Date().toISOString(),
-                  },
-                ]);
-              }
-            }
-          }
+          // FIX (audit UX-CHT-07): the old "Uzun zamandır konuşmadık…" proactive greeting
+          // was a client-only synthetic bubble that never persisted to chat_messages. The
+          // edge function builds context from chat_messages, so the model had no record it
+          // "said" that — if the user replied "evet" the AI had no idea what was agreed, and
+          // the greeting re-appeared on every reopen after 4h. Dropped: the model opens
+          // naturally on the user's first real reply (and any server-side proactive nudge
+          // that DOES persist a row will still show up here as a normal message).
         }
       }
     });
@@ -572,7 +589,31 @@ export default function SessionDetailScreen() {
     if (sending) return;
     if (rateLimitedUntil && Date.now() < rateLimitedUntil) return;
     if (!isOnline) {
-      Alert.alert('İnternet yok', 'Bağlı olduğundan emin olup tekrar dene.');
+      // FIX (audit UX-OFF-01): the advertised offline-queue resilience (Spec 11) was dead
+      // code — handleSend just warned and dropped the message. Now a TEXT message typed
+      // offline is queued for THIS session and replayed on reconnect (processOfflineQueue
+      // runs from the reconnect effect below). Photo sends still can't be queued (the queue
+      // doesn't carry image bytes), and a retry of an already-failed bubble stays a warning.
+      const offlineText = !retryFrom ? input.trim() : '';
+      if (offlineText && !photo) {
+        await queueMessageOffline(offlineText, {
+          sessionId,
+          taskMode: taskModeHint ?? undefined,
+          targetDate: backdateDate ?? undefined,
+        });
+        const queuedMsg: UIMessage = {
+          id: `q-${Date.now()}`,
+          role: 'user',
+          content: offlineText,
+          created_at: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, queuedMsg]);
+        setInput('');
+        Alert.alert('Çevrimdışısın', 'Mesajın sıraya alındı, bağlantı gelince otomatik gönderilecek.');
+        scrollToBottom(true);
+      } else {
+        Alert.alert('İnternet yok', 'Bağlı olduğundan emin olup tekrar dene.');
+      }
       return;
     }
 
@@ -581,7 +622,6 @@ export default function SessionDetailScreen() {
     let effectiveTaskMode: string | undefined;
     let backdate: string | null;
     let userMsgId: string;
-    let counterIncremented = false; // so we can refund it if the send fails (#12)
 
     if (retryFrom && retryFrom.retryPayload) {
       text = retryFrom.retryPayload.text;
@@ -597,15 +637,22 @@ export default function SessionDetailScreen() {
       text = input.trim();
       if (!text && !photo) return;
 
-      // Message counter check (Spec 16: free daily limit)
-      if (text && !photo) {
-        const counterResult = await incrementAndCheck(isPremium);
-        counterIncremented = counterResult.allowed && !isPremium;
-        setRemainingMsgs(counterResult.remaining);
-        if (!counterResult.allowed) {
+      // FIX (audit UX-CHT-05/UX-PRM-02/UX-PRM-05): the SERVER is the authoritative daily
+      // gate. It counts ALL user messages (text + photo + chip + action sends) and EXEMPTS
+      // record-parse logs (meal/water/sleep/weight). The old client path optimistically
+      // incremented a SEPARATE local counter only for `text && !photo`, so it (a) burned a
+      // free user's allowance on food/water LOGS the server exempts, and (b) skipped photo
+      // sends the server DOES count — drifting both directions. We no longer increment a
+      // divergent local counter here; instead we read-only block ONLY when the
+      // server-synced remaining (reconciled after every send) already shows 0, and let the
+      // server's authoritative rate_limited response be the true gate otherwise.
+      if (!isPremium) {
+        const remainingNow = await getRemainingMessages(isPremium);
+        setRemainingMsgs(remainingNow);
+        if (remainingNow <= 0) {
           Alert.alert(
             'Mesaj Limiti',
-            counterResult.message ?? 'Günlük mesaj limitine ulaştın. Premium\'a geçersen sınırsız mesaj hakkı kazanırsın.',
+            `Günlük ${50} mesaj hakkını kullandın. Premium'a geçersen sınırsız mesaj hakkı kazanırsın.`,
             [{ text: 'Tamam' }]
           );
           return;
@@ -655,6 +702,10 @@ export default function SessionDetailScreen() {
     if (backdate && !retryFrom) setBackdateDate(null);
 
     if (data) {
+      // FIX (audit UX-CHT-05/UX-PRM-05): reconcile the local quota mirror with the server's
+      // authoritative `remaining` on EVERY successful send (text + photo). -1 = exempt
+      // (record-parse/onboarding) → counter untouched so logs don't burn the visible quota.
+      syncRemainingFromServer(isPremium, data.remaining).then(setRemainingMsgs);
       if (data.rate_limited) {
         // Cool down for 60s; the backend will re-check on the next send anyway.
         setRateLimitedUntil(Date.now() + 60_000);
@@ -753,13 +804,10 @@ export default function SessionDetailScreen() {
           }
         : m
       ));
-      // The send never reached/persisted on the server — refund the optimistic
-      // daily-message increment so a free user doesn't lose a message the AI
-      // never answered (#12). Retries don't re-increment, so this stays balanced.
-      if (counterIncremented) {
-        await refundDailyMessage(isPremium);
-        getRemainingMessages(isPremium).then(setRemainingMsgs);
-      }
+      // FIX (audit UX-CHT-05): no optimistic local increment to refund anymore — the
+      // server is authoritative and only counts messages it actually persisted, so a
+      // failed send never consumed quota. (Counter is reconciled from the server's
+      // `remaining` on the next successful send.)
     }
 
     setSending(false);
@@ -797,6 +845,10 @@ export default function SessionDetailScreen() {
   // user; `option` is the fuller engineered instruction actually sent to the model.
   // When omitted (genuine quick-select chips) the bubble matches the tapped chip.
   const handleQuickSelect = useCallback((option: string, displayLabel?: string) => {
+    // FIX (audit UX-CHT-04): in-flight guard. Without this, double-tapping a quick-select
+    // chip / Onayla / Doğru-Yanlış fired two concurrent sendMessageToSession calls →
+    // duplicate AI turns and duplicate side effects (double log / double delete).
+    if (sending) return;
     haptics.tap(); // chip tap — light tactile confirm
     const bubbleText = displayLabel ?? option;
     // Auto-send after a short delay
@@ -810,6 +862,8 @@ export default function SessionDetailScreen() {
       scrollToBottom(true); // user's own tap — always follow
       const { data, error } = await sendMessageToSession(sessionId, option);
       if (data) {
+        // FIX (audit UX-CHT-05): chip sends consume the server-side quota too — reconcile.
+        syncRemainingFromServer(isPremium, data.remaining).then(setRemainingMsgs);
         let content = data.message;
         const simParsed = parseSimulationData(content);
         content = simParsed.cleanContent;
@@ -840,7 +894,7 @@ export default function SessionDetailScreen() {
       setSending(false);
       scrollToBottom();
     }, 0);
-  }, [scrollToBottom, user?.id, refreshDashboard]);
+  }, [sending, scrollToBottom, user?.id, refreshDashboard, isPremium]);
 
   // Confirm/Reject plan suggestion handlers. The user-facing bubble stays short and
   // natural while the model still receives the fuller engineered instruction.
@@ -954,6 +1008,9 @@ export default function SessionDetailScreen() {
 
   // "Neden bu öneriyi yaptın?" handler
   const handleAskWhy = useCallback((messageContent: string) => {
+    // FIX (audit UX-CHT-04): in-flight guard — mirror handleSend/handleQuickSelect so a
+    // double-tap on "Neden?" can't fire two concurrent sends.
+    if (sending) return;
     haptics.tap();
     setInput('Neden bu öneriyi yaptın?');
     // Trigger send after state update
@@ -973,6 +1030,8 @@ export default function SessionDetailScreen() {
 
       const { data, error } = await sendMessageToSession(sessionId, text);
       if (data) {
+        // FIX (audit UX-CHT-05): ask-why reaches the server and consumes quota — reconcile.
+        syncRemainingFromServer(isPremium, data.remaining).then(setRemainingMsgs);
         const reply: UIMessage = {
           id: `a-${Date.now()}`,
           role: 'assistant',
@@ -993,7 +1052,7 @@ export default function SessionDetailScreen() {
       setSending(false);
       scrollToBottom();
     }, 0);
-  }, [scrollToBottom]);
+  }, [sending, scrollToBottom, isPremium]);
 
   // Undo handler — routed through the SAME visible send path as a normal message
   // (FIX audit UX-CHT-02). The old banner onPress fire-and-forget'd the request and
@@ -1020,6 +1079,8 @@ export default function SessionDetailScreen() {
 
       const { data, error } = await sendMessageToSession(sessionId, undoText);
       if (data) {
+        // FIX (audit UX-CHT-05): the undo turn reaches the server and counts — reconcile.
+        syncRemainingFromServer(isPremium, data.remaining).then(setRemainingMsgs);
         const reply: UIMessage = {
           id: `a-${Date.now()}`,
           role: 'assistant',
@@ -1051,7 +1112,35 @@ export default function SessionDetailScreen() {
       setSending(false);
       scrollToBottom();
     }, 0);
-  }, [sending, sessionId, scrollToBottom, user?.id, refreshDashboard]);
+  }, [sending, sessionId, scrollToBottom, user?.id, refreshDashboard, isPremium]);
+
+  // FIX (audit UX-CHT-06): fetch and PREPEND the next older page when the user asks for it.
+  // Uses the oldest currently-loaded message's created_at as the cursor. De-dups by id in
+  // case a row sits on a page boundary. Does not scroll (the user is reading older history).
+  const handleLoadOlder = useCallback(async () => {
+    if (loadingOlder || !hasMoreOlder) return;
+    // The oldest PERSISTED (server) message is the pagination cursor. Client-only optimistic
+    // bubbles carry a prefixed id (u-/a-/q-/greet-/onboard-); skip them so we page from a
+    // real created_at that exists in the DB.
+    const isClientId = (id: string) => /^(u-|a-|q-|greet-|onboard-)/.test(id);
+    const oldest = messages.find(m => !isClientId(m.id)) ?? messages[0];
+    if (!oldest?.created_at) return;
+    setLoadingOlder(true);
+    try {
+      const older = await loadOlderSessionMessages(sessionId, oldest.created_at);
+      if (older.length > 0) {
+        setMessages(prev => {
+          const seen = new Set(prev.map(m => m.id));
+          const fresh = older.filter(m => !seen.has(m.id)).map(m => ({ ...m } as UIMessage));
+          return [...fresh, ...prev];
+        });
+      }
+      // Fewer than a full page back means we've reached the start of the session.
+      setHasMoreOlder(older.length >= 50);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [loadingOlder, hasMoreOlder, messages, sessionId]);
 
   if (loading) {
     return (
@@ -1151,9 +1240,14 @@ export default function SessionDetailScreen() {
           global common/OfflineBanner (app/_layout.tsx) bu ekranı zaten kapsıyor. */}
 
       {/* Messages or empty state */}
-      {messages.length <= 1 && !sending ? (
+      {/* FIX (audit UX-CHT-03): only the ZERO-message case uses the ScrollView EmptyState.
+          From the first real message onward the FlatList renders, so crossing 1→2 messages
+          just appends a row instead of tearing down a ScrollView and mounting a fresh
+          FlatList (which remounted every MessageBubble and replayed all entrance
+          animations). The lone-onboarding-intro / lone-user-message now render as normal
+          bubbles in the list, with the starter suggestions as the list FOOTER at 1 msg. */}
+      {messages.length === 0 && !sending ? (
         <EmptyState
-          messages={messages}
           isOnboarding={!!isOnboarding}
           onSuggestion={handleSuggestion}
           showSuggestions={!taskModeHint}
@@ -1167,8 +1261,38 @@ export default function SessionDetailScreen() {
             renderItem={({ item }) => {
               if (item.kind === 'separator') return <DateSeparator label={item.label} />;
               const m = item.msg as UIMessage;
-              return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} />;
+              return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} sending={sending} />;
             }}
+            // FIX (audit UX-CHT-06): "load older messages" control at the top of the list.
+            // Tapping fetches the previous page (created_at < oldest loaded) and prepends it,
+            // so coaching history beyond the newest-50 window is reachable on resume.
+            ListHeaderComponent={hasMoreOlder ? (
+              <TouchableOpacity
+                onPress={handleLoadOlder}
+                disabled={loadingOlder}
+                accessibilityRole="button"
+                accessibilityLabel="Daha eski mesajları yükle"
+                style={{
+                  alignSelf: 'center', marginBottom: SPACING.sm, paddingVertical: 6,
+                  paddingHorizontal: SPACING.lg, borderRadius: RADIUS.pill,
+                  backgroundColor: colors.surfaceLight, flexDirection: 'row',
+                  alignItems: 'center', gap: 6, opacity: loadingOlder ? 0.6 : 1,
+                }}
+              >
+                {loadingOlder
+                  ? <ActivityIndicator size="small" color={colors.textSecondary} />
+                  : <Ionicons name="arrow-up" size={13} color={colors.textSecondary} />}
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                  {loadingOlder ? 'Yükleniyor…' : 'Daha eski mesajları yükle'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            // FIX (audit UX-CHT-03): at exactly one message (onboarding intro), show the
+            // starter suggestions below it — same order/affordance the old EmptyState had —
+            // without swapping container types as messages grow.
+            ListFooterComponent={!taskModeHint && messageRows.filter(r => r.kind === 'message').length === 1
+              ? <View style={{ marginTop: SPACING.lg }}><StarterSuggestions isOnboarding={!!isOnboarding} onSuggestion={handleSuggestion} /></View>
+              : null}
             contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
             onScroll={handleListScroll}
             scrollEventThrottle={16}
@@ -1470,16 +1594,17 @@ export default function SessionDetailScreen() {
 
 // --- Sub-components ---
 
-function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = true }: {
-  messages: UIMessage[];
+// Starter-suggestion chips (ÖRNEK BAŞLANGIÇLAR). Pulled out of EmptyState so the SAME
+// affordance can be rendered both in the zero-message ScrollView and as the FlatList
+// footer when a session has exactly one message — FIX (audit UX-CHT-03): keeping the
+// message container as one FlatList from the first real message on, instead of swapping
+// ScrollView↔FlatList at the 1→2 boundary (which remounted every bubble and replayed
+// all entrance animations at once).
+function StarterSuggestions({ isOnboarding, onSuggestion }: {
   isOnboarding: boolean;
   onSuggestion: (text: string) => void;
-  // In a specific task chat the AI opens with a contextual question, so generic
-  // example-starters ("2 yumurta yedim") are irrelevant noise — hide them there.
-  showSuggestions?: boolean;
 }) {
   const { colors } = useTheme();
-
   const onboardingSuggestions = [
     { text: '30 yaşında, 80 kilo, 175 boy erkeğim', icon: 'person-outline' as const, color: colors.success },
     { text: 'Kilo vermek istiyorum', icon: 'trending-down-outline' as const, color: colors.error },
@@ -1492,84 +1617,11 @@ function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = tr
     { text: 'Evde yapabileceğim antrenman öner', icon: 'barbell-outline' as const, color: colors.pink },
   ];
   const suggestions = isOnboarding ? onboardingSuggestions : regularSuggestions;
-
   return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ padding: SPACING.xl, paddingTop: SPACING.xxl, flexGrow: 1 }}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Onboarding intro bubble */}
-      {messages.length === 1 && messages[0].role === 'assistant' && (
-        <View style={{
-          backgroundColor: colors.card,
-          borderRadius: 18,
-          borderBottomLeftRadius: 4,
-          padding: SPACING.lg,
-          marginBottom: SPACING.xxl,
-          borderWidth: 0.5,
-          borderColor: colors.border,
-        }}>
-          <Text style={{ color: colors.text, fontSize: 14, lineHeight: 21 }}>
-            {messages[0].content}
-          </Text>
-        </View>
-      )}
-
-      {/* FIX (audit UI-CHT-04): a session that loads with exactly one persisted
-          USER message (e.g. the assistant reply failed to persist server-side) used
-          to be dropped here — EmptyState only rendered a lone assistant message, so
-          the user saw the generic "Kochko ile konuş" starter as if they'd never
-          written anything. Render that lone user message instead of losing it. */}
-      {messages.length === 1 && messages[0].role === 'user' && (
-        <View style={{
-          alignSelf: 'flex-end',
-          maxWidth: '86%',
-          backgroundColor: colors.primary,
-          borderRadius: 18,
-          borderBottomRightRadius: 4,
-          paddingHorizontal: SPACING.lg,
-          paddingVertical: SPACING.md,
-          marginBottom: SPACING.xxl,
-        }}>
-          <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', fontSize: 14, lineHeight: 21 }}>
-            {messages[0].content}
-          </Text>
-        </View>
-      )}
-
-      {/* Fresh chat header — only when there are zero messages */}
-      {messages.length === 0 && (
-        <View style={{ marginBottom: SPACING.lg }}>
-          <View
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 18,
-              backgroundColor: colors.primary + '22',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: SPACING.md,
-            }}
-          >
-            <Ionicons name="chatbubbles" size={26} color={colors.primary} />
-          </View>
-          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
-            Kochko ile konuş
-          </Text>
-          <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 20 }}>
-            Beslenme, antrenman, uyku — ne yedin, nasıl gidiyor, bir sonraki hamle ne olsun.
-          </Text>
-        </View>
-      )}
-
-      {showSuggestions && (
+    <>
       <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm }}>
         ÖRNEK BAŞLANGIÇLAR
       </Text>
-      )}
-
-      {showSuggestions && (
       <View style={{ gap: SPACING.sm }}>
         {suggestions.map((s, i) => (
           <TouchableOpacity
@@ -1608,7 +1660,52 @@ function EmptyState({ messages, isOnboarding, onSuggestion, showSuggestions = tr
           </TouchableOpacity>
         ))}
       </View>
-      )}
+    </>
+  );
+}
+
+// Zero-message empty state — the fresh-chat header + starter suggestions. FIX (audit
+// UX-CHT-03): now only used when there are NO real messages; once a session has ≥1
+// message the FlatList renders (with StarterSuggestions as its footer at 1 message),
+// so the message container never changes mount type as the conversation grows.
+function EmptyState({ isOnboarding, onSuggestion, showSuggestions = true }: {
+  isOnboarding: boolean;
+  onSuggestion: (text: string) => void;
+  // In a specific task chat the AI opens with a contextual question, so generic
+  // example-starters ("2 yumurta yedim") are irrelevant noise — hide them there.
+  showSuggestions?: boolean;
+}) {
+  const { colors } = useTheme();
+  return (
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ padding: SPACING.xl, paddingTop: SPACING.xxl, flexGrow: 1 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      {/* Fresh chat header */}
+      <View style={{ marginBottom: SPACING.lg }}>
+        <View
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 18,
+            backgroundColor: colors.primary + '22',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: SPACING.md,
+          }}
+        >
+          <Ionicons name="chatbubbles" size={26} color={colors.primary} />
+        </View>
+        <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
+          Kochko ile konuş
+        </Text>
+        <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 20 }}>
+          Beslenme, antrenman, uyku — ne yedin, nasıl gidiyor, bir sonraki hamle ne olsun.
+        </Text>
+      </View>
+
+      {showSuggestions && <StarterSuggestions isOnboarding={isOnboarding} onSuggestion={onSuggestion} />}
     </ScrollView>
   );
 }
@@ -1648,7 +1745,7 @@ function MessageBubbleFrame({ isUser, children }: { isUser: boolean; children: R
 // props change. With the now-stable (useMemo/useCallback) props from the parent,
 // unrelated re-renders (keyboard, per-second rate-limit countdown, dashboard totals)
 // no longer re-render every visible bubble.
-const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry }: {
+const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, sending }: {
   message: UIMessage;
   onAskWhy: (content: string) => void;
   dashboardMacros: { protein: number; carbs: number; fat: number };
@@ -1666,6 +1763,9 @@ const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboard
   onTTSToggle: (msgId: string, text: string) => void;
   speakingMsgId: string | null;
   onRetry: (message: UIMessage) => void;
+  // FIX (audit UX-CHT-04): when a send is in flight, disable inline action chips so a
+  // double-tap can't fire a second concurrent send (duplicate AI turn / side effect).
+  sending: boolean;
 }) {
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
@@ -1830,7 +1930,7 @@ const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboard
 
         {/* Quick select buttons (D13) */}
         {!isUser && message.quickSelectOptions && message.quickSelectOptions.length > 0 && (
-          <QuickSelectButtons options={message.quickSelectOptions} onSelect={onQuickSelect} />
+          <QuickSelectButtons options={message.quickSelectOptions} onSelect={onQuickSelect} disabled={sending} />
         )}
 
         {/* Confirm/Reject buttons for plan suggestion (D14). Reject now reveals
@@ -1840,9 +1940,11 @@ const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboard
             <ConfirmRejectButtons
               onConfirm={onConfirm}
               onReject={() => setShowRejectReasons(v => !v)}
+              disabled={sending}
             />
             {showRejectReasons && (
               <PlanRejectReasons
+                disabled={sending}
                 onPick={(reason) => { setShowRejectReasons(false); onPlanRejectReason(reason); }}
                 onCancel={() => setShowRejectReasons(false)}
               />
@@ -1852,7 +1954,7 @@ const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboard
 
         {/* Low-confidence verification buttons (Spec 5.32) */}
         {!isUser && message.hasLowConfidenceVerification && !message.hasPlanSuggestion && (
-          <ConfirmRejectButtons onConfirm={onLowConfConfirm} onReject={onLowConfReject} />
+          <ConfirmRejectButtons onConfirm={onLowConfConfirm} onReject={onLowConfReject} disabled={sending} />
         )}
 
         {/* Persona detection card — shown once after 100+ messages (Spec 5.15) */}
@@ -1895,9 +1997,14 @@ const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboard
       )}
 
       {/* Weekly budget bar after meal_log (D15) */}
-      {!isUser && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
+      {/* FIX (audit UI-CHT-02): only render the budget card when the user actually
+          HAS a weekly budget (weeklyBudgetRemaining != null AND the resulting total > 0).
+          Without a plan/budget the store keeps weeklyBudgetRemaining null, which used to
+          pass total=0 → a broken "X / 0 kcal" card with a negative "Kalan". Skip it. */}
+      {!isUser && weeklyBudgetRemaining != null && totalCalories + weeklyBudgetRemaining > 0
+        && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
         <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
-          <WeeklyBudgetBar consumed={totalCalories} total={weeklyBudgetRemaining != null ? totalCalories + weeklyBudgetRemaining : 0} />
+          <WeeklyBudgetBar consumed={totalCalories} total={totalCalories + weeklyBudgetRemaining} />
         </View>
       )}
 
@@ -1971,13 +2078,15 @@ const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboard
  * only presentation changed. "İptal" simply dismisses (no side effect), matching
  * the old Alert's cancel button.
  */
-function PlanRejectReasons({ onPick, onCancel }: {
+function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
   onPick: (reason: { label: string; instruction: string }) => void;
   onCancel: () => void;
+  // FIX (audit UX-CHT-04): lock the reason chips while a send is in flight.
+  disabled?: boolean;
 }) {
   const { colors } = useTheme();
   return (
-    <View style={{ marginTop: SPACING.sm, gap: SPACING.xs }}>
+    <View style={{ marginTop: SPACING.sm, gap: SPACING.xs, opacity: disabled ? 0.5 : 1 }}>
       <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.5 }}>
         Neyi değiştirelim?
       </Text>
@@ -1985,9 +2094,11 @@ function PlanRejectReasons({ onPick, onCancel }: {
         {PLAN_REJECT_REASONS.map((reason) => (
           <TouchableOpacity
             key={reason.label}
+            disabled={disabled}
             onPress={() => { haptics.tap(); onPick(reason); }}
             accessibilityRole="button"
             accessibilityLabel={reason.label}
+            accessibilityState={{ disabled }}
             style={{
               paddingVertical: 8, paddingHorizontal: SPACING.md, minHeight: 36,
               justifyContent: 'center', borderRadius: RADIUS.pill,

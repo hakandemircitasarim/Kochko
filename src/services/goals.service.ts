@@ -135,10 +135,17 @@ export async function advanceToNextPhase(userId: string): Promise<GoalPhase | nu
 
 /**
  * Delete a phase.
+ * FIX (audit UX-FBK-04): hatayı yutmak yerine fırlat — çağıran (multi-phase-goals.tsx)
+ * try/catch ile yakalayıp kullanıcıya başarı/başarısızlık geri bildirimi verebilsin.
+ * Önceden hata yalnızca console.error'lanıp void dönüyordu; RLS/FK reddi sessizce
+ * kayboluyor, satır load() sonrası geri gelince kullanıcı hiçbir açıklama görmüyordu.
  */
 export async function deletePhase(phaseId: string): Promise<void> {
   const { error } = await supabase.from('goals').delete().eq('id', phaseId);
-  if (error) console.error('deletePhase error:', error.message);
+  if (error) {
+    console.error('deletePhase error:', error.message);
+    throw new Error(error.message);
+  }
 }
 
 // ─── Phase Transitions (Phase 6) ───

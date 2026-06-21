@@ -10,7 +10,10 @@ import { View, Text, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { syncQueue } from '@/services/offline-queue.service';
+import { syncQueue, getQueueCount } from '@/services/offline-queue.service';
+// FIX (audit UX-OFF-07) chat offline kuyruğu da reconnect'te gerçekten işlenmeli;
+// ve "senkronize ediliyor" göstergesi yalnız bekleyen kayıt varken çıkmalı.
+import { processOfflineQueue, getOfflineQueueSize } from '@/services/chat.service';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
@@ -30,12 +33,23 @@ export function OfflineBanner() {
     const unsub = NetInfo.addEventListener(state => {
       const online = state.isConnected === true;
       setIsOnline(prev => {
-        // If we just came back online, trigger a sync
+        // If we just came back online, drain whatever is genuinely queued.
         if (!prev && online) {
-          setSyncing(true);
-          syncQueue()
-            .catch(() => { /* per-item errors already logged */ })
-            .finally(() => setSyncing(false));
+          // FIX (audit UX-OFF-07) Önce gerçekten bekleyen kayıt var mı diye bak —
+          // hem yapısal kuyruk (su/öğün logları → enqueue) hem chat kuyruğu. Yoksa
+          // "senkronize ediliyor" göstergesini hiç açma (boş kuyruğu maskeleme).
+          // Varsa İKİ kuyruğu da işle (eskiden yalnız her zaman-boş yapısal kuyruk
+          // çalışıyordu; chat kuyruğu ve dashboard logları hiç işlenmiyordu).
+          Promise.all([getQueueCount(), getOfflineQueueSize()])
+            .then(([structured, chat]) => {
+              if (structured + chat === 0) return;
+              setSyncing(true);
+              return Promise.all([
+                syncQueue().catch(() => { /* per-item errors already logged */ }),
+                processOfflineQueue().catch(() => { /* logged in chat.service */ }),
+              ]).finally(() => setSyncing(false));
+            })
+            .catch(() => { /* count read failed — skip the sync banner */ });
         }
         return online;
       });
@@ -62,8 +76,10 @@ export function OfflineBanner() {
   // (primary 3.39, #D85A30 ~3.87). getContrastColor ikisi için de 'black' döndürür;
   // koyu metin/ikon kullanarak okunabilirliği AA'ya çıkar.
   const fg = getContrastColor(bgBase) === 'black' ? '#0D0D12' : '#fff';
-  // Don't promise local write-queueing for arbitrary logs — the structured offline
-  // queue isn't wired (only chat messages queue). Keep the copy honest (#R6-4).
+  // FIX (audit UX-OFF-07) "senkronize ediliyor" yalnız gerçekten bekleyen kayıt
+  // varken görünür (üstteki getQueueCount + getOfflineQueueSize sıfır değilse).
+  // Çevrimdışı kopya dürüst kalır: su kayıtları (enqueue) ve chat mesajları reconnect'te
+  // kaldığı yerden devam eder; silme işlemleri bağlantı gerektirir (kuyruğa alınmaz).
   const label = syncing ? 'Bekleyen kayıtlar senkronize ediliyor...' : 'Çevrimdışısın — internet gelince kaldığın yerden devam edebilirsin.';
   const icon = syncing ? 'sync' : 'cloud-offline-outline';
 

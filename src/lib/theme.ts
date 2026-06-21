@@ -31,12 +31,17 @@ export interface ThemeColors {
   divider: string;
   tabBar: string;
   tabBarBorder: string;
-  shadow: string;
+  // FIX (audit UI-DS-07): removed unused 'shadow' token (zero `.shadow` consumers
+  // app-wide; flat design has no shadows). Use `border` for hairlines.
   progressTrack: string;
   // Macro colors
   protein: string;
   carbs: string;
   fat: string;
+  // FIX (audit UI-STA-06): a lighter error tone for SMALL (<=13px) accent text.
+  // The base `error` (#E24B4A) is only 4.39:1 on card → fails AA for small text;
+  // this tone reaches >=4.5:1 on card/cardElevated/surfaceLight.
+  errorText: string;
   // Utility colors
   purple: string;
   pink: string;
@@ -70,12 +75,13 @@ export const DARK_COLORS: ThemeColors = {
   divider: 'rgba(255,255,255,0.08)',
   tabBar: '#0D0D12',
   tabBarBorder: 'rgba(255,255,255,0.08)',
-  shadow: '#000000',
   progressTrack: 'rgba(255,255,255,0.08)',
   // Macro colors
   protein: '#378ADD',
   carbs: '#EF9F27',
   fat: '#D85A30',
+  // FIX (audit UI-STA-06): lighter error for small text → 5.82:1 on card, 5.30:1 on cardElevated/surfaceLight.
+  errorText: '#EE6E6B',
   // Utility
   purple: '#7F77DD',
   pink: '#D4537E',
@@ -109,12 +115,13 @@ export const LIGHT_COLORS: ThemeColors = {
   divider: '#F0F2F5',
   tabBar: '#FFFFFF',
   tabBarBorder: '#E8ECF0',
-  shadow: '#000000',
   progressTrack: '#D8DCE4',
   // Macro colors
   protein: '#378ADD',
   carbs: '#EF9F27',
   fat: '#D85A30',
+  // FIX (audit UI-STA-06): darker error for small text → 5.17:1 on white card, 4.61:1 on surfaceLight (base #E24B4A was only 3.93:1).
+  errorText: '#C93634',
   // Utility
   purple: '#7F77DD',
   pink: '#D4537E',
@@ -137,27 +144,9 @@ export const METRIC_COLORS = {
   challenge: '#7F77DD',
 } as const;
 
-/** @deprecated Use METRIC_COLORS instead. Kept for backward compat during migration. */
-export const GRADIENTS = {
-  calories: ['#1D9E75', '#1D9E75'] as [string, string],
-  protein: ['#378ADD', '#378ADD'] as [string, string],
-  water: ['#378ADD', '#378ADD'] as [string, string],
-  sleep: ['#7F77DD', '#7F77DD'] as [string, string],
-  mood: ['#D4537E', '#D4537E'] as [string, string],
-  steps: ['#7F77DD', '#7F77DD'] as [string, string],
-  weight: ['#D4537E', '#D4537E'] as [string, string],
-  streak: ['#EF9F27', '#EF9F27'] as [string, string],
-  carbs: ['#EF9F27', '#EF9F27'] as [string, string],
-  fat: ['#D85A30', '#D85A30'] as [string, string],
-  primary: ['#1D9E75', '#1D9E75'] as [string, string],
-  success: ['#1D9E75', '#1D9E75'] as [string, string],
-};
-
-/** @deprecated Gradients removed — flat design only */
-export const HERO_GRADIENTS = {
-  light: ['#1D9E75', '#1D9E75', '#1D9E75'] as [string, string, string],
-  dark: ['#1D9E75', '#1D9E75', '#1D9E75'] as [string, string, string],
-};
+// FIX (audit UI-DS-07): removed no-op GRADIENTS/HERO_GRADIENTS exports — they were
+// deprecated tuples repeating the same color (flat design has no gradients) and had
+// zero consumers app-wide. Use METRIC_COLORS for flat metric accents.
 
 export interface ThemeContextType {
   mode: ThemeMode;

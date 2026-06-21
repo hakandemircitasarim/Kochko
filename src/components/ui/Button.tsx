@@ -1,7 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, type ViewStyle } from 'react-native';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { SPACING, FONT, RADIUS, MAX_FONT_SCALE, BUTTON_HEIGHTS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
 interface Props {
@@ -37,7 +37,8 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
     : isOutline ? colors.primary
     : getContrastColor(bgColor);
 
-  const height = size === 'sm' ? 32 : size === 'lg' ? 48 : 40;
+  // FIX (audit UI-DS-05): consume the BUTTON_HEIGHTS token map instead of inline 32/40/48 literals.
+  const height = BUTTON_HEIGHTS[size];
   const fontSize = size === 'sm' ? FONT.xs : size === 'lg' ? FONT.lg : FONT.sm;
 
   // FIX (audit ui-button): sm/md visual heights are < 44dp (WCAG 2.5.5); extend the

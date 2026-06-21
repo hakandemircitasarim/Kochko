@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { getLabValues, addLabValue, COMMON_LAB_PARAMS, type LabValue } from '@/services/health.service';
@@ -20,8 +20,10 @@ export default function LabValuesScreen() {
   const [unit, setUnit] = useState('');
   const [refMin, setRefMin] = useState('');
   const [refMax, setRefMax] = useState('');
+  // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya yanlış 'boş' kartı gösterilmiyordu (food-preferences kalıbı).
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { getLabValues().then(setEntries); }, []);
+  useEffect(() => { getLabValues().then(setEntries).finally(() => setLoading(false)); }, []);
 
   const selectParam = (p: typeof COMMON_LAB_PARAMS[0]) => {
     setParamName(p.name); setUnit(p.unit); setRefMin(String(p.refMin)); setRefMax(String(p.refMax));
@@ -125,6 +127,21 @@ export default function LabValuesScreen() {
           )}
         </Card>
       ))}
+
+      {/* FIX (audit UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi. */}
+      {loading && Object.keys(grouped).length === 0 && (
+        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      )}
+
+      {/* FIX (audit UI-SET-04): kayıt yokken (ve form kapalıyken) açıklayıcı boş-durum kartı; kardeş liste ekranları gibi. */}
+      {!loading && Object.keys(grouped).length === 0 && !showAdd && (
+        <Card style={{ marginTop: SPACING.md }}>
+          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz lab değerin yok</Text>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Vitamin D, B12, ferritin gibi tahlil sonuçlarını ekle; koçun planı bu değerlere göre uyarlar.</Text>
+        </Card>
+      )}
     </ScrollView>
     </KeyboardAvoidingView>
   );

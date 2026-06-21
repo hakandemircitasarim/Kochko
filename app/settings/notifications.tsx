@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
+import { Toggle } from '@/components/settings/ToggleRow'; // FIX (audit UI-DS-03): shared toggle primitive
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { a11ySwitch, getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -110,9 +111,8 @@ export default function NotificationsScreen() {
 
       {/* Main toggle */}
       <TouchableOpacity onPress={toggleMain} {...a11ySwitch(`Bildirimler ${prefs.enabled ? 'Açık' : 'Kapalı'}`, prefs.enabled)} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg, minHeight: 44 }}>
-        <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: prefs.enabled ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
-          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: prefs.enabled ? 'flex-end' : 'flex-start' }} />
-        </View>
+        {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns the switch role + press). */}
+        <Toggle value={prefs.enabled} onToggle={toggleMain} />
         <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>Bildirimler {prefs.enabled ? 'Açık' : 'Kapalı'}</Text>
       </TouchableOpacity>
 
@@ -154,10 +154,8 @@ export default function NotificationsScreen() {
                 {...a11ySwitch(label, !!isOn)}
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
                 <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{label}</Text>
-                {/* FIX (audit toggle-size): standardize switch to 48x28 (matches main toggle / ToggleRow primitive). */}
-                <View style={{ width: 48, height: 28, borderRadius: 14, backgroundColor: isOn ? COLORS.primary : COLORS.surfaceLight, justifyContent: 'center', padding: 2 }}>
-                  <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: isOn ? 'flex-end' : 'flex-start' }} />
-                </View>
+                {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns switch role + press). */}
+                <Toggle value={!!isOn} onToggle={() => toggleType(key)} />
               </TouchableOpacity>
               );
             })}

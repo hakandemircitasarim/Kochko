@@ -418,8 +418,10 @@ export default function ProgressScreen() {
                 Band: {maintenanceData.toleranceBand.min.toFixed(1)} - {maintenanceData.toleranceBand.max.toFixed(1)} kg
               </Text>
               <Text style={{
+                // FIX (audit UI-STA-06): FONT.xs status label on surfaceLight — base error is
+                // <4.5:1; use the lighter `errorText` tone. success/warning already pass AA-small.
                 color: maintenanceData.bandStatus === 'in_band' ? colors.success
-                  : maintenanceData.bandStatus === 'approaching_limit' ? colors.warning : colors.error,
+                  : maintenanceData.bandStatus === 'approaching_limit' ? colors.warning : colors.errorText,
                 fontSize: FONT.xs, fontWeight: '600',
               }}>
                 {maintenanceData.bandStatus === 'in_band' ? 'Bandda' : maintenanceData.bandStatus === 'approaching_limit' ? 'Sınıra Yakın' : 'Band Aşıldı'}
@@ -529,7 +531,9 @@ function SummaryBox({ icon, iconColor, value, label, delta }: { icon: keyof type
       </View>
       <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.text }}>{value}</Text>
       <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 1 }}>{label}</Text>
-      {delta != null && <Text style={{ fontSize: FONT.xs, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.error }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1)}</Text>}
+      {/* FIX (audit UI-STA-06): at FONT.xs (11px) the base error (#E24B4A) is only 4.39:1 on
+          card — below AA-small. Use the lighter `errorText` tone (>=4.5:1). success passes as-is. */}
+      {delta != null && <Text style={{ fontSize: FONT.xs, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.errorText }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1)}</Text>}
     </View>
   );
 }

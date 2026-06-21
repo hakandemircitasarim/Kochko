@@ -5,7 +5,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, View, type ViewStyle, type DimensionValue } from 'react-native';
 import { useTheme } from '@/lib/theme';
-import { RADIUS } from '@/lib/constants';
+import { RADIUS, SPACING, FONT } from '@/lib/constants';
 
 interface BlockProps {
   width?: DimensionValue;
@@ -45,11 +45,13 @@ export function SkeletonCard({ lines = 3, style }: { lines?: number; style?: Vie
   return (
     <View
       accessibilityLabel="Yükleniyor"
-      style={[{ backgroundColor: colors.card, borderRadius: RADIUS.lg, padding: 16, borderWidth: 0.5, borderColor: colors.border, gap: 10 }, style]}
+      // FIX (audit UI-DS-05): tokenize padding (16 -> SPACING.xl) and gap (10 -> SPACING.md).
+      style={[{ backgroundColor: colors.card, borderRadius: RADIUS.lg, padding: SPACING.xl, borderWidth: 0.5, borderColor: colors.border, gap: SPACING.md }, style]}
     >
-      <SkeletonBlock width="55%" height={18} />
+      {/* FIX (audit UI-DS-05): title bar height 18 -> FONT.xl2, line height 12 -> SPACING.md. */}
+      <SkeletonBlock width="55%" height={FONT.xl2} />
       {Array.from({ length: lines }).map((_, i) => (
-        <SkeletonBlock key={i} width={i === lines - 1 ? '70%' : '100%'} height={12} />
+        <SkeletonBlock key={i} width={i === lines - 1 ? '70%' : '100%'} height={SPACING.md} />
       ))}
     </View>
   );
@@ -58,7 +60,8 @@ export function SkeletonCard({ lines = 3, style }: { lines?: number; style?: Vie
 /** A full-screen list of skeleton cards — drop-in for a screen's loading branch. */
 export function SkeletonScreen({ cards = 3, topGap = 0 }: { cards?: number; topGap?: number }) {
   return (
-    <View style={{ padding: 16, paddingTop: 16 + topGap, gap: 12 }}>
+    // FIX (audit UI-DS-05): tokenize padding (16 -> SPACING.xl) and gap (12 -> SPACING.md).
+    <View style={{ padding: SPACING.xl, paddingTop: SPACING.xl + topGap, gap: SPACING.md }}>
       {Array.from({ length: cards }).map((_, i) => (
         <SkeletonCard key={i} lines={i === 0 ? 4 : 3} />
       ))}

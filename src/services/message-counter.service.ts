@@ -94,6 +94,34 @@ export async function refundDailyMessage(isPremium: boolean): Promise<void> {
 }
 
 /**
+ * FIX (audit UX-CHT-05/UX-PRM-02/UX-PRM-05): reconcile the local counter with the
+ * SERVER's authoritative `remaining` value (returned by every successful ai-chat send).
+ *
+ * The server is the single source of truth for the daily conversation gate — it counts
+ * ALL role='user' chat_messages since local-day start (including photo + chip + action
+ * sends) and EXEMPTS record-parse messages (meal/water/sleep/weight logs). The old local
+ * counter diverged on every one of those paths. We now persist `count = LIMIT - remaining`
+ * so getRemainingMessages() and the badge mirror the server.
+ *
+ * Returns the clamped remaining count for the caller to display. `serverRemaining < 0`
+ * (the server's -1 "unlimited/exempt" sentinel) is treated as "no client cap" → returns
+ * the full limit and does NOT decrement the local counter.
+ */
+export async function syncRemainingFromServer(isPremium: boolean, serverRemaining: number | undefined): Promise<number> {
+  if (isPremium) return Infinity;
+  if (serverRemaining == null || serverRemaining < 0) {
+    // Unlimited / exempt (record-parse, onboarding) — leave the local counter untouched
+    // and report the current remaining so a record-parse send never burns the visible quota.
+    return getRemainingMessages(isPremium);
+  }
+  const remaining = Math.max(0, Math.min(FREE_DAILY_LIMIT, serverRemaining));
+  const today = new Date().toISOString().split('T')[0];
+  const count = FREE_DAILY_LIMIT - remaining;
+  await AsyncStorage.setItem(COUNTER_KEY, JSON.stringify({ date: today, count }));
+  return remaining;
+}
+
+/**
  * Get remaining messages for today.
  */
 export async function getRemainingMessages(isPremium: boolean): Promise<number> {

@@ -75,7 +75,8 @@ export function CircularProgress({
       <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
           {/* FIX (audit ui-circularprogress): cap font scaling so large system fonts don't overflow the fixed-size ring. */}
-          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: size > 120 ? 24 : FONT.xl, fontWeight: '700', color: colors.text, letterSpacing: -1 }}>
+          {/* FIX (audit UI-DS-05): the raw 24 duplicated FONT.xxl — use the token. */}
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: size > 120 ? FONT.xxl : FONT.xl, fontWeight: '700', color: colors.text, letterSpacing: -1 }}>
             {value}
           </Text>
           {unit && (

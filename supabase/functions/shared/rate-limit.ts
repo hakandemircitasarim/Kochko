@@ -88,7 +88,14 @@ function localDayStartIso(
 export async function checkRateLimit(
   userId: string,
   isRecordParse: boolean = false,
+  // FIX (audit AI-MDL-05): when called from reserveRateLimitSlot the current user message has
+  // ALREADY been inserted (and is therefore included in the counts below). Shift every cap
+  // boundary up by 1 and skip the usual "-1 for this message" on `remaining` so the reservation
+  // path matches the historical read-then-insert semantics exactly (e.g. free users still get a
+  // full 50, not 49).
+  alreadyCounted: boolean = false,
 ): Promise<RateLimitResult> {
+  const selfOffset = alreadyCounted ? 1 : 0;
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('premium, premium_expires_at, home_timezone, day_boundary_hour, onboarding_completed')
@@ -125,7 +132,7 @@ export async function checkRateLimit(
       .eq('user_id', userId)
       .eq('role', 'user')
       .gte('created_at', rpDayStart);
-    if ((rpCount ?? 0) >= FREE_RECORD_PARSE_DAILY) {
+    if ((rpCount ?? 0) >= FREE_RECORD_PARSE_DAILY + selfOffset) {
       return {
         allowed: false,
         remaining: 0,
@@ -152,7 +159,7 @@ export async function checkRateLimit(
   const daily = dailyCount ?? 0;
   const dailyLimit = isPremium ? PREMIUM_DAILY_LIMIT : FREE_DAILY_LIMIT;
 
-  if (daily >= dailyLimit) {
+  if (daily >= dailyLimit + selfOffset) {
     // Approximate hours until next local midnight.
     const hoursLeft = Math.max(1, Math.ceil(
       (new Date(new Date(dayStart).getTime() + 24 * 3600 * 1000).getTime() - now.getTime())
@@ -176,7 +183,7 @@ export async function checkRateLimit(
       .eq('role', 'user')
       .gte('created_at', hourAgo);
 
-    if ((hourlyCount ?? 0) >= PREMIUM_HOURLY_LIMIT) {
+    if ((hourlyCount ?? 0) >= PREMIUM_HOURLY_LIMIT + selfOffset) {
       return {
         allowed: false,
         remaining: 0,
@@ -185,5 +192,68 @@ export async function checkRateLimit(
     }
   }
 
-  return { allowed: true, remaining: Math.max(0, dailyLimit - daily - 1) };
+  // When alreadyCounted, `daily` includes this message → remaining is dailyLimit - daily.
+  // Otherwise subtract 1 for the message about to be stored (legacy read-then-insert path).
+  return { allowed: true, remaining: Math.max(0, dailyLimit - daily - (1 - selfOffset)) };
+}
+
+// FIX (audit AI-MDL-05): atomic-ish slot RESERVATION via insert-then-check.
+//
+// checkRateLimit (above) only READS the daily count; the user's chat_messages row is not
+// inserted until storeMessages at the END of the ai-chat handler (after the LLM call). That
+// read-then-act gap is seconds wide, so N parallel requests from one user all read the same
+// count BEFORE any row exists and all pass the cap together — letting the free 50/day and the
+// record-parse 120/day caps be exceeded under concurrency.
+//
+// This reserves the slot the only way possible WITHOUT a new DB object (no migration / no
+// row-locked RPC allowed): INSERT the user row FIRST, then COUNT. Because the insert lands
+// before the count, two concurrent requests each see the other's row, so the count reflects
+// reality and at most the in-flight window can slip over — instead of every parallel request
+// passing on a stale zero. On over-limit we delete the just-inserted reservation row so a
+// blocked attempt doesn't permanently consume a slot, and return the row id to the caller so
+// the final storeMessages reuses it (patches in the assistant reply) instead of inserting a
+// SECOND user row.
+//
+// `sessionId` may be null (storeMessages resolves/creates the active session); the reservation
+// row carries the session when known so it lands in the right conversation. Onboarding /
+// premium-unlimited (remaining === -1) callers skip reservation entirely (handled by the
+// caller checking allowed+remaining before calling this).
+export interface RateLimitReservation extends RateLimitResult {
+  reservedMessageId: string | null;
+}
+
+export async function reserveRateLimitSlot(
+  userId: string,
+  userMsg: string,
+  taskMode: string | undefined,
+  sessionId: string | null,
+  isRecordParse: boolean = false,
+): Promise<RateLimitReservation> {
+  // Insert the reservation row FIRST so the count below includes it.
+  const { data: reserved, error: insertErr } = await supabaseAdmin
+    .from('chat_messages')
+    .insert({ user_id: userId, session_id: sessionId, role: 'user', content: userMsg, task_mode: taskMode })
+    .select('id')
+    .maybeSingle();
+
+  // If the reservation insert fails (e.g. transient), fall back to the read-only check so the
+  // turn isn't lost — the caller's final storeMessages will insert the user row as before.
+  if (insertErr || !reserved?.id) {
+    if (insertErr) console.error('[rate-limit] reservation insert failed, falling back to read-only check:', insertErr.message);
+    const fallback = await checkRateLimit(userId, isRecordParse);
+    return { ...fallback, reservedMessageId: null };
+  }
+
+  const reservedMessageId = reserved.id as string;
+  // Now run the normal cap check with alreadyCounted=true; the count it performs already
+  // INCLUDES this reservation row, so the boundary + remaining math is shifted accordingly.
+  const result = await checkRateLimit(userId, isRecordParse, true);
+
+  if (!result.allowed) {
+    // Over the cap — release the slot we just reserved so a blocked attempt doesn't burn quota.
+    await supabaseAdmin.from('chat_messages').delete().eq('id', reservedMessageId);
+    return { ...result, reservedMessageId: null };
+  }
+
+  return { ...result, reservedMessageId };
 }

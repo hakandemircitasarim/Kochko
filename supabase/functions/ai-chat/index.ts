@@ -15,10 +15,10 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
-import { updateLayer2 } from '../shared/memory.ts';
+import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
-import { checkRateLimit } from '../shared/rate-limit.ts';
+import { checkRateLimit, reserveRateLimitSlot } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
 import { analyzeMessage, getRetrievalPlan } from '../shared/retrieval-planner.ts';
 import { buildContextFromPlan } from '../shared/context-builders.ts';
@@ -26,7 +26,7 @@ import { selectModel } from '../shared/model-router.ts';
 import { BASE_SYSTEM_PROMPT, buildConfidenceNote } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions, type TaskMode } from './task-modes.ts';
 import {
-  detectRepairIntent, handleUndo, buildCorrectionContext,
+  detectRepairIntent, handleUndo, undoTypeForPhrase, buildCorrectionContext,
   shouldDetectPersona, buildPersonaDetectionPrompt, getMessageCount,
   getToneContext, buildKnowledgeSummary, getRepairContext,
 } from '../shared/repair-handler.ts';
@@ -41,10 +41,36 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// FIX (audit AI-MDL-01/AI-MDL-02): route the Whisper STT call through the same provider
+// config knobs as shared/openai.ts + ai-extractor — OPENAI_BASE_URL + a dedicated
+// KOCHKO_MODEL_STT model — so a backend swap (OpenRouter/Azure/self-host) is one secret set
+// instead of a hardcoded 'whisper-1'/'api.openai.com' that the gateway may not serve. Wrap
+// the fetch in an AbortController so a hung upstream returns a clean error instead of an
+// indefinite spinner (the edge wall-clock would otherwise kill the whole function).
+const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
+const STT_MODEL = Deno.env.get('KOCHKO_MODEL_STT') || 'whisper-1';
+const STT_TIMEOUT_MS = 45_000;
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = STT_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // FIX (audit AI-MDL-05): declared at handler scope so the catch can RELEASE an orphaned
+  // rate-limit reservation. The reservation inserts the user chat_messages row before the LLM
+  // call; if generation then throws, the final storeMessages (which would have appended the
+  // assistant reply) never runs — without this cleanup the lone reserved user row would persist
+  // and permanently burn a daily-cap slot for a turn the user never got an answer to.
+  let reservedUserMessageId: string | null = null;
 
   try {
     // T1.10: Request validation
@@ -87,12 +113,20 @@ serve(async (req: Request) => {
       const audioBuffer = Uint8Array.from(atob(audio_base64), (c: string) => c.charCodeAt(0));
       const formData = new FormData();
       formData.append('file', new File([audioBuffer], 'audio.m4a', { type: 'audio/m4a' }));
-      formData.append('model', 'whisper-1');
-      const whisperRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}` },
-        body: formData,
-      });
+      // FIX (audit AI-MDL-01): env-driven STT model + base URL (was hardcoded whisper-1/OpenAI).
+      formData.append('model', STT_MODEL);
+      let whisperRes: Response;
+      try {
+        // FIX (audit AI-MDL-02): timeout-wrapped — a hung gateway no longer hangs the function.
+        whisperRes = await fetchWithTimeout(`${OPENAI_BASE_URL}/audio/transcriptions`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}` },
+          body: formData,
+        });
+      } catch (sttErr) {
+        const isAbort = (sttErr as Error)?.name === 'AbortError';
+        return respond({ error: isAbort ? 'Ses çözümleme zaman aşımına uğradı, tekrar dener misin?' : 'Transcription failed' }, isAbort ? 504 : 500);
+      }
       const whisperData = await whisperRes.json() as { text?: string; error?: unknown };
       if (!whisperRes.ok) return respond({ error: whisperData.error ?? 'Transcription failed' }, 500);
       return respond({ transcription: whisperData.text ?? '' });
@@ -185,7 +219,11 @@ serve(async (req: Request) => {
 
       // Handle direct undo requests
       if (repairIntent.type === 'undo') {
-        const undoResult = await handleUndo(userId);
+        // FIX (audit AI-EXT-05): constrain the undo to the type the matched phrase implied
+        // ('son öğünü sil' → meal only) so a type-specific request can't delete the newest
+        // row of a DIFFERENT type (e.g. hard-deleting a workout when the user meant a meal).
+        const intendedType = undoTypeForPhrase(repairIntent.matchedPhrase);
+        const undoResult = await handleUndo(userId, intendedType);
         await storeMessages(userId, message, undoResult.response ?? '', undefined, undefined, undefined, undefined, session_id);
         return respond({ message: undoResult.response, actions: [], task_mode: 'repair' });
       }
@@ -574,6 +612,36 @@ serve(async (req: Request) => {
       });
     } else {
       gptMessages.push({ role: 'user', content: message });
+    }
+
+    // FIX (audit AI-MDL-05): RESERVE the daily-cap slot atomically (insert-then-check) right
+    // before the expensive LLM call. The line-198 checkRateLimit is only a READ — under
+    // concurrency N parallel turns all read the same stale count and pass the cap together,
+    // because the user's chat_messages row isn't written until the END (storeMessages). Here we
+    // insert the user row FIRST, then re-count, so concurrent turns see each other and the cap
+    // actually holds. The reserved row id is reused by the final storeMessages (it appends only
+    // the assistant reply) so we never insert a second user row. Premium/onboarding (remaining
+    // === -1) callers still reserve a row but are never blocked, which is correct + harmless.
+    // Skip for photo-only turns with no text (message is null) — nothing to reserve as text;
+    // the final storeMessages stores the '[foto]' placeholder as before.
+    if (message?.trim()) {
+      const reservation = await reserveRateLimitSlot(
+        userId,
+        message,
+        taskMode,
+        effectiveSessionId ?? null,
+        isRecordParse,
+      );
+      if (!reservation.allowed) {
+        return respond({
+          message: reservation.message,
+          actions: [],
+          task_mode: 'rate_limited',
+          rate_limited: true,
+          remaining: 0,
+        }, 200);
+      }
+      reservedUserMessageId = reservation.reservedMessageId;
     }
 
     // Call OpenAI (Spec 5.27: temperature by mode, model router for tier selection)
@@ -1350,26 +1418,30 @@ serve(async (req: Request) => {
           .eq('is_active', true)
           .limit(1);
         const approval_snapshot = { ...(profSnap ?? {}), goal: goalSnap?.[0] ?? null };
-        const { data: activatedId, error: promoteErr } = await supabaseAdmin.rpc('promote_weekly_plan', {
-          p_user: userId,
-          p_plan_type: expectedType,
-          p_draft_id: draft.id,
-          p_snapshot: approval_snapshot,
-        });
-        if (promoteErr) {
+        // FIX (audit DB-PRM-01): atomically CONSUME the free-tier plan slot BEFORE promoting, so two
+        // concurrent approvals can't both pass the lifetime cap (the old pre-check read + post-promote
+        // increment was a lost-update). Premium is uncapped. The RPC row-locks profiles, re-checks the
+        // per-type cap and increments in one tx; false ⇒ cap already used (this concurrent attempt lost).
+        if (!gateActive) {
+          const { data: slotOk, error: slotErr } = await supabaseAdmin.rpc('consume_free_plan_slot', { p_user: userId, p_plan_type: expectedType });
+          if (slotErr || slotOk !== true) planPersistError = 'free_quota_used';
+        }
+        const { data: activatedId, error: promoteErr } = planPersistError
+          ? { data: null, error: null }
+          : await supabaseAdmin.rpc('promote_weekly_plan', {
+              p_user: userId,
+              p_plan_type: expectedType,
+              p_draft_id: draft.id,
+              p_snapshot: approval_snapshot,
+            });
+        if (planPersistError) {
+          // free_quota_used (or a prior error) — the slot was not granted; do NOT promote.
+        } else if (promoteErr) {
           console.warn('[approve] atomic promote failed', promoteErr);
           planPersistError = `promote failed: ${promoteErr.message}`;
         } else {
           planApproved = activatedId ? { id: activatedId as string } : null;
-            // Increment plans_used_free counter for free-tier gating (MASTER_PLAN §4.7).
-            const { data: profUsed } = await supabaseAdmin
-              .from('profiles')
-              .select('plans_used_free')
-              .eq('id', userId)
-              .maybeSingle();
-            const used = (profUsed?.plans_used_free as { diet?: number; workout?: number } | null) ?? { diet: 0, workout: 0 };
-            const nextUsed = { ...used, [expectedType]: (used[expectedType] ?? 0) + 1 };
-            await supabaseAdmin.from('profiles').update({ plans_used_free: nextUsed }).eq('id', userId);
+            // plans_used_free was already incremented atomically by consume_free_plan_slot above.
 
             // ROOT FIX (Option A): project the now-active weekly_plans snapshot(s) into
             // daily_plans so the dashboard/context/reports (which only read daily_plans)
@@ -1713,7 +1785,14 @@ serve(async (req: Request) => {
 
     // Store messages with token count and model version (Spec 5.25)
     const tokenEstimate = Math.round((message?.length ?? 0) / 3.5) + Math.round(assistantMessage.length / 3.5);
-    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions, session_id);
+    // FIX (audit AI-MDL-05): pass the reserved user-row id so storeMessages appends ONLY the
+    // assistant reply (and backfills the user row's task_mode) instead of inserting a SECOND
+    // user row. When null (photo-only / reservation-insert fallback) it inserts both rows as before.
+    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions, session_id, reservedUserMessageId);
+    // FIX (audit AI-MDL-05): the turn is now persisted (assistant reply appended to the reserved
+    // row's conversation). Clear the handle so a throw in the post-store steps below does NOT
+    // make the catch release an already-answered, legitimately-counted message.
+    reservedUserMessageId = null;
 
     // Post-response: detect habit completions from user message (service 1)
     if (message && serviceCtx.habits.activeHabits.length > 0) {
@@ -1822,10 +1901,24 @@ serve(async (req: Request) => {
       plan_approved: planApproved,
       navigate_to: finalNavigateTo,
       simulation,
+      // FIX (audit UX-CHT-05/UX-PRM-02/UX-PRM-05): surface the SERVER's authoritative
+      // remaining-message count on EVERY successful send so the client badge tracks the
+      // real daily quota instead of a divergent local counter (which skipped photo/log/chip
+      // sends and counted record-parses the server exempts). -1 means unlimited/exempt
+      // (premium, onboarding, or record-parse) — the client treats that as "don't show".
+      remaining: rateLimit.remaining,
     });
   } catch (err) {
     const msg = (err as Error).message;
     console.error('[ai-chat] unhandled error:', err); // full detail stays server-side
+    // FIX (audit AI-MDL-05): generation/processing threw AFTER we reserved (inserted) the user
+    // row but BEFORE the assistant reply was stored. Release the orphaned reservation so a failed
+    // turn doesn't permanently consume a daily-cap slot (mirrors the pre-fix behavior where a
+    // failed send stored no rows and thus burned no quota).
+    if (reservedUserMessageId) {
+      await supabaseAdmin.from('chat_messages').delete().eq('id', reservedUserMessageId).then(() => {}, () => {});
+      reservedUserMessageId = null;
+    }
     if (msg.startsWith('SESSION_NOT_FOUND')) {
       return respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404);
     }
@@ -2623,7 +2716,7 @@ async function validateTaskCompletion(
   }
 }
 
-async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string) {
+async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string, reservedUserMessageId?: string | null) {
   let sessionId: string | null = null;
 
   if (externalSessionId) {
@@ -2676,15 +2769,33 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
     }
   }
 
-  await supabaseAdmin.from('chat_messages').insert([
-    { user_id: userId, session_id: sessionId, role: 'user', content: userMsg, task_mode: taskMode },
-    {
+  // FIX (audit AI-MDL-05): when the user row was already inserted up-front as a rate-limit
+  // RESERVATION, do NOT insert a second user row — append only the assistant reply, and backfill
+  // the reserved row's session_id/task_mode so it shares the conversation we just resolved.
+  if (reservedUserMessageId) {
+    const patch: Record<string, unknown> = {};
+    if (sessionId) patch.session_id = sessionId;
+    if (taskMode) patch.task_mode = taskMode;
+    if (Object.keys(patch).length > 0) {
+      await supabaseAdmin.from('chat_messages').update(patch).eq('id', reservedUserMessageId);
+    }
+    await supabaseAdmin.from('chat_messages').insert({
       user_id: userId, session_id: sessionId, role: 'assistant', content: assistantMsg,
       task_mode: taskMode, model_version: modelUsed ?? null,
       token_count: tokenCount ?? null,
       actions_executed: executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null,
-    },
-  ]);
+    });
+  } else {
+    await supabaseAdmin.from('chat_messages').insert([
+      { user_id: userId, session_id: sessionId, role: 'user', content: userMsg, task_mode: taskMode },
+      {
+        user_id: userId, session_id: sessionId, role: 'assistant', content: assistantMsg,
+        task_mode: taskMode, model_version: modelUsed ?? null,
+        token_count: tokenCount ?? null,
+        actions_executed: executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null,
+      },
+    ]);
+  }
 
   // Auto-generate session title from first user message
   if (sessionId) {
@@ -4221,8 +4332,30 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
           (p.trigger as string) === (newP.trigger as string)
         );
 
-        if (existingIdx >= 0) {
-          // Update existing: increment times_observed, refresh last_occurred, update confidence
+        if (existingIdx < 0) {
+          // FIX (audit AI-ORC-06): a genuinely NEW pattern is appended through the atomic
+          // ai_summary_append_patterns RPC (row-locked, caps at 20) instead of the racy JS
+          // read-modify-write below. Two concurrent ai-chat turns previously each read the
+          // same `existing` array, rebuilt a full array, and the second merge overwrote the
+          // pattern the first added (lost update). The RPC appends ONLY the new entry under a
+          // FOR UPDATE lock, so concurrent adds serialize. We do NOT set
+          // changes.behavioral_patterns here — that would clobber the appended row via the
+          // COALESCE-replace merge using this turn's stale (pre-append) array.
+          const newEntry = {
+            ...newP,
+            first_detected: new Date().toISOString(),
+            last_occurred: new Date().toISOString(),
+            times_observed: 1,
+            evidence_count: 1,
+            impact: (newP.impact as string) ?? 'medium',
+            status: confidence >= 0.7 ? 'active' : 'candidate',
+          };
+          await appendBehavioralPatterns(userId, [newEntry]);
+        } else {
+          // Existing pattern: in-place increment (a true read-modify-write that the append
+          // RPC can't express). This still goes through the locked ai_summary_merge below.
+          // Two concurrent updates of the SAME existing pattern can still lose one increment;
+          // a fully-locked per-entry RPC is out of scope here (no new DB object).
           const ep = patterns[existingIdx];
           patterns[existingIdx] = {
             ...ep,
@@ -4234,45 +4367,34 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
             evidence_count: ((ep.evidence_count as number) ?? 1) + 1,
             status: 'active',
           };
-        } else {
-          // New pattern: add with lifecycle fields
-          patterns.push({
-            ...newP,
-            first_detected: new Date().toISOString(),
-            last_occurred: new Date().toISOString(),
-            times_observed: 1,
-            evidence_count: 1,
-            impact: (newP.impact as string) ?? 'medium',
-            status: confidence >= 0.7 ? 'active' : 'candidate',
-          });
-        }
 
-        // Decay: mark stale patterns as resolved (90+ days without observation)
-        const now = Date.now();
-        for (const p of patterns) {
-          if (p.status !== 'resolved' && p.last_occurred) {
-            const daysSince = Math.floor((now - new Date(p.last_occurred as string).getTime()) / 86400000);
-            if (daysSince > 90) {
-              p.status = 'resolved';
+          // Decay: mark stale patterns as resolved (90+ days without observation)
+          const now = Date.now();
+          for (const p of patterns) {
+            if (p.status !== 'resolved' && p.last_occurred) {
+              const daysSince = Math.floor((now - new Date(p.last_occurred as string).getTime()) / 86400000);
+              if (daysSince > 90) {
+                p.status = 'resolved';
+              }
             }
           }
-        }
 
-        // Size governance: if too many active patterns, drop lowest-scoring resolved ones
-        const MAX_PATTERNS = 20;
-        if (patterns.length > MAX_PATTERNS) {
-          // Remove resolved patterns first, then lowest confidence candidates
-          const resolved = patterns.filter(p => p.status === 'resolved');
-          const active = patterns.filter(p => p.status !== 'resolved');
-          const kept = [...active];
-          if (kept.length < MAX_PATTERNS) {
-            // Keep some resolved for reference
-            resolved.sort((a, b) => ((b.confidence as number) ?? 0) - ((a.confidence as number) ?? 0));
-            kept.push(...resolved.slice(0, MAX_PATTERNS - kept.length));
+          // Size governance: if too many active patterns, drop lowest-scoring resolved ones
+          const MAX_PATTERNS = 20;
+          if (patterns.length > MAX_PATTERNS) {
+            // Remove resolved patterns first, then lowest confidence candidates
+            const resolved = patterns.filter(p => p.status === 'resolved');
+            const active = patterns.filter(p => p.status !== 'resolved');
+            const kept = [...active];
+            if (kept.length < MAX_PATTERNS) {
+              // Keep some resolved for reference
+              resolved.sort((a, b) => ((b.confidence as number) ?? 0) - ((a.confidence as number) ?? 0));
+              kept.push(...resolved.slice(0, MAX_PATTERNS - kept.length));
+            }
+            changes.behavioral_patterns = kept.slice(0, MAX_PATTERNS);
+          } else {
+            changes.behavioral_patterns = patterns;
           }
-          changes.behavioral_patterns = kept.slice(0, MAX_PATTERNS);
-        } else {
-          changes.behavioral_patterns = patterns;
         }
       }
     }

@@ -4,7 +4,7 @@
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
 
 interface Pattern { type: string; description: string; trigger?: string; intervention?: string; }
 interface Props {
@@ -28,7 +28,10 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
     <View style={{
       // FIX (audit radius-scale): kart yarıçapını Card primitive ile tutarlı RADIUS.md yap.
       backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md,
-      ...(isDark ? { borderWidth: 1, borderColor: colors.border } : CARD_SHADOW),
+      // FIX (audit UI-DS-07): light branch used CARD_SHADOW (rgba(255,255,255,0.08) — an
+      // invisible white border on the white light-mode card). Use colors.border in BOTH
+      // themes so the elevation affordance is visible everywhere.
+      borderWidth: isDark ? 1 : 0.5, borderColor: colors.border,
     }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>

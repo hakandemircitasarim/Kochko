@@ -8,14 +8,17 @@ import { SPACING, RADIUS, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
-export function QuickSelectButtons({ options, onSelect }: { options: string[]; onSelect: (option: string) => void }) {
+// FIX (audit UX-CHT-04): accept `disabled` so the parent can lock these inline action
+// chips while a send is in flight — preventing a double-tap from firing two concurrent
+// sends (duplicate AI turns / duplicate side-effecting log or delete).
+export function QuickSelectButtons({ options, onSelect, disabled = false }: { options: string[]; onSelect: (option: string) => void; disabled?: boolean }) {
   const { colors } = useTheme();
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: SPACING.sm }}>
-      <View style={{ flexDirection: 'row', gap: 6 }}>
+      <View style={{ flexDirection: 'row', gap: 6, opacity: disabled ? 0.5 : 1 }}>
         {options.map((opt, i) => (
-          <TouchableOpacity key={i} onPress={() => { haptics.tap(); onSelect(opt); }}
-            accessibilityRole="button" accessibilityLabel={opt}
+          <TouchableOpacity key={i} disabled={disabled} onPress={() => { haptics.tap(); onSelect(opt); }}
+            accessibilityRole="button" accessibilityLabel={opt} accessibilityState={{ disabled }}
             style={{ paddingVertical: 8, paddingHorizontal: SPACING.md, minHeight: 36, justifyContent: 'center', borderRadius: RADIUS.pill, backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border }}>
             <Text style={{ color: colors.text, fontSize: FONT.sm }}>{opt}</Text>
           </TouchableOpacity>
@@ -95,17 +98,19 @@ export function MacroRing({ protein, carbs, fat, targets }: { protein: number; c
   );
 }
 
-export function ConfirmRejectButtons({ onConfirm, onReject, confirmLabel = 'Onayla', rejectLabel = 'Değiştir' }: { onConfirm: () => void; onReject: () => void; confirmLabel?: string; rejectLabel?: string }) {
+// FIX (audit UX-CHT-04): accept `disabled` so confirm/reject can't be double-fired
+// while a send is in flight (which produced duplicate plan-confirm / verification turns).
+export function ConfirmRejectButtons({ onConfirm, onReject, confirmLabel = 'Onayla', rejectLabel = 'Değiştir', disabled = false }: { onConfirm: () => void; onReject: () => void; confirmLabel?: string; rejectLabel?: string; disabled?: boolean }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
-      <TouchableOpacity onPress={() => { haptics.tap(); onConfirm(); }}
-        accessibilityRole="button" accessibilityLabel={confirmLabel}
+    <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm, opacity: disabled ? 0.5 : 1 }}>
+      <TouchableOpacity disabled={disabled} onPress={() => { haptics.tap(); onConfirm(); }}
+        accessibilityRole="button" accessibilityLabel={confirmLabel} accessibilityState={{ disabled }}
         style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}>
         <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{confirmLabel}</Text>
       </TouchableOpacity>
-      <TouchableOpacity onPress={() => { haptics.tap(); onReject(); }}
-        accessibilityRole="button" accessibilityLabel={rejectLabel}
+      <TouchableOpacity disabled={disabled} onPress={() => { haptics.tap(); onReject(); }}
+        accessibilityRole="button" accessibilityLabel={rejectLabel} accessibilityState={{ disabled }}
         style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center' }}>
         <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>{rejectLabel}</Text>
       </TouchableOpacity>
@@ -281,6 +286,10 @@ export function MakeSomethingElseButton({ onPress }: { onPress: () => void }) {
 
 export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: number }) {
   const { colors } = useTheme();
+  // FIX (audit UI-CHT-02): render nothing when there is no real weekly budget
+  // (total <= 0). Users with no plan / no weekly budget previously got a broken,
+  // alarming card showing "{consumed} / 0 kcal" and a negative "Kalan: -X kcal".
+  if (!(total > 0)) return null;
   const pct = total > 0 ? Math.min(1, consumed / total) : 0;
   const remaining = total - consumed;
   const color = pct > 0.9 ? colors.error : pct > 0.7 ? colors.warning : colors.primary;

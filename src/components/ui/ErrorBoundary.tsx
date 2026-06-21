@@ -7,6 +7,10 @@ import { trackEvent } from '@/services/analytics.service';
 // dark is the correct fallback even if the crash happens before ThemeProvider mounts).
 import { DARK_COLORS as c } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
+// FIX (audit UI-DS-05): consume the numeric scale tokens instead of raw literals.
+// (Class component can't call useTheme(), but the SPACING/FONT/RADIUS tokens are
+// plain constants and import fine here — only the *colors* need the dark fallback.)
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
 
 interface Props {
   children: React.ReactNode;
@@ -63,16 +67,20 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
     return (
       <View style={{ flex: 1, backgroundColor: c.background }}>
+        {/* FIX (audit UI-DS-05): tokenize spacing/font/radius literals. `padding: 32` and
+            `minWidth: 200` have no scale token so they stay as layout literals; everything
+            with an exact token (18->FONT.xl2, 14->FONT.md, 8->SPACING.sm, 24->SPACING.xxl,
+            12->SPACING.md/RADIUS.md, 11->FONT.xs) is replaced. fontSize:10 has no token (xs=11). */}
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-          <Text style={{ color: c.text, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>
+          <Text style={{ color: c.text, fontSize: FONT.xl2, fontWeight: '700', marginBottom: SPACING.sm }}>
             Bir şeyler ters gitti
           </Text>
-          <Text style={{ color: c.textMuted, fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
+          <Text style={{ color: c.textMuted, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.xxl }}>
             Beklenmeyen bir hata oluştu. Tekrar deneyebilir ya da hesaptan çıkıp yeniden girebilirsin.
           </Text>
           <TouchableOpacity
             onPress={this.handleRetry}
-            style={{ backgroundColor: c.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, minWidth: 200, alignItems: 'center' }}
+            style={{ backgroundColor: c.primary, paddingHorizontal: SPACING.xxl, paddingVertical: SPACING.md, borderRadius: RADIUS.md, minWidth: 200, alignItems: 'center' }}
             accessibilityRole="button"
             accessibilityLabel="Tekrar Dene"
           >
@@ -81,7 +89,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={this.handleSignOut}
-            style={{ marginTop: 12, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: c.border, minWidth: 200, alignItems: 'center' }}
+            style={{ marginTop: SPACING.md, paddingHorizontal: SPACING.xxl, paddingVertical: SPACING.md, borderRadius: RADIUS.md, borderWidth: 1, borderColor: c.border, minWidth: 200, alignItems: 'center' }}
             accessibilityRole="button"
             accessibilityLabel="Çıkış Yap"
           >
@@ -89,12 +97,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </TouchableOpacity>
         </View>
         {devDetails && (
-          <ScrollView style={{ maxHeight: 200, backgroundColor: c.surface, padding: 12 }}>
-            <Text style={{ color: c.error, fontSize: 11, fontFamily: 'monospace' }}>
+          <ScrollView style={{ maxHeight: 200, backgroundColor: c.surface, padding: SPACING.md }}>
+            <Text style={{ color: c.error, fontSize: FONT.xs, fontFamily: 'monospace' }}>
               {this.state.error?.message}
             </Text>
             {this.state.errorInfo && (
-              <Text style={{ color: c.textMuted, fontSize: 10, fontFamily: 'monospace', marginTop: 8 }}>
+              <Text style={{ color: c.textMuted, fontSize: 10, fontFamily: 'monospace', marginTop: SPACING.sm }}>
                 {this.state.errorInfo}
               </Text>
             )}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,15 +15,28 @@ import { DateTimeField } from '@/components/ui/DateTimeField';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { usePremium } from '@/hooks/usePremium';
 
 export default function PeriodicStateScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
+  const profileLoading = useProfileStore(s => s.loading);
   const { fetch: fetchProfile } = useProfileStore();
+  // FIX (audit UX-PRM-06): ekranın kendisi premium-koruması yapsın — menü ternary'sine güvenme
+  // (deep link / chat navigate / deneme bitişi free kullanıcıyı içeride bırakıyordu).
+  const { isPremium } = usePremium();
   const [selected, setSelected] = useState<PeriodicState | null>((profile?.periodic_state as PeriodicState) ?? null);
   const [endDate, setEndDate] = useState(profile?.periodic_state_end ?? '');
   const [loading, setLoading] = useState(false);
+
+  // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
+  // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium]);
 
   const currentState = profile?.periodic_state as PeriodicState | null;
   const config = selected ? PERIODIC_STATE_CONFIG[selected] : null;
@@ -91,6 +104,11 @@ export default function PeriodicStateScreen() {
   };
 
   const states = Object.entries(PERIODIC_STATE_CONFIG) as [PeriodicState, typeof PERIODIC_STATE_CONFIG[PeriodicState]][];
+
+  // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>

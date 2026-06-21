@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { getExerciseHistory, estimate1RM, shouldDeload, suggestProgression, detectPlateauByExercise, type ExerciseHistory } from '@/services/strength.service';
 import { Card } from '@/components/ui/Card';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { usePremium } from '@/hooks/usePremium';
+import { useProfileStore } from '@/stores/profile.store';
 
 const CORE_EXERCISES = ['squat', 'bench_press', 'deadlift', 'overhead_press', 'barbell_row'];
 const EXERCISE_LABELS: Record<string, string> = {
@@ -15,10 +18,24 @@ const EXERCISE_LABELS: Record<string, string> = {
 
 export default function StrengthScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const user = useAuthStore(s => s.user);
+  // FIX (audit UX-PRM-06): ekranın kendisi premium-koruması yapsın — menü ternary'sine güvenme
+  // (deep link / chat navigate / deneme bitişi free kullanıcıyı içeride bırakıyordu).
+  const { isPremium } = usePremium();
+  const profileLoading = useProfileStore(s => s.loading);
+  const profile = useProfileStore(s => s.profile);
   const [exercises, setExercises] = useState<(ExerciseHistory | null)[]>([]);
   const [plateaus, setPlateaus] = useState<Record<string, { plateau: boolean; weeks: number; maxWeight: number; message: string }>>({});
   const [loading, setLoading] = useState(true);
+
+  // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
+  // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium, router]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -40,6 +57,11 @@ export default function StrengthScreen() {
   }, [user?.id]);
 
   const validExercises = exercises.filter((e): e is ExerciseHistory => e !== null);
+
+  // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>

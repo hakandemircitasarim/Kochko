@@ -96,11 +96,12 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress }:
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
+          {/* FIX (audit UI-PLN-02): round raw LLM-authored macros so decimals (487.3, 32.5) don't leak into the UI */}
           <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
-            {meal.total_kcal} kcal
+            {Math.round(meal.total_kcal)} kcal
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
-            P{meal.total_protein} · K{meal.total_carbs} · Y{meal.total_fat}
+            P{Math.round(meal.total_protein)} · K{Math.round(meal.total_carbs)} · Y{Math.round(meal.total_fat)}
           </Text>
         </View>
         <Ionicons
@@ -128,7 +129,8 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress }:
                   ({it.grams ? `${it.grams}g` : it.portion ?? '-'})
                 </Text>
               </Text>
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{it.kcal} kcal</Text>
+              {/* FIX (audit UI-PLN-02): round per-item kcal (raw LLM JSON may carry decimals) */}
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{Math.round(it.kcal)} kcal</Text>
             </View>
           ))}
 
