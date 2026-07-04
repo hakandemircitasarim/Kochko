@@ -28,6 +28,7 @@
         "npm:@supabase/supabase-js@^2.100.1",
         "npm:@tanstack/react-query@^5.95.2",
         "npm:@types/react@~19.2.2",
+        "npm:eslint-plugin-react-hooks@^4.6.2",
         "npm:expo-auth-session@~55.0.16",
         "npm:expo-av@^16.0.8",
         "npm:expo-camera@~55.0.19",

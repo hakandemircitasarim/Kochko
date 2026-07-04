@@ -14,6 +14,7 @@ import { denyIfNotCron, cronHeaders } from '../shared/cron-auth.ts';
 import { isIFCompatible, getSeasonalContext, type PeriodicState } from '../shared/periodic-config.ts';
 import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../shared/service-contexts.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
+import { projectDailyPlanRows, type ProjectionProfile } from '../shared/plan-projection.ts';
 
 const NUDGE_PROMPT = `Sen Kochko kocusun. Kullanicinin durumunu degerlendir.
 SADECE gercekten gerekli oldugunda mesaj uret. Spam YAPMA.
@@ -48,6 +49,71 @@ serve(async (req: Request) => {
     const today = now.toISOString().split('T')[0];
     const dayOfWeek = now.getDay(); // 0=Sunday, 1=Monday
     let totalSent = 0;
+
+    // ── #journey-CRITICAL: daily_plans ROLL-FORWARD + calorie RE-CUT ──────────────
+    // Plan approval projects ONLY the approval week; nothing re-projected it, so from
+    // day 8 the losing-weight user had NO per-day plan for the rest of the 90 days. Once
+    // per day, for every onboarded user whose TODAY row is missing, re-project the active
+    // plan onto the current week and re-cut the daily target to the user's CURRENT calorie
+    // band (which tracks their weight loss), so the plan never goes stale/empty.
+    if (forceDaily || (utcHour >= 0 && utcHour <= 6)) {
+      const toISO = (d: Date) => d.toISOString().split('T')[0];
+      const mondayOf = (dateStr: string) => { const d = new Date(dateStr + 'T00:00:00Z'); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return toISO(d); };
+      const addDaysISO = (dateStr: string, n: number) => { const d = new Date(dateStr + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return toISO(d); };
+      let rolledForward = 0;
+      for (const profile of profiles as { id: string }[]) {
+        try {
+          const uid = profile.id;
+          const { data: todayRow } = await supabaseAdmin.from('daily_plans').select('id').eq('user_id', uid).eq('date', today).limit(1).maybeSingle();
+          if (todayRow) continue; // idempotent: today already has a plan
+          const { data: planRows } = await supabaseAdmin.from('weekly_plans').select('plan_type, plan_data').eq('user_id', uid).eq('status', 'active').is('plan_subtype', null);
+          const dietRow = (planRows ?? []).find((r: { plan_type: string }) => r.plan_type === 'diet');
+          const workoutRow = (planRows ?? []).find((r: { plan_type: string }) => r.plan_type === 'workout');
+          if (!dietRow && !workoutRow) continue; // user never approved a plan
+          const weekStart = mondayOf(today);
+          const weekEnd = addDaysISO(weekStart, 6);
+          const { data: prof } = await supabaseAdmin.from('profiles').select('weight_kg, weekly_calorie_budget, calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max').eq('id', uid).maybeSingle();
+          let dietData = (dietRow?.plan_data ?? null) as Record<string, unknown> | null;
+          const rMin = prof?.calorie_range_rest_min as number | null;
+          const rMax = prof?.calorie_range_rest_max as number | null;
+          const curTarget = (rMin && rMax) ? Math.round((rMin + rMax) / 2) : null;
+          if (dietData && curTarget && dietData.targets && typeof dietData.targets === 'object') {
+            const t = dietData.targets as Record<string, unknown>;
+            const old = Number(t.kcal);
+            if (Number.isFinite(old) && old > 0 && Math.abs(curTarget - old) / old > 0.03) {
+              const f = curTarget / old;
+              dietData = { ...dietData, targets: { ...t, kcal: curTarget, protein: Math.round(Number(t.protein) || 0), carbs: Math.round((Number(t.carbs) || 0) * f), fat: Math.round((Number(t.fat) || 0) * f) } };
+            }
+          }
+          const { data: wm } = await supabaseAdmin.from('meal_logs').select('id').eq('user_id', uid).gte('logged_for_date', weekStart).lte('logged_for_date', weekEnd);
+          const ids = (wm ?? []).map((m: { id: string }) => m.id);
+          let weekConsumed = 0;
+          if (ids.length) { const { data: wi } = await supabaseAdmin.from('meal_log_items').select('calories').in('meal_log_id', ids); weekConsumed = (wi ?? []).reduce((s: number, it: { calories: number | null }) => s + (it.calories ?? 0), 0); }
+          const rows = projectDailyPlanRows({
+            // deno-lint-ignore no-explicit-any
+            dietPlanData: dietData as any,
+            // deno-lint-ignore no-explicit-any
+            workoutPlanData: (workoutRow?.plan_data ?? null) as any,
+            weekStart,
+            profile: {
+              weight_kg: (prof?.weight_kg as number | null) ?? null,
+              weekly_calorie_budget: (prof?.weekly_calorie_budget as number | null) ?? null,
+              calorie_range_training_min: (prof?.calorie_range_training_min as number | null) ?? null,
+              calorie_range_training_max: (prof?.calorie_range_training_max as number | null) ?? null,
+              calorie_range_rest_min: rMin ?? null,
+              calorie_range_rest_max: rMax ?? null,
+            } as ProjectionProfile,
+            weekConsumed,
+          });
+          const writeRows = rows.filter((r) => r.date >= today && r.date <= weekEnd).map((r) => ({ ...r, user_id: uid, version: 1 }));
+          if (writeRows.length) {
+            const { error: e } = await supabaseAdmin.rpc('project_daily_plans', { p_user: uid, p_lower: today, p_end: weekEnd, p_rows: writeRows });
+            if (!e) rolledForward++;
+          }
+        } catch (e) { console.error('[rollforward] failed', profile.id, (e as Error).message); }
+      }
+      console.log('[rollforward] re-projected daily_plans for', rolledForward, 'users');
+    }
 
     // #L19: the fleet is processed SERIALLY with a per-user LLM call; a large fleet hit the
     // 150s request idle limit (504) mid-pass and, with unrotated ordering, the SAME tail users
