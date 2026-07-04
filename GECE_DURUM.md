@@ -1,7 +1,28 @@
 # KOCHKO — Gece Otonom Test Oturumu (2026-06-19)
 
 Hakan, sen yatarken yürüttüğüm otonom test + düzeltme oturumunun canlı durum defteri.
-En güncel özet **en üstte (OTURUM 3)**. Sabah ilk bakacağın yer: **"⚠️ SENİN YAPMAN GEREKEN (OTURUM 3)"**.
+En güncel özet **en üstte**. Sabah ilk bakacağın yer: aşağıdaki **FİNAL BİRLEŞTİRME** bölümü.
+
+---
+
+## ✅ FİNAL BİRLEŞTİRME (2026-06-19, EN SON) — TEK VERSİYON, CANLI
+
+Repo'da paralel çalışan birden çok oturum vardı (canlı-test 50-bug + OTURUM-3 41-bug + UX-audit
+385-fix + audit-0621 26-crit/high & 81-med/low + lab-values). Senin isteğin üzerine **HEPSİNİ TEK
+final versiyonda birleştirdim:**
+
+- **`claude/KOCHKO` (ana branch) = tek final versiyon** — tüm oturumların işi tek çizgide, tek yerde
+  (fast-forward, hiçbir iş kaybı yok, hiçbir şey ezilmedi). Local + origin senkron.
+- **Canlı backend = final kod:** 6 edge function'ın HEPSİ birleşik final koddan yeniden deploy edildi.
+  Migration'lar (072-078 dâhil; atomic RPC'ler swap_active_goal / promote_weekly_plan /
+  consume_free_plan_slot / start_trial_if_eligible / get_session_last_messages) canlıda doğrulandı.
+- **Canlı doğrulama:** basic chat 200 · kriz→112 · YENİ lab-değeri özelliği canlı çalışıyor
+  ("kolesterolüm 240, D vitaminim 15" → 2 satır, DB otomatik aralık-dışı işaretledi).
+- **client tsc 0 hata · 6/6 edge deno temiz** (birleşik kodda) · **APK final koddan yeniden derlendi**
+  → `Masaüstü\KOCHKO-test.apk`.
+
+**Tek final versiyon = `claude/KOCHKO` branch + canlı Supabase backend. Başka hiçbir branch'e bakmana
+gerek yok.** Aşağıdaki OTURUM 3 / OTURUM 2 bölümleri o birleşik işin detay geçmişidir.
 
 ---
 
