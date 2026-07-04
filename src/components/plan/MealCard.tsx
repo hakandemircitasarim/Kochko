@@ -114,7 +114,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress }:
       {/* Expanded: items + notes + edit */}
       {expanded && (
         <View style={{ marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
-          {meal.items.map((it, i) => (
+          {(Array.isArray(meal.items) ? meal.items : []).map((it, i) => (
             <View
               key={i}
               style={{

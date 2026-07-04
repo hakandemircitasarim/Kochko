@@ -221,9 +221,14 @@ function parseQuickSelect(content: string): { cleanContent: string; options: str
   const match = content.match(/<quick_select>([\s\S]*?)<\/quick_select>/);
   if (!match) return { cleanContent: content, options: null };
   try {
-    const options = JSON.parse(match[1]) as string[];
+    const parsed = JSON.parse(match[1]);
+    // Validate shape: the model can emit a non-array (string/object) that is valid JSON
+    // but would crash options.map() on render (#crash-audit). Only accept a string array.
+    if (!Array.isArray(parsed) || !parsed.every((o) => typeof o === 'string')) {
+      return { cleanContent: content, options: null };
+    }
     const cleanContent = content.replace(/<quick_select>[\s\S]*?<\/quick_select>/, '').trim();
-    return { cleanContent, options };
+    return { cleanContent, options: parsed as string[] };
   } catch {
     return { cleanContent: content, options: null };
   }
@@ -234,6 +239,12 @@ function parseRecipeData(content: string): { cleanContent: string; data: RecipeD
   if (!match) return { cleanContent: content, data: null };
   try {
     const data = JSON.parse(match[1]) as RecipeData;
+    // Validate shape: RecipeCard renders data.ingredients.map(...) and data.macros.* —
+    // a valid-JSON-but-wrong-shape recipe block from the model would crash the bubble
+    // on render (#crash-audit). Require the fields the card dereferences.
+    if (!data || typeof data !== 'object' || !Array.isArray((data as RecipeData).ingredients) || !(data as RecipeData).macros || typeof (data as RecipeData).macros !== 'object') {
+      return { cleanContent: content, data: null };
+    }
     const cleanContent = content.replace(/<recipe>[\s\S]*?<\/recipe>/, '').trim();
     return { cleanContent, data };
   } catch {

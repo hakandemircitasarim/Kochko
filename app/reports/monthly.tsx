@@ -239,7 +239,7 @@ export default function MonthlyReportScreen() {
           )}
 
           {/* Risk Signals */}
-          {aiReport.risk_signals && aiReport.risk_signals.length > 0 && (
+          {Array.isArray(aiReport.risk_signals) && aiReport.risk_signals.length > 0 && (
             <Card title="Risk Sinyalleri">
               {aiReport.risk_signals.map((signal, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < aiReport.risk_signals!.length - 1 ? SPACING.xs : 0 }}>
@@ -251,7 +251,7 @@ export default function MonthlyReportScreen() {
           )}
 
           {/* Behavioral Patterns */}
-          {aiReport.behavioral_patterns && aiReport.behavioral_patterns.length > 0 && (
+          {Array.isArray(aiReport.behavioral_patterns) && aiReport.behavioral_patterns.length > 0 && (
             <Card title="Davranış Kalıpları">
               {aiReport.behavioral_patterns.map((pattern, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < aiReport.behavioral_patterns!.length - 1 ? SPACING.xs : 0 }}>
