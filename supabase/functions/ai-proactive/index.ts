@@ -72,10 +72,40 @@ serve(async (req: Request) => {
           if (!dietRow && !workoutRow) continue; // user never approved a plan
           const weekStart = mondayOf(today);
           const weekEnd = addDaysISO(weekStart, 6);
-          const { data: prof } = await supabaseAdmin.from('profiles').select('weight_kg, weekly_calorie_budget, calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max').eq('id', uid).maybeSingle();
+          const { data: prof } = await supabaseAdmin.from('profiles').select('weight_kg, birth_year, height_cm, gender, activity_level, weekly_calorie_budget, calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, tdee_last_weight, tdee_last_date, maintenance_mode, periodic_state').eq('id', uid).maybeSingle();
           let dietData = (dietRow?.plan_data ?? null) as Record<string, unknown> | null;
-          const rMin = prof?.calorie_range_rest_min as number | null;
-          const rMax = prof?.calorie_range_rest_max as number | null;
+          let rMin = prof?.calorie_range_rest_min as number | null;
+          let rMax = prof?.calorie_range_rest_max as number | null;
+          // #journey: TDEE re-cut DRIVER. profiles.calorie_range only updated on a manual chat
+          // weight-log, so a user who stops weighing kept the target from their heaviest weight
+          // (deficit erodes as they get lighter). Recompute the band from the latest weigh-in
+          // when it's changed >=1.5kg or 21+ days stale, so the plan re-cuts even without a
+          // same-day chat log. Skipped in maintenance (the reverse-diet ramp owns the band there).
+          if (prof && prof.birth_year && prof.height_cm && prof.gender && prof.maintenance_mode !== true && prof.periodic_state !== 'maintenance') {
+            const { data: lw } = await supabaseAdmin.from('daily_metrics').select('weight_kg, date').eq('user_id', uid).not('weight_kg', 'is', null).order('date', { ascending: false }).limit(1).maybeSingle();
+            const curW = lw?.weight_kg as number | null;
+            const lastW = prof.tdee_last_weight as number | null;
+            const lastD = prof.tdee_last_date as string | null;
+            const daysSince = lastD ? Math.floor((Date.now() - Date.parse(lastD)) / 86400000) : 999;
+            if (curW && (!lastW || Math.abs(curW - lastW) >= 1.5 || daysSince >= 21)) {
+              const age = new Date().getUTCFullYear() - (prof.birth_year as number);
+              const bmr = 10 * curW + 6.25 * (prof.height_cm as number) - 5 * age + (prof.gender === 'male' ? 5 : -161);
+              const mult: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
+              const tdee = Math.round(bmr * (mult[(prof.activity_level as string) ?? 'moderate'] ?? 1.55));
+              const { data: g } = await supabaseAdmin.from('goals').select('goal_type').eq('user_id', uid).eq('is_active', true).maybeSingle();
+              const factor = g?.goal_type === 'lose_weight' ? 0.85 : (g?.goal_type === 'gain_weight' || g?.goal_type === 'gain_muscle') ? 1.1 : 1.0;
+              const target = Math.round(tdee * factor);
+              const floor = prof.gender === 'female' ? 1200 : 1400;
+              const win = Math.round(target * 0.10);
+              const tMin = Math.max(target - Math.round(win / 2), floor);
+              const tMax = Math.max(target + Math.round(win / 2), tMin);
+              const rrMin = Math.max(tMin - 250, floor);
+              const rrMax = Math.max(tMax - 250, rrMin);
+              const budget = 4 * Math.round((tMin + tMax) / 2) + 3 * Math.round((rrMin + rrMax) / 2);
+              await supabaseAdmin.from('profiles').update({ tdee_calculated: tdee, tdee_last_weight: curW, tdee_last_date: today, calorie_range_training_min: tMin, calorie_range_training_max: tMax, calorie_range_rest_min: rrMin, calorie_range_rest_max: rrMax, weekly_calorie_budget: budget, updated_at: new Date().toISOString() }).eq('id', uid);
+              rMin = rrMin; rMax = rrMax;
+            }
+          }
           const curTarget = (rMin && rMax) ? Math.round((rMin + rMax) / 2) : null;
           if (dietData && curTarget && dietData.targets && typeof dietData.targets === 'object') {
             const t = dietData.targets as Record<string, unknown>;
