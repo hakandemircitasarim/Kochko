@@ -940,15 +940,25 @@ serve(async (req: Request) => {
       if (hour >= 8 && hour <= 10) { // Check once in the morning
         const threeWeeksAgo = new Date(Date.now() - 21 * 86400000).toISOString().split('T')[0];
         const { data: weights } = await supabaseAdmin
-          .from('daily_metrics').select('weight_kg')
+          .from('daily_metrics').select('weight_kg, date')
           .eq('user_id', profile.id).gte('date', threeWeeksAgo)
-          .not('weight_kg', 'is', null);
-        if (weights && weights.length >= 5) {
-          const ws = weights.map((w: { weight_kg: number }) => w.weight_kg);
-          const avg = ws.reduce((s: number, w: number) => s + w, 0) / ws.length;
-          const maxDiff = Math.max(...ws.map((w: number) => Math.abs(w - avg)));
-          if (maxDiff <= 0.3) {
-            plateauInfo = `TETIK: PLATEAU - ${ws.length} kayitla ${avg.toFixed(1)}kg civarinda durgun`;
+          .not('weight_kg', 'is', null).order('date');
+        // #journey: trend-based (first-third vs last-third mean), matching plateau.service.ts.
+        // The old max-deviation<=0.3kg gate missed real plateaus and needed >=5 weigh-ins.
+        const pr = (weights ?? []) as { weight_kg: number; date: string }[];
+        if (pr.length >= 2) {
+          const ws = pr.map((w) => w.weight_kg);
+          const avg = ws.reduce((s, w) => s + w, 0) / ws.length;
+          const k = Math.max(1, Math.floor(ws.length / 3));
+          const firstMean = ws.slice(0, k).reduce((s, w) => s + w, 0) / k;
+          const lastMean = ws.slice(-k).reduce((s, w) => s + w, 0) / k;
+          const netLoss = firstMean - lastMean;
+          const spanDays = Math.round((Date.parse(pr[pr.length - 1].date) - Date.parse(pr[0].date)) / 86400000);
+          if (spanDays >= 12 && netLoss < 0.3) {
+            const weeks = Math.max(1, Math.round(spanDays / 7));
+            plateauInfo = ws.length >= 5
+              ? `TETIK: PLATEAU - ${weeks} haftadir ${avg.toFixed(1)}kg civarinda durgun (net degisim ${netLoss.toFixed(1)}kg)`
+              : `TETIK: PLATEAU (dusuk veri) - ${weeks} haftada kilo ${avg.toFixed(1)}kg civarinda sabit; daha sik tartilmaya tesvik et`;
           }
         }
       }
@@ -1037,6 +1047,23 @@ serve(async (req: Request) => {
                   }).eq('id', profile.id);
                 }
               } catch { /* transition calc non-critical */ }
+            } else {
+              // #journey: goal reached and NO next phase → AUTO-ENTER maintenance instead of
+              // only hinting the LLM. Without this a goal-reaching user stayed on the cutting
+              // deficit forever unless they chatted the exact maintenance phrase. Idempotent:
+              // skips if already in maintenance. The existing reverse-diet ramp block below
+              // then ramps calories toward TDEE weekly.
+              try {
+                const { data: mProf } = await supabaseAdmin.from('profiles').select('maintenance_mode, periodic_state').eq('id', profile.id).maybeSingle();
+                if (mProf?.maintenance_mode !== true && mProf?.periodic_state !== 'maintenance') {
+                  await supabaseAdmin.from('profiles').update({
+                    maintenance_mode: true, maintenance_start_date: today,
+                    periodic_state: 'maintenance', periodic_state_start: today,
+                    updated_at: new Date().toISOString(),
+                  }).eq('id', profile.id);
+                  maintenanceInfo += ' | BAKIM MODU OTOMATIK AKTIF EDILDI (reverse diet basladi)';
+                }
+              } catch (e) { console.error('[auto-maintenance] failed', (e as Error).message); }
             }
           } else if (goalReached && diff > 1.5) {
             maintenanceInfo = `TETIK: BAKIM BANDI ASILDI - hedef ${activeGoal.target_weight_kg}kg, simdi ${latestWeight.weight_kg}kg`;

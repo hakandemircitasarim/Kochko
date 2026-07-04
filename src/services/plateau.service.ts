@@ -38,32 +38,51 @@ export async function detectPlateau(userId: string): Promise<PlateauStatus> {
 
   const { data } = await supabase
     .from('daily_metrics')
-    .select('weight_kg')
+    .select('weight_kg, date')
     .eq('user_id', userId)
     .gte('date', threeWeeksAgo)
     .not('weight_kg', 'is', null)
     .order('date');
 
-  const weights = (data ?? []).map((d: { weight_kg: number }) => d.weight_kg);
-
-  if (weights.length < 5) {
-    return { isInPlateau: false, weeksSinceChange: 0, avgWeight: null, strategies: [], message: 'Yeterli tarti verisi yok.' };
+  // #journey: TREND-based detection, not max-deviation. The old `maxDiff <= 0.3kg from the
+  // 21-day mean` gate MISSED real plateaus (honest daily weigh-ins jitter past 0.3kg from
+  // water/food) and required >=5 weigh-ins (inert for the many users who weigh 2-4x/wk).
+  // Now: compare the mean of the first third vs the last third of the window — a small NET
+  // change over ~2+ weeks is a plateau regardless of day-to-day noise. Duration is computed
+  // from CALENDAR dates, not sample count.
+  const rows = (data ?? []) as { weight_kg: number; date: string }[];
+  const weights = rows.map((r) => r.weight_kg);
+  if (weights.length < 2) {
+    return { isInPlateau: false, weeksSinceChange: 0, avgWeight: weights.length ? Math.round(weights[0] * 10) / 10 : null, strategies: [], message: 'Yeterli tarti verisi yok.' };
   }
+  const avg = weights.reduce((s, w) => s + w, 0) / weights.length;
+  const k = Math.max(1, Math.floor(weights.length / 3));
+  const firstMean = weights.slice(0, k).reduce((s, w) => s + w, 0) / k;
+  const lastMean = weights.slice(-k).reduce((s, w) => s + w, 0) / k;
+  const netLoss = firstMean - lastMean; // > 0 = still losing
+  const spanDays = Math.max(0, Math.round((Date.parse(rows[rows.length - 1].date) - Date.parse(rows[0].date)) / 86400000));
+  const weeks = Math.max(1, Math.round(spanDays / 7));
+  // Plateau = losing < 0.3kg net over the window (a healthy cut loses ~1.5-2kg over 3 weeks).
+  const flat = netLoss < 0.3;
+  const roundedAvg = Math.round(avg * 10) / 10;
 
-  const avg = weights.reduce((s: number, w: number) => s + w, 0) / weights.length;
-  const maxDiff = Math.max(...weights.map((w: number) => Math.abs(w - avg)));
-
-  if (maxDiff <= 0.3) {
+  if (weights.length >= 5 && spanDays >= 12 && flat) {
     return {
-      isInPlateau: true,
-      weeksSinceChange: Math.floor(weights.length / 3),
-      avgWeight: Math.round(avg * 10) / 10,
-      strategies: STRATEGIES.slice(0, 3), // AI should pick best 1-2
-      message: `${Math.floor(weights.length / 3)} haftadir ${avg.toFixed(1)}kg civarinda kaliyor. Plateau olabilir.`,
+      isInPlateau: true, weeksSinceChange: weeks, avgWeight: roundedAvg,
+      strategies: STRATEGIES.slice(0, 3),
+      message: `${weeks} haftadir ${avg.toFixed(1)}kg civarinda kaliyor. Plateau olabilir.`,
+    };
+  }
+  // Low-data soft signal: 2-4 weigh-ins over >=12 days that are flat — nudge to weigh more.
+  if (weights.length >= 2 && weights.length < 5 && spanDays >= 12 && flat) {
+    return {
+      isInPlateau: true, weeksSinceChange: weeks, avgWeight: roundedAvg,
+      strategies: STRATEGIES.slice(0, 2),
+      message: `Son ${weeks} haftada kilon ${avg.toFixed(1)}kg civarinda sabit gorunuyor. Daha sik tartilirsan durumu netlestirebiliriz.`,
     };
   }
 
-  return { isInPlateau: false, weeksSinceChange: 0, avgWeight: Math.round(avg * 10) / 10, strategies: [], message: '' };
+  return { isInPlateau: false, weeksSinceChange: 0, avgWeight: roundedAvg, strategies: [], message: '' };
 }
 
 // ─── Strategy Selection (Phase 3) ───

@@ -30,13 +30,19 @@ export async function getAchievements(): Promise<Achievement[]> {
  * ends YESTERDAY still counts (today simply hasn't been logged yet).
  */
 export async function calculateStreak(userId: string, dayBoundaryHour: number = 4): Promise<number> {
+  // #journey: query by DATE WINDOW, not a row LIMIT. .limit(90) counted 90 meal_log
+  // ROWS, so a user logging 3-5 meals/day filled the cap at ~18-30 distinct days and the
+  // streak silently froze after ~3-4 weeks (streak_100 unreachable). A 200-day window
+  // scales with calendar days regardless of meals-per-day.
+  const streakCutoff = new Date();
+  streakCutoff.setDate(streakCutoff.getDate() - 200);
   const { data } = await supabase
     .from('meal_logs')
     .select('logged_for_date')
     .eq('user_id', userId)
     .eq('is_deleted', false)
-    .order('logged_for_date', { ascending: false })
-    .limit(90);
+    .gte('logged_for_date', streakCutoff.toISOString().split('T')[0])
+    .order('logged_for_date', { ascending: false });
 
   if (!data || data.length === 0) return 0;
 

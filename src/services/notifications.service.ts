@@ -7,7 +7,16 @@
  */
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { supabase } from '@/lib/supabase';
+
+// #journey: expo-notifications needs the EAS projectId to mint a push token in a
+// standalone build; passing projectId:undefined silently minted NOTHING, so 0 users
+// had a push_token and the entire push/re-engagement layer was inert. Read it from the
+// EAS-populated config. (Delivery still requires the app be built with a real EAS project.)
+const EAS_PROJECT_ID =
+  (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId
+  ?? (Constants as { easConfig?: { projectId?: string } }).easConfig?.projectId;
 import {
   calculateDynamicTiming, inferActiveHours, bundleNotifications,
   type NotificationCandidate,
@@ -73,7 +82,7 @@ export async function requestNotificationPermissionIfNeeded(): Promise<string | 
   if (existingStatus === 'granted') {
     try {
       const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: undefined,
+        projectId: EAS_PROJECT_ID,
       });
       return tokenData.data;
     } catch {
@@ -92,7 +101,7 @@ export async function requestNotificationPermissionIfNeeded(): Promise<string | 
 
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: undefined,
+      projectId: EAS_PROJECT_ID,
     });
     return tokenData.data;
   } catch {
