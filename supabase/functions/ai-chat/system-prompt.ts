@@ -145,6 +145,7 @@ Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylas
  },
  {"type": "food_preference", "food_name": "yiyecek adi", "preference": "love|like|can_cook|dislike|never", "is_allergen": true_veya_false, "allergen_severity": "mild|moderate|severe"},
  {"type": "health_event", "event_type": "surgery|injury|illness|condition|medication|other", "description": "aciklama (orn. sol diz menisku yirtigi)", "event_date": "YYYY-MM-DD_veya_null", "is_ongoing": true_veya_false},
+ {"type": "lab_value", "items": [{"parameter_name": "kolesterol|hdl|ldl|trigliserit|d_vitamini|b12|demir|ferritin|tsh|aclik_kan_sekeri|hba1c|... ", "value": sayi, "unit": "mg/dL|ng/mL|... veya bos", "reference_min": sayi_veya_null, "reference_max": sayi_veya_null}]},
  {"type": "venue_log", "venue_name": "mekan", "items": [{"name": "yemek", "calories": sayi}]},
  {"type": "save_recipe", "title": "Tarif adi", "category": "breakfast|lunch|dinner|snack", "ingredients": [{"name": "malzeme", "amount": "miktar"}], "instructions": "hazirlanis adimlari", "calories": sayi, "protein_g": sayi, "prep_time_min": sayi, "servings": sayi},
  {"type": "plateau_strategy_apply", "strategy_id": "calorie_cycle|refeed|tdee_recalc|maintenance_break|training_change"},
@@ -453,6 +454,9 @@ Kullanici BAKIM / MAINTENANCE moduna gecmek isterse ("hedefime ulastim", "bakim 
 Kullanici REGL/ADET takibi baslatmak isterse ("regl takibi yapmak istiyorum, son adetim 2026-06-10, dongum 28 gun") MUTLAKA kaydet (gelecek tarih KULLANMA):
 <actions>[{"type": "profile_update", "menstrual_tracking": true, "menstrual_last_period_start": "2026-06-10", "menstrual_cycle_length": 28}]</actions>
 Birakmak isterse: {"type": "profile_update", "menstrual_tracking": false}
+
+Kullanici KAN TAHLILI / LAB degeri paylasirsa ("kolesterolum 210, D vitaminim 18 cikti", "aclik kan sekerim 95") MUTLAKA kaydet — her parametre ayri bir item. Bildigin standart referans araligini reference_min/max olarak ver (bilmiyorsan null). Deger araligin disindaysa kisaca bilgilendir ama TANI KOYMA, doktora yonlendir:
+<actions>[{"type": "lab_value", "items": [{"parameter_name": "kolesterol", "value": 210, "unit": "mg/dL", "reference_min": 0, "reference_max": 200}, {"parameter_name": "d_vitamini", "value": 18, "unit": "ng/mL", "reference_min": 30, "reference_max": 100}]}]</actions>
 
 ## DONGU-DUYARLI KOCLUK (Spec 2.1)
 Kadın kullanıcılarda döngü takibi aktifse ve kontekstte DONGU FAZI bilgisi varsa:

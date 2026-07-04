@@ -3637,6 +3637,36 @@ async function executeActions(
           }
           break;
         }
+        case 'lab_value': {
+          // Spec 2.1: lab/blood-work values told in chat ("kolesterolüm 210, D vitaminim 18")
+          // persist to lab_values so the coach can reference them. items[] = one row each.
+          const items = Array.isArray(action.items) ? action.items as Array<Record<string, unknown>> : [];
+          const rows = items
+            .map((it) => {
+              const name = (it.parameter_name as string | undefined)?.trim();
+              const val = Number(it.value);
+              if (!name || !Number.isFinite(val)) return null;
+              const refMin = it.reference_min != null && Number.isFinite(Number(it.reference_min)) ? Number(it.reference_min) : null;
+              const refMax = it.reference_max != null && Number.isFinite(Number(it.reference_max)) ? Number(it.reference_max) : null;
+              // NOTE: is_out_of_range is a GENERATED column — the DB computes it; inserting
+              // it 428C9-fails. (Mirrors src/services/health.service.ts which omits it too.)
+              return {
+                user_id: userId,
+                parameter_name: name,
+                value: val,
+                unit: (it.unit as string | undefined)?.trim() || '',
+                reference_min: refMin,
+                reference_max: refMax,
+                measured_at: today,
+              };
+            })
+            .filter((r): r is NonNullable<typeof r> => r !== null);
+          if (rows.length === 0) { feedback.push(null); break; }
+          const { error: labErr } = await supabaseAdmin.from('lab_values').insert(rows);
+          if (labErr) { console.error('[lab_value] insert failed:', labErr.message); feedback.push(null); break; }
+          feedback.push(`${rows.length} lab değeri kaydedildi`);
+          break;
+        }
         case 'save_recipe': {
           // T3.6: Save recipe from AI chat to recipe library. ingredients is jsonb
           // NOT NULL with no default — if the model omits it, default to [] so the
