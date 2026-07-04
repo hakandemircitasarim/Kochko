@@ -1142,6 +1142,17 @@ export default function SessionDetailScreen() {
     }
   }, [loadingOlder, hasMoreOlder, messages, sessionId]);
 
+  // FIX (audit UI-CHT-06): build the separator-decorated row list once per messages
+  // change instead of re-running filter+withDateSeparators on every unrelated re-render.
+  // CRITICAL: this useMemo MUST stay ABOVE the `if (loading) return` early-return below.
+  // A hook after a conditional return violates the Rules of Hooks and threw
+  // "Rendered more hooks than during the previous render" the moment loading flipped
+  // false — crashing the chat detail screen on open (ErrorBoundary caught it).
+  const messageRows = useMemo(
+    () => withDateSeparators(messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]')))),
+    [messages],
+  );
+
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
@@ -1157,14 +1168,6 @@ export default function SessionDetailScreen() {
   const taskSessionClosed = !!taskModeHint && messages.some(m => (m as UIMessage).taskCompletion?.completed);
 
   const sendDisabled = (!input.trim() && !photo) || sending || taskSessionClosed;
-
-  // FIX (audit UI-CHT-06): build the separator-decorated row list once per messages
-  // change instead of re-running filter+withDateSeparators (new array/object
-  // identities) on every unrelated re-render (keyboard, rate-limit countdown).
-  const messageRows = useMemo(
-    () => withDateSeparators(messages.filter(m => !(m.role === 'user' && m.content.startsWith('[SYSTEM_INIT]')))),
-    [messages],
-  );
 
   return (
     <KeyboardAvoidingView
