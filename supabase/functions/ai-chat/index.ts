@@ -743,10 +743,14 @@ serve(async (req: Request) => {
     // GUARD: only runs on the miss path (no meal_log action already present) and only
     // for register/daily_log meal reports, so the working path is never touched and a
     // meal is never double-logged.
+    // #organism: fire in ANY mode, not just register/daily_log. A real meal report ("pasta
+    // yedim") buried in an emotional message routes to recovery/coaching and the meal was
+    // silently DROPPED — the coach attuned but forgot to log. looksLikeMealReport is past-tense
+    // so hypotheticals ("yersem") are excluded; simulation mode is skipped (what-if projections).
     if (message
       && looksLikeMealReport(message)
       && !actions.some(a => a.type === 'meal_log')
-      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      && effectiveMode !== 'simulation') {
       console.warn('[meal_safety_net] meal intent, no meal_log action — attempting forced extraction', { mode: effectiveMode });
       const forcedAction = await forceMealLogAction(message, modelSelection.model);
       if (forcedAction) {
@@ -772,7 +776,7 @@ serve(async (req: Request) => {
     if (message
       && looksLikeWorkoutReport(message)
       && !actions.some(a => a.type === 'workout_log')
-      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      && effectiveMode !== 'simulation') { // #organism: capture the workout in any mode, not just register
       console.warn('[workout_safety_net] workout intent, no workout_log action — attempting forced extraction');
       const forcedWorkout = await forceWorkoutLogAction(message, modelSelection.model);
       if (forcedWorkout) {
@@ -812,10 +816,11 @@ serve(async (req: Request) => {
       }
     }
 
-    // Sleep-log safety net — deterministic (#R1-H4): "7 saat uyudum".
+    // Sleep-log safety net — deterministic (#R1-H4): "7 saat uyudum". #organism: any mode
+    // (the "N saat uyku" regex is specific enough to be safe outside register).
     if (message
       && !actions.some(a => a.type === 'sleep_log')
-      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      && effectiveMode !== 'simulation') {
       const mS = message.toLocaleLowerCase('tr');
       const sm = mS.match(/(\d{1,2}(?:[.,]\d)?)\s*saat\s*(?:uyu|uyku)/);
       if (sm) {
@@ -829,9 +834,10 @@ serve(async (req: Request) => {
     }
 
     // Water-log safety net — deterministic (#R1-H6): "2 litre su içtim", "3 bardak su".
+    // #organism: any mode (the "su iç" + quantity regex is specific enough to be safe).
     if (message
       && !actions.some(a => a.type === 'water_log')
-      && (effectiveMode === 'register' || effectiveMode === 'daily_log')) {
+      && effectiveMode !== 'simulation') {
       const mWa = message.toLocaleLowerCase('tr');
       if (/su\s*(ic|iç)|water|sivi ald|sıvı ald/.test(mWa)) {
         const litreM = mWa.match(/(\d+(?:[.,]\d+)?)\s*(?:litre|lt|l)\b/);
@@ -2233,7 +2239,11 @@ function stripVerbalAcknowledgements(text: string): string {
  */
 function looksLikeMealReport(msg: string): boolean {
   const m = msg.toLocaleLowerCase('tr');
-  const ate = /\b(yedim|yedik|yemistim|yemiştim|ictim|icmistim|atistirdim|tukettim|kahvalti yaptim)\b/.test(m) || /\b(içtim|içmiştim|atıştırdım|tükettim)\b/.test(m);
+  const ate = /\b(yedim|yedik|yemistim|yemiştim|ictim|icmistim|atistirdim|tukettim|kahvalti yaptim|yuttum|kemirdim|mideye indirdim|kacamak yaptim|kaçamak yaptım|yiyip bitirdim)\b/.test(m)
+    || /\b(içtim|içmiştim|atıştırdım|tükettim)\b/.test(m)
+    // "paketi/kutuyu/tabağı/dilimi bitirdim" = ate it (container/portion + bitir), so "işi
+    // bitirdim" (finished work) never matches.
+    || /(paket|kutu|tabak|tabağ|kase|kâse|dilim|porsiyon|bardak|kavanoz|torba)[a-zçğıöşü]*\s*(?:[a-zçğıöşü]+\s+){0,3}bitir/.test(m);
   if (!ate) return false;
   if (/(kac kalori|kaç kalori|olur mu|yesem|yersem|icsem|içsem|ne olur|kac gram|kaç gram)/.test(m)) return false;
   // 'kaydetme' (imperative "don't log") must NOT match 'kaydetmeyi unutmuşum'
