@@ -1937,6 +1937,11 @@ serve(async (req: Request) => {
             assistantMessage += `\n\nHer şey yolunda mı? Alkol almadığını söylemiştin ama ${alcHits[0][1]} girdin — yargılamıyorum, sadece kontrol ediyorum. 🙂`;
           }
         }
+        // SAKATLIK CELISKISI (user logged an exercise loading an on-file injury) — safety nudge.
+        const injHits = [...conflictStr.matchAll(/SAKATLIK CELISKISI: Kullanici "([^"]+)" yapmis ama kayitli sakatligi \(([^)]+)\)/g)];
+        if (injHits.length > 0 && !/(sakatlı|sakatli|iyileşti mi|iyilesti mi|ağrı yaptı|agri yapti|dikkatli ol)/.test(lowerReply)) {
+          assistantMessage += `\n\n⚠️ Dikkat — ${injHits[0][1]} yaptığını yazdın ama kayıtlı ${injHits[0][2]} sakatlığın bu hareketi zorlayabilir. Ağrı yaptı mı? İyileştiyse "iyileşti" de, kaydını güncelleyeyim; yoksa daha güvenli bir alternatif bulalım.`;
+        }
       }
     } catch (e) {
       console.error('[output_safety_scan] failed:', (e as Error).message);

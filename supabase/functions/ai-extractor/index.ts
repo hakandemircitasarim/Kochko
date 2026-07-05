@@ -208,6 +208,20 @@ serve(async (req: Request) => {
         query = query.gt('created_at', lastChecked);
       }
 
+      // #memory (staleness fix): the data-driven Tier-3 analyses read meal_logs / daily_metrics /
+      // repair_history — NOT chat — so they must refresh for log-heavy, chat-light users too.
+      // They used to sit AFTER the "no new messages → continue" gate and silently froze for anyone
+      // who logged daily but rarely chatted (stale snacking-hour nudges, stale activity multiplier).
+      // Only inferTonePreference genuinely needs new chat and stays gated below.
+      if (tier === 3) {
+        await Promise.all([
+          detectSnackingHours(userId).catch((e: Error) => console.error(`[Extractor] snacking ${userId}:`, e.message)),
+          calibrateActivityMultiplier(userId).catch((e: Error) => console.error(`[Extractor] activity ${userId}:`, e.message)),
+          analyzeLateMealSleep(userId).catch((e: Error) => console.error(`[Extractor] latemeal ${userId}:`, e.message)),
+          refreshCorrectionMemory(userId).catch((e: Error) => console.error(`[Extractor] correction ${userId}:`, e.message)),
+        ]);
+      }
+
       const { data: messages } = await query;
       if (!messages || messages.length === 0) continue;
 
@@ -365,30 +379,12 @@ serve(async (req: Request) => {
         );
       }
 
-      // 9. Infer tone preference from implicit signals (Spec 5.9, weekly Tier 3)
+      // 9. Infer tone preference from implicit signals (Spec 5.9, weekly Tier 3). This one
+      // genuinely reads chat_messages, so it stays gated behind new-message presence. The other
+      // Tier-3 analyses (snacking/activity/late-meal/correction) now run above, chat-independent.
       if (tier === 3) {
         await inferTonePreference(userId).catch((err: Error) =>
           console.error(`[Extractor] Tone inference failed for ${userId}:`, err.message)
-        );
-
-        // 10. Refresh correction memory (Spec 5.32, weekly Tier 3)
-        await refreshCorrectionMemory(userId).catch((err: Error) =>
-          console.error(`[Extractor] Correction memory refresh failed for ${userId}:`, err.message)
-        );
-
-        // 11. Detect peak snacking hours for preemptive nudges (Spec 14.2)
-        await detectSnackingHours(userId).catch((err: Error) =>
-          console.error(`[Extractor] Snacking hours detection failed for ${userId}:`, err.message)
-        );
-
-        // 12. Calibrate declared vs observed activity level (Spec 2.4)
-        await calibrateActivityMultiplier(userId).catch((err: Error) =>
-          console.error(`[Extractor] Activity calibration failed for ${userId}:`, err.message)
-        );
-
-        // 13. Late-meal → sleep-quality correlation insight (Spec 14.2)
-        await analyzeLateMealSleep(userId).catch((err: Error) =>
-          console.error(`[Extractor] Late meal sleep analysis failed for ${userId}:`, err.message)
         );
       }
     }

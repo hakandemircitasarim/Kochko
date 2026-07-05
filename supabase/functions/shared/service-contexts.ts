@@ -5,7 +5,7 @@
  */
 import { supabaseAdmin } from './supabase-admin.ts';
 import { getEffectiveDateForUser } from './day-boundary.ts';
-import { foodMatchKey } from './guardrails.ts';
+import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText } from './guardrails.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
 // (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
@@ -827,6 +827,22 @@ export async function getConflictContext(
           alerts.push(`HEDEF-DAVRANIS CELISKISI: Kilo vermek istiyor ama ort. ${Math.round(avgCal)} kcal/gun (TDEE: ${tdee}). Hedef veya plan ayarlanmali mi sor.`);
         } else if (goalType === 'gain_weight' && avgCal < tdee * 1.05) {
           alerts.push(`HEDEF-DAVRANIS CELISKISI: Kilo almak istiyor ama kalori alimi yetersiz (ort. ${Math.round(avgCal)} kcal, TDEE: ${tdee}).`);
+        }
+      }
+    }
+
+    // #memory (Spec 12.2): INJURY-vs-LOGGED-EXERCISE contradiction. Plan-gen already excludes
+    // loading exercises for injured users, but a self-directed user who LOGS "bugün squat yaptım"
+    // while a back/knee injury is on file got no safety callout. Fire when a performed-exercise cue
+    // co-occurs with a movement that loads an ongoing injured part.
+    if (loggedFoodText && /(yaptım|yaptim|çalıştım|calistim|kaldırdım|kaldirdim|attım|attim|koştum|kostum|antrenman|squat|deadlift|bench|şınav|sinav|mekik|koşu|kosu)/.test(loggedFoodText.toLocaleLowerCase('tr'))) {
+      const { data: injRows } = await supabaseAdmin
+        .from('health_events').select('description').eq('user_id', userId).eq('is_ongoing', true);
+      const injuredParts = extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? ''));
+      if (injuredParts.length > 0) {
+        const conflicts = findInjuryConflictsInText(loggedFoodText, injuredParts);
+        if (conflicts.length > 0) {
+          alerts.push(`SAKATLIK CELISKISI: Kullanici "${conflicts.join(', ')}" yapmis ama kayitli sakatligi (${injuredParts.join(', ')}) bu hareketi zorluyor. Nazikce sor: iyilesti mi, agri yapti mi? Iyilestiyse "iyilesti" demesini iste (kaydi guncelleyelim); yoksa sakatlik-dostu alternatif oner.`);
         }
       }
     }
