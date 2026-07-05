@@ -4286,19 +4286,40 @@ async function executeActions(
           const startCal = (pProfile?.calorie_range_rest_max as number | null) ?? 1800;
           const tdee = (pProfile?.tdee_calculated as number | null) ?? (startCal + 500);
           const weeksNeeded = Math.max(2, Math.min(4, Math.ceil((tdee - startCal) / 125)));
+          // #journey CRITICAL: maintenance MUST raise the calorie band off the cutting deficit —
+          // the old handler only flipped flags + wrote a note promising "+125/hafta", but never
+          // touched calorie_range_rest_*, so daily_plans (projected from that band) kept the
+          // aggressive cut and the goal-reacher kept losing into an under-eating spiral. Move the
+          // band to MAINTENANCE (≈TDEE) so the cut stops immediately. Reverse-diet philosophy for a
+          // general weight-loss user = eat at maintenance; no gradual ramp needed to stop harm.
+          const maintMin = Math.round(tdee - 100);
+          const maintMax = Math.round(tdee + 150);
+          const maintTrainMin = Math.round(tdee);
+          const maintTrainMax = Math.round(tdee + 350);
 
           await supabaseAdmin.from('profiles').update({
             maintenance_mode: true,
             maintenance_start_date: today,
             periodic_state: 'maintenance',
             periodic_state_start: today,
+            calorie_range_rest_min: maintMin,
+            calorie_range_rest_max: maintMax,
+            calorie_range_training_min: maintTrainMin,
+            calorie_range_training_max: maintTrainMax,
+            weekly_calorie_budget: Math.round(((maintMin + maintMax) / 2) * 7),
+            updated_at: new Date().toISOString(),
           }).eq('id', userId);
 
+          // Reflect on today's plan immediately (mirror mini_cut_start) so the dashboard shows it now.
+          await supabaseAdmin.from('daily_plans').update({
+            calorie_target_min: maintMin, calorie_target_max: maintMax,
+          }).eq('user_id', userId).eq('date', today);
+
           await updateLayer2(userId, {
-            coaching_notes: `[${today}] Bakim modu basladi. Hedef TDEE ${tdee} kcal, ${weeksNeeded} hafta boyunca haftalik +125 kcal artis.`,
+            coaching_notes: `[${today}] Bakim modu basladi. Kalori bakim seviyesine cikarildi (~${Math.round((maintMin + maintMax) / 2)} kcal, TDEE ${tdee}). Tolerans ±1.5kg.`,
           }).then(() => {}, () => {});
 
-          feedback.push(`Bakim modu aktif. ${weeksNeeded} hafta boyunca haftalik +125 kcal artirma plani — tolerans bandi ±1.5kg.`);
+          feedback.push(`Bakim modu aktif — kalori hedefin bakim seviyesine yukseltildi (${maintMin}-${maintMax} kcal). Artik kesimde degilsin, tolerans bandi ±1.5kg.`);
           break;
         }
         case 'mini_cut_start': {

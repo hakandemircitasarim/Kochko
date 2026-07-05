@@ -1084,14 +1084,28 @@ serve(async (req: Request) => {
               // skips if already in maintenance. The existing reverse-diet ramp block below
               // then ramps calories toward TDEE weekly.
               try {
-                const { data: mProf } = await supabaseAdmin.from('profiles').select('maintenance_mode, periodic_state').eq('id', profile.id).maybeSingle();
+                const { data: mProf } = await supabaseAdmin.from('profiles').select('maintenance_mode, periodic_state, tdee_calculated, calorie_range_rest_max').eq('id', profile.id).maybeSingle();
                 if (mProf?.maintenance_mode !== true && mProf?.periodic_state !== 'maintenance') {
+                  // #journey CRITICAL: raise the band to MAINTENANCE (≈TDEE) at the transition —
+                  // the previous code only flipped flags and relied on a reverse-diet ramp that was
+                  // unreachable (buried behind adjustAdaptiveDifficulty early-returns), so the band
+                  // stayed on the cut and the goal-reacher kept under-eating. Set it here directly.
+                  const tdee = (mProf?.tdee_calculated as number | null) ?? (((mProf?.calorie_range_rest_max as number | null) ?? 1800) + 500);
+                  const maintMin = Math.round(tdee - 100);
+                  const maintMax = Math.round(tdee + 150);
                   await supabaseAdmin.from('profiles').update({
                     maintenance_mode: true, maintenance_start_date: today,
                     periodic_state: 'maintenance', periodic_state_start: today,
+                    calorie_range_rest_min: maintMin, calorie_range_rest_max: maintMax,
+                    calorie_range_training_min: Math.round(tdee), calorie_range_training_max: Math.round(tdee + 350),
+                    weekly_calorie_budget: Math.round(((maintMin + maintMax) / 2) * 7),
                     updated_at: new Date().toISOString(),
                   }).eq('id', profile.id);
-                  maintenanceInfo += ' | BAKIM MODU OTOMATIK AKTIF EDILDI (reverse diet basladi)';
+                  // Push today's daily_plan to maintenance immediately.
+                  await supabaseAdmin.from('daily_plans').update({
+                    calorie_target_min: maintMin, calorie_target_max: maintMax,
+                  }).eq('user_id', profile.id).eq('date', today);
+                  maintenanceInfo += ` | BAKIM MODU OTOMATIK AKTIF (kalori bakima cikarildi ${maintMin}-${maintMax})`;
                 }
               } catch (e) { console.error('[auto-maintenance] failed', (e as Error).message); }
             }
