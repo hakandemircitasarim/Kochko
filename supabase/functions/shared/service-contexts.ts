@@ -959,12 +959,14 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
  */
 export async function getSituationalSnapshot(userId: string, effectiveToday?: string): Promise<string> {
   try {
-    const [profRes, goalRes, metricsRes, reportsRes, sumRes] = await Promise.all([
+    const [profRes, goalRes, metricsRes, reportsRes, sumRes, eventRes] = await Promise.all([
       supabaseAdmin.from('profiles').select('weight_kg, calorie_range_rest_min, calorie_range_rest_max, onboarding_completed').eq('id', userId).maybeSingle(),
       supabaseAdmin.from('goals').select('goal_type, start_weight_kg, target_weight_kg, target_weeks, created_at, phase_label').eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1),
       supabaseAdmin.from('daily_metrics').select('date, weight_kg, sleep_hours, water_liters').eq('user_id', userId).order('date', { ascending: false }).limit(21),
       supabaseAdmin.from('daily_reports').select('date, calorie_actual, compliance_score').eq('user_id', userId).order('date', { ascending: false }).limit(14),
       supabaseAdmin.from('ai_summary').select('behavioral_patterns').eq('user_id', userId).maybeSingle(),
+      // #organism: the nearest upcoming motivating life event → carried on EVERY turn as a countdown.
+      supabaseAdmin.from('life_events').select('title, event_type, event_date').eq('user_id', userId).eq('is_active', true).gte('event_date', (effectiveToday ?? new Date().toISOString().split('T')[0])).order('event_date', { ascending: true }).limit(1),
     ]);
     const p = profRes.data;
     if (!p || !p.onboarding_completed) return '';
@@ -1034,6 +1036,16 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
     const patterns = (sumRes.data?.behavioral_patterns as { description?: string }[] | null) ?? [];
     const pat = patterns.map(p => p?.description).filter(Boolean).slice(0, 3);
     if (pat.length > 0) lines.push(`BİLİNEN KALIPLAR: ${pat.join(' · ')}`);
+
+    // #organism: nearest upcoming life event → a motivating countdown, unshifted to the TOP so the
+    // coach naturally ties advice to it ("düğüne 18 gün kaldı, planına sadık kalırsan yetişirsin").
+    const ev = (eventRes.data ?? [])[0] as { title: string; event_date: string } | undefined;
+    if (ev) {
+      const daysTo = Math.round((Date.parse(`${ev.event_date}T00:00:00Z`) - todayMs) / 86400000);
+      if (daysTo >= 0 && daysTo <= 400) {
+        lines.unshift(`🎯 YAKLAŞAN: ${ev.title} — ${daysTo === 0 ? 'BUGÜN' : `${daysTo} gün kaldı`} (${ev.event_date}). Uygun yerde bununla motive et, planı bu tarihe bağla; kullanıcı sormadan da hatırla.`);
+      }
+    }
 
     if (lines.length === 0) return '';
     return `## DURUM ÖZETİ (bu kişiyi ŞU AN böyle tanıyorsun — cevabını buna göre, duruma özel ver; genel geçme)\n${lines.join('\n')}`;

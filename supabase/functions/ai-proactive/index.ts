@@ -62,6 +62,9 @@ serve(async (req: Request) => {
       const mondayOf = (dateStr: string) => { const d = new Date(dateStr + 'T00:00:00Z'); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return toISO(d); };
       const addDaysISO = (dateStr: string, n: number) => { const d = new Date(dateStr + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return toISO(d); };
       let rolledForward = 0;
+      // #organism: retire life events whose date has passed so the coach's snapshot only ever
+      // surfaces upcoming ones (housekeeping; the snapshot query already filters by date too).
+      await supabaseAdmin.from('life_events').update({ is_active: false }).lt('event_date', today).eq('is_active', true).then(() => {}, () => {});
       for (const profile of profiles as { id: string }[]) {
         try {
           const uid = profile.id;

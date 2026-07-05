@@ -33,6 +33,7 @@ import {
 import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot } from '../shared/service-contexts.ts';
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
 import { resolveTargetCalories } from '../shared/targets.ts';
+import { extractLifeEvent } from '../shared/life-events.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
 
@@ -1101,6 +1102,18 @@ serve(async (req: Request) => {
       if (parts.length > 0) {
         actions.push({ type: 'health_event_resolve', body_parts: parts, description: message.slice(0, 200) });
         console.warn('[injury_resolve_net] resolve injected', { parts });
+      }
+    }
+
+    // Life-event capture net — the #organism continuity feature. A dated motivating event
+    // ("3 hafta sonra kardeşimin düğünü var", "15 temmuzda tatil") is persisted to life_events so
+    // the coach carries it as a COUNTDOWN across turns AND new sessions and ties the plan to it —
+    // instead of forgetting it the moment the chat ends (the "different-GPT-chat-every-time" feel).
+    if (message && !actions.some(a => (a as Record<string, unknown>).type === 'life_event')) {
+      const le = extractLifeEvent(message, effectiveToday);
+      if (le) {
+        actions.push({ type: 'life_event', title: le.title, event_type: le.event_type, event_date: le.event_date, note: message.slice(0, 200) });
+        console.warn('[life_event_net] captured', le);
       }
     }
 
@@ -3890,6 +3903,26 @@ async function executeActions(
           } else {
             feedback.push('Sağlık bilgisi kaydedildi');
           }
+          break;
+        }
+        case 'life_event': {
+          // #organism: persist a dated motivating event so the coach remembers it across sessions.
+          const leTitle = (action.title as string ?? '').trim();
+          const leDate = action.event_date as string;
+          if (!leTitle || !leDate || !/^\d{4}-\d{2}-\d{2}$/.test(leDate)) { feedback.push(null); break; }
+          const leType = (action.event_type as string) ?? 'other';
+          // Dedup: same type within ±10 days already stored → skip (avoids re-logging on re-mention).
+          const { data: existingLE } = await supabaseAdmin.from('life_events')
+            .select('event_date').eq('user_id', userId).eq('is_active', true).eq('event_type', leType);
+          const near = (existingLE ?? []).some((e: { event_date: string }) =>
+            Math.abs(Date.parse(`${e.event_date}T00:00:00Z`) - Date.parse(`${leDate}T00:00:00Z`)) < 10 * 86400000);
+          if (near) { feedback.push(null); break; }
+          const { error: leErr } = await supabaseAdmin.from('life_events').insert({
+            user_id: userId, title: leTitle.slice(0, 80), event_type: leType,
+            event_date: leDate, note: (action.note as string ?? '').slice(0, 200),
+          });
+          if (leErr) { console.error('[life_event] insert failed:', leErr.message); feedback.push(null); }
+          else feedback.push(`Aklımda: ${leTitle} (${leDate}) — o güne çalışırız 💪`);
           break;
         }
         case 'health_event_resolve': {
