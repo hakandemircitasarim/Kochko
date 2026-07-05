@@ -110,9 +110,32 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         .eq('user_id', userId).eq('date', date).order('version', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('goals').select('*')
         .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).maybeSingle(),
-      supabase.from('profiles').select('weight_kg, water_target_liters')
+      supabase.from('profiles').select('weight_kg, water_target_liters, weekly_calorie_budget')
         .eq('id', userId).maybeSingle(),
     ]);
+
+    // #journey HIGH: weekly-budget CONSUMED must be LIVE — sum this week's logged calories — not
+    // the frozen daily_plans.weekly_budget_consumed snapshot that never moved as the user logged
+    // meals during the day/week (the "bank calories across the week" UI was effectively dead).
+    const weekStart = (() => {
+      const d = new Date(`${date}T00:00:00Z`);
+      const dow = d.getUTCDay(); // 0=Sun
+      d.setUTCDate(d.getUTCDate() - (dow === 0 ? 6 : dow - 1)); // Monday-based
+      return d.toISOString().slice(0, 10);
+    })();
+    let liveWeekConsumed: number | null = null;
+    try {
+      const { data: weekItems } = await supabase
+        .from('meal_log_items')
+        .select('calories, meal_logs!inner(user_id, logged_for_date, is_deleted)')
+        .eq('meal_logs.user_id', userId)
+        .gte('meal_logs.logged_for_date', weekStart)
+        .lte('meal_logs.logged_for_date', date)
+        .eq('meal_logs.is_deleted', false);
+      if (weekItems) liveWeekConsumed = (weekItems as { calories: number | null }[]).reduce((s, m) => s + (m.calories ?? 0), 0);
+    } catch { /* live budget is best-effort; fall back to the stored snapshot below */ }
+    const weeklyBudgetTotalResolved = (planRes.data?.weekly_budget_total as number | null)
+      ?? (profileRes.data?.weekly_calorie_budget as number | null) ?? null;
 
     // Single IN query instead of N+1 — for 5 meals this is 1 round-trip instead of 5.
     const mealRows = (mealsRes.data ?? []) as { id: string; raw_input: string; meal_type: string; logged_at: string }[];
@@ -174,9 +197,11 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       totalCarbs: Math.round(totalCarbs),
       totalFat: Math.round(totalFat),
       focusMessage: planRes.data?.focus_message ?? null,
-      weeklyBudgetRemaining: planRes.data?.weekly_budget_remaining ?? null,
-      weeklyBudgetTotal: planRes.data?.weekly_budget_total ?? null,
-      weeklyBudgetConsumed: planRes.data?.weekly_budget_consumed ?? null,
+      weeklyBudgetConsumed: liveWeekConsumed != null ? Math.round(liveWeekConsumed) : (planRes.data?.weekly_budget_consumed ?? null),
+      weeklyBudgetTotal: weeklyBudgetTotalResolved,
+      weeklyBudgetRemaining: (weeklyBudgetTotalResolved != null && liveWeekConsumed != null)
+        ? Math.round(weeklyBudgetTotalResolved - liveWeekConsumed)
+        : (planRes.data?.weekly_budget_remaining ?? null),
       calorieTargetMin: (planRes.data?.calorie_target_min as number | null) ?? null,
       calorieTargetMax: (planRes.data?.calorie_target_max as number | null) ?? null,
       proteinTarget: (planRes.data?.protein_target_g as number | null) ?? null,

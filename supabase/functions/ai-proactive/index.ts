@@ -1111,7 +1111,22 @@ serve(async (req: Request) => {
                   await supabaseAdmin.from('daily_plans').update({
                     calorie_target_min: maintMin, calorie_target_max: maintMax,
                   }).eq('user_id', profile.id).eq('date', today);
-                  maintenanceInfo += ` | BAKIM MODU OTOMATIK AKTIF (kalori bakima cikarildi ${maintMin}-${maintMax})`;
+                  // #journey HIGH: convert the active goal to 'maintain' so the NEXT ai-plan /
+                  // chat plan stops instructing a deficit toward an already-reached target.
+                  await supabaseAdmin.from('goals').update({ goal_type: 'maintain' })
+                    .eq('user_id', profile.id).eq('is_active', true);
+                  // #journey HIGH: the goal_reached achievement was written ONLY client-side, so
+                  // server-detected goal-reachers never got the maintenance retention layer
+                  // (milestones, reverse-diet timing). Write it here idempotently.
+                  const { data: existingGR } = await supabaseAdmin.from('achievements')
+                    .select('id').eq('user_id', profile.id).eq('achievement_type', 'goal_reached').maybeSingle();
+                  if (!existingGR) {
+                    await supabaseAdmin.from('achievements').insert({
+                      user_id: profile.id, achievement_type: 'goal_reached',
+                      title: 'HEDEFE ULAŞTIN!', description: 'Tebrikler, hedef kilona ulaştın! Artık bakım dönemi.',
+                    });
+                  }
+                  maintenanceInfo += ` | BAKIM MODU OTOMATIK AKTIF (kalori bakima cikarildi ${maintMin}-${maintMax}, hedef=maintain, goal_reached yazildi)`;
                 }
               } catch (e) { console.error('[auto-maintenance] failed', (e as Error).message); }
             }

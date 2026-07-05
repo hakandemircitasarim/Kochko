@@ -98,7 +98,10 @@ export async function checkMilestones(
     const isGain = goalType === 'gain_weight' || goalType === 'gain_muscle';
     const progress = isGain ? currentWeight - startWeight : startWeight - currentWeight;
     const totalNeeded = targetWeight != null ? Math.abs(startWeight - targetWeight) : null;
-    const reachedTarget = targetWeight != null && (isGain ? currentWeight >= targetWeight : currentWeight <= targetWeight);
+    // #journey HIGH: use a small tolerance (±0.5kg) so "hedefe ulaştın" fires when the user lands
+    // just shy of the exact number — matching the server's goal-reached test. Exact equality made
+    // it silently never fire for users who stopped at target+0.3.
+    const reachedTarget = targetWeight != null && (isGain ? currentWeight >= targetWeight - 0.5 : currentWeight <= targetWeight + 0.5);
     const unit = isGain ? 'aldın' : 'verdin';
     if (reachedTarget && !types.has('goal_reached'))
       earned.push({ type: 'goal_reached', title: 'HEDEFE ULAŞTIN!', desc: 'Tebrikler, hedef kilona ulaştın!' });
@@ -118,8 +121,11 @@ export async function checkMilestones(
   if (streak >= 7 && !types.has('streak_7'))
     earned.push({ type: 'streak_7', title: '7 Gün Seri!', desc: '1 hafta kesintisiz kayıt.' });
 
-  // Maintenance milestones (Spec 13.2) — highest threshold first
-  if (targetWeight && currentWeight && currentWeight <= targetWeight) {
+  // Maintenance milestones (Spec 13.2) — highest threshold first. #journey HIGH: gate on the
+  // SAME ±1.5kg maintenance tolerance band used everywhere else, not exact currentWeight<=target.
+  // Exact equality made the 1m/3m/6m maintenance badges — the biggest reward for a user who
+  // succeeded and stuck around — effectively unreachable for anyone hovering just above target.
+  if (targetWeight && currentWeight && currentWeight <= targetWeight + 1.5) {
     // Check maintenance duration
     const { data: goalReachedAch } = await supabase
       .from('achievements').select('achieved_at')
