@@ -5,6 +5,7 @@
  */
 import { supabaseAdmin } from './supabase-admin.ts';
 import { getEffectiveDateForUser } from './day-boundary.ts';
+import { foodMatchKey } from './guardrails.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
 // (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
@@ -725,6 +726,37 @@ export async function getConflictContext(
             if (lower.includes(food)) {
               alerts.push(`ALERJEN CELISKISI: "${allergen.food_name}" alerjenin var ama "${food}" iceren yemek girdin. Intoleransin degisti mi sor.`);
             }
+          }
+        }
+      }
+
+      // #memory: DISLIKE contradiction (Spec 5.10) — the exact "hani X sevmiyordun?"
+      // behaviour. Previously ONLY allergens were checked; a plain dislike produced no
+      // reaction. Load soft dislikes from BOTH stores (food_preferences preference=dislike
+      // AND profiles.disliked_foods) and flag when the logged food matches one.
+      const lower2 = loggedFoodText.toLocaleLowerCase('tr');
+      // Skip when the user is DECLARING/reaffirming a dislike ("brokoli sevmiyorum") OR expressing
+      // a POSITIVE reversal ("artık sütü seviyorum") rather than eating it — otherwise the food
+      // name in that very sentence self-triggers a nonsensical "hani sevmiyordun?". Only flag when
+      // it reads like consumption.
+      const declaringPref = /(sevmiyorum|sevmem|sevmiyom|hoşlanm|hoslanm|nefret|iğren|igren|tiksin|hazzetm|haz etm|hazetm|istemiyorum|begenmiyorum|beğenmiyorum|yemem|yiyemem|seviyorum|sevmeye başla|sevmeye basla|sever oldum|bayılıyorum|bayiliyorum|artık seviyorum|artik seviyorum)/.test(lower2);
+      if (!declaringPref) {
+        const dislikeNames = new Set<string>();
+        const { data: dislikeRows } = await supabaseAdmin
+          .from('food_preferences').select('food_name')
+          .eq('user_id', userId).eq('is_allergen', false).in('preference', ['dislike', 'never']);
+        for (const r of (dislikeRows ?? []) as { food_name: string }[]) if (r.food_name) dislikeNames.add(r.food_name.toLocaleLowerCase('tr'));
+        const { data: dfProf } = await supabaseAdmin.from('profiles').select('disliked_foods').eq('id', userId).maybeSingle();
+        for (const it of ((dfProf?.disliked_foods as { item?: string }[] | null) ?? [])) if (it?.item) dislikeNames.add(it.item.toLocaleLowerCase('tr'));
+        // Match by KEY-EQUALITY on whole tokens (shared foodMatchKey) — NOT substring. `includes()`
+        // would fire "bal" (honey) on "balık" (fish) and "muz" on "domuz"; token equality after
+        // normalising BOTH sides avoids that while still catching every inflection.
+        const loggedKeys = new Set(lower2.split(/[^a-zçğıöşü]+/).filter(w => w.length >= 3).map(foodMatchKey));
+        for (const name of dislikeNames) {
+          if (name.length < 3) continue;
+          const key = foodMatchKey(name);
+          if (key.length >= 3 && loggedKeys.has(key)) {
+            alerts.push(`SEVMEME CELISKISI: Kullanici daha once "${name}" sevmedigini soylemisti ama simdi "${name}" iceren bir sey yedi/icti. Nazikce hatirlat ("hani ${name} sevmiyordun?") ve canin mi cekti yoksa fikrin mi degisti diye sor; degistiyse tercihini guncelleyecegini belirt.`);
           }
         }
       }

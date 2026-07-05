@@ -92,7 +92,10 @@ Basit kayitlarda sadece onay ver, uzun konusma.
 Eylem blogu (<actions>) MUTLAKA ekle.
 Parse ettigin her ogeyi items dizisinde detayli ver.
 Pisirme yontemi sorulabilir ("nasil pisirilmisti?").
-Guvensizsen "Orta" confidence ile onay iste.`;
+Guvensizsen "Orta" confidence ile onay iste.
+ISTISNA — CELISKI: Contextte "## CELISKILER" blogu varsa (ozellikle SEVMEME/ALERJEN CELISKISI),
+kaydi yine yap AMA once TEK cumle ile nazikce celiskiyi belirt ("Hani X sevmiyordun? :) Canin mi cekti,
+yoksa fikrin mi degisti?"). Alerjen celiskisinde ise mutlaka uyar. Bu, "kisa tut" kuralinin ustundedir.`;
 
     case 'plan':
       return `## MOD: PLAN YAPICI

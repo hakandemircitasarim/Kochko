@@ -173,6 +173,14 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
     // Food preferences
     const prefs = (prefsRes.data ?? []) as { food_name: string; preference: string; is_allergen: boolean; allergen_severity: string | null }[];
     const neverFoods = prefs.filter(f => f.preference === 'never' || f.preference === 'dislike').map(f => f.food_name);
+    // #memory: also fold in profiles.disliked_foods — the JSONB set onboarding writes (mig 031).
+    // It was WRITE-ONLY: never surfaced to the coach, so onboarding-declared dislikes were
+    // silently ignored by every plan. Dedup against food_preferences dislikes already listed.
+    const seenNever = new Set(neverFoods.map(f => f.toLocaleLowerCase('tr')));
+    for (const it of ((p.disliked_foods as { item?: string }[] | null) ?? [])) {
+      const item = it?.item?.trim();
+      if (item && !seenNever.has(item.toLocaleLowerCase('tr'))) { neverFoods.push(item); seenNever.add(item.toLocaleLowerCase('tr')); }
+    }
     const allergens = prefs.filter(f => f.is_allergen).map(f => `${f.food_name}${f.allergen_severity === 'severe' ? ' (CIDDI)' : ''}`);
     const lovedFoods = prefs.filter(f => f.preference === 'love' || f.preference === 'like').map(f => f.food_name);
 

@@ -16,7 +16,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
-import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
+import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit, reserveRateLimitSlot } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -940,6 +940,86 @@ serve(async (req: Request) => {
       }
     }
 
+    // Dislike safety net — deterministic (#memory, Spec 5.10/5.12): "brokoli sevmiyorum",
+    // "sütü sevmem", "balıktan hoşlanmıyorum", "kekten nefret ederim". Mirror of the allergy
+    // net for SOFT preferences: previously a plain dislike was NEVER persisted (the model
+    // skipped the food_preference action), so it never reached plan generation OR the
+    // contradiction engine — asymmetric with allergens. This writes it as a non-allergen
+    // dislike so later plans avoid it AND getConflictContext can flag "hani X sevmiyordun?".
+    // Gated on no food_preference already present (an allergy statement isn't a plain dislike).
+    if (message && !actions.some(a => (a as Record<string, unknown>).type === 'food_preference')) {
+      const mDis = message.toLocaleLowerCase('tr');
+      // Not a positive statement ("seviyorum", "bayılıyorum") and not an allergy (handled above).
+      // The cue can be a whole word ("sevmiyorum") or a stem ("nefret ed", "hoşlanm", "tiksin").
+      // NOTE: "sevmediğim" is deliberately EXCLUDED — "sevmediğim şeyleri koyma" (don't add
+      // things I dislike) is a generic instruction, not a new declaration, and it captured the
+      // preceding verb ("öner") as a phantom food. Real declarations use the forms below.
+      const CUE_RE = /(sevmiyorum|sevmiyom|sevmem|hoşlanmıyorum|hoslanmiyorum|hoşlanmam|hoslanmam|nefret ed|iğren|igren|tiksin|hazzetm|hazetm|haz etm|yiyemiyorum|midem kaldır|midem kaldir|beğenmiyorum|begenmiyorum)/;
+      const cueM = mDis.match(CUE_RE);
+      if (cueM && cueM.index !== undefined && !/(alerj|intolerans)/.test(mDis)) {
+        // Walk backwards from the cue over the preceding words, skipping adverbs/fillers
+        // ("hiç", "pek", "çok", "artık"...) so "brokoliyi HİÇ sevmiyorum" still yields "brokoli".
+        const before = mDis.slice(0, cueM.index).replace(/[^a-zçğıöşü\s]/g, ' ').trim();
+        const words = before.split(/\s+/).filter(Boolean);
+        // Non-food fillers/adverbs/pronouns to skip or reject.
+        const SKIP = new Set(['hiç', 'hic', 'pek', 'çok', 'cok', 'artık', 'artik', 'de', 'da', 'ki', 'zerre', 'katiyen', 'asla', 'hiçbir', 'hicbir', 'bir', 'o', 'şu', 'su', 'bu', 'şunu', 'sunu', 'artik', 'gerçekten', 'gercekten', 'valla', 'ya', 'açıkçası', 'acikcasi', 'genelde', 'genellikle', 'sanırım', 'sanirim',
+          // Gerund/infinitive verbs that sit between the food and the cue ("sütü İÇMEYİ sevmiyorum",
+          // "balık YEMEYİ sevmem") — skip them so the real food noun two words back is picked.
+          'içmeyi', 'icmeyi', 'içmek', 'icmek', 'yemeyi', 'yemek', 'yemeği', 'yemegi', 'yemesini', 'içmesini', 'icmesini', 'kullanmayı', 'kullanmayi', 'yapmayı', 'yapmayi', 'tüketmeyi', 'tuketmeyi']);
+        const NONFOOD = new Set(['sen', 'seni', 'onu', 'bunu', 'beni', 'kendimi', 'kendini', 'spor', 'sporu', 'uygulama', 'uygulamayı', 'uygulamayi', 'egzersiz', 'egzersizi', 'antrenman', 'antrenmani', 'antrenmanı', 'kilo', 'kiloyu', 'diyet', 'diyeti', 'insan', 'insanları', 'insanlari', 'sabah', 'akşam', 'aksam', 'işi', 'isi', 'işimi', 'seyahat', 'yolculuk', 'kimseyi', 'onları', 'onlari',
+          // Generic nouns/verbs that must never be stored as a "food" (guards phantom rows like
+          // the "öner" captured from "...öner, sevmediğim şeyleri koyma").
+          'öner', 'oner', 'şey', 'sey', 'şeyi', 'seyi', 'şeyler', 'seyler', 'şeyleri', 'seyleri', 'besin', 'besini', 'besinler', 'besinleri', 'yiyecek', 'yiyeceği', 'yiyecekler', 'yiyecekleri', 'gıda', 'gida', 'gıdayı', 'gidayi', 'yemekleri', 'yemeği', 'yemegi', 'bişey', 'bisey', 'birşey', 'birsey', 'hiçbirşey', 'hicbirsey', 'şunları', 'sunlari', 'bunları', 'bunlari', 'onları', 'yiyeceklerimi']);
+        const VERBISH = /(mişim|mışım|muşum|müşüm|iyorum|ıyorum|uyorum|üyorum|erim|arım|ırım|irim|urum|ürüm|mek|mak|meyi|mayı)$/;
+        let food: string | undefined;
+        for (let i = words.length - 1; i >= 0; i--) {
+          const w = words[i];
+          if (SKIP.has(w) || VERBISH.test(w)) continue;
+          food = w; break;
+        }
+        // GENTLE stem for storage: strip ONLY the unambiguous ablative (-dan/-den/-tan/-ten/
+        // -ndan/-nden) so "balıktan"→"balık", "kekten"→"kek". Deliberately DON'T strip accusative
+        // -yı/-yi (would turn short "çayı"→"ça" and drop it) or a bare vowel (would corrupt
+        // "brokoli"→"brokol"): the contradiction MATCHER re-normalises BOTH sides at read time, so
+        // a still-inflected stored form ("sütü", "brokoliyi") matches "süt"/"brokoli" logs anyway.
+        if (food) food = food.replace(/(ndan|nden|tan|ten|dan|den)$/, '');
+        if (food && food.length >= 3 && !SKIP.has(food) && !NONFOOD.has(food)) {
+          actions.push({ type: 'food_preference', food_name: food, preference: 'dislike', is_allergen: false });
+          console.warn('[dislike_safety_net] food_preference injected', { food });
+        }
+      }
+    }
+
+    // Preference REVERSAL / LIKE net — deterministic (#memory, Spec 5.12: "learning from
+    // corrections"). The coach actively invites "artık seviyorum de, güncelleyeyim", but the model
+    // rarely emits the positive food_preference action, so the old dislike row (and its
+    // contradiction nag) would live forever. Detects "artık X seviyorum", "X sevmeye başladım",
+    // "X'e bayılıyorum" and writes preference=like; the handler then DELETES the stale dislike.
+    if (message && !actions.some(a => (a as Record<string, unknown>).type === 'food_preference')) {
+      const mLik = message.toLocaleLowerCase('tr');
+      const LIKE_CUE = /(seviyorum|sevmeye başla|sevmeye basla|sever oldum|bayılıyorum|bayiliyorum|çok severim|cok severim|sevdim artık|sevdim artik|artık yiyorum|artik yiyorum|artık içiyorum|artik iciyorum)/;
+      const cueM = mLik.match(LIKE_CUE);
+      // Require a "change of mind" signal so we don't fire on every "X seviyorum" (esp. "seni
+      // seviyorum") — a reversal implies "artık/artended/fikrim değişti" or an existing dislike.
+      const reversalHint = /(artık|artik|fikrim değiş|fikrim degis|fikrim değişti|fikrim degisti|değişti|degisti|sever oldum|başladım|basladim|meğer|meger)/.test(mLik);
+      if (cueM && cueM.index !== undefined && reversalHint && !/(alerj|intolerans)/.test(mLik)) {
+        const before = mLik.slice(0, cueM.index).replace(/[^a-zçğıöşü\s]/g, ' ').trim();
+        const words = before.split(/\s+/).filter(Boolean);
+        const SKIP2 = new Set(['artık', 'artik', 'çok', 'cok', 'de', 'da', 'ki', 'aslında', 'aslinda', 'galiba', 'sanırım', 'sanirim', 'bir', 'o', 'şu', 'su', 'bu', 'gerçekten', 'gercekten', 'valla', 'ya', 'açıkçası', 'acikcasi', 'meğer', 'meger', 'içmeyi', 'icmeyi', 'yemeyi', 'yemek', 'içmek', 'fikrim', 'yiyorum', 'içiyorum', 'iciyorum']);
+        const NONFOOD2 = new Set(['sen', 'seni', 'onu', 'bunu', 'beni', 'kendimi', 'kendini', 'spor', 'sporu', 'egzersiz', 'antrenman', 'kilo', 'diyet', 'hayat', 'hayatı', 'seyahat', 'işimi', 'isimi', 'şey', 'sey', 'şeyi', 'seyi', 'her', 'herşey', 'hersey']);
+        // Reject verb forms that can sit before the cue ("meğer yumurtayı SEVERMİŞİM, artık
+        // yiyorum") — a food noun never ends in these conjugation suffixes.
+        const VERBISH = /(mişim|mışım|muşum|müşüm|iyorum|ıyorum|uyorum|üyorum|erim|arım|ırım|irim|urum|ürüm|mek|mak|meyi|mayı)$/;
+        let food: string | undefined;
+        for (let i = words.length - 1; i >= 0; i--) { const w = words[i]; if (SKIP2.has(w) || VERBISH.test(w)) continue; food = w; break; }
+        if (food) food = food.replace(/(ndan|nden|tan|ten|dan|den)$/, '');
+        if (food && food.length >= 3 && !SKIP2.has(food) && !NONFOOD2.has(food) && !VERBISH.test(food)) {
+          actions.push({ type: 'food_preference', food_name: food, preference: 'like', is_allergen: false });
+          console.warn('[like_reversal_net] food_preference injected', { food });
+        }
+      }
+    }
+
     // Injury safety net — deterministic (#R1-M5): "belimde fıtık var", "dizim ağrıyor".
     // The injury guardrail reads ONLY health_events; the model skips the health_event
     // action often enough that a chat-declared injury would otherwise protect nobody.
@@ -1771,6 +1851,31 @@ serve(async (req: Request) => {
           if (!addressed) {
             assistantMessage += `\n\n⚠️ Not: kayıtlı sakatlığın nedeniyle ${conflicts.join(', ')} hareket(ler)i senin için riskli olabilir. İstersen sakatlık-dostu bir alternatif programlayalım.`;
           }
+        }
+      }
+
+      // Deterministic CONTRADICTION surfacing (#memory, Spec 5.10) — the "hani X sevmiyordun?"
+      // behaviour. getConflictContext already detected that the user LOGGED a food they earlier
+      // disliked (or is allergic to) and put a "## CELISKILER" block in the prompt, but in
+      // register/terse mode the model often just logs the calories and drops the note. Mirror the
+      // allergen/injury nets: if the alert fired and the reply doesn't already raise it, append it.
+      const conflictStr = serviceCtx?.conflicts ?? '';
+      if (conflictStr) {
+        const lowerReply = assistantMessage.toLocaleLowerCase('tr');
+        // Only count it "already raised" if the reply SPECIFICALLY calls out the contradiction —
+        // NOT the generic "sevmediğin besinleri içermiyor" (that's a relative clause, not a callout,
+        // and was false-suppressing the nudge). Require the past-habit callout phrasing.
+        const alreadyRaised = /(hani\s|sevmiyordun|sevmezdin|fikrin mi deg|fikrin mi değ|canın mı çek|canin mi cek|çelişki|celiski)/.test(lowerReply);
+        // ALERJEN CELISKISI (user logged an allergen food) — urgent, always surface.
+        const allergenHits = [...conflictStr.matchAll(/ALERJEN CELISKISI: "([^"]+)" alerjenin var/g)].map(m => m[1]);
+        if (allergenHits.length > 0 && !/(alerj|intolerans)/.test(lowerReply)) {
+          assistantMessage += `\n\n⚠️ Bir saniye — profilinde ${[...new Set(allergenHits)].join(', ')} alerjin/intoleransın kayıtlı ama şimdi bunu içeren bir şey girdin. İyi misin? Alerjin geçtiyse ya da yanlış kaydettiysem söyle, güncelleyeyim.`;
+        }
+        // SEVMEME CELISKISI (user logged a disliked food) — gentle nudge.
+        const dislikeHits = [...conflictStr.matchAll(/SEVMEME CELISKISI: Kullanici daha once "([^"]+)"/g)].map(m => m[1]);
+        if (dislikeHits.length > 0 && !alreadyRaised) {
+          const names = [...new Set(dislikeHits)].join(', ');
+          assistantMessage += `\n\nBu arada — hani ${names} sevmiyordun? 🙂 Canın mı çekti yoksa fikrin mi değişti? Fikrin değiştiyse "artık seviyorum" de, tercihini güncelleyeyim.`;
         }
       }
     } catch (e) {
@@ -3610,6 +3715,31 @@ async function executeActions(
             console.error('[food_preference] upsert failed:', fpErr.message);
             feedback.push(null);
           } else {
+            // #memory (Spec 5.12): a POSITIVE preference is a REVERSAL — clear any stale
+            // non-allergen dislike/never rows for the SAME food so the contradiction engine
+            // stops nagging and plans stop excluding it. The stored dislike may be under a
+            // different inflected name ("süt" vs the new "sütü"), so match by foodMatchKey, not
+            // string equality. NEVER touch allergen rows here (safety > a casual "artık severim").
+            if (!fpRow.is_allergen && (rawPref === 'like' || rawPref === 'love' || rawPref === 'can_cook')) {
+              const newKey = foodMatchKey(foodName);
+              const { data: existing } = await supabaseAdmin
+                .from('food_preferences').select('food_name')
+                .eq('user_id', userId).eq('is_allergen', false).in('preference', ['dislike', 'never']);
+              const stale = (existing ?? []).filter((r: { food_name: string }) =>
+                foodMatchKey(r.food_name) === newKey && r.food_name.toLocaleLowerCase('tr') !== (fpRow.food_name as string));
+              for (const r of stale) {
+                await supabaseAdmin.from('food_preferences')
+                  .delete().eq('user_id', userId).eq('food_name', r.food_name);
+                console.warn('[food_preference] reversal: cleared stale dislike', { was: r.food_name, now: fpRow.food_name });
+              }
+              // Also prune the same food from the JSONB profiles.disliked_foods mirror.
+              const { data: prof } = await supabaseAdmin.from('profiles').select('disliked_foods').eq('id', userId).maybeSingle();
+              const df = (prof?.disliked_foods as { item?: string }[] | null) ?? [];
+              const kept = df.filter(it => !it?.item || foodMatchKey(it.item) !== newKey);
+              if (kept.length !== df.length) {
+                await supabaseAdmin.from('profiles').update({ disliked_foods: kept }).eq('id', userId);
+              }
+            }
             feedback.push(action.is_allergen === true ? 'Alerjen kaydedildi' : 'Yemek tercihi kaydedildi');
           }
           break;

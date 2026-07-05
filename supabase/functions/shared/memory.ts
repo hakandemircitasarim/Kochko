@@ -75,6 +75,12 @@ async function buildLayer1(userId: string): Promise<string> {
   const health = (healthRes.data ?? []) as { event_type: string; description: string; is_ongoing: boolean }[];
 
   const neverFoods = prefs.filter(f => f.preference === 'never' || f.preference === 'dislike').map(f => f.food_name);
+  // #memory: fold in profiles.disliked_foods (onboarding JSONB, mig 031) — was write-only.
+  const seenNever = new Set(neverFoods.map(f => f.toLocaleLowerCase('tr')));
+  for (const it of ((p.disliked_foods as { item?: string }[] | null) ?? [])) {
+    const item = it?.item?.trim();
+    if (item && !seenNever.has(item.toLocaleLowerCase('tr'))) { neverFoods.push(item); seenNever.add(item.toLocaleLowerCase('tr')); }
+  }
   const allergens = prefs.filter(f => f.is_allergen).map(f => `${f.food_name}${f.allergen_severity === 'severe' ? ' (CIDDI)' : ''}`);
   const lovedFoods = prefs.filter(f => f.preference === 'love' || f.preference === 'like').map(f => f.food_name);
   const ongoingHealth = health.filter(h => h.is_ongoing);

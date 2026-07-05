@@ -197,6 +197,23 @@ export function extractDeclaredAllergens(text: string): string[] {
 }
 
 /**
+ * Normalise a food noun to a COMPARISON KEY that collapses Turkish inflection — accusative
+ * (-yı/-yi buffer + bare high vowel), ablative (-dan/-den/-tan/-ten), possessive, plural, and
+ * consonant softening (balık↔balığı k→ğ, kebap↔kebabı p→b, kitap↔kitabı, ağaç↔ağacı). Two foods
+ * "match" iff their keys are EQUAL — token equality, never substring, so "bal"(honey)≠"balık"(fish)
+ * and "muz"≠"domuz". Shared so the contradiction reader (service-contexts) and the preference
+ * writer/reverser (ai-chat) normalise identically. Known misses: consonant-y stems ("çay") and
+ * -lı/-li adjective compounds ("sütlü") — rare in diet-dislike contexts.
+ */
+export function foodMatchKey(word: string): string {
+  const w = word.toLocaleLowerCase('tr');
+  return w
+    .replace(/(ndan|nden|tan|ten|dan|den|nda|nde|ları|leri|lar|ler|yla|yle|yı|yi|yu|yü|nın|nin|nun|nün|sı|si|su|sü|na|ne)$/u, '')
+    .replace(/[ıiuü]$/u, '')
+    .replace(/ğ$/u, 'k').replace(/b$/u, 'p').replace(/c$/u, 'ç').replace(/d$/u, 't');
+}
+
+/**
  * Validate calorie targets against absolute floors.
  */
 export function validateCalories(
