@@ -945,6 +945,104 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
 }
 
 // ─────────────────────────────────────────────
+// SITUATIONAL SNAPSHOT — "who is this person, right now"
+// ─────────────────────────────────────────────
+
+/**
+ * A compact, ALWAYS-ON readout the coach sees on EVERY turn regardless of task mode. The
+ * retrieval planner deliberately starves thin modes (register/mood/motivation) of Layer-2 +
+ * multi-day data, which made the coach feel amnesiac the moment you logged something or dropped
+ * a quick emotional line. This synthesises the situational picture — journey week + progress,
+ * weight-trend DIRECTION, today's intake, recent sleep, week adherence, streak/last-active, and
+ * the top learned patterns — so the coach can ALWAYS respond like someone who knows you. Small
+ * (~8 lines), cheap, and resilient (returns '' on any error or pre-onboarding).
+ */
+export async function getSituationalSnapshot(userId: string, effectiveToday?: string): Promise<string> {
+  try {
+    const [profRes, goalRes, metricsRes, reportsRes, sumRes] = await Promise.all([
+      supabaseAdmin.from('profiles').select('weight_kg, calorie_range_rest_min, calorie_range_rest_max, onboarding_completed').eq('id', userId).maybeSingle(),
+      supabaseAdmin.from('goals').select('goal_type, start_weight_kg, target_weight_kg, target_weeks, created_at, phase_label').eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1),
+      supabaseAdmin.from('daily_metrics').select('date, weight_kg, sleep_hours, water_liters').eq('user_id', userId).order('date', { ascending: false }).limit(21),
+      supabaseAdmin.from('daily_reports').select('date, calorie_actual, compliance_score').eq('user_id', userId).order('date', { ascending: false }).limit(14),
+      supabaseAdmin.from('ai_summary').select('behavioral_patterns').eq('user_id', userId).maybeSingle(),
+    ]);
+    const p = profRes.data;
+    if (!p || !p.onboarding_completed) return '';
+    const today = effectiveToday ?? new Date().toISOString().split('T')[0];
+    const todayMs = Date.parse(`${today}T00:00:00Z`);
+    const lines: string[] = [];
+
+    // Journey + progress
+    const g = (goalRes.data ?? [])[0] as Record<string, unknown> | undefined;
+    const cw = p.weight_kg as number | null;
+    if (g && g.target_weight_kg && cw != null) {
+      const createdDay = (g.created_at as string).split('T')[0];
+      const weeksElapsed = Math.max(1, Math.round((todayMs - Date.parse(`${createdDay}T00:00:00Z`)) / (7 * 86400000)));
+      const targetWeeks = (g.target_weeks as number | null) ?? 12;
+      const sw = (g.start_weight_kg as number | null) ?? cw;
+      const tw = g.target_weight_kg as number;
+      const isLose = g.goal_type === 'lose_weight';
+      const remaining = Math.abs(cw - tw);
+      const total = Math.abs(sw - tw);
+      const pct = total > 0.5 ? Math.min(100, Math.max(0, Math.round((Math.abs(sw - cw) / total) * 100))) : null;
+      const phase = (g.phase_label as string | null) ? `${g.phase_label} · ` : '';
+      lines.push(`YOLCULUK: ${phase}${weeksElapsed}. hafta/${targetWeeks} | ${sw.toFixed(1)}→${cw.toFixed(1)}kg (hedef ${tw}kg${remaining >= 0.1 ? `, ${remaining.toFixed(1)}kg kaldı` : ' — hedefte!'}${pct != null ? `, %${pct}` : ''}) | yön: ${isLose ? 'veriyor' : 'alıyor'}`);
+    }
+
+    const metrics = (metricsRes.data ?? []) as { date: string; weight_kg: number | null; sleep_hours: number | null; water_liters: number | null }[];
+
+    // Weight trend DIRECTION (first-third vs last-third of the weigh-in window)
+    const weighed = metrics.filter(m => m.weight_kg != null);
+    if (weighed.length >= 2) {
+      const asc = [...weighed].reverse();
+      const k = Math.max(1, Math.floor(asc.length / 3));
+      const oldMean = asc.slice(0, k).reduce((s, m) => s + (m.weight_kg as number), 0) / k;
+      const newMean = asc.slice(-k).reduce((s, m) => s + (m.weight_kg as number), 0) / k;
+      const delta = newMean - oldMean;
+      const spanDays = Math.max(1, Math.round((Date.parse(asc[asc.length - 1].date) - Date.parse(asc[0].date)) / 86400000));
+      const perWeek = spanDays >= 3 ? (delta / spanDays) * 7 : null;
+      const dir = delta <= -0.2 ? 'düşüyor ✓' : delta >= 0.3 ? 'ARTIYOR ⚠' : 'durgun (plato olabilir)';
+      lines.push(`KILO TRENDİ (${spanDays}g): ${delta > 0 ? '+' : ''}${delta.toFixed(1)}kg — ${dir}${perWeek != null && Math.abs(perWeek) >= 0.1 ? ` (~${perWeek > 0 ? '+' : ''}${perWeek.toFixed(1)}kg/hafta)` : ''}`);
+    }
+
+    // Today's intake
+    const reports = (reportsRes.data ?? []) as { date: string; calorie_actual: number; compliance_score: number }[];
+    const todayRep = reports.find(r => r.date === today);
+    const targetMid = p.calorie_range_rest_min && p.calorie_range_rest_max
+      ? Math.round(((p.calorie_range_rest_min as number) + (p.calorie_range_rest_max as number)) / 2) : null;
+    if (todayRep && todayRep.calorie_actual > 0) {
+      const over = targetMid ? (todayRep.calorie_actual > targetMid * 1.15 ? ' (hedefin ÜSTÜNDE)' : todayRep.calorie_actual < targetMid * 0.6 ? ' (çok az — günü tamamlamamış olabilir)' : '') : '';
+      lines.push(`BUGÜN: ~${Math.round(todayRep.calorie_actual)} kcal${targetMid ? ` (hedef ~${targetMid})` : ''}${over}`);
+    }
+
+    // Recent sleep + week adherence + last-active
+    const lastSleep = metrics.find(m => m.sleep_hours != null)?.sleep_hours ?? null;
+    const weekCompl = reports.length > 0 ? Math.round(reports.slice(0, 7).reduce((s, r) => s + (r.compliance_score ?? 0), 0) / Math.min(7, reports.length)) : null;
+    const recentBits: string[] = [];
+    if (lastSleep != null) recentBits.push(`son uyku ${lastSleep}s${lastSleep < 6 ? ' (az!)' : ''}`);
+    if (weekCompl != null) recentBits.push(`bu hafta uyum %${weekCompl}`);
+    if (recentBits.length > 0) lines.push(`DURUM: ${recentBits.join(' | ')}`);
+
+    // Last-active (gap since most recent log of ANY kind)
+    const lastDates = [metrics[0]?.date, reports[0]?.date].filter(Boolean).map(d => Date.parse(`${d}T00:00:00Z`));
+    if (lastDates.length > 0) {
+      const gapDays = Math.round((todayMs - Math.max(...lastDates)) / 86400000);
+      if (gapDays >= 2) lines.push(`⚠ SON KAYIT ${gapDays} GÜN ÖNCE — geri dönüş anı, sıcak karşıla, suçlama, "nasılsın" diye başla.`);
+    }
+
+    // Top learned patterns (the coach's memory of their struggles)
+    const patterns = (sumRes.data?.behavioral_patterns as { description?: string }[] | null) ?? [];
+    const pat = patterns.map(p => p?.description).filter(Boolean).slice(0, 3);
+    if (pat.length > 0) lines.push(`BİLİNEN KALIPLAR: ${pat.join(' · ')}`);
+
+    if (lines.length === 0) return '';
+    return `## DURUM ÖZETİ (bu kişiyi ŞU AN böyle tanıyorsun — cevabını buna göre, duruma özel ver; genel geçme)\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
+}
+
+// ─────────────────────────────────────────────
 // AGGREGATOR: Get all service contexts at once
 // ─────────────────────────────────────────────
 

@@ -30,7 +30,7 @@ import {
   shouldDetectPersona, buildPersonaDetectionPrompt, getMessageCount,
   getToneContext, buildKnowledgeSummary, getRepairContext,
 } from '../shared/repair-handler.ts';
-import { getAllServiceContexts, checkHabitFromChat } from '../shared/service-contexts.ts';
+import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot } from '../shared/service-contexts.ts';
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
@@ -477,14 +477,20 @@ serve(async (req: Request) => {
 
     // D12: Service contexts — habits, progressive disclosure, recovery, return-flow,
     // eating-out, MVD, predictive risk, caffeine-sleep, adaptive difficulty, conflicts, travel
-    const serviceCtx = await getAllServiceContexts(userId, taskMode, {
-      message: message ?? '',
-      clientTimezone: client_timezone as string | undefined,
-      // FIX (audit AI/HIGH day-boundary): pass the already-computed user-effective "today" so
-      // recovery/eating-out/MVD contexts share ONE day definition (no redundant profile query,
-      // no UTC off-by-one vs the rest of the request).
-      effectiveToday,
-    });
+    // #organism: the ALWAYS-ON situational snapshot ("who is this person right now") is fetched
+    // for EVERY turn regardless of task mode, so the coach never feels amnesiac on a thin
+    // register/mood turn. Runs in parallel with the mode-scoped service contexts.
+    const [serviceCtx, situationalSnapshot] = await Promise.all([
+      getAllServiceContexts(userId, taskMode, {
+        message: message ?? '',
+        clientTimezone: client_timezone as string | undefined,
+        // FIX (audit AI/HIGH day-boundary): pass the already-computed user-effective "today" so
+        // recovery/eating-out/MVD contexts share ONE day definition (no redundant profile query,
+        // no UTC off-by-one vs the rest of the request).
+        effectiveToday,
+      }),
+      getSituationalSnapshot(userId, effectiveToday),
+    ]);
 
     // Task card context: when user taps an onboarding card, inject topic-specific instructions.
     // Each topic has a MINIMUM CHECKLIST — as soon as those fields are collected (via conversation
@@ -569,6 +575,10 @@ serve(async (req: Request) => {
       // default onboarding-mode ambition and keep the session narrowly scoped.
       taskCardCtx,
       modeInstructions,
+      // #organism: always-on situational snapshot — placed high so it frames EVERY response with
+      // "who this person is right now", even on thin register/mood turns. This is what makes the
+      // coach feel like it truly knows you and responds to the moment, not a generic bot.
+      situationalSnapshot,
       confidenceNote,
       toneContext,
       personaPrompt,
