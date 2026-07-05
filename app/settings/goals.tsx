@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
-import { validateWeeklyRate } from '@/lib/tdee';
+import { validateWeeklyRate, calculateTargets } from '@/lib/tdee';
 import { calculateGoalProgress, getGoalSummaryText, validateGoalSafety } from '@/lib/goal-progress';
 import {
   getGoalPhases, addPhase, getAIGoalSuggestions, checkGoalCompatibility,
@@ -191,6 +191,31 @@ export default function GoalsScreen() {
       // goal, so this new one must be active (else the user is left with ZERO active
       // goals and the dashboard / plan-gen / streak / progress all read nothing).
       await addPhase(user.id, goalType, tw || null, weeks, phaseLabel, true);
+
+      // #journey MEDIUM: editing the goal/timeline must RE-CUT the actual calorie band, not just
+      // the displayed ETA. Recompute timeline-aware targets and persist so the plan the user eats
+      // from matches the deadline they just set.
+      const tdeeVal = (profile as unknown as { tdee_calculated?: number | null })?.tdee_calculated ?? null;
+      if (tdeeVal && profile?.weight_kg) {
+        const t = calculateTargets({
+          tdee: tdeeVal,
+          goalType: goalType as 'lose_weight' | 'gain_weight' | 'gain_muscle' | 'maintain' | 'health' | 'conditioning',
+          restrictionMode: 'sustainable',
+          weeksSinceStart: 0, complianceAvg: 0,
+          weightKg: profile.weight_kg as number,
+          gender: (profile as unknown as { gender?: 'male' | 'female' | 'other' })?.gender,
+          macroPct: { protein: 30, carb: 40, fat: 30 },
+          targetWeightKg: tw || null,
+          targetWeeks: weeks,
+        });
+        await supabase.from('profiles').update({
+          calorie_range_training_min: t.trainingDay.min,
+          calorie_range_training_max: t.trainingDay.max,
+          calorie_range_rest_min: t.restDay.min,
+          calorie_range_rest_max: t.restDay.max,
+          weekly_calorie_budget: t.weeklyBudget,
+        }).eq('id', user.id);
+      }
       haptics.success();
       Alert.alert('Başarılı', 'Hedef kaydedildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
     } catch (e) {

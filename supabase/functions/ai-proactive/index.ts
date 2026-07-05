@@ -65,15 +65,20 @@ serve(async (req: Request) => {
       for (const profile of profiles as { id: string }[]) {
         try {
           const uid = profile.id;
-          const { data: todayRow } = await supabaseAdmin.from('daily_plans').select('id').eq('user_id', uid).eq('date', today).limit(1).maybeSingle();
+          // #journey LOW: project onto the user's EFFECTIVE day (tz + day_boundary), not raw UTC —
+          // otherwise for a non-UTC / traveling user the rolled-forward daily_plans row lands on the
+          // wrong calendar date and the dashboard (which queries the effective date) shows a blank day.
+          const { data: prof } = await supabaseAdmin.from('profiles').select('weight_kg, birth_year, height_cm, gender, activity_level, weekly_calorie_budget, calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, tdee_last_weight, tdee_last_date, maintenance_mode, periodic_state, active_timezone, home_timezone, day_boundary_hour').eq('id', uid).maybeSingle();
+          const rfTz = (prof?.active_timezone as string | null) ?? (prof?.home_timezone as string | null) ?? null;
+          const userToday = getEffectiveDateForUser(rfTz, (prof?.day_boundary_hour as number | null) ?? null, now);
+          const { data: todayRow } = await supabaseAdmin.from('daily_plans').select('id').eq('user_id', uid).eq('date', userToday).limit(1).maybeSingle();
           if (todayRow) continue; // idempotent: today already has a plan
           const { data: planRows } = await supabaseAdmin.from('weekly_plans').select('plan_type, plan_data').eq('user_id', uid).eq('status', 'active').is('plan_subtype', null);
           const dietRow = (planRows ?? []).find((r: { plan_type: string }) => r.plan_type === 'diet');
           const workoutRow = (planRows ?? []).find((r: { plan_type: string }) => r.plan_type === 'workout');
           if (!dietRow && !workoutRow) continue; // user never approved a plan
-          const weekStart = mondayOf(today);
+          const weekStart = mondayOf(userToday);
           const weekEnd = addDaysISO(weekStart, 6);
-          const { data: prof } = await supabaseAdmin.from('profiles').select('weight_kg, birth_year, height_cm, gender, activity_level, weekly_calorie_budget, calorie_range_training_min, calorie_range_training_max, calorie_range_rest_min, calorie_range_rest_max, tdee_last_weight, tdee_last_date, maintenance_mode, periodic_state').eq('id', uid).maybeSingle();
           let dietData = (dietRow?.plan_data ?? null) as Record<string, unknown> | null;
           let rMin = prof?.calorie_range_rest_min as number | null;
           let rMax = prof?.calorie_range_rest_max as number | null;
@@ -141,9 +146,9 @@ serve(async (req: Request) => {
             } as ProjectionProfile,
             weekConsumed,
           });
-          const writeRows = rows.filter((r) => r.date >= today && r.date <= weekEnd).map((r) => ({ ...r, user_id: uid, version: 1 }));
+          const writeRows = rows.filter((r) => r.date >= userToday && r.date <= weekEnd).map((r) => ({ ...r, user_id: uid, version: 1 }));
           if (writeRows.length) {
-            const { error: e } = await supabaseAdmin.rpc('project_daily_plans', { p_user: uid, p_lower: today, p_end: weekEnd, p_rows: writeRows });
+            const { error: e } = await supabaseAdmin.rpc('project_daily_plans', { p_user: uid, p_lower: userToday, p_end: weekEnd, p_rows: writeRows });
             if (!e) rolledForward++;
           }
         } catch (e) { console.error('[rollforward] failed', profile.id, (e as Error).message); }
