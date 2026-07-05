@@ -76,10 +76,15 @@ export function calculateTargets(input: {
   gender?: 'male' | 'female' | 'other';
   macroPct: { protein: number; carb: number; fat: number };
   proteinPerKg?: number;
+  // #journey HIGH: when the goal's target weight + timeline are known, size the deficit to
+  // hit the DATE (remaining kg / remaining weeks) instead of a flat % of TDEE — so the calorie
+  // target and the ETA/tempo chart (both now derived from target+timeline) stop drifting apart.
+  targetWeightKg?: number | null;
+  targetWeeks?: number | null;
 }): CalorieTargets {
   const { tdee, goalType, restrictionMode, weeksSinceStart, complianceAvg, weightKg, macroPct } = input;
 
-  // Determine deficit/surplus based on goal
+  // Determine deficit/surplus based on goal (fallback when no timeline is set)
   let deficitPct: number;
   switch (goalType) {
     case 'lose_weight':
@@ -96,7 +101,20 @@ export function calculateTargets(input: {
       deficitPct = 0;
   }
 
-  const targetCalories = Math.round(tdee * (1 - deficitPct));
+  // Timeline-aware target: remaining-kg / remaining-weeks → daily kcal delta, capped to a safe
+  // weekly rate (1.0 kg/wk loss, 0.5 kg/wk gain). 7700 kcal ≈ 1 kg. Falls back to the fixed %.
+  const isLose = goalType === 'lose_weight';
+  const isGain = goalType === 'gain_weight' || goalType === 'gain_muscle';
+  let targetCalories: number;
+  if (input.targetWeightKg != null && input.targetWeeks && (isLose || isGain)) {
+    const remainingKg = Math.abs(weightKg - input.targetWeightKg);
+    const remainingWeeks = Math.max(1, input.targetWeeks - Math.max(0, weeksSinceStart));
+    const weeklyKg = Math.min(remainingKg / remainingWeeks, isLose ? 1.0 : 0.5);
+    const dailyKcal = (weeklyKg * 7700) / 7;
+    targetCalories = Math.round(tdee + (isLose ? -dailyKcal : dailyKcal));
+  } else {
+    targetCalories = Math.round(tdee * (1 - deficitPct));
+  }
 
   // Calorie range width (Spec 2.4)
   // New users: wider range. Consistent users: narrower.

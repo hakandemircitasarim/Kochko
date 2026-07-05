@@ -379,6 +379,10 @@ function QuickForm({ initialDraft }: { initialDraft: OnboardingDraft | null }) {
         tdee, goalType: goalType as GoalType, restrictionMode: 'sustainable',
         weeksSinceStart: 0, complianceAvg: 0, weightKg: w, gender: gender as Gender,
         macroPct: { protein: 30, carb: 40, fat: 30 },
+        // #journey HIGH: size the initial deficit to the goal timeline (onboarding uses a 12-week
+        // default, matching the weekly_rate math above) instead of a flat 15%.
+        targetWeightKg: (needsTargetWeight && targetWeight !== w) ? targetWeight : null,
+        targetWeeks: 12,
       });
       const tz = detectTimezone();
       await update(user.id, {

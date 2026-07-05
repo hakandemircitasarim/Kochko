@@ -32,6 +32,7 @@ import {
 } from '../shared/repair-handler.ts';
 import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot } from '../shared/service-contexts.ts';
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
+import { resolveTargetCalories } from '../shared/targets.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
 
@@ -5044,8 +5045,17 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
   const tdee = Math.round(bmr * (multipliers[profile.activity_level ?? 'moderate'] ?? 1.55));
 
   // Goal-aware target (don't diet a bulking/maintain user on a weight-change recalc).
-  const { data: goalRow } = await supabaseAdmin.from('goals').select('goal_type').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle();
-  const targetCal = Math.round(tdee * goalCalorieFactor(goalRow?.goal_type as string | undefined));
+  // #journey HIGH: honor the goal timeline — size the deficit to remaining-kg / remaining-weeks
+  // (capped safe) so month-2/3 re-cuts converge on the user's DATE instead of a flat 15% that
+  // drifts from the ETA/tempo chart. Falls back to the fixed factor when no timeline is set.
+  const { data: goalRow } = await supabaseAdmin.from('goals').select('goal_type, target_weight_kg, target_weeks, created_at').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle();
+  const gType = (goalRow?.goal_type as string | undefined) ?? 'maintain';
+  const weeksElapsed = goalRow?.created_at ? Math.max(0, Math.floor((Date.now() - Date.parse(goalRow.created_at as string)) / (7 * 86400000))) : 0;
+  const targetCal = resolveTargetCalories({
+    tdee, goalType: gType, fixedFactor: goalCalorieFactor(gType),
+    currentWeight, targetWeight: goalRow?.target_weight_kg as number | null,
+    targetWeeks: goalRow?.target_weeks as number | null, weeksElapsed,
+  });
   const rangeWidth = Math.round(targetCal * 0.10);
   const trainingMin = Math.max(targetCal - Math.round(rangeWidth / 2), profile.gender === 'female' ? 1200 : 1400);
   const trainingMax = targetCal + Math.round(rangeWidth / 2);
