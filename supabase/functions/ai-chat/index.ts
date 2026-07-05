@@ -1937,6 +1937,15 @@ serve(async (req: Request) => {
             assistantMessage += `\n\nHer şey yolunda mı? Alkol almadığını söylemiştin ama ${alcHits[0][1]} girdin — yargılamıyorum, sadece kontrol ediyorum. 🙂`;
           }
         }
+        // KAFEIN + IF-PENCERE CELISKISI — softer nudges the terse register mode may drop.
+        const caffHits = [...conflictStr.matchAll(/KAFEIN CELISKISI: Kullanici kafein tuketmedigini belirtmisti ama "([^"]+)" girdi/g)];
+        if (caffHits.length > 0 && !/(kafein|kahve içmiyor|kahve icmiyor)/.test(lowerReply)) {
+          assistantMessage += `\n\nUfak not — kafein tüketmediğini söylemiştin ama ${caffHits[0][1]} girdin. Ara sıra mı, yoksa alışkanlığın mı değişti? 🙂`;
+        }
+        const ifHits = [...conflictStr.matchAll(/IF-PENCERE CELISKISI: Yeme penceren ([0-9:]+-[0-9:]+)/g)];
+        if (ifHits.length > 0 && !/(pencere|oruç|oruc|if )/.test(lowerReply)) {
+          assistantMessage += `\n\nBu arada — yeme pencereni (${ifHits[0][1]}) biraz aşmış olabilirsin. Arada bir olur, kendini sıkma; ama düzenini korumak istersen not düşeyim dedim. 🙂`;
+        }
         // SAKATLIK CELISKISI (user logged an exercise loading an on-file injury) — safety nudge.
         const injHits = [...conflictStr.matchAll(/SAKATLIK CELISKISI: Kullanici "([^"]+)" yapmis ama kayitli sakatligi \(([^)]+)\)/g)];
         if (injHits.length > 0 && !/(sakatlı|sakatli|iyileşti mi|iyilesti mi|ağrı yaptı|agri yapti|dikkatli ol)/.test(lowerReply)) {
@@ -3480,6 +3489,17 @@ async function executeActions(
             amount: action.amount as string, logged_for_date: actionDate,
           });
           if (suppErr) { console.error('[supplement_logs] insert failed:', suppErr.message); feedback.push('Supplement kaydedilemedi'); break; }
+          // #memory: maintain a DISTINCT supplement-routine note so the coach knows the stack.
+          // ai_summary.supplement_notes was a read-into-prompt-but-never-written dead column; this
+          // gives it a cheap, deterministic writer (append the name only if not already present).
+          try {
+            const { data: sumRow } = await supabaseAdmin.from('ai_summary').select('supplement_notes').eq('user_id', userId).maybeSingle();
+            const cur = (sumRow?.supplement_notes as string | null) ?? '';
+            if (!cur.toLocaleLowerCase('tr').split(/,\s*/).includes(suppName.toLocaleLowerCase('tr'))) {
+              const merged = [cur, suppName].filter(Boolean).join(', ').slice(0, 500);
+              await supabaseAdmin.rpc('ai_summary_merge', { p_user_id: userId, p_patch: { supplement_notes: merged } });
+            }
+          } catch (e) { console.warn('[supplement_notes] note update skipped:', (e as Error).message); }
           feedback.push('Supplement kaydedildi');
           break;
         }
@@ -4569,7 +4589,7 @@ async function checkCaffeineIntake(
 async function processLayer2Updates(userId: string, updates: Record<string, unknown>) {
   try {
     const { data: existing } = await supabaseAdmin
-      .from('ai_summary').select('general_summary, behavioral_patterns, portion_calibration, strength_records, coaching_notes, caffeine_sleep_notes, habit_progress, learned_meal_times, seasonal_notes, alcohol_pattern, social_eating_notes, features_introduced')
+      .from('ai_summary').select('general_summary, behavioral_patterns, portion_calibration, strength_records, coaching_notes, caffeine_sleep_notes, habit_progress, learned_meal_times, seasonal_notes, alcohol_pattern, social_eating_notes, features_introduced, recovery_pattern, weekly_budget_pattern, menstrual_notes, supplement_notes')
       .eq('user_id', userId).maybeSingle();
 
     const changes: Record<string, unknown> = {};
@@ -4833,6 +4853,23 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
       const dateStr = new Date().toISOString().split('T')[0];
       changes.social_eating_notes = `${current}\n[${dateStr}] ${updates.social_eating_note}`.trim();
     }
+
+    // #memory: 5 ai_summary columns were READ into the coach prompt (buildLayer2) but had NO
+    // writer path — permanently-blank sections. Wire the model-emit aliases so the coach can
+    // populate them when it learns something (recovery/menstrual/weekly-budget/supplement notes).
+    // All are TEXT columns appended date-stamped and whitelisted in ai_summary_merge (mig 037/045).
+    const dateNow = new Date().toISOString().split('T')[0];
+    const appendNote = (col: 'recovery_pattern' | 'weekly_budget_pattern' | 'menstrual_notes' | 'supplement_notes', val: unknown) => {
+      if (!val || typeof val !== 'string' || !val.trim()) return;
+      const cur = (existing?.[col] as string) ?? '';
+      // keep the last ~6 dated lines to bound growth
+      const lines = `${cur}\n[${dateNow}] ${val.trim()}`.trim().split('\n').filter(Boolean);
+      changes[col] = lines.slice(-6).join('\n');
+    };
+    appendNote('recovery_pattern', updates.recovery_note ?? updates.recovery_pattern);
+    appendNote('weekly_budget_pattern', updates.weekly_budget_note ?? updates.weekly_budget_pattern);
+    appendNote('menstrual_notes', updates.menstrual_note ?? updates.menstrual_notes);
+    appendNote('supplement_notes', updates.supplement_note ?? updates.supplement_notes);
 
     // A3: Feature introduced — track to prevent re-introducing
     if (updates.feature_introduced) {

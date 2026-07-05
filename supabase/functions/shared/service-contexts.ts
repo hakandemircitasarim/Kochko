@@ -769,7 +769,7 @@ export async function getConflictContext(
       const notConsumption = /(yemiyorum|yemem|yemedim|yemiyom|icmiyorum|içmiyorum|icmedim|içmedim|birakt|bırakt|kacin|kaçın|olmadan|yok art|yemeyi kes|icmeyi kes|içmeyi kes|kullanmiyorum|kullanmıyorum)/.test(lower2);
       if (!notConsumption) {
         const { data: rp } = await supabaseAdmin.from('profiles')
-          .select('dietary_restriction, diet_mode, alcohol_frequency').eq('id', userId).maybeSingle();
+          .select('dietary_restriction, diet_mode, alcohol_frequency, caffeine_intake, if_active, if_eating_start, if_eating_end, active_timezone, home_timezone').eq('id', userId).maybeSingle();
         const restr = ((rp?.dietary_restriction as string | null) ?? '').toLocaleLowerCase('tr');
         const dietMode = ((rp?.diet_mode as string | null) ?? '').toLocaleLowerCase('tr');
         const alcFreq = ((rp?.alcohol_frequency as string | null) ?? '').toLocaleLowerCase('tr');
@@ -802,6 +802,31 @@ export async function getConflictContext(
         if ((alcFreq === 'never' || restr === 'helal' || restr === 'halal') && !alerts.some(a => a.startsWith('KISITLAMA'))) {
           const hits = mentions(['bira', 'şarap', 'sarap', 'rakı', 'raki', 'votka', 'viski', 'içki', 'icki', 'alkol', 'kokteyl', 'şampanya', 'sampanya']);
           if (hits.length > 0) alerts.push(`ALKOL CELISKISI: Kullanici alkol almadigini belirtmisti ama "${hits.join(', ')}" girdi. Yargilamadan, her sey yolunda mi diye nazikce sor.`);
+        }
+        // CAFFEINE tier: user declared they don't consume caffeine (none) but logs coffee/energy
+        // drink. Only for 'none' (a clear contradiction); 'low' tolerates the odd coffee.
+        const caffTier = ((rp?.caffeine_intake as string | null) ?? '').toLocaleLowerCase('tr');
+        if (['none', 'yok', 'hiç', 'hic', 'içmem', 'icmem'].includes(caffTier)) {
+          const hits = mentions(['kahve', 'espresso', 'latte', 'americano', 'cappuccino', 'cortado', 'enerji', 'redbull', 'monster', 'nescafe', 'nescafé']);
+          if (hits.length > 0) alerts.push(`KAFEIN CELISKISI: Kullanici kafein tuketmedigini belirtmisti ama "${hits.join(', ')}" girdi. Nazikce sor: ara sira mi, yoksa aliskanligin mi degisti?`);
+        }
+        // IF-PENCERE: eating outside the fasting window when if_active. The message is real-time,
+        // so compare the CURRENT wall-clock (user tz) to if_eating_start/end. Skip backdated logs.
+        // Only EATING breaks a fast — zero-cal drinks (su/kahve/çay) are allowed, so "içtim" is
+        // excluded to avoid nagging every water/coffee log during the fast.
+        const mealCue = /(yedim|yedik|atıştırdım|atistirdim|kahvaltı|kahvalti|öğle yemeğ|ogle yemeg|akşam yemeğ|aksam yemeg|ara öğün|ara ogun|yemek yedim|bir şeyler yedim|bir seyler yedim|tabak|porsiyon)/.test(lower2);
+        const backdated = /(dün|dun|önceki gün|onceki gun|geçen|gecen|evvel|geçtiğimiz|gectigimiz)/.test(lower2);
+        if (rp?.if_active === true && mealCue && !backdated && rp.if_eating_start && rp.if_eating_end) {
+          const tz = ((rp.active_timezone as string | null) || (rp.home_timezone as string | null) || 'Europe/Istanbul');
+          let nowH = -1, nowM = 0;
+          try { const d = new Date(new Date().toLocaleString('en-US', { timeZone: tz })); nowH = d.getHours(); nowM = d.getMinutes(); } catch { const d = new Date(); nowH = d.getHours(); nowM = d.getMinutes(); }
+          const toMin = (s: string) => { const [h, m] = String(s).split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+          const cur = nowH * 60 + nowM;
+          const start = toMin(rp.if_eating_start as string), end = toMin(rp.if_eating_end as string);
+          const inWindow = start <= end ? (cur >= start && cur <= end) : (cur >= start || cur <= end); // overnight-safe
+          if (nowH >= 0 && !inWindow) {
+            alerts.push(`IF-PENCERE CELISKISI: Yeme penceren ${rp.if_eating_start}-${rp.if_eating_end} ama su an (${String(nowH).padStart(2, '0')}:${String(nowM).padStart(2, '0')}) pencere disinda yemek girdi. Nazikce hatirlat; arada bir olur, cok da katilma.`);
+          }
         }
       }
     }
