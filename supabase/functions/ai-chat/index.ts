@@ -940,6 +940,31 @@ serve(async (req: Request) => {
       }
     }
 
+    // Allergy/preference RETRACTION net — deterministic (#memory reversal). The coach explicitly
+    // promises "alerjin geçtiyse söyle, güncelleyeyim", but there was NO removal path: allergen
+    // rows were permanent and every plan excluded the food forever. Detects "X alerjim geçti /
+    // yanlışmış / kalmadı / yok artık" and emits a clear action the handler uses to DELETE the row.
+    if (message) {
+      const mRet = message.toLocaleLowerCase('tr');
+      // Proximity-based (a filler word can sit between): "alerjim ASLINDA geçti", "alerjim ÇOK ŞÜKÜR
+      // düzeldi". A retraction keyword within ~25 chars of the allergy word, either order.
+      const retractCue = /(alerj\w*|intolerans\w*)[^.!?]{0,25}(geçti|gecti|kalmadı|kalmadi|düzeldi|duzeldi|yokmuş|yokmus|yok art|iyileşti|iyilesti|bitti|yanlış|yanlis|aslında yok|aslinda yok)|(geçti|gecti|kalmadı|kalmadi|düzeldi|duzeldi|yanlış|yanlis|iyileşti|iyilesti)[^.!?]{0,20}(alerj|intolerans)/;
+      if (retractCue.test(mRet) && /(alerj|intolerans)/.test(mRet)) {
+        // The model frequently RE-EMITS a food_preference on a retraction (re-creating the very
+        // allergen being cleared, as seen live). Strip any model food_preference this turn so the
+        // clear isn't immediately undone, then inject the clear (NOT gated on their absence).
+        for (let i = actions.length - 1; i >= 0; i--) {
+          if ((actions[i] as Record<string, unknown>).type === 'food_preference') actions.splice(i, 1);
+        }
+        const declared = extractDeclaredAllergens(message); // canonical dict hits (süt→laktoz)
+        const foods = new Set<string>(declared.map(f => f.toLocaleLowerCase('tr')));
+        const m = mRet.match(/([a-zçğıöşü]{3,})\s+(?:alerji|intolerans)/); // single-noun ("çilek alerjim geçti")
+        if (m && m[1]) foods.add(m[1].replace(/(ndan|nden|tan|ten|dan|den)$/, ''));
+        for (const f of foods) if (f.length >= 3) actions.push({ type: 'food_preference', food_name: f, clear: true, is_allergen: false });
+        if (foods.size > 0) console.warn('[allergy_retract_net] clear injected', { foods: [...foods] });
+      }
+    }
+
     // Dislike safety net — deterministic (#memory, Spec 5.10/5.12): "brokoli sevmiyorum",
     // "sütü sevmem", "balıktan hoşlanmıyorum", "kekten nefret ederim". Mirror of the allergy
     // net for SOFT preferences: previously a plain dislike was NEVER persisted (the model
@@ -1026,7 +1051,10 @@ serve(async (req: Request) => {
     // Fires only when an injury CUE word co-occurs with a recognised body part.
     if (message && !actions.some(a => (a as Record<string, unknown>).type === 'health_event')) {
       const mInj = message.toLocaleLowerCase('tr');
-      const injuryCue = /(sakat|incin|burkul|fitik|fıtık|agri|ağrı|agriy|ağrıy|tutuldu|zorlan|kirec|kireç|menisk|ameliyat|koptu|zedele|yirtild|yırtıld|ağrim|agrim|sorunum var)/.test(mInj);
+      // A RECOVERY statement ("belim iyileşti", "dizim düzeldi", "ağrım geçti") must NOT create a
+      // fresh injury row (it contains "ağrı" and would otherwise re-flag the part) — it resolves.
+      const healCue = /(iyileş|iyilest|iyilesti|düzeldi|duzeldi|toparla|geçti art|gecti art|ağrım geçti|agrim gecti|ağrı kalmadı|agri kalmadi|ağrı yok art|agri yok art|artık ağrımıyor|artik agrimiyor|şikayetim kalmadı|sikayetim kalmadi|iyiyim art)/.test(mInj);
+      const injuryCue = !healCue && /(sakat|incin|burkul|fitik|fıtık|agri|ağrı|agriy|ağrıy|tutuldu|zorlan|kirec|kireç|menisk|ameliyat|koptu|zedele|yirtild|yırtıld|ağrim|agrim|sorunum var)/.test(mInj);
       const parts = injuryCue ? extractInjuredBodyParts([message]) : [];
       if (parts.length > 0) {
         // #R3: dedup — the net fires on EVERY message with an injury cue, so a user
@@ -1042,6 +1070,20 @@ serve(async (req: Request) => {
           actions.push({ type: 'health_event', event_type: isSurgery ? 'surgery' : 'injury', description: message.slice(0, 280), is_ongoing: !isSurgery });
           console.warn('[injury_safety_net] health_event injected', { parts, isSurgery });
         }
+      }
+    }
+
+    // Injury RESOLUTION net — deterministic (#memory reversal). health_events was INSERT-only, so
+    // "belim iyileşti / dizim düzeldi" never cleared is_ongoing and filterExercisesByInjury kept
+    // stripping those movements from every plan forever. Detect a heal cue + a healed body part and
+    // emit a resolve action the handler uses to UPDATE the matching ongoing rows to is_ongoing=false.
+    if (message && !actions.some(a => (a as Record<string, unknown>).type === 'health_event' || (a as Record<string, unknown>).type === 'health_event_resolve')) {
+      const mHeal = message.toLocaleLowerCase('tr');
+      const healCue = /(iyileş|iyilest|iyilesti|düzeldi|duzeldi|toparla|geçti|gecti|ağrım geçti|agrim gecti|ağrı kalmadı|agri kalmadi|ağrı yok|agri yok|artık ağrımıyor|artik agrimiyor|şikayetim kalmadı|sikayetim kalmadi|iyiyim art|eski(den|si) gibi)/.test(mHeal);
+      const parts = healCue ? extractInjuredBodyParts([message]) : [];
+      if (parts.length > 0) {
+        actions.push({ type: 'health_event_resolve', body_parts: parts, description: message.slice(0, 200) });
+        console.warn('[injury_resolve_net] resolve injected', { parts });
       }
     }
 
@@ -1876,6 +1918,24 @@ serve(async (req: Request) => {
         if (dislikeHits.length > 0 && !alreadyRaised) {
           const names = [...new Set(dislikeHits)].join(', ');
           assistantMessage += `\n\nBu arada — hani ${names} sevmiyordun? 🙂 Canın mı çekti yoksa fikrin mi değişti? Fikrin değiştiyse "artık seviyorum" de, tercihini güncelleyeyim.`;
+        }
+        // KISITLAMA / DIYET-MODU / ALKOL CELISKISI (user logged food violating a stored
+        // restriction/diet-mode/no-alcohol stance) — the same register-mode drop risk. Surface
+        // once, gently, only if the reply doesn't already raise it.
+        const raisedRestriction = /(hani|kısıtlama|kisitlama|vejetaryen|vegan|helal|keto|karbonhidrat|içmiyordun|icmiyordun|alkol)/.test(lowerReply);
+        if (!raisedRestriction) {
+          const restrHits = [...conflictStr.matchAll(/KISITLAMA CELISKISI: Kullanici "([^"]+)" olarak kayitli ama simdi "([^"]+)" girdi/g)];
+          if (restrHits.length > 0) {
+            assistantMessage += `\n\nUfak bir hatırlatma — "${restrHits[0][1]}" olarak kayıtlısın ama ${restrHits[0][2]} girdin. Kısıtlaman değiştiyse söyle, güncelleyeyim; yoksa uygun bir alternatif bulalım.`;
+          }
+          const dietHits = [...conflictStr.matchAll(/DIYET-MODU CELISKISI: "([^"]+)" modundasin ama "([^"]+)"/g)];
+          if (restrHits.length === 0 && dietHits.length > 0) {
+            assistantMessage += `\n\nBu arada — ${dietHits[0][1]} modundasın ama ${dietHits[0][2]} girdin. Bir kerelik mi, yoksa modu gözden mi geçirelim?`;
+          }
+          const alcHits = [...conflictStr.matchAll(/ALKOL CELISKISI: Kullanici alkol almadigini belirtmisti ama "([^"]+)" girdi/g)];
+          if (alcHits.length > 0) {
+            assistantMessage += `\n\nHer şey yolunda mı? Alkol almadığını söylemiştin ama ${alcHits[0][1]} girdin — yargılamıyorum, sadece kontrol ediyorum. 🙂`;
+          }
         }
       }
     } catch (e) {
@@ -3692,6 +3752,25 @@ async function executeActions(
           const VALID_SEV = new Set(['mild', 'moderate', 'severe']);
           const foodName = (action.food_name as string ?? '').trim();
           if (!foodName) { feedback.push(null); break; }
+          // #memory RETRACTION: clear:true DELETEs every matching food_preferences row (allergen
+          // OR dislike) — the retraction path the coach promises. Match by foodMatchKey so "süt
+          // alerjim geçti" clears a row stored as "laktoz"/"sut"/"sütü". Also prune disliked_foods.
+          if ((action as Record<string, unknown>).clear === true) {
+            const clearKey = foodMatchKey(foodName);
+            const { data: allRows } = await supabaseAdmin
+              .from('food_preferences').select('food_name').eq('user_id', userId);
+            const toDrop = (allRows ?? []).filter((r: { food_name: string }) => foodMatchKey(r.food_name) === clearKey);
+            for (const r of toDrop) {
+              await supabaseAdmin.from('food_preferences').delete().eq('user_id', userId).eq('food_name', r.food_name);
+            }
+            const { data: prof } = await supabaseAdmin.from('profiles').select('disliked_foods').eq('id', userId).maybeSingle();
+            const df = (prof?.disliked_foods as { item?: string }[] | null) ?? [];
+            const kept = df.filter(it => !it?.item || foodMatchKey(it.item) !== clearKey);
+            if (kept.length !== df.length) await supabaseAdmin.from('profiles').update({ disliked_foods: kept }).eq('id', userId);
+            console.warn('[food_preference] cleared', { food: foodName, dropped: toDrop.length });
+            feedback.push(toDrop.length > 0 || kept.length !== df.length ? 'Kayıt temizlendi' : null);
+            break;
+          }
           const rawPref = action.preference as string ?? (action.is_allergen ? 'never' : 'dislike');
           const fpRow: Record<string, unknown> = {
             user_id: userId,
@@ -3765,6 +3844,28 @@ async function executeActions(
           } else {
             feedback.push('Sağlık bilgisi kaydedildi');
           }
+          break;
+        }
+        case 'health_event_resolve': {
+          // #memory RETRACTION: an injury healed. UPDATE the matching ongoing rows to
+          // is_ongoing=false so filterExercisesByInjury / the injury guardrail / plan-gen stop
+          // treating it as active. Match by body part (the same extractor the injury net uses).
+          const healedParts = new Set((action.body_parts as string[] | undefined) ?? []);
+          if (healedParts.size === 0) { feedback.push(null); break; }
+          const { data: ongoing } = await supabaseAdmin
+            .from('health_events').select('id, description')
+            .eq('user_id', userId).eq('is_ongoing', true);
+          let resolved = 0;
+          for (const row of (ongoing ?? []) as { id: string; description: string }[]) {
+            const rowParts = extractInjuredBodyParts([row.description ?? '']);
+            if (rowParts.some((p) => healedParts.has(p))) {
+              const { error: upErr } = await supabaseAdmin.from('health_events')
+                .update({ is_ongoing: false }).eq('id', row.id);
+              if (!upErr) resolved++;
+            }
+          }
+          console.warn('[health_event_resolve] resolved', { parts: [...healedParts], resolved });
+          feedback.push(resolved > 0 ? 'Geçmiş olsun, kaydını güncelledim' : null);
           break;
         }
         case 'lab_value': {

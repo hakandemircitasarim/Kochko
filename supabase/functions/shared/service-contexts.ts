@@ -760,6 +760,50 @@ export async function getConflictContext(
           }
         }
       }
+
+      // #memory (Spec 5.10): DIETARY-RESTRICTION + DIET-MODE + ALCOHOL contradictions — a vegan
+      // logging "tavuk yedim", a keto user "makarna", a halal/teetotaler "bira". Uses a Turkish
+      // boundary matcher (handles the short token "et" that foodMatchKey's 3-char floor drops, and
+      // still catches inflections "etler/eti/sütlü"). Skipped when the message is a negation or a
+      // fresh declaration ("et yemiyorum", "artık içmiyorum") rather than actual consumption.
+      const notConsumption = /(yemiyorum|yemem|yemedim|yemiyom|icmiyorum|içmiyorum|icmedim|içmedim|birakt|bırakt|kacin|kaçın|olmadan|yok art|yemeyi kes|icmeyi kes|içmeyi kes|kullanmiyorum|kullanmıyorum)/.test(lower2);
+      if (!notConsumption) {
+        const { data: rp } = await supabaseAdmin.from('profiles')
+          .select('dietary_restriction, diet_mode, alcohol_frequency').eq('id', userId).maybeSingle();
+        const restr = ((rp?.dietary_restriction as string | null) ?? '').toLocaleLowerCase('tr');
+        const dietMode = ((rp?.diet_mode as string | null) ?? '').toLocaleLowerCase('tr');
+        const alcFreq = ((rp?.alcohol_frequency as string | null) ?? '').toLocaleLowerCase('tr');
+        const SUF = '(?:lar|ler|ı|i|u|ü|a|e|ta|te|da|de|dan|den|tan|ten|la|le|yı|yi|yu|yü|yla|yle|nı|ni|nu|nü|sı|si|su|sü|lı|li|lu|lü|ini|ını|unu|ünü)?';
+        const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const mentions = (toks: string[]) => toks.filter(t => {
+          try { return new RegExp('(?:^|[^a-zçğıöşü])' + esc(t) + SUF + '(?![a-zçğıöşü])', 'i').test(lower2); } catch { return false; }
+        });
+        const RESTRICT: Record<string, string[]> = {
+          vegan: ['et', 'tavuk', 'balık', 'balik', 'yumurta', 'süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'bal', 'kıyma', 'kiyma', 'köfte', 'kofte', 'jambon', 'salam', 'sucuk', 'dana', 'kuzu', 'hindi', 'tereyağ', 'tereyag'],
+          vejetaryen: ['et', 'tavuk', 'balık', 'balik', 'kıyma', 'kiyma', 'köfte', 'kofte', 'dana', 'kuzu', 'hindi', 'jambon', 'salam', 'sucuk', 'sosis'],
+          vegetarian: ['et', 'tavuk', 'balık', 'balik', 'kıyma', 'kiyma', 'köfte', 'kofte', 'dana', 'kuzu', 'hindi', 'jambon', 'salam', 'sucuk', 'sosis'],
+          pesketaryen: ['et', 'tavuk', 'dana', 'kuzu', 'hindi', 'kıyma', 'kiyma', 'köfte', 'kofte'],
+          pescatarian: ['et', 'tavuk', 'dana', 'kuzu', 'hindi', 'kıyma', 'kiyma', 'köfte', 'kofte'],
+          helal: ['domuz', 'jambon', 'salam', 'sosis', 'bira', 'şarap', 'sarap', 'rakı', 'raki', 'votka', 'viski', 'alkol', 'içki', 'icki'],
+          halal: ['domuz', 'jambon', 'salam', 'sosis', 'bira', 'şarap', 'sarap', 'rakı', 'raki', 'votka', 'viski', 'alkol', 'içki', 'icki'],
+          glutensiz: ['makarna', 'ekmek', 'bulgur', 'börek', 'borek', 'simit', 'poğaça', 'pogaca', 'pizza'],
+          gluten_free: ['makarna', 'ekmek', 'bulgur', 'börek', 'borek', 'simit', 'poğaça', 'pogaca', 'pizza'],
+          laktozsuz: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'dondurma', 'krema'],
+          lactose_free: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'dondurma', 'krema'],
+        };
+        if (restr && RESTRICT[restr]) {
+          const hits = mentions(RESTRICT[restr]);
+          if (hits.length > 0) alerts.push(`KISITLAMA CELISKISI: Kullanici "${restr}" olarak kayitli ama simdi "${hits.join(', ')}" girdi. Nazikce hatirlat, yargilamadan, kisitlamasi degisti mi diye sor.`);
+        }
+        if (dietMode === 'keto' || dietMode === 'low_carb') {
+          const hits = mentions(['makarna', 'pilav', 'pirinç', 'pirinc', 'ekmek', 'patates', 'şeker', 'seker', 'tatlı', 'tatli', 'bulgur', 'simit', 'börek', 'borek', 'baklava', 'çikolata', 'cikolata']);
+          if (hits.length > 0) alerts.push(`DIYET-MODU CELISKISI: "${dietMode}" modundasin ama "${hits.join(', ')}" (yuksek karbonhidrat) girdin. Bir kereligine mi yoksa modu mu gozden gecirelim diye nazikce sor.`);
+        }
+        if ((alcFreq === 'never' || restr === 'helal' || restr === 'halal') && !alerts.some(a => a.startsWith('KISITLAMA'))) {
+          const hits = mentions(['bira', 'şarap', 'sarap', 'rakı', 'raki', 'votka', 'viski', 'içki', 'icki', 'alkol', 'kokteyl', 'şampanya', 'sampanya']);
+          if (hits.length > 0) alerts.push(`ALKOL CELISKISI: Kullanici alkol almadigini belirtmisti ama "${hits.join(', ')}" girdi. Yargilamadan, her sey yolunda mi diye nazikce sor.`);
+        }
+      }
     }
 
     // Goal-behavior mismatch check (2+ weeks data)

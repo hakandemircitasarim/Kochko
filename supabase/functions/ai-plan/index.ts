@@ -74,6 +74,9 @@ KURALLAR:
 - Her gun icin antrenman/dinlenme gunu ayrimi yap
 - Her ogun icin tek bir oneri sun (gunluk plandan farkli olarak secenek degil, tek menu)
 - Alerjen listesindeki hicbir yiyecegi ONERME
+- KISITLAMA (dietary_restriction) varsa MUTLAKA uy: vejetaryen→et/tavuk/balik yok; vegan→tum hayvansal (et/tavuk/balik/yumurta/sut/peynir/bal) yok; pesketaryen→et/tavuk yok (balik olur); helal→domuz/jambon/salam/alkol yok; glutensiz→bugday/makarna/ekmek yok; laktozsuz→sut/peynir/yogurt yok
+- "ASLA ONERME" listesindeki sevilmeyen yiyecekleri de KULLANMA
+- SAGLIK notu varsa (Sindirim/IBS, Hormonal/PCOS-tiroid) menuyu ona gore uyarla (IBS→dusuk-FODMAP, baharatli/yagli azalt; PCOS/insulin→dusuk glisemik, rafine seker azalt)
 - Haftalik kalori ve makro dengesini koru
 - Malzemeleri verimli kullan (bir gunden kalan malzeme baska gun kullanilsin)
 - Mevsimsel ve butceye uygun secimler yap

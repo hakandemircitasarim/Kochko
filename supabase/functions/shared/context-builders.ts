@@ -168,7 +168,7 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
     parts.push(`\n## KALORI\nAntrenman gunu: ${p.calorie_range_training_min ?? '?'}-${p.calorie_range_training_max ?? '?'} kcal`);
     parts.push(`Dinlenme gunu: ${p.calorie_range_rest_min ?? '?'}-${p.calorie_range_rest_max ?? '?'} kcal`);
     parts.push(`Protein: ${p.protein_per_kg ?? '?'}g/kg (${p.weight_kg && p.protein_per_kg ? Math.round(p.weight_kg * p.protein_per_kg) : '?'}g)`);
-    parts.push(`Su: ${p.water_target_liters ?? '?'}L`);
+    parts.push(`Su: ${p.water_target_liters ?? '?'}L${p.step_target ? ` | Adim hedefi: ${p.step_target}` : ''}`);
 
     // Food preferences
     const prefs = (prefsRes.data ?? []) as { food_name: string; preference: string; is_allergen: boolean; allergen_severity: string | null }[];
@@ -219,10 +219,13 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
     if (p.hormone_conditions) healthProfile.push(`Hormon: ${p.hormone_conditions}`);
     if (healthProfile.length > 0) parts.push(healthProfile.join('\n'));
 
-    // Body composition if available
+    // Body composition if available. hip_cm was write-only (collected, never surfaced) —
+    // include it + the waist-to-hip ratio (a real fat-distribution / progress signal).
     const bodyItems: string[] = [];
     if (p.body_fat_pct) bodyItems.push(`Yag orani: %${p.body_fat_pct}`);
     if (p.waist_cm) bodyItems.push(`Bel: ${p.waist_cm}cm`);
+    if (p.hip_cm) bodyItems.push(`Kalca: ${p.hip_cm}cm`);
+    if (p.waist_cm && p.hip_cm) bodyItems.push(`Bel/Kalca oran: ${((p.waist_cm as number) / (p.hip_cm as number)).toFixed(2)}`);
     if (bodyItems.length > 0) parts.push(`\n## VUCUT OLCULERI\n${bodyItems.join(' | ')}`);
 
     // Periodic state — translate the internal token to a human label so the AI's
