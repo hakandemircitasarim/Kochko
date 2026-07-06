@@ -33,6 +33,40 @@ export function timelineDeficitKcal(opts: {
   return Math.round(isLose ? -dailyKcal : dailyKcal);
 }
 
+const ACTIVITY_MULT: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
+
+/** Mifflin-St Jeor BMR. The SAME formula was re-inlined in ai-chat + ai-proactive + ai-plan. */
+export function bmrMifflin(weightKg: number, heightCm: number, age: number, gender: string | null | undefined): number {
+  const base = 10 * weightKg + 6.25 * heightCm - 5 * age;
+  return gender === 'male' ? base + 5 : base - 161;
+}
+
+/** TDEE from BMR × activity multiplier (or a supplied dynamic multiplier). */
+export function tdeeFrom(bmr: number, activityLevel: string | null | undefined, dynamicMultiplier?: number): number {
+  return Math.round(bmr * (dynamicMultiplier ?? ACTIVITY_MULT[activityLevel ?? 'moderate'] ?? 1.55));
+}
+
+/**
+ * THE single calorie-band shaper. Given a resolved daily target-calorie number, produce the full
+ * training/rest band + weekly budget. Previously this exact formula (10% range width, 250 kcal
+ * rest reduction, gender floor 1200/1400, 4 training + 3 rest weekly budget) was copy-pasted into
+ * ai-chat recalculateTDEEIfNeeded, ai-proactive roll-forward, and src/lib/tdee.ts — the "MUST
+ * mirror" comments were the symptom. One owner here; the client mirror keeps a parity test.
+ */
+export function computeCalorieBand(opts: { targetCalories: number; gender?: string | null }): {
+  trainingMin: number; trainingMax: number; restMin: number; restMax: number; weeklyBudget: number;
+} {
+  const floor = opts.gender === 'female' ? 1200 : 1400;
+  const target = opts.targetCalories;
+  const rangeWidth = Math.round(target * 0.10);
+  const trainingMin = Math.max(target - Math.round(rangeWidth / 2), floor);
+  const trainingMax = Math.max(target + Math.round(rangeWidth / 2), trainingMin);
+  const restMin = Math.max(trainingMin - 250, floor);
+  const restMax = Math.max(trainingMax - 250, restMin);
+  const weeklyBudget = 4 * Math.round((trainingMin + trainingMax) / 2) + 3 * Math.round((restMin + restMax) / 2);
+  return { trainingMin, trainingMax, restMin, restMax, weeklyBudget };
+}
+
 /**
  * Resolve the day's target calories: timeline-derived when a goal timeline exists, else the
  * fixed-fraction fallback. Keeps one definition shared by ai-proactive + ai-chat re-cuts.

@@ -32,7 +32,7 @@ import {
 } from '../shared/repair-handler.ts';
 import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot } from '../shared/service-contexts.ts';
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
-import { resolveTargetCalories } from '../shared/targets.ts';
+import { resolveTargetCalories, computeCalorieBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { extractLifeEvent } from '../shared/life-events.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
@@ -5072,10 +5072,7 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
   if (!needed && !force) return;
 
   const age = new Date().getFullYear() - profile.birth_year;
-  const base = 10 * currentWeight + 6.25 * profile.height_cm - 5 * age;
-  const bmr = profile.gender === 'male' ? base + 5 : base - 161;
-  const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
-  const tdee = Math.round(bmr * (multipliers[profile.activity_level ?? 'moderate'] ?? 1.55));
+  const tdee = tdeeFrom(bmrMifflin(currentWeight, profile.height_cm as number, age, profile.gender as string | null), profile.activity_level as string | null);
 
   // Goal-aware target (don't diet a bulking/maintain user on a weight-change recalc).
   // #journey HIGH: honor the goal timeline — size the deficit to remaining-kg / remaining-weeks
@@ -5089,17 +5086,15 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
     currentWeight, targetWeight: goalRow?.target_weight_kg as number | null,
     targetWeeks: goalRow?.target_weeks as number | null, weeksElapsed,
   });
-  const rangeWidth = Math.round(targetCal * 0.10);
-  const trainingMin = Math.max(targetCal - Math.round(rangeWidth / 2), profile.gender === 'female' ? 1200 : 1400);
-  const trainingMax = targetCal + Math.round(rangeWidth / 2);
-  const restMin = Math.max(trainingMin - 250, profile.gender === 'female' ? 1200 : 1400);
-  const restMax = trainingMax - 250;
-  // Clamp maxes up to floored mins so a low-TDEE user doesn't get restMin > restMax (#R4-3).
-  const safeTrainingMax = Math.max(trainingMax, trainingMin);
-  const safeRestMax = Math.max(restMax, restMin);
+  // #arch S1: single band owner (targets.ts) — was an inline copy of the same formula.
+  const band = computeCalorieBand({ targetCalories: targetCal, gender: profile.gender as string | null });
+  const trainingMin = band.trainingMin;
+  const safeTrainingMax = band.trainingMax;
+  const restMin = band.restMin;
+  const safeRestMax = band.restMax;
   const proteinG = Math.round(currentWeight * 1.8);
   const waterTarget = Math.round(currentWeight * 0.033 * 10) / 10;
-  const weeklyBudget = 4 * Math.round((trainingMin + safeTrainingMax) / 2) + 3 * Math.round((restMin + safeRestMax) / 2);
+  const weeklyBudget = band.weeklyBudget;
 
   // protein_target_g is not a profiles column (it lives on daily_plans); record
   // protein intent via protein_per_kg (proteinG above derives from this 1.8 factor).
@@ -5135,7 +5130,7 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
   const content = inMaintenance
     // In maintenance we deliberately didn't touch the ranges (ramp owns them).
     ? `${reason}. Yeni TDEE ${tdee} kcal, protein ${proteinG}g, su ${waterTarget}L. (Bakım dönemi: kalori aralığın korunuyor.)`
-    : `${reason}. Yeni TDEE ${tdee} kcal, kalori araligi ${restMin}-${trainingMax} kcal, protein ${proteinG}g, su ${waterTarget}L.`;
+    : `${reason}. Yeni TDEE ${tdee} kcal, kalori araligi ${restMin}-${safeTrainingMax} kcal, protein ${proteinG}g, su ${waterTarget}L.`;
   await supabaseAdmin.from('coaching_messages').insert({
     user_id: userId,
     trigger_type: 'tdee_recalculated',

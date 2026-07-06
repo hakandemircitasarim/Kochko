@@ -15,7 +15,7 @@ import { isIFCompatible, getSeasonalContext, type PeriodicState } from '../share
 import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../shared/service-contexts.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { projectDailyPlanRows, type ProjectionProfile } from '../shared/plan-projection.ts';
-import { resolveTargetCalories } from '../shared/targets.ts';
+import { resolveTargetCalories, computeCalorieBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 
 const NUDGE_PROMPT = `Sen Kochko kocusun. Kullanicinin durumunu degerlendir.
 SADECE gercekten gerekli oldugunda mesaj uret. Spam YAPMA.
@@ -98,24 +98,17 @@ serve(async (req: Request) => {
             const daysSince = lastD ? Math.floor((Date.now() - Date.parse(lastD)) / 86400000) : 999;
             if (curW && (!lastW || Math.abs(curW - lastW) >= 1.5 || daysSince >= 21)) {
               const age = new Date().getUTCFullYear() - (prof.birth_year as number);
-              const bmr = 10 * curW + 6.25 * (prof.height_cm as number) - 5 * age + (prof.gender === 'male' ? 5 : -161);
-              const mult: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
-              const tdee = Math.round(bmr * (mult[(prof.activity_level as string) ?? 'moderate'] ?? 1.55));
+              // #arch S1: shared BMR/TDEE + band owner (targets.ts) — was inline copies here.
+              const tdee = tdeeFrom(bmrMifflin(curW, prof.height_cm as number, age, prof.gender as string | null), prof.activity_level as string | null);
               const { data: g } = await supabaseAdmin.from('goals').select('goal_type, target_weight_kg, target_weeks, created_at').eq('user_id', uid).eq('is_active', true).maybeSingle();
               const gType = (g?.goal_type as string) ?? 'maintain';
               const factor = gType === 'lose_weight' ? 0.85 : (gType === 'gain_weight' || gType === 'gain_muscle') ? 1.1 : 1.0;
               // #journey HIGH: size the deficit to the user's remaining kg / remaining weeks (capped
-              // to a safe rate) so the re-cut converges on their chosen DATE, instead of a flat 15%
-              // that drifts from the ETA/tempo chart. Falls back to the fixed factor with no timeline.
+              // to a safe rate) so the re-cut converges on their chosen DATE. Falls back to the factor.
               const weeksElapsed = g?.created_at ? Math.max(0, Math.floor((Date.now() - Date.parse(g.created_at as string)) / (7 * 86400000))) : 0;
               const target = resolveTargetCalories({ tdee, goalType: gType, fixedFactor: factor, currentWeight: curW, targetWeight: g?.target_weight_kg as number | null, targetWeeks: g?.target_weeks as number | null, weeksElapsed });
-              const floor = prof.gender === 'female' ? 1200 : 1400;
-              const win = Math.round(target * 0.10);
-              const tMin = Math.max(target - Math.round(win / 2), floor);
-              const tMax = Math.max(target + Math.round(win / 2), tMin);
-              const rrMin = Math.max(tMin - 250, floor);
-              const rrMax = Math.max(tMax - 250, rrMin);
-              const budget = 4 * Math.round((tMin + tMax) / 2) + 3 * Math.round((rrMin + rrMax) / 2);
+              const band = computeCalorieBand({ targetCalories: target, gender: prof.gender as string | null });
+              const tMin = band.trainingMin, tMax = band.trainingMax, rrMin = band.restMin, rrMax = band.restMax, budget = band.weeklyBudget;
               await supabaseAdmin.from('profiles').update({ tdee_calculated: tdee, tdee_last_weight: curW, tdee_last_date: today, calorie_range_training_min: tMin, calorie_range_training_max: tMax, calorie_range_rest_min: rrMin, calorie_range_rest_max: rrMax, weekly_calorie_budget: budget, updated_at: new Date().toISOString() }).eq('id', uid);
               rMin = rrMin; rMax = rrMax;
             }
