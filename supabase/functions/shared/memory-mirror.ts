@@ -36,6 +36,17 @@ const SOURCE_TR: Record<string, string> = {
 };
 const srcLabel = (s: string | null | undefined) => SOURCE_TR[s ?? ''] ? ` (${SOURCE_TR[s ?? '']})` : '';
 
+// #arch step 1 (epistemics): a provenance label that also flags UNCONFIRMED beliefs (imported/
+// inferred, never affirmed) so the glass-box is honest about what the coach is merely assuming.
+// Safety is unaffected — an unconfirmed allergen is still enforced; this only invites confirmation.
+const beliefLabel = (source: string | null | undefined, confirmedAt: string | null | undefined) => {
+  const base = SOURCE_TR[source ?? ''] ?? '';
+  if (!confirmedAt && (source === 'imported' || source === 'inferred')) {
+    return base ? ` (${base} — doğrulamadım, hâlâ geçerli mi?)` : ' (doğrulamadım, hâlâ geçerli mi?)';
+  }
+  return base ? ` (${base})` : '';
+};
+
 // Injury subjects are stored in the guardrails' ENGLISH canonical vocabulary (knee/back/…) so the
 // deterministic filter can match; translate them back to Turkish for the user-facing glass-box.
 const BODYPART_TR: Record<string, string> = {
@@ -63,14 +74,14 @@ export async function buildMemoryMirror(userId: string): Promise<string> {
   const [profileRes, goalRes, constraintsRes, prefsRes, summaryRes] = await Promise.all([
     supabaseAdmin.from('profiles').select('weight_kg, height_cm, gender, birth_year, activity_level, dietary_restriction, diet_mode, alcohol_frequency, caffeine_intake, if_active, if_eating_start, if_eating_end, periodic_state, disliked_foods').eq('id', userId).maybeSingle(),
     supabaseAdmin.from('goals').select('goal_type, start_weight_kg, target_weight_kg, target_weeks, weekly_rate, phase_label').eq('user_id', userId).eq('is_active', true).maybeSingle(),
-    supabaseAdmin.from('user_constraints').select('kind, subject, severity, body_parts, source').eq('user_id', userId).eq('active', true),
+    supabaseAdmin.from('user_constraints').select('kind, subject, severity, body_parts, source, confirmed_at').eq('user_id', userId).eq('active', true),
     supabaseAdmin.from('food_preferences').select('food_name, preference, is_allergen').eq('user_id', userId),
     supabaseAdmin.from('ai_summary').select('behavioral_patterns, habit_progress, general_summary, learned_tone_preference').eq('user_id', userId).maybeSingle(),
   ]);
 
   const p = (profileRes.data ?? {}) as Record<string, unknown>;
   const goal = goalRes.data as Record<string, unknown> | null;
-  const constraints = (constraintsRes.data ?? []) as Array<{ kind: string; subject: string; severity: string | null; body_parts: string[]; source: string }>;
+  const constraints = (constraintsRes.data ?? []) as Array<{ kind: string; subject: string; severity: string | null; body_parts: string[]; source: string; confirmed_at: string | null }>;
   const prefs = (prefsRes.data ?? []) as Array<{ food_name: string; preference: string; is_allergen: boolean }>;
   const summary = (summaryRes.data ?? {}) as Record<string, unknown>;
 
@@ -98,12 +109,12 @@ export async function buildMemoryMirror(userId: string): Promise<string> {
   const conditions = constraints.filter(c => c.kind === 'condition' || c.kind === 'medication');
   const dietaryC = constraints.filter(c => c.kind === 'dietary');
   const safety: string[] = [];
-  if (allergens.length) safety.push('Alerji/İntolerans: ' + allergens.map(a => `${a.subject}${a.severity === 'severe' ? ' (ciddi)' : ''}${srcLabel(a.source)}`).join(', '));
+  if (allergens.length) safety.push('Alerji/İntolerans: ' + allergens.map(a => `${a.subject}${a.severity === 'severe' ? ' (ciddi)' : ''}${beliefLabel(a.source, a.confirmed_at)}`).join(', '));
   if (injuries.length) safety.push('Sakatlık: ' + injuries.map(i => {
     const label = (i.body_parts && i.body_parts.length) ? i.body_parts.map(bodyPartTr).join('/') : bodyPartTr(i.subject);
-    return `${label}${srcLabel(i.source)}`;
+    return `${label}${beliefLabel(i.source, i.confirmed_at)}`;
   }).join(', '));
-  if (conditions.length) safety.push('Sağlık durumu: ' + conditions.map(c => `${c.subject}${srcLabel(c.source)}`).join(', '));
+  if (conditions.length) safety.push('Sağlık durumu: ' + conditions.map(c => `${c.subject}${beliefLabel(c.source, c.confirmed_at)}`).join(', '));
   const dietaryProfile = (p.dietary_restriction as string | null)?.trim();
   const dietaryAll = [...new Set([...dietaryC.map(d => d.subject), ...(dietaryProfile ? [dietaryProfile] : [])])];
   if (dietaryAll.length) safety.push('Beslenme kısıtı: ' + dietaryAll.join(', '));

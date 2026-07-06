@@ -23,18 +23,36 @@ export interface Constraint {
 export async function syncConstraint(userId: string, c: Constraint): Promise<void> {
   const subject = (c.subject ?? '').trim().toLocaleLowerCase('tr');
   if (!subject) return;
+  // #arch step 1 (epistemics): stamp confidence + confirmed_at from provenance. What the user
+  // states/confirms is trusted and marked confirmed now; imported/inferred beliefs are lower
+  // confidence and NOT confirmed until the user affirms them. Confidence NEVER gates safety — the
+  // guardrails act on every active constraint regardless; this only shapes conversation.
+  const now = new Date().toISOString();
+  const source = c.source ?? 'user_stated';
+  const confirmed = source === 'user_stated' || source === 'confirmed';
   try {
     await supabaseAdmin.from('user_constraints').upsert({
       user_id: userId, kind: c.kind, subject,
       severity: c.severity ?? null,
       body_parts: c.body_parts ?? [],
       active: true,
-      source: c.source ?? 'user_stated',
+      source,
+      confidence: confirmed ? 1.0 : (source === 'onboarding' ? 0.9 : 0.6),
+      confirmed_at: confirmed ? now : null,
       note: (c.note ?? '').slice(0, 280),
-      stated_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      stated_at: now,
+      updated_at: now,
     }, { onConflict: 'user_id,kind,subject' });
   } catch (e) { console.warn('[constraints] sync failed', c.kind, subject, (e as Error).message); }
+}
+
+/** Mark a constraint the user has just affirmed as confirmed (confidence 1.0, confirmed_at now). */
+export async function confirmConstraint(userId: string, kind: ConstraintKind, subject: string): Promise<void> {
+  try {
+    await supabaseAdmin.from('user_constraints')
+      .update({ confidence: 1.0, confirmed_at: new Date().toISOString(), source: 'confirmed', updated_at: new Date().toISOString() })
+      .eq('user_id', userId).eq('kind', kind).eq('subject', subject.trim().toLocaleLowerCase('tr')).eq('active', true);
+  } catch (e) { console.warn('[constraints] confirm failed', (e as Error).message); }
 }
 
 /** Retract: mark matching constraints inactive (allergy geçti, injury iyileşti, kısıtlama bitti). */
