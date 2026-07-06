@@ -34,6 +34,7 @@ import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot } fro
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
 import { resolveTargetCalories, computeCalorieBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { extractLifeEvent } from '../shared/life-events.ts';
+import { syncConstraint, deactivateConstraints, syncInjuryFromText, resolveInjuryConstraints, getActiveConstraints } from '../shared/constraints.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
 
@@ -3716,6 +3717,10 @@ async function executeActions(
             const { error: pfErr } = await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
             if (pfErr) console.error('[profile_update] update failed:', pfErr.message);
             else pfMessages.push('Profil güncellendi');
+            // #arch L1: mirror a dietary restriction into the typed safety spine.
+            if (!pfErr && typeof updates.dietary_restriction === 'string' && updates.dietary_restriction) {
+              await syncConstraint(userId, { kind: 'dietary', subject: updates.dietary_restriction as string, note: updates.dietary_restriction as string });
+            }
             // #R3/journey: activity_level is usually set on a LATER onboarding card than the
             // identity card that first computed TDEE — checkOnboardingCompletion only computes
             // TDEE once (when onboarding flips), so a later activity change left calorie targets
@@ -3849,6 +3854,12 @@ async function executeActions(
             const df = (prof?.disliked_foods as { item?: string }[] | null) ?? [];
             const kept = df.filter(it => !it?.item || foodMatchKey(it.item) !== clearKey);
             if (kept.length !== df.length) await supabaseAdmin.from('profiles').update({ disliked_foods: kept }).eq('id', userId);
+            // #arch L1: retraction also deactivates the typed allergen constraint whose subject
+            // key matches (the retract net emits clear for both the canonical + single-noun form).
+            const activeAllergens = await getActiveConstraints(userId, ['allergen']);
+            for (const ac of activeAllergens) {
+              if (foodMatchKey(ac.subject) === clearKey) await deactivateConstraints(userId, 'allergen', { subject: ac.subject });
+            }
             console.warn('[food_preference] cleared', { food: foodName, dropped: toDrop.length });
             feedback.push(toDrop.length > 0 || kept.length !== df.length ? 'Kayıt temizlendi' : null);
             break;
@@ -3901,6 +3912,10 @@ async function executeActions(
                 await supabaseAdmin.from('profiles').update({ disliked_foods: kept }).eq('id', userId);
               }
             }
+            // #arch L1: mirror allergens into the typed safety spine (user_constraints).
+            if (action.is_allergen === true) {
+              await syncConstraint(userId, { kind: 'allergen', subject: foodName, severity: (fpRow.allergen_severity as 'mild'|'moderate'|'severe') ?? 'moderate', note: foodName });
+            }
             feedback.push(action.is_allergen === true ? 'Alerjen kaydedildi' : 'Yemek tercihi kaydedildi');
           }
           break;
@@ -3924,6 +3939,12 @@ async function executeActions(
             console.error('[health_event] insert failed:', heErr.message);
             feedback.push(null);
           } else {
+            // #arch L1: mirror ongoing injuries/conditions into the typed safety spine with
+            // extracted body_parts (surgeries are past events → not ongoing constraints).
+            const ev = VALID_EVENTS.has(rawEvent) ? rawEvent : 'other';
+            if (action.is_ongoing !== false && (ev === 'injury' || ev === 'condition' || ev === 'medication')) {
+              await syncInjuryFromText(userId, desc, ev as 'injury' | 'condition' | 'medication');
+            }
             feedback.push('Sağlık bilgisi kaydedildi');
           }
           break;
@@ -3966,6 +3987,8 @@ async function executeActions(
               if (!upErr) resolved++;
             }
           }
+          // #arch L1: also deactivate the typed injury constraints for the healed parts.
+          await resolveInjuryConstraints(userId, [...healedParts]);
           console.warn('[health_event_resolve] resolved', { parts: [...healedParts], resolved });
           feedback.push(resolved > 0 ? 'Geçmiş olsun, kaydını güncelledim' : null);
           break;
