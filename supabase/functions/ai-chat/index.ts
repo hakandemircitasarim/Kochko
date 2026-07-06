@@ -660,18 +660,41 @@ serve(async (req: Request) => {
     const modelSelection = selectModel(analysis, !!image_base64, effectiveMode);
     const temperature = TEMPERATURE[taskMode] ?? 0.5;
 
-    let assistantMessage = await chatCompletion<string>(
+    // #arch S2: STRUCTURED-ENVELOPE output. The model now returns {"reply":"...","actions":[...]}
+    // so the ACTIONS are a reliable first-class field instead of a free-text <actions> tag the
+    // model dropped/malformed often enough to need ~15 injection nets. `reply` still carries the
+    // coach's prose PLUS any control blocks (<simulation>/<plan_snapshot>/<reasoning>/…), so the
+    // client + history (which scrape those tags from the message text) are UNCHANGED. Falls back
+    // to the legacy prose+regex path whenever the model returns non-envelope content.
+    const rawModelOut = await chatCompletion<string>(
       gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[],
-      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens }
+      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, jsonRaw: true }
     );
+    let assistantMessage: string;
+    let actions: Record<string, unknown>[];
+    let envelope: { reply?: unknown; actions?: unknown } | null = null;
+    try {
+      const parsed = JSON.parse(rawModelOut);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && ('reply' in parsed || 'actions' in parsed)) {
+        envelope = parsed as { reply?: unknown; actions?: unknown };
+      }
+    } catch { /* not JSON — prose fallback below */ }
+    if (envelope) {
+      assistantMessage = typeof envelope.reply === 'string' ? envelope.reply : '';
+      actions = Array.isArray(envelope.actions) ? envelope.actions as Record<string, unknown>[] : [];
+      // Defensive: a model may STILL embed <actions> tags inside reply — harvest + strip them.
+      const emb = extractActions(assistantMessage);
+      assistantMessage = emb.cleanMessage;
+      if (emb.actions.length) actions = actions.concat(emb.actions);
+    } else {
+      const ex = extractActions(rawModelOut);
+      assistantMessage = ex.cleanMessage;
+      actions = ex.actions;
+    }
 
     // Guardrail: sanitize medical language (Spec 12.3)
     const { clean } = sanitizeText(assistantMessage);
     assistantMessage = clean;
-
-    // Extract actions
-    const { cleanMessage, actions } = extractActions(assistantMessage);
-    assistantMessage = cleanMessage;
 
     // Fallback: if AI didn't produce actions but user gave profile info, extract manually
     // Post-process: strip verbal save acknowledgements that keep slipping past the

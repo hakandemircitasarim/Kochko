@@ -64,6 +64,10 @@ interface CompletionOptions {
   temperature?: number;
   maxTokens?: number;
   jsonMode?: boolean;
+  // #arch S2: like jsonMode (forces response_format=json_object) but returns the RAW JSON string
+  // instead of JSON.parse-ing it — so the caller can parse a structured envelope with its OWN
+  // graceful fallback (treat a non-envelope response as plain prose) rather than throwing.
+  jsonRaw?: boolean;
   stream?: boolean;
   // FIX (audit AI-MDL-03) internal recursion flag: true once the current model
   // has already been retried once for a transient failure. Callers never set this.
@@ -103,7 +107,7 @@ export async function chatCompletion<T = string>(
   const model = options?.model ?? MODELS.primary;
   let effectiveMessages = messages;
 
-  if (options?.jsonMode) {
+  if (options?.jsonMode || options?.jsonRaw) {
     // OpenAI rejects response_format=json_object (400) unless the literal token
     // "json" appears somewhere in the messages. Some prompts only SHOW a JSON
     // shape (e.g. `{"send": false}`) without the word "json" — that 400'd the
@@ -130,7 +134,7 @@ export async function chatCompletion<T = string>(
     max_tokens: options?.maxTokens ?? 2000,
   };
 
-  if (options?.jsonMode) {
+  if (options?.jsonMode || options?.jsonRaw) {
     body.response_format = { type: 'json_object' };
   }
 
@@ -196,7 +200,7 @@ export async function chatCompletion<T = string>(
     );
     // For JSON, a truncated body will not parse — fail loudly with a truncation-specific message
     // (and optionally retry once with a larger ceiling) rather than the generic 'invalid JSON'.
-    if (options?.jsonMode) {
+    if (options?.jsonMode || options?.jsonRaw) {
       const bumped = (options?.maxTokens ?? 2000) * 2;
       if (bumped <= 16000 && (options?.maxTokens ?? 2000) < bumped) {
         return chatCompletion<T>(messages, { ...options, maxTokens: bumped });
