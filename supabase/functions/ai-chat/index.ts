@@ -19,6 +19,7 @@ import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
 import { computeItemNutrition } from '../shared/food-reference.ts';
+import { isMemoryMirrorIntent, buildMemoryMirror } from '../shared/memory-mirror.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit, reserveRateLimitSlot } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -201,6 +202,20 @@ serve(async (req: Request) => {
         const rejectMsg = 'Ben Kochko, beslenme ve antrenman kocunum. Bu konuda sana yardimci olamam ama beslenme veya sporla ilgili sorun varsa konusalim.';
         await storeMessages(userId, message, rejectMsg, undefined, undefined, undefined, undefined, session_id);
         return respond({ message: rejectMsg, actions: [], task_mode: 'coaching' });
+      }
+    }
+
+    // #arch L7 (MemoryMirror): when the user asks what the coach knows about them, answer with the
+    // EXACT stored beliefs (deterministic, never an LLM paraphrase that could hallucinate a fact) +
+    // an invitation to correct anything wrong. The glass-box: the user always sees, and outranks,
+    // what's in the coach's active filter. Existing correction handlers are the write path.
+    if (message && isMemoryMirrorIntent(message)) {
+      try {
+        const mirror = await buildMemoryMirror(userId);
+        await storeMessages(userId, message, mirror, 'coaching', undefined, undefined, undefined, session_id);
+        return respond({ message: mirror, actions: [], task_mode: 'coaching' });
+      } catch (e) {
+        console.error('[memory_mirror] build failed, falling through to LLM:', (e as Error).message);
       }
     }
 
