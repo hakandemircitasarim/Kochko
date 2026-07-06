@@ -864,11 +864,32 @@ export function findInjuryConflictsInText(
   const lower = text.toLocaleLowerCase('tr');
   const conflicts = new Set<string>();
   for (const [pattern, bodyParts] of Object.entries(EXERCISE_BODY_PART_MAP)) {
-    if (lower.includes(pattern) && bodyParts.some(bp => injuredBodyParts.includes(bp))) {
+    if (proseMentionsExercise(lower, pattern) && bodyParts.some(bp => injuredBodyParts.includes(bp))) {
       conflicts.add(pattern);
     }
   }
   return Array.from(conflicts);
+}
+
+/**
+ * Word-START-boundary match for scanning FREE-TEXT prose (not structured exercise names).
+ * Naive substring matching produced dangerous false positives on short ASCII patterns: 'run'
+ * matched Turkish "sorun"/"sorunsuz"/"vurun" (problem/hit), 'dip' matched "dipnot", so a
+ * knee-injured user got nagged about running on nearly every reply. We require the pattern to
+ * begin a word (preceding char is a non-Turkish-letter or string start) but still allow any
+ * Turkish suffix AFTER it, so inflections stay matched ("koşu" in "koşuyu", "squat" in "squatları").
+ */
+const TR_LETTER = /[a-zçğıöşü0-9]/;
+function proseMentionsExercise(lower: string, pattern: string): boolean {
+  let from = 0;
+  let i = lower.indexOf(pattern, from);
+  while (i >= 0) {
+    const before = i > 0 ? lower[i - 1] : '';
+    if (!TR_LETTER.test(before)) return true; // word start → real mention
+    from = i + 1;
+    i = lower.indexOf(pattern, from);
+  }
+  return false;
 }
 
 /**

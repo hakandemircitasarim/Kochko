@@ -13,6 +13,7 @@ import { updateLayer2 } from '../shared/memory.ts';
 // second divergent one in memory.ts. context-builders surfaces the fuller constraint set
 // (dietary_restriction/digestive_issues/hormone_conditions/disliked_exercises) so plans honor them.
 import { buildContextFromPlan } from '../shared/context-builders.ts';
+import { getActiveConstraints } from '../shared/constraints.ts';
 import type { RetrievalPlan } from '../shared/retrieval-planner.ts';
 
 // A 'full' retrieval preset for plan generation: all L1 focuses, full L2, 14d of logs, no chat.
@@ -207,13 +208,18 @@ serve(async (req: Request) => {
       .eq('date', yesterday)
       .maybeSingle();
 
-    // Get allergens for post-validation
-    const { data: prefs } = await supabaseAdmin
-      .from('food_preferences')
-      .select('food_name, is_allergen')
-      .eq('user_id', userId)
-      .eq('is_allergen', true);
-    const allergens = (prefs ?? []).map((p: { food_name: string }) => p.food_name);
+    // Get allergens for post-validation — #arch L1 (step 1b): UNION the typed SAFETY SPINE
+    // (user_constraints) with legacy food_preferences so a plan can never suggest a food the
+    // user is allergic to, even if only one store recorded it.
+    const [{ data: prefs }, spineAllergens] = await Promise.all([
+      supabaseAdmin.from('food_preferences').select('food_name, is_allergen')
+        .eq('user_id', userId).eq('is_allergen', true),
+      getActiveConstraints(userId, ['allergen', 'intolerance']),
+    ]);
+    const allergens = [...new Set([
+      ...(prefs ?? []).map((p: { food_name: string }) => p.food_name),
+      ...spineAllergens.map((c) => c.subject),
+    ].filter(Boolean))];
 
     // Get profile for calorie validation and periodic state
     const { data: profile } = await supabaseAdmin
@@ -847,13 +853,16 @@ serve(async (req: Request) => {
 async function generateWeeklyPlan(userId: string, today: string, modificationRequest?: string): Promise<Record<string, unknown>> {
   const ctx = await buildContextFromPlan(userId, PLAN_GEN_RETRIEVAL);
 
-  // Get allergens
-  const { data: prefs } = await supabaseAdmin
-    .from('food_preferences')
-    .select('food_name, is_allergen')
-    .eq('user_id', userId)
-    .eq('is_allergen', true);
-  const allergens = (prefs ?? []).map((p: { food_name: string }) => p.food_name);
+  // Get allergens — #arch L1 (step 1b): UNION the typed SAFETY SPINE with legacy food_preferences.
+  const [{ data: prefs }, spineAllergens] = await Promise.all([
+    supabaseAdmin.from('food_preferences').select('food_name, is_allergen')
+      .eq('user_id', userId).eq('is_allergen', true),
+    getActiveConstraints(userId, ['allergen', 'intolerance']),
+  ]);
+  const allergens = [...new Set([
+    ...(prefs ?? []).map((p: { food_name: string }) => p.food_name),
+    ...spineAllergens.map((c) => c.subject),
+  ].filter(Boolean))];
 
   // Get profile
   const { data: profile } = await supabaseAdmin

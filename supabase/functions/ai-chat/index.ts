@@ -1318,12 +1318,16 @@ serve(async (req: Request) => {
       // Diet snapshot processing (Spec 12.4): ALLERGEN guardrail FIRST (with exclusion
       // regen), THEN calorie reconciliation on the final snapshot.
       if (expectedType === 'diet') {
-        const { data: prefRows } = await supabaseAdmin
-          .from('food_preferences')
-          .select('food_name')
-          .eq('user_id', userId)
-          .eq('is_allergen', true);
-        const allergens = (prefRows ?? []).map((p: { food_name: string }) => p.food_name);
+        // #arch L1 (step 1b): UNION the typed SAFETY SPINE with legacy food_preferences.
+        const [{ data: prefRows }, spineAllergensSnap] = await Promise.all([
+          supabaseAdmin.from('food_preferences').select('food_name')
+            .eq('user_id', userId).eq('is_allergen', true),
+          getActiveConstraints(userId, ['allergen', 'intolerance']),
+        ]);
+        const allergens = [...new Set([
+          ...(prefRows ?? []).map((p: { food_name: string }) => p.food_name),
+          ...spineAllergensSnap.map((c) => c.subject),
+        ].filter(Boolean))];
         const scanViolations = (snap: Record<string, unknown>): string[] => {
           const out: string[] = [];
           for (const d of (snap.days as Array<Record<string, unknown>> | undefined) ?? []) {
@@ -1375,12 +1379,15 @@ serve(async (req: Request) => {
         // Without this, the chat coach could persist→activate→project a plan with
         // exercises that load an injured joint (squat/koşu/deadlift...). The diet path
         // was hardened (#journey-H); the workout path was the missing twin.
-        const { data: injRows } = await supabaseAdmin
-          .from('health_events')
-          .select('description')
-          .eq('user_id', userId)
-          .eq('is_ongoing', true);
-        const injuredParts = extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? ''));
+        // #arch L1 (step 1b): typed body_parts from the SAFETY SPINE UNIONed with legacy free text.
+        const [{ data: injRows }, spineInjSnap] = await Promise.all([
+          supabaseAdmin.from('health_events').select('description')
+            .eq('user_id', userId).eq('is_ongoing', true),
+          getActiveConstraints(userId, ['injury']),
+        ]);
+        const injuredSet = new Set<string>(extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? '')));
+        for (const c of spineInjSnap) for (const bp of (c.body_parts ?? [])) if (bp) injuredSet.add(bp);
+        const injuredParts = [...injuredSet];
         if (injuredParts.length > 0) {
           const scanInjury = (snap: Record<string, unknown>): string[] => {
             const out: string[] = [];
@@ -1525,12 +1532,16 @@ serve(async (req: Request) => {
       // draft may have been persisted before the user added an allergen, or
       // produced by an earlier snapshot that slipped through.
       if (draft && expectedType === 'diet') {
-        const { data: prefRows } = await supabaseAdmin
-          .from('food_preferences')
-          .select('food_name')
-          .eq('user_id', userId)
-          .eq('is_allergen', true);
-        const allergens = (prefRows ?? []).map((p: { food_name: string }) => p.food_name);
+        // #arch L1 (step 1b): UNION the typed SAFETY SPINE with legacy food_preferences.
+        const [{ data: prefRows }, spineAllergensSnap] = await Promise.all([
+          supabaseAdmin.from('food_preferences').select('food_name')
+            .eq('user_id', userId).eq('is_allergen', true),
+          getActiveConstraints(userId, ['allergen', 'intolerance']),
+        ]);
+        const allergens = [...new Set([
+          ...(prefRows ?? []).map((p: { food_name: string }) => p.food_name),
+          ...spineAllergensSnap.map((c) => c.subject),
+        ].filter(Boolean))];
         if (allergens.length > 0) {
           const days = (draft.plan_data?.days as Array<Record<string, unknown>> | undefined) ?? [];
           const violations: string[] = [];
@@ -1555,12 +1566,15 @@ serve(async (req: Request) => {
       // stale workout draft promotes→activates→projects exercises that load the
       // injured joint. Mirrors the generation-time injury scan (filterExercisesByInjury).
       if (draft && expectedType === 'workout') {
-        const { data: injRows } = await supabaseAdmin
-          .from('health_events')
-          .select('description')
-          .eq('user_id', userId)
-          .eq('is_ongoing', true);
-        const injuredParts = extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? ''));
+        // #arch L1 (step 1b): typed body_parts from the SAFETY SPINE UNIONed with legacy free text.
+        const [{ data: injRows }, spineInjSnap] = await Promise.all([
+          supabaseAdmin.from('health_events').select('description')
+            .eq('user_id', userId).eq('is_ongoing', true),
+          getActiveConstraints(userId, ['injury']),
+        ]);
+        const injuredSet = new Set<string>(extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? '')));
+        for (const c of spineInjSnap) for (const bp of (c.body_parts ?? [])) if (bp) injuredSet.add(bp);
+        const injuredParts = [...injuredSet];
         if (injuredParts.length > 0) {
           const days = (draft.plan_data?.days as Array<Record<string, unknown>> | undefined) ?? [];
           const conflicts: string[] = [];
@@ -1872,11 +1886,18 @@ serve(async (req: Request) => {
     // a severe-peanut-allergy user got a peanut-butter snack recommendation,
     // and a doctor-forbidden-squat knee patient got a squat-heavy program.
     try {
-      const [{ data: allergenRows }, { data: injuryRows }] = await Promise.all([
+      // #arch L1 (step 1b): the output-side safety scan reads the typed SAFETY SPINE
+      // (user_constraints), UNIONed with the legacy stores so nothing un-migrated slips through.
+      const [{ data: allergenRows }, { data: injuryRows }, spineAllergens, spineInjuries] = await Promise.all([
         supabaseAdmin.from('food_preferences').select('food_name').eq('user_id', userId).eq('is_allergen', true),
         supabaseAdmin.from('health_events').select('description').eq('user_id', userId).eq('is_ongoing', true),
+        getActiveConstraints(userId, ['allergen', 'intolerance']),
+        getActiveConstraints(userId, ['injury']),
       ]);
-      const allergens = (allergenRows ?? []).map((r: { food_name: string }) => r.food_name);
+      const allergens = [...new Set([
+        ...(allergenRows ?? []).map((r: { food_name: string }) => r.food_name),
+        ...spineAllergens.map((c) => c.subject),
+      ].filter(Boolean))];
       // #live-L4: ALWAYS run the allergen scan (never skip on a blanket /alerj/ substring).
       // The model can write an "(alerjisi yoksa)" disclaimer while STILL recommending the
       // banned food — that conditional is dangerous, not a decline. Suppress the warning
@@ -1920,7 +1941,9 @@ serve(async (req: Request) => {
           }
         }
       }
-      const injuredParts = extractInjuredBodyParts((injuryRows ?? []).map((r: { description: string }) => r.description));
+      const injuredSet = new Set<string>(extractInjuredBodyParts((injuryRows ?? []).map((r: { description: string }) => r.description)));
+      for (const c of spineInjuries) for (const bp of (c.body_parts ?? [])) if (bp) injuredSet.add(bp);
+      const injuredParts = [...injuredSet];
       if (injuredParts.length > 0) {
         const conflicts = findInjuryConflictsInText(assistantMessage, injuredParts);
         if (conflicts.length > 0) {
@@ -3142,11 +3165,18 @@ async function executeActions(
 
           // Allergen check for register mode (Spec 12.7)
           if (items?.length) {
-            const { data: allergens } = await supabaseAdmin
-              .from('food_preferences')
-              .select('food_name, allergen_severity')
-              .eq('user_id', userId)
-              .eq('is_allergen', true);
+            // #arch L1 (step 1b): UNION the typed SAFETY SPINE with legacy food_preferences.
+            const [{ data: legacyAllg }, spineAllg] = await Promise.all([
+              supabaseAdmin.from('food_preferences').select('food_name, allergen_severity')
+                .eq('user_id', userId).eq('is_allergen', true),
+              getActiveConstraints(userId, ['allergen', 'intolerance']),
+            ]);
+            const allgMap = new Map<string, string | undefined>();
+            for (const a of (legacyAllg ?? []) as Array<{ food_name: string; allergen_severity?: string }>) {
+              if (a.food_name) allgMap.set(a.food_name, a.allergen_severity);
+            }
+            for (const c of spineAllg) if (c.subject) allgMap.set(c.subject, c.severity ?? undefined);
+            const allergens = [...allgMap.entries()].map(([food_name, allergen_severity]) => ({ food_name, allergen_severity }));
             if (allergens && allergens.length > 0) {
               // FIX (audit AI-ORC-03/HIGH): use checkAllergens (category→member expansion
               // via ALLERGEN_FOODS) instead of a naive substring match. The old `.includes`

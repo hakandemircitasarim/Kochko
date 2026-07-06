@@ -6,6 +6,7 @@
 import { supabaseAdmin } from './supabase-admin.ts';
 import { getEffectiveDateForUser } from './day-boundary.ts';
 import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText, ALLERGEN_FOODS } from './guardrails.ts';
+import { getActiveConstraints } from './constraints.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
 // (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
@@ -696,23 +697,33 @@ export async function getConflictContext(
   try {
     const alerts: string[] = [];
 
-    // Get allergens from food_preferences
+    // Get allergens — #arch L1 (step 1b): read the typed SAFETY SPINE (user_constraints) as the
+    // primary source, UNIONed with the legacy food_preferences.is_allergen rows. Coverage can only
+    // WIDEN, never regress: the store is backfilled + forward-synced, but if a legacy allergen was
+    // never migrated it still fires. A safety check must never depend on a single store being fresh.
     if (loggedFoodText) {
-      const { data: allergens } = await supabaseAdmin
-        .from('food_preferences').select('food_name, allergen_severity')
-        .eq('user_id', userId).eq('is_allergen', true);
+      const [{ data: legacyAllergens }, spineAllergens] = await Promise.all([
+        supabaseAdmin.from('food_preferences').select('food_name, allergen_severity')
+          .eq('user_id', userId).eq('is_allergen', true),
+        getActiveConstraints(userId, ['allergen', 'intolerance']),
+      ]);
+      // Merge both sources into one canonical name→severity map (spine wins on conflict).
+      const allergenMap = new Map<string, string>();
+      for (const a of (legacyAllergens ?? []) as { food_name: string; allergen_severity: string | null }[]) {
+        if (a.food_name) allergenMap.set(a.food_name.toLocaleLowerCase('tr'), a.allergen_severity ?? 'moderate');
+      }
+      for (const c of spineAllergens) {
+        if (c.subject) allergenMap.set(c.subject.toLocaleLowerCase('tr'), c.severity ?? 'moderate');
+      }
 
-      if (allergens && allergens.length > 0) {
+      if (allergenMap.size > 0) {
         const lower = loggedFoodText.toLocaleLowerCase('tr');
         // #arch S5: single source of the allergen→member-food dictionary (shared guardrails.ts).
-        // This inline copy had drifted to a subset (missing süt/fındık/balık keys); the shared one
-        // is a superset so switching only widens coverage.
-        for (const allergen of allergens) {
-          const aName = (allergen.food_name as string).toLocaleLowerCase('tr');
+        for (const [aName] of allergenMap) {
           const foods = ALLERGEN_FOODS[aName] ?? [aName];
           for (const food of foods) {
             if (lower.includes(food)) {
-              alerts.push(`ALERJEN CELISKISI: "${allergen.food_name}" alerjenin var ama "${food}" iceren yemek girdin. Intoleransin degisti mi sor.`);
+              alerts.push(`ALERJEN CELISKISI: "${aName}" alerjenin var ama "${food}" iceren yemek girdin. Intoleransin degisti mi sor.`);
             }
           }
         }
@@ -849,9 +860,15 @@ export async function getConflictContext(
     // while a back/knee injury is on file got no safety callout. Fire when a performed-exercise cue
     // co-occurs with a movement that loads an ongoing injured part.
     if (loggedFoodText && /(yaptım|yaptim|çalıştım|calistim|kaldırdım|kaldirdim|attım|attim|koştum|kostum|antrenman|squat|deadlift|bench|şınav|sinav|mekik|koşu|kosu)/.test(loggedFoodText.toLocaleLowerCase('tr'))) {
-      const { data: injRows } = await supabaseAdmin
-        .from('health_events').select('description').eq('user_id', userId).eq('is_ongoing', true);
-      const injuredParts = extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? ''));
+      // #arch L1 (step 1b): typed body_parts from the SAFETY SPINE (no per-request text extraction),
+      // UNIONed with the legacy free-text health_events extraction so nothing un-migrated is missed.
+      const [{ data: injRows }, spineInjuries] = await Promise.all([
+        supabaseAdmin.from('health_events').select('description').eq('user_id', userId).eq('is_ongoing', true),
+        getActiveConstraints(userId, ['injury']),
+      ]);
+      const injuredSet = new Set<string>(extractInjuredBodyParts((injRows ?? []).map((r: { description: string }) => r.description ?? '')));
+      for (const c of spineInjuries) for (const bp of (c.body_parts ?? [])) if (bp) injuredSet.add(bp);
+      const injuredParts = [...injuredSet];
       if (injuredParts.length > 0) {
         const conflicts = findInjuryConflictsInText(loggedFoodText, injuredParts);
         if (conflicts.length > 0) {
