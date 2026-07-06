@@ -27,7 +27,7 @@ import { validateChatRequest, checkPayloadSize } from '../shared/request-validat
 import { analyzeMessage, getRetrievalPlan } from '../shared/retrieval-planner.ts';
 import { buildContextFromPlan } from '../shared/context-builders.ts';
 import { selectModel } from '../shared/model-router.ts';
-import { BASE_SYSTEM_PROMPT, buildConfidenceNote } from './system-prompt.ts';
+import { BASE_SYSTEM_PROMPT, PHOTO_ANALYSIS_PROMPT, buildConfidenceNote } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions, type TaskMode } from './task-modes.ts';
 import {
   detectRepairIntent, handleUndo, undoTypeForPhrase, buildCorrectionContext,
@@ -593,6 +593,9 @@ serve(async (req: Request) => {
 
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
+      // #arch step 9 (token budget): the photo-analysis protocol (~320 tok) is only relevant when
+      // the turn carries an image — include it ONLY then, saving those tokens on every text turn.
+      image_base64 ? PHOTO_ANALYSIS_PROMPT : '',
       // Task card instructions come right after BASE so they are prominent — they override
       // default onboarding-mode ambition and keep the session narrowly scoped.
       taskCardCtx,

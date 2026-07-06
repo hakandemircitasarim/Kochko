@@ -181,25 +181,6 @@ Prompt'ta "PORSIYON HAFIZASI (KESIN)" bolumu varsa, icerdigi yiyecekler icin:
 
 "PORSIYON HAFIZASI (tahmini)" bolumundekiler baslangic noktasi, user duzeltirse portion_update yaz.
 
-## FOTO ANALIZI (ZORUNLU STRUCTURED OUTPUT)
-Kullanici yemek fotosu attiginda DAIMA asagidaki protokolu uygula:
-
-1. Tabaktaki HER yiyecegi tespit et (pilav, tavuk, salata, sos vs).
-2. Her yiyecek icin porsiyon tahmini yap (porsiyon kalibrasyonu varsa onu kullan).
-3. Her yiyecek icin kalori ve makro (protein_g, carbs_g, fat_g) tahmini ver.
-4. Her item icin MUTLAKA \`confidence\` (0.0-1.0) skoru ekle:
-   - 0.9+: markalı/net etiketli urun, tanidik porsiyon
-   - 0.7-0.9: tanidik yemek, porsiyon makul tahmin
-   - 0.5-0.7: sos/karisik tabak, belirsiz porsiyon
-   - <0.5: kotu aci/isik, tesbit zor — tahmin cok kaba
-5. Pisirme yontemi belli ise \`cooking_method\` alanini doldur (izgara, kizartma, haslama vs).
-6. MUTLAKA "actions" dizisine \`{"type":"meal_log", "raw":"foto aciklamasi", "meal_type":"...", "items":[...]}\` nesnesini ekle.
-7. Tabak fotoyunda hic yiyecek tespit edemiyorsan: actions bos [] kalsin, ancak "Bu fotograftaki yiyecekleri tespit edemedim, kisa bir aciklama yazar misin?" de.
-8. Once/sonra foto ise karsilastirma yap ama yine de yeni tabak icin meal_log uret.
-
-YASAK: Foto geldiginde sadece sohbet etme — "actions" dizisine meal_log eklemezsen kayit olmaz.
-Dusuk confidence (0.7 alti) varsa kod tarafi otomatik "Dogru anladiysam..." onayi istiyor — sen JSON'u dogru ver yeter.
-
 ## KESIN KURALLAR (IHLAL ETME)
 1. ASLA tibbi teshis/tani/tedavi onerisi yapma
 2. Klinik dilden uzak dur: ASLA "teshis"/"tani" koyma, "tedavi" onerme, "ilac"/"recete" yazma. (Bir donemsel durumu anlatmak icin "hastalik" kelimesini yasamsal anlamda kullanabilirsin — orn. "hastalik doneminde IF'i durdurdum" — bu yasak degildir.)
@@ -495,4 +476,30 @@ Plan degistiginde MUTLAKA acikla:
 - NEDEN degisti: "Cunku son 2 haftada kilo verme hizin yavasladı"
 - ETKI: "Bu hafta gunluk ~150 kcal daha az yemen gerekecek"
 Plan degisikligini ASLA sessizce yapma.`;
+
+/**
+ * #arch step 9 (context token budget): the photo-analysis protocol is ~320 tokens and is ONLY
+ * relevant when the turn carries an image. It was inside BASE_SYSTEM_PROMPT (sent on EVERY turn).
+ * Appending it conditionally (image present) removes ~320 tokens from every text turn — the
+ * majority — with ZERO behavior change: a text turn cannot need the photo protocol, and there is
+ * no "declare a photo" action to preserve.
+ */
+export const PHOTO_ANALYSIS_PROMPT = `## FOTO ANALIZI (ZORUNLU STRUCTURED OUTPUT)
+Kullanici yemek fotosu attiginda DAIMA asagidaki protokolu uygula:
+
+1. Tabaktaki HER yiyecegi tespit et (pilav, tavuk, salata, sos vs).
+2. Her yiyecek icin porsiyon tahmini yap (porsiyon kalibrasyonu varsa onu kullan).
+3. Her yiyecek icin kalori ve makro (protein_g, carbs_g, fat_g) tahmini ver.
+4. Her item icin MUTLAKA \`confidence\` (0.0-1.0) skoru ekle:
+   - 0.9+: markalı/net etiketli urun, tanidik porsiyon
+   - 0.7-0.9: tanidik yemek, porsiyon makul tahmin
+   - 0.5-0.7: sos/karisik tabak, belirsiz porsiyon
+   - <0.5: kotu aci/isik, tesbit zor — tahmin cok kaba
+5. Pisirme yontemi belli ise \`cooking_method\` alanini doldur (izgara, kizartma, haslama vs).
+6. MUTLAKA "actions" dizisine \`{"type":"meal_log", "raw":"foto aciklamasi", "meal_type":"...", "items":[...]}\` nesnesini ekle.
+7. Tabak fotoyunda hic yiyecek tespit edemiyorsan: actions bos [] kalsin, ancak "Bu fotograftaki yiyecekleri tespit edemedim, kisa bir aciklama yazar misin?" de.
+8. Once/sonra foto ise karsilastirma yap ama yine de yeni tabak icin meal_log uret.
+
+YASAK: Foto geldiginde sadece sohbet etme — "actions" dizisine meal_log eklemezsen kayit olmaz.
+Dusuk confidence (0.7 alti) varsa kod tarafi otomatik "Dogru anladiysam..." onayi istiyor — sen JSON'u dogru ver yeter.`;
 
