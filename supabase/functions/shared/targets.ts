@@ -70,6 +70,26 @@ export function computeCalorieBand(opts: { targetCalories: number; gender?: stri
 }
 
 /**
+ * THE single MAINTENANCE-band owner. Maintenance is a distinct operation from the deficit/surplus
+ * band: it sits ≈TDEE with a maintenance-appropriate spread (rest tdee−100..+150, training
+ * tdee..+350) so a goal-reacher stops cutting without swinging. This exact formula was copy-pasted
+ * into ai-chat maintenance_start AND ai-proactive's goal-reached transition — two identical writes
+ * in two files, the classic "change one, the other drifts" hazard. One owner here now.
+ * dailyTargetMin/Max are what the day's daily_plans row uses (the rest band).
+ */
+export function computeMaintenanceBand(tdee: number): {
+  restMin: number; restMax: number; trainingMin: number; trainingMax: number; weeklyBudget: number;
+  dailyTargetMin: number; dailyTargetMax: number;
+} {
+  const restMin = Math.round(tdee - 100);
+  const restMax = Math.round(tdee + 150);
+  const trainingMin = Math.round(tdee);
+  const trainingMax = Math.round(tdee + 350);
+  const weeklyBudget = Math.round(((restMin + restMax) / 2) * 7);
+  return { restMin, restMax, trainingMin, trainingMax, weeklyBudget, dailyTargetMin: restMin, dailyTargetMax: restMax };
+}
+
+/**
  * Resolve the day's target calories: timeline-derived when a goal timeline exists, else the
  * fixed-fraction fallback. Keeps one definition shared by ai-proactive + ai-chat re-cuts.
  */

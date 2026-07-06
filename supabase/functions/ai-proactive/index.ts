@@ -17,7 +17,7 @@ import { isIFCompatible, getSeasonalContext, type PeriodicState } from '../share
 import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../shared/service-contexts.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { projectDailyPlanRows, type ProjectionProfile } from '../shared/plan-projection.ts';
-import { resolveTargetCalories, computeCalorieBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
+import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
 
 /**
@@ -1128,19 +1128,18 @@ serve(async (req: Request) => {
                   // unreachable (buried behind adjustAdaptiveDifficulty early-returns), so the band
                   // stayed on the cut and the goal-reacher kept under-eating. Set it here directly.
                   const tdee = (mProf?.tdee_calculated as number | null) ?? (((mProf?.calorie_range_rest_max as number | null) ?? 1800) + 500);
-                  const maintMin = Math.round(tdee - 100);
-                  const maintMax = Math.round(tdee + 150);
+                  const mb = computeMaintenanceBand(tdee); // #arch step 10: single maintenance-band owner (was a copy of ai-chat maintenance_start)
                   await supabaseAdmin.from('profiles').update({
                     maintenance_mode: true, maintenance_start_date: today,
                     periodic_state: 'maintenance', periodic_state_start: today,
-                    calorie_range_rest_min: maintMin, calorie_range_rest_max: maintMax,
-                    calorie_range_training_min: Math.round(tdee), calorie_range_training_max: Math.round(tdee + 350),
-                    weekly_calorie_budget: Math.round(((maintMin + maintMax) / 2) * 7),
+                    calorie_range_rest_min: mb.restMin, calorie_range_rest_max: mb.restMax,
+                    calorie_range_training_min: mb.trainingMin, calorie_range_training_max: mb.trainingMax,
+                    weekly_calorie_budget: mb.weeklyBudget,
                     updated_at: new Date().toISOString(),
                   }).eq('id', profile.id);
                   // Push today's daily_plan to maintenance immediately.
                   await supabaseAdmin.from('daily_plans').update({
-                    calorie_target_min: maintMin, calorie_target_max: maintMax,
+                    calorie_target_min: mb.dailyTargetMin, calorie_target_max: mb.dailyTargetMax,
                   }).eq('user_id', profile.id).eq('date', today);
                   // #journey HIGH: convert the active goal to 'maintain' so the NEXT ai-plan /
                   // chat plan stops instructing a deficit toward an already-reached target.
@@ -1157,7 +1156,7 @@ serve(async (req: Request) => {
                       title: 'HEDEFE ULAŞTIN!', description: 'Tebrikler, hedef kilona ulaştın! Artık bakım dönemi.',
                     });
                   }
-                  maintenanceInfo += ` | BAKIM MODU OTOMATIK AKTIF (kalori bakima cikarildi ${maintMin}-${maintMax}, hedef=maintain, goal_reached yazildi)`;
+                  maintenanceInfo += ` | BAKIM MODU OTOMATIK AKTIF (kalori bakima cikarildi ${mb.dailyTargetMin}-${mb.dailyTargetMax}, hedef=maintain, goal_reached yazildi)`;
                 }
               } catch (e) { console.error('[auto-maintenance] failed', (e as Error).message); }
             }

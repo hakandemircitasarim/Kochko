@@ -36,7 +36,7 @@ import {
 } from '../shared/repair-handler.ts';
 import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot } from '../shared/service-contexts.ts';
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
-import { resolveTargetCalories, computeCalorieBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
+import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
 import { extractLifeEvent } from '../shared/life-events.ts';
 import { syncConstraint, deactivateConstraints, syncInjuryFromText, resolveInjuryConstraints, getActiveConstraints } from '../shared/constraints.ts';
@@ -4569,34 +4569,31 @@ async function executeActions(
           // aggressive cut and the goal-reacher kept losing into an under-eating spiral. Move the
           // band to MAINTENANCE (≈TDEE) so the cut stops immediately. Reverse-diet philosophy for a
           // general weight-loss user = eat at maintenance; no gradual ramp needed to stop harm.
-          const maintMin = Math.round(tdee - 100);
-          const maintMax = Math.round(tdee + 150);
-          const maintTrainMin = Math.round(tdee);
-          const maintTrainMax = Math.round(tdee + 350);
+          const mb = computeMaintenanceBand(tdee); // #arch step 10: single maintenance-band owner
 
           await supabaseAdmin.from('profiles').update({
             maintenance_mode: true,
             maintenance_start_date: today,
             periodic_state: 'maintenance',
             periodic_state_start: today,
-            calorie_range_rest_min: maintMin,
-            calorie_range_rest_max: maintMax,
-            calorie_range_training_min: maintTrainMin,
-            calorie_range_training_max: maintTrainMax,
-            weekly_calorie_budget: Math.round(((maintMin + maintMax) / 2) * 7),
+            calorie_range_rest_min: mb.restMin,
+            calorie_range_rest_max: mb.restMax,
+            calorie_range_training_min: mb.trainingMin,
+            calorie_range_training_max: mb.trainingMax,
+            weekly_calorie_budget: mb.weeklyBudget,
             updated_at: new Date().toISOString(),
           }).eq('id', userId);
 
           // Reflect on today's plan immediately (mirror mini_cut_start) so the dashboard shows it now.
           await supabaseAdmin.from('daily_plans').update({
-            calorie_target_min: maintMin, calorie_target_max: maintMax,
+            calorie_target_min: mb.dailyTargetMin, calorie_target_max: mb.dailyTargetMax,
           }).eq('user_id', userId).eq('date', today);
 
           await updateLayer2(userId, {
-            coaching_notes: `[${today}] Bakim modu basladi. Kalori bakim seviyesine cikarildi (~${Math.round((maintMin + maintMax) / 2)} kcal, TDEE ${tdee}). Tolerans ±1.5kg.`,
+            coaching_notes: `[${today}] Bakim modu basladi. Kalori bakim seviyesine cikarildi (~${Math.round((mb.dailyTargetMin + mb.dailyTargetMax) / 2)} kcal, TDEE ${tdee}). Tolerans ±1.5kg.`,
           }).then(() => {}, () => {});
 
-          feedback.push(`Bakim modu aktif — kalori hedefin bakim seviyesine yukseltildi (${maintMin}-${maintMax} kcal). Artik kesimde degilsin, tolerans bandi ±1.5kg.`);
+          feedback.push(`Bakim modu aktif — kalori hedefin bakim seviyesine yukseltildi (${mb.dailyTargetMin}-${mb.dailyTargetMax} kcal). Artik kesimde degilsin, tolerans bandi ±1.5kg.`);
           break;
         }
         case 'mini_cut_start': {
