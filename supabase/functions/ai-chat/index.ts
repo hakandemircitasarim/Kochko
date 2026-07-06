@@ -17,6 +17,7 @@ import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shar
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
+import { computeItemNutrition } from '../shared/food-reference.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit, reserveRateLimitSlot } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -3284,16 +3285,32 @@ async function executeActions(
             const safeItems = ((validateMealParse({ items: mealItems }).corrected?.items) as typeof mealItems | undefined) ?? mealItems;
             const clampInt = (v: number, max: number) => Math.min(max, Math.max(0, Math.round(Number.isFinite(v) ? v : 0)));
             const clampDec = (v: number, max: number) => Math.min(max, Math.max(0, Math.round((Number.isFinite(v) ? v : 0) * 10) / 10));
-            const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(
-              safeItems.map(i => ({
+            // #arch step 7: GROUND each item against the deterministic food reference. Every logged
+            // meal's macros were hallucinated fresh by the model, and those per-item errors
+            // accumulate into the deficit ledger the whole coaching arc optimises. When the food
+            // resolves, code computes kcal=grams×per100g from canonical data and OVERRIDES the
+            // model's numbers (data_source='reference'); unresolved items keep the model estimate
+            // (data_source='ai_estimate') so their uncertainty stays visible rather than laundered.
+            let groundedCount = 0;
+            const rows = safeItems.map(i => {
+              const grounded = computeItemNutrition(i.name ?? '', i.portion ?? '');
+              if (grounded) groundedCount++;
+              const cal = grounded ? grounded.calories : i.calories;
+              const pro = grounded ? grounded.protein_g : i.protein_g;
+              const carb = grounded ? grounded.carbs_g : i.carbs_g;
+              const fat = grounded ? grounded.fat_g : i.fat_g;
+              return {
                 meal_log_id: log.id, food_name: i.name ?? 'Yiyecek', portion_text: i.portion ?? '1 porsiyon',
-                calories: clampInt(i.calories * multiplier, 32767),
-                protein_g: clampDec(i.protein_g, 9999.9),
-                carbs_g: clampDec(i.carbs_g, 9999.9),
-                fat_g: clampDec(i.fat_g * multiplier, 9999.9),
-                data_source: 'ai_estimate',
-              }))
-            );
+                // Cooking multiplier still applies on top of the canonical base (fried/steamed…).
+                calories: clampInt(cal * multiplier, 32767),
+                protein_g: clampDec(pro, 9999.9),
+                carbs_g: clampDec(carb, 9999.9),
+                fat_g: clampDec(fat * multiplier, 9999.9),
+                data_source: grounded ? 'reference' : 'ai_estimate',
+              };
+            });
+            const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(rows);
+            if (groundedCount > 0) console.log(`[meal_log] grounded ${groundedCount}/${rows.length} items against food-reference`);
             // NOTE: cooking_method is NOT a column on meal_log_items — its effect
             // is already folded into calories/fat via `multiplier` above. Writing
             // it 42703'd and silently dropped EVERY item (zero-calorie meals).
