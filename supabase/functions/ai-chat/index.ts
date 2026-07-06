@@ -27,7 +27,7 @@ import { validateChatRequest, checkPayloadSize } from '../shared/request-validat
 import { analyzeMessage, getRetrievalPlan } from '../shared/retrieval-planner.ts';
 import { buildContextFromPlan } from '../shared/context-builders.ts';
 import { selectModel } from '../shared/model-router.ts';
-import { BASE_SYSTEM_PROMPT, PHOTO_ANALYSIS_PROMPT, buildConfidenceNote } from './system-prompt.ts';
+import { BASE_SYSTEM_PROMPT, PHOTO_ANALYSIS_PROMPT, PERIODIC_STATE_PROMPT, CYCLE_PROMPT, RETURN_FLOW_PROMPT, buildConfidenceNote } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions, type TaskMode } from './task-modes.ts';
 import {
   detectRepairIntent, handleUndo, undoTypeForPhrase, buildCorrectionContext,
@@ -305,7 +305,7 @@ serve(async (req: Request) => {
 
     // Check onboarding status
     const { data: profile } = await supabaseAdmin
-      .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg, home_timezone, active_timezone, day_boundary_hour')
+      .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg, home_timezone, active_timezone, day_boundary_hour, periodic_state, menstrual_tracking')
       .eq('id', userId).maybeSingle();
     const isOnboarding = !profile?.onboarding_completed;
 
@@ -593,9 +593,13 @@ serve(async (req: Request) => {
 
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
-      // #arch step 9 (token budget): the photo-analysis protocol (~320 tok) is only relevant when
-      // the turn carries an image — include it ONLY then, saving those tokens on every text turn.
-      image_base64 ? PHOTO_ANALYSIS_PROMPT : '',
+      // #arch step 9 (token budget): situational guidance blocks are included ONLY when their
+      // signal is present, instead of shipping ~870 dead tokens on every ordinary turn. Each gate
+      // is the EXACT condition under which the block is actionable, so behavior is unchanged:
+      image_base64 ? PHOTO_ANALYSIS_PROMPT : '',                                   // photo protocol — only with an image (~320 tok)
+      profile?.periodic_state ? PERIODIC_STATE_PROMPT : '',                         // per-state detail — only with an active period (~550 tok)
+      (profile?.gender === 'female' && profile?.menstrual_tracking) ? CYCLE_PROMPT : '', // cycle coaching — only when tracking (~180 tok)
+      serviceCtx.returnFlow ? RETURN_FLOW_PROMPT : '',                              // return-flow tone — only when returning (~140 tok)
       // Task card instructions come right after BASE so they are prominent — they override
       // default onboarding-mode ambition and keep the session narrowly scoped.
       taskCardCtx,
