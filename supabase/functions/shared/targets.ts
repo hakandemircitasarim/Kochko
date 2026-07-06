@@ -12,6 +12,8 @@
  * kcal/day (negative = eat below TDEE for loss, positive = above for gain), or null when there is
  * no usable timeline (caller then falls back to the fixed fraction). 7700 kcal ≈ 1 kg body mass.
  */
+import { getCalorieFloor, getMaxRateKgPerWeek, KCAL_PER_KG, BAND_RANGE_PCT, REST_DAY_KCAL_REDUCTION } from './clinical-rules.ts';
+
 export function timelineDeficitKcal(opts: {
   goalType: string;
   currentWeight: number;
@@ -27,9 +29,9 @@ export function timelineDeficitKcal(opts: {
 
   const remainingKg = Math.abs(currentWeight - targetWeight);
   const remainingWeeks = Math.max(1, targetWeeks - Math.max(0, weeksElapsed));
-  const maxRate = isLose ? 1.0 : 0.5;          // safe ceiling: 1.0 kg/wk loss, 0.5 kg/wk gain
+  const maxRate = getMaxRateKgPerWeek(goalType); // clinical ceiling: 1.0 kg/wk loss, 0.5 kg/wk gain
   const weeklyKg = Math.min(remainingKg / remainingWeeks, maxRate);
-  const dailyKcal = (weeklyKg * 7700) / 7;
+  const dailyKcal = (weeklyKg * KCAL_PER_KG.value) / 7;
   return Math.round(isLose ? -dailyKcal : dailyKcal);
 }
 
@@ -49,20 +51,20 @@ export function tdeeFrom(bmr: number, activityLevel: string | null | undefined, 
 /**
  * THE single calorie-band shaper. Given a resolved daily target-calorie number, produce the full
  * training/rest band + weekly budget. Previously this exact formula (10% range width, 250 kcal
- * rest reduction, gender floor 1200/1400, 4 training + 3 rest weekly budget) was copy-pasted into
+ * rest reduction, gender floor, 4 training + 3 rest weekly budget) was copy-pasted into
  * ai-chat recalculateTDEEIfNeeded, ai-proactive roll-forward, and src/lib/tdee.ts — the "MUST
  * mirror" comments were the symptom. One owner here; the client mirror keeps a parity test.
  */
 export function computeCalorieBand(opts: { targetCalories: number; gender?: string | null }): {
   trainingMin: number; trainingMax: number; restMin: number; restMax: number; weeklyBudget: number;
 } {
-  const floor = opts.gender === 'female' ? 1200 : 1400;
+  const floor = getCalorieFloor(opts.gender);
   const target = opts.targetCalories;
-  const rangeWidth = Math.round(target * 0.10);
+  const rangeWidth = Math.round(target * BAND_RANGE_PCT.value);
   const trainingMin = Math.max(target - Math.round(rangeWidth / 2), floor);
   const trainingMax = Math.max(target + Math.round(rangeWidth / 2), trainingMin);
-  const restMin = Math.max(trainingMin - 250, floor);
-  const restMax = Math.max(trainingMax - 250, restMin);
+  const restMin = Math.max(trainingMin - REST_DAY_KCAL_REDUCTION.value, floor);
+  const restMax = Math.max(trainingMax - REST_DAY_KCAL_REDUCTION.value, restMin);
   const weeklyBudget = 4 * Math.round((trainingMin + trainingMax) / 2) + 3 * Math.round((restMin + restMax) / 2);
   return { trainingMin, trainingMax, restMin, restMax, weeklyBudget };
 }

@@ -138,8 +138,10 @@ export function calculateTargets(input: {
   const restMin = trainingMin - restDayReduction;
   const restMax = trainingMax - restDayReduction;
 
-  // Apply absolute floors (Spec 12.1) — gender-based: female 1200, male 1400
-  const absoluteFloor = input.gender === 'female' ? 1200 : 1400;
+  // Apply absolute floors (Spec 12.1) — gender-based: female 1200, male 1500.
+  // Mirrors the single edge-side owner supabase/functions/shared/clinical-rules.ts (CALORIE_FLOOR).
+  // Male raised 1400→1500 to match the cited NICE/EFSA unsupervised-diet floor.
+  const absoluteFloor = input.gender === 'female' ? 1200 : 1500;
   const safeTrainingMin = Math.max(trainingMin, absoluteFloor);
   const safeRestMin = Math.max(restMin, absoluteFloor);
   // The floor only lifts the *min* side; clamp each max up to its floored min so

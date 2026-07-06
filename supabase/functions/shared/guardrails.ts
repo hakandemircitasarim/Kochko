@@ -6,11 +6,11 @@
  * Code-based enforcement, not prompt-dependent.
  */
 
-// Spec 12.1: Absolute calorie floors
-const CALORIE_FLOOR = { male: 1400, female: 1200 };
-
-// Spec 12.1: Max weekly loss rate
-const MAX_WEEKLY_LOSS_KG = 1.0;
+// Spec 12.1: Absolute calorie floors + max weekly loss rate — now sourced from the single
+// versioned, cited owner (clinical-rules.ts) so guardrails, targets, and the client no longer
+// keep three drifting copies of these safety constants.
+import { getCalorieFloor, MAX_RATE_KG_PER_WEEK } from './clinical-rules.ts';
+const MAX_WEEKLY_LOSS_KG = MAX_RATE_KG_PER_WEEK.lose.value;
 
 // Spec 12.2: Max workout duration
 const MAX_WORKOUT_DURATION_MIN = 120;
@@ -220,7 +220,7 @@ export function validateCalories(
   calories: number,
   gender: string | null
 ): { valid: boolean; corrected: number; message: string } {
-  const floor = gender === 'female' ? CALORIE_FLOOR.female : CALORIE_FLOOR.male;
+  const floor = getCalorieFloor(gender);
   if (calories < floor) {
     return {
       valid: false,
