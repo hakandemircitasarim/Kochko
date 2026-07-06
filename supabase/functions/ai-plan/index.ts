@@ -14,6 +14,8 @@ import { updateLayer2 } from '../shared/memory.ts';
 // (dietary_restriction/digestive_issues/hormone_conditions/disliked_exercises) so plans honor them.
 import { buildContextFromPlan } from '../shared/context-builders.ts';
 import { getActiveConstraints } from '../shared/constraints.ts';
+import { writeTurnLog } from '../shared/turn-log.ts';
+import type { UsageReceipt } from '../shared/openai.ts';
 import type { RetrievalPlan } from '../shared/retrieval-planner.ts';
 
 // A 'full' retrieval preset for plan generation: all L1 focuses, full L2, 14d of logs, no chat.
@@ -571,13 +573,16 @@ serve(async (req: Request) => {
 
     const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${goalContext}${goalWorkoutContext}${sleepWarning}${strengthContext}${deloadContext}${personaContext}${cycleContext}${equipmentContext}${injuryContext}${diffContext}${plateauContext}${savedRecipesContext}${rejectionLine}\n\nBugunku plani olustur.`;
 
+    let dailyRc: UsageReceipt | null = null;
     const plan = await chatCompletion<Record<string, unknown>>(
       [
         { role: 'system', content: PLAN_SYSTEM },
         { role: 'user', content: prompt },
       ],
-      { temperature: TEMPERATURE.plan, maxTokens: 3000, jsonMode: true }
+      { temperature: TEMPERATURE.plan, maxTokens: 3000, jsonMode: true, onReceipt: (r) => { dailyRc = r; } }
     );
+    // #arch step 5: plan generation is the priciest LLM call — log its cost/model/latency too.
+    writeTurnLog(userId, 'ai-plan', 'plan_daily', dailyRc).then(() => {}, () => {});
 
     // Structured output validation (Spec 5.29)
     const validated = validatePlanOutput(plan);
@@ -948,13 +953,16 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
 
   const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${strengthContext}${savedRecipesContext}${modLine}\n\nHafta baslangici: ${weekStart}. 7 gunluk menu ve alisveris listesi olustur.`;
 
+  let weeklyRc: UsageReceipt | null = null;
   const weeklyPlan = await chatCompletion<Record<string, unknown>>(
     [
       { role: 'system', content: WEEKLY_PLAN_SYSTEM },
       { role: 'user', content: prompt },
     ],
-    { temperature: TEMPERATURE.plan, maxTokens: 5000, jsonMode: true }
+    { temperature: TEMPERATURE.plan, maxTokens: 5000, jsonMode: true, onReceipt: (r) => { weeklyRc = r; } }
   );
+  // #arch step 5: log the weekly plan generation cost/model/latency.
+  writeTurnLog(userId, 'ai-plan', 'plan_weekly', weeklyRc).then(() => {}, () => {});
 
   // Allergen check on weekly plan meals
   const days = weeklyPlan.days as { meals: { name: string }[] }[] | undefined;
