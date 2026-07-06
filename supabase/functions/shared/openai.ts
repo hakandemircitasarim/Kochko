@@ -59,6 +59,25 @@ interface ChatMessage {
   content: string | unknown[];
 }
 
+/**
+ * #arch step 5: the observability receipt every LLM turn can emit. Previously token usage, the
+ * ACTUAL served model, latency, and the fallback reason were all discarded (fallbacks logged only
+ * to a vanishing console.error) — so cost, silent model-downgrades, and reliability were invisible.
+ * chatCompletion fills one of these on success and hands it to options.onReceipt; ai_turn_log
+ * persists it fail-loud.
+ */
+export interface UsageReceipt {
+  modelRequested: string;   // what the caller asked for
+  modelServed: string;      // what actually produced the content (may be the fallback)
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  latencyMs: number;        // wall-clock across ALL retries/fallbacks
+  finishReason: string;
+  fallbackReason: string | null; // why we downgraded/retried, if we did
+  attempts: number;         // how many upstream calls this turn cost
+}
+
 interface CompletionOptions {
   model?: string;
   temperature?: number;
@@ -69,9 +88,20 @@ interface CompletionOptions {
   // graceful fallback (treat a non-envelope response as plain prose) rather than throwing.
   jsonRaw?: boolean;
   stream?: boolean;
+  // #arch step 5: optional receipt sink. When set, chatCompletion calls it once on success with a
+  // UsageReceipt spanning all retries/fallbacks. Non-breaking — callers that don't set it are
+  // unaffected. Carried across the recursive fallback calls so the receipt reports the whole turn.
+  onReceipt?: (r: UsageReceipt) => void;
   // FIX (audit AI-MDL-03) internal recursion flag: true once the current model
   // has already been retried once for a transient failure. Callers never set this.
   _sameModelRetried?: boolean;
+  // #arch step 5 internal (never set by callers): threaded through recursion so the final
+  // successful call can report total latency, the originally-requested model, why we fell back,
+  // and the attempt count.
+  _startedAt?: number;
+  _modelRequested?: string;
+  _fallbackReason?: string;
+  _attempt?: number;
 }
 
 // FIX (audit AI-MDL-03) Resolve the backoff delay (ms) before a transient retry.
@@ -105,6 +135,10 @@ export async function chatCompletion<T = string>(
   options?: CompletionOptions
 ): Promise<T> {
   const model = options?.model ?? MODELS.primary;
+  // #arch step 5: turn-spanning observability state (survives the recursive fallback calls).
+  const startedAt = options?._startedAt ?? Date.now();
+  const modelRequested = options?._modelRequested ?? model;
+  const attempt = (options?._attempt ?? 0) + 1;
   let effectiveMessages = messages;
 
   if (options?.jsonMode || options?.jsonRaw) {
@@ -155,7 +189,7 @@ export async function chatCompletion<T = string>(
     const isAbort = (fetchErr as Error)?.name === 'AbortError';
     if (isAbort && model !== MODELS.fallback) {
       console.error(`OpenAI ${model} timed out after ${OPENAI_TIMEOUT_MS}ms, falling back to ${MODELS.fallback}`);
-      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false });
+      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false, _startedAt: startedAt, _modelRequested: modelRequested, _attempt: attempt, _fallbackReason: 'timeout' });
     }
     if (isAbort) {
       throw new Error(`OpenAI error (${model}): istek zaman aşımına uğradı (timeout)`);
@@ -174,7 +208,7 @@ export async function chatCompletion<T = string>(
       const delayMs = resolveBackoffMs(response, false);
       console.error(`OpenAI ${model} failed (${response.status}), retrying same model after ${delayMs}ms: ${err.substring(0, 200)}`);
       await new Promise((r) => setTimeout(r, delayMs));
-      return chatCompletion<T>(messages, { ...options, model, _sameModelRetried: true });
+      return chatCompletion<T>(messages, { ...options, model, _sameModelRetried: true, _startedAt: startedAt, _modelRequested: modelRequested, _attempt: attempt, _fallbackReason: `http_${response.status}_retry` });
     }
     // Same-model retry also failed (or it was the first failure on the fallback path):
     // downgrade to the cheap fallback model, again after a bounded backoff (Spec 5.25).
@@ -183,7 +217,7 @@ export async function chatCompletion<T = string>(
       console.error(`OpenAI ${model} failed again (${response.status}), falling back to ${MODELS.fallback} after ${delayMs}ms: ${err.substring(0, 200)}`);
       await new Promise((r) => setTimeout(r, delayMs));
       // Reset the per-model retry flag so the fallback model also gets its own single retry.
-      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false });
+      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false, _startedAt: startedAt, _modelRequested: modelRequested, _attempt: attempt, _fallbackReason: `http_${response.status}_fallback` });
     }
     throw new Error(`OpenAI error (${model}): ${response.status} - ${err}`);
   }
@@ -203,7 +237,7 @@ export async function chatCompletion<T = string>(
     if (options?.jsonMode || options?.jsonRaw) {
       const bumped = (options?.maxTokens ?? 2000) * 2;
       if (bumped <= 16000 && (options?.maxTokens ?? 2000) < bumped) {
-        return chatCompletion<T>(messages, { ...options, maxTokens: bumped });
+        return chatCompletion<T>(messages, { ...options, maxTokens: bumped, _startedAt: startedAt, _modelRequested: modelRequested, _attempt: attempt, _fallbackReason: 'truncation_retry' });
       }
       throw new Error('OpenAI output truncated (finish_reason=length): increase maxTokens');
     }
@@ -218,9 +252,27 @@ export async function chatCompletion<T = string>(
     if (model !== MODELS.fallback) {
       // FIX (audit AI-MDL-03) reset the per-model HTTP-retry flag so the fallback
       // model still gets its own single transient-retry budget when reached this way.
-      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false });
+      return chatCompletion<T>(messages, { ...options, model: MODELS.fallback, _sameModelRetried: false, _startedAt: startedAt, _modelRequested: modelRequested, _attempt: attempt, _fallbackReason: `empty_${finish}` });
     }
     throw new Error(`OpenAI returned empty content (finish_reason=${finish}${refusal ? `, refusal=${refusal}` : ''})`);
+  }
+
+  // #arch step 5: emit the turn receipt on success (spans all retries/fallbacks above).
+  if (options?.onReceipt) {
+    const usage = (data.usage ?? {}) as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    try {
+      options.onReceipt({
+        modelRequested,
+        modelServed: model,
+        promptTokens: usage.prompt_tokens ?? 0,
+        completionTokens: usage.completion_tokens ?? 0,
+        totalTokens: usage.total_tokens ?? ((usage.prompt_tokens ?? 0) + (usage.completion_tokens ?? 0)),
+        latencyMs: Date.now() - startedAt,
+        finishReason: finishReason ?? 'stop',
+        fallbackReason: options._fallbackReason ?? null,
+        attempts: attempt,
+      });
+    } catch (_e) { /* receipt sink must never break the turn */ }
   }
 
   if (options?.jsonMode) {

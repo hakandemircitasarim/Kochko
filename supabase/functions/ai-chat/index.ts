@@ -14,6 +14,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
+import type { UsageReceipt } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
@@ -668,9 +669,11 @@ serve(async (req: Request) => {
     // coach's prose PLUS any control blocks (<simulation>/<plan_snapshot>/<reasoning>/…), so the
     // client + history (which scrape those tags from the message text) are UNCHANGED. Falls back
     // to the legacy prose+regex path whenever the model returns non-envelope content.
+    // #arch step 5: capture the turn's usage receipt (model served, tokens, latency, fallback).
+    let turnReceipt: UsageReceipt | null = null;
     const rawModelOut = await chatCompletion<string>(
       gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[],
-      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, jsonRaw: true }
+      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, jsonRaw: true, onReceipt: (r) => { turnReceipt = r; } }
     );
     let assistantMessage: string;
     let actions: Record<string, unknown>[];
@@ -2050,6 +2053,33 @@ serve(async (req: Request) => {
     // row's conversation). Clear the handle so a throw in the post-store steps below does NOT
     // make the catch release an already-answered, legitimately-counted message.
     reservedUserMessageId = null;
+
+    // #arch step 5: write the append-only turn ledger (fail-loud, never breaks the turn). Captures
+    // the served model / tokens / latency / fallback (from the openai.ts receipt) plus the code-side
+    // guard verdict, so cost, silent model-downgrades, and safety-net firings are finally observable.
+    try {
+      const guardVerdict = edMediumReferral ? 'ed_referral'
+        : /alerjin?\/intolerans|alerjisi kayıtlı|alerjin\/intoleransın/i.test(assistantMessage) ? 'allergen_warned'
+        : /sakatlığın nedeniyle|sakatlığın bu hareketi/i.test(assistantMessage) ? 'injury_warned'
+        : 'clean';
+      const rc = turnReceipt as UsageReceipt | null;
+      const { error: ledgerErr } = await supabaseAdmin.from('ai_turn_log').insert({
+        user_id: userId,
+        function_name: 'ai-chat',
+        system_mode: taskMode,
+        model_requested: rc?.modelRequested ?? modelSelection.model,
+        model_served: rc?.modelServed ?? modelSelection.model,
+        prompt_tokens: rc?.promptTokens ?? 0,
+        completion_tokens: rc?.completionTokens ?? 0,
+        total_tokens: rc?.totalTokens ?? 0,
+        latency_ms: rc?.latencyMs ?? 0,
+        finish_reason: rc?.finishReason ?? null,
+        fallback_reason: rc?.fallbackReason ?? null,
+        attempts: rc?.attempts ?? 1,
+        guard_verdict: guardVerdict,
+      });
+      if (ledgerErr) console.error('[ai_turn_log] insert failed:', ledgerErr.message);
+    } catch (e) { console.error('[ai_turn_log] write threw:', (e as Error).message); }
 
     // Post-response: detect habit completions from user message (service 1)
     if (message && serviceCtx.habits.activeHabits.length > 0) {
