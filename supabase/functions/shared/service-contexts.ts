@@ -5,7 +5,7 @@
  */
 import { supabaseAdmin } from './supabase-admin.ts';
 import { getEffectiveDateForUser } from './day-boundary.ts';
-import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText } from './guardrails.ts';
+import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText, ALLERGEN_FOODS } from './guardrails.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
 // (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
@@ -704,21 +704,9 @@ export async function getConflictContext(
 
       if (allergens && allergens.length > 0) {
         const lower = loggedFoodText.toLocaleLowerCase('tr');
-        const ALLERGEN_FOODS: Record<string, string[]> = {
-          // 'un' (flour) removed: a bare 2-char token substring-matches Turkish '-un'
-          // genitive endings (same bug fixed in guardrails.ts ALLERGEN_FOODS).
-          gluten: ['makarna', 'ekmek', 'borek', 'pasta', 'pizza', 'bulgur', 'simit', 'pogaca'],
-          laktoz: ['sut', 'süt', 'peynir', 'yogurt', 'yoğurt', 'dondurma', 'krema'],
-          fistik: ['fistik', 'fıstık'],
-          yumurta: ['yumurta', 'omlet', 'menemen'],
-          balik: ['balik', 'balık', 'somon', 'levrek', 'hamsi'],
-          // Seafood/shellfish category expansion — same coverage as guardrails.ts (#R2-12).
-          'deniz urunleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengec', 'istiridye', 'balik', 'somon', 'levrek', 'hamsi'],
-          'deniz ürünleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengeç', 'yengec', 'istiridye', 'balık', 'balik', 'somon', 'levrek', 'hamsi'],
-          'deniz mahsulleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengec', 'istiridye', 'balik', 'somon', 'levrek', 'hamsi'],
-          kabuklu: ['karides', 'midye', 'istakoz', 'yengeç', 'yengec', 'istiridye', 'kalamar'],
-        };
-
+        // #arch S5: single source of the allergen→member-food dictionary (shared guardrails.ts).
+        // This inline copy had drifted to a subset (missing süt/fındık/balık keys); the shared one
+        // is a superset so switching only widens coverage.
         for (const allergen of allergens) {
           const aName = (allergen.food_name as string).toLocaleLowerCase('tr');
           const foods = ALLERGEN_FOODS[aName] ?? [aName];
