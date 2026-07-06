@@ -8,7 +8,23 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
-import { buildFullContext, updateLayer2 } from '../shared/memory.ts';
+import { updateLayer2 } from '../shared/memory.ts';
+// #arch S1: ai-plan now uses the SAME context builder as chat (context-builders.ts) instead of a
+// second divergent one in memory.ts. context-builders surfaces the fuller constraint set
+// (dietary_restriction/digestive_issues/hormone_conditions/disliked_exercises) so plans honor them.
+import { buildContextFromPlan } from '../shared/context-builders.ts';
+import type { RetrievalPlan } from '../shared/retrieval-planner.ts';
+
+// A 'full' retrieval preset for plan generation: all L1 focuses, full L2, 14d of logs, no chat.
+const PLAN_GEN_RETRIEVAL: RetrievalPlan = {
+  layer1: 'full',
+  layer1Focus: ['nutrition', 'training', 'health', 'demographics'],
+  layer2: 'full',
+  layer2Focus: ['patterns', 'persona', 'preferences', 'strength', 'habits'],
+  layer3: { daysBack: 14, scope: ['meals', 'workouts', 'metrics', 'reports'], detailLevel: 'summary' },
+  layer4MaxMessages: 0,
+  contextMeta: { confidenceLevel: 'medium', missingDataTypes: [], daysWithCompleteData: 0, isGreetingFastPath: false },
+};
 import { checkAllergens, validateCalories, sanitizeText, checkWeightVelocity, validateExercise, MAX_WORKOUT_DURATION_MIN, extractInjuredBodyParts, filterExercisesByInjury, filterExercisesByEquipment } from '../shared/guardrails.ts';
 import { validatePlanOutput } from '../shared/output-validator.ts';
 import { getPeriodicCalorieAdjustment, isIFCompatible, buildPeriodicPlanContext, getSeasonalContext } from '../shared/periodic-config.ts';
@@ -180,7 +196,7 @@ serve(async (req: Request) => {
     }
 
     // Build context
-    const ctx = await buildFullContext(userId);
+    const ctx = await buildContextFromPlan(userId, PLAN_GEN_RETRIEVAL);
 
     // Yesterday's plan for diff context (Spec 7.1: "Plan degistiyse NE DEGISTI + NEDEN aciklansın")
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
@@ -829,7 +845,7 @@ serve(async (req: Request) => {
  * Generate a 7-day weekly plan with shopping list.
  */
 async function generateWeeklyPlan(userId: string, today: string, modificationRequest?: string): Promise<Record<string, unknown>> {
-  const ctx = await buildFullContext(userId);
+  const ctx = await buildContextFromPlan(userId, PLAN_GEN_RETRIEVAL);
 
   // Get allergens
   const { data: prefs } = await supabaseAdmin
