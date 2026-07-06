@@ -8,6 +8,8 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
+import type { UsageReceipt } from '../shared/openai.ts';
+import { writeTurnLog } from '../shared/turn-log.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
 import { updateLayer2 } from '../shared/memory.ts';
@@ -209,10 +211,12 @@ ${(() => {
   return `HEDEF: ${g.goal_type} -> ${tw}kg | Simdi: ${cw}kg | ${kgLeft.toFixed(1)}kg kaldi | ${weeksElapsed}/${targetWeeks} hafta | Gereken tempo: ${pace}kg/hafta`;
 })()}`;
 
+  let rc: UsageReceipt | null = null;
   const report = await chatCompletion<Record<string, unknown>>(
     [{ role: 'system', content: DAILY_REPORT_SYSTEM }, { role: 'user', content: prompt }],
-    { temperature: TEMPERATURE.analyst, maxTokens: 1500, jsonMode: true }
+    { temperature: TEMPERATURE.analyst, maxTokens: 1500, jsonMode: true, onReceipt: (r) => { rc = r; } }
   );
+  writeTurnLog(userId, 'ai-report', 'report_daily', rc).then(() => {}, () => {});
 
   // Sanitize
   if (typeof report.full_report === 'string') report.full_report = sanitizeText(report.full_report).clean;
@@ -334,10 +338,12 @@ Raporlar: ${reports.map((r: { date: string; compliance_score: number; deviation_
 Metrikler: ${metrics.map((m: { date: string; weight_kg: number | null; sleep_hours: number | null }) => `${m.date}: ${m.weight_kg ?? '-'}kg, uyku ${m.sleep_hours ?? '-'}sa`).join('\n') || 'veri yok'}
 Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) | gecen hafta ${prevWeekAlcTotal}kcal`;
 
+  let rc: UsageReceipt | null = null;
   const report = await chatCompletion<Record<string, unknown>>(
     [{ role: 'system', content: WEEKLY_REPORT_SYSTEM }, { role: 'user', content: prompt }],
-    { temperature: TEMPERATURE.analyst, maxTokens: 2000, jsonMode: true }
+    { temperature: TEMPERATURE.analyst, maxTokens: 2000, jsonMode: true, onReceipt: (r) => { rc = r; } }
   );
+  writeTurnLog(userId, 'ai-report', 'report_weekly', rc).then(() => {}, () => {});
 
   // Default the NOT NULL next_week_strategy before the upsert so an omitted key
   // can't violate the constraint.
@@ -454,10 +460,12 @@ Sapma Dagilimi: ${JSON.stringify(devDist)}
 Haftalik Raporlar: ${weeklyReports.map((wr: { week_start: string; avg_compliance: number; next_week_strategy: string }) => `${wr.week_start}: uyum %${wr.avg_compliance}, strateji: ${wr.next_week_strategy ?? '-'}`).join('\n') || 'rapor yok'}
 Gunluk Uyum: ${dailyReports.map((r: { date: string; compliance_score: number }) => `${r.date}: %${r.compliance_score}`).join(', ') || 'veri yok'}`;
 
+  let rc: UsageReceipt | null = null;
   const report = await chatCompletion<Record<string, unknown>>(
     [{ role: 'system', content: MONTHLY_REPORT_SYSTEM }, { role: 'user', content: prompt }],
-    { temperature: TEMPERATURE.analyst, maxTokens: 2500, jsonMode: true }
+    { temperature: TEMPERATURE.analyst, maxTokens: 2500, jsonMode: true, onReceipt: (r) => { rc = r; } }
   );
+  writeTurnLog(userId, 'ai-report', 'report_monthly', rc).then(() => {}, () => {});
 
   // Sanitize text fields
   if (typeof report.monthly_summary === 'string') report.monthly_summary = sanitizeText(report.monthly_summary).clean;

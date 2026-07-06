@@ -8,6 +8,8 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
+import type { UsageReceipt } from '../shared/openai.ts';
+import { writeTurnLog } from '../shared/turn-log.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
 import { denyIfNotCron, cronHeaders } from '../shared/cron-auth.ts';
@@ -16,6 +18,25 @@ import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../share
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { projectDailyPlanRows, type ProjectionProfile } from '../shared/plan-projection.ts';
 import { resolveTargetCalories, computeCalorieBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
+import { getCalorieFloor } from '../shared/clinical-rules.ts';
+
+/**
+ * Start of the user's LOCAL calendar day expressed as a UTC ISO instant — for windowing a
+ * created_at (timestamptz) anti-spam cap. Using raw UTC midnight let a wide-offset user's daily
+ * cap reset mid-day (e.g. UTC-8: UTC midnight = 16:00 local), so they could receive ~2x the
+ * intended pushes/nudges. Falls back to a rolling 24h window when tz is missing/invalid — both
+ * are immune to the UTC-rollover gaming.
+ */
+function localDayStartIso(tz: string | null | undefined, now: Date): string {
+  try {
+    if (!tz) throw new Error('no tz');
+    const local = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+    const offsetMs = now.getTime() - local.getTime();
+    return new Date(Date.UTC(local.getFullYear(), local.getMonth(), local.getDate()) + offsetMs).toISOString();
+  } catch {
+    return new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  }
+}
 
 const NUDGE_PROMPT = `Sen Kochko kocusun. Kullanicinin durumunu degerlendir.
 SADECE gercekten gerekli oldugunda mesaj uret. Spam YAPMA.
@@ -750,7 +771,12 @@ serve(async (req: Request) => {
       if (localH < 7 || localH > 10) continue;
 
       try {
-        const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        // #arch (audit day-boundary): daily_plans.date is keyed on the user's EFFECTIVE day, and
+        // this reset gates on the user's local morning — so "yesterday" must be the user's local
+        // yesterday, not raw UTC yesterday (wrong calendar day for non-UTC+3 users).
+        const mvdTz = (profile.active_timezone ?? profile.home_timezone) as string | null;
+        const mvdDbh = (profile as { day_boundary_hour?: number | null }).day_boundary_hour ?? null;
+        const yesterdayStr = shiftDateString(getEffectiveDateForUser(mvdTz, mvdDbh, now), -1);
         const { data: yMvd } = await supabaseAdmin
           .from('daily_plans')
           .select('id')
@@ -937,11 +963,15 @@ serve(async (req: Request) => {
 
       // Max messages per day check — fetch the rows (not just a count) so the
       // LLM context and the post-LLM dupe guard can see what was already sent.
+      // #arch (audit day-boundary): count "sent today" against the user's LOCAL day start (the
+      // loop already gates on userLocalHour), not raw UTC midnight — else the cap resets mid-day
+      // for wide-offset users and the dailyLimit is effectively doubled.
+      const nudgeTz = (profile.active_timezone ?? profile.home_timezone) as string | null;
       const { data: sentTodayRows } = await supabaseAdmin
         .from('coaching_messages')
         .select('content, trigger_type')
         .eq('user_id', profile.id)
-        .gte('created_at', `${today}T00:00:00`);
+        .gte('created_at', localDayStartIso(nudgeTz, now));
       const sentToday = (sentTodayRows ?? []) as { content: string; trigger_type: string | null }[];
       const dailyLimit = (profile.notification_prefs?.dailyLimit as number | undefined) ?? 5;
       if (sentToday.length >= dailyLimit) continue;
@@ -1365,21 +1395,27 @@ ${await (async () => {
       triggers.push(`TETIK: ALISKANLIK ILERLEME - "${activeHabit.habit}" ${activeHabit.streak} gundur suruyor (%80+), sonraki aliskanlik onerisi yap`);
     }
   }
+  // #arch (audit day-boundary): daily_metrics/daily_reports.date are keyed on the user's EFFECTIVE
+  // day and these triggers frame on the user's local morning — resolve today/yesterday per user
+  // instead of raw UTC, else offset users read the wrong calendar day.
+  const recTz = (profile as { active_timezone?: string | null; home_timezone?: string | null }).active_timezone
+    ?? (profile as { home_timezone?: string | null }).home_timezone ?? null;
+  const recDbh = (profile as { day_boundary_hour?: number | null }).day_boundary_hour ?? null;
+  const effToday = getEffectiveDateForUser(recTz, recDbh, now);
+  const effYesterday = shiftDateString(effToday, -1);
+
   // Recovery trigger: high soreness + low sleep
   const { data: todayMetrics } = await supabaseAdmin
     .from('daily_metrics').select('muscle_soreness, sleep_hours')
-    .eq('user_id', profile.id).eq('date', today).maybeSingle();
+    .eq('user_id', profile.id).eq('date', effToday).maybeSingle();
   if (todayMetrics?.muscle_soreness === 'severe' && ((todayMetrics?.sleep_hours as number) ?? 8) < 6) {
     triggers.push('TETIK: DINLENME GEREKLI - Kas agrisi yuksek ve uyku yetersiz, bugun hafif aktivite veya dinlenme oner');
   }
 
   // Binge recovery: yesterday compliance very low
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
   const { data: yesterdayReport } = await supabaseAdmin
     .from('daily_reports').select('compliance_score')
-    .eq('user_id', profile.id).eq('date', yesterdayStr).maybeSingle();
+    .eq('user_id', profile.id).eq('date', effYesterday).maybeSingle();
   if (yesterdayReport && (yesterdayReport.compliance_score as number) < 30) {
     triggers.push('TETIK: DESTEK GUNU - Dun zorlandi, bugun destekleyici ve yargisiz ol');
   }
@@ -1505,10 +1541,13 @@ ${sentTodayContext}`;
 
       interface NudgeResult { send: boolean; message?: string; trigger?: string; priority?: string; }
 
+      let nudgeRc: UsageReceipt | null = null;
       const result = await chatCompletion<NudgeResult>(
         [{ role: 'system', content: NUDGE_PROMPT }, { role: 'user', content: context }],
-        { temperature: TEMPERATURE.coaching, maxTokens: 200, jsonMode: true }
+        { temperature: TEMPERATURE.coaching, maxTokens: 200, jsonMode: true, onReceipt: (r) => { nudgeRc = r; } }
       );
+      // #arch step 5 (audit ledger-gap): the per-user proactive LLM call was completely untracked.
+      writeTurnLog(profile.id, 'ai-proactive', 'nudge', nudgeRc).then(() => {}, () => {});
 
       if (result.send && result.message) {
         const { clean } = sanitizeText(result.message);
@@ -1823,7 +1862,7 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
   const rMax = profile.calorie_range_rest_max as number;
   const proteinPerKg = (profile.protein_per_kg as number) ?? 1.8;
   const weightKg = (profile.weight_kg as number) ?? 70;
-  const minCal = profile.gender === 'female' ? 1200 : 1400;
+  const minCal = getCalorieFloor(profile.gender as string | null); // owner floor (male 1500)
 
   // Tighten = narrow range (increase min, decrease max); Widen = opposite
   const newTMin = Math.max(minCal, Math.round(tMin + tMin * factor));
@@ -1997,13 +2036,15 @@ async function sendPushNotification(
   // Daily push cap: dailyLimit counts pushes actually delivered today (rows
   // with push_sent=true), so loops that bypass the main nudge gate can't spam.
   const dailyLimit = (prefs.dailyLimit as number | undefined) ?? 5;
-  const todayUtc = new Date().toISOString().split('T')[0];
+  // #arch (audit day-boundary): window the cap on the user's LOCAL day start, not raw UTC midnight
+  // — otherwise wide-offset users' cap resets mid-day and they get ~2x the pushes.
+  const pushTz = (profile.active_timezone ?? profile.home_timezone) as string | null;
   const { count: pushedToday } = await supabaseAdmin
     .from('coaching_messages')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('push_sent', true)
-    .gte('created_at', `${todayUtc}T00:00:00`);
+    .gte('created_at', localDayStartIso(pushTz, new Date()));
   if ((pushedToday ?? 0) >= dailyLimit) return false;
 
   // Check quiet hours in the user's local timezone (not server UTC)

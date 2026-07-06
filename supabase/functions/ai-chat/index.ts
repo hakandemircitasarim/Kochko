@@ -20,6 +20,7 @@ import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
 import { computeItemNutrition } from '../shared/food-reference.ts';
 import { isMemoryMirrorIntent, buildMemoryMirror } from '../shared/memory-mirror.ts';
+import { writeTurnLog } from '../shared/turn-log.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit, reserveRateLimitSlot } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -36,6 +37,7 @@ import {
 import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot } from '../shared/service-contexts.ts';
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
 import { resolveTargetCalories, computeCalorieBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
+import { getCalorieFloor } from '../shared/clinical-rules.ts';
 import { extractLifeEvent } from '../shared/life-events.ts';
 import { syncConstraint, deactivateConstraints, syncInjuryFromText, resolveInjuryConstraints, getActiveConstraints } from '../shared/constraints.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
@@ -797,7 +799,7 @@ serve(async (req: Request) => {
       && !actions.some(a => a.type === 'meal_log')
       && effectiveMode !== 'simulation') {
       console.warn('[meal_safety_net] meal intent, no meal_log action — attempting forced extraction', { mode: effectiveMode });
-      const forcedAction = await forceMealLogAction(message, modelSelection.model);
+      const forcedAction = await forceMealLogAction(userId, message, modelSelection.model);
       if (forcedAction) {
         actions.push(forcedAction);
         console.warn('[meal_safety_net] forced meal_log injected', { meal_type: forcedAction.meal_type, items: (forcedAction.items as unknown[] | undefined)?.length ?? 0 });
@@ -823,7 +825,7 @@ serve(async (req: Request) => {
       && !actions.some(a => a.type === 'workout_log')
       && effectiveMode !== 'simulation') { // #organism: capture the workout in any mode, not just register
       console.warn('[workout_safety_net] workout intent, no workout_log action — attempting forced extraction');
-      const forcedWorkout = await forceWorkoutLogAction(message, modelSelection.model);
+      const forcedWorkout = await forceWorkoutLogAction(userId, message, modelSelection.model);
       if (forcedWorkout) {
         actions.push(forcedWorkout);
         console.warn('[workout_safety_net] forced workout_log injected');
@@ -1217,7 +1219,7 @@ serve(async (req: Request) => {
       && !actions.some(a => a.type === 'profile_update' && ((a as Record<string, unknown>).goal_type || (a as Record<string, unknown>).target_weight_kg))
       && !actions.some(a => a.type === 'goal_suggestion')) {
       console.warn('[goal_safety_net] goal intent, no goal action — attempting forced extraction');
-      const forcedGoal = await forceGoalAction(message, modelSelection.model);
+      const forcedGoal = await forceGoalAction(userId, message, modelSelection.model);
       if (forcedGoal) {
         actions.push(forcedGoal);
         console.warn('[goal_safety_net] forced goal profile_update injected', { goal_type: forcedGoal.goal_type });
@@ -1319,7 +1321,7 @@ serve(async (req: Request) => {
             ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
             { role: 'user', content: 'Onceki yanitindaki <plan_snapshot> blogu eksik/gecersiz/yarim idi. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> blogu uret: "days" dizisinde 7 GUN (day_index 0-6) eksiksiz, diyet ise "targets" objesi dolu. "..." / "devami benzer" / kisaltma KULLANMA, markdown (```) KULLANMA, blok disina HICBIR sey yazma, trailing virgul birakma.' },
           ],
-          { model: modelSelection.model, temperature: 0.2, maxTokens: 8000 },
+          { model: modelSelection.model, temperature: 0.2, maxTokens: 8000, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
         );
         const retry = extractPlanSnapshot(forcedRaw);
         if (snapshotUsable(retry.snapshot)) { planSnapshot = retry.snapshot; snapshotParseError = undefined; }
@@ -1373,7 +1375,7 @@ serve(async (req: Request) => {
                   ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
                   { role: 'user', content: `Onceki plan kullanicinin ALERJENINI iceriyordu: ${excludeList}. Bu KESIN YASAK. Bu besinleri ve TUM turevlerini (deniz urunleri ise karides/midye/kalamar/somon/levrek/balik dahil) plandan TAMAMEN cikar, yerine guvenli alternatif koy. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> uret: 7 gun (day_index 0-6) eksiksiz, "targets" dolu, HICBIR gunde ${excludeList} veya turevi olmasin. "...", kisaltma, markdown KULLANMA.` },
                 ],
-                { model: modelSelection.model, temperature: 0.2, maxTokens: 8000 },
+                { model: modelSelection.model, temperature: 0.2, maxTokens: 8000, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
               );
               const retry = extractPlanSnapshot(forcedRaw);
               if (retry.snapshot && snapshotUsable(retry.snapshot) && scanViolations(retry.snapshot).length === 0) {
@@ -1430,7 +1432,7 @@ serve(async (req: Request) => {
                   ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
                   { role: 'user', content: `Onceki program kullanicinin SAKATLIGINI zorlayan egzersizler iceriyordu (etkilenen bolge: ${partsTr}). Bu KESIN YASAK. O bolgeyi yukleyen tum hareketleri (ornegin diz icin squat/lunge/leg press/kosu/ziplama; bel icin deadlift/good morning) plandan TAMAMEN cikar, yerine guvenli alternatif (izolasyon, yuzme, ust vucut, hafif kardiyo) koy. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> uret: 7 gun (day_index 0-6), her aktif gunde exercises dolu, HICBIR gunde sakat bolgeyi yukleyen hareket olmasin. "...", kisaltma, markdown KULLANMA.` },
                 ],
-                { model: modelSelection.model, temperature: 0.2, maxTokens: 8000 },
+                { model: modelSelection.model, temperature: 0.2, maxTokens: 8000, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
               );
               const retry = extractPlanSnapshot(forcedRaw);
               if (retry.snapshot && snapshotUsable(retry.snapshot) && scanInjury(retry.snapshot).length === 0) {
@@ -1905,6 +1907,11 @@ serve(async (req: Request) => {
     // a severe-peanut-allergy user got a peanut-butter snack recommendation,
     // and a doctor-forbidden-squat knee patient got a squat-heavy program.
     try {
+      // #arch (audit output-scan-gap): the plan <reasoning> block is stripped from the reply and
+      // returned separately as plan_reasoning, so a food/exercise rationale there (e.g. "peanut
+      // butter for protein" to a peanut-allergic user) reached the user UN-scanned. Scan the
+      // reasoning too — detection runs over the combined text; warnings still append to the reply.
+      const scanText = planReasoning ? `${assistantMessage}\n${planReasoning}` : assistantMessage;
       // #arch L1 (step 1b): the output-side safety scan reads the typed SAFETY SPINE
       // (user_constraints), UNIONed with the legacy stores so nothing un-migrated slips through.
       const [{ data: allergenRows }, { data: injuryRows }, spineAllergens, spineInjuries] = await Promise.all([
@@ -1924,9 +1931,9 @@ serve(async (req: Request) => {
       // (önermiyorum/kaçın/yerine...). "yoksa" and bare "alerji" do NOT count as a decline.
       const DECLINE = /(önermiyor|onermiyor|öneremem|oneremem|kaçın|kacin|içermez|icermez|yerine|uygun değil|uygun degil|uzak dur|tüketme|tuketme|çıkar|cikar|eklemedim|kullanmad|hariç|haric|kullanma)/;
       if (allergens.length > 0) {
-        const scan = checkAllergens(assistantMessage, allergens);
+        const scan = checkAllergens(scanText, allergens);
         if (!scan.passed) {
-          const lowerReply = assistantMessage.toLocaleLowerCase('tr');
+          const lowerReply = scanText.toLocaleLowerCase('tr');
           // Resolve displayed name via the SAME category expansion checkAllergens uses so a
           // category allergen ("deniz ürünleri") triggered by a member food ("somon") is
           // named correctly instead of the literal "alerjen" (#R1-L5).
@@ -1964,11 +1971,11 @@ serve(async (req: Request) => {
       for (const c of spineInjuries) for (const bp of (c.body_parts ?? [])) if (bp) injuredSet.add(bp);
       const injuredParts = [...injuredSet];
       if (injuredParts.length > 0) {
-        const conflicts = findInjuryConflictsInText(assistantMessage, injuredParts);
+        const conflicts = findInjuryConflictsInText(scanText, injuredParts);
         if (conflicts.length > 0) {
           // Same logic: warn unless EVERY conflicting movement sits next to a decline/
           // alternative phrase. A blanket "sakatl" mention is not a decline (#live-L4).
-          const lowerReply = assistantMessage.toLocaleLowerCase('tr');
+          const lowerReply = scanText.toLocaleLowerCase('tr');
           const INJ_DECLINE = /(yerine|kaçın|kacin|önermiyor|onermiyor|öneremem|yapma|alternatif|uzak dur|uygun değil|uygun degil|çıkar|cikar|atla)/;
           // FIX (audit AI/HIGH — same first-occurrence false-negative as allergens): a movement
           // is "addressed" only if EVERY occurrence sits next to a decline/alternative phrase.
@@ -2379,6 +2386,7 @@ function looksLikeMealReport(msg: string): boolean {
  * bare JSON array with no <actions> wrapper at all.
  */
 async function forceMealLogAction(
+  userId: string,
   message: string,
   model: string,
 ): Promise<Record<string, unknown> | null> {
@@ -2397,13 +2405,15 @@ async function forceMealLogAction(
 
   let raw: string;
   try {
+    let rc: UsageReceipt | null = null;
     raw = await chatCompletion<string>(
       [
         { role: 'system', content: systemInstruction },
         { role: 'user', content: message },
       ],
-      { model, temperature: 0.2, maxTokens: 600 },
+      { model, temperature: 0.2, maxTokens: 600, onReceipt: (r) => { rc = r; } },
     );
+    writeTurnLog(userId, 'ai-chat', 'force_meal_extract', rc).then(() => {}, () => {});
   } catch (e) {
     console.error('[forceMealLogAction] chatCompletion failed:', (e as Error).message);
     return null;
@@ -2456,6 +2466,7 @@ function looksLikeWorkoutReport(msg: string): boolean {
 
 /** Forced single-purpose extraction for workouts (mirror of forceMealLogAction). */
 async function forceWorkoutLogAction(
+  userId: string,
   message: string,
   model: string,
 ): Promise<Record<string, unknown> | null> {
@@ -2474,13 +2485,15 @@ async function forceWorkoutLogAction(
 
   let raw: string;
   try {
+    let rc: UsageReceipt | null = null;
     raw = await chatCompletion<string>(
       [
         { role: 'system', content: systemInstruction },
         { role: 'user', content: message },
       ],
-      { model, temperature: 0.2, maxTokens: 500 },
+      { model, temperature: 0.2, maxTokens: 500, onReceipt: (r) => { rc = r; } },
     );
+    writeTurnLog(userId, 'ai-chat', 'force_workout_extract', rc).then(() => {}, () => {});
   } catch (e) {
     console.error('[forceWorkoutLogAction] chatCompletion failed:', (e as Error).message);
     return null;
@@ -2507,6 +2520,7 @@ function looksLikeGoalIntent(msg: string): boolean {
 
 /** Forced extraction of goal fields into a profile_update action. */
 async function forceGoalAction(
+  userId: string,
   message: string,
   model: string,
 ): Promise<Record<string, unknown> | null> {
@@ -2522,13 +2536,15 @@ async function forceGoalAction(
 
   let raw: string;
   try {
+    let rc: UsageReceipt | null = null;
     raw = await chatCompletion<string>(
       [
         { role: 'system', content: systemInstruction },
         { role: 'user', content: message },
       ],
-      { model, temperature: 0.1, maxTokens: 200 },
+      { model, temperature: 0.1, maxTokens: 200, onReceipt: (r) => { rc = r; } },
     );
+    writeTurnLog(userId, 'ai-chat', 'force_goal_extract', rc).then(() => {}, () => {});
   } catch (e) {
     console.error('[forceGoalAction] chatCompletion failed:', (e as Error).message);
     return null;
@@ -3813,6 +3829,15 @@ async function executeActions(
             if (!pfErr && typeof updates.dietary_restriction === 'string' && updates.dietary_restriction) {
               await syncConstraint(userId, { kind: 'dietary', subject: updates.dietary_restriction as string, note: updates.dietary_restriction as string });
             }
+            // #arch L1 (audit spine-drift): mirror declared medical conditions (digestive — reflü/
+            // IBS/gastrit; hormonal — PCOS/tiroid/insülin direnci) into the safety spine as
+            // kind='condition' so guardrails and the MemoryMirror see them, not just profiles.
+            if (!pfErr && typeof updates.digestive_issues === 'string' && updates.digestive_issues) {
+              await syncConstraint(userId, { kind: 'condition', subject: updates.digestive_issues as string, note: updates.digestive_issues as string });
+            }
+            if (!pfErr && typeof updates.hormone_conditions === 'string' && updates.hormone_conditions) {
+              await syncConstraint(userId, { kind: 'condition', subject: updates.hormone_conditions as string, note: updates.hormone_conditions as string });
+            }
             // #R3/journey: activity_level is usually set on a LATER onboarding card than the
             // identity card that first computed TDEE — checkOnboardingCompletion only computes
             // TDEE once (when onboarding flips), so a later activity change left calorie targets
@@ -4217,7 +4242,7 @@ async function executeActions(
             const perDayDip = Math.round(excessKcal / 2);
             const { data: profileFloor } = await supabaseAdmin
               .from('profiles').select('gender').eq('id', userId).maybeSingle();
-            const floor = profileFloor?.gender === 'female' ? 1200 : 1400;
+            const floor = getCalorieFloor(profileFloor?.gender as string | null); // owner floor (male 1500)
 
             for (let offset = 1; offset <= 2; offset++) {
               const targetDate = shiftDateString(today, offset);
@@ -5129,29 +5154,23 @@ async function checkOnboardingCompletion(userId: string) {
     .eq('id', userId).maybeSingle();
 
   if (data && !data.onboarding_completed && data.height_cm && data.weight_kg && data.birth_year && data.gender) {
-    // Calculate TDEE and save targets (Spec 2.4, T1.18)
+    // Calculate TDEE and save targets (Spec 2.4, T1.18). #arch: route through the single owners
+    // (bmrMifflin/tdeeFrom/computeCalorieBand) instead of re-inlining — this path previously kept a
+    // drifting copy with the STALE male floor 1400 (the owner + its sibling recalculateTDEEIfNeeded
+    // use getCalorieFloor=1500). computeCalorieBand also does the min<max clamp + weekly budget.
     const age = new Date().getFullYear() - data.birth_year;
-    const base = 10 * data.weight_kg + 6.25 * data.height_cm - 5 * age;
-    const bmr = data.gender === 'male' ? base + 5 : base - 161;
-    const multipliers: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 };
-    const tdee = Math.round(bmr * (multipliers[data.activity_level ?? 'moderate'] ?? 1.55));
+    const tdee = tdeeFrom(bmrMifflin(data.weight_kg, data.height_cm, age, data.gender), data.activity_level);
 
     // Goal-aware target (profiles has no goal_type — read the active goal row).
     const { data: goalRow } = await supabaseAdmin.from('goals').select('goal_type').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle();
     const targetCal = Math.round(tdee * goalCalorieFactor(goalRow?.goal_type as string | undefined));
-    const rangeWidth = Math.round(targetCal * 0.10);
-    const trainingMin = Math.max(targetCal - Math.round(rangeWidth / 2), data.gender === 'female' ? 1200 : 1400);
-    const trainingMax = targetCal + Math.round(rangeWidth / 2);
-    const restMin = Math.max(trainingMin - 250, data.gender === 'female' ? 1200 : 1400);
-    const restMax = trainingMax - 250;
-    // The 1200/1400 floor lifts the MINs but not the maxes, so a low-TDEE user
-    // (small/older/female/sedentary) could get restMin > restMax — an inverted
-    // range that corrupts the weekly budget. Clamp each max up to its min, like
-    // src/lib/tdee.ts calculateTargets does (#R4-2).
-    const safeTrainingMax = Math.max(trainingMax, trainingMin);
-    const safeRestMax = Math.max(restMax, restMin);
+    const band = computeCalorieBand({ targetCalories: targetCal, gender: data.gender });
+    const trainingMin = band.trainingMin;
+    const safeTrainingMax = band.trainingMax;
+    const restMin = band.restMin;
+    const safeRestMax = band.restMax;
     const waterTarget = Math.round(data.weight_kg * 0.033 * 10) / 10;
-    const weeklyBudget = 4 * Math.round((trainingMin + safeTrainingMax) / 2) + 3 * Math.round((restMin + safeRestMax) / 2);
+    const weeklyBudget = band.weeklyBudget;
 
     // NOTE: protein_target_g is NOT a profiles column (it lives on daily_plans);
     // protein intensity is captured by protein_per_kg. Macro split columns are

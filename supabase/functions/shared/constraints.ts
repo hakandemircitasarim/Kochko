@@ -69,6 +69,13 @@ export async function deactivateConstraints(userId: string, kind: ConstraintKind
 
 /** For an injury described in free text, sync typed constraints for each extracted body part. */
 export async function syncInjuryFromText(userId: string, description: string, eventType: 'injury' | 'surgery' | 'condition' | 'medication' = 'injury'): Promise<void> {
+  // Conditions and medications are NAMED states, not body LOCATIONS — never run them through the
+  // injury body-part extractor. (Bug: "hipotiroidi" substring-matched the English 'hip' keyword and
+  // synced a phantom 'hip' body-part condition.) Store the named condition as the subject instead.
+  if (eventType === 'condition' || eventType === 'medication') {
+    await syncConstraint(userId, { kind: eventType, subject: description, note: description, body_parts: [] });
+    return;
+  }
   const parts = extractInjuredBodyParts([description]);
   if (parts.length === 0) {
     await syncConstraint(userId, { kind: eventType, subject: eventType, note: description, body_parts: [] });

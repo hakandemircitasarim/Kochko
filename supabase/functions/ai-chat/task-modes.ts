@@ -399,7 +399,7 @@ Client user_approved: true sinyali ile gelir. Kisa bir kapanis cumlesi yaz:
 - Alerjen icerene plan asla oner. food_preferences.is_allergen listesine her zaman uy.
 - Butce disi malzeme (premium et, ithal urun) budget_level=low ise KULLANMA.
 - Supplement onerme — bu beslenme plani, supplement ayri konu.
-- Minimum kalori sinirlari: kadin 1200 kcal, erkek 1400 kcal altina DUSME.
+- Minimum kalori sinirlari: kadin 1200 kcal, erkek 1500 kcal altina DUSME.
 - Haftalik -1 kg'dan fazla agresif deficit uretme.`;
 
     case 'daily_log':
