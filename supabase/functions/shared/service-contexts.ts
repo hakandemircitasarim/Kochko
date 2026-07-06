@@ -947,7 +947,7 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
  */
 export async function getSituationalSnapshot(userId: string, effectiveToday?: string): Promise<string> {
   try {
-    const [profRes, goalRes, metricsRes, reportsRes, sumRes, eventRes] = await Promise.all([
+    const [profRes, goalRes, metricsRes, reportsRes, sumRes, eventRes, planRes] = await Promise.all([
       supabaseAdmin.from('profiles').select('weight_kg, calorie_range_rest_min, calorie_range_rest_max, onboarding_completed').eq('id', userId).maybeSingle(),
       supabaseAdmin.from('goals').select('goal_type, start_weight_kg, target_weight_kg, target_weeks, created_at, phase_label').eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1),
       supabaseAdmin.from('daily_metrics').select('date, weight_kg, sleep_hours, water_liters').eq('user_id', userId).order('date', { ascending: false }).limit(21),
@@ -955,6 +955,9 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
       supabaseAdmin.from('ai_summary').select('behavioral_patterns').eq('user_id', userId).maybeSingle(),
       // #organism: the nearest upcoming motivating life event → carried on EVERY turn as a countdown.
       supabaseAdmin.from('life_events').select('title, event_type, event_date').eq('user_id', userId).eq('is_active', true).gte('event_date', (effectiveToday ?? new Date().toISOString().split('T')[0])).order('event_date', { ascending: true }).limit(1),
+      // #arch S1: the CHAT coach was structurally plan-blind — it never read daily_plans, so it
+      // couldn't reference today's actual plan when the user asks "bugün ne yesem?". Load it here.
+      supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, focus_message, plan_type').eq('user_id', userId).eq('date', (effectiveToday ?? new Date().toISOString().split('T')[0])).order('version', { ascending: false }).limit(1).maybeSingle(),
     ]);
     const p = profRes.data;
     if (!p || !p.onboarding_completed) return '';
@@ -977,6 +980,13 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
       const pct = total > 0.5 ? Math.min(100, Math.max(0, Math.round((Math.abs(sw - cw) / total) * 100))) : null;
       const phase = (g.phase_label as string | null) ? `${g.phase_label} · ` : '';
       lines.push(`YOLCULUK: ${phase}${weeksElapsed}. hafta/${targetWeeks} | ${sw.toFixed(1)}→${cw.toFixed(1)}kg (hedef ${tw}kg${remaining >= 0.1 ? `, ${remaining.toFixed(1)}kg kaldı` : ' — hedefte!'}${pct != null ? `, %${pct}` : ''}) | yön: ${isLose ? 'veriyor' : 'alıyor'}`);
+    }
+
+    // #arch S1: today's active plan — the coach can now coach AGAINST its own plan.
+    const plan = planRes?.data as { calorie_target_min: number | null; calorie_target_max: number | null; focus_message: string | null; plan_type: string | null } | null | undefined;
+    if (plan && (plan.calorie_target_min || plan.focus_message)) {
+      const tgt = plan.calorie_target_min && plan.calorie_target_max ? `${plan.calorie_target_min}-${plan.calorie_target_max} kcal` : '';
+      lines.push(`BUGÜNKÜ PLAN: ${[tgt, plan.focus_message].filter(Boolean).join(' | ')}`);
     }
 
     const metrics = (metricsRes.data ?? []) as { date: string; weight_kg: number | null; sleep_hours: number | null; water_liters: number | null }[];
