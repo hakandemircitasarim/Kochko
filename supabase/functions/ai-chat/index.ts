@@ -79,6 +79,10 @@ serve(async (req: Request) => {
   // assistant reply) never runs — without this cleanup the lone reserved user row would persist
   // and permanently burn a daily-cap slot for a turn the user never got an answer to.
   let reservedUserMessageId: string | null = null;
+  // #arch step 4: handler-scope so the catch can mark THIS request's journal claim failed (letting
+  // a retry reclaim + reprocess instead of polling a dead in_flight row until the lease expires).
+  let journalUserId = '';
+  let journalKey = '';
 
   try {
     // T1.10: Request validation
@@ -221,11 +225,35 @@ serve(async (req: Request) => {
       }
     }
 
+    // #arch step 4 (request journal / audit finding 9): make this logical send execute EXACTLY
+    // ONCE. The client retries with the SAME idempotency_key on its 20s timeout while attempt 1
+    // keeps running server-side. The first caller becomes the OWNER; a concurrent retry WAITS for
+    // the owner to commit and REPLAYS its exact response — no 2nd LLM call, no divergent second
+    // reply, no duplicate chat_messages/ai_turn_log. Deterministic short-circuits above (emergency/
+    // crisis/injection/mirror) are cheap + idempotent, so they intentionally skip the journal.
+    const idemKey = typeof idempotency_key === 'string' && idempotency_key ? idempotency_key : '';
+    if (idemKey) {
+      const claim = await claimOrAwaitRequest(userId, idemKey);
+      if (claim.mode === 'replay') {
+        console.log('[request_journal] replaying committed response', { key: idemKey });
+        return respond(claim.envelope);
+      }
+      journalUserId = userId; journalKey = idemKey; // we own it — the catch releases it on failure
+    }
+    // #arch step 4: commit the exact response into the journal on EVERY owner success return, so a
+    // still-in-flight retry replays THIS instead of re-processing (double meal-log / double KVKK
+    // deletion / double undo). No-op when there's no idempotency_key.
+    const commitAndRespond = async (data: unknown, status = 200): Promise<Response> => {
+      if (journalKey) { await commitRequestEnvelope(journalUserId, journalKey, data); journalKey = ''; }
+      return respond(data, status);
+    };
+
     // Rate limiting (Spec 16.4)
     const preliminaryTaskMode = message ? detectTaskMode(message, false) : 'coaching';
     const isRecordParse = preliminaryTaskMode === 'register';
     const rateLimit = await checkRateLimit(userId, isRecordParse);
     if (!rateLimit.allowed) {
+      if (idemKey) await failRequest(userId, idemKey); // release the claim so a later real turn isn't stuck polling
       return respond({
         message: rateLimit.message,
         actions: [],
@@ -247,7 +275,7 @@ serve(async (req: Request) => {
         const intendedType = undoTypeForPhrase(repairIntent.matchedPhrase);
         const undoResult = await handleUndo(userId, intendedType);
         await storeMessages(userId, message, undoResult.response ?? '', undefined, undefined, undefined, undefined, session_id);
-        return respond({ message: undoResult.response, actions: [], task_mode: 'repair' });
+        return await commitAndRespond({ message: undoResult.response, actions: [], task_mode: 'repair' });
       }
 
       // "Benim hakkımda ne biliyorsun?" handler (Spec 5.18)
@@ -255,7 +283,7 @@ serve(async (req: Request) => {
       if (knowledgePatterns.test(message)) {
         const summary = await buildKnowledgeSummary(userId);
         await storeMessages(userId, message, summary, undefined, undefined, undefined, undefined, session_id);
-        return respond({ message: summary, actions: [], task_mode: 'knowledge' });
+        return await commitAndRespond({ message: summary, actions: [], task_mode: 'knowledge' });
       }
 
       // #live-L18: KVKK Md.7/17 erasure. A full-account-deletion or "beni unut / hafızanı
@@ -295,7 +323,7 @@ serve(async (req: Request) => {
             kvkkMsg = 'Hakkında tuttuğum tüm koç hafızasını (notlar, çıkarımlar, alışkanlık özetleri) sildim. Bundan sonra seni yeniden tanımaya başlayacağım. Hesabını tamamen silmek istersen "tüm verilerimi sil" diyebilir ya da Ayarlar > Hesap ve Güvenlik ekranını kullanabilirsin.';
           }
           await storeMessages(userId, message, kvkkMsg, 'kvkk', undefined, undefined, undefined, session_id);
-          return respond({ message: kvkkMsg, actions: [], task_mode: 'kvkk', navigate_to: kvkkNav });
+          return await commitAndRespond({ message: kvkkMsg, actions: [], task_mode: 'kvkk', navigate_to: kvkkNav });
         } catch (e) {
           console.error('[kvkk_erase] failed:', (e as Error).message);
           // fall through to normal flow rather than falsely confirming a deletion
@@ -672,6 +700,7 @@ serve(async (req: Request) => {
         isRecordParse,
       );
       if (!reservation.allowed) {
+        if (journalKey) { await failRequest(journalUserId, journalKey); journalKey = ''; } // reject → release claim
         return respond({
           message: reservation.message,
           actions: [],
@@ -1534,7 +1563,7 @@ serve(async (req: Request) => {
       if (!gateActive) {
         const used = (gateProfile?.plans_used_free as { diet?: number; workout?: number } | null) ?? {};
         if ((used[expectedType] ?? 0) >= 1) {
-          return respond({
+          return await commitAndRespond({
             message: 'Ücretsiz planda 1 diyet + 1 antrenman planı onaylayabiliyorsun. Yeni plan onaylamak ve sınırsız revizyon için Premium\'a geçebilirsin.',
             actions: [], task_mode: effectiveMode,
             plan_snapshot: null, plan_reasoning: null,
@@ -2206,7 +2235,7 @@ serve(async (req: Request) => {
       finalNavigateTo = null;
     }
 
-    return respond({
+    const responseData = {
       message: assistantMessage,
       actions: outActions,
       task_mode: taskMode,
@@ -2223,7 +2252,9 @@ serve(async (req: Request) => {
       // sends and counted record-parses the server exempts). -1 means unlimited/exempt
       // (premium, onboarding, or record-parse) — the client treats that as "don't show".
       remaining: rateLimit.remaining,
-    });
+    };
+    // #arch step 4: commit the exact response so a still-in-flight retry replays THIS, not a re-run.
+    return await commitAndRespond(responseData);
   } catch (err) {
     const msg = (err as Error).message;
     console.error('[ai-chat] unhandled error:', err); // full detail stays server-side
@@ -2235,6 +2266,8 @@ serve(async (req: Request) => {
       await supabaseAdmin.from('chat_messages').delete().eq('id', reservedUserMessageId).then(() => {}, () => {});
       reservedUserMessageId = null;
     }
+    // #arch step 4: release the journal claim so a retry reclaims + reprocesses (not stuck polling).
+    if (journalKey) { await failRequest(journalUserId, journalKey); journalKey = ''; }
     if (msg.startsWith('SESSION_NOT_FOUND')) {
       return respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404);
     }
@@ -2273,6 +2306,56 @@ function respond(data: unknown, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
+}
+
+// ── Request journal (target-arch step 4 / audit finding 9) ─────────────────────────────────────
+// The client retries a send with the SAME idempotency_key on its 20s timeout while the first
+// attempt keeps running server-side. These helpers make a logical send execute EXACTLY ONCE:
+// the first caller becomes the owner; a concurrent retry WAITS for the owner to commit and REPLAYS
+// its stored response (no 2nd LLM call, no duplicate chat_messages/ai_turn_log). Replaces the old
+// late in-executeActions UNIQUE guard, which only stopped double ACTION writes.
+const REQUEST_LEASE_MS = 90_000;
+type ClaimResult = { mode: 'owner' } | { mode: 'replay'; envelope: unknown };
+
+async function claimOrAwaitRequest(userId: string, key: string): Promise<ClaimResult> {
+  // Try to become the owner via a UNIQUE insert.
+  const { error: insErr } = await supabaseAdmin.from('processed_chat_requests').insert({
+    user_id: userId, idempotency_key: key, state: 'in_flight',
+    lease_expires_at: new Date(Date.now() + REQUEST_LEASE_MS).toISOString(),
+  });
+  if (!insErr) return { mode: 'owner' };
+  // Conflict — another attempt owns/owned this key. Poll (bounded, under the client's 20s attempt
+  // timeout) for it to commit, then replay its exact answer.
+  for (let i = 0; i < 22; i++) {
+    const { data: row } = await supabaseAdmin.from('processed_chat_requests')
+      .select('state, response_envelope, lease_expires_at')
+      .eq('user_id', userId).eq('idempotency_key', key).maybeSingle();
+    if (!row) break; // vanished — reclaim
+    if (row.state === 'committed' && row.response_envelope) return { mode: 'replay', envelope: row.response_envelope };
+    if (row.state === 'failed') break; // original failed — reclaim
+    if (row.lease_expires_at && new Date(row.lease_expires_at as string).getTime() < Date.now()) break; // stale — reclaim
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  // Owner is stuck / failed / gone: reclaim the lease and process ourselves (best-effort).
+  await supabaseAdmin.from('processed_chat_requests').update({
+    state: 'in_flight', lease_expires_at: new Date(Date.now() + REQUEST_LEASE_MS).toISOString(), updated_at: new Date().toISOString(),
+  }).eq('user_id', userId).eq('idempotency_key', key);
+  return { mode: 'owner' };
+}
+
+async function commitRequestEnvelope(userId: string, key: string, envelope: unknown): Promise<void> {
+  try {
+    await supabaseAdmin.from('processed_chat_requests').update({
+      state: 'committed', response_envelope: envelope, committed_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).eq('user_id', userId).eq('idempotency_key', key);
+  } catch (e) { console.warn('[request_journal] commit failed', (e as Error).message); }
+}
+
+async function failRequest(userId: string, key: string): Promise<void> {
+  try {
+    await supabaseAdmin.from('processed_chat_requests').update({ state: 'failed', updated_at: new Date().toISOString() })
+      .eq('user_id', userId).eq('idempotency_key', key).eq('state', 'in_flight');
+  } catch { /* best-effort */ }
 }
 
 /** Monday-anchored week start for a 'YYYY-MM-DD' date (UTC). Mirrors ai-plan/index.ts. */
@@ -3183,25 +3266,15 @@ async function executeActions(
     else backdatedWater.set(date, v);
   };
 
-  // FIX (audit AI-INT-01/HIGH): idempotency guard against double-applied action side-effects.
-  // The client retries on timeout while the first attempt may STILL be processing server-side, so
-  // the same actions (water/supplement/recovery calorie-cut/commitment…) were applied TWICE.
-  // Claim the request's idempotency_key via a UNIQUE insert BEFORE any side-effect; a unique
-  // violation (a retry, or a concurrent duplicate) means another attempt already owns this
-  // request, so we skip the side-effecting loop and writes happen exactly once.
-  let duplicateRequest = false;
-  if (typeof idempotencyKey === 'string' && idempotencyKey) {
-    const { error: idemErr } = await supabaseAdmin
-      .from('processed_chat_requests')
-      .insert({ user_id: userId, idempotency_key: idempotencyKey });
-    if (idemErr) {
-      duplicateRequest = true;
-      console.warn('[idempotency] duplicate chat request — skipping action side-effects', { key: idempotencyKey });
-    }
-  }
+  // #arch step 4: idempotency is now owned by the REQUEST JOURNAL at the handler entry
+  // (claimOrAwaitRequest) — a concurrent retry never reaches executeActions (it replays the owner's
+  // committed response instead), so only the single owner runs the loop and actions apply exactly
+  // once. The old late UNIQUE-insert guard here is retired (re-claiming would collide with the
+  // handler's own in_flight row and wrongly skip every action). idempotencyKey kept for signature
+  // compatibility.
+  void idempotencyKey;
 
   for (const action of actions) {
-    if (duplicateRequest) break;
     try {
       // Spec 3.1: natural-language backdating ("dün akşam pizza yedim" →
       // days_ago:1 in the action JSON). Clamped to 7 days back, never future.
