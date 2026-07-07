@@ -802,7 +802,11 @@ export function extractInjuredBodyParts(descriptions: string[]): string[] {
   for (const desc of descriptions) {
     const lower = desc.toLocaleLowerCase('tr');
     for (const [part, keywords] of Object.entries(INJURY_KEYWORDS)) {
-      if (keywords.some(kw => lower.includes(kw))) {
+      // Word-START boundary instead of raw includes(): a short key like 'bel' must BEGIN a word
+      // (preceded by start or a non-letter/digit), so it no longer false-matches INSIDE 'dumbell'
+      // ('...incline dumbell press...' → phantom 'back' → phantom surgery constraint), while still
+      // catching Turkish suffixed forms ('belim', 'dizimde'). Keys are plain tokens — no escaping.
+      if (keywords.some(kw => new RegExp(`(?<![\\p{L}\\p{N}])${kw}`, 'u').test(lower))) {
         affected.add(part);
       }
     }

@@ -53,7 +53,7 @@ export default function CoachMemoryScreen() {
   const [menstrualTracking, setMenstrualTracking] = useState(false);
   const [activeGoal, setActiveGoal] = useState<{ goal_type?: string; target_weight_kg?: number; weekly_rate?: number } | null>(null);
   const [allergens, setAllergens] = useState<string[]>([]);
-  const [healthFacts, setHealthFacts] = useState<{ kind: string; text: string; severity: string | null }[]>([]);
+  const [healthFacts, setHealthFacts] = useState<{ kind: string; subject: string; text: string; severity: string | null }[]>([]);
 
   const cardStyle = {
     backgroundColor: colors.card, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.md,
@@ -84,7 +84,7 @@ export default function CoachMemoryScreen() {
       setActiveGoal((goalResult.data as { goal_type?: string; target_weight_kg?: number; weekly_rate?: number }[] | null)?.[0] ?? null);
       setAllergens(((allergenResult.data as { food_name: string }[] | null) ?? []).map(a => a.food_name));
       setHealthFacts(((healthResult.data as { kind: string; subject: string; note: string | null; severity: string | null }[] | null) ?? [])
-        .map(h => ({ kind: h.kind, text: ((h.note || h.subject) ?? '').trim(), severity: h.severity }))
+        .map(h => ({ kind: h.kind, subject: h.subject, text: ((h.note || h.subject) ?? '').trim(), severity: h.severity }))
         .filter(h => h.text));
       // Make sure profile store is loaded too
       if (!profile) await fetchProfile(user.id);
@@ -169,6 +169,10 @@ export default function CoachMemoryScreen() {
             if (!user?.id) return;
             try {
               await resetAISummary(user.id);
+              // "TÜM bilgiler silinecek" must be truthful: also deactivate the health/safety spine
+              // (surgery/condition/injury/allergen), otherwise the Sağlık Geçmişi card survives a
+              // reset that promised total, irreversible erasure (KVKK Madde 17).
+              await supabase.from('user_constraints').update({ active: false }).eq('user_id', user.id).eq('active', true);
             } catch {
               haptics.error();
               Alert.alert('Sıfırlanamadı', 'Hafıza sıfırlanırken bir sorun oluştu. Lütfen tekrar dene.');
@@ -178,6 +182,34 @@ export default function CoachMemoryScreen() {
             haptics.success();
             loadData();
           }
+        },
+      ]
+    );
+  };
+
+  // KVKK Madde 17: a health fact (surgery/condition/injury) must be individually removable — the
+  // surface previously had NO delete path for it. Deactivates the canonical constraint row.
+  const handleDeleteConstraint = (kind: string, subject: string, label: string) => {
+    Alert.alert(
+      'Sağlık Kaydını Sil',
+      `"${label}" bilgisini kaldırmak istediğine emin misin?\n\nKoç bundan sonra bunu planlarında dikkate almayacak. KVKK Madde 17.`,
+      [
+        { text: 'İptal', style: 'cancel' },
+        {
+          text: 'Sil', style: 'destructive',
+          onPress: async () => {
+            if (!user?.id) return;
+            const { data: upd, error } = await supabase.from('user_constraints')
+              .update({ active: false }).eq('user_id', user.id).eq('kind', kind).eq('subject', subject).eq('active', true).select('id');
+            if (error || !upd || upd.length === 0) {
+              haptics.error();
+              Alert.alert('Silinemedi', 'Bilgi silinirken bir sorun oluştu. Lütfen tekrar dene.');
+              return;
+            }
+            await logAuditEvent(user.id, 'ai_summary_delete', `Kullanici saglik kaydini sildi: ${kind}/${subject}`, { kind, subject });
+            haptics.success();
+            loadData();
+          },
         },
       ]
     );
@@ -265,7 +297,7 @@ export default function CoachMemoryScreen() {
   if (allergens.length) profileRows.push({ label: 'Alerjenler', value: allergens.join(', ') });
   if (profile?.periodic_state) profileRows.push({ label: 'Dönemsel durum', value: String(profile.periodic_state) });
 
-  const isEmpty = isAiEmpty && profileRows.length === 0;
+  const isEmpty = isAiEmpty && profileRows.length === 0 && healthFacts.length === 0;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
@@ -344,8 +376,11 @@ export default function CoachMemoryScreen() {
               {healthFacts.map((h, i) => {
                 const KIND_LABEL: Record<string, string> = { surgery: 'Ameliyat', condition: 'Kronik durum', injury: 'Sakatlık', medication: 'İlaç' };
                 return (
-                  <View
+                  <TouchableOpacity
                     key={i}
+                    onLongPress={() => handleDeleteConstraint(h.kind, h.subject, h.text)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${KIND_LABEL[h.kind] ?? h.kind}: ${h.text} — silmek için uzun bas`}
                     style={{
                       flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, paddingVertical: SPACING.sm,
                       ...(i < healthFacts.length - 1 ? { borderBottomWidth: 0.5, borderBottomColor: colors.divider } : {}),
@@ -355,7 +390,7 @@ export default function CoachMemoryScreen() {
                       <Text style={{ color: colors.error, fontSize: FONT.xs, fontWeight: '700' }}>{KIND_LABEL[h.kind] ?? h.kind}</Text>
                     </View>
                     <Text style={{ color: colors.text, fontSize: FONT.sm, flex: 1, lineHeight: 20 }}>{h.text}{h.severity ? ` (${h.severity})` : ''}</Text>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>

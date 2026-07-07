@@ -2816,9 +2816,11 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   if (birthMatch) {
     result.birth_year = parseInt(birthMatch[0]);
   } else {
-    // Handle both orders + Turkish ş: "35 yaşındayım" (number→yaş) AND "yaşım 25" (yaş→number,
-    // the common correction form the old ASCII-only 'yas\w*' alt missed).
-    const ageMatch = lower.match(/(\d{1,2})\s*ya[sş]|ya[sş]\w*\s*[:=]?\s*(\d{1,2})/);
+    // Both orders + Turkish morphology: "35 yaşındayım" (number→yaş) AND "yaşım 25" (yaş→number).
+    // NOTE: \w does NOT match Turkish ı/ş, so the suffix between "yaş" and the number MUST be a
+    // Turkish-letter class ([a-zçğıöşü]*), not \w* — otherwise "yaşım" (y-a-ş-ı-m) fails on the ı.
+    // (?<!\d) stops the 2-digit grab from a 3-digit number ("175 yaşında" → not 75).
+    const ageMatch = lower.match(/(?<!\d)(\d{1,2})\s*ya[sş]|ya[sş][a-zçğıöşü]*\s*[:=]?\s*(\d{1,2})/);
     if (ageMatch) {
       const age = parseInt(ageMatch[1] ?? ageMatch[2]);
       if (age >= 10 && age <= 100) result.birth_year = new Date().getFullYear() - age;
@@ -4206,19 +4208,24 @@ async function executeActions(
           if (!desc) { feedback.push(null); break; }
           const VALID_EVENTS = new Set(['surgery', 'injury', 'illness', 'condition', 'medication', 'other']);
           let ev = VALID_EVENTS.has(action.event_type as string) ? (action.event_type as string) : 'other';
-          // Categorization guard (real bug: a past-workout narrative — "300 antrenman günü, paten..." —
-          // got stored as event_type='surgery'). A surgery must actually name a procedure; otherwise
-          // demote to 'other' so it never pollutes the health/safety spine or filters exercises.
-          if (ev === 'surgery' && !/(ameliyat|operasyon|cerrah|by-?pass|sleeve|t[üu]p\s*mide|mide\s*k[üu][çc][üu]lt|protez|artroskop|rezeksiyon|gastr)/i.test(desc)) {
+          // Categorization guard (real bug: a past-workout narrative — "300 antrenman günü, paten...
+          // Mide ameliyatı sonrası..." — got stored as event_type='surgery'). Demote to 'other' when
+          // the text names NO procedure OR is a long multi-clause workout/history narrative (which
+          // may mention 'ameliyat' in passing) — a surgery row must be a clean procedure fact, not a
+          // paragraph, so it never pollutes the per-turn safety spine.
+          const namesProcedure = /(ameliyat|operasyon|cerrah|by-?pass|sleeve|t[üu]p\s*mide|mide\s*k[üu][çc][üu]lt|protez|artroskop|rezeksiyon|gastr)/i.test(desc);
+          const workoutNarrative = desc.length > 120 && /(antrenman|gym|spor|paten|tekrar|press|squat|bench|dumb?bell|yüzme|basketbol|kilo\s*ver)/i.test(desc);
+          if (ev === 'surgery' && (!namesProcedure || workoutNarrative)) {
             ev = 'other';
           }
-          // Normalized key (lower-tr, letters/digits only) so "Tüp Mide Ameliyatı" == "tüp mide
-          // ameliyatı" and repeated emissions collapse instead of inserting duplicate rows.
-          const heKey = desc.toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]+/gu, '');
+          // Normalized, readable key (lower-tr, non-alnum→space, capped) so "Tüp Mide Ameliyatı!" ==
+          // "tüp mide ameliyatı" — used BOTH for the health_events dedup AND as the canonical
+          // constraint subject, so the two stores dedup on the SAME key (no per-phrasing dupes).
+          const normHealth = (s: string) => s.toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().slice(0, 80);
+          const heKey = normHealth(desc);
           const { data: existingHE } = await supabaseAdmin.from('health_events')
             .select('description').eq('user_id', userId).eq('event_type', ev);
-          const heDup = (existingHE ?? []).some((r: { description: string }) =>
-            (r.description ?? '').toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]+/gu, '') === heKey);
+          const heDup = (existingHE ?? []).some((r: { description: string }) => normHealth(r.description ?? '') === heKey);
           if (!heDup) {
             const { error: heErr } = await supabaseAdmin.from('health_events').insert({
               user_id: userId,
@@ -4235,7 +4242,7 @@ async function executeActions(
           // (gastric sleeve changes nutrition for life), so it is NOT gated on is_ongoing. A healed
           // (is_ongoing:false) injury is not made an active exercise-filtering constraint.
           if (ev === 'surgery') {
-            await syncConstraint(userId, { kind: 'surgery', subject: desc.slice(0, 80), note: desc });
+            await syncConstraint(userId, { kind: 'surgery', subject: heKey, note: desc });
           } else if (ev === 'condition' || ev === 'medication') {
             await syncInjuryFromText(userId, desc, ev as 'condition' | 'medication');
           } else if (ev === 'injury' && action.is_ongoing !== false) {

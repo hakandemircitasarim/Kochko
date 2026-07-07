@@ -45,16 +45,25 @@ const TOKEN_BUDGET = {
  * Demographics (age/weight) should NOT be restated here at all — they live in the structured profile;
  * the prompt is told to keep this field to behaviour/preferences/context.
  */
-export function consolidateSummary(current: string, append: string, maxEntries = 3): string {
+export function consolidateSummary(current: string, append: string, maxChars = 2400): string {
   const norm = (s: string) =>
     s.toLocaleLowerCase('tr').replace(/\[[^\]]*\]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  const lines = (current || '').split('\n').map((l) => l.trim()).filter(Boolean);
-  const add = (append || '').trim();
-  if (!add) return lines.slice(-maxEntries).join('\n');
-  const addKey = norm(add);
-  const kept = lines.filter((l) => norm(l) && norm(l) !== addKey);
-  kept.push(add);
-  return kept.slice(-maxEntries).join('\n');
+  const existing = (current || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  // The model may emit several facts in one append (internal \n); dedup EACH incoming line, not the
+  // whole block — otherwise a re-stated fact bundled with a new one slips through.
+  const addLines = (append || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const addKeys = new Set(addLines.map(norm).filter(Boolean));
+  // Keep existing lines that are not a normalized-duplicate of any incoming line.
+  const kept = existing.filter((l) => { const k = norm(l); return k && !addKeys.has(k); });
+  // Append incoming lines, deduped among themselves.
+  const seen = new Set<string>();
+  for (const l of addLines) { const k = norm(l); if (k && !seen.has(k)) { seen.add(k); kept.push(l); } }
+  // Bound by TOTAL CHARS (drop OLDEST first), NOT a tiny line count. Each writer emits ONE
+  // incremental fact per session, so a 3-line cap would FIFO-evict durable facts within days
+  // (re-creating the "fact vanished" bug); a generous char budget keeps ~15-20 short lines.
+  let out = kept;
+  while (out.length > 1 && out.join('\n').length > maxChars) out = out.slice(1);
+  return out.join('\n');
 }
 
 /**

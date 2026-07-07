@@ -21,7 +21,10 @@ export interface Constraint {
 
 /** Upsert an active constraint (idempotent on user_id+kind+subject). */
 export async function syncConstraint(userId: string, c: Constraint): Promise<void> {
-  const subject = (c.subject ?? '').trim().toLocaleLowerCase('tr');
+  // Hard cap: the UNIQUE(user_id,kind,subject) btree can't index an unbounded free-text subject
+  // (tuple-size limit → the upsert would throw and be swallowed, silently dropping a medical fact).
+  // 80 chars is plenty for a canonical token / short phrase.
+  const subject = (c.subject ?? '').trim().toLocaleLowerCase('tr').slice(0, 80);
   if (!subject) return;
   // #arch step 1 (epistemics): stamp confidence + confirmed_at from provenance. What the user
   // states/confirms is trusted and marked confirmed now; imported/inferred beliefs are lower
@@ -73,7 +76,10 @@ export async function syncInjuryFromText(userId: string, description: string, ev
   // injury body-part extractor. (Bug: "hipotiroidi" substring-matched the English 'hip' keyword and
   // synced a phantom 'hip' body-part condition.) Store the named condition as the subject instead.
   if (eventType === 'condition' || eventType === 'medication') {
-    await syncConstraint(userId, { kind: eventType, subject: description, note: description, body_parts: [] });
+    // Normalize the subject (non-alnum→space, trim) so 'Diyabetim var.' and 'diyabetim var' collapse
+    // to one canonical row instead of per-phrasing duplicates; full text is preserved in note.
+    const subj = description.toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    await syncConstraint(userId, { kind: eventType, subject: subj, note: description, body_parts: [] });
     return;
   }
   const parts = extractInjuredBodyParts([description]);
