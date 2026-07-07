@@ -23,6 +23,7 @@ import { isMemoryMirrorIntent, buildMemoryMirror } from '../shared/memory-mirror
 import { writeTurnLog } from '../shared/turn-log.ts';
 import { logBelief } from '../shared/belief-log.ts';
 import { repairPlansAfterBeliefChange } from '../shared/repair-propagation.ts';
+import { recordEDSignal, deficitAllowed, getSafetyState } from '../shared/safety-state.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit, reserveRateLimitSlot } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -193,12 +194,18 @@ serve(async (req: Request) => {
       }
       const edRisk = detectEDRisk(message);
       if (edRisk.isRisk && edRisk.severity === 'high') {
+        // #arch step 14: escalate the durable safety state so future turns keep protecting the user
+        // (deficit forbidden) even after this acute turn passes.
+        await recordEDSignal(userId, 'high');
         await safeStore(userId, message, edRisk.message, 'safety', session_id);
         return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
       }
       // Medium severity: keep coaching but ensure the referral reaches the user (appended
       // to the reply below). Deterministic — does not depend on the LLM remembering to add it.
-      if (edRisk.isRisk && edRisk.severity === 'medium') edMediumReferral = edRisk.message;
+      if (edRisk.isRisk && edRisk.severity === 'medium') {
+        edMediumReferral = edRisk.message;
+        await recordEDSignal(userId, 'medium'); // #arch step 14: trajectory-aware escalation
+      }
     }
 
     // Prompt injection detection (Spec 5.26) — after crisis screening
@@ -4615,6 +4622,16 @@ async function executeActions(
           break;
         }
         case 'mini_cut_start': {
+          // #arch step 14 (SafetyState gate): a mini-cut is the most aggressive deficit the app can
+          // start — REFUSE it while the durable ED risk state is amber+. A user whose trajectory is
+          // concerning must not be handed a deeper cut, even if THIS message looks fine. Safety
+          // never depends on the current turn alone.
+          const edCap = await deficitAllowed(userId);
+          if (!edCap.allowed) {
+            console.warn('[mini_cut_start] blocked by SafetyState', edCap);
+            feedback.push('Şu an agresif bir kalori kesimi başlatmak yerine kaloriyi bakım seviyesinde tutalım — sağlığın her şeyden önce gelir. İstersen bir uzman diyetisyen ya da doktorla da görüşmeni öneririm.');
+            break;
+          }
           // Spec 6.3: Maintenance band aşıldı — 2-4 haftalık mini cut
           const weeks = Math.max(2, Math.min(4, (action.weeks as number) ?? 3));
           const { data: pProfile } = await supabaseAdmin
@@ -5331,7 +5348,13 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
   // (capped safe) so month-2/3 re-cuts converge on the user's DATE instead of a flat 15% that
   // drifts from the ETA/tempo chart. Falls back to the fixed factor when no timeline is set.
   const { data: goalRow } = await supabaseAdmin.from('goals').select('goal_type, target_weight_kg, target_weeks, created_at').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle();
-  const gType = (goalRow?.goal_type as string | undefined) ?? 'maintain';
+  const gType0 = (goalRow?.goal_type as string | undefined) ?? 'maintain';
+  // #arch step 14 (SafetyState): never RE-CUT a user into a calorie deficit while the durable ED
+  // risk state is amber+. Force maintenance regardless of the stored goal until it de-escalates —
+  // this is what makes safety trajectory-aware (protection outlasts the one acute turn).
+  const edCap = await deficitAllowed(userId);
+  const gType = edCap.allowed ? gType0 : 'maintain';
+  if (!edCap.allowed) console.warn('[recalcTDEE] SafetyState forced maintenance', edCap);
   const weeksElapsed = goalRow?.created_at ? Math.max(0, Math.floor((Date.now() - Date.parse(goalRow.created_at as string)) / (7 * 86400000))) : 0;
   const targetCal = resolveTargetCalories({
     tdee, goalType: gType, fixedFactor: goalCalorieFactor(gType),

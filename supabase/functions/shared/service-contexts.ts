@@ -7,6 +7,7 @@ import { supabaseAdmin } from './supabase-admin.ts';
 import { getEffectiveDateForUser } from './day-boundary.ts';
 import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText, ALLERGEN_FOODS, DIETARY_FORBIDDEN } from './guardrails.ts';
 import { getActiveConstraints } from './constraints.ts';
+import { getSafetyState } from './safety-state.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
 // (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
@@ -970,6 +971,15 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
     const today = effectiveToday ?? new Date().toISOString().split('T')[0];
     const todayMs = Date.parse(`${today}T00:00:00Z`);
     const lines: string[] = [];
+
+    // #arch step 14: durable SAFETY STATE framed FIRST — a concerning trajectory makes the coach
+    // gentle and deficit-averse for the whole turn, not just when the current message trips a detector.
+    try {
+      const safety = await getSafetyState(userId);
+      if (safety.ed_tier === 'amber' || safety.ed_tier === 'red') {
+        lines.push('⚠ GÜVENLİK ÖNCELİĞİ: Kullanıcının beslenmeyle ilişkisinde risk sinyalleri birikti. Kalori açığı / kesim / "daha az ye" ÖNERME; bakım seviyesinde tut. Sayı/kalori/tartı odaklı konuşmayı azalt, nazik ve yargısız ol, uygun bir anda profesyonel destek (uzman diyetisyen/psikolog) öner.');
+      }
+    } catch { /* non-critical */ }
 
     // Journey + progress
     const g = (goalRes.data ?? [])[0] as Record<string, unknown> | undefined;
