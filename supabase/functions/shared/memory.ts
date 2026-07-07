@@ -37,6 +37,27 @@ const TOKEN_BUDGET = {
 // Approximate: 1 token ≈ 3.5 Turkish characters
 
 /**
+ * Consolidate an append-style general_summary instead of growing it forever. The old writers did
+ * `current + '\n' + append`, so a re-summary each session STACKED UP — the real bug was FOUR
+ * "[date] Kullanıcı 25 yaşında..." lines living side by side while the profile said 35. This drops
+ * exact-normalized repeats of the incoming line and keeps only the last `maxEntries` snapshots, so
+ * the summary stays a bounded, current view rather than an ever-growing (and self-contradicting) log.
+ * Demographics (age/weight) should NOT be restated here at all — they live in the structured profile;
+ * the prompt is told to keep this field to behaviour/preferences/context.
+ */
+export function consolidateSummary(current: string, append: string, maxEntries = 3): string {
+  const norm = (s: string) =>
+    s.toLocaleLowerCase('tr').replace(/\[[^\]]*\]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const lines = (current || '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const add = (append || '').trim();
+  if (!add) return lines.slice(-maxEntries).join('\n');
+  const addKey = norm(add);
+  const kept = lines.filter((l) => norm(l) && norm(l) !== addKey);
+  kept.push(add);
+  return kept.slice(-maxEntries).join('\n');
+}
+
+/**
  * Update Layer 2 (AI Summary) after a conversation.
  * Called asynchronously - doesn't block chat response.
  *

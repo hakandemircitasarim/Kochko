@@ -113,6 +113,11 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
   const demoLine = `Cinsiyet: ${p.gender ?? '?'} | Yas: ${age ?? '?'} | Boy: ${p.height_cm ?? '?'}cm | Kilo: ${p.weight_kg ?? '?'}kg`;
   parts.push(`## PROFIL\n${isOnboarding ? '*** ONBOARDING MODU ***\n' : ''}${demoLine}`);
 
+  // Durable safety facts from the canonical spine — ALWAYS present (not gated on layer1Focus),
+  // so the coach recalls a surgery/allergy/chronic condition on every turn, not just health turns.
+  const persistentHealth = await buildPersistentHealthBlock(userId);
+  if (persistentHealth) parts.push(persistentHealth);
+
   // Schedule & lifestyle — always include if available
   const scheduleItems: string[] = [];
   if (p.occupation) scheduleItems.push(`Meslek: ${p.occupation}`);
@@ -297,7 +302,30 @@ async function buildLayer1Minimal(userId: string): Promise<string> {
   const hour = local.hour;
   const minute = local.minute.toString().padStart(2, '0');
 
-  return `${dayName}, ${hour}:${minute}\n${p.display_name ? `Ad: ${p.display_name} | ` : ''}Cinsiyet: ${p.gender ?? '?'} | Yas: ${age ?? '?'} | Kilo: ${p.weight_kg ?? '?'}kg | Ton: ${p.coach_tone ?? 'balanced'}`;
+  const health = await buildPersistentHealthBlock(userId);
+  return `${dayName}, ${hour}:${minute}\n${p.display_name ? `Ad: ${p.display_name} | ` : ''}Cinsiyet: ${p.gender ?? '?'} | Yas: ${age ?? '?'} | Kilo: ${p.weight_kg ?? '?'}kg | Ton: ${p.coach_tone ?? 'balanced'}${health ? `\n${health}` : ''}`;
+}
+
+/**
+ * The durable safety/identity facts (surgery, chronic condition, ongoing injury, allergy,
+ * intolerance) that must reach the coach on EVERY turn — not only when the message is classified
+ * 'health'. Reads the canonical typed spine (user_constraints), which is deduped on write, so the
+ * coach never forgets e.g. a gastric surgery on a "ne yiyeyim?" turn. Empty string when none.
+ */
+async function buildPersistentHealthBlock(userId: string): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from('user_constraints')
+    .select('kind, subject, note, severity')
+    .eq('user_id', userId).eq('active', true)
+    .in('kind', ['surgery', 'condition', 'injury', 'allergen', 'intolerance']);
+  const rows = (data ?? []) as Array<{ kind: string; subject: string; note: string | null; severity: string | null }>;
+  if (!rows.length) return '';
+  const LABEL: Record<string, string> = {
+    surgery: 'Ameliyat', condition: 'Kronik durum', injury: 'Sakatlik', allergen: 'Alerji', intolerance: 'Intolerans',
+  };
+  const lines = rows.map((r) =>
+    `- ${LABEL[r.kind] ?? r.kind}: ${((r.note || r.subject) ?? '').slice(0, 100)}${r.severity ? ` (${r.severity})` : ''}`);
+  return `## KALICI SAGLIK (her zaman dikkate al, unutma)\n${lines.join('\n')}`;
 }
 
 // ─── Layer 2: Scoped AI Summary ───

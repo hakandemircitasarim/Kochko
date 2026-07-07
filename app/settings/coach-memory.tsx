@@ -53,6 +53,7 @@ export default function CoachMemoryScreen() {
   const [menstrualTracking, setMenstrualTracking] = useState(false);
   const [activeGoal, setActiveGoal] = useState<{ goal_type?: string; target_weight_kg?: number; weekly_rate?: number } | null>(null);
   const [allergens, setAllergens] = useState<string[]>([]);
+  const [healthFacts, setHealthFacts] = useState<{ kind: string; text: string; severity: string | null }[]>([]);
 
   const cardStyle = {
     backgroundColor: colors.card, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.md,
@@ -66,17 +67,25 @@ export default function CoachMemoryScreen() {
 
     try {
       // Fetch AI summary + profile menstrual_tracking + active goal + allergens in parallel
-      const [result, profileResult, goalResult, allergenResult] = await Promise.all([
+      const [result, profileResult, goalResult, allergenResult, healthResult] = await Promise.all([
         getAISummaryForReview(user.id),
         supabase.from('profiles').select('menstrual_tracking').eq('id', user.id).maybeSingle(),
         supabase.from('goals').select('goal_type, target_weight_kg, weekly_rate').eq('user_id', user.id).eq('is_active', true).limit(1),
         supabase.from('food_preferences').select('food_name').eq('user_id', user.id).eq('is_allergen', true),
+        // FIX (memory-continuity audit): surface the canonical health spine — a saved surgery /
+        // chronic condition / injury was previously INVISIBLE here (screen only showed recovery/
+        // supplement notes), so the user's "sağlık geçmişimden haber yok" complaint. Read the deduped
+        // user_constraints, not the append-only health_events.
+        supabase.from('user_constraints').select('kind, subject, note, severity').eq('user_id', user.id).eq('active', true).in('kind', ['surgery', 'condition', 'injury', 'medication']),
       ]);
 
       setData(result);
       setMenstrualTracking(Boolean(profileResult.data?.menstrual_tracking));
       setActiveGoal((goalResult.data as { goal_type?: string; target_weight_kg?: number; weekly_rate?: number }[] | null)?.[0] ?? null);
       setAllergens(((allergenResult.data as { food_name: string }[] | null) ?? []).map(a => a.food_name));
+      setHealthFacts(((healthResult.data as { kind: string; subject: string; note: string | null; severity: string | null }[] | null) ?? [])
+        .map(h => ({ kind: h.kind, text: ((h.note || h.subject) ?? '').trim(), severity: h.severity }))
+        .filter(h => h.text));
       // Make sure profile store is loaded too
       if (!profile) await fetchProfile(user.id);
 
@@ -316,6 +325,39 @@ export default function CoachMemoryScreen() {
                   <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{row.value}</Text>
                 </View>
               ))}
+            </View>
+          </View>
+        </>
+      )}
+
+      {/* Health history — the canonical safety spine (surgery / chronic condition / injury /
+          medication). Previously NOT shown here at all, so a saved surgery looked forgotten. */}
+      {healthFacts.length > 0 && (
+        <>
+          <CategoryTitle title="Sağlık Geçmişi" icon="medkit" color={colors.error} colors={colors} />
+          <View style={cardStyle}>
+            <SectionHeader icon="medkit" color={colors.error} title="Ameliyat / Durum / Sakatlık" colors={colors} badge={`${healthFacts.length}`} />
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+              Koç bu bilgileri her öneride dikkate alır
+            </Text>
+            <View>
+              {healthFacts.map((h, i) => {
+                const KIND_LABEL: Record<string, string> = { surgery: 'Ameliyat', condition: 'Kronik durum', injury: 'Sakatlık', medication: 'İlaç' };
+                return (
+                  <View
+                    key={i}
+                    style={{
+                      flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, paddingVertical: SPACING.sm,
+                      ...(i < healthFacts.length - 1 ? { borderBottomWidth: 0.5, borderBottomColor: colors.divider } : {}),
+                    }}
+                  >
+                    <View style={{ backgroundColor: colors.error + '18', borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 2, marginTop: 1 }}>
+                      <Text style={{ color: colors.error, fontSize: FONT.xs, fontWeight: '700' }}>{KIND_LABEL[h.kind] ?? h.kind}</Text>
+                    </View>
+                    <Text style={{ color: colors.text, fontSize: FONT.sm, flex: 1, lineHeight: 20 }}>{h.text}{h.severity ? ` (${h.severity})` : ''}</Text>
+                  </View>
+                );
+              })}
             </View>
           </View>
         </>

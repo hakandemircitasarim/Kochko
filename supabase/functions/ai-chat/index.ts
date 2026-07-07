@@ -16,7 +16,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
-import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
+import { updateLayer2, appendBehavioralPatterns, consolidateSummary } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
 import { computeItemNutrition } from '../shared/food-reference.ts';
 import { isMemoryMirrorIntent, buildMemoryMirror } from '../shared/memory-mirror.ts';
@@ -2816,9 +2816,11 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   if (birthMatch) {
     result.birth_year = parseInt(birthMatch[0]);
   } else {
-    const ageMatch = lower.match(/(\d{1,2})\s*(yas|yaş)|yas\w*\s*[:=]?\s*(\d{1,2})/);
+    // Handle both orders + Turkish ş: "35 yaşındayım" (number→yaş) AND "yaşım 25" (yaş→number,
+    // the common correction form the old ASCII-only 'yas\w*' alt missed).
+    const ageMatch = lower.match(/(\d{1,2})\s*ya[sş]|ya[sş]\w*\s*[:=]?\s*(\d{1,2})/);
     if (ageMatch) {
-      const age = parseInt(ageMatch[1] ?? ageMatch[3]);
+      const age = parseInt(ageMatch[1] ?? ageMatch[2]);
       if (age >= 10 && age <= 100) result.birth_year = new Date().getFullYear() - age;
     }
   }
@@ -4197,32 +4199,49 @@ async function executeActions(
           break;
         }
         case 'health_event': {
-          // Spec 2.1/12.2-12.3: surgeries, injuries, chronic conditions told in
-          // chat persist to health_events (the injury guardrail reads it).
+          // Spec 2.1/12.2-12.3: surgeries, injuries, chronic conditions told in chat persist to
+          // health_events AND (the durable/safety ones) to the canonical typed spine
+          // user_constraints — deduped ON WRITE and recalled every turn, not stored append-only.
           const desc = (action.description as string ?? '').trim();
           if (!desc) { feedback.push(null); break; }
           const VALID_EVENTS = new Set(['surgery', 'injury', 'illness', 'condition', 'medication', 'other']);
-          const rawEvent = action.event_type as string ?? 'other';
-          const { error: heErr } = await supabaseAdmin.from('health_events').insert({
-            user_id: userId,
-            event_type: VALID_EVENTS.has(rawEvent) ? rawEvent : 'other',
-            description: desc,
-            event_date: typeof action.event_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(action.event_date as string)
-              ? action.event_date : null,
-            is_ongoing: action.is_ongoing !== false, // default true: it matters for guardrails
-          });
-          if (heErr) {
-            console.error('[health_event] insert failed:', heErr.message);
-            feedback.push(null);
-          } else {
-            // #arch L1: mirror ongoing injuries/conditions into the typed safety spine with
-            // extracted body_parts (surgeries are past events → not ongoing constraints).
-            const ev = VALID_EVENTS.has(rawEvent) ? rawEvent : 'other';
-            if (action.is_ongoing !== false && (ev === 'injury' || ev === 'condition' || ev === 'medication')) {
-              await syncInjuryFromText(userId, desc, ev as 'injury' | 'condition' | 'medication');
-            }
-            feedback.push('Sağlık bilgisi kaydedildi');
+          let ev = VALID_EVENTS.has(action.event_type as string) ? (action.event_type as string) : 'other';
+          // Categorization guard (real bug: a past-workout narrative — "300 antrenman günü, paten..." —
+          // got stored as event_type='surgery'). A surgery must actually name a procedure; otherwise
+          // demote to 'other' so it never pollutes the health/safety spine or filters exercises.
+          if (ev === 'surgery' && !/(ameliyat|operasyon|cerrah|by-?pass|sleeve|t[üu]p\s*mide|mide\s*k[üu][çc][üu]lt|protez|artroskop|rezeksiyon|gastr)/i.test(desc)) {
+            ev = 'other';
           }
+          // Normalized key (lower-tr, letters/digits only) so "Tüp Mide Ameliyatı" == "tüp mide
+          // ameliyatı" and repeated emissions collapse instead of inserting duplicate rows.
+          const heKey = desc.toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]+/gu, '');
+          const { data: existingHE } = await supabaseAdmin.from('health_events')
+            .select('description').eq('user_id', userId).eq('event_type', ev);
+          const heDup = (existingHE ?? []).some((r: { description: string }) =>
+            (r.description ?? '').toLocaleLowerCase('tr').replace(/[^\p{L}\p{N}]+/gu, '') === heKey);
+          if (!heDup) {
+            const { error: heErr } = await supabaseAdmin.from('health_events').insert({
+              user_id: userId,
+              event_type: ev,
+              description: desc,
+              event_date: typeof action.event_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(action.event_date as string)
+                ? action.event_date : null,
+              is_ongoing: action.is_ongoing !== false,
+            });
+            if (heErr) console.error('[health_event] insert failed:', heErr.message);
+          }
+          // Route durable/safety facts to the canonical typed spine (idempotent upsert → no
+          // duplicates, read EVERY turn). Surgery is a PAST event but a PERMANENT relevant fact
+          // (gastric sleeve changes nutrition for life), so it is NOT gated on is_ongoing. A healed
+          // (is_ongoing:false) injury is not made an active exercise-filtering constraint.
+          if (ev === 'surgery') {
+            await syncConstraint(userId, { kind: 'surgery', subject: desc.slice(0, 80), note: desc });
+          } else if (ev === 'condition' || ev === 'medication') {
+            await syncInjuryFromText(userId, desc, ev as 'condition' | 'medication');
+          } else if (ev === 'injury' && action.is_ongoing !== false) {
+            await syncInjuryFromText(userId, desc, 'injury');
+          }
+          feedback.push('Sağlık bilgisi kaydedildi');
           break;
         }
         case 'life_event': {
@@ -5014,7 +5033,9 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
 
     if (updates.general_summary_append) {
       const current = (existing?.general_summary as string) ?? '';
-      changes.general_summary = current + '\n' + updates.general_summary_append;
+      // Consolidate (dedup + bounded), NOT blind append — otherwise a re-summary each session stacks
+      // up into contradictory duplicate lines (the "4× 25 yaşında" bug).
+      changes.general_summary = consolidateSummary(current, updates.general_summary_append as string);
     }
 
     // ─── Memory Lifecycle: Pattern Management ───

@@ -11,7 +11,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
-import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep } from '../shared/memory.ts';
+import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep, consolidateSummary } from '../shared/memory.ts';
 import { denyIfNotCron } from '../shared/cron-auth.ts';
 
 const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
@@ -357,9 +357,10 @@ serve(async (req: Request) => {
             .from('ai_summary').select('general_summary').eq('user_id', userId).maybeSingle();
           const cur = (curSummary?.general_summary as string) ?? '';
           const dateTag = new Date().toISOString().split('T')[0];
-          let next = `${cur}\n[${dateTag}] ${summaryUpdate.trim()}`.trim();
-          // Keep the summary bounded: oldest lines fall off past ~3000 chars.
-          if (next.length > 3000) next = next.slice(next.length - 3000);
+          // Consolidate (dedup + last-N snapshots) instead of blind append — the old
+          // `cur + '\n' + line` + 3000-char slice let paraphrased duplicates ("25 yaşında" ×4)
+          // pile up. Bounded to the most recent snapshots so the summary stays a current view.
+          const next = consolidateSummary(cur, `[${dateTag}] ${summaryUpdate.trim()}`);
           await supabaseAdmin.from('ai_summary').upsert(
             { user_id: userId, general_summary: next, updated_at: new Date().toISOString() },
             { onConflict: 'user_id' },
