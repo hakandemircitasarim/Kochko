@@ -21,6 +21,8 @@ import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllerge
 import { computeItemNutrition } from '../shared/food-reference.ts';
 import { isMemoryMirrorIntent, buildMemoryMirror } from '../shared/memory-mirror.ts';
 import { writeTurnLog } from '../shared/turn-log.ts';
+import { logBelief } from '../shared/belief-log.ts';
+import { repairPlansAfterBeliefChange } from '../shared/repair-propagation.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit, reserveRateLimitSlot } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -3907,7 +3909,13 @@ async function executeActions(
             else pfMessages.push('Profil güncellendi');
             // #arch L1: mirror a dietary restriction into the typed safety spine.
             if (!pfErr && typeof updates.dietary_restriction === 'string' && updates.dietary_restriction) {
-              await syncConstraint(userId, { kind: 'dietary', subject: updates.dietary_restriction as string, note: updates.dietary_restriction as string });
+              const dr = updates.dietary_restriction as string;
+              await syncConstraint(userId, { kind: 'dietary', subject: dr, note: dr });
+              // #arch step 11/12: log the belief + propagate. A newly-declared restriction (vegan,
+              // helal…) that the active diet plan violates flags the plan stale so the coach offers a redo.
+              await logBelief(userId, { belief_key: 'dietary_restriction', subject: dr.toLocaleLowerCase('tr'), operation: 'set', new_value: dr, source: 'user_stated' });
+              const rep = await repairPlansAfterBeliefChange(userId, { beliefKey: 'dietary_restriction', subject: dr });
+              if (rep.stale) pfMessages.push(`Not: aktif planında ${(rep.violations ?? []).join(', ')} var — ${dr} tercihine göre planı yenileyebilirim.`);
             }
             // #arch L1 (audit spine-drift): mirror declared medical conditions (digestive — reflü/
             // IBS/gastrit; hormonal — PCOS/tiroid/insülin direnci) into the safety spine as
@@ -4113,7 +4121,17 @@ async function executeActions(
             if (action.is_allergen === true) {
               await syncConstraint(userId, { kind: 'allergen', subject: foodName, severity: (fpRow.allergen_severity as 'mild'|'moderate'|'severe') ?? 'moderate', note: foodName });
             }
-            feedback.push(action.is_allergen === true ? 'Alerjen kaydedildi' : 'Yemek tercihi kaydedildi');
+            // #arch step 11/12: append the belief change to the log + propagate. If the active diet
+            // plan now conflicts with a new allergen/dislike, flag it stale so the coach can offer a
+            // redo — closing the "I told it I'm allergic but it suggested it next week" gap.
+            const beliefKey = action.is_allergen === true ? 'allergen' : (rawPref === 'dislike' || rawPref === 'never' ? 'dislike' : 'preference');
+            await logBelief(userId, { belief_key: beliefKey, subject: foodName, operation: 'set', new_value: { preference: fpRow.preference, is_allergen: fpRow.is_allergen }, source: 'user_stated' });
+            let planNote = '';
+            if (beliefKey === 'allergen' || beliefKey === 'dislike') {
+              const rep = await repairPlansAfterBeliefChange(userId, { beliefKey, subject: foodName });
+              if (rep.stale) planNote = ` Bu arada, aktif planında ${(rep.violations ?? []).join(', ')} vardı — istersen planı buna göre yenileyeyim.`;
+            }
+            feedback.push((action.is_allergen === true ? 'Alerjen kaydedildi' : 'Yemek tercihi kaydedildi') + planNote);
           }
           break;
         }

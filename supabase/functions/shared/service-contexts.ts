@@ -5,7 +5,7 @@
  */
 import { supabaseAdmin } from './supabase-admin.ts';
 import { getEffectiveDateForUser } from './day-boundary.ts';
-import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText, ALLERGEN_FOODS } from './guardrails.ts';
+import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText, ALLERGEN_FOODS, DIETARY_FORBIDDEN } from './guardrails.ts';
 import { getActiveConstraints } from './constraints.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
@@ -777,21 +777,10 @@ export async function getConflictContext(
         const mentions = (toks: string[]) => toks.filter(t => {
           try { return new RegExp('(?:^|[^a-zçğıöşü])' + esc(t) + SUF + '(?![a-zçğıöşü])', 'i').test(lower2); } catch { return false; }
         });
-        const RESTRICT: Record<string, string[]> = {
-          vegan: ['et', 'tavuk', 'balık', 'balik', 'yumurta', 'süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'bal', 'kıyma', 'kiyma', 'köfte', 'kofte', 'jambon', 'salam', 'sucuk', 'dana', 'kuzu', 'hindi', 'tereyağ', 'tereyag'],
-          vejetaryen: ['et', 'tavuk', 'balık', 'balik', 'kıyma', 'kiyma', 'köfte', 'kofte', 'dana', 'kuzu', 'hindi', 'jambon', 'salam', 'sucuk', 'sosis'],
-          vegetarian: ['et', 'tavuk', 'balık', 'balik', 'kıyma', 'kiyma', 'köfte', 'kofte', 'dana', 'kuzu', 'hindi', 'jambon', 'salam', 'sucuk', 'sosis'],
-          pesketaryen: ['et', 'tavuk', 'dana', 'kuzu', 'hindi', 'kıyma', 'kiyma', 'köfte', 'kofte'],
-          pescatarian: ['et', 'tavuk', 'dana', 'kuzu', 'hindi', 'kıyma', 'kiyma', 'köfte', 'kofte'],
-          helal: ['domuz', 'jambon', 'salam', 'sosis', 'bira', 'şarap', 'sarap', 'rakı', 'raki', 'votka', 'viski', 'alkol', 'içki', 'icki'],
-          halal: ['domuz', 'jambon', 'salam', 'sosis', 'bira', 'şarap', 'sarap', 'rakı', 'raki', 'votka', 'viski', 'alkol', 'içki', 'icki'],
-          glutensiz: ['makarna', 'ekmek', 'bulgur', 'börek', 'borek', 'simit', 'poğaça', 'pogaca', 'pizza'],
-          gluten_free: ['makarna', 'ekmek', 'bulgur', 'börek', 'borek', 'simit', 'poğaça', 'pogaca', 'pizza'],
-          laktozsuz: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'dondurma', 'krema'],
-          lactose_free: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'dondurma', 'krema'],
-        };
-        if (restr && RESTRICT[restr]) {
-          const hits = mentions(RESTRICT[restr]);
+        // #arch: single owner — the dietary→forbidden map now lives in guardrails.DIETARY_FORBIDDEN
+        // (shared with repair-propagation). Its inline copy here was byte-identical.
+        if (restr && DIETARY_FORBIDDEN[restr]) {
+          const hits = mentions(DIETARY_FORBIDDEN[restr]);
           if (hits.length > 0) alerts.push(`KISITLAMA CELISKISI: Kullanici "${restr}" olarak kayitli ama simdi "${hits.join(', ')}" girdi. Nazikce hatirlat, yargilamadan, kisitlamasi degisti mi diye sor.`);
         }
         if (dietMode === 'keto' || dietMode === 'low_carb') {
@@ -1005,6 +994,18 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
       const tgt = plan.calorie_target_min && plan.calorie_target_max ? `${plan.calorie_target_min}-${plan.calorie_target_max} kcal` : '';
       lines.push(`BUGÜNKÜ PLAN: ${[tgt, plan.focus_message].filter(Boolean).join(' | ')}`);
     }
+
+    // #arch step 12: repair propagation surfaces here. If a belief change (new diet/allergen/dislike)
+    // flagged the active weekly plan stale, tell the coach to proactively offer a refresh — so
+    // "correct once, propagate everywhere" is visible in conversation, not just a DB flag.
+    try {
+      const { data: staleWk } = await supabaseAdmin.from('weekly_plans')
+        .select('stale_reason').eq('user_id', userId).eq('status', 'active').eq('plan_type', 'diet')
+        .not('stale_reason', 'is', null).order('generated_at', { ascending: false }).limit(1).maybeSingle();
+      if (staleWk?.stale_reason) {
+        lines.push(`⚠ AKTIF PLAN GÜNCEL DEĞİL: ${staleWk.stale_reason}. Kullanıcı bunu henüz sormadıysa bile uygun bir anda planı yeni tercihine göre yenilemeyi ÖNER.`);
+      }
+    } catch { /* non-critical */ }
 
     const metrics = (metricsRes.data ?? []) as { date: string; weight_kg: number | null; sleep_hours: number | null; water_liters: number | null }[];
 

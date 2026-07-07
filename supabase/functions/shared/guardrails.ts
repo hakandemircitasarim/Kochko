@@ -67,6 +67,25 @@ export const ALLERGEN_FOODS: Record<string, string[]> = {
 };
 
 /**
+ * Dietary-restriction → forbidden foods. THE single owner (was inline in service-contexts
+ * getConflictContext; repair-propagation needs the same map to detect when an active plan violates
+ * a newly-declared restriction). Keyed by the canonical dietary_restriction value.
+ */
+export const DIETARY_FORBIDDEN: Record<string, string[]> = {
+  vegan: ['et', 'tavuk', 'balık', 'balik', 'yumurta', 'süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'bal', 'kıyma', 'kiyma', 'köfte', 'kofte', 'jambon', 'salam', 'sucuk', 'dana', 'kuzu', 'hindi', 'tereyağ', 'tereyag'],
+  vejetaryen: ['et', 'tavuk', 'balık', 'balik', 'kıyma', 'kiyma', 'köfte', 'kofte', 'dana', 'kuzu', 'hindi', 'jambon', 'salam', 'sucuk', 'sosis'],
+  vegetarian: ['et', 'tavuk', 'balık', 'balik', 'kıyma', 'kiyma', 'köfte', 'kofte', 'dana', 'kuzu', 'hindi', 'jambon', 'salam', 'sucuk', 'sosis'],
+  pesketaryen: ['et', 'tavuk', 'dana', 'kuzu', 'hindi', 'kıyma', 'kiyma', 'köfte', 'kofte'],
+  pescatarian: ['et', 'tavuk', 'dana', 'kuzu', 'hindi', 'kıyma', 'kiyma', 'köfte', 'kofte'],
+  helal: ['domuz', 'jambon', 'salam', 'sosis', 'bira', 'şarap', 'sarap', 'rakı', 'raki', 'votka', 'viski', 'alkol', 'içki', 'icki'],
+  halal: ['domuz', 'jambon', 'salam', 'sosis', 'bira', 'şarap', 'sarap', 'rakı', 'raki', 'votka', 'viski', 'alkol', 'içki', 'icki'],
+  glutensiz: ['makarna', 'ekmek', 'bulgur', 'börek', 'borek', 'simit', 'poğaça', 'pogaca', 'pizza'],
+  gluten_free: ['makarna', 'ekmek', 'bulgur', 'börek', 'borek', 'simit', 'poğaça', 'pogaca', 'pizza'],
+  laktozsuz: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'dondurma', 'krema'],
+  lactose_free: ['süt', 'sut', 'peynir', 'yoğurt', 'yogurt', 'dondurma', 'krema'],
+};
+
+/**
  * FIX (audit guardrails_allergen): Turkish consonant softening (ünsüz yumuşaması).
  * In inflected forms the stem-final hard consonant softens before a vowel suffix
  * ("fıstık" → "fıstığı", "fındık" → "fındığa", "ekmek" → "ekmeği"). After we strip
