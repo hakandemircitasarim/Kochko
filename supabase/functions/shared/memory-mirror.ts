@@ -10,6 +10,7 @@
  * are the write path, so mirror + correction together close the loop the user described.
  */
 import { supabaseAdmin } from './supabase-admin.ts';
+import { getBeliefHistory } from './belief-log.ts';
 
 /** Does the message ask the coach to reflect what it knows about the user? */
 export function isMemoryMirrorIntent(message: string): boolean {
@@ -149,6 +150,23 @@ export async function buildMemoryMirror(userId: string): Promise<string> {
     for (const h of active.slice(0, 3)) learned.push(`${h.name ?? h.habit} alışkanlığı${h.streak ? ` (${h.streak} gün üst üste)` : ''}`);
   }
   if (learned.length) lines.push('\n**Seni tanıdıkça öğrendiklerim:**\n- ' + learned.slice(0, 6).join('\n- '));
+
+  // ── Son öğrendiklerim (belief-log history — the JOURNEY, not just the current state) ──
+  try {
+    const KEY_TR: Record<string, string> = { dietary_restriction: 'beslenme tercihi', allergen: 'alerji', dislike: 'sevmediğin', goal: 'hedef', weight: 'kilo', injury: 'sakatlık' };
+    const events = await getBeliefHistory(userId, undefined, 12);
+    const shown: string[] = [];
+    for (const e of events) {
+      const key = String(e.belief_key ?? '');
+      if (!KEY_TR[key]) continue; // skip internal events (plan_repair etc.)
+      const when = String(e.created_at ?? '').split('T')[0];
+      const subj = e.subject ? ` (${e.subject})` : '';
+      const op = e.operation === 'retract' ? 'kaldırıldı' : e.operation === 'correct' ? 'güncellendi' : 'eklendi';
+      shown.push(`${when}: ${KEY_TR[key]}${subj} ${op}`);
+      if (shown.length >= 5) break;
+    }
+    if (shown.length) lines.push('\n**Son öğrendiklerim (zaman çizelgesi):**\n- ' + shown.join('\n- '));
+  } catch { /* non-critical */ }
 
   // ── Correction invite (the write path) ──
   lines.push('\nBunlardan biri yanlış ya da değiştiyse söylemen yeter — mesela "artık sütü seviyorum", "alerjim geçti", "hedefim değişti" de, hemen güncellerim. Her şey her zaman senin kontrolünde. 🙌');

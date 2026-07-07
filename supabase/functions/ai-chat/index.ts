@@ -3672,6 +3672,9 @@ async function executeActions(
             // weight_history is the canonical measurement store (export + trend source)
             // but was never written by any code path before (#R1-M2). Record each weigh-in.
             await supabaseAdmin.from('weight_history').upsert({ user_id: userId, weight_kg: w, recorded_at: actionDate }, { onConflict: 'user_id,recorded_at' });
+            // #arch step 11: append the weight belief. Bitemporal — a backdated weigh-in is a
+            // RETROACTIVE record (valid-time = the past date), not a new current value.
+            await logBelief(userId, { belief_key: 'weight', operation: 'set', new_value: w, source: 'user_stated', temporal_scope: actionDate === today ? 'prospective' : 'retroactive', effective_from: actionDate });
             // FIX (audit AI-INT-04): only the CURRENT-day weight is the live weight.
             // A backdated weigh-in ("geçen hafta 95 kiloydum", days_ago set) must record
             // history but must NOT overwrite profiles.weight_kg or trigger a TDEE recalc —
@@ -4044,7 +4047,11 @@ async function executeActions(
             }
             // Only claim success when the DB actually accepted the write — never tell
             // the user "Hedef belirlendi" while the row was rejected (#8).
-            if (goalWriteOk) pfMessages.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
+            if (goalWriteOk) {
+              pfMessages.push(action.target_weight_kg ? 'Hedef belirlendi' : 'Hedef tipi kaydedildi');
+              // #arch step 11: append the goal belief (a re-stated goal is a 'correct'; a first one 'set').
+              await logBelief(userId, { belief_key: 'goal', subject: (goalPatch.goal_type as string | undefined) ?? null, operation: existing ? 'correct' : 'set', new_value: { goal_type: goalPatch.goal_type, target_weight_kg: goalPatch.target_weight_kg }, source: 'user_stated' });
+            }
             // #live-L1: the goal's deficit/surplus factor only enters calorie ranges via
             // recalculateTDEEIfNeeded (goal-aware). When a user states their goal AFTER the
             // identity card (the natural order), checkOnboardingCompletion already ran goal-less
