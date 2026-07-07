@@ -11,7 +11,7 @@ import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { SkeletonCard } from '@/components/ui/Skeleton';
-import { createSession } from '@/services/chat.service';
+import { getOrCreateActiveSession } from '@/services/chat.service';
 import type { MissingField } from '@/lib/plan-readiness';
 
 interface Props {
@@ -26,8 +26,10 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
   const { colors } = useTheme();
   const ready = missingCore.length === 0;
 
-  const openTaskChat = async (taskKey: string, taskTitle: string) => {
-    const id = await createSession({ title: taskTitle, topicTags: [taskKey] });
+  const openTaskChat = async (taskKey: string, _taskTitle: string) => {
+    // #S1 (one-thread): task topics land in THE coach conversation (topic behavior rides the
+    // task_mode_hint request param, not the session row) — no more per-task session islands.
+    const id = await getOrCreateActiveSession();
     if (id) {
       router.push({
         pathname: `/chat/${id}` as never,

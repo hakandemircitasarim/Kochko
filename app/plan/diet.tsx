@@ -32,7 +32,7 @@ import { haptics } from '@/lib/haptics';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
-import { invokePlanChat, createSession } from '@/services/chat.service';
+import { invokePlanChat, createHeadlessSession } from '@/services/chat.service';
 import {
   getActive,
   getDraft,
@@ -117,7 +117,7 @@ export default function DietPlanScreen() {
         // returned (dead end). Derive a fresh session so the draft stays interactive.
         if (!chatSessionId && !creatingSessionRef.current) {
           creatingSessionRef.current = true;
-          const sid = await createSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
+          const sid = await createHeadlessSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
           if (sid && mountedRef.current) setChatSessionId(sid);
           else creatingSessionRef.current = false; // allow retry if creation failed
         }
@@ -164,7 +164,7 @@ export default function DietPlanScreen() {
     // FIX (audit UX-PRM-07): inform the free user their quota is used before they invest effort.
     if (!(await ensurePlanQuotaAcknowledged())) return;
     // Create a chat session for this plan negotiation.
-    const sid = await createSession({ title: 'Diyet planı oluşturma', topicTags: ['plan_diet'] });
+    const sid = await createHeadlessSession({ title: 'Diyet planı oluşturma', topicTags: ['plan_diet'] });
     if (!sid) return;
     setChatSessionId(sid);
     setSending(true);
@@ -321,7 +321,7 @@ export default function DietPlanScreen() {
     // draft threw 23505 and the raw Postgres "duplicate key" string leaked into the chat bubble.
     const existing = await getDraft(user.id, 'diet');
     if (existing) {
-      const sid = await createSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
+      const sid = await createHeadlessSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
       if (sid) setChatSessionId(sid);
       setMessages([
         {
@@ -353,7 +353,7 @@ export default function DietPlanScreen() {
       ]);
       return;
     }
-    const sid = await createSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
+    const sid = await createHeadlessSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
     if (sid) setChatSessionId(sid);
     // Seed an assistant greeting so the revision chat opens with a clear prompt
     // instead of an empty list that misleadingly reads "Plan hazırlanıyor...".

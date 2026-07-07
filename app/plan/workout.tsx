@@ -27,7 +27,7 @@ import { haptics } from '@/lib/haptics';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
-import { invokePlanChat, createSession } from '@/services/chat.service';
+import { invokePlanChat, createHeadlessSession } from '@/services/chat.service';
 import {
   getActive,
   getDraft,
@@ -102,7 +102,7 @@ export default function WorkoutPlanScreen() {
         // draft had chatSessionId=null and send/approve/alternative silently dead-ended.
         if (!chatSessionId && !creatingSessionRef.current) {
           creatingSessionRef.current = true;
-          const sid = await createSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
+          const sid = await createHeadlessSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
           if (sid && mountedRef.current) setChatSessionId(sid);
           else creatingSessionRef.current = false; // allow retry if creation failed
         }
@@ -148,7 +148,7 @@ export default function WorkoutPlanScreen() {
     if (!user?.id) return;
     // FIX (audit UX-PRM-07): inform the free user their quota is used before they invest effort.
     if (!(await ensurePlanQuotaAcknowledged())) return;
-    const sid = await createSession({ title: 'Antrenman planı oluşturma', topicTags: ['plan_workout'] });
+    const sid = await createHeadlessSession({ title: 'Antrenman planı oluşturma', topicTags: ['plan_workout'] });
     if (!sid) return;
     setChatSessionId(sid);
     setSending(true);
@@ -299,7 +299,7 @@ export default function WorkoutPlanScreen() {
     // chat bubble. Continue the existing draft instead.
     const existing = await getDraft(user.id, 'workout');
     if (existing) {
-      const sid = await createSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
+      const sid = await createHeadlessSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
       if (sid) setChatSessionId(sid);
       setMessages([
         {
@@ -331,7 +331,7 @@ export default function WorkoutPlanScreen() {
       ]);
       return;
     }
-    const sid = await createSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
+    const sid = await createHeadlessSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
     if (sid) setChatSessionId(sid);
     setMessages([
       {

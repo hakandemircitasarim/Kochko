@@ -25,10 +25,11 @@ import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
   sendMessageToSession, sendPhotoToSession, loadSessionMessages, loadOlderSessionMessages,
-  reopenSession, createSession, queueMessageOffline, processOfflineQueue, getOfflineQueueSize,
+  reopenSession, getOrCreateActiveSession, queueMessageOffline, processOfflineQueue, getOfflineQueueSize,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
-import { getTaskByKey } from '@/services/onboarding-tasks.service';
+import { getTaskByKey, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
+import { OnboardingTaskCard } from '@/components/chat/OnboardingTaskCard';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { saveRecipe, type RecipeIngredient } from '@/services/recipes.service';
 import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
@@ -293,20 +294,34 @@ export default function SessionDetailScreen() {
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
-  const { sessionId, prefill, taskModeHint, openCamera, fromPrefill } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string; openCamera?: string; fromPrefill?: string }>();
-  // FIX (audit: prefill geri-tuş) — chat-tab prefill/openCamera akışı bu ekrana
-  // router.replace ile gelir (push değil); yığından çıkıldığı için koşulsuz
-  // router.back() kullanıcıyı oturum listesine değil replace-öncesi ekrana düşürür.
-  // fromPrefill işareti varsa açıkça liste sekmesine dön, normal push akışını bozma.
+  const { sessionId, prefill, taskModeHint, openCamera, fromPrefill, fromTab } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string; openCamera?: string; fromPrefill?: string; fromTab?: string }>();
+  // #S1 (one-thread): the chat tab is now a resolver that replaces INTO this thread — going
+  // "back" to it would immediately bounce here again (infinite loop). From the tab/prefill
+  // entries, back = the dashboard (the natural "leave the conversation" action). A pushed entry
+  // (plan screens etc.) keeps normal stack behavior.
   const handleBack = useCallback(() => {
-    if (fromPrefill) router.replace('/(tabs)/chat');
-    else router.back();
-  }, [fromPrefill]);
+    if (fromTab || fromPrefill) router.replace('/(tabs)');
+    else if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)');
+  }, [fromTab, fromPrefill]);
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const refreshDashboard = useDashboardStore(s => s.fetchToday);
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [input, setInput] = useState('');
+  // #S1 (one-thread): the onboarding task rail moved here from the retired session-list screen —
+  // tasks now open as topics INSIDE this same conversation instead of spawning session islands.
+  const [railTasks, setRailTasks] = useState<OnboardingTask[]>([]);
+  useEffect(() => {
+    if (!user?.id) return;
+    getIncompleteTasks(user.id).then(setRailTasks).catch(() => {});
+    // refetch after a task completes so the finished card drops off the rail
+  }, [user?.id, messages.filter(m => (m as UIMessage).taskCompletion?.completed).length]);
+  const openTaskTopic = useCallback((task: OnboardingTask) => {
+    const p: Record<string, string> = { prefill: task.prefillMessage, taskModeHint: task.taskModeHint };
+    if (fromTab) p.fromTab = '1';
+    router.replace({ pathname: `/chat/${sessionId}`, params: p });
+  }, [sessionId, fromTab]);
   const [prefillApplied, setPrefillApplied] = useState(false);
   const [sending, setSending] = useState(false);
   // Intentional, context-aware label under the typing dots so long LLM waits read
@@ -1172,11 +1187,13 @@ export default function SessionDetailScreen() {
     );
   }
 
-  // Task chat lock: once the server-validated task_completion arrives on any
-  // message in this session, the chat is "closed". Composer locks, user can
-  // only proceed by tapping a next-task card. Prevents the model from drifting
-  // into other topics after the session has logically ended.
-  const taskSessionClosed = !!taskModeHint && messages.some(m => (m as UIMessage).taskCompletion?.completed);
+  // Task lock: while a task topic is active, a server-validated task_completion "closes" the
+  // topic — composer locks until the user picks a next-task card or exits task mode.
+  // #S1 (one-thread): scope the lock to the LAST message only. In the eternal thread, ANY old
+  // completed-task message used to satisfy `messages.some(...)`, permanently locking the composer
+  // forever after the first completed task — the conversation must always stay writable.
+  const lastMsg = messages.length > 0 ? (messages[messages.length - 1] as UIMessage) : undefined;
+  const taskSessionClosed = !!taskModeHint && !!lastMsg?.taskCompletion?.completed;
 
   const sendDisabled = (!input.trim() && !photo) || sending || taskSessionClosed;
 
@@ -1487,6 +1504,24 @@ export default function SessionDetailScreen() {
           <Text style={{ color: colors.warning, fontSize: 12, flex: 1 }}>
             Mesaj limiti. {rateLimitCountdown} saniye sonra tekrar deneyebilirsin.
           </Text>
+        </View>
+      )}
+
+      {/* #S1 Task rail — profile-completion topics open inside THIS conversation. Hidden while a
+          task topic is already active and while the keyboard is up (composer space wins). */}
+      {railTasks.length > 0 && !taskModeHint && !keyboardVisible && (
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.xs }}>
+            Koçuna anlat
+          </Text>
+          <FlatList
+            data={railTasks.slice(0, 5)}
+            keyExtractor={t => t.key}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: SPACING.sm }}
+            renderItem={({ item }) => <OnboardingTaskCard task={item} onPress={openTaskTopic} />}
+          />
         </View>
       )}
 
@@ -2170,18 +2205,16 @@ function TaskCompletionCard({
     .slice(0, 3);
 
   const handleTap = async (task: NonNullable<ReturnType<typeof getTaskByKey>>) => {
-    const id = await createSession({ title: task.title, topicTags: [task.key] });
+    // #S1 (one-thread): the next topic CONTINUES the same conversation — remount THIS thread with
+    // the new task prefill instead of creating a fresh session (which beheaded the active thread
+    // and made every topic an amnesiac island).
+    const id = await getOrCreateActiveSession();
     if (id) {
-      // We're already on a /chat/[sessionId] screen — REPLACE it, don't push, so
-      // moving to the next topic doesn't stack chats (back would otherwise return
-      // to the just-finished chat instead of the session list).
       router.replace({
         pathname: `/chat/${id}`,
         params: { prefill: task.prefillMessage, taskModeHint: task.taskModeHint },
       });
     } else {
-      // createSession returned null (no auth / offline / insert error) — don't
-      // leave the tap as a dead button (#R3-8), mirror the other call sites.
       Alert.alert('Sohbet başlatılamadı', 'İnternet bağlantını kontrol et ve tekrar dene.');
     }
   };

@@ -442,10 +442,22 @@ serve(async (req: Request) => {
     // across ALL sessions, bleeding an unrelated old conversation into context. Resolve the
     // effective session the SAME way storeMessages will (body id if present, else active session).
     let effectiveSessionId: string | undefined = (session_id as string | undefined) ?? undefined;
+    // #S1 (one-thread): was the conversation active within the last 6h? Drives the cold-open
+    // heuristic (freshOpener) now that the thread is eternal and "layer4 empty" never holds.
+    let sessionRecentlyActive = false;
     if (!effectiveSessionId) {
       const { data: activeSession } = await supabaseAdmin
-        .from('chat_sessions').select('id').eq('user_id', userId).eq('is_active', true).maybeSingle();
-      if (activeSession) effectiveSessionId = activeSession.id as string;
+        .from('chat_sessions').select('id, updated_at').eq('user_id', userId).eq('is_active', true).maybeSingle();
+      if (activeSession) {
+        effectiveSessionId = activeSession.id as string;
+        const upd = activeSession.updated_at ? Date.parse(activeSession.updated_at as string) : 0;
+        sessionRecentlyActive = Number.isFinite(upd) && (Date.now() - upd) < 6 * 3600_000;
+      }
+    } else {
+      const { data: sess } = await supabaseAdmin
+        .from('chat_sessions').select('updated_at').eq('id', effectiveSessionId).maybeSingle();
+      const upd = sess?.updated_at ? Date.parse(sess.updated_at as string) : 0;
+      sessionRecentlyActive = Number.isFinite(upd) && (Date.now() - upd) < 6 * 3600_000;
     }
     const ctx = await buildContextFromPlan(userId, retrievalPlan, effectiveSessionId);
 
@@ -658,12 +670,20 @@ serve(async (req: Request) => {
       }
     }
 
-    // Fresh-session opener: when there's NO chat history yet (layer4 empty) and the
-    // user's first message isn't itself a log/topic, do NOT lead with proactive
-    // habit/predictive nudges — that's what made a brand-new chat open with an
-    // irrelevant "su iç" (water) reminder instead of responding to the user (#3/#R3-4).
+    // Fresh-conversation opener: do NOT lead with proactive habit/predictive nudges on a cold
+    // open — that's what made a fresh chat open with an irrelevant "su iç" reminder (#3/#R3-4).
+    // #S1 (one-thread): the thread is now ETERNAL, so "layer4 empty" almost never holds and the
+    // old heuristic would silently die. Redefined as "first turn after a real gap": empty history
+    // (brand-new user) OR a [saat: HH:MM] stamp showing the last exchange is from a PRIOR
+    // conversation burst (the client stamps messages; absent stamps → treat as fresh only if empty).
     const firstMsgIsLog = !!message && (looksLikeMealReport(message) || looksLikeWorkoutReport(message));
-    const freshOpener = ctx.layer4.length === 0 && !firstMsgIsLog;
+    const lastMsgIsRecent = (() => {
+      if (ctx.layer4.length === 0) return false;
+      // Heuristic: the newest layer4 entries came from this same burst if the CURRENT session has
+      // any message in the last 6 hours — checked cheaply via the session row's updated_at.
+      return sessionRecentlyActive;
+    })();
+    const freshOpener = !firstMsgIsLog && (ctx.layer4.length === 0 || !lastMsgIsRecent);
 
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,

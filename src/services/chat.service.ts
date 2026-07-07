@@ -449,6 +449,67 @@ async function getCachedSessions(): Promise<ChatSessionSummary[]> {
   }
 }
 
+/**
+ * #S1 (one-thread structural rebuild): THE coach conversation. Returns the user's single active
+ * session, creating it only if none exists — NEVER closes anything (closing the active session is
+ * what beheaded the thread and made the coach read as amnesiac at every boundary). The mig-035
+ * one-active-per-user unique index is the cornerstone: it guarantees a single canonical thread.
+ */
+export async function getOrCreateActiveSession(): Promise<string | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return null;
+    const userId = session.user.id;
+    const { data: active } = await supabase
+      .from('chat_sessions').select('id')
+      .eq('user_id', userId).eq('is_active', true)
+      .limit(1).maybeSingle();
+    if (active?.id) return active.id as string;
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .insert({ user_id: userId, title: 'Koç', topic_tags: [], is_active: true })
+      .select('id').single();
+    if (error) {
+      // Another device won the race — the active session now exists; use it.
+      const { data: retry } = await supabase
+        .from('chat_sessions').select('id')
+        .eq('user_id', userId).eq('is_active', true)
+        .limit(1).maybeSingle();
+      return (retry?.id as string) ?? null;
+    }
+    return data?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * #S1: an INVISIBLE scoped session for machine flows (plan negotiation). is_active=false from
+ * birth, so it can never collide with — or close — the user's one canonical thread. (The old
+ * createSession closed the active session first, silently beheading the coach conversation every
+ * time a plan was generated — a live continuity bug.) storeMessages accepts inactive session ids.
+ */
+export async function createHeadlessSession(options?: { title?: string; topicTags?: string[] }): Promise<string | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return null;
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .insert({
+        user_id: session.user.id,
+        title: options?.title ?? null,
+        topic_tags: options?.topicTags ?? [],
+        is_active: false,
+        ended_at: new Date().toISOString(),
+      })
+      .select('id').single();
+    if (error) return null;
+    return data?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function createSession(options?: { title?: string; topicTags?: string[] }): Promise<string | null> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
