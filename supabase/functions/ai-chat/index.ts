@@ -4081,7 +4081,18 @@ async function executeActions(
           const ccSubject = ((cc.subject as string) ?? '').trim();
           const CONFIRMABLE = new Set<string>(['allergen', 'intolerance', 'injury', 'surgery', 'condition', 'medication', 'dietary']);
           if (CONFIRMABLE.has(ccKind) && ccSubject) {
-            await confirmConstraint(userId, ccKind as ConstraintKind, ccSubject);
+            if (ccKind === 'injury' || ccKind === 'surgery') {
+              // Injuries/surgeries are stored in the guardrails' ENGLISH canonical vocab ('knee'),
+              // but MemoryMirror shows — and the model echoes — the Turkish label ('diz'). Map the
+              // affirmed subject back to English so the subject-equality match hits the stored row
+              // (otherwise 0 rows update and the "hâlâ geçerli mi?" prompt re-fires forever).
+              const canon = extractInjuredBodyParts([ccSubject]);
+              for (const s of (canon.length ? canon : [ccSubject])) {
+                await confirmConstraint(userId, ccKind as ConstraintKind, s);
+              }
+            } else {
+              await confirmConstraint(userId, ccKind as ConstraintKind, ccSubject);
+            }
           }
           feedback.push(null);
           break;

@@ -303,8 +303,13 @@ export function projectDailyPlanRows(opts: ProjectDailyPlanOpts): DailyPlanInser
     // so daily_plans.protein_target_g carries the same code-enforced guarantee as the calorie floor,
     // instead of trusting whatever the LLM emitted (its prompt has no g/kg minimum).
     let proteinTarget = ri(targets.protein, ri(dietDay?.total_protein, Math.round(planProtein)));
-    const proteinFloorG = getProteinFloorG(weightKg);
-    if (proteinTarget < proteinFloorG) proteinTarget = proteinFloorG;
+    // Only when a diet plan actually exists: a workout-only projection has no diet target, so
+    // proteinTarget stays 0 (the "no diet target" sentinel the daily report grades leniently) —
+    // clamping it up would fabricate a ~1.6 g/kg goal the user was never given a diet to meet.
+    if (dietPlanData) {
+      const proteinFloorG = getProteinFloorG(weightKg);
+      if (proteinTarget < proteinFloorG) proteinTarget = proteinFloorG;
+    }
     const carbsTarget = ri(targets.carbs, ri(dietDay?.total_carbs, Math.round(planCarbs)));
     const fatTarget = ri(targets.fat, ri(dietDay?.total_fat, Math.round(planFat)));
 

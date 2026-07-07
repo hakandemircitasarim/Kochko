@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
+import { getEffectiveDate } from '@/lib/day-boundary';
 import { detectPlateau, selectBestStrategy, applyPlateauStrategy, type PlateauStatus, type PlateauStrategy, type StrategyRecommendation } from '@/services/plateau.service';
 import { getMaintenanceStatus, shouldTriggerMiniCut, type MaintenanceStatus } from '@/services/maintenance.service';
 import { getTimelineData } from '@/services/goals.service';
@@ -31,11 +32,15 @@ interface CompPt { date: string; compliance_score: number; }
 // owner update; a failure here must not undo the (already-succeeded) profile change.
 async function reprojectTodayPlanBand(
   userId: string,
+  dayBoundaryHour: number,
   calMin: number,
   calMax: number,
   proteinG?: number,
 ): Promise<void> {
-  const today = new Date().toISOString().split('T')[0];
+  // Key "today" with the SAME effective-date logic the dashboard/log flow uses (local calendar +
+  // day-boundary subtraction), NOT raw UTC — otherwise in the 00:00–04:00 window the band lands on
+  // the adjacent calendar row and the dashboard (which reads getEffectiveDate) never sees it.
+  const today = getEffectiveDate(new Date(), dayBoundaryHour);
   const { data: existing } = await supabase
     .from('daily_plans')
     .select('id')
@@ -177,7 +182,7 @@ export default function ProgressScreen() {
     }
 
     // Reflect the new band on today's plan now (not next roll-forward).
-    await reprojectTodayPlanBand(user.id, result.adjustedCalorie.min, result.adjustedCalorie.max, result.adjustedProtein);
+    await reprojectTodayPlanBand(user.id, (profile.day_boundary_hour as number) ?? 4, result.adjustedCalorie.min, result.adjustedCalorie.max, result.adjustedProtein);
 
     haptics.success();
     useProfileStore.getState().fetch(user.id);
@@ -221,7 +226,7 @@ export default function ProgressScreen() {
       if (insErr) throw insErr;
 
       // Reflect the mini-cut band on today's plan now (not next roll-forward).
-      await reprojectTodayPlanBand(user.id, miniCutCalories - 100, miniCutCalories + 100);
+      await reprojectTodayPlanBand(user.id, (profile.day_boundary_hour as number) ?? 4, miniCutCalories - 100, miniCutCalories + 100);
 
       haptics.success();
       Alert.alert('Mini-Cut Başlatıldı', `3 haftalık mini-cut: ${miniCutCalories - 100}-${miniCutCalories + 100} kcal. Sonra tekrar bakıma dönersin.`);
