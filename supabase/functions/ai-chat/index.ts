@@ -379,7 +379,7 @@ serve(async (req: Request) => {
 
     // Check onboarding status
     const { data: profile } = await supabaseAdmin
-      .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg, home_timezone, active_timezone, day_boundary_hour, periodic_state, menstrual_tracking')
+      .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg, birth_year, height_cm, home_timezone, active_timezone, day_boundary_hour, periodic_state, menstrual_tracking')
       .eq('id', userId).maybeSingle();
     const isOnboarding = !profile?.onboarding_completed;
 
@@ -685,6 +685,26 @@ serve(async (req: Request) => {
     })();
     const freshOpener = !firstMsgIsLog && (ctx.layer4.length === 0 || !lastMsgIsRecent);
 
+    // #S4 CONTRADICTION ENGINE: a stated identity fact conflicting with the stored value must be
+    // RESOLVED in this turn, not silently overwritten and not silently ignored (the 25-vs-35 case).
+    // Once-per-field 48h cooldown via belief_events; if the user re-states the same value after
+    // being asked once, repetition wins and the write proceeds unchallenged.
+    let contradiction: ReturnType<typeof detectIdentityContradiction> = null;
+    if (message && profile?.onboarding_completed) {
+      const cand = detectIdentityContradiction(message, profile as Record<string, unknown>);
+      if (cand) {
+        const { data: recentContest } = await supabaseAdmin
+          .from('belief_events').select('id')
+          .eq('user_id', userId).eq('belief_key', 'identity_contest').eq('subject', cand.field)
+          .gte('created_at', new Date(Date.now() - 48 * 3600_000).toISOString())
+          .limit(1);
+        if (!recentContest?.length) contradiction = cand;
+      }
+    }
+    const contradictionPrompt = contradiction
+      ? `## VERI CELISKISI (BU TURDA COZ)\nKullanici bu mesajda ${contradiction.statedLabel} dedi ama kayitta ${contradiction.storedLabel} var. Yanitinda MUTLAKA kibarca hangisinin dogru oldugunu sor (orn. "kayitlarimda ${contradiction.storedLabel} gorunuyor, ${contradiction.statedLabel} mi dogru?"). Kullanici netlestirene kadar bu alani profile_update ile YAZMA.`
+      : '';
+
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
       // #arch step 9 (token budget): situational guidance blocks are included ONLY when their
@@ -702,6 +722,9 @@ serve(async (req: Request) => {
       // "who this person is right now", even on thin register/mood turns. This is what makes the
       // coach feel like it truly knows you and responds to the moment, not a generic bot.
       situationalSnapshot,
+      // #S4: a data contradiction detected this turn MUST be resolved in the reply — placed high
+      // so it outranks routine coaching guidance.
+      contradictionPrompt,
       confidenceNote,
       toneContext,
       personaPrompt,
@@ -2014,6 +2037,28 @@ serve(async (req: Request) => {
 
     // Execute actions (use target_date for batch entry, T1.17)
     // Source of log: photo > voice (transcribed) > default text/chat
+    // #S4 HOLD: while a contradiction is unresolved, the contested field must NOT be written by
+    // ANY path (model action, regex, net) — strip it from every profile_update (and weight_log
+    // when weight is contested). The resolving answer next turn writes it (explicit-correction
+    // exemption + 48h repetition rule in detectIdentityContradiction). Log the contest to the
+    // append-only belief log — this is also the cooldown marker.
+    if (contradiction) {
+      for (const a of actions) {
+        const ar = a as Record<string, unknown>;
+        if (ar.type === 'profile_update' && ar[contradiction.field] !== undefined) delete ar[contradiction.field];
+      }
+      if (contradiction.field === 'weight_kg') {
+        const kept = actions.filter(a => (a as Record<string, unknown>).type !== 'weight_log');
+        if (kept.length !== actions.length) { actions.length = 0; actions.push(...kept); }
+      }
+      logBelief(userId, {
+        belief_key: 'identity_contest', subject: contradiction.field, operation: 'set',
+        old_value: contradiction.storedValue, new_value: contradiction.statedValue,
+        note: `çelişki tespit: söylenen ${contradiction.statedLabel} vs kayıt ${contradiction.storedLabel} — koç netleştirme sorusu sordu`,
+      }).then(() => {}, () => {});
+      console.warn('[contradiction] held write + asked', { field: contradiction.field, stated: contradiction.statedValue, stored: contradiction.storedValue });
+    }
+
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
     const actionFeedback = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined);
 
@@ -2060,6 +2105,16 @@ serve(async (req: Request) => {
       composeGeneralSummary(userId)
         .then((summaryText) => updateLayer2(userId, { general_summary: summaryText }))
         .catch((e) => console.warn('[derived-summary] recompose failed:', (e as Error).message));
+    }
+
+    // #S4 deterministic fallback: safety never depends on the model obeying the prompt. If the
+    // reply doesn't visibly raise the contradiction (no stored-value mention + question), append
+    // the clarifying question so the user ALWAYS sees it in the same turn.
+    if (contradiction) {
+      const asked = assistantMessage.includes('?') && /(kay[ıi]t|kaydet|görünüyor|gorunuyor|hangisi)/i.test(assistantMessage);
+      if (!asked) {
+        assistantMessage += `\n\nBir şeyi netleştirelim: kayıtlarımda ${contradiction.storedLabel} görünüyor ama az önce ${contradiction.statedLabel} dedin — hangisi doğru? Söyle, hemen düzelteyim.`;
+      }
     }
 
     // A8: Low confidence proactive verification — append confirmation question
@@ -2850,6 +2905,58 @@ function normalizeProfileEnum(field: string, value: unknown): string | null {
   if (enums.includes(v)) return v;
   for (const e of enums) {
     if ((PROFILE_ENUM_ALIASES[e] ?? []).includes(v)) return e;
+  }
+  return null;
+}
+
+/**
+ * #S4 (structural rebuild) — the contradiction engine. Compare a fact the user just STATED
+ * against the STORED canonical value; on a MATERIAL mismatch the coach must resolve it in-turn
+ * instead of silently overwriting (or silently ignoring — the 25-vs-35 case where nobody noticed).
+ *
+ * Design decisions, from the live failure:
+ * - EXPLICIT corrections are believed immediately ("yanlış söyledim, 25 olacaktı") — the user is
+ *   deliberately correcting; challenging them is insulting and was the exact complaint.
+ * - Repetition wins: the challenge fires ONCE per field (48h cooldown via belief_events). If the
+ *   user re-states the same value after being asked, that IS the resolution — it writes.
+ * - Materiality thresholds, not hair-triggers: age ≥2y (a birthday isn't a contradiction),
+ *   height ≥3cm (height doesn't change), weight ≥ max(7kg, 8%) (normal fluctuation must never
+ *   be challenged in a weight-loss app).
+ */
+function detectIdentityContradiction(
+  msg: string,
+  profile: Record<string, unknown> | null | undefined,
+): { field: 'birth_year' | 'weight_kg' | 'height_cm'; statedValue: number; storedValue: number; statedLabel: string; storedLabel: string } | null {
+  if (!msg || !profile) return null;
+  const lower = msg.toLocaleLowerCase('tr');
+  // Explicit correction → believe the user, never challenge.
+  if (/(yanlış|yanlis|pardon|aslında|aslinda|düzelt|duzelt|hatalı|hatali|olacaktı|olacakti|yanlış girilmiş|yanlis girilmis)/.test(lower)) return null;
+  const extracted = extractProfileFromMessage(msg, undefined, true);
+  if (!extracted) return null;
+  // Age
+  if (typeof extracted.birth_year === 'number' && typeof profile.birth_year === 'number') {
+    const statedAge = new Date().getFullYear() - (extracted.birth_year as number);
+    const storedAge = new Date().getFullYear() - (profile.birth_year as number);
+    if (Math.abs(statedAge - storedAge) >= 2) {
+      return { field: 'birth_year', statedValue: extracted.birth_year as number, storedValue: profile.birth_year as number, statedLabel: `${statedAge} yaş`, storedLabel: `${storedAge} yaş` };
+    }
+  }
+  // Height
+  if (typeof extracted.height_cm === 'number' && typeof profile.height_cm === 'number') {
+    const d = Math.abs((extracted.height_cm as number) - (profile.height_cm as number));
+    if (d >= 3) {
+      return { field: 'height_cm', statedValue: extracted.height_cm as number, storedValue: profile.height_cm as number, statedLabel: `${extracted.height_cm} cm`, storedLabel: `${profile.height_cm} cm` };
+    }
+  }
+  // Weight (cued statements only reach extraction in safeOnly mode, so this is already
+  // disambiguated; challenge only an implausible jump).
+  if (typeof extracted.weight_kg === 'number' && typeof profile.weight_kg === 'number') {
+    const stored = Number(profile.weight_kg);
+    const stated = extracted.weight_kg as number;
+    const jump = Math.abs(stated - stored);
+    if (jump >= Math.max(7, stored * 0.08)) {
+      return { field: 'weight_kg', statedValue: stated, storedValue: stored, statedLabel: `${stated} kg`, storedLabel: `${stored} kg` };
+    }
   }
   return null;
 }
