@@ -49,7 +49,7 @@ export default function TodayScreen() {
     proteinTarget: planProtein, carbsTarget: planCarbs, fatTarget: planFat,
     loading, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
-  const { streak, checkForMilestones } = useStreak();
+  const { streak, newAchievement, checkForMilestones } = useStreak();
   // FIX (audit: deneme geri-sayımı dashboard) trial state'i dashboard'da yüzeye çıkar
   const { isInTrial, trialDaysLeft } = usePremium();
   const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
@@ -124,6 +124,11 @@ export default function TodayScreen() {
   useEffect(() => {
     checkAndScheduleTrialReminder(isInTrial, trialDaysLeft).catch(() => {});
   }, [isInTrial, trialDaysLeft]);
+
+  // Celebrate a freshly-unlocked milestone with a success haptic (the toast is rendered below).
+  useEffect(() => {
+    if (newAchievement) haptics.success();
+  }, [newAchievement]);
 
   const handleAddWater = () => {
     if (!user?.id) return;
@@ -255,6 +260,29 @@ export default function TodayScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* FIX (completeness audit): the goal/milestone celebration ('HEDEFE ULAŞTIN!') was computed
+          by useStreak but no screen consumed newAchievement, so the in-the-moment congrats never
+          showed. Render it as a floating toast over the dashboard; the hook auto-clears it after 5s. */}
+      {newAchievement && (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: insets.top + SPACING.sm, left: SPACING.md, right: SPACING.md, zIndex: 50, alignItems: 'center' }}
+        >
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+            backgroundColor: colors.primary, borderRadius: RADIUS.md,
+            paddingVertical: SPACING.md, paddingHorizontal: SPACING.lg,
+            shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6,
+            maxWidth: '100%',
+          }}>
+            <Ionicons name="trophy" size={20} color={getContrastColor(colors.primary)} />
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700', flexShrink: 1 }}>
+              {newAchievement}
+            </Text>
+          </View>
+        </View>
+      )}
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}

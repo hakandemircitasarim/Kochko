@@ -16,6 +16,10 @@
  * meal_suggestions) are always populated and no NaN is ever produced.
  */
 
+// The deterministic protein floor lives with the other clinical constants (edge shared module,
+// NOT a client type) so daily_plans gets a code-enforced g/kg minimum like the calorie floor.
+import { getProteinFloorG } from './clinical-rules.ts';
+
 // ---------------------------------------------------------------------------
 // Local interfaces for the weekly_plans.plan_data shape (do NOT import client
 // types — this is an edge function and the snapshot shape is owned here).
@@ -295,7 +299,12 @@ export function projectDailyPlanRows(opts: ProjectDailyPlanOpts): DailyPlanInser
 
     // --- macro targets (protein NOT NULL; never null) ---
     // Prefer the plan-level target, fall back to the day's own total, then 0.
-    const proteinTarget = ri(targets.protein, ri(dietDay?.total_protein, Math.round(planProtein)));
+    // FIX (completeness audit): clamp UP to the deterministic protein floor (1.6 g/kg bodyweight)
+    // so daily_plans.protein_target_g carries the same code-enforced guarantee as the calorie floor,
+    // instead of trusting whatever the LLM emitted (its prompt has no g/kg minimum).
+    let proteinTarget = ri(targets.protein, ri(dietDay?.total_protein, Math.round(planProtein)));
+    const proteinFloorG = getProteinFloorG(weightKg);
+    if (proteinTarget < proteinFloorG) proteinTarget = proteinFloorG;
     const carbsTarget = ri(targets.carbs, ri(dietDay?.total_carbs, Math.round(planCarbs)));
     const fatTarget = ri(targets.fat, ri(dietDay?.total_fat, Math.round(planFat)));
 

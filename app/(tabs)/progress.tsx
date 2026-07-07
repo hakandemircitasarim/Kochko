@@ -23,6 +23,33 @@ import { haptics } from '@/lib/haptics';
 interface MetricPt { date: string; weight_kg: number | null; water_liters: number; sleep_hours: number | null; steps: number | null; }
 interface CompPt { date: string; compliance_score: number; }
 
+// FIX (completeness audit): applying a plateau strategy / mini-cut writes the new band to profiles,
+// but today's ALREADY-projected daily_plans row keeps the OLD calorie/protein targets until the next
+// daily roll-forward — so the dashboard + plan the user is actually following show a stale target.
+// Push the new band into today's plan row immediately (mirrors ai-chat maintenance_start /
+// mini_cut_start and maintenance.service.writeReverseDietToPlan). Best-effort: RLS plans_upd lets the
+// owner update; a failure here must not undo the (already-succeeded) profile change.
+async function reprojectTodayPlanBand(
+  userId: string,
+  calMin: number,
+  calMax: number,
+  proteinG?: number,
+): Promise<void> {
+  const today = new Date().toISOString().split('T')[0];
+  const { data: existing } = await supabase
+    .from('daily_plans')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('date', today)
+    .order('version', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!existing) return; // no projected row today → next roll-forward already uses the new profile band
+  const patch: Record<string, number> = { calorie_target_min: calMin, calorie_target_max: calMax };
+  if (proteinG != null && Number.isFinite(proteinG) && proteinG > 0) patch.protein_target_g = Math.round(proteinG);
+  await supabase.from('daily_plans').update(patch).eq('id', (existing as { id: string }).id);
+}
+
 export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   // FIX (audit UI-TAB-01/UI-TAB-02): derive chart width per-render from useWindowDimensions
@@ -149,6 +176,9 @@ export default function ProgressScreen() {
       return;
     }
 
+    // Reflect the new band on today's plan now (not next roll-forward).
+    await reprojectTodayPlanBand(user.id, result.adjustedCalorie.min, result.adjustedCalorie.max, result.adjustedProtein);
+
     haptics.success();
     useProfileStore.getState().fetch(user.id);
     Alert.alert('Strateji Uygulandı', result.instructions, [{ text: 'Tamam' }]);
@@ -189,6 +219,9 @@ export default function ProgressScreen() {
         is_active: true,
       });
       if (insErr) throw insErr;
+
+      // Reflect the mini-cut band on today's plan now (not next roll-forward).
+      await reprojectTodayPlanBand(user.id, miniCutCalories - 100, miniCutCalories + 100);
 
       haptics.success();
       Alert.alert('Mini-Cut Başlatıldı', `3 haftalık mini-cut: ${miniCutCalories - 100}-${miniCutCalories + 100} kcal. Sonra tekrar bakıma dönersin.`);

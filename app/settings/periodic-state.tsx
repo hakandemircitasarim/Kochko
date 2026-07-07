@@ -17,6 +17,16 @@ import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { usePremium } from '@/hooks/usePremium';
 
+// FIX (completeness audit — clinical BLOCKER): mini_cut / maintenance are calorie-PHASE
+// transitions, NOT situational states. Their calorie-band math (computeMaintenanceBand) AND the
+// SafetyState ED-gate live ONLY in the coach actions (mini_cut_start / maintenance_start). Letting
+// the user pick them from this situational-state selector wrote the periodic_state flag WITHOUT
+// lifting the deficit band and silently suppressed the ai-proactive safety TDEE re-cut (the user
+// believed "bakımdayım" while still eating in a cut). They stay in PERIODIC_STATE_CONFIG so the
+// "Aktif: Bakım" card still renders when the coach sets them — they are just not directly
+// user-selectable here; the user is routed to the coach to make the transition safely.
+const PHASE_ONLY_STATES: PeriodicState[] = ['mini_cut', 'maintenance'];
+
 export default function PeriodicStateScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
@@ -26,7 +36,13 @@ export default function PeriodicStateScreen() {
   // FIX (audit UX-PRM-06): ekranın kendisi premium-koruması yapsın — menü ternary'sine güvenme
   // (deep link / chat navigate / deneme bitişi free kullanıcıyı içeride bırakıyordu).
   const { isPremium } = usePremium();
-  const [selected, setSelected] = useState<PeriodicState | null>((profile?.periodic_state as PeriodicState) ?? null);
+  // Don't pre-select a coach-owned phase state (mini_cut/maintenance) into the editable picker —
+  // it's shown in the read-only "Aktif" card above; pre-selecting it would re-expose the "Dönemi
+  // Başlat" button that re-triggers the unsafe direct write.
+  const initialPeriodic = (profile?.periodic_state as PeriodicState) ?? null;
+  const [selected, setSelected] = useState<PeriodicState | null>(
+    initialPeriodic && !PHASE_ONLY_STATES.includes(initialPeriodic) ? initialPeriodic : null,
+  );
   const [endDate, setEndDate] = useState(profile?.periodic_state_end ?? '');
   const [loading, setLoading] = useState(false);
 
@@ -103,7 +119,8 @@ export default function PeriodicStateScreen() {
     }
   };
 
-  const states = Object.entries(PERIODIC_STATE_CONFIG) as [PeriodicState, typeof PERIODIC_STATE_CONFIG[PeriodicState]][];
+  const states = (Object.entries(PERIODIC_STATE_CONFIG) as [PeriodicState, typeof PERIODIC_STATE_CONFIG[PeriodicState]][])
+    .filter(([key]) => !PHASE_ONLY_STATES.includes(key));
 
   // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
   if (!isPremium && profile !== null && !profileLoading) {

@@ -103,8 +103,10 @@ export default function ProfileScreen() {
       <SectionTitle label="Hedefler" colors={colors} />
       <MenuGroup colors={colors}>
         <MenuRow icon="flag-outline" color={colors.primary} label={goal ? `${GOAL_LABELS[goal.goal_type] ?? goal.goal_type}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
-        <MenuRow icon="barbell-outline" color={colors.purple} label="Güç hedefi" onPress={() => router.push('/settings/goals')} colors={colors} />
-        <MenuRow icon="moon-outline" color={colors.purple} label="Uyku hedefi" onPress={() => router.push('/settings/goals')} colors={colors} last />
+        {/* FIX (completeness audit): 'Güç hedefi' now routes to the real strength screen (was the
+            weight-goal editor). 'Uyku hedefi' removed — no sleep-goal screen exists, so the row
+            promised a feature the app doesn't have and dead-ended in the weight-goal form. */}
+        <MenuRow icon="barbell-outline" color={colors.purple} label="Güç hedefi" onPress={() => router.push('/settings/strength')} colors={colors} last />
       </MenuGroup>
 
       {/* 5.5 Settings section */}

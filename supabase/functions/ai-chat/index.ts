@@ -23,7 +23,7 @@ import { isMemoryMirrorIntent, buildMemoryMirror } from '../shared/memory-mirror
 import { writeTurnLog } from '../shared/turn-log.ts';
 import { logBelief } from '../shared/belief-log.ts';
 import { repairPlansAfterBeliefChange } from '../shared/repair-propagation.ts';
-import { recordEDSignal, deficitAllowed, getSafetyState } from '../shared/safety-state.ts';
+import { recordEDSignal, deficitAllowed } from '../shared/safety-state.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
 import { checkRateLimit, reserveRateLimitSlot } from '../shared/rate-limit.ts';
 import { validateChatRequest, checkPayloadSize } from '../shared/request-validator.ts';
@@ -42,7 +42,7 @@ import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '.
 import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
 import { extractLifeEvent } from '../shared/life-events.ts';
-import { syncConstraint, deactivateConstraints, syncInjuryFromText, resolveInjuryConstraints, getActiveConstraints } from '../shared/constraints.ts';
+import { syncConstraint, confirmConstraint, deactivateConstraints, syncInjuryFromText, resolveInjuryConstraints, getActiveConstraints, type ConstraintKind } from '../shared/constraints.ts';
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
 
@@ -4070,6 +4070,22 @@ async function executeActions(
         // NOTE: strength logging is handled by the `workout_log` action (it parses
         // action.strength_sets into the strength_sets table). The old dead `strength_log`
         // case (action.sets) was never emitted by any prompt and was removed in cleanup.
+        case 'constraint_confirm': {
+          // #arch epistemics: close the glass-box loop. MemoryMirror renders imported/inferred
+          // beliefs with "… doğrulamadım, hâlâ geçerli mi?"; when the user affirms one, upgrade the
+          // belief to confirmed (confidence 1.0, confirmed_at now) so the coach stops re-asking.
+          // Metadata-only — enforcement is unchanged (guardrails already act on every active
+          // constraint regardless of confidence), so a spurious confirm is harmless.
+          const cc = action as Record<string, unknown>;
+          const ccKind = ((cc.kind as string) ?? '').trim();
+          const ccSubject = ((cc.subject as string) ?? '').trim();
+          const CONFIRMABLE = new Set<string>(['allergen', 'intolerance', 'injury', 'surgery', 'condition', 'medication', 'dietary']);
+          if (CONFIRMABLE.has(ccKind) && ccSubject) {
+            await confirmConstraint(userId, ccKind as ConstraintKind, ccSubject);
+          }
+          feedback.push(null);
+          break;
+        }
         case 'food_preference': {
           // Spec 12.4 chain: allergies/intolerances DECLARED IN CHAT must reach
           // food_preferences — the allergen guardrails read ONLY that table, so
