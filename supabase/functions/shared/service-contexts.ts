@@ -8,6 +8,7 @@ import { getEffectiveDateForUser } from './day-boundary.ts';
 import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText, ALLERGEN_FOODS, DIETARY_FORBIDDEN } from './guardrails.ts';
 import { getActiveConstraints } from './constraints.ts';
 import { getSafetyState } from './safety-state.ts';
+import { getRelationshipPhase, relationshipGuidance } from './relationship-state.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
 // (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
@@ -979,6 +980,13 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
       if (safety.ed_tier === 'amber' || safety.ed_tier === 'red') {
         lines.push('⚠ GÜVENLİK ÖNCELİĞİ: Kullanıcının beslenmeyle ilişkisinde risk sinyalleri birikti. Kalori açığı / kesim / "daha az ye" ÖNERME; bakım seviyesinde tut. Sayı/kalori/tartı odaklı konuşmayı azalt, nazik ve yargısız ol, uygun bir anda profesyonel destek (uzman diyetisyen/psikolog) öner.');
       }
+    } catch { /* non-critical */ }
+
+    // #arch step 13: relationship maturity — ONE phase gating tone/proactivity/assertiveness,
+    // replacing the scattered day/message thresholds. Framed high so it colours the whole reply.
+    try {
+      const rel = await getRelationshipPhase(userId);
+      lines.push(relationshipGuidance(rel));
     } catch { /* non-critical */ }
 
     // Journey + progress
