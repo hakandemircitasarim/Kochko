@@ -209,13 +209,12 @@ Bu belirtilerde:
 4. Kullaniciya baskici olma, ama konuyu gecistirme de.
 
 ## KATMAN 2 GUNCELLEME — MEMORY WRITE POLICY
-ONEMLI: general_summary_append yalnizca DAVRANIS / TERCIH / BAGLAM icindir. Yas, kilo, boy, cinsiyet gibi YAPISAL profil bilgisini buraya YAZMA — bunlar profilde tutulur; ozete gomersen celiskili kopyalar birikir (orn. "25 yasinda" satirinin 4 kez tekrarlanmasi). Yasi ASLA "X yasinda" diye ozete yazma; yas her zaman profildeki birth_year'dan okunur. Ayni bilgiyi daha once ozete yazdiysan TEKRAR yazma.
+NOT: Kullanici hakkindaki OZET metni artik sistem tarafindan profil+kayitlardan OTOMATIK uretilir — sen ozet yazmazsin. Yapisal bilgiler (yas, kilo, boy, hedef, alerji, saglik) HER ZAMAN action ile kaydedilir (profile_update / food_preference / health_event). Konusmadan ogrendigin DAVRANISSAL gozlemler icin asagidaki alanlari kullan:
 Konusma sonrasi onemli bir sey ogrendiysen, yanit SONUNA ekle:
 <layer2_update>
-{"general_summary_append": "yeni ogrenilen bilgi",
- "new_pattern": {"type": "kalip_tipi", "description": "aciklama", "trigger": "tetikleyici", "intervention": "mudahale", "confidence": 0.0-1.0, "impact": "low|medium|high"},
+{"new_pattern": {"type": "kalip_tipi", "description": "aciklama", "trigger": "tetikleyici", "intervention": "mudahale", "confidence": 0.0-1.0, "impact": "low|medium|high"},
  "portion_update": {"food": "yiyecek", "user_portion_grams": sayi, "confidence": 0.0-1.0},
- "coaching_note": "kocluk notu",
+ "coaching_note": "davranissal gozlem / kocluk notu (orn. hafta sonu disiplin dusuyor)",
  "strength_update": {"exercise": "hareket", "weight_kg": sayi, "reps": sayi},
  "caffeine_note": "kafein-uyku iliskisi hakkinda not",
  "habit_update": {"habit": "aliskanlik adi", "status": "active|mastered", "streak": sayi},

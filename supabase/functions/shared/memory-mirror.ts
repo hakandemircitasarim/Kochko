@@ -173,3 +173,88 @@ export async function buildMemoryMirror(userId: string): Promise<string> {
 
   return lines.join('\n');
 }
+
+/**
+ * #S3 (structural rebuild): general_summary as a DERIVED VIEW — deterministically composed from
+ * the canonical stores, never model-appended. This kills the append-log failure class at the root
+ * (4 stale "[date] Kullanıcı 25 yaşında..." lines living side by side): the summary can no longer
+ * accumulate or contradict, because it is REGENERATED whole from the same rows the app acts on.
+ *
+ * Deliberately excludes raw demographics (age/weight/height) — those live in the structured
+ * profile and are injected into Layer-1 every turn; restating them here is what created the
+ * 25-vs-35 contradiction. Front-loaded (goal+safety first) so the 500-char 'minimal' Layer-2
+ * truncation keeps the most important lines. Output ≤ ~1600 chars.
+ */
+export async function composeGeneralSummary(userId: string): Promise<string> {
+  const [profileRes, goalRes, constraintsRes, prefsRes, summaryRes] = await Promise.all([
+    supabaseAdmin.from('profiles').select('weight_kg, activity_level, dietary_restriction, diet_mode, alcohol_frequency, caffeine_intake, if_active, if_eating_start, if_eating_end, periodic_state, meal_count_preference, meal_prep_time, occupation, motivation_source, biggest_challenge, sleep_quality, disliked_foods').eq('id', userId).maybeSingle(),
+    supabaseAdmin.from('goals').select('goal_type, target_weight_kg, target_weeks, weekly_rate, phase_label').eq('user_id', userId).eq('is_active', true).maybeSingle(),
+    supabaseAdmin.from('user_constraints').select('kind, subject, severity').eq('user_id', userId).eq('active', true),
+    supabaseAdmin.from('food_preferences').select('food_name, preference, is_allergen').eq('user_id', userId),
+    supabaseAdmin.from('ai_summary').select('behavioral_patterns, habit_progress').eq('user_id', userId).maybeSingle(),
+  ]);
+  const p = (profileRes.data ?? {}) as Record<string, unknown>;
+  const goal = goalRes.data as Record<string, unknown> | null;
+  const cons = (constraintsRes.data ?? []) as Array<{ kind: string; subject: string; severity: string | null }>;
+  const prefs = (prefsRes.data ?? []) as Array<{ food_name: string; preference: string; is_allergen: boolean }>;
+  const summary = (summaryRes.data ?? {}) as Record<string, unknown>;
+
+  const out: string[] = [];
+  // 1) Goal + tempo (front-loaded — survives minimal-scope truncation)
+  const goalTypeTr: Record<string, string> = { lose_weight: 'kilo vermek', gain_weight: 'kilo almak', gain_muscle: 'kas kazanmak', maintain: 'kiloyu korumak', improve_health: 'sağlığı iyileştirmek', health: 'sağlıklı yaşamak', conditioning: 'kondisyon' };
+  if (goal?.goal_type) {
+    const bits = [`Hedef: ${goalTypeTr[goal.goal_type as string] ?? goal.goal_type}`];
+    if (num(goal.target_weight_kg)) bits.push(`hedef ${num(goal.target_weight_kg)} kg`);
+    if (num(goal.target_weeks)) bits.push(`${num(goal.target_weeks)} hafta`);
+    if (goal.phase_label) bits.push(String(goal.phase_label));
+    out.push(bits.join(', ') + '.');
+  }
+  // 2) Safety spine one-liner
+  const allg = cons.filter(c => c.kind === 'allergen' || c.kind === 'intolerance').map(c => c.subject);
+  const surg = cons.filter(c => c.kind === 'surgery').map(c => c.subject);
+  const cond = cons.filter(c => c.kind === 'condition').map(c => c.subject);
+  const inj = cons.filter(c => c.kind === 'injury').map(c => c.subject);
+  const saf: string[] = [];
+  if (surg.length) saf.push(`ameliyat geçmişi: ${surg.slice(0, 3).join(', ')}`);
+  if (cond.length) saf.push(`kronik: ${cond.slice(0, 3).join(', ')}`);
+  if (allg.length) saf.push(`alerji: ${allg.slice(0, 4).join(', ')}`);
+  if (inj.length) saf.push(`sakatlık: ${inj.slice(0, 3).join(', ')}`);
+  if (saf.length) out.push('Sağlık: ' + saf.join(' | ') + '.');
+  // 3) Routine
+  const rout: string[] = [];
+  if (p.dietary_restriction) rout.push(String(p.dietary_restriction));
+  if (p.diet_mode && p.diet_mode !== 'standard' && p.diet_mode !== 'none') rout.push(`${p.diet_mode} beslenme`);
+  if (p.if_active === true && p.if_eating_start) rout.push(`IF ${p.if_eating_start}–${p.if_eating_end}`);
+  if (p.activity_level) rout.push(`aktivite: ${p.activity_level}`);
+  if (p.meal_count_preference) rout.push(`${p.meal_count_preference} öğün tercihi`);
+  if (String(p.meal_prep_time ?? '').match(/kısa|kisa|hızlı|hizli|15|10 dk/i)) rout.push('hızlı hazırlık ister');
+  if (p.periodic_state) rout.push(`dönem: ${p.periodic_state}`);
+  if (p.alcohol_frequency === 'never') rout.push('alkol yok');
+  if (rout.length) out.push('Düzen: ' + rout.join(', ') + '.');
+  // 4) Taste (compact)
+  const dislikes = [...new Set([
+    ...prefs.filter(f => !f.is_allergen && (f.preference === 'dislike' || f.preference === 'never')).map(f => displayFood(f.food_name)),
+    ...(((p.disliked_foods as Array<{ item?: string }> | null) ?? []).map(it => it?.item).filter(Boolean) as string[]).map(displayFood),
+  ])];
+  const likes = [...new Set(prefs.filter(f => !f.is_allergen && (f.preference === 'love' || f.preference === 'like')).map(f => displayFood(f.food_name)))];
+  if (likes.length) out.push('Sever: ' + likes.slice(0, 8).join(', ') + '.');
+  if (dislikes.length) out.push('Sevmez: ' + dislikes.slice(0, 8).join(', ') + '.');
+  // 5) Motivation / context
+  const mot: string[] = [];
+  if (p.motivation_source) mot.push(`motivasyon: ${String(p.motivation_source).slice(0, 60)}`);
+  if (p.biggest_challenge) mot.push(`zorlandığı: ${String(p.biggest_challenge).slice(0, 60)}`);
+  if (p.occupation) mot.push(`iş: ${String(p.occupation).slice(0, 40)}`);
+  if (mot.length) out.push(mot.join(' | ') + '.');
+  // 6) Top behavioral patterns (the genuinely-learned layer)
+  const beh: string[] = [];
+  const bp = summary.behavioral_patterns;
+  if (Array.isArray(bp)) {
+    for (const x of bp.slice(0, 3)) {
+      if (typeof x === 'string') beh.push(x);
+      else if (x && typeof x === 'object' && typeof (x as Record<string, unknown>).description === 'string') beh.push((x as Record<string, unknown>).description as string);
+    }
+  }
+  if (beh.length) out.push('Gözlemler: ' + beh.join('; ') + '.');
+
+  return out.join('\n').slice(0, 1600);
+}

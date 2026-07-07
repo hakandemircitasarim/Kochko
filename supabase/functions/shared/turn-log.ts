@@ -33,3 +33,32 @@ export async function writeTurnLog(
     });
   } catch (e) { console.error(`[ai_turn_log] ${functionName} write failed:`, (e as Error).message); }
 }
+
+/** One captured-fact receipt: which field, what value, which capture path, did the row REALLY change. */
+export interface FactReceipt {
+  field: string;
+  value: unknown;
+  source: 'model' | 'regex' | 'net';
+  verified: boolean;
+}
+
+/**
+ * #S2 (structural rebuild): persist the per-turn fact-capture receipts. This is the audit trail
+ * that makes "the coach said it saved but nothing was written" IMPOSSIBLE to miss — every captured
+ * fact gets a row stating whether the canonical store verifiably changed. Fail-quiet like the
+ * ledger itself: a receipt failure must never break the turn.
+ */
+export async function writeFactReceipts(userId: string, facts: FactReceipt[]): Promise<void> {
+  if (!facts.length) return;
+  try {
+    await supabaseAdmin.from('ai_turn_log').insert({
+      user_id: userId,
+      function_name: 'fact-capture',
+      system_mode: null,
+      model_requested: 'none', model_served: 'none',
+      prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, latency_ms: 0,
+      guard_verdict: facts.every(f => f.verified) ? 'clean' : 'unverified_write',
+      facts_captured: facts,
+    });
+  } catch (e) { console.error('[fact-receipts] write failed:', (e as Error).message); }
+}

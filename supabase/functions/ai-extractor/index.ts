@@ -11,7 +11,8 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
-import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep, consolidateSummary } from '../shared/memory.ts';
+import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep, updateLayer2 } from '../shared/memory.ts';
+import { composeGeneralSummary } from '../shared/memory-mirror.ts';
 import { denyIfNotCron } from '../shared/cron-auth.ts';
 
 const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
@@ -347,27 +348,24 @@ serve(async (req: Request) => {
         }
       }
 
-      // 6b. L4→L2: merge the extraction call's summary line into ai_summary.
-      // Previously the ONLY L2 writer was the model's inline <layer2_update>
-      // (which it rarely emits), so general_summary went stale forever.
-      const summaryUpdate = nonNull._summary_update;
-      if (typeof summaryUpdate === 'string' && summaryUpdate.trim().length > 10) {
-        try {
-          const { data: curSummary } = await supabaseAdmin
-            .from('ai_summary').select('general_summary').eq('user_id', userId).maybeSingle();
-          const cur = (curSummary?.general_summary as string) ?? '';
+      // 6b. #S3 CUTOVER: general_summary is a DERIVED VIEW — regenerate it whole from the
+      // canonical stores after this user's profile writes, instead of appending the extraction
+      // model's free-text line (the append path is what stacked 4 contradictory "25 yaşında"
+      // snapshots). The model's _summary_update, when emitted, is preserved as a dated
+      // coaching_notes line via the lock-disciplined merge (no raw upsert race).
+      try {
+        const summaryUpdate = nonNull._summary_update;
+        if (typeof summaryUpdate === 'string' && summaryUpdate.trim().length > 10) {
           const dateTag = new Date().toISOString().split('T')[0];
-          // Consolidate (dedup + last-N snapshots) instead of blind append — the old
-          // `cur + '\n' + line` + 3000-char slice let paraphrased duplicates ("25 yaşında" ×4)
-          // pile up. Bounded to the most recent snapshots so the summary stays a current view.
-          const next = consolidateSummary(cur, `[${dateTag}] ${summaryUpdate.trim()}`);
-          await supabaseAdmin.from('ai_summary').upsert(
-            { user_id: userId, general_summary: next, updated_at: new Date().toISOString() },
-            { onConflict: 'user_id' },
-          );
-        } catch (e) {
-          console.error(`[Extractor] summary merge failed for ${userId}:`, (e as Error).message);
+          const { data: curSummary } = await supabaseAdmin
+            .from('ai_summary').select('coaching_notes').eq('user_id', userId).maybeSingle();
+          const curNotes = (curSummary?.coaching_notes as string) ?? '';
+          await updateLayer2(userId, { coaching_notes: `${curNotes}\n[${dateTag}] ${summaryUpdate.trim()}`.trim() });
         }
+        const derived = await composeGeneralSummary(userId);
+        await updateLayer2(userId, { general_summary: derived });
+      } catch (e) {
+        console.error(`[Extractor] derived-summary recompose failed for ${userId}:`, (e as Error).message);
       }
 
       // 7. Update checkpoint

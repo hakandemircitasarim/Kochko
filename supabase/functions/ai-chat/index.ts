@@ -16,11 +16,11 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
-import { updateLayer2, appendBehavioralPatterns, consolidateSummary } from '../shared/memory.ts';
+import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, ALLERGEN_FOODS, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
 import { computeItemNutrition } from '../shared/food-reference.ts';
-import { isMemoryMirrorIntent, buildMemoryMirror } from '../shared/memory-mirror.ts';
-import { writeTurnLog } from '../shared/turn-log.ts';
+import { isMemoryMirrorIntent, buildMemoryMirror, composeGeneralSummary } from '../shared/memory-mirror.ts';
+import { writeTurnLog, writeFactReceipts, type FactReceipt } from '../shared/turn-log.ts';
 import { logBelief } from '../shared/belief-log.ts';
 import { repairPlansAfterBeliefChange } from '../shared/repair-propagation.ts';
 import { recordEDSignal, deficitAllowed } from '../shared/safety-state.ts';
@@ -184,11 +184,42 @@ serve(async (req: Request) => {
         await safeStore(userId, message, emergency.message, 'emergency', session_id);
         return respond({ message: emergency.message, actions: [], task_mode: 'emergency' });
       }
+      // #S2 (fact-capture on safety early-returns): crisis/ED turns return BEFORE the deterministic
+      // nets + executeActions, so a safety-critical fact stated inside the crisis message ("fıstık
+      // alerjim var zaten, hiçbir şey yemiyorum") was never persisted — the safety spine stayed
+      // blind exactly when it matters most. Salvage allergen + injury/surgery facts through the
+      // SAME single-writer executeActions (handler dedup intact). Best-effort: a capture failure
+      // must never delay or block the safety response. Deliberately scoped to crisis + ED-high
+      // (emergency stays capture-free — acute response speed wins there).
+      const salvageSafetyFacts = async () => {
+        try {
+          const salvaged: Record<string, unknown>[] = [];
+          const mLow = message.toLocaleLowerCase('tr');
+          const negatedAll = /(alerjim yok|alerjisi yok|intoleransim yok|intoleransım yok|alerji yok|intolerans yok)/.test(mLow);
+          if (!negatedAll && /(alerj|intolerans)/.test(mLow)) {
+            const severe = /(ciddi|şiddetli|siddetli|agir|ağır|anafilaksi)/.test(mLow);
+            for (const food of extractDeclaredAllergens(message)) {
+              salvaged.push({ type: 'food_preference', food_name: food, preference: 'never', is_allergen: true, allergen_severity: severe ? 'severe' : 'moderate' });
+            }
+          }
+          const injCue = /(sakat|ağrı|agri|agrı|ağri|incit|burkul|zorlan|fıtık|fitik|ameliyat|operasyon|kopma|yırtık|yirtik|çekme|cekme)/.test(mLow);
+          const injParts = injCue ? extractInjuredBodyParts([message]) : [];
+          if (injParts.length > 0) {
+            const isSurgery = /(ameliyat|operasyon|protez|artroskopi)/.test(mLow);
+            salvaged.push({ type: 'health_event', event_type: isSurgery ? 'surgery' : 'injury', description: message.slice(0, 280), is_ongoing: !isSurgery });
+          }
+          if (salvaged.length > 0) {
+            console.warn('[safety_path_salvage] persisting facts from safety-return turn', { types: salvaged.map(s => s.type) });
+            await executeActions(userId, salvaged as never, null, new Date().toISOString().split('T')[0], 'ai_chat', undefined);
+          }
+        } catch (e) { console.warn('[safety_path_salvage] failed:', (e as Error).message); }
+      };
       // Self-harm / suicide crisis — MUST run before the ED check so a suicidal
       // message gets the acute crisis response (112 + professional help), never
       // the milder eating-disorder dietitian referral (#R1-C2).
       const crisis = detectCrisis(message);
       if (crisis.isCrisis) {
+        await salvageSafetyFacts();
         await safeStore(userId, message, crisis.message, 'safety', session_id);
         return respond({ message: crisis.message, actions: [], task_mode: 'safety' });
       }
@@ -197,6 +228,7 @@ serve(async (req: Request) => {
         // #arch step 14: escalate the durable safety state so future turns keep protecting the user
         // (deficit forbidden) even after this acute turn passes.
         await recordEDSignal(userId, 'high');
+        await salvageSafetyFacts();
         await safeStore(userId, message, edRisk.message, 'safety', session_id);
         return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
       }
@@ -787,8 +819,17 @@ serve(async (req: Request) => {
     // SAYS it saved but omits the <actions> block (#1/#2/#5 — confirmed in live test).
     const fullExtraction = isOnboarding
       || (typeof task_mode_hint === 'string' && task_mode_hint.startsWith('onboarding_'));
+    // #S2 receipts: track which profile fields the deterministic path (vs the model) captured,
+    // so the post-execute receipt can state the provenance of every persisted fact.
+    const regexCapturedFields = new Set<string>();
     if (message) {
-      const regexExtracted = extractProfileFromMessage(message, task_mode_hint as string | undefined, !fullExtraction);
+      // #S2 cross-turn context: the LAST assistant message disambiguates a bare-number correction
+      // ("kaç yaşındasın?" → "25"). layer4 is chronological; scan from the end.
+      let prevAssistant: string | undefined;
+      for (let li = ctx.layer4.length - 1; li >= 0; li--) {
+        if (ctx.layer4[li].role === 'assistant') { prevAssistant = ctx.layer4[li].content; break; }
+      }
+      const regexExtracted = extractProfileFromMessage(message, task_mode_hint as string | undefined, !fullExtraction, prevAssistant);
       if (regexExtracted) {
         const existingProfileAction = actions.find(a => a.type === 'profile_update') as Record<string, unknown> | undefined;
         if (existingProfileAction) {
@@ -796,10 +837,12 @@ serve(async (req: Request) => {
           for (const [k, v] of Object.entries(regexExtracted)) {
             if (!(k in existingProfileAction) || existingProfileAction[k] == null) {
               existingProfileAction[k] = v;
+              regexCapturedFields.add(k); // #S2 receipts: this field came from the deterministic path
             }
           }
         } else if (Object.keys(regexExtracted).length > 0) {
           actions.push({ type: 'profile_update', ...regexExtracted });
+          for (const k of Object.keys(regexExtracted)) regexCapturedFields.add(k);
         }
       }
     }
@@ -1577,6 +1620,23 @@ serve(async (req: Request) => {
       if (!gateActive) {
         const used = (gateProfile?.plans_used_free as { diet?: number; workout?: number } | null) ?? {};
         if ((used[expectedType] ?? 0) >= 1) {
+          // #S2 (fact-capture): this return exits AFTER the deterministic nets populated
+          // `actions` but BEFORE executeActions — silently discarding facts the user stated in
+          // the same message ("onayla... bu arada boyum 180"). Execute the SAFE fact classes
+          // before returning; plan/goal-mutating actions stay excluded (capped account must not
+          // leak a goal write), and goal fields are stripped from profile_update for the same reason.
+          const FACT_TYPES = new Set(['profile_update', 'food_preference', 'health_event', 'life_event', 'lab_value', 'constraint_confirm']);
+          const factActions = actions.filter(a => FACT_TYPES.has((a as Record<string, unknown>).type as string))
+            .map(a => {
+              if ((a as Record<string, unknown>).type !== 'profile_update') return a;
+              const clone = { ...(a as Record<string, unknown>) };
+              delete clone.goal_type; delete clone.target_weight_kg;
+              return clone;
+            });
+          if (factActions.length > 0) {
+            await executeActions(userId, factActions as typeof actions, profile?.gender, effectiveToday, 'ai_chat', idempotency_key as string | undefined)
+              .catch((e) => console.warn('[plan-cap] fact salvage failed:', (e as Error).message));
+          }
           return await commitAndRespond({
             message: 'Ücretsiz planda 1 diyet + 1 antrenman planı onaylayabiliyorsun. Yeni plan onaylamak ve sınırsız revizyon için Premium\'a geçebilirsin.',
             actions: [], task_mode: effectiveMode,
@@ -1936,6 +1996,51 @@ serve(async (req: Request) => {
     // Source of log: photo > voice (transcribed) > default text/chat
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
     const actionFeedback = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined);
+
+    // #S2 RECEIPTS: verify that captured identity facts REALLY landed in the canonical store and
+    // persist per-field receipts to ai_turn_log. This is what makes the "anladım, 25 yaşındasın"
+    // (verbal ack, no write) failure class visible: any receipt with verified=false is a write
+    // that silently failed. Fire-and-forget — never blocks the reply. factsDirty additionally
+    // feeds the derived-summary recompose (#S3).
+    const IDENTITY_FIELDS = ['birth_year', 'height_cm', 'weight_kg', 'gender', 'display_name'] as const;
+    const FACT_ACTION_TYPES = new Set(['profile_update', 'food_preference', 'health_event', 'health_event_resolve', 'life_event', 'lab_value', 'constraint_confirm']);
+    const factsDirty = actions.some(a => FACT_ACTION_TYPES.has((a as Record<string, unknown>).type as string));
+    {
+      const idFacts: { field: string; value: unknown }[] = [];
+      for (const a of actions) {
+        const ar = a as Record<string, unknown>;
+        if (ar.type !== 'profile_update') continue;
+        for (const f of IDENTITY_FIELDS) {
+          // A backdated weight (days_ago) intentionally skips profiles.weight_kg — no receipt.
+          if (f === 'weight_kg' && ar.days_ago != null) continue;
+          if (ar[f] !== undefined && ar[f] !== null) idFacts.push({ field: f, value: ar[f] });
+        }
+      }
+      if (idFacts.length > 0) {
+        (async () => {
+          const { data: after } = await supabaseAdmin
+            .from('profiles').select('birth_year, height_cm, weight_kg, gender, display_name')
+            .eq('id', userId).maybeSingle();
+          const receipts: FactReceipt[] = idFacts.map(({ field, value }) => ({
+            field, value,
+            source: regexCapturedFields.has(field) ? 'regex' as const : 'model' as const,
+            verified: after != null && String((after as Record<string, unknown>)[field]) === String(value),
+          }));
+          const failed = receipts.filter(r => !r.verified);
+          if (failed.length > 0) console.warn('[fact-receipts] UNVERIFIED writes', failed.map(f => f.field));
+          await writeFactReceipts(userId, receipts);
+        })().catch((e) => console.warn('[fact-receipts] failed:', (e as Error).message));
+      }
+    }
+
+    // #S3 (derived summary): a fact-class action changed a canonical store this turn → REGENERATE
+    // general_summary from those stores (never append). Fire-and-forget; the nightly extractor
+    // pass covers any miss.
+    if (factsDirty) {
+      composeGeneralSummary(userId)
+        .then((summaryText) => updateLayer2(userId, { general_summary: summaryText }))
+        .catch((e) => console.warn('[derived-summary] recompose failed:', (e as Error).message));
+    }
 
     // A8: Low confidence proactive verification — append confirmation question
     const mealActions = actions.filter((a) => (a as { type?: string }).type === 'meal_log');
@@ -2729,7 +2834,7 @@ function normalizeProfileEnum(field: string, value: unknown): string | null {
   return null;
 }
 
-function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly = false): Record<string, unknown> | null {
+function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly = false, prevAssistant?: string): Record<string, unknown> | null {
   // safeOnly (regular chat): skip the AMBIGUOUS bodyweight extraction only — a bare
   // "70kg" in a workout/recipe context would be misread as bodyweight. Age/gender/
   // height/target are unambiguous, so they're still extracted to deterministically
@@ -2757,6 +2862,36 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
       const gm = lower.match(/(\d{2,3}(?:[.,]\d)?)\s*(?:kg|kilo)/);
       if (gm) { const n = parseFloat(gm[1].replace(',', '.')); if (n >= 30 && n <= 300) result.target_weight_kg = n; }
     }
+  }
+
+  // #S2 CROSS-TURN slot resolution: a bare-number correction ("25", "25 olacaktı", "hayır 25",
+  // "aslında 25") carries NO unit/keyword, so none of the field regexes below can place it — the
+  // number's meaning lives in the PREVIOUS assistant message ("kaç yaşındasın?"). Resolve it against
+  // that message, but ONLY when it unambiguously references exactly ONE slot (yaş/kilo/boy) — an
+  // ambiguous prior turn must not guess. Not in goal chat (bare numbers there are target weight).
+  if (!inGoalChat && prevAssistant) {
+    const bareNum = lower.match(/^\s*(?:hayır|hayir|yanlış|yanlis|pardon|aslında|aslinda|yok)?[,.\s]*(\d{1,3}(?:[.,]\d)?)\s*(?:olacak(?:tı|ti)?|olsun|olarak düzelt|dedim)?\s*$/);
+    if (bareNum) {
+      const n = parseFloat(bareNum[1].replace(',', '.'));
+      const pa = prevAssistant.toLocaleLowerCase('tr');
+      const asksAge = /ya[sş]/.test(pa);
+      const asksWeight = /kilo|kg|tartı|tarti/.test(pa);
+      const asksHeight = /\bboy/.test(pa);
+      const slots = [asksAge, asksWeight, asksHeight].filter(Boolean).length;
+      if (slots === 1) {
+        if (asksAge && n >= 10 && n <= 100 && result.birth_year == null) result.birth_year = new Date().getFullYear() - Math.round(n);
+        else if (asksWeight && n >= 30 && n <= 300 && result.weight_kg == null) result.weight_kg = n;
+        else if (asksHeight && n >= 100 && n <= 250 && result.height_cm == null) result.height_cm = Math.round(n);
+      }
+    }
+  }
+
+  // #S2 NAME capture: display_name previously had ZERO deterministic path (model action only), so
+  // "ismim Hakan" persisted only if the model felt like it. Conservative cue set; original casing
+  // from the raw message (not the lowered copy).
+  {
+    const nameM = msg.match(/(?:ismim|adım|adim|benim ad[iı]m)\s+([A-ZÇĞİÖŞÜ][a-zçğıöşü]{1,19})/i);
+    if (nameM && nameM[1]) result.display_name = nameM[1].charAt(0).toLocaleUpperCase('tr') + nameM[1].slice(1).toLocaleLowerCase('tr');
   }
 
   // Height: "boyum 175", "boy: 180", "175 cm", "175 boy", "175 boyundayim".
@@ -2789,7 +2924,12 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   // Bodyweight is the ONLY ambiguous field (a workout "70kg" misreads as bodyweight),
   // so skip it in safeOnly/regular-chat mode (#1/#2/#5) AND in the goal chat where the
   // prompt forbids touching current weight (#R1-C1).
-  if (!safeOnly && !inGoalChat) {
+  // #S2: in regular chat (safeOnly) an EXPLICIT bodyweight cue ("kilom 88", "88 kiloyum",
+  // "tartıldım") is unambiguous — skipping it forced users to rely on the model remembering a
+  // profile_update. The exercise-context guard below + the final weight validator still protect
+  // against the "bench 70kg" misread; only the blanket safeOnly exclusion is lifted for cued forms.
+  const bodyweightCued = /(kilom\b|kiloyum\b|tartıld|tartild|mevcut\s*kilo|vücut\s*ağırlığ|vucut\s*agirlig|kg\s*(oldum|geldim|düştüm|dustum|çıktım|ciktim))/.test(lower);
+  if ((!safeOnly || bodyweightCued) && !inGoalChat) {
     // FIX (audit #1 CRITICAL — weight-corruption): even in onboarding/full extraction, a bare
     // "NN kg" inside an EXERCISE statement ("4x8 bench press 70kg") was misread as bodyweight
     // and silently overwrote profiles.weight_kg, corrupting TDEE/calorie/protein targets.
@@ -5038,11 +5178,14 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
 
     const changes: Record<string, unknown> = {};
 
-    if (updates.general_summary_append) {
-      const current = (existing?.general_summary as string) ?? '';
-      // Consolidate (dedup + bounded), NOT blind append — otherwise a re-summary each session stacks
-      // up into contradictory duplicate lines (the "4× 25 yaşında" bug).
-      changes.general_summary = consolidateSummary(current, updates.general_summary_append as string);
+    // #S3 CUTOVER: general_summary is now a DERIVED VIEW composed from canonical stores
+    // (composeGeneralSummary) — the model's general_summary_append no longer writes it. A residual
+    // durable observation the model emits routes to the dated coaching_notes log instead, so
+    // nothing the model learned is dropped — it just can't corrupt the current-state summary.
+    if (updates.general_summary_append && typeof updates.general_summary_append === 'string') {
+      const current = (existing?.coaching_notes as string) ?? '';
+      const dateStr = new Date().toISOString().split('T')[0];
+      changes.coaching_notes = `${current}\n[${dateStr}] ${updates.general_summary_append}`.trim();
     }
 
     // ─── Memory Lifecycle: Pattern Management ───
