@@ -247,6 +247,11 @@ serve(async (req: Request) => {
         console.log('[request_journal] replaying committed response', { key: idemKey });
         return respond(claim.envelope);
       }
+      if (claim.mode === 'busy') {
+        // The original attempt is still processing (slow LLM). Don't re-run — the client can retry.
+        console.warn('[request_journal] concurrent attempt still in-flight; returning busy', { key: idemKey });
+        return respond({ message: 'Mesajını işliyorum, birazdan hazır olacak — bir saniye sonra tekrar dener misin?', actions: [], task_mode: 'coaching', busy: true });
+      }
       journalUserId = userId; journalKey = idemKey; // we own it — the catch releases it on failure
     }
     // #arch step 4: commit the exact response into the journal on EVERY owner success return, so a
@@ -2324,7 +2329,7 @@ function respond(data: unknown, status = 200) {
 // its stored response (no 2nd LLM call, no duplicate chat_messages/ai_turn_log). Replaces the old
 // late in-executeActions UNIQUE guard, which only stopped double ACTION writes.
 const REQUEST_LEASE_MS = 90_000;
-type ClaimResult = { mode: 'owner' } | { mode: 'replay'; envelope: unknown };
+type ClaimResult = { mode: 'owner' } | { mode: 'replay'; envelope: unknown } | { mode: 'busy' };
 
 async function claimOrAwaitRequest(userId: string, key: string): Promise<ClaimResult> {
   // Try to become the owner via a UNIQUE insert.
@@ -2335,17 +2340,23 @@ async function claimOrAwaitRequest(userId: string, key: string): Promise<ClaimRe
   if (!insErr) return { mode: 'owner' };
   // Conflict — another attempt owns/owned this key. Poll (bounded, under the client's 20s attempt
   // timeout) for it to commit, then replay its exact answer.
+  let reclaim = false;
   for (let i = 0; i < 22; i++) {
     const { data: row } = await supabaseAdmin.from('processed_chat_requests')
       .select('state, response_envelope, lease_expires_at')
       .eq('user_id', userId).eq('idempotency_key', key).maybeSingle();
-    if (!row) break; // vanished — reclaim
+    if (!row) { reclaim = true; break; } // vanished — safe to reclaim
     if (row.state === 'committed' && row.response_envelope) return { mode: 'replay', envelope: row.response_envelope };
-    if (row.state === 'failed') break; // original failed — reclaim
-    if (row.lease_expires_at && new Date(row.lease_expires_at as string).getTime() < Date.now()) break; // stale — reclaim
+    if (row.state === 'failed') { reclaim = true; break; } // original failed — reclaim
+    if (row.lease_expires_at && new Date(row.lease_expires_at as string).getTime() < Date.now()) { reclaim = true; break; } // lease expired — owner dead
     await new Promise((r) => setTimeout(r, 800));
   }
-  // Owner is stuck / failed / gone: reclaim the lease and process ourselves (best-effort).
+  // The poll window elapsed with the owner STILL in_flight and its lease VALID — it is alive, just
+  // slow (>~18s). Reclaiming here would return a SECOND owner and double-apply actions, so instead
+  // report 'busy' (the caller returns a soft "still processing" without re-running anything). Only
+  // reclaim when the owner is genuinely dead (failed / lease-expired / row gone). The atomic
+  // side_effects claim in executeActions is the backstop against any double-apply on a reclaim.
+  if (!reclaim) return { mode: 'busy' };
   await supabaseAdmin.from('processed_chat_requests').update({
     state: 'in_flight', lease_expires_at: new Date(Date.now() + REQUEST_LEASE_MS).toISOString(), updated_at: new Date().toISOString(),
   }).eq('user_id', userId).eq('idempotency_key', key);
@@ -3275,13 +3286,22 @@ async function executeActions(
     else backdatedWater.set(date, v);
   };
 
-  // #arch step 4: idempotency is now owned by the REQUEST JOURNAL at the handler entry
-  // (claimOrAwaitRequest) — a concurrent retry never reaches executeActions (it replays the owner's
-  // committed response instead), so only the single owner runs the loop and actions apply exactly
-  // once. The old late UNIQUE-insert guard here is retired (re-claiming would collide with the
-  // handler's own in_flight row and wrongly skip every action). idempotencyKey kept for signature
-  // compatibility.
-  void idempotencyKey;
+  // #arch step 4 (audit fix #6): ATOMIC exactly-once claim on the action side-effects. Replay of a
+  // COMMITTED request never reaches here, but a request that applied its actions then THREW before
+  // committing gets marked 'failed' and a same-key retry reclaims + re-enters executeActions — which
+  // would double-apply. Claiming side_effects_at (UPDATE … WHERE side_effects_at IS NULL) lets at
+  // most ONE attempt run the loop per key. If we don't win the claim, the actions already ran: skip
+  // them (the reply is still regenerated/replayed by the journal).
+  if (typeof idempotencyKey === 'string' && idempotencyKey) {
+    const { data: claimed } = await supabaseAdmin.from('processed_chat_requests')
+      .update({ side_effects_at: new Date().toISOString() })
+      .eq('user_id', userId).eq('idempotency_key', idempotencyKey).is('side_effects_at', null)
+      .select('idempotency_key');
+    if (!claimed || claimed.length === 0) {
+      console.warn('[request_journal] side-effects already applied — skipping action loop', { key: idempotencyKey });
+      return feedback; // actions already applied by a prior attempt
+    }
+  }
 
   for (const action of actions) {
     try {
@@ -4343,6 +4363,13 @@ async function executeActions(
           }
 
           if (excessKcal >= 200) {
+            // #arch step 14 (SafetyState): do NOT impose a compensatory post-binge deficit on an
+            // amber/red ED user — that IS the restriction pattern the gate must prevent. Reassure.
+            if (!(await deficitAllowed(userId)).allowed) {
+              console.warn('[recovery_plan] compensatory deficit blocked by SafetyState');
+              feedback.push('Bir günlük fazla, tüm emeğini silmez — telafi için kendini kısıtlamana hiç gerek yok. Yarın sakince, dengeli beslenmeye devam edelim; her şey yolunda.');
+              break;
+            }
             // Distribute over next 2 days (spec says 2-3, 2 keeps per-day dip reasonable)
             const perDayDip = Math.round(excessKcal / 2);
             const { data: profileFloor } = await supabaseAdmin
@@ -4523,6 +4550,13 @@ async function executeActions(
           // and (conservatively) user's maintenance/rest calorie bands for the next
           // 2 weeks. AI reminds user of start/end — we just store the adjustment.
           const strategyId = action.strategy_id as string;
+          // #arch step 14 (SafetyState): tdee_recalc DEEPENS the deficit (−5%). Refuse it for an
+          // amber/red ED user — the other strategies (refeed/maintenance_break/calorie_cycle) are safe.
+          if (strategyId === 'tdee_recalc' && !(await deficitAllowed(userId)).allowed) {
+            console.warn('[plateau_strategy_apply] tdee_recalc blocked by SafetyState');
+            feedback.push('Plato için kaloriyi daha da kısmak yerine bir refeed ya da bakım molası şu an daha güvenli — daha fazla kesim önermiyorum. İstersen bir uzman diyetisyenle de görüşebilirsin.');
+            break;
+          }
           const { data: pProfile } = await supabaseAdmin
             .from('profiles').select('calorie_range_rest_min, calorie_range_rest_max, protein_per_kg, weight_kg')
             .eq('id', userId).maybeSingle();
@@ -5275,7 +5309,10 @@ async function checkOnboardingCompletion(userId: string) {
 
     // Goal-aware target (profiles has no goal_type — read the active goal row).
     const { data: goalRow } = await supabaseAdmin.from('goals').select('goal_type').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle();
-    const targetCal = Math.round(tdee * goalCalorieFactor(goalRow?.goal_type as string | undefined));
+    // #arch step 14 (SafetyState): don't set an onboarding deficit for an amber/red ED user — hold
+    // at maintenance (like recalculateTDEEIfNeeded) until the risk state de-escalates.
+    const obGoal = (!(await deficitAllowed(userId)).allowed) ? 'maintain' : (goalRow?.goal_type as string | undefined);
+    const targetCal = Math.round(tdee * goalCalorieFactor(obGoal));
     const band = computeCalorieBand({ targetCalories: targetCal, gender: data.gender });
     const trainingMin = band.trainingMin;
     const safeTrainingMax = band.trainingMax;

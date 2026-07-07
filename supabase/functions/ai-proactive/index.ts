@@ -19,6 +19,7 @@ import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary
 import { projectDailyPlanRows, type ProjectionProfile } from '../shared/plan-projection.ts';
 import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
+import { deficitAllowed } from '../shared/safety-state.ts';
 
 /**
  * Start of the user's LOCAL calendar day expressed as a UTC ISO instant — for windowing a
@@ -1085,9 +1086,11 @@ serve(async (req: Request) => {
                   const nextGoal = nextPhase as { goal_type: string; weekly_rate?: number };
                   const nextRate = (nextGoal.weekly_rate as number | null) ?? 0.5;
                   const dailyDelta = Math.round((nextRate * 7700) / 7);
-                  const nextCalOffset = nextGoal.goal_type === 'lose_weight' ? -dailyDelta
+                  let nextCalOffset = nextGoal.goal_type === 'lose_weight' ? -dailyDelta
                     : nextGoal.goal_type === 'gain_weight' || nextGoal.goal_type === 'gain_muscle' ? dailyDelta
                     : 0;
+                  // #arch step 14 (SafetyState): never step an amber/red ED user into a deficit phase.
+                  if (nextCalOffset < 0 && !(await deficitAllowed(profile.id)).allowed) { nextCalOffset = 0; }
                   // Current ranges
                   const oldRestMin = profileCalories.calorie_range_rest_min as number;
                   const oldRestMax = profileCalories.calorie_range_rest_max as number;
@@ -1851,6 +1854,10 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
   }
 
   if (!adjustment) return;
+
+  // #arch step 14 (SafetyState): 'increase' TIGHTENS the band (caps the intake ceiling lower) — skip
+  // it for an amber/red ED user. 'decrease' (widen/relax) is always fine and is left to run.
+  if (adjustment === 'increase' && !(await deficitAllowed(userId)).allowed) return;
 
   const factor = adjustment === 'increase' ? 0.05 : -0.05;
   const proteinDelta = adjustment === 'increase' ? 5 : -5;

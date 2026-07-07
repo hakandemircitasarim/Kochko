@@ -993,6 +993,7 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
         approved_at: null,
         modification_request: modificationRequest ?? null,
         revision_count: nextRevision,
+        stale_reason: null, // #arch step 12 (audit #9): fresh content clears any belief-change staleness
       })
       .eq('id', existing.id);
     if (updateErr) throw new Error('weekly_plans update failed: ' + updateErr.message);

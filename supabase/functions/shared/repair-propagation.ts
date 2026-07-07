@@ -14,6 +14,11 @@ import { supabaseAdmin } from './supabase-admin.ts';
 import { checkAllergens, DIETARY_FORBIDDEN, foodMatchKey } from './guardrails.ts';
 import { logBelief } from './belief-log.ts';
 
+// Ambiguous forbidden sub-words that are innocent inside a known compound (audit #10).
+const COMPOUND_SAFE: Record<string, RegExp> = {
+  bal: /bal\s*kaba(k|ğ)/,   // "bal kabağı" (butternut squash) is vegan — not honey ("bal")
+};
+
 /** Recursively collect every food-name-ish string from a weekly plan_data blob. */
 function collectFoodText(planData: unknown): string {
   const parts: string[] = [];
@@ -61,12 +66,24 @@ export async function repairPlansAfterBeliefChange(userId: string, change: Belie
       if (!scan.passed) for (const v of scan.violations) violations.add(v);
     } else if (change.beliefKey === 'dietary_restriction') {
       const forbidden = DIETARY_FORBIDDEN[subj] ?? [];
+      // Allow a Turkish inflection/adjective suffix after the token so "tavuklu"/"etli"/"sütlü"
+      // match "tavuk"/"et"/"süt", while the end-boundary still rejects unrelated longer words
+      // ("balık"≠"bal", "etek"≠"et" — their trailing consonant is not one of these suffixes).
+      const SUF = '(?:lar|ler|lı|li|lu|lü|ı|i|u|ü|a|e|la|le|yla|yle|sı|si|su|sü|nı|ni|nu|nü)?';
       for (const f of forbidden) {
-        try { if (new RegExp('(^|[^a-zçğıöşü])' + f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![a-zçğıöşü])').test(foodText)) violations.add(f); } catch { /* skip */ }
+        // Audit #10: a short ambiguous token can be a SUB-word of a compliant compound — 'bal'
+        // (honey, vegan-forbidden) inside 'bal kabağı' (butternut squash, vegan-OK). Skip when the
+        // only plausible hit is that compound, so a compliant plan isn't false-flagged stale.
+        if (COMPOUND_SAFE[f] && COMPOUND_SAFE[f].test(foodText)) continue;
+        try { if (new RegExp('(^|[^a-zçğıöşü])' + f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + SUF + '(?![a-zçğıöşü])').test(foodText)) violations.add(f); } catch { /* skip */ }
       }
     } else if (change.beliefKey === 'dislike') {
       const key = foodMatchKey(subj);
-      const toks = new Set(foodText.split(/[^a-zçğıöşü]+/).filter((w) => w.length >= 3).map(foodMatchKey));
+      // Audit #8: foodMatchKey doesn't strip the Turkish -lı/-li/-lu/-lü "with X" adjective suffix —
+      // the exact form ingredients take in meal names ("sütlü tatlı" → süt). Add the stripped form so
+      // a disliked food embedded as an adjective in a plan meal is still detected.
+      const stripAdj = (w: string) => foodMatchKey(w.replace(/(lı|li|lu|lü|sız|siz|suz|süz)$/u, ''));
+      const toks = new Set(foodText.split(/[^a-zçğıöşü]+/).filter((w) => w.length >= 3).flatMap((w) => [foodMatchKey(w), stripAdj(w)]));
       if (key.length >= 3 && toks.has(key)) violations.add(subj);
     }
 
