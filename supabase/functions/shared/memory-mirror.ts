@@ -193,6 +193,11 @@ export async function composeGeneralSummary(userId: string): Promise<string> {
     supabaseAdmin.from('food_preferences').select('food_name, preference, is_allergen').eq('user_id', userId),
     supabaseAdmin.from('ai_summary').select('behavioral_patterns, habit_progress').eq('user_id', userId).maybeSingle(),
   ]);
+  // A failed READ must throw (caller catches → the stale-but-good summary survives) — otherwise
+  // an empty compose would CLOBBER a meaningful summary through the merge.
+  for (const r of [profileRes, goalRes, constraintsRes, prefsRes, summaryRes]) {
+    if (r.error) throw new Error(`composeGeneralSummary read failed: ${r.error.message}`);
+  }
   const p = (profileRes.data ?? {}) as Record<string, unknown>;
   const goal = goalRes.data as Record<string, unknown> | null;
   const cons = (constraintsRes.data ?? []) as Array<{ kind: string; subject: string; severity: string | null }>;

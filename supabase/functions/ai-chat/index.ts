@@ -206,7 +206,10 @@ serve(async (req: Request) => {
           const injParts = injCue ? extractInjuredBodyParts([message]) : [];
           if (injParts.length > 0) {
             const isSurgery = /(ameliyat|operasyon|protez|artroskopi)/.test(mLow);
-            salvaged.push({ type: 'health_event', event_type: isSurgery ? 'surgery' : 'injury', description: message.slice(0, 280), is_ongoing: !isSurgery });
+            // NEVER store the raw crisis message (suicidal-ideation text) in the always-recalled
+            // health spine — keep only the clause containing the matched body part.
+            const clause = message.split(/[.!?;]/).find((s: string) => extractInjuredBodyParts([s]).length > 0) ?? injParts.join(', ');
+            salvaged.push({ type: 'health_event', event_type: isSurgery ? 'surgery' : 'injury', description: clause.trim().slice(0, 160), is_ongoing: !isSurgery });
           }
           if (salvaged.length > 0) {
             console.warn('[safety_path_salvage] persisting facts from safety-return turn', { types: salvaged.map(s => s.type) });
@@ -689,20 +692,30 @@ serve(async (req: Request) => {
     // RESOLVED in this turn, not silently overwritten and not silently ignored (the 25-vs-35 case).
     // Once-per-field 48h cooldown via belief_events; if the user re-states the same value after
     // being asked once, repetition wins and the write proceeds unchallenged.
-    let contradiction: ReturnType<typeof detectIdentityContradiction> = null;
+    let contradictions: IdentityContradiction[] = [];
     if (message && profile?.onboarding_completed) {
-      const cand = detectIdentityContradiction(message, profile as Record<string, unknown>);
-      if (cand) {
-        const { data: recentContest } = await supabaseAdmin
-          .from('belief_events').select('id')
-          .eq('user_id', userId).eq('belief_key', 'identity_contest').eq('subject', cand.field)
+      const cands = detectIdentityContradictions(message, profile as Record<string, unknown>, task_mode_hint as string | undefined);
+      if (cands.length) {
+        // Value-aware 48h cooldown per field: suppress the challenge ONLY when the user re-states
+        // the SAME contested value (repetition-wins resolution). A THIRD distinct value is a fresh
+        // contradiction and must be challenged again.
+        const { data: recentContests } = await supabaseAdmin
+          .from('belief_events').select('subject, new_value')
+          .eq('user_id', userId).eq('belief_key', 'identity_contest')
+          .in('subject', cands.map(c => c.field))
           .gte('created_at', new Date(Date.now() - 48 * 3600_000).toISOString())
-          .limit(1);
-        if (!recentContest?.length) contradiction = cand;
+          .order('created_at', { ascending: false });
+        contradictions = cands.filter(c => {
+          const prior = (recentContests ?? []).find((r: { subject: string }) => r.subject === c.field);
+          if (!prior) return true; // never contested recently → challenge
+          const priorVal = Number((prior as { new_value: unknown }).new_value);
+          const tol = c.field === 'weight_kg' ? 1 : 0;
+          return Number.isFinite(priorVal) && Math.abs(priorVal - c.statedValue) > tol; // same value → resolved; new value → re-challenge
+        });
       }
     }
-    const contradictionPrompt = contradiction
-      ? `## VERI CELISKISI (BU TURDA COZ)\nKullanici bu mesajda ${contradiction.statedLabel} dedi ama kayitta ${contradiction.storedLabel} var. Yanitinda MUTLAKA kibarca hangisinin dogru oldugunu sor (orn. "kayitlarimda ${contradiction.storedLabel} gorunuyor, ${contradiction.statedLabel} mi dogru?"). Kullanici netlestirene kadar bu alani profile_update ile YAZMA.`
+    const contradictionPrompt = contradictions.length
+      ? `## VERI CELISKISI (BU TURDA COZ)\n${contradictions.map(c => `Kullanici bu mesajda ${c.statedLabel} dedi ama kayitta ${c.storedLabel} var (${c.fieldNoun}).`).join('\n')}\nYanitinda MUTLAKA kibarca hangisinin dogru oldugunu sor (orn. "kayitlarimda ${contradictions[0].fieldNoun} ${contradictions[0].storedLabel} gorunuyor, ${contradictions[0].statedLabel} mi dogru?"). Kullanici netlestirene kadar bu alanlari profile_update ile YAZMA.`
       : '';
 
     const systemPrompt = [
@@ -867,10 +880,14 @@ serve(async (req: Request) => {
     const regexCapturedFields = new Set<string>();
     if (message) {
       // #S2 cross-turn context: the LAST assistant message disambiguates a bare-number correction
-      // ("kaç yaşındasın?" → "25"). layer4 is chronological; scan from the end.
+      // ("kaç yaşındasın?" → "25"). layer4 is chronological; scan from the end. Gated on the
+      // conversation being RECENTLY active — in the eternal thread (#S1) the last question may be
+      // days old, and a cold-open bare number must not resolve against it.
       let prevAssistant: string | undefined;
-      for (let li = ctx.layer4.length - 1; li >= 0; li--) {
-        if (ctx.layer4[li].role === 'assistant') { prevAssistant = ctx.layer4[li].content; break; }
+      if (sessionRecentlyActive) {
+        for (let li = ctx.layer4.length - 1; li >= 0; li--) {
+          if (ctx.layer4[li].role === 'assistant') { prevAssistant = ctx.layer4[li].content; break; }
+        }
       }
       const regexExtracted = extractProfileFromMessage(message, task_mode_hint as string | undefined, !fullExtraction, prevAssistant);
       if (regexExtracted) {
@@ -2042,21 +2059,23 @@ serve(async (req: Request) => {
     // when weight is contested). The resolving answer next turn writes it (explicit-correction
     // exemption + 48h repetition rule in detectIdentityContradiction). Log the contest to the
     // append-only belief log — this is also the cooldown marker.
-    if (contradiction) {
+    for (const contested of contradictions) {
       for (const a of actions) {
         const ar = a as Record<string, unknown>;
-        if (ar.type === 'profile_update' && ar[contradiction.field] !== undefined) delete ar[contradiction.field];
+        if (ar.type === 'profile_update' && ar[contested.field] !== undefined) delete ar[contested.field];
       }
-      if (contradiction.field === 'weight_kg') {
+      if (contested.field === 'weight_kg') {
         const kept = actions.filter(a => (a as Record<string, unknown>).type !== 'weight_log');
         if (kept.length !== actions.length) { actions.length = 0; actions.push(...kept); }
       }
-      logBelief(userId, {
-        belief_key: 'identity_contest', subject: contradiction.field, operation: 'set',
-        old_value: contradiction.storedValue, new_value: contradiction.statedValue,
-        note: `çelişki tespit: söylenen ${contradiction.statedLabel} vs kayıt ${contradiction.storedLabel} — koç netleştirme sorusu sordu`,
-      }).then(() => {}, () => {});
-      console.warn('[contradiction] held write + asked', { field: contradiction.field, stated: contradiction.statedValue, stored: contradiction.storedValue });
+      // AWAITED: this row is the cooldown marker — if it silently failed, the same contradiction
+      // would re-challenge every turn (hold-loop) instead of resolving by repetition.
+      await logBelief(userId, {
+        belief_key: 'identity_contest', subject: contested.field, operation: 'set',
+        old_value: contested.storedValue, new_value: contested.statedValue,
+        note: `çelişki tespit: söylenen ${contested.statedLabel} vs kayıt ${contested.storedLabel} — koç netleştirme sorusu sordu`,
+      });
+      console.warn('[contradiction] held write + asked', { field: contested.field, stated: contested.statedValue, stored: contested.storedValue });
     }
 
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
@@ -2086,10 +2105,20 @@ serve(async (req: Request) => {
           const { data: after } = await supabaseAdmin
             .from('profiles').select('birth_year, height_cm, weight_kg, gender, display_name')
             .eq('id', userId).maybeSingle();
+          // Enum-normalized fields must compare CANONICAL values ('erkek' → 'male'), or a correct
+          // write reads as a false "UNVERIFIED" alarm.
+          const canonical = (field: string, v: unknown): string => {
+            if (field === 'gender') {
+              const g = String(v).toLocaleLowerCase('tr');
+              if (/erke|bay|male/.test(g) && !/female/.test(g)) return 'male';
+              if (/kad[ıi]n|bayan|female/.test(g)) return 'female';
+            }
+            return String(v);
+          };
           const receipts: FactReceipt[] = idFacts.map(({ field, value }) => ({
             field, value,
             source: regexCapturedFields.has(field) ? 'regex' as const : 'model' as const,
-            verified: after != null && String((after as Record<string, unknown>)[field]) === String(value),
+            verified: after != null && String((after as Record<string, unknown>)[field]) === canonical(field, value),
           }));
           const failed = receipts.filter(r => !r.verified);
           if (failed.length > 0) console.warn('[fact-receipts] UNVERIFIED writes', failed.map(f => f.field));
@@ -2103,17 +2132,20 @@ serve(async (req: Request) => {
     // pass covers any miss.
     if (factsDirty) {
       composeGeneralSummary(userId)
-        .then((summaryText) => updateLayer2(userId, { general_summary: summaryText }))
+        .then((summaryText) => summaryText.trim() ? updateLayer2(userId, { general_summary: summaryText }) : undefined)
         .catch((e) => console.warn('[derived-summary] recompose failed:', (e as Error).message));
     }
 
-    // #S4 deterministic fallback: safety never depends on the model obeying the prompt. If the
-    // reply doesn't visibly raise the contradiction (no stored-value mention + question), append
-    // the clarifying question so the user ALWAYS sees it in the same turn.
-    if (contradiction) {
-      const asked = assistantMessage.includes('?') && /(kay[ıi]t|kaydet|görünüyor|gorunuyor|hangisi)/i.test(assistantMessage);
+    // #S4 deterministic fallback: safety never depends on the model obeying the prompt. VALUE-
+    // GROUNDED check — a reply only counts as having asked if it cites the STORED value with a
+    // question (keyword heuristics false-positived on routine Turkish "görünüyor…?"). The question
+    // names the field noun ("boyun 175 cm") so the bare-number resolver can place the answer.
+    for (const contested of contradictions) {
+      // Use the DISPLAY number (storedLabel "35 yaş" → 35), not the raw storedValue (birth_year 1991).
+      const storedNum = contested.storedLabel.match(/\d+/)?.[0] ?? String(Math.round(contested.storedValue));
+      const asked = assistantMessage.includes('?') && new RegExp(`(^|\\D)${storedNum}(\\D|$)`).test(assistantMessage);
       if (!asked) {
-        assistantMessage += `\n\nBir şeyi netleştirelim: kayıtlarımda ${contradiction.storedLabel} görünüyor ama az önce ${contradiction.statedLabel} dedin — hangisi doğru? Söyle, hemen düzelteyim.`;
+        assistantMessage += `\n\nBir şeyi netleştirelim: kayıtlarımda ${contested.fieldNoun} ${contested.storedLabel} görünüyor ama az önce ${contested.statedLabel} dedin — hangisi doğru? Söyle, hemen düzelteyim.`;
       }
     }
 
@@ -2923,42 +2955,58 @@ function normalizeProfileEnum(field: string, value: unknown): string | null {
  *   height ≥3cm (height doesn't change), weight ≥ max(7kg, 8%) (normal fluctuation must never
  *   be challenged in a weight-loss app).
  */
-function detectIdentityContradiction(
+interface IdentityContradiction {
+  field: 'birth_year' | 'weight_kg' | 'height_cm';
+  fieldNoun: string; // Turkish noun for the fallback question ("yaşın"/"kilon"/"boyun")
+  statedValue: number;
+  storedValue: number;
+  statedLabel: string;
+  storedLabel: string;
+}
+function detectIdentityContradictions(
   msg: string,
   profile: Record<string, unknown> | null | undefined,
-): { field: 'birth_year' | 'weight_kg' | 'height_cm'; statedValue: number; storedValue: number; statedLabel: string; storedLabel: string } | null {
-  if (!msg || !profile) return null;
+  taskModeHint?: string,
+): IdentityContradiction[] {
+  if (!msg || !profile) return [];
   const lower = msg.toLocaleLowerCase('tr');
-  // Explicit correction → believe the user, never challenge.
-  if (/(yanlış|yanlis|pardon|aslında|aslinda|düzelt|duzelt|hatalı|hatali|olacaktı|olacakti|yanlış girilmiş|yanlis girilmis)/.test(lower)) return null;
-  const extracted = extractProfileFromMessage(msg, undefined, true);
-  if (!extracted) return null;
-  // Age
+  // Explicit correction → believe the user, never challenge. Scoped: the correction word must sit
+  // near a digit (same clause) or the whole message must be short — "geçen planım yanlıştı, bu
+  // arada kilom 60" must not exempt the weight statement at the other end of the sentence.
+  const corrRe = /(yanlış|yanlis|pardon|aslında|aslinda|düzelt|duzelt|hatalı|hatali|olacaktı|olacakti|girilmiş|girilmis)/;
+  if (corrRe.test(lower)) {
+    if (lower.length < 60) return [];
+    const ci = lower.search(corrRe);
+    // any digit within ~40 chars of the correction cue → treat as an explicit numeric correction
+    const win = lower.slice(Math.max(0, ci - 40), ci + 40);
+    if (/\d/.test(win)) return [];
+  }
+  // Pass the REAL task mode: in the goal chat the extractor deliberately never reads current
+  // weight, so a goal-target number can't masquerade as a weight contradiction.
+  const extracted = extractProfileFromMessage(msg, taskModeHint, true);
+  if (!extracted) return [];
+  const out: IdentityContradiction[] = [];
   if (typeof extracted.birth_year === 'number' && typeof profile.birth_year === 'number') {
     const statedAge = new Date().getFullYear() - (extracted.birth_year as number);
     const storedAge = new Date().getFullYear() - (profile.birth_year as number);
     if (Math.abs(statedAge - storedAge) >= 2) {
-      return { field: 'birth_year', statedValue: extracted.birth_year as number, storedValue: profile.birth_year as number, statedLabel: `${statedAge} yaş`, storedLabel: `${storedAge} yaş` };
+      out.push({ field: 'birth_year', fieldNoun: 'yaşın', statedValue: extracted.birth_year as number, storedValue: profile.birth_year as number, statedLabel: `${statedAge} yaş`, storedLabel: `${storedAge} yaş` });
     }
   }
-  // Height
   if (typeof extracted.height_cm === 'number' && typeof profile.height_cm === 'number') {
     const d = Math.abs((extracted.height_cm as number) - (profile.height_cm as number));
     if (d >= 3) {
-      return { field: 'height_cm', statedValue: extracted.height_cm as number, storedValue: profile.height_cm as number, statedLabel: `${extracted.height_cm} cm`, storedLabel: `${profile.height_cm} cm` };
+      out.push({ field: 'height_cm', fieldNoun: 'boyun', statedValue: extracted.height_cm as number, storedValue: profile.height_cm as number, statedLabel: `${extracted.height_cm} cm`, storedLabel: `${profile.height_cm} cm` });
     }
   }
-  // Weight (cued statements only reach extraction in safeOnly mode, so this is already
-  // disambiguated; challenge only an implausible jump).
   if (typeof extracted.weight_kg === 'number' && typeof profile.weight_kg === 'number') {
     const stored = Number(profile.weight_kg);
     const stated = extracted.weight_kg as number;
-    const jump = Math.abs(stated - stored);
-    if (jump >= Math.max(7, stored * 0.08)) {
-      return { field: 'weight_kg', statedValue: stated, storedValue: stored, statedLabel: `${stated} kg`, storedLabel: `${stored} kg` };
+    if (Math.abs(stated - stored) >= Math.max(7, stored * 0.08)) {
+      out.push({ field: 'weight_kg', fieldNoun: 'kilon', statedValue: stated, storedValue: stored, statedLabel: `${stated} kg`, storedLabel: `${stored} kg` });
     }
   }
-  return null;
+  return out;
 }
 
 function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly = false, prevAssistant?: string): Record<string, unknown> | null {
@@ -2998,12 +3046,14 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   // ambiguous prior turn must not guess. Not in goal chat (bare numbers there are target weight).
   if (!inGoalChat && prevAssistant) {
     const bareNum = lower.match(/^\s*(?:hayır|hayir|yanlış|yanlis|pardon|aslında|aslinda|yok)?[,.\s]*(\d{1,3}(?:[.,]\d)?)\s*(?:olacak(?:tı|ti)?|olsun|olarak düzelt|dedim)?\s*$/);
-    if (bareNum) {
+    if (bareNum && prevAssistant.includes('?')) {
       const n = parseFloat(bareNum[1].replace(',', '.'));
       const pa = prevAssistant.toLocaleLowerCase('tr');
-      const asksAge = /ya[sş]/.test(pa);
-      const asksWeight = /kilo|kg|tartı|tarti/.test(pa);
-      const asksHeight = /\bboy/.test(pa);
+      // Anchor to an actual QUESTION about the slot — substring presence ("kilo" anywhere in a
+      // long coaching reply) made a bare "45" write weight_kg=45 with no challenge possible.
+      const asksAge = /(kaç\s*ya[sş]|ya[sş][ıi]n[ıi]?z?\s*(kaç|ne)|ya[sş][ıi]n[ıi] söyle)/.test(pa);
+      const asksWeight = /(kaç\s*(kilo|kg)\b|kilon(uz)?\s*(kaç|ne)|güncel\s*kilon|mevcut\s*kilon)/.test(pa);
+      const asksHeight = /(boyun(uz)?\s*(kaç|ne)|kaç\s*cm|boyunu söyle)/.test(pa);
       const slots = [asksAge, asksWeight, asksHeight].filter(Boolean).length;
       if (slots === 1) {
         if (asksAge && n >= 10 && n <= 100 && result.birth_year == null) result.birth_year = new Date().getFullYear() - Math.round(n);
@@ -3014,11 +3064,16 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
   }
 
   // #S2 NAME capture: display_name previously had ZERO deterministic path (model action only), so
-  // "ismim Hakan" persisted only if the model felt like it. Conservative cue set; original casing
-  // from the raw message (not the lowered copy).
+  // "ismim Hakan" persisted only if the model felt like it. NO /i flag — the capital-initial class
+  // on the NAME is the gate that stops "10000 adım attım" ("adım" = step!) from capturing "Attım";
+  // cue-word case is handled explicitly. A digit before the cue also rejects the step sense.
   {
-    const nameM = msg.match(/(?:ismim|adım|adim|benim ad[iı]m)\s+([A-ZÇĞİÖŞÜ][a-zçğıöşü]{1,19})/i);
-    if (nameM && nameM[1]) result.display_name = nameM[1].charAt(0).toLocaleUpperCase('tr') + nameM[1].slice(1).toLocaleLowerCase('tr');
+    const nameM = msg.match(/(?:[İiI]smim|[Aa]d[ıi]m|[Bb]enim ad[ıi]m)\s+([A-ZÇĞİÖŞÜ][a-zçğıöşü]{1,19})\b/);
+    const cueIdx = nameM ? msg.indexOf(nameM[0]) : -1;
+    const digitBefore = cueIdx > 0 && /\d[\s.,]{0,3}$/.test(msg.slice(Math.max(0, cueIdx - 4), cueIdx));
+    if (nameM && nameM[1] && !digitBefore) {
+      result.display_name = nameM[1].charAt(0).toLocaleUpperCase('tr') + nameM[1].slice(1).toLocaleLowerCase('tr');
+    }
   }
 
   // Height: "boyum 175", "boy: 180", "175 cm", "175 boy", "175 boyundayim".
@@ -5312,7 +5367,15 @@ async function processLayer2Updates(userId: string, updates: Record<string, unkn
     if (updates.general_summary_append && typeof updates.general_summary_append === 'string') {
       const current = (existing?.coaching_notes as string) ?? '';
       const dateStr = new Date().toISOString().split('T')[0];
-      changes.coaching_notes = `${current}\n[${dateStr}] ${updates.general_summary_append}`.trim();
+      // Bounded: keep the newest ~2000 chars of dated lines — otherwise this reroute recreates
+      // the unbounded append-log bug one column over.
+      let notes = `${current}\n[${dateStr}] ${updates.general_summary_append}`.trim();
+      if (notes.length > 2000) {
+        const lines = notes.split('\n');
+        while (lines.length > 1 && lines.join('\n').length > 2000) lines.shift();
+        notes = lines.join('\n');
+      }
+      changes.coaching_notes = notes;
     }
 
     // ─── Memory Lifecycle: Pattern Management ───

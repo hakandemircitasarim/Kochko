@@ -145,15 +145,15 @@ export default function ProfileScreen() {
           patterns={(summary.behavioral_patterns as { type: string; description: string }[]) ?? []}
           portionCalibration={(summary.portion_calibration as Record<string, unknown>) ?? {}}
           coachingNotes={String(summary.coaching_notes ?? '')}
-          onDeleteNote={async (note) => {
-            if (!user?.id) return;
-            try {
-              await deleteAISummaryNote(user.id, 'general_summary', note);
-            } catch {
-              Alert.alert('Silinemedi', 'Not silinirken bir sorun oluştu. Lütfen tekrar dene.');
-              return;
-            }
-            loadInsights().then(setSummary);
+          onDeleteNote={async () => {
+            // #S3: general_summary is a DERIVED view — deleting the paragraph would be untruthful
+            // (it regenerates from canonical stores on the next fact turn). Route the user to the
+            // source facts, where deletion is real and permanent.
+            Alert.alert(
+              'Bu özet otomatik derleniyor',
+              'Genel özet; profilin, hedefin ve sağlık kayıtlarından otomatik oluşturulur. Bir bilgiyi kalıcı silmek için "Koçko seni nasıl tanıyor" ekranından ilgili kaydı sil — özet kendini günceller.',
+              [{ text: 'Tamam' }, { text: 'Ekranı aç', onPress: () => router.push('/settings/coach-memory' as never) }],
+            );
           }}
           onResetAll={async () => {
             if (!user?.id) return;

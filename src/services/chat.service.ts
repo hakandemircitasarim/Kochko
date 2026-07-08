@@ -510,62 +510,9 @@ export async function createHeadlessSession(options?: { title?: string; topicTag
   }
 }
 
-export async function createSession(options?: { title?: string; topicTags?: string[] }): Promise<string | null> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) return null;
-    const userId = session.user.id;
-
-    // Close any currently active session
-    await supabase
-      .from('chat_sessions')
-      .update({ is_active: false, ended_at: new Date().toISOString() })
-      .eq('user_id', userId)
-      .eq('is_active', true);
-
-    // Create new session
-    const { data, error } = await supabase
-      .from('chat_sessions')
-      .insert({
-        user_id: userId,
-        title: options?.title ?? null,
-        topic_tags: options?.topicTags ?? [],
-        is_active: true,
-      })
-      .select('id')
-      .single();
-
-    if (error) {
-      // If another device won the "close+insert" race we'll get a unique
-      // violation from migration 035's partial index. Close whoever they
-      // are and retry once so the user ends up with a fresh session.
-      const code = (error as { code?: string }).code;
-      const isUniqueViolation = code === '23505' || /duplicate key|uniq_chat_sessions_one_active_per_user/i.test(error.message ?? '');
-      if (isUniqueViolation) {
-        await supabase
-          .from('chat_sessions')
-          .update({ is_active: false, ended_at: new Date().toISOString() })
-          .eq('user_id', userId)
-          .eq('is_active', true);
-        const { data: retryData } = await supabase
-          .from('chat_sessions')
-          .insert({
-            user_id: userId,
-            title: options?.title ?? null,
-            topic_tags: options?.topicTags ?? [],
-            is_active: true,
-          })
-          .select('id')
-          .single();
-        return retryData?.id ?? null;
-      }
-      return null;
-    }
-    return data?.id ?? null;
-  } catch {
-    return null;
-  }
-}
+// #S1: createSession REMOVED - it closed the user's active session before inserting a new one
+// (the thread-beheading primitive behind the amnesia complaints). Use getOrCreateActiveSession
+// (the one canonical thread) or createHeadlessSession (invisible machine flows) instead.
 
 export async function loadSessionMessages(sessionId: string, limit = 50): Promise<ChatMessage[]> {
   try {

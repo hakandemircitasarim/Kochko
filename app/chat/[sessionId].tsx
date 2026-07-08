@@ -10,11 +10,11 @@
  * - Dashboard refresh after actions
  */
 import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Animated,
-  NativeSyntheticEvent, NativeScrollEvent,
+  NativeSyntheticEvent, NativeScrollEvent, BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,7 +25,7 @@ import { useDashboardStore } from '@/stores/dashboard.store';
 import { useAuthStore } from '@/stores/auth.store';
 import {
   sendMessageToSession, sendPhotoToSession, loadSessionMessages, loadOlderSessionMessages,
-  reopenSession, getOrCreateActiveSession, queueMessageOffline, processOfflineQueue, getOfflineQueueSize,
+  getOrCreateActiveSession, queueMessageOffline, processOfflineQueue, getOfflineQueueSize,
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { getTaskByKey, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
@@ -294,7 +294,9 @@ export default function SessionDetailScreen() {
     const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
     return () => { showSub.remove(); hideSub.remove(); };
   }, []);
-  const { sessionId, prefill, taskModeHint, openCamera, fromPrefill, fromTab } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string; openCamera?: string; fromPrefill?: string; fromTab?: string }>();
+  const { sessionId, prefill, taskModeHint, openCamera, fromPrefill, fromTab, taskNonce } = useLocalSearchParams<{ sessionId: string; prefill?: string; taskModeHint?: string; openCamera?: string; fromPrefill?: string; fromTab?: string; taskNonce?: string }>();
+  // one task-opener fire per navigation (see the load effect)
+  const taskInitKeyRef = useRef<string | null>(null);
   // #S1 (one-thread): the chat tab is now a resolver that replaces INTO this thread — going
   // "back" to it would immediately bounce here again (infinite loop). From the tab/prefill
   // entries, back = the dashboard (the natural "leave the conversation" action). A pushed entry
@@ -304,6 +306,12 @@ export default function SessionDetailScreen() {
     else if (router.canGoBack()) router.back();
     else router.replace('/(tabs)');
   }, [fromTab, fromPrefill]);
+  // Android hardware back must mirror the chevron — the tab resolver replaces into this screen,
+  // leaving a single-entry root stack, so the default handler would EXIT THE APP.
+  useFocusEffect(useCallback(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { handleBack(); return true; });
+    return () => sub.remove();
+  }, [handleBack]));
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
   const refreshDashboard = useDashboardStore(s => s.fetchToday);
@@ -318,7 +326,8 @@ export default function SessionDetailScreen() {
     // refetch after a task completes so the finished card drops off the rail
   }, [user?.id, messages.filter(m => (m as UIMessage).taskCompletion?.completed).length]);
   const openTaskTopic = useCallback((task: OnboardingTask) => {
-    const p: Record<string, string> = { prefill: task.prefillMessage, taskModeHint: task.taskModeHint };
+    // taskNonce: same task re-tapped must re-fire the topic opener (identical params wouldn't).
+    const p: Record<string, string> = { prefill: task.prefillMessage, taskModeHint: task.taskModeHint, taskNonce: String(Date.now()) };
     if (fromTab) p.fromTab = '1';
     router.replace({ pathname: `/chat/${sessionId}`, params: p });
   }, [sessionId, fromTab]);
@@ -360,11 +369,9 @@ export default function SessionDetailScreen() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const listRef = useRef<FlatList>(null);
   const barcodeProcessingRef = useRef(false); // debounce repeated onBarcodeScanned (#R4-15)
-  // FIX (audit: bayat is_active) — kapalı bir oturuma devam edildiğinde mesaj yazılır
-  // ama oturum is_active=false kalırdı (reopenSession import edilmiş ama hiç çağrılmıyordu).
-  // İlk gerçek gönderimden önce best-effort reopen et; ekran başına bir kez yeter
-  // (reopenSession diğer aktif oturumu kapatıp bunu açar, idempotent).
-  const reopenedRef = useRef(false);
+  // (#S1: reopenedRef/reopenSession removed — the session is guaranteed active by
+  // getOrCreateActiveSession on every entry path, and the close-all-then-reactivate pair was
+  // itself a beheading race.)
   // Track whether the user is near the live end of the conversation. Drives both the
   // auto-scroll guard (don't yank the user down while they read older messages) and
   // the "jump to latest" FAB visibility.
@@ -500,8 +507,16 @@ export default function SessionDetailScreen() {
     let cancelled = false;
     loadSessionMessages(sessionId).then(async (data) => {
       if (cancelled) return;
-      if (data.length === 0 && taskModeHint) {
-        // Card-triggered session: AI sends first message (not user)
+      // #S1 fix (adversarial audit): the task opener used to fire ONLY on an EMPTY thread — in the
+      // one-thread world the thread is always populated, so every task tap was a silent no-op
+      // (history reloaded, no opener, prefill dropped). The opener now fires into the populated
+      // thread too: show history first, then append the AI's topic opener. taskInitKeyRef guards
+      // one fire per navigation (taskNonce changes on every tap, so re-taps re-fire).
+      const taskKey = taskModeHint ? `${taskModeHint}-${taskNonce ?? ''}` : null;
+      if (taskKey && taskInitKeyRef.current !== taskKey) {
+        taskInitKeyRef.current = taskKey;
+        setMessages(data.map(m => ({ ...m })));
+        setHasMoreOlder(data.length >= 50);
         setLoading(false);
         setTypingLabel(typingLabelFor(taskModeHint, false));
         setSending(true);
@@ -511,14 +526,13 @@ export default function SessionDetailScreen() {
           taskModeHint,
         );
         if (!cancelled && response) {
-          setMessages([
+          setMessages(prev => [...prev,
             { id: `a-${Date.now()}`, role: 'assistant', content: response.message, task_mode: response.task_mode, created_at: new Date().toISOString() },
           ]);
         } else if (!cancelled) {
-          // Auto-start failed (e.g. LLM outage). Don't drop the user into a blank
-          // EmptyState as if nothing happened — show a friendly assistant bubble
-          // so the tapped task clearly registered. (User can re-send to retry.)
-          setMessages([{
+          // Auto-start failed (e.g. LLM outage) — show a friendly assistant bubble so the tapped
+          // task clearly registered. (User can re-send to retry.)
+          setMessages(prev => [...prev, {
             id: `a-init-err-${Date.now()}`, role: 'assistant',
             content: error ?? 'Şu an cevap veremedim, bağlantıda bir sorun oldu. Birazdan tekrar dener misin?',
             task_mode: taskModeHint, created_at: new Date().toISOString(),
@@ -552,7 +566,7 @@ export default function SessionDetailScreen() {
       }
     });
     return () => { cancelled = true; };
-  }, [sessionId, isOnboarding, taskModeHint]);
+  }, [sessionId, isOnboarding, taskModeHint, taskNonce]);
 
   // Pre-fill from dashboard quick actions (non-card navigation)
   useEffect(() => {
@@ -713,13 +727,11 @@ export default function SessionDetailScreen() {
     setSending(true);
     scrollToBottom(true); // user's own send — always follow
 
-    // FIX (audit: bayat is_active) — reactivate a closed/auto-closed session on the
-    // first send so it doesn't stay "pasif" in the list after the user continues it.
-    // Best-effort (errors swallowed); only once per screen mount.
-    if (!reopenedRef.current) {
-      reopenedRef.current = true;
-      await reopenSession(sessionId).catch(() => {});
-    }
+    // #S1: the reopenSession call was REMOVED here. Every route into this screen now resolves
+    // through getOrCreateActiveSession, so the session is guaranteed active — and reopenSession's
+    // close-all-then-reactivate pair was itself a beheading race (a transient failure between the
+    // two unchecked UPDATEs left the canonical thread closed → next open minted an empty session:
+    // the exact amnesia S1 kills).
 
     const { data, error } = img
       ? await sendPhotoToSession(sessionId, text || 'Bu yemeği analiz et.', img)
@@ -2186,6 +2198,8 @@ function TaskCompletionCard({
   taskCompletion: { completed: string; summary: string; next_suggestions: string[] };
   colors: any;
 }) {
+  // session id for the "continue chatting" escape (this component renders under /chat/[sessionId])
+  const { sessionId: currentSessionId } = useLocalSearchParams<{ sessionId: string }>();
   // Phase 7: mini celebration on mount — scale-in bounce on the summary chip +
   // a milestone haptic. No confetti library (would need native rebuild);
   // Animated.spring is enough to feel rewarding without being noisy.
@@ -2212,7 +2226,7 @@ function TaskCompletionCard({
     if (id) {
       router.replace({
         pathname: `/chat/${id}`,
-        params: { prefill: task.prefillMessage, taskModeHint: task.taskModeHint },
+        params: { prefill: task.prefillMessage, taskModeHint: task.taskModeHint, taskNonce: String(Date.now()) },
       });
     } else {
       Alert.alert('Sohbet başlatılamadı', 'İnternet bağlantını kontrol et ve tekrar dene.');
@@ -2290,6 +2304,23 @@ function TaskCompletionCard({
             </TouchableOpacity>
           ))}
         </View>
+      )}
+      {/* #S1 dead-end escape: when no next-task cards render, the locked composer had NO in-screen
+          exit — give a "continue chatting" affordance that remounts the thread without the task
+          params, clearing the lock. */}
+      {suggestionTasks.length === 0 && (
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); router.replace({ pathname: `/chat/${currentSessionId}`, params: { fromTab: '1' } }); }}
+          accessibilityRole="button"
+          accessibilityLabel="Sohbete devam et"
+          style={{
+            marginTop: SPACING.xs, alignSelf: 'flex-start',
+            backgroundColor: colors.primary + '18', borderRadius: RADIUS.full,
+            paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+          }}
+        >
+          <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700' }}>Sohbete devam et →</Text>
+        </TouchableOpacity>
       )}
     </View>
   );

@@ -408,17 +408,18 @@ export default function CoachMemoryScreen() {
             <>
               <CategoryTitle title="Koçko Seni Nasıl Tanıyor" icon="person-circle" color={colors.purple} colors={colors} />
 
-              {/* General Summary */}
+              {/* General Summary — #S3: a DERIVED view regenerated from the canonical stores.
+                  The delete affordance was removed because deleting a derived paragraph was
+                  UNTRUTHFUL (it regenerated verbatim on the next fact turn) — KVKK deletion
+                  happens at the SOURCE facts (profile fields, health records, preferences),
+                  which all have their own delete/edit affordances. */}
               {data.general ? (
                 <View style={cardStyle}>
-                  <SectionHeader icon="document-text" color={colors.success} title="Genel Özet" colors={colors} deletable onDelete={() => handleDeleteNote('general_summary', data.general)} />
-                  <TouchableOpacity
-                    onLongPress={() => handleDeleteNote('general_summary', data.general)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Genel Özet — silmek için uzun bas"
-                  >
-                    <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.general}</Text>
-                  </TouchableOpacity>
+                  <SectionHeader icon="document-text" color={colors.success} title="Genel Özet" colors={colors} />
+                  <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{data.general}</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm, lineHeight: 16 }}>
+                    Bu özet; profilin, hedefin ve sağlık kayıtlarından otomatik derlenir. Bir bilgiyi kalıcı silmek için aşağıdaki ilgili kaydı sil — özet kendini günceller.
+                  </Text>
                 </View>
               ) : null}
 

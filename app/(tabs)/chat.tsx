@@ -11,7 +11,7 @@
  * Prefill contract preserved: dashboard nudges / quick-log deep links (`/(tabs)/chat?prefill=...`,
  * `openCamera`) forward into the thread, exactly as before.
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,11 +27,16 @@ export default function ChatTabResolver() {
   const user = useAuthStore(s => s.user);
   const { prefill, openCamera, taskModeHint } = useLocalSearchParams<{ prefill?: string; openCamera?: string; taskModeHint?: string }>();
   const [failed, setFailed] = useState(false);
-  const [resolving, setResolving] = useState(false);
+  // REF guards, never state in the callback deps: `resolving` as a dep minted a new callback
+  // identity on every setState → useFocusEffect re-ran → on the FAILURE path this was a
+  // deterministic infinite retry loop hammering the network while offline.
+  const inFlightRef = useRef(false);
+  const failedRef = useRef(false);
 
   const resolve = useCallback(async () => {
-    if (!user?.id || resolving) return;
-    setResolving(true);
+    if (!user?.id || inFlightRef.current) return;
+    inFlightRef.current = true;
+    failedRef.current = false;
     setFailed(false);
     try {
       const id = await getOrCreateActiveSession();
@@ -42,17 +47,20 @@ export default function ChatTabResolver() {
         if (taskModeHint) params.taskModeHint = String(taskModeHint);
         router.replace({ pathname: `/chat/${id}`, params });
       } else {
+        failedRef.current = true;
         setFailed(true);
       }
     } catch {
+      failedRef.current = true;
       setFailed(true);
     } finally {
-      setResolving(false);
+      inFlightRef.current = false;
     }
-  }, [user?.id, prefill, openCamera, taskModeHint, resolving]);
+  }, [user?.id, prefill, openCamera, taskModeHint]);
 
-  // Resolve on every focus: tapping the tab always lands in THE conversation.
-  useFocusEffect(useCallback(() => { resolve(); }, [resolve]));
+  // Resolve on focus. NO auto-retry after a failure — only the explicit "Tekrar dene" button
+  // re-attempts, so an offline user gets a stable error screen instead of a flicker loop.
+  useFocusEffect(useCallback(() => { if (!failedRef.current) resolve(); }, [resolve]));
 
   if (failed) {
     return (

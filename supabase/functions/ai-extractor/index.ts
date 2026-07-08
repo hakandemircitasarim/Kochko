@@ -360,10 +360,17 @@ serve(async (req: Request) => {
           const { data: curSummary } = await supabaseAdmin
             .from('ai_summary').select('coaching_notes').eq('user_id', userId).maybeSingle();
           const curNotes = (curSummary?.coaching_notes as string) ?? '';
-          await updateLayer2(userId, { coaching_notes: `${curNotes}\n[${dateTag}] ${summaryUpdate.trim()}`.trim() });
+          // Bounded (newest ~2000 chars of dated lines) — no unbounded append-log, ever again.
+          let notes = `${curNotes}\n[${dateTag}] ${summaryUpdate.trim()}`.trim();
+          if (notes.length > 2000) {
+            const lines = notes.split('\n');
+            while (lines.length > 1 && lines.join('\n').length > 2000) lines.shift();
+            notes = lines.join('\n');
+          }
+          await updateLayer2(userId, { coaching_notes: notes });
         }
         const derived = await composeGeneralSummary(userId);
-        await updateLayer2(userId, { general_summary: derived });
+        if (derived.trim()) await updateLayer2(userId, { general_summary: derived });
       } catch (e) {
         console.error(`[Extractor] derived-summary recompose failed for ${userId}:`, (e as Error).message);
       }
