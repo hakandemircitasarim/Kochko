@@ -544,7 +544,7 @@ serve(async (req: Request) => {
 
         let message = '';
         if (tier === 'short') {
-          message = '3 gundur yoklar — her sey yolunda mi? Kucuk bir kayit bile ivmeyi tutmaya yeter.';
+          message = '3 gündür kayıt yok — her şey yolunda mı? Küçük bir kayıt bile ivmeyi korur.';
         } else if (tier === 'medium') {
           // Reference past wins if any
           const { data: achievements } = await supabaseAdmin
@@ -837,8 +837,8 @@ serve(async (req: Request) => {
         if ((alreadySent ?? 0) > 0) continue;
 
         const msg = daysSince >= 14
-          ? `${daysSince} gundur tartıya cikmadin — tempo icin bir kez olsun girsek mi?`
-          : `${daysSince} gundur tarti yok. Iki dakikada tartılıp giriş yapar misin?`;
+          ? `${daysSince} gündür tartıya çıkmadın — tempo için bir kez olsun girsek mi?`
+          : `${daysSince} gündür tartı kaydı yok. İki dakikada tartılıp giriş yapar mısın?`;
 
         await supabaseAdmin.from('coaching_messages').insert({
           user_id: profile.id,

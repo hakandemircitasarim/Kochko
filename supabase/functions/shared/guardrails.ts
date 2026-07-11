@@ -21,12 +21,18 @@ const MAX_WORKOUT_DURATION_MIN = 120;
 // mangled legitimate plan focus_message text into '[yasam tarzi notu] döneminde'.
 // The clinical combos below (teşhis/tedavi/hastalığınız) still catch medical
 // overreach without eating the app's own vocabulary.
+// Medical-advice guard: CONSTRUCTIONS that assert a medical role or prescribe, NOT bare nouns.
+// The old list contained single words ('ilaç', 'tedavi', 'teşhis'), so the coach's LEGITIMATE
+// onboarding question "kullandığın ilaçlar var mı?" reached users as the mangled
+// "kullandığın [yasam tarzi notu]lar var mı?" — placeholder junk in the middle of a sentence.
+// A lifestyle coach must be able to SAY these words (asking about medications is core intake);
+// what it must never do is claim the role or prescribe — that's what these patterns target.
 const FORBIDDEN_PHRASES = [
-  'teshis', 'teşhis', 'tani koy', 'tanı koy', 'tedavi',
-  'ilac', 'ilaç', 'recete', 'reçete', 'doktor olarak', 'tibbi olarak', 'tıbbi olarak',
-  'tibbi tavsiye', 'tıbbi tavsiye', 'hastaligınız', 'hastalığınız', 'rahatsizligınız',
-  'rahatsızlığınız', 'metabolizma bozukluğu', 'beslenme bozuklugu', 'beslenme bozukluğu',
-  'diyetisyen olarak',
+  'doktor olarak', 'hekim olarak', 'diyetisyen olarak',
+  't[iı]bbi tavsiye(m|yi)?\\s*(ver|sun)?', 't[iı]bbi olarak (öner|tavsiye)',
+  'ila[çc] (öner|yaz|ver)\\w*', 're[çc]ete (yaz|düzenle)\\w*',
+  'ilac[iı]n[iı]\\s*(b[iı]rak|kes|de[gğ]i[sş]tir)\\w*',
+  'te[sş]his koy\\w*', 'tan[iı] koy\\w*', 'tedavi (öner|uygula|başlat)\\w*',
 ];
 
 // Spec 12.4: Allergen filter - these MUST be code-enforced, not prompt-dependent
@@ -277,8 +283,15 @@ export function sanitizeText(text: string): { clean: string; hadViolations: bool
     const regex = new RegExp(phrase, 'gi');
     if (regex.test(clean)) {
       hadViolations = true;
-      clean = clean.replace(regex, '[yasam tarzi notu]');
+      // Drop the offending construction — NEVER inject bracketed placeholder junk into a
+      // user-visible sentence. Role-claims ("doktor olarak söylüyorum" → "söylüyorum") read fine
+      // with the phrase removed; the referral note below carries the safety message coherently.
+      clean = clean.replace(regex, '');
     }
+  }
+  if (hadViolations) {
+    clean = clean.replace(/[ \t]{2,}/g, ' ').trim()
+      + '\n\nNot: Teşhis, ilaç veya tedavi gerektiren konularda mutlaka doktoruna danışmalısın.';
   }
 
   // Check for eating disorder language patterns

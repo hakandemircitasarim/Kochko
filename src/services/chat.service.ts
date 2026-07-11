@@ -514,15 +514,20 @@ export async function createHeadlessSession(options?: { title?: string; topicTag
 // (the thread-beheading primitive behind the amnesia complaints). Use getOrCreateActiveSession
 // (the one canonical thread) or createHeadlessSession (invisible machine flows) instead.
 
-export async function loadSessionMessages(sessionId: string, limit = 50): Promise<ChatMessage[]> {
+export async function loadSessionMessages(_sessionId: string, limit = 50): Promise<ChatMessage[]> {
   try {
-    // FIX (audit: oldest-50 bug) was ascending+limit → fetched the OLDEST 50 in a long
-    // session, hiding the most recent messages. Fetch newest 50 (descending) then reverse
-    // to chronological order for rendering.
+    // #S1 THREAD CONTINUITY: the conversation is USER-scoped, not session-scoped — a user with
+    // weeks of coaching history must NEVER open an empty chat ("her şey silindi" feel). History
+    // flows across legacy sessions; plan-negotiation turns (they live in the plan screens) and
+    // machine [SYSTEM_INIT] kickoffs are excluded. Newest page first, reversed to chronological.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return [];
     const { data } = await supabase
       .from('chat_messages')
       .select('id, role, content, task_mode, created_at, actions_executed')
-      .eq('session_id', sessionId)
+      .eq('user_id', session.user.id)
+      .or('task_mode.is.null,task_mode.not.in.("plan_diet","plan_workout")')
+      .not('content', 'like', '[SYSTEM_INIT]%')
       .order('created_at', { ascending: false })
       .limit(limit);
     return ((data as ChatMessage[]) ?? []).reverse();
@@ -537,15 +542,20 @@ export async function loadSessionMessages(sessionId: string, limit = 50): Promis
 // (newest-first then reversed to chronological), so the chat screen can prepend an older
 // page when the user taps "Daha eski mesajları yükle" / scrolls to the top.
 export async function loadOlderSessionMessages(
-  sessionId: string,
+  _sessionId: string,
   beforeCreatedAt: string,
   limit = 50,
 ): Promise<ChatMessage[]> {
   try {
+    // #S1: same user-scoped thread window as loadSessionMessages, strictly older page.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return [];
     const { data } = await supabase
       .from('chat_messages')
       .select('id, role, content, task_mode, created_at, actions_executed')
-      .eq('session_id', sessionId)
+      .eq('user_id', session.user.id)
+      .or('task_mode.is.null,task_mode.not.in.("plan_diet","plan_workout")')
+      .not('content', 'like', '[SYSTEM_INIT]%')
       .lt('created_at', beforeCreatedAt)
       .order('created_at', { ascending: false })
       .limit(limit);

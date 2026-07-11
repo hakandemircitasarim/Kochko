@@ -54,7 +54,7 @@ export async function getHabitsContext(userId: string): Promise<{
 
     const parts: string[] = ['## ALISKANLIK DURUMU'];
     if (active.length > 0) {
-      parts.push(`Aktif: ${active.map(h => `"${h.name ?? h.habit}" (${h.streak} gun seri, %${h.weekly_compliance ?? 0} uyum)`).join(', ')}`);
+      parts.push(`Aktif: ${active.map(h => `"${h.name ?? h.habit}" (${h.streak} gun seri${h.weekly_compliance != null ? `, %${h.weekly_compliance} uyum` : ''})`).join(', ')}`);
     }
     if (mastered.length > 0) {
       parts.push(`Oturtulmus: ${mastered.map(h => h.name ?? h.habit).join(', ')}`);
@@ -256,7 +256,11 @@ export async function getReturnFlowContext(userId: string): Promise<string> {
     const goodDays = (reports ?? []).filter((r: { compliance_score: number }) => r.compliance_score >= 70).length;
     const totalDays = (reports ?? []).length;
 
-    // Fetch last known weight
+    // Fetch last known weight — profiles.weight_kg FIRST (the single app-wide current value;
+    // Layer-1 shows it too). Reading only daily_metrics here made two consecutive coach messages
+    // cite different weights (81 vs 80) — the "which number is true?" feel. History is fallback.
+    const { data: profW } = await supabaseAdmin
+      .from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
     const { data: lastWeight } = await supabaseAdmin
       .from('daily_metrics').select('weight_kg')
       .eq('user_id', userId).not('weight_kg', 'is', null)
@@ -286,8 +290,9 @@ export async function getReturnFlowContext(userId: string): Promise<string> {
       `Son aktivite: ${daysSince} gun once | Seviye: ${level}`,
     ];
 
-    if (lastWeight?.weight_kg) {
-      parts.push(`Son bilinen kilo: ${lastWeight.weight_kg} kg`);
+    const currentW = (profW?.weight_kg as number | null) ?? (lastWeight?.weight_kg as number | null);
+    if (currentW) {
+      parts.push(`Son bilinen kilo: ${currentW} kg`);
     }
     if (goodDays > 0 && totalDays > 0) {
       parts.push(`Gecmis basari: ${goodDays}/${totalDays} gun hedeflerini tutturmustu`);
@@ -1053,7 +1058,12 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
 
     // Recent sleep + week adherence + last-active
     const lastSleep = metrics.find(m => m.sleep_hours != null)?.sleep_hours ?? null;
-    const weekCompl = reports.length > 0 ? Math.round(reports.slice(0, 7).reduce((s, r) => s + (r.compliance_score ?? 0), 0) / Math.min(7, reports.length)) : null;
+    // Compliance % needs a REAL sample: ≥3 days with an actual score. With 0-1 sparse rows the
+    // old math averaged nulls-as-0 and the coach recited "uyumun %0 olarak gözüküyor" to the
+    // user — an insulting garbage stat. No sample → no line.
+    const scoredReports = reports.slice(0, 7).filter(r => r.compliance_score != null);
+    const weekCompl = scoredReports.length >= 3
+      ? Math.round(scoredReports.reduce((s, r) => s + r.compliance_score, 0) / scoredReports.length) : null;
     const recentBits: string[] = [];
     if (lastSleep != null) recentBits.push(`son uyku ${lastSleep}s${lastSleep < 6 ? ' (az!)' : ''}`);
     if (weekCompl != null) recentBits.push(`bu hafta uyum %${weekCompl}`);

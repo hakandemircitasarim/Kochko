@@ -405,11 +405,14 @@ export default function TodayScreen() {
           userName={userName}
         />
 
-        {/* 1.5 Coaching Nudges */}
+        {/* 1.5 Coaching Nudges — ONLY the newest one. The emulator pass showed 3 stacked nudge
+            cards ("sessizsin" + "tartıya çıkmadın" + "günaydın") on one open: notification spam
+            that buries the dashboard. Older unread nudges surface one-at-a-time as each is
+            dismissed. */}
         {coachingMessages.length > 0 && (
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <CoachingNudge
-              messages={coachingMessages}
+              messages={coachingMessages.slice(0, 1)}
               onDismiss={(id) => {
                 markMessageRead(id);
                 setCoachingMessages(prev => prev.filter(m => m.id !== id));

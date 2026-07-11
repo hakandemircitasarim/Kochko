@@ -29,7 +29,6 @@ import {
   type ChatMessage, type ChatResponse,
 } from '@/services/chat.service';
 import { getTaskByKey, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
-import { OnboardingTaskCard } from '@/components/chat/OnboardingTaskCard';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { saveRecipe, type RecipeIngredient } from '@/services/recipes.service';
 import { startRecording, stopAndTranscribe, isRecording as checkIsRecording } from '@/services/voice.service';
@@ -522,7 +521,9 @@ export default function SessionDetailScreen() {
         setSending(true);
         const { data: response, error } = await sendMessageToSession(
           sessionId,
-          `[SYSTEM_INIT] Bu konu hakkında bildiklerini özetle ve sormak istediğin soruları sor.`,
+          // UX fix (emulator pass): the old "bildiklerini özetle" instruction produced robotic
+          // stat-dump openers ("33 yaşındasın, 80 kg'sın, uyumun %0..."). Open WARM and SHORT.
+          `[SYSTEM_INIT] Bu konuyu tek kısa cümleyle sıcak bir şekilde aç ve ilk sorunu sor. Profil verilerini/sayıları LİSTELEME, istatistik okuma — sadece samimi bir giriş + tek soru.`,
           taskModeHint,
         );
         if (!cancelled && response) {
@@ -748,11 +749,16 @@ export default function SessionDetailScreen() {
         // Cool down for 60s; the backend will re-check on the next send anyway.
         setRateLimitedUntil(Date.now() + 60_000);
       }
-      // Determine if this message type should show feedback buttons
-      // Show feedback for: plan suggestions, coaching advice, recipes (not for simple confirmations)
-      const showFeedback = data.task_mode === 'plan' || data.task_mode === 'coaching'
+      // Determine if this message type should show feedback buttons.
+      // UX fix (emulator pass): 'coaching' is nearly EVERY message, so the old rule put
+      // "İşe yaradı / Bana göre değil / Neden bu öneriyi yaptın?" under plain greetings and
+      // questions — three meta-affordances of clutter with no suggestion in sight. Coaching
+      // turns now show feedback ONLY when they actually did something (actions executed);
+      // suggestion-bearing modes (plan/recipe/simulation/eating_out/plateau) keep it always.
+      const showFeedback = data.task_mode === 'plan'
         || data.task_mode === 'recipe' || data.task_mode === 'simulation'
-        || data.task_mode === 'eating_out' || data.task_mode === 'plateau';
+        || data.task_mode === 'eating_out' || data.task_mode === 'plateau'
+        || (data.task_mode === 'coaching' && (data.actions?.length ?? 0) > 0);
 
       // Parse simulation data from AI response
       let messageContent = data.message;
@@ -1519,20 +1525,34 @@ export default function SessionDetailScreen() {
         </View>
       )}
 
-      {/* #S1 Task rail — profile-completion topics open inside THIS conversation. Hidden while a
-          task topic is already active and while the keyboard is up (composer space wins). */}
+      {/* #S1 Task rail — COMPACT one-line chips (the old full-height cards swallowed a third of
+          the conversation and truncated their own text mid-word). Topics open inside THIS
+          conversation. Hidden while a task topic is active and while the keyboard is up. */}
       {railTasks.length > 0 && !taskModeHint && !keyboardVisible && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.xs }}>
-            Koçuna anlat
-          </Text>
           <FlatList
             data={railTasks.slice(0, 5)}
             keyExtractor={t => t.key}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: SPACING.sm }}
-            renderItem={({ item }) => <OnboardingTaskCard task={item} onPress={openTaskTopic} />}
+            contentContainerStyle={{ gap: SPACING.xs }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); openTaskTopic(item); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Koçuna anlat: ${item.title}`}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary + '33',
+                  borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7,
+                }}
+              >
+                <Ionicons name={'add-circle-outline' as keyof typeof Ionicons.glyphMap} size={14} color={colors.primary} />
+                <Text numberOfLines={1} style={{ color: colors.text, fontSize: FONT.xs, fontWeight: '600', maxWidth: 200 }}>
+                  {item.title}
+                </Text>
+              </TouchableOpacity>
+            )}
           />
         </View>
       )}
