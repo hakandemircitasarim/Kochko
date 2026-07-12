@@ -72,7 +72,7 @@ export async function createHousehold(
     .select()
     .single();
 
-  if (error || !data) throw error ?? new Error('Aile olusturulamadi.');
+  if (error || !data) throw error ?? new Error('Aile oluşturulamadı.');
 
   // Add owner as first member (household_members is the source of truth)
   const { error: memberError } = await supabase
@@ -108,10 +108,10 @@ export async function joinHousehold(
     p_code: inviteCode.toUpperCase().trim(),
   });
 
-  if (error) throw new Error('Katilim basarisiz: ' + error.message);
+  if (error) throw new Error('Katılım başarısız: ' + error.message);
   const result = data as { ok: boolean; error?: string; household?: Record<string, unknown> } | null;
   if (!result?.ok || !result.household) {
-    throw new Error(result?.error ?? 'Gecersiz davet kodu.');
+    throw new Error(result?.error ?? 'Geçersiz davet kodu.');
   }
 
   const h = result.household;

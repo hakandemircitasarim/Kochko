@@ -189,8 +189,8 @@ export function evaluateRecovery(
   if (hrv == null && sleepHours == null && muscleSoreness == null) {
     return {
       score: 'unknown',
-      message_tr: 'Toparlanma durumunu degerlendirmek icin yeterli veri yok.',
-      trainingRecommendation: 'Veri toplandikca daha iyi onerilerde bulunabiliriz.',
+      message_tr: 'Toparlanma durumunu değerlendirmek için yeterli veri yok.',
+      trainingRecommendation: 'Veri toplandıkça daha iyi önerilerde bulunabiliriz.',
     };
   }
 
@@ -214,8 +214,8 @@ export function evaluateRecovery(
   ) {
     return {
       score: 'good',
-      message_tr: 'Toparlanman iyi gorunuyor. Bugun yogun antrenman yapabilirsin.',
-      trainingRecommendation: 'Agir bilesik hareketler, HIIT veya yogun hacimli antrenman uygun.',
+      message_tr: 'Toparlanman iyi görünüyor. Bugün yoğun antrenman yapabilirsin.',
+      trainingRecommendation: 'Ağır bileşik hareketler, HIIT veya yoğun hacimli antrenman uygun.',
     };
   }
 
@@ -223,15 +223,15 @@ export function evaluateRecovery(
   if (hrvPoor || sleepPoor || sorenessPoor) {
     return {
       score: 'poor',
-      message_tr: 'Toparlanman zayif. Bugün hafif aktivite veya dinlenme onerilir.',
-      trainingRecommendation: 'Hafif yuruyus, esneme veya tam dinlenme gunu. Agir antrenman onerilmez.',
+      message_tr: 'Toparlanman zayıf. Bugün hafif aktivite veya dinlenme önerilir.',
+      trainingRecommendation: 'Hafif yürüyüş, esneme veya tam dinlenme günü. Ağır antrenman önerilmez.',
     };
   }
 
   // Moderate: everything else (mixed signals)
   return {
     score: 'moderate',
-    message_tr: 'Toparlanman orta seviyede. Orta yogunlukta antrenman yapabilirsin.',
-    trainingRecommendation: 'Orta yogunlukta antrenman, teknik calisma veya hafif kardiyo uygun.',
+    message_tr: 'Toparlanman orta seviyede. Orta yoğunlukta antrenman yapabilirsin.',
+    trainingRecommendation: 'Orta yoğunlukta antrenman, teknik çalışma veya hafif kardiyo uygun.',
   };
 }

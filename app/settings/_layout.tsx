@@ -17,10 +17,10 @@ export default function SettingsLayout() {
       <Stack.Screen name="achievements" options={{ title: 'Başarımlar' }} />
       <Stack.Screen name="challenges" options={{ title: "Challenge'lar" }} />
       <Stack.Screen name="chat-history" options={{ title: 'Sohbet Geçmişi' }} />
-      {/* FIX (audit native-titles): coach-memory had THREE names — native header "Koç Hafızası",
-          in-body H1 "Koçko Senin Hakkında Ne Biliyor", entry-point labels "Kochko'nun Senin Hakkında Bildikleri".
-          Unify native header to match the screen's body H1 (transparency/disclosure framing). */}
-      <Stack.Screen name="coach-memory" options={{ title: 'Koçko Senin Hakkında Ne Biliyor' }} />
+      {/* FIX (audit naming): ONE canonical name — brand 'Kochko' (app-name spelling), feature
+          'Kochko Seni Nasıl Tanıyor'. Menu rows (profile + settings index), this native header
+          and the screen's own state branches all inherit/use it now. */}
+      <Stack.Screen name="coach-memory" options={{ title: 'Kochko Seni Nasıl Tanıyor' }} />
       <Stack.Screen name="coach-sharing" options={{ title: 'Koç Paylaşımı' }} />
       <Stack.Screen name="coach-tone" options={{ title: 'Koç Tonu' }} />
       <Stack.Screen name="data-import" options={{ title: 'Veri İçeri Aktar' }} />
@@ -43,6 +43,8 @@ export default function SettingsLayout() {
       <Stack.Screen name="premium" options={{ title: "Premium'a Geç" }} />
       <Stack.Screen name="progress-photos" options={{ title: 'İlerleme Fotoğrafları' }} />
       <Stack.Screen name="recipes" options={{ title: 'Tarif Kütüphanesi' }} />
+      {/* Read-only viewer for a single chat session (opened from chat-history rows). */}
+      <Stack.Screen name="session-viewer" options={{ title: 'Sohbet Detayı' }} />
       <Stack.Screen name="strength" options={{ title: 'Güç Progresyon' }} />
       <Stack.Screen name="supplements" options={{ title: 'Supplement Takibi' }} />
       <Stack.Screen name="theme" options={{ title: 'Tema' }} />

@@ -74,13 +74,13 @@ export function shouldTriggerMiniCut(
   if (weeksExceeded >= MINI_CUT_TRIGGER_WEEKS) {
     return {
       trigger: true,
-      reason_tr: `Bakim bandinin disinda ${weeksExceeded} haftadir. 2-3 haftalik mini cut onerilir.`,
+      reason_tr: `Bakım bandının dışında ${weeksExceeded} haftadır. 2-3 haftalık mini kesim önerilir.`,
     };
   }
 
   return {
     trigger: false,
-    reason_tr: `Bakim bandinin disinda ${weeksExceeded} hafta. ${MINI_CUT_TRIGGER_WEEKS - weeksExceeded} hafta daha surerse mini cut onerilecek.`,
+    reason_tr: `Bakım bandının dışında ${weeksExceeded} hafta. ${MINI_CUT_TRIGGER_WEEKS - weeksExceeded} hafta daha sürerse mini kesim önerilecek.`,
   };
 }
 
@@ -153,13 +153,13 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
   // ramp against the server profile ramp (P4 single-source-of-truth). See writeReverseDietToPlan.
   let message: string;
   if (reverseDiet && !reverseDiet.isComplete) {
-    message = `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal (TDEE'ye haftalik +${REVERSE_DIET_WEEKLY_INCREASE} kcal artis)`;
+    message = `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal (TDEE'ye haftalık +${REVERSE_DIET_WEEKLY_INCREASE} kcal artış)`;
   } else if (bandStatus === 'exceeded') {
-    message = `Bakim bandinin disina ciktin (${toleranceBand.min}-${toleranceBand.max}kg). Mini cut planlayalim mi?`;
+    message = `Bakım bandının dışına çıktın (${String(toleranceBand.min).replace('.', ',')}-${String(toleranceBand.max).replace('.', ',')} kg). Mini kesim planlayalım mı?`;
   } else if (bandStatus === 'approaching_limit') {
-    message = `Bakim bandinin sinirina yaklasiyorsun. Dikkatli ol.`;
+    message = `Bakım bandının sınırına yaklaşıyorsun. Dikkatli ol.`;
   } else {
-    message = `Bakim bandinda gidiyorsun, guzel.`;
+    message = `Bakım bandında gidiyorsun, güzel.`;
   }
 
   return {
@@ -198,7 +198,7 @@ export async function writeReverseDietToPlan(
     await supabase.from('daily_plans').update({
       calorie_target_min: targetMin,
       calorie_target_max: targetMax,
-      focus_message: `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal hedef (haftalik +${reverseDiet.weeklyIncrease} kcal artis)`,
+      focus_message: `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal hedef (haftalık +${reverseDiet.weeklyIncrease} kcal artış)`,
     }).eq('id', existingPlan.id);
   } else {
     await supabase.from('daily_plans').insert({
@@ -208,7 +208,7 @@ export async function writeReverseDietToPlan(
       calorie_target_min: targetMin,
       calorie_target_max: targetMax,
       protein_target_g: 0,
-      focus_message: `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal hedef (haftalik +${reverseDiet.weeklyIncrease} kcal artis)`,
+      focus_message: `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal hedef (haftalık +${reverseDiet.weeklyIncrease} kcal artış)`,
       meal_suggestions: [],
     });
   }
@@ -221,13 +221,13 @@ export function generateReinforcementMessage(
   if (bandStatus !== 'in_band') return null;
 
   if (weeksSinceGoalReached >= 24) {
-    return `6 aydir hedef kilonda tutunuyorsun! Bu inanilmaz bir basari. Cogul insan bunu basaramaz.`;
+    return `6 aydır hedef kilonda tutunuyorsun! Bu inanılmaz bir başarı. Çoğu insan bunu başaramaz.`;
   }
   if (weeksSinceGoalReached >= 12) {
-    return `3 aydir bakim modunda basarilisin. Aliskanliklarinin gucunun kaniti bu.`;
+    return `3 aydır bakım modunda başarılısın. Alışkanlıklarının gücünün kanıtı bu.`;
   }
   if (weeksSinceGoalReached >= 4) {
-    return `1 aydir hedef kilonda kalmaya devam ediyorsun. Harika gidiyorsun!`;
+    return `1 aydır hedef kilonda kalmaya devam ediyorsun. Harika gidiyorsun!`;
   }
 
   return null;

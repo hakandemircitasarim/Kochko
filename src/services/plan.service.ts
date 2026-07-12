@@ -127,8 +127,13 @@ export interface Revision {
 // weekly_menu row — a structurally different plan — and the diet screen would render garbage.
 // Restrict these core-plan reads to plan_subtype IS NULL. (.is(null), NOT .neq — .neq would
 // drop the NULL core rows since NULL <> x is NULL/false in SQL.)
+// FIX (fix-pass 07-12, error≠empty): these reads used to swallow res.error and return
+// null/[] exactly like "no plan" — a network/RLS failure rendered the EMPTY state over a
+// perfectly good plan. They now THROW on error; the plan screens' load() already run inside
+// try/catch and route to their existing view='error' branch (retry button), and
+// app/plan/history.tsx has its own catch + retry state.
 export async function getActive(userId: string, planType: PlanType): Promise<PlanRow | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('weekly_plans')
     .select('*')
     .eq('user_id', userId)
@@ -136,11 +141,12 @@ export async function getActive(userId: string, planType: PlanType): Promise<Pla
     .is('plan_subtype', null)
     .eq('status', 'active')
     .limit(1);
+  if (error) throw new Error(`getActive(${planType}) failed: ${error.message}`);
   return (data as PlanRow[] | null)?.[0] ?? null;
 }
 
 export async function getDraft(userId: string, planType: PlanType): Promise<PlanRow | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('weekly_plans')
     .select('*')
     .eq('user_id', userId)
@@ -148,6 +154,7 @@ export async function getDraft(userId: string, planType: PlanType): Promise<Plan
     .is('plan_subtype', null)
     .eq('status', 'draft')
     .limit(1);
+  if (error) throw new Error(`getDraft(${planType}) failed: ${error.message}`);
   return (data as PlanRow[] | null)?.[0] ?? null;
 }
 
@@ -162,8 +169,8 @@ export async function getHistory(userId: string, planType: PlanType, limit = 20)
     .order('generated_at', { ascending: false })
     .limit(limit);
   if (error) {
-    console.warn('[plan.service] getHistory failed:', error.message);
-    return [];
+    // FIX (fix-pass 07-12): error ≠ empty — don't let the screen render "arşiv boş" over a failure.
+    throw new Error(`getHistory(${planType}) failed: ${error.message}`);
   }
   return (data as PlanRow[] | null) ?? [];
 }
@@ -245,8 +252,14 @@ export async function approveDraft(
   draftId: string,
   profileSnapshot: Record<string, unknown>,
 ): Promise<{ activated: PlanRow | null; error?: string }> {
-  // Step 1 — archive current active.
-  const previousActive = await getActive(userId, planType);
+  // Step 1 — archive current active. getActive now THROWS on fetch error (error ≠
+  // empty); keep this function's documented no-throw {activated, error} contract.
+  let previousActive: PlanRow | null = null;
+  try {
+    previousActive = await getActive(userId, planType);
+  } catch {
+    return { activated: null, error: 'Mevcut plan okunamadı — bağlantını kontrol edip tekrar dene.' };
+  }
   if (previousActive) {
     await supabase
       .from('weekly_plans')
@@ -294,8 +307,54 @@ export function isoDateMondayOfWeek(date: Date): string {
   const dayOfWeek = d.getDay(); // Sun=0, Mon=1, ...
   const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
   d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
+  // Review fix (ux-pass2): format in LOCAL time. toISOString() shifted local
+  // Monday 00:00 back to Sunday's UTC date in UTC+ timezones (Türkiye), skewing
+  // every week_start write/comparison by a day.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Parse an ISO date ('YYYY-MM-DD' or full timestamp) in the DEVICE timezone.
+ *  `new Date('YYYY-MM-DD')` parses as UTC midnight, which shifts the calendar
+ *  day for UTC+ users — append a local-time suffix for date-only strings. */
+function parseIsoDateLocal(iso: string): Date | null {
+  if (!iso) return null;
+  const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * FIX (fix-pass 07-12, stale-plan lifecycle): a "weekly" plan whose week is over —
+ * week_start + 7 days <= today — is STALE. Nothing rolls plans over automatically,
+ * so a 4-week-old plan silently stayed "active"; the plan screens now surface a
+ * banner with a fresh-plan CTA when this returns true.
+ */
+export function isPlanStale(weekStart: string): boolean {
+  const start = parseIsoDateLocal(weekStart);
+  if (!start) return false;
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return end.getTime() <= today.getTime();
+}
+
+/** Whole weeks elapsed since week_start (>= 1 whenever isPlanStale is true). */
+export function planWeeksAgo(weekStart: string): number {
+  const start = parseIsoDateLocal(weekStart);
+  if (!start) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.floor((today.getTime() - start.getTime()) / (7 * 86400000)));
+}
+
+/** "2026-06-15" → "15 Haziran haftası". Falls back to the raw string when unparseable. */
+export function formatWeekStartTR(weekStart: string): string {
+  const d = parseIsoDateLocal(weekStart);
+  if (!d) return weekStart;
+  return `${d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })} haftası`;
 }
 
 /** Quick macros roll-up for a diet day. Kept in sync with DietDay totals. */
@@ -332,6 +391,35 @@ export function dietPlanDiff(prev: DietPlanData | null, next: DietPlanData): Arr
 }
 
 export const DAY_LABELS_TR = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+export const DAY_SHORT_TR = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+
+/** ASCII-fold Turkish letters for tolerant day-name matching ('Sali' ≈ 'Salı'). */
+const foldTr = (s: string) =>
+  s.toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .replace(/ş/g, 's')
+    .replace(/ç/g, 'c')
+    .replace(/ö/g, 'o')
+    .replace(/ü/g, 'u')
+    .replace(/ğ/g, 'g');
+
+/**
+ * FIX (fix-pass 07-12, Turkish day names): plan day_label is LLM-authored JSON and
+ * came back ASCII-mangled live ('Sali', 'Carsamba', 'Persembe'). Resolve every render
+ * through this: a label that matches a canonical day after Turkish folding snaps to
+ * the canonical spelling; otherwise fall back to DAY_LABELS_TR[day_index]; only an
+ * unrecognizable label with an invalid index passes through raw.
+ */
+export function dayLabelTR(dayIndex: number, rawLabel?: string | null): string {
+  if (rawLabel) {
+    const folded = foldTr(rawLabel.trim());
+    const hit = DAY_LABELS_TR.find(l => foldTr(l) === folded);
+    if (hit) return hit;
+  }
+  if (Number.isInteger(dayIndex) && dayIndex >= 0 && dayIndex <= 6) return DAY_LABELS_TR[dayIndex];
+  return rawLabel ?? '';
+}
+
 export const MEAL_LABELS_TR: Record<DietMeal['meal_type'], string> = {
   breakfast: 'Kahvaltı',
   lunch: 'Öğle',
@@ -371,4 +459,77 @@ export function emptyWorkoutPlan(): WorkoutPlanData {
     })),
     version: 0,
   };
+}
+
+// ─── 'Bunu yedim' — plan → diary (fix-pass 07-12, item 9) ────────────────
+
+/**
+ * Deterministically log a planned meal into the diary (meal_logs +
+ * meal_log_items) with NO LLM round-trip. Mirrors templates.service
+ * useTemplate(): same NOT-NULL columns, RLS (auth.uid()=user_id), CHECK
+ * constraints (meal_type enum matches DietMeal.meal_type; calories SMALLINT
+ * → rounded; data_source='template' is in the migration-084 allow-list).
+ */
+export async function logPlannedMeal(
+  meal: DietMeal,
+  loggedForDate: string,
+): Promise<{ mealLogId: string | null; error: string | null }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { mealLogId: null, error: 'Oturum bulunamadı.' };
+
+  const { data: log, error: logErr } = await supabase
+    .from('meal_logs')
+    .insert({
+      user_id: user.id,
+      raw_input: `[Plan] ${meal.name}`,
+      meal_type: meal.meal_type,
+      input_method: 'text',
+      logged_for_date: loggedForDate,
+      synced: true,
+    })
+    .select('id')
+    .limit(1);
+  const logId = (log as { id: string }[] | null)?.[0]?.id ?? null;
+  if (logErr || !logId) {
+    return { mealLogId: null, error: logErr?.message ?? 'Kayıt oluşturulamadı.' };
+  }
+
+  // Plan meals always carry items in practice; if an LLM snapshot dropped them,
+  // fall back to a single roll-up item so the diary still gets the meal totals.
+  const items: MealItem[] = (Array.isArray(meal.items) && meal.items.length > 0)
+    ? meal.items
+    : [{
+        name: meal.name,
+        kcal: meal.total_kcal ?? 0,
+        protein: meal.total_protein ?? 0,
+        carbs: meal.total_carbs ?? 0,
+        fat: meal.total_fat ?? 0,
+      }];
+  const rows = items.map(it => ({
+    meal_log_id: logId,
+    food_name: it.name,
+    portion_text: it.grams ? `${it.grams} g` : (it.portion ?? '1 porsiyon'),
+    portion_grams: it.grams ?? null,
+    calories: Math.round(it.kcal ?? 0),
+    protein_g: Math.round((it.protein ?? 0) * 10) / 10,
+    carbs_g: Math.round((it.carbs ?? 0) * 10) / 10,
+    fat_g: Math.round((it.fat ?? 0) * 10) / 10,
+    data_source: 'template',
+  }));
+  const { error: itemsErr } = await supabase.from('meal_log_items').insert(rows);
+  if (itemsErr) {
+    // Roll the empty log back so the user doesn't see a phantom 0 kcal entry.
+    await supabase.from('meal_logs').delete().eq('id', logId);
+    return { mealLogId: null, error: itemsErr.message };
+  }
+  return { mealLogId: logId, error: null };
+}
+
+/** Undo for logPlannedMeal — soft delete, same pattern as the dashboard's deleteMeal. */
+export async function undoPlannedMealLog(mealLogId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('meal_logs')
+    .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+    .eq('id', mealLogId);
+  return { error: error?.message ?? null };
 }

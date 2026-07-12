@@ -13,10 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
 import { useAuthStore } from '@/stores/auth.store';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
   getHistory,
+  dayLabelTR,
   type PlanRow,
   type PlanType,
   type DietPlanData,
@@ -57,15 +59,20 @@ export default function PlanHistoryScreen() {
   const [planType, setPlanType] = useState<PlanType>(initialType);
   const [rows, setRows] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // FIX (fix-pass 07-12, item 8c): getHistory now THROWS on a Supabase error instead
+  // of returning [] — error ≠ empty. Track it and offer a retry instead of showing
+  // "arşiv boş" over a network failure.
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
-    // FIX (audit Wave3): try/finally so an unexpected reject can't leave the spinner stuck forever.
-    // getHistory already swallows Supabase errors and returns [], so a throw is the only risk here.
+    setLoadError(false);
     try {
       const list = await getHistory(user.id, planType, 30);
       setRows(list);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -127,6 +134,27 @@ export default function PlanHistoryScreen() {
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : loadError ? (
+        // FIX (fix-pass 07-12, item 8c): network failure gets its own state + retry —
+        // mirrors the diet/workout screens' error branch.
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
+          <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>
+            Geçmiş yüklenemedi
+          </Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>
+            Bağlantını kontrol edip tekrar dene.
+          </Text>
+          <TouchableOpacity
+            onPress={load}
+            accessibilityRole="button"
+            accessibilityLabel="Tekrar dene"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
+          >
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Tekrar dene</Text>
+          </TouchableOpacity>
         </View>
       ) : rows.length === 0 ? (
         <EmptyState
@@ -242,7 +270,8 @@ function DietExpanded({ plan }: { plan: DietPlanData }) {
       {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map((day, i) => (
         <View key={`${day.day_index}-${i}`} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-            {day.day_label}
+            {/* FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled day labels ('Sali') */}
+            {dayLabelTR(day.day_index, day.day_label)}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>
             {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals) */}
@@ -262,7 +291,8 @@ function WorkoutExpanded({ plan }: { plan: WorkoutPlanData }) {
       {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map((day, i) => (
         <View key={`${day.day_index}-${i}`} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-            {day.day_label}
+            {/* FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled day labels ('Sali') */}
+            {dayLabelTR(day.day_index, day.day_label)}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 12 }}>
             {day.rest_day ? 'Dinlenme' : `${day.focus ?? (day.exercises?.length ?? 0) + ' egzersiz'}`}

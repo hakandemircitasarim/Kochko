@@ -117,9 +117,9 @@ export async function checkCreatineWaterRetention(userId: string): Promise<{
   let message: string | null = null;
 
   if (recentlyStarted) {
-    message = 'Kreatin kullanmaya yeni baslamis gorunuyorsun. Ilk 1-2 haftada tartida 1-2kg artis gorebilirsin — bu YAG DEGIL, su tutulumudir. Panik yapma, normaldir.';
+    message = 'Kreatin kullanmaya yeni başlamış görünüyorsun. İlk 1-2 haftada tartıda 1-2 kg artış görebilirsin — bu YAĞ DEĞİL, su tutulumudur. Panik yapma, normaldir.';
   } else if (allLogs.length >= 5) {
-    message = 'Kreatin kullaniyorsun. Tartidaki artislar su tutulumundan kaynaklanabilir. Kilo takibinde bunu goz onunde bulundur.';
+    message = 'Kreatin kullanıyorsun. Tartıdaki artışlar su tutulumundan kaynaklanabilir. Kilo takibinde bunu göz önünde bulundur.';
   }
 
   return {

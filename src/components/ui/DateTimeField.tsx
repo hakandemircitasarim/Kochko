@@ -39,10 +39,19 @@ function format(d: Date, mode: 'time' | 'date'): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// FIX (audit raw-ISO-display): the stored value stays ISO ("YYYY-MM-DD") but the user sees a
+// Turkish date ('12 Temmuz 2026') instead of the raw machine format. Times display as-is.
+function formatDisplay(value: string, mode: 'time' | 'date'): string {
+  if (!value || mode === 'time') return value;
+  const d = new Date(value + 'T12:00:00');
+  if (isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 export function DateTimeField({ label, mode, value, onChange, placeholder, minimumDate, maximumDate }: Props) {
   const { colors, isDark } = useTheme(); // FIX (audit UI-DS-08): also read isDark for native picker themeVariant
   const [show, setShow] = useState(false);
-  const display = value || placeholder || (mode === 'time' ? 'Saat seç' : 'Tarih seç');
+  const display = formatDisplay(value, mode) || placeholder || (mode === 'time' ? 'Saat seç' : 'Tarih seç');
 
   return (
     <View style={{ marginBottom: SPACING.md }}>
@@ -52,7 +61,7 @@ export function DateTimeField({ label, mode, value, onChange, placeholder, minim
       <TouchableOpacity
         onPress={() => setShow(true)}
         accessibilityRole="button"
-        accessibilityLabel={`${label ?? (mode === 'time' ? 'Saat' : 'Tarih')}: ${value || 'seçilmedi'}`}
+        accessibilityLabel={`${label ?? (mode === 'time' ? 'Saat' : 'Tarih')}: ${formatDisplay(value, mode) || 'seçilmedi'}`}
         style={{
           flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
           backgroundColor: colors.inputBg, borderRadius: RADIUS.md,

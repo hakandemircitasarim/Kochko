@@ -254,7 +254,7 @@ export function calculateStorageDuration(
   }
 
   const warning = days === 0
-    ? `${foodType} icin ${method === 'room_temp' ? 'oda sicakliginda' : method === 'freezer' ? 'dondurucuda' : 'buzdolabinda'} saklama onerilmez.`
+    ? `${foodType} için ${method === 'room_temp' ? 'oda sıcaklığında' : method === 'freezer' ? 'dondurucuda' : 'buzdolabında'} saklama önerilmez.`
     : null;
 
   return { days, warning_tr: warning };
@@ -317,15 +317,15 @@ export function generatePrepOrder(items: PrepItem[]): PrepOrderStep[] {
 
   return sorted.map((item, index) => ({
     order: index + 1,
-    action: `${item.recipeName} hazirla (${item.quantity})`,
+    action: `${item.recipeName} hazırla (${item.quantity})`,
     durationMin: item.prepTimeMin + item.cookTimeMin,
     reason_tr: index === 0
-      ? 'En uzun pisirme suresi — firinda/ocakta pisirirken diger hazirliklar yapilabilir'
+      ? 'En uzun pişirme süresi — fırında/ocakta pişerken diğer hazırlıklar yapılabilir'
       : item.storageMethod === 'freezer'
-        ? 'Dondurulacak — erken hazirla, sogumaya zaman birak'
+        ? 'Dondurulacak — erken hazırla, soğumaya zaman bırak'
         : item.storageDays <= 1
-          ? 'Kisa omurlu — en son hazirla'
-          : `${item.storageDays} gun dayanir`,
+          ? 'Kısa ömürlü — en son hazırla'
+          : `${item.storageDays} gün dayanır`,
   }));
 }
 
@@ -397,7 +397,7 @@ export function getContainerSuggestions(items: PrepItem[]): ContainerSuggestion 
     largeContainers: large,
     mediumContainers: medium,
     smallContainers: small,
-    note_tr: `${large > 0 ? `${large} buyuk (1L+), ` : ''}${medium > 0 ? `${medium} orta (500ml), ` : ''}${small > 0 ? `${small} kucuk (250ml)` : ''} kutu hazirlayin.`.replace(/, $/, ''),
+    note_tr: `${large > 0 ? `${large} büyük (1 L+), ` : ''}${medium > 0 ? `${medium} orta (500 ml), ` : ''}${small > 0 ? `${small} küçük (250 ml)` : ''} kutu hazırla.`.replace(/, $/, ''),
   };
 }
 
@@ -408,14 +408,14 @@ export function getWeeklyPrepSchedule(
   mealCount: number,
   items: PrepItem[],
 ): { day: string; meals: string[]; note_tr: string }[] {
-  const dayNames = ['Pazar', 'Pazartesi', 'Sali', 'Carsamba', 'Persembe', 'Cuma', 'Cumartesi'];
+  const dayNames = PREP_DAY_NAMES; // tek kopya — 'Salı' düzeltmesi iki yerde tekrarlanmıştı
   const schedule: { day: string; meals: string[]; note_tr: string }[] = [];
 
   // Prep day
   schedule.push({
     day: dayNames[prepDay],
     meals: items.map(i => i.recipeName),
-    note_tr: `Hazirlama gunu: ${items.length} tarif, toplam ~${items.reduce((s, i) => s + i.prepTimeMin + i.cookTimeMin, 0)} dk`,
+    note_tr: `Hazırlama günü: ${items.length} tarif, toplam ~${items.reduce((s, i) => s + i.prepTimeMin + i.cookTimeMin, 0)} dk`,
   });
 
   // Distribution across the week
@@ -438,7 +438,7 @@ export function getWeeklyPrepSchedule(
       schedule.push({
         day: dayNames[dayIndex],
         meals: dayMeals,
-        note_tr: d >= Math.min(...items.map(i => i.storageDays)) ? 'Son tuketim gunu yaklasan tarifler var' : '',
+        note_tr: d >= Math.min(...items.map(i => i.storageDays)) ? 'Son tüketim günü yaklaşan tarifler var' : '',
       });
     }
   }

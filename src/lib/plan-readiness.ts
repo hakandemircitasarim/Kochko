@@ -77,27 +77,49 @@ function hasCore(profile: Profile | null, goal: Goal | null): { missing: Missing
   return { missing };
 }
 
-function computeWeakSpots(profile: Profile | null, planType: PlanType): MissingField[] {
+// FIX (fix-pass 07-12, item 7): 'Alerjenler' and 'Sağlık durumu' chips used to render
+// unconditionally FOREVER — allergens/health live off-profile (food_preferences.is_allergen,
+// health_events, ai_summary.onboarding_tasks_completed), so the profile-only check couldn't
+// see them. Callers that have that data pass it here; chips drop once the task is done.
+// Extras are optional — old callers keep the safe always-show default.
+export interface ReadinessExtras {
+  allergiesCount?: number;
+  healthEventsCount?: number;
+  completedTasks?: string[];
+}
+
+function computeWeakSpots(
+  profile: Profile | null,
+  planType: PlanType,
+  extras?: ReadinessExtras,
+): MissingField[] {
+  const done = extras?.completedTasks ?? [];
+  const allergensKnown = (extras?.allergiesCount ?? 0) > 0 || done.includes('allergies');
+  const healthKnown = (extras?.healthEventsCount ?? 0) > 0 || done.includes('health_history');
+
   const spots: MissingField[] = [];
   const p = profile as unknown as Record<string, unknown> | null;
-  if (!p) return planType === 'diet' ? DIET_WEAK_SPOTS : WORKOUT_WEAK_SPOTS;
+  if (!p) {
+    const base = planType === 'diet' ? DIET_WEAK_SPOTS : WORKOUT_WEAK_SPOTS;
+    return base.filter(s =>
+      (s.taskKey !== 'allergies' || !allergensKnown)
+      && (s.taskKey !== 'health_history' || !healthKnown));
+  }
 
   if (planType === 'diet') {
     if (!p.activity_level)       spots.push(DIET_WEAK_SPOTS[0]);
-    // Allergies: there is no allergen signal on `profiles` (allergens live in
-    // food_preferences.is_allergen, not on the profile). Until a task-completed
-    // flag is plumbed through, always surface this — the safer default for diet.
-    spots.push(DIET_WEAK_SPOTS[1]);
+    // Allergies live in food_preferences.is_allergen; when the caller can't tell
+    // us, keep showing the chip — the safer default for diet.
+    if (!allergensKnown)         spots.push(DIET_WEAK_SPOTS[1]);
     if (!p.diet_mode)            spots.push(DIET_WEAK_SPOTS[2]);
-    // health_history weak-spot only if user hasn't confirmed (same caveat).
-    spots.push(DIET_WEAK_SPOTS[3]);
+    if (!healthKnown)            spots.push(DIET_WEAK_SPOTS[3]);
     if (!p.budget_level)         spots.push(DIET_WEAK_SPOTS[4]);
     if (!p.cooking_skill)        spots.push(DIET_WEAK_SPOTS[5]);
   } else {
     if (!p.training_experience)            spots.push(WORKOUT_WEAK_SPOTS[0]);
     if (!p.equipment_access)               spots.push(WORKOUT_WEAK_SPOTS[1]);
     if (!p.available_training_times)       spots.push(WORKOUT_WEAK_SPOTS[2]);
-    spots.push(WORKOUT_WEAK_SPOTS[3]);
+    if (!healthKnown)                      spots.push(WORKOUT_WEAK_SPOTS[3]);
   }
   return spots;
 }
@@ -108,9 +130,10 @@ export function isPlanReady(
   profile: Profile | null,
   goal: Goal | null,
   planType: PlanType,
+  extras?: ReadinessExtras,
 ): ReadinessResult {
   const { missing: missingCore } = hasCore(profile, goal);
-  const weakSpots = computeWeakSpots(profile, planType);
+  const weakSpots = computeWeakSpots(profile, planType, extras);
   return {
     ready: missingCore.length === 0,
     missingCore,
@@ -122,8 +145,8 @@ export function getMissingCore(profile: Profile | null, goal: Goal | null): Miss
   return hasCore(profile, goal).missing;
 }
 
-export function getWeakSpots(profile: Profile | null, planType: PlanType): MissingField[] {
-  return computeWeakSpots(profile, planType);
+export function getWeakSpots(profile: Profile | null, planType: PlanType, extras?: ReadinessExtras): MissingField[] {
+  return computeWeakSpots(profile, planType, extras);
 }
 
 /** Sanity check — returns true on empty/null inputs too. Used for defensive

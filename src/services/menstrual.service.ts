@@ -16,10 +16,10 @@ export interface CycleStatus {
 }
 
 const PHASE_ADVICE: Record<CyclePhase, string> = {
-  menstrual: 'Enerji en dusuk seviyede olabilir. Antrenman yogunlugu dusuruldu, hafif aktivite onerilir.',
-  follicular: 'Enerji yukseliyor, karbonhidrat toleransi iyi. Yogun antrenmanlar icin uygun donem.',
-  ovulation: 'Guc performansi zirve yapabilir. Agirlik antrenmaninda PR denemesi icin uygun.',
-  luteal: 'Istah artabilir, su tutulumu olabilir. Kalori tabani +100-200 kcal yukseltildi. Tarti artisi normaldir.',
+  menstrual: 'Enerji en düşük seviyede olabilir. Antrenman yoğunluğu düşürüldü, hafif aktivite önerilir.',
+  follicular: 'Enerji yükseliyor, karbonhidrat toleransı iyi. Yoğun antrenmanlar için uygun dönem.',
+  ovulation: 'Güç performansı zirve yapabilir. Ağırlık antrenmanında PR denemesi için uygun.',
+  luteal: 'İştah artabilir, su tutulumu olabilir. Kalori tabanı +100-200 kcal yükseltildi. Tartı artışı normaldir.',
 };
 
 /**
@@ -94,7 +94,7 @@ const PHASE_ADJUSTMENTS: Record<CyclePhase, PhaseAdjustments> = {
     proteinMultiplier: 1.0,
     waterAdjust: 0,
     trainingIntensityMax: 'low',
-    trainingNote: 'Enerji en dusuk — hafif yuruyus, yoga veya tam dinlenme onerilir.',
+    trainingNote: 'Enerji en düşük — hafif yürüyüş, yoga veya tam dinlenme önerilir.',
     weightNote: null,
   },
   follicular: {
@@ -102,7 +102,7 @@ const PHASE_ADJUSTMENTS: Record<CyclePhase, PhaseAdjustments> = {
     proteinMultiplier: 1.0,
     waterAdjust: 0,
     trainingIntensityMax: 'high',
-    trainingNote: 'Enerji yukseliyor — yogun antrenman ve karbonhidrat icin ideal donem.',
+    trainingNote: 'Enerji yükseliyor — yoğun antrenman ve karbonhidrat için ideal dönem.',
     weightNote: null,
   },
   ovulation: {
@@ -110,7 +110,7 @@ const PHASE_ADJUSTMENTS: Record<CyclePhase, PhaseAdjustments> = {
     proteinMultiplier: 1.0,
     waterAdjust: 0,
     trainingIntensityMax: 'high',
-    trainingNote: 'Guc zirvede — PR denemeleri ve agir antrenman icin en uygun donem.',
+    trainingNote: 'Güç zirvede — PR denemeleri ve ağır antrenman için en uygun dönem.',
     weightNote: null,
   },
   luteal: {
@@ -118,8 +118,8 @@ const PHASE_ADJUSTMENTS: Record<CyclePhase, PhaseAdjustments> = {
     proteinMultiplier: 1.05,
     waterAdjust: 0.2,
     trainingIntensityMax: 'moderate',
-    trainingNote: 'Istah artabilir, normal. Antrenman yogunlugu orta seviyede tut.',
-    weightNote: 'Su tutulumu nedeniyle tarti 0.5-1.5kg artabilir. Bu YAG DEGIL, gecicidir. Panik yapma.',
+    trainingNote: 'İştah artabilir, normal. Antrenman yoğunluğunu orta seviyede tut.',
+    weightNote: 'Su tutulumu nedeniyle tartı 0,5-1,5 kg artabilir. Bu YAĞ DEĞİL, geçicidir. Panik yapma.',
   },
 };
 

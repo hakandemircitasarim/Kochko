@@ -1,66 +1,88 @@
 /**
- * Kochko Chat Tab — #S1 (one-thread structural rebuild)
+ * Kochko Chat Tab — #S1 (one-thread) + ux-pass2 (embedded thread)
  *
- * The tab IS the conversation. This screen is a thin resolver: it gets-or-creates the user's
- * single canonical coach thread and lands them straight in it — no session list, no "Yeni sohbet"
- * button, no 24h auto-close. The old separate-sessions surface is exactly what made the coach
- * feel amnesiac and "kopuk" (each session an island, the active thread beheaded by every task
- * card / plan flow / daily auto-close), so the list UX is retired; past sessions remain browsable
- * as frozen history in settings/chat-history, and the KVKK export is untouched.
+ * The tab IS the conversation — literally now. The previous shape (thin resolver that
+ * router.replace()'d out to a root-level /chat/[id] stack) destroyed the tab navigator on
+ * every entry: the tab bar vanished while chatting, hardware back dumped on Ana Sayfa,
+ * and every coach<->app hop re-ran a network resolve + full thread reload. The thread now
+ * renders INSIDE the tab; the canonical session id is cached (S1's one-active-per-user
+ * index makes it stable), so re-entries are instant and the resolver network round-trip
+ * happens once per install, not once per focus.
  *
- * Prefill contract preserved: dashboard nudges / quick-log deep links (`/(tabs)/chat?prefill=...`,
- * `openCamera`) forward into the thread, exactly as before.
+ * Param contract preserved: dashboard nudges / quick-log deep links / task cards land on
+ * `/(tabs)/chat?prefill=...&taskModeHint=...&taskNonce=...` and ChatThreadScreen reads
+ * them from this route.
  */
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
-import { getOrCreateActiveSession } from '@/services/chat.service';
+import { getOrCreateActiveSession, getCachedActiveSessionId } from '@/services/chat.service';
+import ChatThreadScreen from '@/screens/ChatThreadScreen';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
-export default function ChatTabResolver() {
+// Module-level cache: survives tab remounts within the app session.
+// User-keyed (review fix): an unkeyed id survived an account switch and mounted
+// the previous user's thread for the next sign-in.
+let resolvedSessionId: string | null = null;
+let resolvedForUserId: string | null = null;
+
+export default function ChatTab() {
   const { colors } = useTheme();
   const user = useAuthStore(s => s.user);
-  const { prefill, openCamera, taskModeHint } = useLocalSearchParams<{ prefill?: string; openCamera?: string; taskModeHint?: string }>();
+  const [sessionId, setSessionId] = useState<string | null>(
+    user?.id && resolvedForUserId === user.id ? resolvedSessionId : null,
+  );
   const [failed, setFailed] = useState(false);
-  // REF guards, never state in the callback deps: `resolving` as a dep minted a new callback
-  // identity on every setState → useFocusEffect re-ran → on the FAILURE path this was a
-  // deterministic infinite retry loop hammering the network while offline.
   const inFlightRef = useRef(false);
-  const failedRef = useRef(false);
+
+  // Account switch while the tab stays mounted: drop the stale id immediately.
+  useEffect(() => {
+    if (user?.id && resolvedForUserId !== user.id) {
+      resolvedSessionId = null;
+      resolvedForUserId = null;
+      setSessionId(null);
+    }
+  }, [user?.id]);
 
   const resolve = useCallback(async () => {
     if (!user?.id || inFlightRef.current) return;
     inFlightRef.current = true;
-    failedRef.current = false;
     setFailed(false);
     try {
+      // Cold start: the persisted id renders the thread immediately; the network
+      // resolve below still runs once to self-heal a stale cache.
+      if (!resolvedSessionId || resolvedForUserId !== user.id) {
+        const cached = await getCachedActiveSessionId(); // user-scoped key
+        if (cached) {
+          resolvedSessionId = cached;
+          resolvedForUserId = user.id;
+          setSessionId(cached);
+        }
+      }
       const id = await getOrCreateActiveSession();
       if (id) {
-        const params: Record<string, string> = { fromTab: '1' };
-        if (prefill) params.prefill = String(prefill);
-        if (openCamera) params.openCamera = String(openCamera);
-        if (taskModeHint) params.taskModeHint = String(taskModeHint);
-        router.replace({ pathname: `/chat/${id}`, params });
-      } else {
-        failedRef.current = true;
+        resolvedSessionId = id;
+        resolvedForUserId = user.id;
+        setSessionId(prev => (prev === id ? prev : id));
+      } else if (!resolvedSessionId) {
         setFailed(true);
       }
     } catch {
-      failedRef.current = true;
-      setFailed(true);
+      if (!resolvedSessionId) setFailed(true);
     } finally {
       inFlightRef.current = false;
     }
-  }, [user?.id, prefill, openCamera, taskModeHint]);
+  }, [user?.id]);
 
-  // Resolve on focus. NO auto-retry after a failure — only the explicit "Tekrar dene" button
-  // re-attempts, so an offline user gets a stable error screen instead of a flicker loop.
-  useFocusEffect(useCallback(() => { if (!failedRef.current) resolve(); }, [resolve]));
+  useEffect(() => { resolve(); }, [resolve]);
+
+  if (sessionId) {
+    return <ChatThreadScreen sessionId={sessionId} />;
+  }
 
   if (failed) {
     return (
@@ -84,7 +106,7 @@ export default function ChatTabResolver() {
     );
   }
 
-  // Resolving — skeleton, never a flash of empty UI.
+  // First-ever resolve (no cache yet) — skeleton, never a flash of empty UI.
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <SkeletonScreen cards={3} />

@@ -17,8 +17,10 @@ import { StatStrip } from '@/components/dashboard/StatStrip';
 import { ActivityTimeline } from '@/components/dashboard/ActivityTimeline';
 import { ProfileCompletionDonut } from '@/components/dashboard/ProfileCompletionDonut';
 import { PlanOverviewCards } from '@/components/dashboard/PlanOverviewCards';
-import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
+import { deriveNutritionTargets } from '@/lib/nutrition-targets';
+// FIX (ux-pass2 #4c): tek "güncel kilo" yazım yolu — daily_metrics + profiles birlikte.
+import { updateCurrentWeight } from '@/services/weight.service';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
@@ -35,6 +37,22 @@ import { SkeletonBlock } from '@/components/ui/Skeleton';
 import { usePremium } from '@/hooks/usePremium';
 import { checkAndScheduleTrialReminder } from '@/services/notifications.service';
 
+// FIX (ux-pass2 #2): "Uzun süredir yemek yememişsin" nudge'ı, kullanıcı 18:12'de öğün
+// logladıktan sonra da 332 kcal gösteren halkanın altında asılı kalıyordu. Deterministik
+// trigger_type'lar önce; LLM nudge'ları serbest trigger taşıdığından içerik eşleşmesi yedek.
+const MEAL_NUDGE_TRIGGERS = new Set(['snack_hour_nudge', 'night_eating_risk', 'meal_gap', 'no_meals']);
+// Review fix (ux-pass2): iki seviye — typed trigger eşleşmesi KALICI okundu-işaretlemeye
+// yetkili; içerik regex'i yalnız GİZLEMEYE yetkili. Regex "yemek" geçen herhangi bir
+// motivasyon nudge'ını da yakalayabilir; onu kalıcı silmek kullanıcının hiç görmediği
+// bir mesajı yok eder.
+function isMealNudgeTyped(msg: CoachingMessage): boolean {
+  return MEAL_NUDGE_TRIGGERS.has(msg.trigger_type);
+}
+function looksLikeMealNudge(msg: CoachingMessage): boolean {
+  const txt = `${msg.trigger_type} ${msg.content}`.toLocaleLowerCase('tr-TR');
+  return /yeme|yemek|öğün|atıştır|açlık|kahvaltı|meal|snack/.test(txt);
+}
+
 export default function TodayScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -47,7 +65,7 @@ export default function TodayScreen() {
     weeklyBudgetTotal: storeBudgetTotal, weeklyBudgetConsumed: storeBudgetConsumed,
     calorieTargetMin: planCalMin, calorieTargetMax: planCalMax,
     proteinTarget: planProtein, carbsTarget: planCarbs, fatTarget: planFat,
-    loading, fetchToday, addWater, deleteMeal, deleteWorkout,
+    loading, fetchError, lastFetchedAt, fetchToday, addWater, deleteMeal, deleteWorkout,
   } = useDashboardStore();
   const { streak, newAchievement, checkForMilestones } = useStreak();
   // FIX (audit: deneme geri-sayımı dashboard) trial state'i dashboard'da yüzeye çıkar
@@ -71,20 +89,18 @@ export default function TodayScreen() {
   const ifActive = !!profile?.if_active;
   const ifEatingStart = profile?.if_eating_start as string | null;
   const ifEatingEnd = profile?.if_eating_end as string | null;
-  // Prefer today's plan targets (projected from the active chat plan into
-  // daily_plans); fall back to the profile TDEE range + macro percentages when
-  // there is no plan. NOTE: carbs_target_g / fat_target_g are NOT columns on
-  // profiles — the old reads always hit the 200/65 default; derive carbs/fat from
-  // the real macro_carb_pct / macro_fat_pct against the calorie target instead.
-  const calorieTargetMin = planCalMin ?? (profile?.calorie_range_rest_min as number) ?? 0;
-  const calorieTargetMax = planCalMax ?? (profile?.calorie_range_rest_max as number) ?? 0;
-  const proteinTarget = planProtein ?? (profile?.protein_per_kg && profile?.weight_kg
-    ? Math.round(Number(profile.protein_per_kg) * Number(profile.weight_kg)) : 120);
-  const calMid = (calorieTargetMin + calorieTargetMax) / 2;
-  const carbPct = Number(profile?.macro_carb_pct) || 0;
-  const fatPct = Number(profile?.macro_fat_pct) || 0;
-  const carbsTarget = planCarbs ?? (carbPct > 0 && calMid > 0 ? Math.round((calMid * carbPct / 100) / 4) : 200);
-  const fatTarget = planFat ?? (fatPct > 0 && calMid > 0 ? Math.round((calMid * fatPct / 100) / 9) : 65);
+  // Single source of truth for targets (ux-pass2 split-brain fix): the same
+  // deriveNutritionTargets the chat receipt uses — plan-projected daily_plans
+  // targets first, profile derivation as fallback.
+  const derivedTargets = deriveNutritionTargets(profile, {
+    calorieMin: planCalMin, calorieMax: planCalMax,
+    proteinG: planProtein, carbsG: planCarbs, fatG: planFat,
+  });
+  const calorieTargetMin = derivedTargets.calorieTargetMin;
+  const calorieTargetMax = derivedTargets.calorieTargetMax;
+  const proteinTarget = derivedTargets.proteinG;
+  const carbsTarget = derivedTargets.carbsG;
+  const fatTarget = derivedTargets.fatG;
   const userName = profile?.display_name as string | undefined;
 
   // Mount-only setup that shouldn't re-run on every focus.
@@ -100,8 +116,12 @@ export default function TodayScreen() {
   // Previously a hasMounted ref skipped the first run to avoid a duplicate
   // fetch against a parallel useEffect — now only this effect fetches, so no
   // ref gymnastics are needed.
-  const refresh = useCallback(() => {
+  const refresh = useCallback((opts?: { force?: boolean }) => {
     if (!user?.id) return;
+    // FIX (ux-pass2 #10): sekme değişiminde her focus yeniden fetch tetikliyordu; veri
+    // <60 sn tazeyse sessizce atla (pull-to-refresh ve veri yazımları force geçer).
+    const { lastFetchedAt: fetchedAt } = useDashboardStore.getState();
+    if (!opts?.force && fetchedAt != null && Date.now() - fetchedAt < 60_000) return;
     fetchToday(user.id, dayBoundaryHour)
       .catch((err) => console.warn('fetchToday failed:', err))
       .finally(() => setHasLoadedOnce(true));
@@ -110,6 +130,45 @@ export default function TodayScreen() {
   }, [user?.id, fetchToday, checkForMilestones, dayBoundaryHour]);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
+
+  // FIX (ux-pass2 #10): spinner yalnız gerçek pull hareketinde döner — focus refetch'leri
+  // sessizdir (eskiden refreshing={loading} her sekme geçişinde spinner çakıyordu).
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const onPullRefresh = useCallback(async () => {
+    if (!user?.id) return;
+    setIsPullRefreshing(true);
+    try {
+      await Promise.all([
+        fetchToday(user.id, dayBoundaryHour).finally(() => setHasLoadedOnce(true)),
+        checkForMilestones(),
+        getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {}),
+      ]);
+    } catch (err) {
+      console.warn('pull refresh failed:', err);
+    } finally {
+      setIsPullRefreshing(false);
+    }
+  }, [user?.id, fetchToday, checkForMilestones, dayBoundaryHour]);
+
+  // FIX (ux-pass2 #2): bugün yemek loglandıysa, son öğünden ÖNCE yazılmış yeme/öğün
+  // nudge'ları bayattır — halka 332 kcal gösterirken "uzun süredir yememişsin" diyemez.
+  // Bayat olanları okundu işaretleyip listeden düşür (son öğünden SONRA gelen nudge kalır).
+  useEffect(() => {
+    if (totalCalories <= 0 || coachingMessages.length === 0) return;
+    const mealTimes = meals.map(m => new Date(m.logged_at).getTime()).filter(Number.isFinite);
+    // Review fix: default 0, NOT Infinity — unparseable logged_at values must not
+    // classify every nudge (including post-meal ones) as stale.
+    const lastMealMs = mealTimes.length > 0 ? Math.max(...mealTimes) : 0;
+    const olderThanLastMeal = (m: CoachingMessage) => new Date(m.created_at).getTime() <= lastMealMs;
+    const staleTyped = coachingMessages.filter(m => isMealNudgeTyped(m) && olderThanLastMeal(m));
+    const staleLoose = coachingMessages.filter(m => !isMealNudgeTyped(m) && looksLikeMealNudge(m) && olderThanLastMeal(m));
+    if (staleTyped.length === 0 && staleLoose.length === 0) return;
+    // Typed matches: safe to persist as read. Loose content matches: hide only —
+    // a false positive must not permanently destroy an unseen message.
+    for (const m of staleTyped) markMessageRead(m.id);
+    const hideIds = new Set([...staleTyped, ...staleLoose].map(m => m.id));
+    setCoachingMessages(prev => prev.filter(m => !hideIds.has(m.id)));
+  }, [totalCalories, meals, coachingMessages]);
 
   // FIX (audit: üç offline banner) inline isOffline state kaldırıldı; offline
   // göstergesi global common/OfflineBanner'a bırakıldı. NetInfo dinleyici yalnız
@@ -154,20 +213,26 @@ export default function TodayScreen() {
     }
   };
 
+  // FIX (ux-pass2 #4a/#4b): modal artık Kilo kartından açılır ve son bilinen kiloyla
+  // önceden doldurulur (73.5 placeholder'ı yerine) — kullanıcı çoğu zaman tek haneyi düzeltir.
+  const openWeightModal = () => {
+    haptics.tap();
+    const known = weightKg ?? (profile?.weight_kg != null ? Number(profile.weight_kg) : null);
+    setWeightInput(known != null ? String(known) : '');
+    setShowWeightInput(true);
+  };
+
   const handleWeightSave = async () => {
     const w = parseFloat(weightInput.replace(',', '.'));
     if (!w || w < 20 || w > 300 || !user?.id) return;
-    const date = getEffectiveDate(new Date(), dayBoundaryHour);
     try {
-      const { error } = await supabase.from('daily_metrics').upsert(
-        { user_id: user.id, date, weight_kg: w, synced: true },
-        { onConflict: 'user_id,date' }
-      );
-      if (error) throw error;
+      // FIX (ux-pass2 #4c): canlı bug — Tartı yalnız daily_metrics'e yazınca Profil 80,
+      // dashboard 79.5 gösteriyordu. updateCurrentWeight iki tabloyu birlikte günceller.
+      await updateCurrentWeight(user.id, w, dayBoundaryHour);
       haptics.success();
       setShowWeightInput(false);
       setWeightInput('');
-      refresh();
+      refresh({ force: true });
     } catch (err) {
       console.warn('weight save failed:', err);
       haptics.error();
@@ -286,7 +351,7 @@ export default function TodayScreen() {
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={refresh} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={onPullRefresh} tintColor={colors.primary} />}
       >
         {/* Welcome back / re-onboarding banner (Spec 10.6) */}
         {returnStatus && returnStatus.level !== 'active' && (
@@ -383,11 +448,38 @@ export default function TodayScreen() {
             <SkeletonBlock height={60} radius={RADIUS.md} style={{ marginTop: SPACING.lg }} />
             <SkeletonBlock height={60} radius={RADIUS.md} style={{ marginTop: SPACING.md }} />
           </View>
+        ) : fetchError && lastFetchedAt == null ? (
+          /* FIX (ux-pass2 #7): fetch başarısız ve elde hiç veri yok — sahte sıfırlanmış
+             gün yerine kompakt hata kartı + tekrar dene (progress.tsx kalıbı). */
+          <View style={{
+            marginTop: insets.top + SPACING.xxl, marginHorizontal: SPACING.xl,
+            backgroundColor: colors.card, borderRadius: RADIUS.md,
+            borderWidth: 0.5, borderColor: colors.border,
+            padding: SPACING.xxl, alignItems: 'center',
+          }}>
+            <Ionicons name="cloud-offline-outline" size={36} color={colors.textMuted} />
+            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.md }}>
+              Veriler yüklenemedi
+            </Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center' }}>
+              Bağlantını kontrol edip tekrar dene.
+            </Text>
+            <TouchableOpacity
+              onPress={() => refresh({ force: true })}
+              accessibilityRole="button"
+              accessibilityLabel="Tekrar dene"
+              style={{ marginTop: SPACING.lg, backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm }}
+            >
+              <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Tekrar dene</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
         <>
         {/* 1. Hero: Greeting + Calorie Ring + Macros */}
         <HeroSection
-          today={new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+          // FIX (ux-pass2 #12): başlık tarihi de veriyle aynı efektif-gün mantığını kullanır —
+          // gece 00:00-04:00 arasında günlük hâlâ "bugün"ü sayarken başlık yarını gösteremez.
+          today={new Date(`${getEffectiveDate(new Date(), dayBoundaryHour)}T12:00:00`).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
           streak={streak}
           focusMessage={focusMessage}
           consumed={totalCalories}
@@ -420,7 +512,9 @@ export default function TodayScreen() {
               onTap={(msg) => {
                 markMessageRead(msg.id);
                 setCoachingMessages(prev => prev.filter(m => m.id !== msg.id));
-                router.push({ pathname: '/(tabs)/chat', params: { prefill: msg.content } });
+                // FIX (ux-pass2 #5): prefill=msg.content KOÇUN kendi metnini KULLANICININ
+                // composer'ına koyuyordu — parametresiz aç, kullanıcı kendi cevabını yazsın.
+                router.push('/(tabs)/chat' as never);
               }}
             />
           </View>
@@ -434,7 +528,9 @@ export default function TodayScreen() {
             steps={steps}
             sleepHours={sleepHours}
             weightKg={weightKg}
+            lastKnownWeightKg={Number.isFinite(Number(profile?.weight_kg)) ? Number(profile?.weight_kg) : null}
             onAddWater={handleAddWater}
+            onWeightPress={openWeightModal}
           />
         </View>
 
@@ -478,7 +574,7 @@ export default function TodayScreen() {
 
         {/* 5. Plan overview cards (Phase 4) — replaces the old diet/workout tab selector */}
         <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
-          <PlanOverviewCards userId={user?.id} />
+          <PlanOverviewCards userId={user?.id} dayBoundaryHour={dayBoundaryHour} />
         </View>
 
         {/* Activity Timeline (meals + workouts logged today) */}

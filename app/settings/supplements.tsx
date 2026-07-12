@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getTodaySupplements, logSupplement, type SupplementLog } from '@/services/supplements.service';
+import { Ionicons } from '@expo/vector-icons';
+import { logSupplement, type SupplementLog } from '@/services/supplements.service';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -24,17 +26,34 @@ export default function SupplementsScreen() {
   const [logs, setLogs] = useState<SupplementLog[]>([]);
   // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar yanlış 'kayıt yok' metni gösterilmiyordu.
   const [loading, setLoading] = useState(true);
+  // FIX (audit empty-vs-error): getTodaySupplements hataları []'a yutuyor — ekran doğrudan
+  // sorguluyor ki fetch hatası 'kayıt yok' yerine hata+tekrar dene kartı çizsin.
+  const [loadError, setLoadError] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customAmount, setCustomAmount] = useState('');
 
-  useEffect(() => { getTodaySupplements().then(setLogs).finally(() => setLoading(false)); }, []);
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    const date = new Date().toISOString().split('T')[0];
+    const { data, error } = await supabase.from('supplement_logs').select('*').eq('logged_for_date', date).order('logged_at');
+    if (error) {
+      console.warn('supplement_logs load failed', error);
+      setLoadError(true);
+    } else {
+      setLogs((data ?? []) as SupplementLog[]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadLogs(); }, [loadLogs]);
 
   const handleQuickAdd = async (name: string, amount: string) => {
     const { error } = await logSupplement(name, amount);
     // FIX (audit error-message-sweep): ham hata metnini gösterme; sabit Türkçe mesaj + konsola teknik detay.
     if (error) { console.error('logSupplement error', error); haptics.error(); Alert.alert('Kaydedilemedi', 'Takviye kaydedilemedi, lütfen tekrar dene.'); return; }
     haptics.success();
-    getTodaySupplements().then(setLogs);
+    loadLogs();
   };
 
   const handleCustomAdd = async () => {
@@ -44,7 +63,7 @@ export default function SupplementsScreen() {
     if (error) { console.error('logSupplement error', error); haptics.error(); Alert.alert('Kaydedilemedi', 'Takviye kaydedilemedi, lütfen tekrar dene.'); return; }
     haptics.success();
     setCustomName(''); setCustomAmount('');
-    getTodaySupplements().then(setLogs);
+    loadLogs();
   };
 
   return (
@@ -81,6 +100,14 @@ export default function SupplementsScreen() {
         {loading ? (
           <View style={{ paddingVertical: SPACING.md, alignItems: 'center' }}>
             <ActivityIndicator color={COLORS.primary} />
+          </View>
+        ) : loadError ? (
+          /* FIX (audit empty-vs-error): fetch hatası 'kayıt yok' değil, hata+tekrar dene (daily.tsx kalıbı). */
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
+            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Kayıtlar yüklenemedi</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+            <Button title="Tekrar dene" size="sm" onPress={loadLogs} />
           </View>
         ) : logs.length === 0 ? (
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Bugün supplement kaydı yok.</Text>

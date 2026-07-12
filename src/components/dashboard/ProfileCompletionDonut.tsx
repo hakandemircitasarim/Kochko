@@ -13,15 +13,15 @@
  * Renders an animated SVG donut with % in the center and the next-gap hint.
  * Tap routes to the Kochko tab's onboarding task list.
  */
-import { useEffect, useRef, useMemo, useState } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Animated, Easing } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth.store';
-import { getOnboardingProgress } from '@/services/onboarding-tasks.service';
+import { getOnboardingProgress, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import {
   calculateProfileCompletion,
@@ -46,21 +46,29 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
 
   // Headline % comes from the 13-task onboarding progress — the exact same
   // source the chat tab uses for "X/13 konu" — so the two screens always agree.
-  // Re-fetch when the profile object changes (onboarding data landing is what
-  // moves the task count). null = not yet loaded.
+  // null = not yet loaded.
   const [taskProgress, setTaskProgress] = useState<{ completed: number; total: number } | null>(null);
+  // FIX (ux-pass2 #6): "Görevlere git" CTA'sının açacağı SIRADAKİ eksik görev — chat'e
+  // parametresiz düşmek yerine koç doğru konuyu açsın diye taskModeHint'iyle taşınır.
+  const [nextTask, setNextTask] = useState<OnboardingTask | null>(null);
 
-  useEffect(() => {
+  // FIX (ux-pass2 #6a): profil kimliğine kilitli useEffect yerine her focus'ta tazele —
+  // chat'te görev tamamlayıp dönünce yüzde ve sıradaki görev anında güncellenir.
+  useFocusEffect(useCallback(() => {
     if (!userId) {
       setTaskProgress(null);
       return;
     }
     let cancelled = false;
-    getOnboardingProgress(userId)
-      .then((p) => { if (!cancelled) setTaskProgress(p); })
+    Promise.all([getOnboardingProgress(userId), getIncompleteTasks(userId, 1)])
+      .then(([p, tasks]) => {
+        if (cancelled) return;
+        setTaskProgress(p);
+        setNextTask(tasks[0] ?? null);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [userId, profile]);
+  }, [userId]));
 
   // Gap-hint text (which field/category to fill next) still uses the weighted
   // profile-completion calc; only the headline number switched to task progress.
@@ -87,8 +95,10 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
     outputRange: [circumference, 0],
   });
 
-  // Color scale: < 40 red, 40-70 amber, > 70 green — mapped to theme tokens.
-  const ringColor = pct < 40 ? colors.error : pct < 70 ? colors.warning : colors.primary;
+  // FIX (ux-pass2 #6b): pct<40 → colors.error yepyeni kullanıcıyı alarm kırmızısı bir
+  // halkayla karşılıyordu. Onboarding ilerlemesi gerileyemez — kırmızı (regresyon) burada
+  // hiç geçerli değil; halka baştan sona marka rengi.
+  const ringColor = colors.primary;
 
   const hintLine = useMemo(() => {
     // FIX (audit: donut 13-görev vs 24-alan çelişkisi) headline pct=100 iken
@@ -111,9 +121,31 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
     return <SkeletonCard lines={2} />;
   }
 
+  // FIX (ux-pass2 #6c): profil %100 ise kart tamamen kaybolur — bitmiş bir işi
+  // sonsuza dek kutlayan ölü alan bırakma.
+  if (pct === 100) {
+    return null;
+  }
+
   return (
     <TouchableOpacity
-      onPress={() => router.push('/(tabs)/chat' as never)}
+      onPress={() => {
+        // FIX (ux-pass2 #6): CTA eskiden chat'i parametresiz açıyordu — kullanıcı görev
+        // bağlamı olmadan sohbet geçmişinin ortasına düşüyordu. Sıradaki eksik görevin
+        // kanonik paramlarıyla (prefill + taskModeHint + taskNonce) aç.
+        if (nextTask) {
+          router.push({
+            pathname: '/(tabs)/chat',
+            params: {
+              prefill: nextTask.prefillMessage,
+              taskModeHint: nextTask.taskModeHint,
+              taskNonce: String(Date.now()),
+            },
+          });
+        } else {
+          router.push('/(tabs)/chat' as never);
+        }
+      }}
       activeOpacity={0.8}
       accessibilityRole="button"
       accessibilityLabel={`Profil tamamlama yüzdesi ${pct}. ${hintLine}`}

@@ -249,7 +249,9 @@ serve(async (req: Request) => {
       const injection = sanitizeUserInput(message);
       injectionDetected = injection.injectionDetected;
       if (injectionDetected) {
-        const rejectMsg = 'Ben Kochko, beslenme ve antrenman kocunum. Bu konuda sana yardimci olamam ama beslenme veya sporla ilgili sorun varsa konusalim.';
+        // #ux-fix (re-greeting/self-intro spam, live 07-11): mid-thread "Ben Kochko..." reads broken
+        // in the ONE continuous conversation — the refusal keeps the role anchor without re-introducing.
+        const rejectMsg = 'Bu konuda yardimci olamam — benim alanim beslenme ve antrenman. Bu konularla ilgili bir sorun varsa konusalim.';
         await storeMessages(userId, message, rejectMsg, undefined, undefined, undefined, undefined, session_id);
         return respond({ message: rejectMsg, actions: [], task_mode: 'coaching' });
       }
@@ -718,6 +720,19 @@ serve(async (req: Request) => {
       ? `## VERI CELISKISI (BU TURDA COZ)\n${contradictions.map(c => `Kullanici bu mesajda ${c.statedLabel} dedi ama kayitta ${c.storedLabel} var (${c.fieldNoun}).`).join('\n')}\nYanitinda MUTLAKA kibarca hangisinin dogru oldugunu sor (orn. "kayitlarimda ${contradictions[0].fieldNoun} ${contradictions[0].storedLabel} gorunuyor, ${contradictions[0].statedLabel} mi dogru?"). Kullanici netlestirene kadar bu alanlari profile_update ile YAZMA.`
       : '';
 
+    // #ux-fix (re-greeting spam, live 07-11): within ONE afternoon the same eternal thread opened with
+    // "Hoş geldin!", "Merhaba Hakan..." (task-opener turn) and "Ben Kochko, antrenman uzmanın..." (plan
+    // flow). The product is ONE continuous conversation — pin that down DETERMINISTICALLY whenever any
+    // history exists, so no mode/opener/[SYSTEM_INIT] instruction can outrank it. Gate: layer4 non-empty
+    // (a brand-new user's literal first exchange may still greet + introduce).
+    const continuityNote = ctx.layer4.length > 0
+      ? `## SUREKLILIK (BU TURDA GECERLI — IHLAL ETME)
+Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu yanitta:
+- Selamlama ile BASLAMA: "Merhaba", "Selam", "Hos geldin", "Hosgeldin", "Tekrar merhaba" YASAK.
+- Kendini TANITMA: "Ben Kochko..." YASAK — kullanici seni zaten taniyor.
+- Gorev/plan acilis turu olsa bile, aradan saatler/gunler gecmis olsa bile: dogrudan konuya gir, sohbet kaldigi yerden surer.`
+      : '';
+
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
       // #arch step 9 (token budget): situational guidance blocks are included ONLY when their
@@ -727,6 +742,8 @@ serve(async (req: Request) => {
       profile?.periodic_state ? PERIODIC_STATE_PROMPT : '',                         // per-state detail — only with an active period (~550 tok)
       (profile?.gender === 'female' && profile?.menstrual_tracking) ? CYCLE_PROMPT : '', // cycle coaching — only when tracking (~180 tok)
       serviceCtx.returnFlow ? RETURN_FLOW_PROMPT : '',                              // return-flow tone — only when returning (~140 tok)
+      // #ux-fix: continuity outranks every mode/opener instruction below — no mid-thread re-greeting.
+      continuityNote,
       // Task card instructions come right after BASE so they are prominent — they override
       // default onboarding-mode ambition and keep the session narrowly scoped.
       taskCardCtx,
@@ -1121,6 +1138,23 @@ serve(async (req: Request) => {
       }
     }
 
+    // #ux-fix (garbage allergen capture, live 07-11): normalize/reject bare generic food_name
+    // tokens on EVERY food_preference the model emitted, BEFORE the deterministic nets below —
+    // dropping a garbage capture here re-opens the nets' "no food_preference present" gate so the
+    // dictionary scan can re-capture the allergen canonically ("deniz ürünleri", not "ürünleri").
+    for (let gi = actions.length - 1; gi >= 0; gi--) {
+      const fp = actions[gi] as Record<string, unknown>;
+      if (fp.type !== 'food_preference' || typeof fp.food_name !== 'string') continue;
+      const repaired = repairGenericFoodName(fp.food_name, message);
+      if (repaired === null) {
+        console.warn('[food_pref_name_guard] rejected bare generic food_name', { food_name: fp.food_name, is_allergen: fp.is_allergen === true });
+        actions.splice(gi, 1);
+      } else if (repaired !== fp.food_name) {
+        console.warn('[food_pref_name_guard] recovered full noun phrase', { was: fp.food_name, now: repaired });
+        fp.food_name = repaired;
+      }
+    }
+
     // Allergy safety net — deterministic: "çilek alerjim var", "deniz ürünleri
     // alerjim var", "laktoz intoleransım var". The allergen guardrails read ONLY
     // food_preferences, and the model skips the food_preference action often enough
@@ -1145,9 +1179,12 @@ serve(async (req: Request) => {
         if (declared.length === 0) {
           const allergyMatch = mAll.match(/([a-zçğıöşü]{3,})\s+alerji/);
           const intoleranceMatch = mAll.match(/([a-zçğıöşü]{3,})\s+intolerans/);
-          const food = allergyMatch?.[1] ?? intoleranceMatch?.[1];
+          const rawFood = allergyMatch?.[1] ?? intoleranceMatch?.[1];
+          // #ux-fix (garbage allergen capture): "süt ürünlerine alerjim var" makes this regex grab
+          // the bare 'ürünlerine' — repair it to the full noun phrase or drop the capture.
+          const food = rawFood ? (repairGenericFoodName(rawFood, message) ?? undefined) : undefined;
           const STOPWORDS = new Set(['bir', 'hic', 'hiç', 'gida', 'gıda', 'besin', 'yok', 'ciddi', 'hafif', 'ayrica', 'ayrıca', 'bence', 'galiba', 'sanirim', 'sanırım', 'bende', 'benim', 'tum', 'tüm', 'her']);
-          if (food && !STOPWORDS.has(food) && !emitted.has(food)) {
+          if (food && rawFood && !STOPWORDS.has(rawFood) && !emitted.has(food)) {
             actions.push({ type: 'food_preference', food_name: food, preference: 'never', is_allergen: true, allergen_severity: severe ? 'severe' : 'moderate' });
             emitted.add(food);
           }
@@ -1175,7 +1212,13 @@ serve(async (req: Request) => {
         const declared = extractDeclaredAllergens(message); // canonical dict hits (süt→laktoz)
         const foods = new Set<string>(declared.map(f => f.toLocaleLowerCase('tr')));
         const m = mRet.match(/([a-zçğıöşü]{3,})\s+(?:alerji|intolerans)/); // single-noun ("çilek alerjim geçti")
-        if (m && m[1]) foods.add(m[1].replace(/(ndan|nden|tan|ten|dan|den)$/, ''));
+        if (m && m[1]) {
+          const f0 = m[1].replace(/(ndan|nden|tan|ten|dan|den)$/, '');
+          // #ux-fix (garbage capture): "süt ürünlerine alerjim geçti" grabs 'ürünlerine' — repair to
+          // the full phrase so the clear actually matches the stored "süt ürünleri" row.
+          const fRep = repairGenericFoodName(f0, message);
+          if (fRep) foods.add(fRep.toLocaleLowerCase('tr'));
+        }
         for (const f of foods) if (f.length >= 3) actions.push({ type: 'food_preference', food_name: f, clear: true, is_allergen: false });
         if (foods.size > 0) console.warn('[allergy_retract_net] clear injected', { foods: [...foods] });
       }
@@ -1224,6 +1267,9 @@ serve(async (req: Request) => {
         // "brokoli"→"brokol"): the contradiction MATCHER re-normalises BOTH sides at read time, so
         // a still-inflected stored form ("sütü", "brokoliyi") matches "süt"/"brokoli" logs anyway.
         if (food) food = food.replace(/(ndan|nden|tan|ten|dan|den)$/, '');
+        // #ux-fix (garbage capture): "süt ürünlerini sevmiyorum" walks back to the bare generic
+        // 'ürünlerini' — repair to the full noun phrase from the message, or drop the capture.
+        if (food) food = repairGenericFoodName(food, message) ?? undefined;
         if (food && food.length >= 3 && !SKIP.has(food) && !NONFOOD.has(food)) {
           actions.push({ type: 'food_preference', food_name: food, preference: 'dislike', is_allergen: false });
           console.warn('[dislike_safety_net] food_preference injected', { food });
@@ -1254,6 +1300,8 @@ serve(async (req: Request) => {
         let food: string | undefined;
         for (let i = words.length - 1; i >= 0; i--) { const w = words[i]; if (SKIP2.has(w) || VERBISH.test(w)) continue; food = w; break; }
         if (food) food = food.replace(/(ndan|nden|tan|ten|dan|den)$/, '');
+        // #ux-fix (garbage capture): same generic-token repair as the dislike net.
+        if (food) food = repairGenericFoodName(food, message) ?? undefined;
         if (food && food.length >= 3 && !SKIP2.has(food) && !NONFOOD2.has(food) && !VERBISH.test(food)) {
           actions.push({ type: 'food_preference', food_name: food, preference: 'like', is_allergen: false });
           console.warn('[like_reversal_net] food_preference injected', { food });
@@ -1432,8 +1480,36 @@ serve(async (req: Request) => {
     assistantMessage = afterReasoning;
 
     // <navigate_to> — route hint for daily_log chats (Phase 5).
-    const { cleanMessage: afterNav, navigateTo } = extractNavigateTo(assistantMessage);
-    assistantMessage = afterNav;
+    const navExtract = extractNavigateTo(assistantMessage);
+    assistantMessage = navExtract.cleanMessage;
+    let navigateTo = navExtract.navigateTo;
+
+    // #ux-fix (main-chat plan handoff, live 07-11): asking the main coach for a weekly plan produced
+    // a TEXT-ONLY plan persisted nowhere — plan tab/dashboard never changed. The 'plan' mode prompt
+    // now carries the navigation block, but the model drops it often enough that the handoff must be
+    // DETERMINISTIC: on a clear "create me a weekly diet/workout plan" request with the precondition
+    // profile fields present and no model-emitted navigate_to, emit the route server-side so the main
+    // chat always hands off to the real (persisted) plan flow. Never fires in the plan-negotiation
+    // modes themselves, and not on "bugünkü planım ne?" style questions (requires a create-verb).
+    if (!navigateTo && effectiveMode === 'plan' && message
+      && task_mode_hint !== 'plan_diet' && task_mode_hint !== 'plan_workout') {
+      const mNav = message.toLocaleLowerCase('tr');
+      const wantsPlan = /(haftal[ıi]k[^.!?]{0,30}(plan|program|liste|men[üu])|diyet listesi|beslenme plan|yemek plan|antrenman program|spor program|egzersiz program|(yeni|bana)[^.!?]{0,20}(plan|program))/.test(mNav);
+      const createVerb = /(istiyorum|ister\s*misin|isterim|hazirla|hazırla|olustur|oluştur|yapar\s*m[ıi]s[ıi]n|yapsana|yap\b|çıkar|cikar|ver\b|verir\s*misin|laz[ıi]m|gerek|olsun)/.test(mNav);
+      // A READ query about the existing/today's plan ("bugünkü planımı ver", "planımı göster")
+      // is not a creation request — never hand off on those.
+      const readQuery = /(bugün|bugun|yarın|yarin|dünkü|dunku|göster|goster|neydi|ne var|planda ne)/.test(mNav);
+      const hasBasics = !!(profile?.height_cm && profile?.weight_kg && profile?.birth_year && profile?.gender);
+      if (wantsPlan && createVerb && !readQuery && hasBasics) {
+        const workoutCue = /(antrenman|spor|egzersiz|fitness|salon|kas)/.test(mNav);
+        const dietCue = /(diyet|beslenme|yemek|men[üu]|kalori|[öo][ğg][üu]n)/.test(mNav);
+        navigateTo = workoutCue && !dietCue ? '/plan/workout' : '/plan/diet';
+        if (!/plan (sekmesi|ekran)/i.test(assistantMessage)) {
+          assistantMessage += '\n\nHaftalık planını kalıcı olarak plan ekranında oluşturuyorum — aşağıdaki butonla geç, orada hazırlayıp kaydediyorum.';
+        }
+        console.warn('[plan_handoff_net] navigate_to injected', { route: navigateTo });
+      }
+    }
 
     // <simulation> — "şunu yesem ne olur?" projection block. Parse it into a structured
     // `simulation` response field, but KEEP the block in the message: the client renders the
@@ -1928,6 +2004,19 @@ serve(async (req: Request) => {
       }
     }
 
+    // #ux-fix (confirm/reject marker reliability, live 07-11): the client is retiring its substring
+    // heuristic ("taskMode==='plan' && content.includes('plan')") — from now on the presence of the
+    // explicit <confirm_reject/> marker must mean EXACTLY "a real plan-proposal snapshot was persisted
+    // this turn and awaits the user's decision". Enforce both directions deterministically:
+    //  - strip any stray marker the model emitted (no proposal → no buttons, incl. approval turns);
+    //  - re-emit it exactly once when a draft snapshot WAS persisted in a negotiation mode.
+    // The marker stays inside the stored message text so the history reload path shows the buttons too.
+    assistantMessage = assistantMessage.replace(/<confirm_reject\s*\/?>/g, '').trim();
+    if (persistedPlan && user_approved !== true
+      && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
+      assistantMessage = `${assistantMessage}\n<confirm_reject/>`.trim();
+    }
+
     // Task completion detection (MASTER_PLAN §4.1).
     // Two paths:
     //  (a) AI emits explicit <task_completion> block.
@@ -2149,6 +2238,56 @@ serve(async (req: Request) => {
       }
     }
 
+    // #ux-fix (prose-kcal vs logged-kcal contradiction, live 07-11): user logged "150g tavuk göğsü ve
+    // salata"; the executed meal_log recorded ~332 kcal (receipt UI correct) while the SAME message's
+    // prose recomputed per-100g numbers ("Toplamda yaklaşık 215 kcal aldın"). The prompt now bans prose
+    // totals on logging turns, but the guarantee is deterministic: when a meal_log actually persisted
+    // ('Ogun kaydedildi' feedback) and the prose carries kcal figures deviating >15% from the logged
+    // total, strip those sentences and cite the authoritative total instead — the user must never see
+    // two different totals in one message. Budget/burn/target sentences are exempt (other quantities),
+    // as is the code-appended "Dogru anladiysam..." line (its numbers come from the action itself).
+    {
+      let loggedKcalTotal = 0;
+      actions.forEach((a, ai) => {
+        const ar = a as Record<string, unknown>;
+        if (ar.type !== 'meal_log') return;
+        if (!(actionFeedback[ai] ?? '').includes('Ogun kaydedildi')) return; // dupe-skip/failed → no receipt shown
+        const its = ar.items as { calories?: number }[] | undefined;
+        loggedKcalTotal += (its ?? []).reduce((s, it) => s + (Number(it?.calories) || 0), 0);
+      });
+      if (loggedKcalTotal > 0 && /\d[\d.,]*\s*(kcal|kalori)/i.test(assistantMessage)) {
+        const withinTolerance = (n: number) => Math.abs(n - loggedKcalTotal) <= loggedKcalTotal * 0.15;
+        // Review fix (ux-pass2): suggestion/future sentences are NOT contradictions
+        // ("akşama ~600 kcal'lik bir öğün önerebilirim") — exempt them too.
+        const EXEMPT = /(bütçe|butce|marjin|hedef|kalan|yakt|yakıyor|yakiyor|yakacak|harcad|açı[ğk]|aci[gk]|bakım|bakim|tdee|öner|oner|tavsiye|akşam|aksam|yarın|yarin|sonraki|dogru anladiysam|doğru anladıysam|<simulation|weeklyimpact)/i;
+        // Review fix (ux-pass2): tolerate tr-TR thousands separators — "1.250 kcal" must
+        // parse as 1250, not 250 (which made CORRECT sentences look deviating).
+        const KCAL_NUM = /(\d{1,3}(?:[.,]\d{3})+|\d{1,4}(?:[.,]\d{1,2})?)\s*(?:kcal|kalori)/gi;
+        const parseKcal = (raw: string): number => {
+          if (/^\d{1,3}(?:[.,]\d{3})+$/.test(raw)) return parseFloat(raw.replace(/[.,]/g, ''));
+          return parseFloat(raw.replace(',', '.'));
+        };
+        const sentences = assistantMessage.split(/(?<=[.!?\n])/);
+        let strippedAny = false;
+        const kept = sentences.filter((s) => {
+          const nums = [...s.matchAll(KCAL_NUM)].map((mm) => parseKcal(mm[1]));
+          if (nums.length === 0 || EXEMPT.test(s)) return true;
+          if (nums.some(withinTolerance)) return true; // cites the real total — consistent, keep
+          // Review fix (ux-pass2): a correct ITEMIZATION ("tavuk ~250 kcal, salata ~80 kcal")
+          // has no single number near the total but SUMS to it — that's consistent, keep.
+          const sum = nums.reduce((a, b) => a + b, 0);
+          if (nums.length > 1 && withinTolerance(sum)) return true;
+          strippedAny = true;
+          return false;
+        });
+        if (strippedAny) {
+          assistantMessage = kept.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+          assistantMessage = `${assistantMessage}\n\nKaydettim: yaklaşık ${Math.round(loggedKcalTotal)} kcal.`.trim();
+          console.warn('[kcal_consistency_net] stripped deviating prose kcal figures', { loggedKcalTotal });
+        }
+      }
+    }
+
     // A8: Low confidence proactive verification — append confirmation question
     const mealActions = actions.filter((a) => (a as { type?: string }).type === 'meal_log');
     for (const mealAction of mealActions) {
@@ -2332,7 +2471,9 @@ serve(async (req: Request) => {
     // FIX (audit AI-MDL-05): pass the reserved user-row id so storeMessages appends ONLY the
     // assistant reply (and backfills the user row's task_mode) instead of inserting a SECOND
     // user row. When null (photo-only / reservation-insert fallback) it inserts both rows as before.
-    await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions, session_id, reservedUserMessageId);
+    // #ux-fix (per-message feedback linkage): capture the persisted assistant row id — surfaced to
+    // the client as `assistant_message_id` so feedback votes finally link to a REAL chat_messages row.
+    const assistantMessageId = await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions, session_id, reservedUserMessageId);
     // FIX (audit AI-MDL-05): the turn is now persisted (assistant reply appended to the reserved
     // row's conversation). Clear the handle so a throw in the post-store steps below does NOT
     // make the catch release an already-answered, legitimately-counted message.
@@ -2464,6 +2605,10 @@ serve(async (req: Request) => {
     const responseData = {
       message: assistantMessage,
       actions: outActions,
+      // #ux-fix (per-message feedback linkage): the persisted assistant chat_messages row id.
+      // Additive — clients that don't read it are unaffected; the feedback buttons use it so
+      // votes link to the real message row instead of a client-minted id.
+      assistant_message_id: assistantMessageId,
       task_mode: taskMode,
       task_completion: validatedCompletion,
       plan_snapshot: persistedPlan,
@@ -2525,6 +2670,49 @@ const EXERCISE_ALIASES: Record<string, string> = {
 function canonicalExerciseName(raw: string): string {
   const snake = (raw ?? '').toLocaleLowerCase('tr').trim().replace(/\s+/g, '_');
   return EXERCISE_ALIASES[snake] ?? snake;
+}
+
+/**
+ * #ux-fix (garbage allergen capture, live 07-11): "deniz ürünleri alerjim olduğunu unutma" got
+ * persisted as food_name='ürünleri' (is_allergen=true) — a bare generic Turkish head-noun the
+ * allergen guardrail can NEVER match against a real seafood item. Normalize every captured
+ * food_name BEFORE it reaches executeActions:
+ *  - a multi-word / non-generic name passes through unchanged;
+ *  - a bare generic token ("ürünleri", "yemekleri", "gıdaları", "şeyler"...) is repaired by
+ *    recovering the full noun phrase from the user's own message (the word immediately before
+ *    the token → "deniz ürünleri", "süt ürünleri");
+ *  - if unrecoverable, returns null — the caller REJECTS the write instead of storing garbage.
+ * Applies to allergen AND dislike/like captures (same corruption class). Inflected forms
+ * ("ürünlerine", "ürünlerini") are covered; downstream matching re-normalizes via foodMatchKey.
+ */
+const GENERIC_FOOD_HEAD_RE = /^(ürün|urun|yemek|yiyecek|gıda|gida|mamul|şey|sey|besin)(ler|leri|lere|lerin|lerini|lerine|i|ı|u|ü|e|a)?[a-zçğıöşü]{0,4}$/;
+const GENERIC_PREV_STOPWORDS = new Set([
+  'bu', 'şu', 'su', 'o', 've', 'ile', 'gibi', 'tüm', 'tum', 'bütün', 'butun', 'bazı', 'bazi',
+  'hiçbir', 'hicbir', 'her', 'çoğu', 'cogu', 'diğer', 'diger', 'ama', 'fakat', 'yani', 'bir',
+  'tür', 'tur', 'bazen', 'sadece', 'özellikle', 'ozellikle', 'asla', 'kesinlikle',
+]);
+function repairGenericFoodName(rawName: string, userMessage?: string | null): string | null {
+  const name = (rawName ?? '').trim();
+  if (!name) return null;
+  const lower = name.toLocaleLowerCase('tr');
+  // Multi-word phrases ("deniz ürünleri") and ordinary food nouns pass through unchanged.
+  if (lower.includes(' ') || !GENERIC_FOOD_HEAD_RE.test(lower)) return name;
+  // Bare generic head-noun — recover the qualifier from the user's own words.
+  const msg = (userMessage ?? '').toLocaleLowerCase('tr').replace(/[^a-zçğıöşü\s]/g, ' ');
+  const words = msg.split(/\s+/).filter(Boolean);
+  // A verb can sit right before the token ("asla YEMEM ürünleri...") — a food qualifier never
+  // carries these person/tense suffixes. (No 'mek/mak': would false-reject "kaymak".)
+  const PREV_VERBISH = /(yorum|iyor|ıyor|uyor|üyor|mem|mam|mez|maz|dim|dım|dum|düm)$/;
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    if (!GENERIC_FOOD_HEAD_RE.test(w)) continue;
+    if (w.slice(0, 3) !== lower.slice(0, 3)) continue; // must be the SAME head noun as the captured token
+    const prev = words[i - 1];
+    if (prev && prev.length >= 3 && !GENERIC_PREV_STOPWORDS.has(prev) && !GENERIC_FOOD_HEAD_RE.test(prev) && !PREV_VERBISH.test(prev)) {
+      return `${prev} ${w}`; // full noun phrase, e.g. "deniz ürünleri"
+    }
+  }
+  return null; // unrecoverable — caller must drop the write
 }
 
 function respond(data: unknown, status = 200) {
@@ -3474,8 +3662,13 @@ async function validateTaskCompletion(
   }
 }
 
-async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string, reservedUserMessageId?: string | null) {
+// #ux-fix (per-message feedback linkage, live 07-11): returns the PERSISTED assistant chat_messages
+// row id so the response payload can carry it (`assistant_message_id`) — the client's feedback
+// buttons previously minted a client-side id the feedback service discarded, so votes never linked
+// to the message. Additive: existing callers that ignore the return value are unaffected.
+async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string, reservedUserMessageId?: string | null): Promise<string | null> {
   let sessionId: string | null = null;
+  let assistantMessageId: string | null = null;
 
   if (externalSessionId) {
     const { data: existing } = await supabaseAdmin
@@ -3537,14 +3730,15 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
     if (Object.keys(patch).length > 0) {
       await supabaseAdmin.from('chat_messages').update(patch).eq('id', reservedUserMessageId);
     }
-    await supabaseAdmin.from('chat_messages').insert({
+    const { data: aRow } = await supabaseAdmin.from('chat_messages').insert({
       user_id: userId, session_id: sessionId, role: 'assistant', content: assistantMsg,
       task_mode: taskMode, model_version: modelUsed ?? null,
       token_count: tokenCount ?? null,
       actions_executed: executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null,
-    });
+    }).select('id').maybeSingle();
+    assistantMessageId = (aRow?.id as string | undefined) ?? null;
   } else {
-    await supabaseAdmin.from('chat_messages').insert([
+    const { data: insRows } = await supabaseAdmin.from('chat_messages').insert([
       { user_id: userId, session_id: sessionId, role: 'user', content: userMsg, task_mode: taskMode },
       {
         user_id: userId, session_id: sessionId, role: 'assistant', content: assistantMsg,
@@ -3552,7 +3746,8 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
         token_count: tokenCount ?? null,
         actions_executed: executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null,
       },
-    ]);
+    ]).select('id, role');
+    assistantMessageId = ((insRows ?? []).find((r: { id: string; role: string }) => r.role === 'assistant')?.id as string | undefined) ?? null;
   }
 
   // Auto-generate session title from first user message
@@ -3573,6 +3768,8 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
         .eq('id', sessionId);
     }
   }
+
+  return assistantMessageId;
 }
 
 async function executeActions(

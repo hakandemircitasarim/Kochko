@@ -22,6 +22,9 @@ export default function FoodPreferencesScreen() {
   const user = useAuthStore(s => s.user);
   const [items, setItems] = useState<FoodPref[]>([]);
   const [loading, setLoading] = useState(true);
+  // FIX (audit empty-vs-error): fetch hatası eskiden sessizce boş listeye düşüyordu — alerjen
+  // listesi güvenlik verisi; hata durumu boş görünümle karışamaz.
+  const [loadError, setLoadError] = useState(false);
   const [newFood, setNewFood] = useState('');
   const [newPref, setNewPref] = useState<Pref>('never');
   const [isAllergen, setIsAllergen] = useState(false);
@@ -30,7 +33,15 @@ export default function FoodPreferencesScreen() {
 
   async function load() {
     if (!user?.id) return;
-    const { data } = await supabase.from('food_preferences').select('*').eq('user_id', user.id).order('food_name');
+    setLoading(true);
+    setLoadError(false);
+    const { data, error } = await supabase.from('food_preferences').select('*').eq('user_id', user.id).order('food_name');
+    if (error) {
+      console.warn('food_preferences load failed', error);
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
     setItems((data ?? []) as FoodPref[]);
     setLoading(false);
   }
@@ -63,6 +74,18 @@ export default function FoodPreferencesScreen() {
 
   if (loading) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+  }
+
+  // FIX (audit empty-vs-error): tam-ekran hata+tekrar dene (daily.tsx cloud-offline kalıbı).
+  if (loadError) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
+        <Ionicons name="cloud-offline-outline" size={48} color={COLORS.textMuted} />
+        <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>Tercihler yüklenemedi</Text>
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+        <Button title="Tekrar dene" onPress={load} size="lg" />
+      </View>
+    );
   }
 
   return (

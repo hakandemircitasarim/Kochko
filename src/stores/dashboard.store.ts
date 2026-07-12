@@ -29,6 +29,7 @@ interface WorkoutEntry {
   raw_input: string;
   duration_min: number;
   workout_type: string;
+  logged_at: string | null;
 }
 
 interface TodayState {
@@ -58,6 +59,10 @@ interface TodayState {
   goalProgress: GoalProgress | null;
   activeGoal: Goal | null;
   loading: boolean;
+  // FIX (ux-pass2 #7/#10): query failures used to render a fake zeroed day; now they set
+  // fetchError and KEEP the previous state. lastFetchedAt (ms) gates silent focus refetches.
+  fetchError: boolean;
+  lastFetchedAt: number | null;
 
   fetchToday: (userId: string, dayBoundaryHour?: number) => Promise<void>;
   addWater: (userId: string, amount: number, dayBoundaryHour?: number) => Promise<void>;
@@ -66,6 +71,10 @@ interface TodayState {
 }
 
 const todayStr = (dayBoundaryHour: number = 4) => getEffectiveDate(new Date(), dayBoundaryHour);
+
+// FIX (ux-pass2 #8a): rapid su tapları için yazım zinciri — her halka store'daki EN GÜNCEL
+// toplamı yazar; N hızlı artış yarışan upsert'ler yerine sıralı yazımlara dönüşür.
+let waterWriteChain: Promise<void> = Promise.resolve();
 
 export const useDashboardStore = create<TodayState>((set, get) => ({
   meals: [],
@@ -94,25 +103,37 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   goalProgress: null,
   activeGoal: null,
   loading: false,
+  fetchError: false,
+  lastFetchedAt: null,
 
   fetchToday: async (userId, dayBoundaryHour = 4) => {
     set({ loading: true });
     const date = todayStr(dayBoundaryHour);
 
+    try {
     const [mealsRes, workoutsRes, metricsRes, planRes, goalRes, profileRes] = await Promise.all([
       supabase.from('meal_logs').select('id, raw_input, meal_type, logged_at')
         .eq('user_id', userId).eq('logged_for_date', date).eq('is_deleted', false).order('logged_at'),
-      supabase.from('workout_logs').select('id, raw_input, duration_min, workout_type')
+      supabase.from('workout_logs').select('id, raw_input, duration_min, workout_type, logged_at')
         .eq('user_id', userId).eq('logged_for_date', date).order('logged_at'),
       supabase.from('daily_metrics').select('*')
         .eq('user_id', userId).eq('date', date).maybeSingle(),
-      supabase.from('daily_plans').select('focus_message, weekly_budget_total, weekly_budget_consumed, weekly_budget_remaining, water_target_liters, plan_type, calorie_target_min, calorie_target_max, protein_target_g, carbs_target_g, fat_target_g')
+      supabase.from('daily_plans').select('focus_message, generated_at, weekly_budget_total, weekly_budget_consumed, weekly_budget_remaining, water_target_liters, plan_type, calorie_target_min, calorie_target_max, protein_target_g, carbs_target_g, fat_target_g')
         .eq('user_id', userId).eq('date', date).order('version', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('goals').select('*')
         .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).maybeSingle(),
       supabase.from('profiles').select('weight_kg, water_target_liters, weekly_calorie_budget')
         .eq('id', userId).maybeSingle(),
     ]);
+
+    // FIX (ux-pass2 #7): any failed query used to fall through as `data ?? []` / null and the
+    // dashboard rendered a convincing fake zeroed day. Flag the failure and keep prior state.
+    const failed = [mealsRes, workoutsRes, metricsRes, planRes, goalRes, profileRes].find(r => r.error);
+    if (failed?.error) {
+      console.warn('fetchToday query failed:', failed.error.message);
+      set({ loading: false, fetchError: true });
+      return;
+    }
 
     // #journey HIGH: weekly-budget CONSUMED must be LIVE — sum this week's logged calories — not
     // the frozen daily_plans.weekly_budget_consumed snapshot that never moved as the user logged
@@ -143,10 +164,16 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
     type ItemRow = { meal_log_id: string; calories: number; protein_g: number; carbs_g: number | null; fat_g: number | null };
     const itemsByMeal = new Map<string, ItemRow[]>();
     if (mealIds.length > 0) {
-      const { data: allItems } = await supabase
+      const { data: allItems, error: itemsErr } = await supabase
         .from('meal_log_items')
         .select('meal_log_id, calories, protein_g, carbs_g, fat_g')
         .in('meal_log_id', mealIds);
+      // FIX (ux-pass2 #7): a failed items read used to zero every meal's calories silently.
+      if (itemsErr) {
+        console.warn('fetchToday items query failed:', itemsErr.message);
+        set({ loading: false, fetchError: true });
+        return;
+      }
       for (const item of (allItems ?? []) as ItemRow[]) {
         const bucket = itemsByMeal.get(item.meal_log_id) ?? [];
         bucket.push(item);
@@ -181,6 +208,35 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
     const computedWater = weight ? calculateWaterTarget(weight, isTrainingDay, isSummer) : 2.5;
     const waterTarget = planWater ?? profileWater ?? computedWater;
 
+    // FIX (ux-pass2 #3): frozen focus_message split-brain — a stale projection ("1900 kcal
+    // önerdim...", 19.06'da yazılmış) halkanın 2076 hedefiyle aynı ekranda çelişiyordu.
+    // İki kapı: (1) satır bu haftadan önce üretildiyse bayat; (2) mesajın içindeki herhangi
+    // bir "N kcal" rakamı bu satırın hedef orta noktasından >%10 sapıyorsa çelişkili.
+    // İkisinde de mesajı hiç gösterme — kullanıcı asla iki çelişen kcal hedefi görmemeli.
+    const focusMessage = (() => {
+      const raw = (planRes.data?.focus_message as string | null) ?? null;
+      if (!raw) return null;
+      const genAtRaw = planRes.data?.generated_at as string | null | undefined;
+      const genAt = genAtRaw ? new Date(genAtRaw).getTime() : NaN;
+      const weekStartMs = new Date(`${weekStart}T00:00:00Z`).getTime();
+      if (Number.isFinite(genAt) && genAt < weekStartMs) return null;
+      const calMin = Number(planRes.data?.calorie_target_min ?? NaN);
+      const calMax = Number(planRes.data?.calorie_target_max ?? NaN);
+      const mid = (calMin + calMax) / 2;
+      // Review fix (ux-pass2): yalnız GÜNLÜK TOPLAM iddialarını (≥800 kcal) hedefe karşı
+      // doğrula — "kahvaltıya ~500 kcal ayır" gibi öğün-düzeyi rakamlar meşru ve hedef
+      // orta noktasından sapması doğal. Hedef yoksa da bastırma: doğrulanamamak ≠ çelişki.
+      if (!(mid > 0)) return raw;
+      const kcalRe = /(\d[\d.,]*)\s*kcal/gi;
+      let m: RegExpExecArray | null;
+      while ((m = kcalRe.exec(raw)) != null) {
+        const n = parseInt(m[1].replace(/[.,]/g, ''), 10);
+        if (!Number.isFinite(n) || n < 800) continue;
+        if (Math.abs(n - mid) / mid > 0.10) return null;
+      }
+      return raw;
+    })();
+
     set({
       meals,
       workouts: (workoutsRes.data ?? []) as WorkoutEntry[],
@@ -196,7 +252,7 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       totalProtein: Math.round(totalProtein),
       totalCarbs: Math.round(totalCarbs),
       totalFat: Math.round(totalFat),
-      focusMessage: planRes.data?.focus_message ?? null,
+      focusMessage,
       weeklyBudgetConsumed: liveWeekConsumed != null ? Math.round(liveWeekConsumed) : (planRes.data?.weekly_budget_consumed ?? null),
       weeklyBudgetTotal: weeklyBudgetTotalResolved,
       weeklyBudgetRemaining: (weeklyBudgetTotalResolved != null && liveWeekConsumed != null)
@@ -217,35 +273,53 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         return calculateGoalProgress(goal, curWeight, startWeight);
       })(),
       loading: false,
+      fetchError: false,
+      lastFetchedAt: Date.now(),
     });
+    } catch (err) {
+      // FIX (ux-pass2 #7): network/unexpected failure — keep previous state, surface the flag.
+      console.warn('fetchToday failed:', err);
+      set({ loading: false, fetchError: true });
+    }
   },
 
   addWater: async (userId, amount, dayBoundaryHour = 4) => {
     const date = todayStr(dayBoundaryHour);
-    const current = get().waterLiters;
-    const newTotal = Math.round((current + amount) * 100) / 100;
+    // FIX (ux-pass2 #8a): optimistik — UI ağı beklemeden anında artar; hata olursa
+    // yalnız BU tapın artışı geri alınır (eşzamanlı taplar kendi paylarını geri alır).
+    const newTotal = Math.round((get().waterLiters + amount) * 100) / 100;
+    set({ waterLiters: newTotal });
 
     // FIX (audit UX-OFF-03) çevrimdışıyken doğrudan upsert reddedilir ve artış
     // kaybolurdu. Bağlantı yoksa yapısal offline kuyruğa düş (water_log → daily_metrics
     // dalı, onConflict:'user_id,date'); reconnect'te setupAutoSync drenajı yapar.
-    // Optimistik UI'yi yine güncelle ki kullanıcı artışı görsün.
     if (!(await isOnline())) {
       await enqueue({
         type: 'water_log',
         table: 'daily_metrics',
-        data: { user_id: userId, date, water_liters: newTotal },
+        data: { user_id: userId, date, water_liters: get().waterLiters },
         userId,
       });
-      set({ waterLiters: newTotal });
       return;
     }
 
-    const { error } = await supabase.from('daily_metrics').upsert(
-      { user_id: userId, date, water_liters: newTotal, synced: true },
-      { onConflict: 'user_id,date' }
-    );
-    if (error) throw error;
-    set({ waterLiters: newTotal });
+    // Hızlı ardışık tapları zincir üzerinden serileştir: her halka store'daki EN GÜNCEL
+    // toplamı yazar, böylece N tap yarışan eski değerler yerine nihai değere yakınsar.
+    const link = waterWriteChain.then(async () => {
+      const { error } = await supabase.from('daily_metrics').upsert(
+        { user_id: userId, date, water_liters: get().waterLiters, synced: true },
+        { onConflict: 'user_id,date' }
+      );
+      if (error) throw error;
+    });
+    waterWriteChain = link;
+    try {
+      await link;
+    } catch (err) {
+      set({ waterLiters: Math.max(0, Math.round((get().waterLiters - amount) * 100) / 100) });
+      waterWriteChain = Promise.resolve(); // zinciri sıfırla ki sonraki tap zehirlenmesin
+      throw err;
+    }
   },
 
   deleteMeal: async (mealId) => {
@@ -261,12 +335,25 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
     if (error) throw error;
     set(state => {
       const deleted = state.meals.find(m => m.id === mealId);
+      const cal = deleted?.calories ?? 0;
+      // FIX (ux-pass2 #9): haftalık bütçe kartı da aynı silmeyi yansıtmalı — yoksa aynı
+      // ekranda halka düşerken bütçe kartı eski tüketimi göstermeye devam ediyordu.
+      const newConsumed = state.weeklyBudgetConsumed != null
+        ? Math.max(0, state.weeklyBudgetConsumed - cal)
+        : null;
+      const newRemaining = state.weeklyBudgetTotal != null && newConsumed != null
+        ? Math.min(state.weeklyBudgetTotal, Math.max(0, state.weeklyBudgetTotal - newConsumed))
+        : state.weeklyBudgetRemaining != null
+          ? Math.max(0, state.weeklyBudgetRemaining + cal)
+          : state.weeklyBudgetRemaining;
       return {
         meals: state.meals.filter(m => m.id !== mealId),
-        totalCalories: state.totalCalories - (deleted?.calories ?? 0),
-        totalProtein: state.totalProtein - Math.round(deleted?.protein_g ?? 0),
-        totalCarbs: state.totalCarbs - Math.round(deleted?.carbs_g ?? 0),
-        totalFat: state.totalFat - Math.round(deleted?.fat_g ?? 0),
+        totalCalories: Math.max(0, state.totalCalories - cal),
+        totalProtein: Math.max(0, state.totalProtein - Math.round(deleted?.protein_g ?? 0)),
+        totalCarbs: Math.max(0, state.totalCarbs - Math.round(deleted?.carbs_g ?? 0)),
+        totalFat: Math.max(0, state.totalFat - Math.round(deleted?.fat_g ?? 0)),
+        weeklyBudgetConsumed: newConsumed ?? state.weeklyBudgetConsumed,
+        weeklyBudgetRemaining: newRemaining,
       };
     });
   },

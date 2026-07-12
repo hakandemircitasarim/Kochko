@@ -38,15 +38,17 @@ import {
   getDraft,
   discardDraft,
   applySnapshot,
+  dayLabelTR,
   type PlanRow,
   type DietPlanData,
 } from '@/services/plan.service';
-import { isPlanReady } from '@/lib/plan-readiness';
+import { isPlanReady, type ReadinessExtras } from '@/lib/plan-readiness';
 import { canApprovePlan } from '@/lib/premium-gate';
 import { PlanEmptyState } from '@/components/plan/PlanEmptyState';
 import { PlanPreviewCard } from '@/components/plan/PlanPreviewCard';
 import { PlanActiveView } from '@/components/plan/PlanActiveView';
 import { FullPlanModal } from '@/components/plan/FullPlanModal';
+import { PlanDayAccordion } from '@/components/plan/PlanDayAccordion';
 import { AlternativeComparisonModal } from '@/components/plan/AlternativeComparisonModal';
 import { PlanChatComposer } from '@/components/plan/PlanChatComposer';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
@@ -82,8 +84,30 @@ export default function DietPlanScreen() {
   const [changedCells, setChangedCells] = useState<Array<{ dayIndex: number; mealType: string }>>([]);
   const [altCandidate, setAltCandidate] = useState<DietPlanData | null>(null);
   const [showAltModal, setShowAltModal] = useState(false);
+  // FIX (fix-pass 07-12, item 7): allergen/health completion lives off-profile
+  // (food_preferences / health_events / ai_summary) — fetched in load() so the
+  // empty-state weak-spot chips can drop once those tasks are actually done.
+  const [readinessExtras, setReadinessExtras] = useState<ReadinessExtras>({});
   const prevPlanRef = useRef<DietPlanData | null>(null);
   const listRef = useRef<FlatList>(null);
+
+  // ── Inline draft review measurements (fix-pass 07-12, item 2a/2b) ──
+  // The plan now renders inline as the chat list header. The approve gate is
+  // SEMANTIC (review fix ux-pass2): every content day expanded at least once
+  // (PlanDayAccordion.onAllDaysViewed) — geometry fit-checks unlocked while 6 of
+  // 7 days were still collapsed. Drag-past-the-plan stays as a secondary path.
+  const draftHeaderHRef = useRef(0);
+  const userDraggedRef = useRef(false);
+  // Autoscroll to the newest bubble ONLY when a message was appended. An
+  // unconditional scrollToEnd on every content-size change would instantly
+  // scroll the inline plan header out of view on first load and yank the list
+  // whenever a day accordion expands.
+  const prevMsgCountRef = useRef(0);
+  const pendingScrollRef = useRef(false);
+  useEffect(() => {
+    if (messages.length > prevMsgCountRef.current) pendingScrollRef.current = true;
+    prevMsgCountRef.current = messages.length;
+  }, [messages.length]);
 
   // ─── Data load ───
   const mountedRef = useRef(true);
@@ -99,15 +123,24 @@ export default function DietPlanScreen() {
     // the 'error' branch which offers a retry button.
     try {
       if (!useProfileStore.getState().profile) await fetchProfile(user.id);
-      const [activeRow, draftRow, goalRes] = await Promise.all([
+      const [activeRow, draftRow, goalRes, allergiesRes, healthRes, summaryRes] = await Promise.all([
         getActive(user.id, 'diet'),
         getDraft(user.id, 'diet'),
         supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1),
+        // FIX (fix-pass 07-12, item 7): weak-spot chip data (same sources as onboarding-tasks.service).
+        supabase.from('food_preferences').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_allergen', true),
+        supabase.from('health_events').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('ai_summary').select('onboarding_tasks_completed').eq('user_id', user.id).maybeSingle(),
       ]);
       if (!mountedRef.current) return;
       setActive(activeRow);
       setDraft(draftRow);
       setGoal((goalRes.data as { goal_type?: string; target_weight_kg?: number }[] | null)?.[0] ?? null);
+      setReadinessExtras({
+        allergiesCount: allergiesRes.count ?? 0,
+        healthEventsCount: healthRes.count ?? 0,
+        completedTasks: ((summaryRes.data as Record<string, unknown> | null)?.onboarding_tasks_completed as string[]) ?? [],
+      });
 
       if (draftRow) {
         setView('draft');
@@ -130,7 +163,8 @@ export default function DietPlanScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Reset fullyViewed whenever snapshot version changes
+  // Reset fullyViewed whenever snapshot version changes — the accordion resets its
+  // viewed-days set on the same version bump and re-fires when all days are re-opened.
   useEffect(() => {
     const v = (draft?.plan_data as DietPlanData | undefined)?.version;
     if (v !== undefined) setFullyViewed(false);
@@ -165,7 +199,11 @@ export default function DietPlanScreen() {
     if (!(await ensurePlanQuotaAcknowledged())) return;
     // Create a chat session for this plan negotiation.
     const sid = await createHeadlessSession({ title: 'Diyet planı oluşturma', topicTags: ['plan_diet'] });
-    if (!sid) return;
+    if (!sid) {
+      // FIX (fix-pass 07-12, item 8a): silent return = dead button. Tell the user.
+      Alert.alert('Bağlantı sorunu', 'Koç oturumu açılamadı. Bağlantını kontrol edip tekrar dene.');
+      return;
+    }
     setChatSessionId(sid);
     setSending(true);
     // The [PLAN_INIT] sentinel is sent to the LLM only — never mounted as a
@@ -192,11 +230,24 @@ export default function DietPlanScreen() {
   };
 
   const sendUserMessage = async (text: string) => {
-    if (!chatSessionId) return;
     setMessages(prev => [...prev, { id: 'u-' + Date.now(), role: 'user', content: text }]);
+    // FIX (fix-pass 07-12, item 8a): a null session used to swallow the message silently
+    // (dead composer). Re-attempt session creation; if that also fails, say so in-thread.
+    let sid = chatSessionId;
+    if (!sid) {
+      sid = await createHeadlessSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
+      if (!sid) {
+        setMessages(prev => [
+          ...prev,
+          { id: 'err-' + Date.now(), role: 'assistant', content: 'Bağlantı sorunu — mesajın gönderilemedi, tekrar dene.' },
+        ]);
+        return;
+      }
+      setChatSessionId(sid);
+    }
     setSending(true);
     const { data, error } = await invokePlanChat({
-      sessionId: chatSessionId,
+      sessionId: sid,
       message: text,
       planType: 'diet',
     });
@@ -217,7 +268,7 @@ export default function DietPlanScreen() {
     // Ask AI for a second-approach snapshot; we capture it client-side without persisting
     // to the draft row, so the user can pick between current draft and alternative.
     setSending(true);
-    const { data } = await invokePlanChat({
+    const { data, error } = await invokePlanChat({
       sessionId: chatSessionId,
       message: '[ALT] Lütfen aynı profilimle FARKLI bir yaklaşımla alternatif bir haftalık plan üret. Mevcut plana benzemesin.',
       planType: 'diet',
@@ -226,6 +277,13 @@ export default function DietPlanScreen() {
     if (data?.plan_snapshot) {
       setAltCandidate(data.plan_snapshot as unknown as DietPlanData);
       setShowAltModal(true);
+    } else {
+      // FIX (fix-pass 07-12, item 8b): the invoke error was discarded — the tap did
+      // nothing visible. Surface it in-thread.
+      setMessages(prev => [
+        ...prev,
+        { id: 'err-' + Date.now(), role: 'assistant', content: error ?? 'Alternatif üretilemedi, tekrar dene.' },
+      ]);
     }
     await load();
   };
@@ -319,7 +377,15 @@ export default function DietPlanScreen() {
     // FIX (audit Wave3): check for an existing draft before INSERT. migration 030 enforces a
     // partial UNIQUE(user_id, plan_type) WHERE status='draft', so a blind INSERT over an existing
     // draft threw 23505 and the raw Postgres "duplicate key" string leaked into the chat bubble.
-    const existing = await getDraft(user.id, 'diet');
+    // FIX (fix-pass 07-12, item 8c): getDraft now throws on network error; we're still in the
+    // ACTIVE view here, where chat bubbles are invisible — use an Alert.
+    let existing: PlanRow | null = null;
+    try {
+      existing = await getDraft(user.id, 'diet');
+    } catch {
+      Alert.alert('Bağlantı sorunu', 'Revizyon başlatılamadı. Bağlantını kontrol edip tekrar dene.');
+      return;
+    }
     if (existing) {
       const sid = await createHeadlessSession({ title: 'Diyet planı revizyonu', topicTags: ['plan_diet'] });
       if (sid) setChatSessionId(sid);
@@ -404,7 +470,9 @@ export default function DietPlanScreen() {
   }
 
   if (view === 'empty') {
-    const readiness = isPlanReady(profile, goal, 'diet');
+    // FIX (fix-pass 07-12, item 7): pass off-profile task data so completed
+    // allergen/health tasks stop rendering as weak-spot chips forever.
+    const readiness = isPlanReady(profile, goal, 'diet', readinessExtras);
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Stack.Screen options={{ title: 'Diyet planı', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
@@ -429,6 +497,9 @@ export default function DietPlanScreen() {
           goal={goal}
           onStartRevision={handleStartRevision}
           onOpenHistory={handleHistory}
+          // FIX (fix-pass 07-12, item 1): stale-plan banner CTA → brand-new draft via
+          // the same generation flow as the empty-state 'Plan oluştur'.
+          onCreateFresh={startDraftCreation}
           creatingRevision={sending}
         />
       </View>
@@ -451,6 +522,7 @@ export default function DietPlanScreen() {
           <PlanPreviewCard
             plan={planData}
             planType="diet"
+            weekStart={draft.week_start}
             onPress={() => setShowFullModal(true)}
             // Reserve the label for a "new, needs review" cue; once read we drop
             // it so the version line reads cleanly (no read-state/recency mix-up).
@@ -458,15 +530,54 @@ export default function DietPlanScreen() {
           />
         </View>
 
-        {/* Chat area */}
+        {/* Chat area — the plan itself renders INLINE as the list header
+            (fix-pass 07-12, item 2b): the day-by-day content used to hide behind
+            the tiny preview card, leaving a huge void between card and composer. */}
         <FlatList
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: SPACING.md, gap: SPACING.sm }}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+          onScrollBeginDrag={() => { userDraggedRef.current = true; }}
+          onScroll={e => {
+            // Gate path 2 (item 2a): user dragged far enough to see the whole
+            // inline plan. Guarded by onScrollBeginDrag so the programmatic
+            // scrollToEnd on new messages can't silently satisfy the gate.
+            if (!userDraggedRef.current) return;
+            const { contentOffset, layoutMeasurement } = e.nativeEvent;
+            if (draftHeaderHRef.current > 0
+              && contentOffset.y + layoutMeasurement.height >= draftHeaderHRef.current - 40) {
+              setFullyViewed(true);
+            }
+          }}
+          scrollEventThrottle={100}
+          onContentSizeChange={() => {
+            if (!pendingScrollRef.current) return;
+            pendingScrollRef.current = false;
+            listRef.current?.scrollToEnd({ animated: true });
+          }}
           renderItem={({ item }) => <DraftChatBubble msg={item} />}
+          ListHeaderComponent={
+            <View
+              onLayout={e => { draftHeaderHRef.current = e.nativeEvent.layout.height; }}
+              style={{ paddingBottom: SPACING.xs }}
+            >
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm }}>
+                HAFTALIK TASLAK — GÖZDEN GEÇİR
+              </Text>
+              <PlanDayAccordion
+                plan={planData}
+                resetKey={planData.version ?? 1}
+                highlightedCells={changedCells}
+                onMealEdit={(dayIndex, mealType) => {
+                  const label = dayLabelTR(dayIndex, planData.days?.[dayIndex]?.day_label);
+                  sendUserMessage(`${label} - ${mealType} öğününü değiştirir misin?`);
+                }}
+                onAllDaysViewed={() => setFullyViewed(true)}
+              />
+            </View>
+          }
           ListEmptyComponent={
             sending ? null : (
               <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.lg }}>
@@ -502,11 +613,12 @@ export default function DietPlanScreen() {
           onClose={() => setShowFullModal(false)}
           plan={planData}
           planVersion={planData.version ?? 1}
+          weekStart={draft.week_start}
           highlightedCells={changedCells}
           onFullyViewed={() => setFullyViewed(true)}
           onMealEdit={(dayIndex, mealType) => {
             setShowFullModal(false);
-            const dayLabel = planData.days[dayIndex]?.day_label ?? '';
+            const dayLabel = dayLabelTR(dayIndex, planData.days?.[dayIndex]?.day_label);
             sendUserMessage(`${dayLabel} - ${mealType} öğününü değiştirir misin?`);
           }}
         />
@@ -535,6 +647,10 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
   const hiddenTrigger = msg.content.startsWith('[PLAN_INIT]') || msg.content.startsWith('[ALT]');
   if (isUser && hiddenTrigger) return null;
 
+  // Review fix (ux-pass2): the server appends the <confirm_reject/> machine marker to
+  // persisted plan proposals — this surface has its own approve UI, never render it.
+  const displayContent = msg.content.replace(/<confirm_reject\s*\/?>/g, '').trim();
+
   const userFg = getContrastColor(colors.primary);
 
   return (
@@ -554,7 +670,7 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
       }}
     >
       <Text selectable style={{ color: isUser ? userFg : colors.text, fontSize: 14, lineHeight: 20 }}>
-        {msg.content}
+        {displayContent}
       </Text>
       {msg.reasoning ? (
         <View

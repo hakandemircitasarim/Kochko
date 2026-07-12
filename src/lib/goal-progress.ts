@@ -113,18 +113,18 @@ export function calculateGoalProgress(
  */
 export function getGoalSummaryText(progress: GoalProgress, goalType: string): string {
   if (progress.isGoalReached) {
-    return 'Hedefe ulastin! Tebrikler!';
+    return 'Hedefe ulaştın! Tebrikler!';
   }
 
   const direction = goalType === 'lose_weight' ? 'verdin' : 'aldin';
   const paceText: Record<PaceStatus, string> = {
-    ahead: 'tempon cok iyi',
-    on_track: 'tempon iyi, boyle devam',
+    ahead: 'tempon çok iyi',
+    on_track: 'tempon iyi, böyle devam',
     behind: 'biraz gerideyiz ama toparlanabilirsin',
-    stalled: 'ilerleme durmus, plani gozden gecirelim',
+    stalled: 'ilerleme durmuş, planı gözden geçirelim',
   };
 
-  return `${Math.abs(progress.kgLost)}kg ${direction}, hedefe ${progress.kgRemaining}kg kaldi. ${paceText[progress.paceStatus]}.`;
+  return `${String(Math.abs(progress.kgLost)).replace('.', ',')} kg ${direction}, hedefe ${String(progress.kgRemaining).replace('.', ',')} kg kaldı. ${paceText[progress.paceStatus]}.`;
 }
 
 /**
@@ -165,7 +165,7 @@ export function validateGoalSafety(
 
   // Max 1kg/week loss
   if (goalType === 'lose_weight' && weeklyRate > 1.0) {
-    warnings.push('Haftada 1kg\'dan fazla kilo kaybi onerilmez.');
+    warnings.push('Haftada 1 kg\'dan fazla kilo kaybı önerilmez.');
   }
 
   // BMI check for weight loss
@@ -173,13 +173,13 @@ export function validateGoalSafety(
     const heightM = heightCm / 100;
     const currentBMI = currentWeight / (heightM * heightM);
     if (currentBMI < 20) {
-      warnings.push('BMI\'niz zaten dusuk. Kilo verme hedefi uygun olmayabilir.');
+      warnings.push('BMI\'n zaten düşük. Kilo verme hedefi uygun olmayabilir.');
     }
   }
 
   // Max 0.5kg/week gain
   if ((goalType === 'gain_weight' || goalType === 'gain_muscle') && weeklyRate > 0.5) {
-    warnings.push('Haftada 0.5kg\'dan fazla kilo alimi yag birikimine yol acabilir.');
+    warnings.push('Haftada 0,5 kg\'dan fazla kilo alımı yağ birikimine yol açabilir.');
   }
 
   return { safe: warnings.length === 0, warnings };

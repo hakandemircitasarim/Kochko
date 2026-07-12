@@ -93,9 +93,9 @@ export async function exportJSON(options?: { share?: boolean }): Promise<void> {
   await FileSystem.writeAsStringAsync(fileUri, json, { encoding: 'utf8' });
   if (share) {
     if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Kochko Veri Exportu' });
+      await Sharing.shareAsync(fileUri, { mimeType: 'application/json', dialogTitle: 'Kochko — Verilerim' });
     } else {
-      await Share.share({ title: 'Kochko Export', message: json });
+      await Share.share({ title: 'Kochko — Verilerim', message: json });
     }
   }
 
@@ -121,7 +121,7 @@ export async function exportCSV(): Promise<void> {
   const reports = (reportsRes.data ?? []) as { date: string; compliance_score: number; calorie_actual: number; protein_actual: number }[];
 
   const dates = new Set([...metrics.map(m => m.date), ...reports.map(r => r.date)]);
-  let csv = 'Tarih,Kilo,Su(L),Uyku(sa),Adim,Mood,Uyum,Kalori,Protein\n';
+  let csv = 'Tarih,Kilo,Su(L),Uyku(sa),Adım,Ruh Hali,Uyum,Kalori,Protein\n';
 
   for (const date of [...dates].sort()) {
     const m = metrics.find(x => x.date === date);
@@ -167,7 +167,7 @@ export async function exportPDF(report: PDFReportData): Promise<void> {
 
   const weightChangeText =
     report.weightChange != null
-      ? `${report.weightChange > 0 ? '+' : ''}${report.weightChange.toFixed(1)} kg`
+      ? `${report.weightChange > 0 ? '+' : ''}${report.weightChange.toFixed(1).replace('.', ',')} kg`
       : 'Veri yok';
 
   const html = `
@@ -203,22 +203,22 @@ export async function exportPDF(report: PDFReportData): Promise<void> {
     </div>
     <div class="metric-card">
       <div class="metric-value">${weightChangeText}</div>
-      <div class="metric-label">Kilo Degisimi</div>
+      <div class="metric-label">Kilo Değişimi</div>
     </div>
   </div>
 
-  <div class="section-title">Ozet</div>
+  <div class="section-title">Özet</div>
   <div class="summary">${report.summary}</div>
 
   ${
     insightsHtml
-      ? `<div class="section-title">Onemli Noktalar</div><ul>${insightsHtml}</ul>`
+      ? `<div class="section-title">Önemli Noktalar</div><ul>${insightsHtml}</ul>`
       : ''
   }
 
   ${
     weeklyRowsHtml
-      ? `<div class="section-title">Haftalik Veriler</div>
+      ? `<div class="section-title">Haftalık Veriler</div>
          <table>
            <thead><tr><th>Hafta</th><th>Uyum</th><th>Kilo</th></tr></thead>
            <tbody>${weeklyRowsHtml}</tbody>
@@ -226,7 +226,7 @@ export async function exportPDF(report: PDFReportData): Promise<void> {
       : ''
   }
 
-  <div class="footer">Kochko - Yapay Zeka Destekli Beslenme Asistani</div>
+  <div class="footer">Kochko — Yapay Zekâ Destekli Beslenme Asistanı</div>
 </body>
 </html>`;
 

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity, Modal, TextInput, type ViewStyle } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -22,6 +22,7 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
   const { isPremium, requirePremium } = usePremium();
+  const { openDelete } = useLocalSearchParams<{ openDelete?: string }>();
 
   // Typed-confirm gate for account deletion: the destructive call only fires
   // after the user types "SIL" in the second modal.
@@ -29,6 +30,16 @@ export default function SettingsScreen() {
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const canDelete = deleteConfirm.trim().toUpperCase() === 'SIL';
+
+  // FIX (audit dead-drop): profile's 'Hesabı sil' row lands here with ?openDelete=1 —
+  // open the shared typed-confirm modal directly instead of dropping the user at the
+  // top of a 30-row list whose delete button is the last row.
+  useEffect(() => {
+    if (openDelete === '1') {
+      setDeleteConfirm('');
+      setDeleteOpen(true);
+    }
+  }, [openDelete]);
 
   const closeDeleteModal = () => {
     setDeleteOpen(false);
@@ -109,7 +120,8 @@ export default function SettingsScreen() {
         <Row icon="restaurant-outline" iconColor={colors.fat} label="Yemek Tercihleri" onPress={() => router.push('/settings/food-preferences')} colors={colors} />
         <Row icon="heart-outline" iconColor={colors.pink} label="Favori Öğünler" onPress={() => router.push('/settings/meal-templates')} colors={colors} />
         <Row icon="timer-outline" iconColor={colors.purple} label="IF Ayarları" onPress={() => router.push('/settings/if-settings')} colors={colors} />
-        <Row icon="calendar-outline" iconColor={colors.pink} label="Adet Döngüsü" onPress={() => router.push('/settings/menstrual')} colors={colors} />
+        {/* FIX (audit naming): menü etiketi native başlıkla ('Regl Döngüsü', _layout.tsx) aynı. */}
+        <Row icon="calendar-outline" iconColor={colors.pink} label="Regl Döngüsü" onPress={() => router.push('/settings/menstrual')} colors={colors} />
         <Row icon="medkit-outline" iconColor={colors.error} label="Sağlık Geçmişi" onPress={() => router.push('/settings/health-events')} colors={colors} />
         <Row icon="flask-outline" iconColor={colors.carbs} label="Lab Değerleri" onPress={() => router.push('/settings/lab-values')} colors={colors} />
         <Row icon="nutrition-outline" iconColor={colors.success} label="Supplement Takibi" onPress={() => router.push('/settings/supplements')} colors={colors} />
@@ -145,7 +157,8 @@ export default function SettingsScreen() {
       <SectionTitle label="Tercihler" colors={colors} />
       <MenuGroup colors={colors}>
         <Row icon="chatbubble-outline" iconColor={colors.primary} label="Koç Tonu" onPress={() => router.push('/settings/coach-tone')} colors={colors} />
-        <Row icon="eye-outline" iconColor={colors.purple} label="Kochko'nun Senin Hakkında Bildikleri" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
+        {/* FIX (audit naming): tek kanonik özellik adı — 'Kochko Seni Nasıl Tanıyor'. */}
+        <Row icon="eye-outline" iconColor={colors.purple} label="Kochko Seni Nasıl Tanıyor" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
         <Row icon="notifications-outline" iconColor={colors.carbs} label="Bildirimler" onPress={() => router.push('/settings/notifications')} colors={colors} />
         <Row icon="pulse-outline" iconColor={colors.pink} label="Dönemsel Durum" premium={!isPremium} onPress={isPremium ? () => router.push('/settings/periodic-state') : gated('/settings/periodic-state', 'Dönemsel Durum')} colors={colors} />
         <Row icon="color-palette-outline" iconColor={colors.purple} label="Tema" onPress={() => router.push('/settings/theme')} colors={colors} last />
@@ -170,7 +183,7 @@ export default function SettingsScreen() {
       {/* Privacy */}
       <Card title="Gizlilik ve Güvenlik" style={{ marginTop: SPACING.lg }}>
         <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
-          Verilerin şifrelenerek saklanır. Tüm verilerini dışa aktarabilir veya hesabını silebilirsin. Kochko'nun senin hakkında bildiklerini Profil {'>'} "Kochko'nun Senin Hakkında Bildikleri" bölümünden görebilir, düzeltebilir veya silebilirsin.
+          Verilerin şifrelenerek saklanır. Tüm verilerini dışa aktarabilir veya hesabını silebilirsin. Kochko'nun senin hakkında bildiklerini Profil {'>'} "Kochko Seni Nasıl Tanıyor" bölümünden görebilir, düzeltebilir veya silebilirsin.
         </Text>
       </Card>
 

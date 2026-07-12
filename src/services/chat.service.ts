@@ -30,6 +30,9 @@ export interface ChatResponse {
   navigate_to?: string | null;
   rate_limited?: boolean;
   remaining?: number;
+  // Persisted chat_messages row id of the assistant reply — lets the client key
+  // feedback votes to a real UUID instead of a client-minted id (ux-pass2, W#75).
+  assistant_message_id?: string | null;
 }
 
 // Plan chat invocation — used by plan/diet.tsx and plan/workout.tsx screens.
@@ -58,7 +61,6 @@ export async function invokePlanChat(params: {
   }
 }
 
-const CACHE_KEY = '@kochko_chat_cache';
 const OFFLINE_QUEUE_KEY = '@kochko_chat_offline_queue';
 const MAX_MESSAGE_LENGTH = 2000;
 const DEFAULT_MAX_RETRIES = 2; // 2 retries = 3 total attempts (1s, 3s backoff)
@@ -263,7 +265,7 @@ async function readImageAsBase64(imageUri: string): Promise<{ base64: string | n
   try {
     const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' as const });
     if (base64.length > MAX_IMAGE_BASE64_BYTES) {
-      return { base64: null, error: 'Foto cok buyuk. Daha dusuk cozunurluklu bir foto sec veya tekrar cek.' };
+      return { base64: null, error: 'Foto çok büyük. Daha düşük çözünürlüklü bir foto seç veya tekrar çek.' };
     }
     return { base64, error: null };
   } catch (err) {
@@ -279,19 +281,10 @@ export async function sendMessageWithPhoto(text: string, imageUri: string): Prom
 
 // ─── History with Cache ───
 
-// FIX (audit: loadChatHistory dead + wrong order) removed loadChatHistory entirely —
-// it had no callers (grep-verified), lacked session scope, and fetched the OLDEST 50
-// (ascending+limit) instead of newest. The live path is loadSessionMessages (fixed below).
-// getCachedHistory remains an exported helper for offline cache reads.
-
-export async function getCachedHistory(): Promise<ChatMessage[]> {
-  try {
-    const cached = await AsyncStorage.getItem(CACHE_KEY);
-    return cached ? JSON.parse(cached) as ChatMessage[] : [];
-  } catch {
-    return [];
-  }
-}
+// (Review fix ux-pass2) getCachedHistory + the legacy '@kochko_chat_cache' key deleted:
+// nothing wrote that key since loadChatHistory was removed, so the helper always
+// returned [] — a provably-empty third cache mechanism waiting to be misused.
+// The live cache is THREAD_CACHE_KEY below (user-scoped, written by loadSessionMessages).
 
 // ─── Offline Queue ───
 
@@ -384,70 +377,9 @@ export async function sendMessageForDate(text: string, targetDate: string): Prom
 
 // ─── Session Management ───
 
-const SESSIONS_CACHE_KEY = '@kochko_sessions_cache';
-
-export interface ChatSessionSummary {
-  id: string;
-  title: string | null;
-  topic_tags: string[];
-  started_at: string;
-  updated_at: string | null;
-  ended_at: string | null;
-  message_count: number;
-  is_active: boolean;
-  last_message?: string;
-}
-
-export async function loadSessions(limit = 20): Promise<ChatSessionSummary[]> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) return getCachedSessions();
-
-    const { data } = await supabase
-      .from('chat_sessions')
-      .select('id, title, topic_tags, started_at, updated_at, ended_at, message_count, is_active')
-      .eq('user_id', session.user.id)
-      .order('started_at', { ascending: false })
-      .limit(limit);
-
-    const sessions = (data ?? []) as ChatSessionSummary[];
-
-    // FIX (audit DB-IDX-03): the old path fetched EVERY message of all 20 sessions in one
-    // .in()+order query and kept only the latest per session client-side — the DB returned (and
-    // the device downloaded) the entire history of 20 sessions. The get_session_last_messages RPC
-    // returns exactly ONE last-message row per session (DISTINCT ON) and is auth.uid()-scoped.
-    if (sessions.length > 0) {
-      const ids = sessions.map(s => s.id);
-      const { data: msgs } = await supabase.rpc('get_session_last_messages', { p_session_ids: ids });
-      if (msgs) {
-        const lastBySession = new Map<string, string>();
-        for (const m of msgs as { session_id: string; content: string }[]) {
-          if (!lastBySession.has(m.session_id)) {
-            lastBySession.set(m.session_id, m.content);
-          }
-        }
-        for (const s of sessions) {
-          const c = lastBySession.get(s.id);
-          if (c) s.last_message = c.substring(0, 80);
-        }
-      }
-    }
-
-    await AsyncStorage.setItem(SESSIONS_CACHE_KEY, JSON.stringify(sessions));
-    return sessions;
-  } catch {
-    return getCachedSessions();
-  }
-}
-
-async function getCachedSessions(): Promise<ChatSessionSummary[]> {
-  try {
-    const cached = await AsyncStorage.getItem(SESSIONS_CACHE_KEY);
-    return cached ? JSON.parse(cached) as ChatSessionSummary[] : [];
-  } catch {
-    return [];
-  }
-}
+// (Review fix ux-pass2) loadSessions/getCachedSessions/SESSIONS_CACHE_KEY deleted: the S1
+// one-thread rebuild retired the session-list surface, leaving them with zero callers
+// (settings screens define their own local loadSessions over different queries).
 
 /**
  * #S1 (one-thread structural rebuild): THE coach conversation. Returns the user's single active
@@ -455,6 +387,21 @@ async function getCachedSessions(): Promise<ChatSessionSummary[]> {
  * what beheaded the thread and made the coach read as amnesiac at every boundary). The mig-035
  * one-active-per-user unique index is the cornerstone: it guarantees a single canonical thread.
  */
+// ux-pass2: the canonical thread id is stable (S1 one-active-per-user index), so cache it —
+// the tab renders the thread instantly instead of a skeleton + network resolve per focus.
+// User-scoped: an unscoped id survived account switches (review fix).
+const ACTIVE_SESSION_CACHE_KEY = '@kochko_active_session_id';
+
+export async function getCachedActiveSessionId(): Promise<string | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return null;
+    return await AsyncStorage.getItem(`${ACTIVE_SESSION_CACHE_KEY}:${session.user.id}`);
+  } catch {
+    return null;
+  }
+}
+
 export async function getOrCreateActiveSession(): Promise<string | null> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
@@ -464,7 +411,10 @@ export async function getOrCreateActiveSession(): Promise<string | null> {
       .from('chat_sessions').select('id')
       .eq('user_id', userId).eq('is_active', true)
       .limit(1).maybeSingle();
-    if (active?.id) return active.id as string;
+    if (active?.id) {
+      AsyncStorage.setItem(`${ACTIVE_SESSION_CACHE_KEY}:${userId}`, active.id as string).catch(() => {});
+      return active.id as string;
+    }
     const { data, error } = await supabase
       .from('chat_sessions')
       .insert({ user_id: userId, title: 'Koç', topic_tags: [], is_active: true })
@@ -475,8 +425,10 @@ export async function getOrCreateActiveSession(): Promise<string | null> {
         .from('chat_sessions').select('id')
         .eq('user_id', userId).eq('is_active', true)
         .limit(1).maybeSingle();
+      if (retry?.id) AsyncStorage.setItem(`${ACTIVE_SESSION_CACHE_KEY}:${userId}`, retry.id as string).catch(() => {});
       return (retry?.id as string) ?? null;
     }
+    if (data?.id) AsyncStorage.setItem(`${ACTIVE_SESSION_CACHE_KEY}:${userId}`, data.id as string).catch(() => {});
     return data?.id ?? null;
   } catch {
     return null;
@@ -514,25 +466,72 @@ export async function createHeadlessSession(options?: { title?: string; topicTag
 // (the thread-beheading primitive behind the amnesia complaints). Use getOrCreateActiveSession
 // (the one canonical thread) or createHeadlessSession (invisible machine flows) instead.
 
-export async function loadSessionMessages(_sessionId: string, limit = 50): Promise<ChatMessage[]> {
+// ux-pass2 (W#12/#18): last-page write-through cache — the thread paints instantly on
+// every open instead of a full-screen spinner per tab switch.
+// Review fix (ux-pass2): USER-SCOPED keys. Unscoped caches painted user A's coach
+// history onto user B's screen after an account switch on the same device.
+const THREAD_CACHE_KEY = '@kochko_thread_cache_v1';
+let lastCachedNewestId: string | null = null;
+
+export async function getCachedThread(): Promise<ChatMessage[] | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) return null;
+    const cached = await AsyncStorage.getItem(`${THREAD_CACHE_KEY}:${session.user.id}`);
+    return cached ? (JSON.parse(cached) as ChatMessage[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort cache hygiene on sign-out (keys are user-scoped anyway). */
+export async function clearChatCaches(userId: string): Promise<void> {
+  try {
+    lastCachedNewestId = null;
+    await AsyncStorage.multiRemove([
+      `${THREAD_CACHE_KEY}:${userId}`,
+      `${ACTIVE_SESSION_CACHE_KEY}:${userId}`,
+    ]);
+  } catch { /* best-effort */ }
+}
+
+/**
+ * Returns NULL on fetch failure — the empty array is reserved for a genuinely empty
+ * thread. Conflating the two rendered the fresh-account empty state over weeks of
+ * history on any network hiccup (ux-pass2, W#8/#73: the "her şey silindi" moment).
+ */
+export async function loadSessionMessages(_sessionId: string, limit = 50): Promise<ChatMessage[] | null> {
   try {
     // #S1 THREAD CONTINUITY: the conversation is USER-scoped, not session-scoped — a user with
     // weeks of coaching history must NEVER open an empty chat ("her şey silindi" feel). History
     // flows across legacy sessions; plan-negotiation turns (they live in the plan screens) and
     // machine [SYSTEM_INIT] kickoffs are excluded. Newest page first, reversed to chronological.
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) return [];
-    const { data } = await supabase
+    if (!session?.user?.id) return null;
+    const { data, error } = await supabase
       .from('chat_messages')
       .select('id, role, content, task_mode, created_at, actions_executed')
       .eq('user_id', session.user.id)
       .or('task_mode.is.null,task_mode.not.in.("plan_diet","plan_workout")')
       .not('content', 'like', '[SYSTEM_INIT]%')
+      // Plan-negotiation kickoffs live in headless plan sessions; historical rows were
+      // stored with the DETECTED mode (e.g. 'register'), so the task_mode exclusion
+      // alone let them leak into the thread (seen live, ux-pass2).
+      .not('content', 'like', '[PLAN_INIT]%')
       .order('created_at', { ascending: false })
       .limit(limit);
-    return ((data as ChatMessage[]) ?? []).reverse();
+    if (error) return null;
+    const result = ((data as ChatMessage[]) ?? []).reverse();
+    // Skip the (JSON.stringify of ~30 rows) write when nothing changed — the
+    // pending-reply poll calls this every 5s.
+    const newestId = result.length > 0 ? result[result.length - 1].id : null;
+    if (newestId && newestId !== lastCachedNewestId) {
+      lastCachedNewestId = newestId;
+      AsyncStorage.setItem(`${THREAD_CACHE_KEY}:${session.user.id}`, JSON.stringify(result.slice(-30))).catch(() => {});
+    }
+    return result;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -556,6 +555,7 @@ export async function loadOlderSessionMessages(
       .eq('user_id', session.user.id)
       .or('task_mode.is.null,task_mode.not.in.("plan_diet","plan_workout")')
       .not('content', 'like', '[SYSTEM_INIT]%')
+      .not('content', 'like', '[PLAN_INIT]%')
       .lt('created_at', beforeCreatedAt)
       .order('created_at', { ascending: false })
       .limit(limit);

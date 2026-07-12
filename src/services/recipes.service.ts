@@ -202,16 +202,16 @@ export function checkRecipeAllergens(
 // ─── Ingredient Substitution ───
 
 const SUBSTITUTIONS: Record<string, { replacement: string; note_tr: string }[]> = {
-  'sut': [{ replacement: 'badem sutu', note_tr: 'Laktoz intoleransi icin' }, { replacement: 'yulaf sutu', note_tr: 'Vegan alternatif' }],
-  'tereyagi': [{ replacement: 'zeytinyagi', note_tr: 'Daha saglikli yag' }, { replacement: 'hindistancevizi yagi', note_tr: 'Laktoz-free' }],
-  'un': [{ replacement: 'badem unu', note_tr: 'Glutensiz' }, { replacement: 'nohut unu', note_tr: 'Yuksek protein' }],
-  'seker': [{ replacement: 'stevia', note_tr: 'Sifir kalori' }, { replacement: 'bal', note_tr: 'Dogal tatlandirici' }],
-  'peynir': [{ replacement: 'tofu', note_tr: 'Vegan alternatif' }, { replacement: 'avokado', note_tr: 'Saglikli yag' }],
-  'makarna': [{ replacement: 'kabak makarna', note_tr: 'Dusuk kalori' }, { replacement: 'mercimek makarna', note_tr: 'Yuksek protein' }],
-  'pirinc': [{ replacement: 'kinoa', note_tr: 'Yuksek protein' }, { replacement: 'bulgur', note_tr: 'Dusuk glisemik' }],
-  'ekmek': [{ replacement: 'tam bugday ekmek', note_tr: 'Daha fazla lif' }, { replacement: 'pirinc patlagi', note_tr: 'Dusuk kalori' }],
-  'krema': [{ replacement: 'yogurt', note_tr: 'Dusuk yag' }, { replacement: 'hindistancevizi kremasi', note_tr: 'Laktoz-free' }],
-  'yumurta': [{ replacement: 'chia tohumu + su', note_tr: 'Vegan (1 yumurta = 1yk chia + 3yk su)' }, { replacement: 'muz', note_tr: 'Tatli tariflerde' }],
+  'sut': [{ replacement: 'badem sütü', note_tr: 'Laktoz intoleransı için' }, { replacement: 'yulaf sütü', note_tr: 'Vegan alternatif' }],
+  'tereyagi': [{ replacement: 'zeytinyağı', note_tr: 'Daha sağlıklı yağ' }, { replacement: 'hindistancevizi yağı', note_tr: 'Laktozsuz' }],
+  'un': [{ replacement: 'badem unu', note_tr: 'Glutensiz' }, { replacement: 'nohut unu', note_tr: 'Yüksek protein' }],
+  'seker': [{ replacement: 'stevia', note_tr: 'Sıfır kalori' }, { replacement: 'bal', note_tr: 'Doğal tatlandırıcı' }],
+  'peynir': [{ replacement: 'tofu', note_tr: 'Vegan alternatif' }, { replacement: 'avokado', note_tr: 'Sağlıklı yağ' }],
+  'makarna': [{ replacement: 'kabak makarna', note_tr: 'Düşük kalori' }, { replacement: 'mercimek makarna', note_tr: 'Yüksek protein' }],
+  'pirinc': [{ replacement: 'kinoa', note_tr: 'Yüksek protein' }, { replacement: 'bulgur', note_tr: 'Düşük glisemik' }],
+  'ekmek': [{ replacement: 'tam buğday ekmek', note_tr: 'Daha fazla lif' }, { replacement: 'pirinç patlağı', note_tr: 'Düşük kalori' }],
+  'krema': [{ replacement: 'yoğurt', note_tr: 'Düşük yağ' }, { replacement: 'hindistancevizi kreması', note_tr: 'Laktozsuz' }],
+  'yumurta': [{ replacement: 'chia tohumu + su', note_tr: 'Vegan (1 yumurta = 1 yk chia + 3 yk su)' }, { replacement: 'muz', note_tr: 'Tatlı tariflerde' }],
 };
 
 export function suggestSubstitution(ingredientName: string): { replacement: string; note_tr: string }[] {

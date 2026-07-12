@@ -7,25 +7,21 @@
  * workout name or rest day label) so the home surface is useful without
  * drilling in.
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { getActive, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
+import { getActive, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
+import { getEffectiveDate } from '@/lib/day-boundary';
 
 interface Props {
   userId: string | undefined;
+  dayBoundaryHour?: number;
 }
 
-function todayIndex(): number {
-  // 0 = Monday in our convention
-  const raw = new Date().getDay();
-  return raw === 0 ? 6 : raw - 1;
-}
-
-export function PlanOverviewCards({ userId }: Props) {
+export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
   const { colors } = useTheme();
   const [diet, setDiet] = useState<PlanRow | null>(null);
   const [workout, setWorkout] = useState<PlanRow | null>(null);
@@ -35,17 +31,31 @@ export function PlanOverviewCards({ userId }: Props) {
 
   const load = useCallback(async () => {
     if (!userId) return;
-    const [d, w] = await Promise.all([
-      getActive(userId, 'diet'),
-      getActive(userId, 'workout'),
-    ]);
-    setDiet(d);
-    setWorkout(w);
-    setLoaded(true);
+    // getActive THROWS on fetch error now (error ≠ empty, ux-pass2 W#7) — keep the
+    // last-known cards instead of falsely claiming "planın yok" on a network blip.
+    try {
+      const [d, w] = await Promise.all([
+        getActive(userId, 'diet'),
+        getActive(userId, 'workout'),
+      ]);
+      setDiet(d);
+      setWorkout(w);
+      setLoaded(true);
+    } catch (err) {
+      console.warn('PlanOverviewCards load failed:', err);
+    }
   }, [userId]);
 
-  useEffect(() => { load(); }, [load]);
+  // FIX (ux-pass2 #11a): useEffect(load) + useFocusEffect(load) ilk açılışta çift fetch
+  // yapıyordu — useFocusEffect ilk focus'ta da çalıştığından tek başına yeterli.
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // FIX (ux-pass2 #11d): ham getDay() gece 00:00-04:00 arasında yarına atlarken günlük
+  // hâlâ bugünü sayıyordu — plan kartı da veriyle aynı efektif-gün mantığını kullanır.
+  const effNoon = new Date(`${getEffectiveDate(new Date(), dayBoundaryHour)}T12:00:00`);
+  const rawDow = effNoon.getDay(); // 0 = Pazar
+  const todayIdx = rawDow === 0 ? 6 : rawDow - 1; // 0 = Pazartesi (bizim konvansiyon)
+  const currentWeekStart = isoDateMondayOfWeek(effNoon);
 
   return (
     <View style={{ gap: SPACING.sm }}>
@@ -56,6 +66,8 @@ export function PlanOverviewCards({ userId }: Props) {
         plan={diet}
         planType="diet"
         loaded={loaded}
+        todayIdx={todayIdx}
+        currentWeekStart={currentWeekStart}
         onPress={() => router.push('/plan/diet' as never)}
       />
       <PlanCard
@@ -65,6 +77,8 @@ export function PlanOverviewCards({ userId }: Props) {
         plan={workout}
         planType="workout"
         loaded={loaded}
+        todayIdx={todayIdx}
+        currentWeekStart={currentWeekStart}
         onPress={() => router.push('/plan/workout' as never)}
       />
       <TouchableOpacity
@@ -98,6 +112,8 @@ function PlanCard({
   plan,
   planType,
   loaded,
+  todayIdx,
+  currentWeekStart,
   onPress,
 }: {
   title: string;
@@ -106,10 +122,12 @@ function PlanCard({
   plan: PlanRow | null;
   planType: 'diet' | 'workout';
   loaded: boolean;
+  todayIdx: number;
+  currentWeekStart: string;
   onPress: () => void;
 }) {
   const { colors } = useTheme();
-  const idx = todayIndex();
+  const idx = todayIdx;
 
   const { primary, secondary, chip } = (() => {
     if (!plan) {
@@ -125,6 +143,15 @@ function PlanCard({
         chip: null,
       };
     }
+    // FIX (ux-pass2 #11f): 4 haftalık plandan gururla "Bugün 3 öğün" yansıtmak yerine
+    // geçen haftadan kalmış aktif planı açıkça bayat ilan et (plan ekranı CTA'sı ayrı ajanda).
+    if (plan.week_start && plan.week_start < currentWeekStart) {
+      return {
+        primary: 'Planın geçen haftadan kaldı — yenile',
+        secondary: 'Koçundan güncel bir plan iste',
+        chip: null,
+      };
+    }
     if (planType === 'diet') {
       // Defensive: plan_data is raw LLM-authored JSON (a structurally-incomplete but
       // valid snapshot can slip past the server gate). Guard days/targets/meals so a
@@ -132,11 +159,18 @@ function PlanCard({
       const d = plan.plan_data as DietPlanData;
       const today = (d?.days ?? []).find(x => x.day_index === idx);
       const mealCount = today?.meals?.length ?? 0;
-      const kcal = today?.total_kcal ?? 0;
+      // FIX (ux-pass2 #11b): plan gününde kayıt yoksa 'Bugün 0 öğün — 0 kcal' saçmalığı
+      // yerine dürüst boş durum.
+      if (!today || mealCount === 0) {
+        return { primary: 'Bugün kayıt yok', secondary: '', chip: null };
+      }
+      // FIX (ux-pass2 #11c): LLM kaynaklı ondalıklı kcal/protein değerleri yuvarlanır.
+      const kcal = Math.round(Number(today.total_kcal ?? 0));
+      const protein = Math.round(Number(d?.targets?.protein ?? 0));
       return {
         primary: `Bugün ${mealCount} öğün`,
-        secondary: `${kcal} kcal · ${d?.targets?.protein ?? 0}g protein`,
-        chip: today?.meals?.[0]?.name ?? null,
+        secondary: `${kcal} kcal · ${protein}g protein`,
+        chip: today.meals?.[0]?.name ?? null,
       };
     }
     const w = plan.plan_data as WorkoutPlanData;
@@ -186,7 +220,9 @@ function PlanCard({
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
-            {title.toUpperCase()}
+            {/* FIX (ux-pass2 #11e): .toUpperCase() Türkçe i→I bozuyordu ('BU HAFTAKI DIYETIN');
+                tr-TR locale ile i→İ doğru büyür ('BU HAFTAKİ DİYETİN'). */}
+            {title.toLocaleUpperCase('tr-TR')}
           </Text>
           <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: 2 }}>
             {primary}

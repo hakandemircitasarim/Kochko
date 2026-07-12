@@ -9,8 +9,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
+import { usePremium } from '@/hooks/usePremium';
 import { loadInsights } from '@/services/chat.service';
 import { calculateStreak } from '@/services/achievements.service';
+// FIX (audit raw-enum): map periodic_state enum ('busy_work'...) to Turkish labels.
+import { PERIODIC_LABELS, type PeriodicState } from '@/services/periodic.service';
 import { supabase } from '@/lib/supabase';
 import { InsightCard } from '@/components/profile/InsightCard';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
@@ -29,10 +32,16 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
   const { profile, fetch: fetchProfile } = useProfileStore();
+  const { isPremium, requirePremium } = usePremium();
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [streak, setStreak] = useState(0);
   const [goal, setGoal] = useState<{ goal_type: string; target_weight_kg: number | null } | null>(null);
-  const [allergens, setAllergens] = useState<string[]>([]);
+  // FIX (audit false-Yok): distinguish "fetch failed" from "no data" — a failed fetch must
+  // never render a confident 'Yok' / 'Hedef belirle'.
+  const [goalLoadError, setGoalLoadError] = useState(false);
+  // allergens === null ⇒ fetch failed OR still loading (render 'Yüklenemedi'/'—',
+  // never a confident 'Yok' before the data actually arrived — safety-critical row).
+  const [allergens, setAllergens] = useState<string[] | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -44,24 +53,35 @@ export default function ProfileScreen() {
       .then(({ data }) => calculateStreak(user.id, (data?.day_boundary_hour as number | null) ?? 4))
       .then((s) => { if (!cancelled) setStreak(s); });
     supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1)
-      .then(({ data }) => {
-        if (!cancelled) {
-          const row = (data as { goal_type: string; target_weight_kg: number | null }[] | null)?.[0] ?? null;
-          setGoal(row);
-        }
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        // FIX (audit false-Yok): a fetch error previously fell through to the same UI as
+        // "no active goal" — surface it as an error state instead.
+        if (error) { setGoalLoadError(true); setGoal(null); return; }
+        setGoalLoadError(false);
+        const row = (data as { goal_type: string; target_weight_kg: number | null }[] | null)?.[0] ?? null;
+        setGoal(row);
       });
     supabase.from('food_preferences').select('food_name').eq('user_id', user.id).eq('is_allergen', true)
-      .then(({ data }) => {
-        if (!cancelled) {
-          const names = (data as { food_name: string }[] | null)?.map((r) => r.food_name) ?? [];
-          setAllergens(names);
-        }
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        // FIX (audit false-Yok, safety): on error NEVER show 'Alerjenler: Yok' — a user with a
+        // real allergy would read that as "the app knows I have none".
+        if (error) { setAllergens(null); return; }
+        const names = (data as { food_name: string }[] | null)?.map((r) => r.food_name) ?? [];
+        setAllergens(names);
       });
     return () => { cancelled = true; };
   }, [user?.id]);
 
   const displayName = (profile?.display_name as string) || user?.email?.split('@')[0] || 'Kullanıcı';
   const initials = displayName.slice(0, 2).toUpperCase();
+
+  // FIX (audit tenure): "X gündür Kochko'da" previously showed the LOG STREAK (1 gün for a
+  // 32-day-old account). Tenure = whole days since profiles.created_at.
+  const memberDays = profile?.created_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(profile.created_at as string).getTime()) / 86400000))
+    : null;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 8, paddingBottom: 120 + insets.bottom }}>
@@ -84,29 +104,34 @@ export default function ProfileScreen() {
           <Text style={{ color: colors.primary, fontSize: 22, fontWeight: '700' }}>{initials}</Text>
         </View>
         <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{displayName}</Text>
-        {streak > 0 && (
+        {memberDays != null && (
           <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
-            {`${streak} gündür Kochko'da`}
+            {memberDays === 0 ? "Bugün Kochko'ya katıldın" : `${memberDays} gündür Kochko'da`}
           </Text>
         )}
         {streak > 0 && <View style={{ marginTop: SPACING.sm }}><StreakBadge days={streak} /></View>}
       </View>
 
-      {/* 5.2 Physical info — 3 column grid */}
+      {/* 5.2 Physical info — 3 column grid.
+          FIX (audit duplicate-label): 'Mevcut / Hedef / Hedef' → third box is the goal TYPE,
+          relabeled 'Amaç' so the two boxes are distinct.
+          FIX (audit false-Yok): on goal fetch error render '—' instead of a confident '-'. */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xxl }}>
         <InfoBox label="Mevcut" value={profile?.weight_kg ? `${profile.weight_kg}` : '-'} unit="kg" colors={colors} />
-        <InfoBox label="Hedef" value={goal?.target_weight_kg ? `${goal.target_weight_kg}` : '-'} unit="kg" colors={colors} />
-        <InfoBox label="Hedef" value={goal ? GOAL_LABELS[goal.goal_type] ?? goal.goal_type : '-'} unit="" colors={colors} small />
+        <InfoBox label="Hedef" value={goalLoadError ? '—' : goal?.target_weight_kg ? `${goal.target_weight_kg}` : '-'} unit="kg" colors={colors} />
+        <InfoBox label="Amaç" value={goalLoadError ? '—' : goal ? GOAL_LABELS[goal.goal_type] ?? goal.goal_type : '-'} unit="" colors={colors} small />
       </View>
 
       {/* 5.4 Goals section */}
       <SectionTitle label="Hedefler" colors={colors} />
       <MenuGroup colors={colors}>
-        <MenuRow icon="flag-outline" color={colors.primary} label={goal ? `${GOAL_LABELS[goal.goal_type] ?? goal.goal_type}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
+        <MenuRow icon="flag-outline" color={colors.primary} label={goalLoadError ? 'Hedef yüklenemedi' : goal ? `${GOAL_LABELS[goal.goal_type] ?? goal.goal_type}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
         {/* FIX (completeness audit): 'Güç hedefi' now routes to the real strength screen (was the
             weight-goal editor). 'Uyku hedefi' removed — no sleep-goal screen exists, so the row
             promised a feature the app doesn't have and dead-ended in the weight-goal form. */}
-        <MenuRow icon="barbell-outline" color={colors.purple} label="Güç hedefi" onPress={() => router.push('/settings/strength')} colors={colors} last />
+        {/* FIX (audit premium-parity): gate like settings/index — free users get the paywall
+            prompt instead of a frame-flash then paywall replace inside the screen. */}
+        <MenuRow icon="barbell-outline" color={colors.purple} label="Güç hedefi" premium={!isPremium} onPress={isPremium ? () => router.push('/settings/strength') : () => requirePremium(() => router.push('/settings/strength'), 'Güç Progresyon')} colors={colors} last />
       </MenuGroup>
 
       {/* 5.5 Settings section */}
@@ -116,8 +141,11 @@ export default function ProfileScreen() {
         <MenuRow icon="chatbubble-outline" color={colors.primary} label="Koç iletişim tonu" value={{ balanced: 'Dengeli', strict: 'Sıkı', friendly: 'Arkadaşça', motivating: 'Motive edici' }[(profile?.coach_tone as string) ?? 'balanced'] ?? (profile?.coach_tone as string) ?? 'Dengeli'} onPress={() => router.push('/settings/coach-tone')} colors={colors} />
         <MenuRow icon="timer-outline" color={colors.purple} label="IF penceresi" value={profile?.if_eating_start ? `${profile.if_eating_start}-${profile.if_eating_end}` : 'Kapalı'} onPress={() => router.push('/settings/if-settings')} colors={colors} />
         <MenuRow icon="time-outline" color={colors.textSecondary} label="Gün dönümü" value={`${(profile?.day_boundary_hour as number) ?? 4}:00`} onPress={() => router.push('/settings/day-boundary')} colors={colors} />
-        <MenuRow icon="restaurant-outline" color={colors.fat} label="Alerjenler" value={allergens.length ? allergens.join(', ') : 'Yok'} onPress={() => router.push('/settings/food-preferences')} colors={colors} />
-        <MenuRow icon="calendar-outline" color={colors.pink} label="Dönemsel durum" value={(profile?.periodic_state as string) ?? 'Normal'} onPress={() => router.push('/settings/periodic-state')} colors={colors} />
+        {/* FIX (audit false-Yok, safety): fetch error ⇒ 'Yüklenemedi', never a confident 'Yok'. */}
+        <MenuRow icon="restaurant-outline" color={colors.fat} label="Alerjenler" value={allergens === null ? '—' : allergens.length ? allergens.join(', ') : 'Yok'} onPress={() => router.push('/settings/food-preferences')} colors={colors} />
+        {/* FIX (audit raw-enum): 'busy_work' vb. ham enum yerine Türkçe etiket.
+            FIX (audit premium-parity): settings/index ile aynı premium rozet + kapı. */}
+        <MenuRow icon="calendar-outline" color={colors.pink} label="Dönemsel durum" value={profile?.periodic_state ? PERIODIC_LABELS[profile.periodic_state as PeriodicState] ?? String(profile.periodic_state) : 'Normal'} premium={!isPremium} onPress={isPremium ? () => router.push('/settings/periodic-state') : () => requirePremium(() => router.push('/settings/periodic-state'), 'Dönemsel Durum')} colors={colors} />
         {/* FIX (audit: keşfedilemez IA) — Premium ve Hesap Güvenliği birinci-sınıf
             satırlar; 'Tüm ayarlar' Veri&gizlilik yerine semantik olarak doğru
             Ayarlar bölümünde, scroll gerektirmeden bulunabilir. */}
@@ -129,13 +157,16 @@ export default function ProfileScreen() {
       {/* 5.6 Data & Privacy section */}
       <SectionTitle label="Veri & gizlilik" colors={colors} />
       <MenuGroup colors={colors}>
-        <MenuRow icon="eye-outline" color={colors.purple} label="Kochko'nun Senin Hakkında Bildikleri" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
+        {/* FIX (audit naming): tek kanonik özellik adı — 'Kochko Seni Nasıl Tanıyor'. */}
+        <MenuRow icon="eye-outline" color={colors.purple} label="Kochko Seni Nasıl Tanıyor" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
         <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi dışa aktar" onPress={() => router.push('/settings/health-export')} colors={colors} />
         <MenuRow icon="create-outline" color={colors.primary} label="Profil düzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
         {/* FIX (audit: tutarsız hesap-silme sürtünmesi) — profil sekmesindeki
             tek-tık Alert + requestAccountDeletion akışı kaldırıldı; tek
-            paylaşılan, typed-confirm korumalı silme akışına (settings) yönlendir. */}
-        <MenuRow icon="trash-outline" color={colors.error} label="Hesabı sil" onPress={() => router.push('/settings' as never)} colors={colors} last />
+            paylaşılan, typed-confirm korumalı silme akışına (settings) yönlendir.
+            FIX (audit dead-drop): plain '/settings' 30 satırlık listenin TEPESİNE bırakıyordu;
+            ?openDelete=1 typed-confirm silme modalını doğrudan açar. */}
+        <MenuRow icon="trash-outline" color={colors.error} label="Hesabı sil" onPress={() => router.push('/settings?openDelete=1' as never)} colors={colors} last />
       </MenuGroup>
 
       {/* AI Summary */}
@@ -151,7 +182,7 @@ export default function ProfileScreen() {
             // source facts, where deletion is real and permanent.
             Alert.alert(
               'Bu özet otomatik derleniyor',
-              'Genel özet; profilin, hedefin ve sağlık kayıtlarından otomatik oluşturulur. Bir bilgiyi kalıcı silmek için "Koçko seni nasıl tanıyor" ekranından ilgili kaydı sil — özet kendini günceller.',
+              'Genel özet; profilin, hedefin ve sağlık kayıtlarından otomatik oluşturulur. Bir bilgiyi kalıcı silmek için "Kochko Seni Nasıl Tanıyor" ekranından ilgili kaydı sil — özet kendini günceller.',
               [{ text: 'Tamam' }, { text: 'Ekranı aç', onPress: () => router.push('/settings/coach-memory' as never) }],
             );
           }}
@@ -220,9 +251,11 @@ function InfoBox({ label, value, unit, colors, small }: { label: string; value: 
   );
 }
 
-function MenuRow({ icon, color, label, value, onPress, colors, last }: {
+// FIX (audit premium-parity): `premium` prop renders the same lock+Premium pill the settings
+// index rows use, so gated rows are recognizable BEFORE the tap instead of frame-flashing.
+function MenuRow({ icon, color, label, value, onPress, colors, last, premium }: {
   icon: string; color: string; label: string; value?: string;
-  onPress: () => void; colors: any; last?: boolean;
+  onPress: () => void; colors: any; last?: boolean; premium?: boolean;
 }) {
   return (
     <TouchableOpacity
@@ -234,13 +267,19 @@ function MenuRow({ icon, color, label, value, onPress, colors, last }: {
       onPress={() => { haptics.tap(); onPress(); }}
       activeOpacity={0.6}
       accessibilityRole="button"
-      accessibilityLabel={value ? `${label}, ${value}` : label}
+      accessibilityLabel={premium ? `${label}, Premium özellik` : value ? `${label}, ${value}` : label}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 }}>
         <Ionicons name={icon as any} size={18} color={color} />
         <Text style={{ color: label.includes('sil') ? colors.error : colors.text, fontSize: 13, fontWeight: '400' }}>{label}</Text>
       </View>
       {value && <Text style={{ color: colors.textMuted, fontSize: 12, marginRight: SPACING.sm }}>{value}</Text>}
+      {premium && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primaryLight, borderRadius: RADIUS.pill, paddingHorizontal: SPACING.sm, paddingVertical: 2, marginRight: SPACING.sm }}>
+          <Ionicons name="lock-closed" size={11} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '600' }}>Premium</Text>
+        </View>
+      )}
       <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
     </TouchableOpacity>
   );

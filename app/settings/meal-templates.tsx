@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getTemplates, createTemplate, deleteTemplate, useTemplate, type MealTemplate } from '@/services/templates.service';
+import { Ionicons } from '@expo/vector-icons';
+import { createTemplate, deleteTemplate, useTemplate, type MealTemplate } from '@/services/templates.service';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -12,12 +14,27 @@ export default function MealTemplatesScreen() {
   const [templates, setTemplates] = useState<MealTemplate[]>([]);
   // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya yanlış 'boş' kartı gösterilmiyordu.
   const [loading, setLoading] = useState(true);
+  // FIX (audit empty-vs-error): getTemplates hataları []'a yutuyor — ekran doğrudan sorguluyor
+  // ki fetch hatası 'şablon yok' yerine hata+tekrar dene kartı çizsin.
+  const [loadError, setLoadError] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [itemsText, setItemsText] = useState('');
 
-  useEffect(() => { load(); }, []);
-  const load = () => getTemplates().then(setTemplates).finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    const { data, error } = await supabase.from('meal_templates').select('*').order('use_count', { ascending: false });
+    if (error) {
+      console.warn('meal_templates load failed', error);
+      setLoadError(true);
+    } else {
+      setTemplates((data ?? []) as MealTemplate[]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const handleAdd = async () => {
     if (!name.trim() || !itemsText.trim()) {
@@ -100,6 +117,16 @@ export default function MealTemplatesScreen() {
         <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
+      ) : loadError ? (
+        /* FIX (audit empty-vs-error): fetch hatası 'şablon yok' değil, hata+tekrar dene (daily.tsx kalıbı). */
+        <Card style={{ marginTop: SPACING.md }}>
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
+            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Şablonlar yüklenemedi</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+            <Button title="Tekrar dene" size="sm" onPress={load} />
+          </View>
+        </Card>
       ) : templates.length === 0 && !showAdd ? (
         <Card style={{ marginTop: SPACING.md }}>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>

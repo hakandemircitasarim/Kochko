@@ -24,7 +24,7 @@ export async function shareMilestone(
 ): Promise<boolean> {
   return shareContent({
     title: `Kochko - ${achievementTitle}`,
-    message: `${achievementTitle}\n${achievementDesc}\n\nKochko ile yasam tarzimi yonetiyorum.`,
+    message: `${achievementTitle}\n${achievementDesc}\n\nKochko ile yaşam tarzımı yönetiyorum.`,
   });
 }
 
@@ -38,8 +38,8 @@ export async function shareWeeklyProgress(
   weeklyHighlight: string
 ): Promise<boolean> {
   return shareContent({
-    title: 'Kochko Haftalik Ilerleme',
-    message: `Bu hafta %${complianceScore} uyum sagladim.\n${streak} gunluk seri devam ediyor.\n${weeklyHighlight}\n\nKochko ile beraber.`,
+    title: 'Kochko Haftalık İlerleme',
+    message: `Bu hafta %${complianceScore} uyum sağladım.\n${streak} günlük seri devam ediyor.\n${weeklyHighlight}\n\nKochko ile beraber.`,
   });
 }
 
@@ -48,8 +48,8 @@ export async function shareWeeklyProgress(
  */
 export async function shareStreak(days: number): Promise<boolean> {
   return shareContent({
-    title: `${days} Gun Seri!`,
-    message: `Kochko ile ${days} gun arka arkaya kayit girdim.\n\n#Kochko #SaglikliYasam`,
+    title: `${days} Gün Seri!`,
+    message: `Kochko ile ${days} gün arka arkaya kayıt girdim.\n\n#Kochko #SağlıklıYaşam`,
   });
 }
 
@@ -89,7 +89,7 @@ export async function shareImage(fileUri: string, dialogTitle?: string): Promise
       return false;
     }
     await Sharing.shareAsync(fileUri, {
-      dialogTitle: dialogTitle ?? 'Kochko ile paylas',
+      dialogTitle: dialogTitle ?? 'Kochko ile paylaş',
       mimeType: 'image/png',
     });
     return true;

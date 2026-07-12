@@ -22,7 +22,7 @@ interface AuthState {
   initialize: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   user: null,
   loading: false,
@@ -163,6 +163,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signOut: async () => {
+    const userId = get().user?.id ?? null;
     try {
       await supabase.auth.signOut();
     } catch (err) {
@@ -172,8 +173,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       console.warn('auth.signOut: remote call failed, clearing local state', err);
     }
     // Wipe per-user device state that would otherwise leak into the next
-    // account on the same device.
+    // account on the same device. (Dynamic import: chat.service imports this
+    // store — a static import here would be a cycle.)
     await clearOnboardingDraft().catch(() => {});
+    if (userId) {
+      try {
+        const { clearChatCaches } = await import('@/services/chat.service');
+        await clearChatCaches(userId);
+      } catch { /* best-effort */ }
+    }
     set({ session: null, user: null });
   },
 }));

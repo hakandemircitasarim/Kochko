@@ -61,6 +61,12 @@ export interface BarcodeResult {
   serving_size_g: number | null;
   source: 'openfoodfacts' | 'community' | 'user_correction' | 'not_found';
   confidence: 'high' | 'medium' | 'low';
+  /**
+   * true → arama ağ hatasıyla bitti (muhtemelen çevrimdışı) ve ürün önbellekte de yoktu.
+   * Flag olarak taşınır (throw edilmez — chat ekranındaki çağıran try/catch'siz) ki UI
+   * gerçek "ürün veritabanında yok" ile "internet yok"u ayırt edebilsin.
+   */
+  network_error?: boolean;
 }
 
 export interface UserCorrectionData {
@@ -148,7 +154,9 @@ export async function lookupBarcode(barcode: string, userId?: string): Promise<B
     // Network error (likely offline): try cache
     const cached = await readCache(barcode);
     if (cached) return cached;
-    return notFound();
+    // FIX (audit: çevrimdışında yanlış "bulunamadı" mesajı): ağ hatası, "ürün veritabanında
+    // yok" demek değil — işaretle ki UI dürüst bir çevrimdışı mesajı gösterebilsin.
+    return { ...notFound(), network_error: true };
   }
 }
 

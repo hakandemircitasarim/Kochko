@@ -172,7 +172,7 @@ export function getTransitionInfo(
       daysRemaining: 0,
       isExpiring: false,
       isExpired: true,
-      transitionMessage_tr: `${label} doneminiz sona erdi. Normal programa donus plani hazirlanacak.`,
+      transitionMessage_tr: `${label} dönemin sona erdi. Normal programa dönüş planı hazırlanacak.`,
     };
   }
 
@@ -181,7 +181,7 @@ export function getTransitionInfo(
       daysRemaining,
       isExpiring: true,
       isExpired: false,
-      transitionMessage_tr: `${label} doneminiz ${daysRemaining} gun icinde sona erecek. Gecis plani hazirlanacak.`,
+      transitionMessage_tr: `${label} dönemin ${daysRemaining} gün içinde sona erecek. Geçiş planı hazırlanacak.`,
     };
   }
 

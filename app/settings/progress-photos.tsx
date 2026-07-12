@@ -105,7 +105,9 @@ export default function ProgressPhotosScreen() {
       note: null,
     }).select('*').single();
     if (error) {
-      Alert.alert('Kaydedilemedi', error.message);
+      // FIX (audit raw-error): fixed Turkish copy for the user; raw PostgREST error to console only.
+      console.warn('progress_photos insert failed', error);
+      Alert.alert('Kaydedilemedi', 'Fotoğraf kaydedilemedi, tekrar dene.');
       return;
     }
     if (data) setPhotos(prev => [data as ProgressPhoto, ...prev]);

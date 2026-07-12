@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
-import { getLabValues, addLabValue, COMMON_LAB_PARAMS, type LabValue } from '@/services/health.service';
+import { addLabValue, COMMON_LAB_PARAMS, type LabValue } from '@/services/health.service';
+import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -22,8 +24,24 @@ export default function LabValuesScreen() {
   const [refMax, setRefMax] = useState('');
   // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya yanlış 'boş' kartı gösterilmiyordu (food-preferences kalıbı).
   const [loading, setLoading] = useState(true);
+  // FIX (audit empty-vs-error): getLabValues swallows errors into [] — the screen queries
+  // directly so a fetch failure renders an error+retry card, not 'Henüz lab değerin yok'.
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => { getLabValues().then(setEntries).finally(() => setLoading(false)); }, []);
+  const loadEntries = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    const { data, error } = await supabase.from('lab_values').select('*').order('measured_at', { ascending: false });
+    if (error) {
+      console.warn('lab_values load failed', error);
+      setLoadError(true);
+    } else {
+      setEntries((data ?? []) as LabValue[]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadEntries(); }, [loadEntries]);
 
   const selectParam = (p: typeof COMMON_LAB_PARAMS[0]) => {
     setParamName(p.name); setUnit(p.unit); setRefMin(String(p.refMin)); setRefMax(String(p.refMax));
@@ -59,7 +77,7 @@ export default function LabValuesScreen() {
     }
     haptics.success();
     setShowAdd(false); setParamName(''); setValue(''); setUnit(''); setRefMin(''); setRefMax('');
-    getLabValues().then(setEntries);
+    loadEntries();
   };
 
   // Group by parameter
@@ -135,8 +153,20 @@ export default function LabValuesScreen() {
         </View>
       )}
 
+      {/* FIX (audit empty-vs-error): fetch hatası kendinden emin boş-durum yerine hata+tekrar dene kartı (daily.tsx cloud-offline kalıbı). */}
+      {!loading && loadError && (
+        <Card style={{ marginTop: SPACING.md }}>
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
+            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Lab değerleri yüklenemedi</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+            <Button title="Tekrar dene" size="sm" onPress={loadEntries} />
+          </View>
+        </Card>
+      )}
+
       {/* FIX (audit UI-SET-04): kayıt yokken (ve form kapalıyken) açıklayıcı boş-durum kartı; kardeş liste ekranları gibi. */}
-      {!loading && Object.keys(grouped).length === 0 && !showAdd && (
+      {!loading && !loadError && Object.keys(grouped).length === 0 && !showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
           <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz lab değerin yok</Text>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Vitamin D, B12, ferritin gibi tahlil sonuçlarını ekle; koçun planı bu değerlere göre uyarlar.</Text>

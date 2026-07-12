@@ -8,8 +8,10 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { sendMessage } from '@/services/chat.service';
-import { lookupBarcode } from '@/services/barcode.service';
+import { sendMessage, queueMessageOffline, type ChatResponse } from '@/services/chat.service';
+import { lookupBarcode, calculateServing, type BarcodeResult } from '@/services/barcode.service';
+import { updateCurrentWeight } from '@/services/weight.service';
+import { isOnline } from '@/services/offline-queue.service';
 import { startRecording, stopRecording, transcribeAudio } from '@/services/voice.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
@@ -32,6 +34,20 @@ const SORENESS_LEVELS = [
   { value: 3, label: 'Orta', dbValue: 'moderate' },
   { value: 4, label: 'Şiddetli', dbValue: 'severe' },
 ] as const;
+
+// FIX (audit HIGH: sahte başarı): koçun yanıtı yalnızca KALICI bir aksiyon çalıştırdıysa
+// "kayıt" sayılır. Rate-limit reddi veya netleştirme sorusu 'Kaydın eklendi!' toast'ıyla
+// kapanamaz — öğün sessizce kayboluyordu. Tipler ai-chat aksiyon switch'inin yazan dallarıyla eş.
+const PERSIST_ACTION_TYPES = new Set([
+  'meal_log', 'workout_log', 'weight_log', 'water_log', 'sleep_log', 'mood_log',
+  'supplement_log', 'venue_log', 'health_event', 'life_event', 'lab_value',
+  'food_preference', 'profile_update', 'commitment', 'save_recipe', 'constraint_confirm',
+]);
+function hasPersistedAction(data: ChatResponse | null): boolean {
+  // feedback şartı (review fix): sunucu başarısız/dupe-skip yazımlarda aksiyonu
+  // feedback=null ile döndürür — tip tek başına "kaydedildi" kanıtı değil.
+  return !!data?.actions?.some(a => PERSIST_ACTION_TYPES.has(a.type) && !!a.feedback);
+}
 
 export default function QuickLogScreen() {
   const { colors } = useTheme();
@@ -59,6 +75,16 @@ export default function QuickLogScreen() {
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
   const [barcodeResult, setBarcodeResult] = useState<string | null>(null);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
+  // FIX (audit HIGH: porsiyon): bulunan ürün önce burada bekler — gram seçilmeden mesaj gitmez.
+  const [pendingProduct, setPendingProduct] = useState<{ barcode: string; result: BarcodeResult } | null>(null);
+  const [customGrams, setCustomGrams] = useState('');
+  const [showCustomGrams, setShowCustomGrams] = useState(false);
+
+  // FIX (audit: çift yazı yolu): 'Yazarak gir' artık sohbete ışınlamaz, buradaki
+  // Hızlı kayıt alanına odaklanır — tek kanonik yazı yolu.
+  const quickInputRef = useRef<TextInput>(null);
+  const scrollRef = useRef<ScrollView>(null);
+  const quickInputY = useRef(0);
 
   // Voice state
   const [isRecording, setIsRecording] = useState(false);
@@ -101,11 +127,38 @@ export default function QuickLogScreen() {
     submittingRef.current = true;
     setLoading(true);
     try {
-      const { error } = await sendMessage(text.trim());
+      const { data, error } = await sendMessage(text.trim());
       if (error) { haptics.error(); Alert.alert('Kayıt eklenemedi', error); }
-      // FIX (audit UX-FBK-06): route the primary text-log success through showSuccessAndClose so it
-      // fires haptics.success() + the animated confirmation card like water/weight/sleep/recovery do.
-      else { await fetchToday(user.id, dayBoundaryHour); showSuccessAndClose('Kaydın eklendi!'); }
+      // FIX (audit HIGH: sahte başarı): hatasız her yanıt başarı sayılıyordu — koç rate-limit'e
+      // takılsa ya da yalnızca soru sorsa bile 'Kaydın eklendi!' deyip kapanıyor, öğün sessizce
+      // kayboluyordu. Artık yanıtta gerçekten yazan bir aksiyon arıyoruz.
+      else if (data?.rate_limited) {
+        haptics.error();
+        Alert.alert('Kaydedilemedi', data.message?.trim()
+          ? data.message.trim().slice(0, 300)
+          : 'Çok hızlı gidiyorsun — birazdan tekrar dene. Yazdıkların duruyor.');
+      }
+      else if (!hasPersistedAction(data)) {
+        // Koç kaydetmek yerine yanıt verdi / soru sordu — konuşma sohbette devam ediyor.
+        // Mesaj thread'e zaten gitti; metni temizle ki ikinci Kaydet çift göndermesin.
+        haptics.tap();
+        Alert.alert(
+          'Koç bir şey sordu',
+          data?.message?.trim()
+            ? data.message.trim().slice(0, 300)
+            : 'Koç kaydetmeden önce bir şey sormak istiyor — sohbete bak.',
+          [
+            { text: 'Sohbete git', onPress: () => { setText(''); router.dismissTo('/(tabs)/chat'); } },
+            { text: 'Kapat', style: 'cancel', onPress: () => setText('') },
+          ],
+        );
+      }
+      // FIX (audit UX-FBK-06 + yavaş success): toast, gönderim onaylanır onaylanmaz gelir;
+      // fetchToday await edilmeden arka planda tazeler.
+      else {
+        showSuccessAndClose('Kaydın eklendi!');
+        fetchToday(user.id, dayBoundaryHour).catch(() => {});
+      }
     } catch (err) {
       haptics.error();
       const detail = err instanceof Error ? err.message : 'Bilinmeyen hata';
@@ -131,34 +184,106 @@ export default function QuickLogScreen() {
     // Ref gate: CameraView fires onBarcodeScanned many times per second; the
     // state-based scannedBarcode check has a brief race window on the first
     // frame. Ref is synchronous.
-    if (submittingRef.current || scannedBarcode === barcode) return;
+    if (submittingRef.current || pendingProduct || scannedBarcode === barcode) return;
     submittingRef.current = true;
     setScannedBarcode(barcode);
     setBarcodeLoading(true);
     try {
       const result = await lookupBarcode(barcode, user?.id);
       if (result.found && result.product_name) {
-        setBarcodeResult(`${result.product_name} (${result.calories_per_100g} kcal/100g)`);
-        const msg = `Barkod: ${barcode} - ${result.product_name}, ${result.calories_per_100g} kcal/100g, P:${result.protein_per_100g}g K:${result.carbs_per_100g}g Y:${result.fat_per_100g}g (porsiyon: ${result.serving_size_g}g)`;
-        const { error: sendErr } = await sendMessage(msg);
-        if (sendErr) {
-          setBarcodeResult('Kayıt eklenemedi: ' + sendErr);
-          setScannedBarcode(null); // allow re-scanning the same product to retry
-          return; // finally{} still resets submittingRef + barcodeLoading
-        }
-        if (user?.id) await fetchToday(user.id, dayBoundaryHour);
-        setTimeout(() => { router.back(); }, 1500);
+        // FIX (audit HIGH: porsiyon): 100g değerlerini porsiyon sormadan göndermek yerine
+        // önce tek dokunuşluk porsiyon seçimi ("porsiyon: nullg" ihtimali dahil öldü).
+        // Gönderim + doğrulama sendBarcodeLog'da; log onaylanana kadar ekran açık kalır.
+        setBarcodeResult(null);
+        setPendingProduct({ barcode, result });
+      } else if (result.network_error) {
+        // FIX (audit: çevrimdışı kopya yalanı): ürün önbellekte de yok — kuyruklanacak besin
+        // verisi olmadığından (sunucu barkodu tek başına çözemez) dürüstçe söyle.
+        setScannedBarcode(null); // bağlanınca aynı ürünü yeniden taramaya izin ver
+        setBarcodeResult('İnternet yok ve bu ürün çevrimdışı kayıtlı değil. Bağlanınca tekrar tara veya "Yazarak gir" ile manuel kaydet.');
       } else {
         setBarcodeResult('Ürün veritabanında bulunamadı. "Yazarak gir" ile manuel kaydedebilirsin.');
       }
     } catch (err) {
       console.warn('[log] barcode lookup failed', err);
-      const isOffline = err instanceof Error && /network|fetch/i.test(err.message);
-      setBarcodeResult(isOffline
-        ? 'İnternet bağlantısı yok. Çevrimdışına alınan barkodlar otomatik eklenir veya "Yazarak gir" ile manuel kaydedebilirsin.'
+      const offline = err instanceof Error && /network|fetch/i.test(err.message);
+      setScannedBarcode(null);
+      setBarcodeResult(offline
+        ? 'İnternet yok ve bu ürün çevrimdışı kayıtlı değil. Bağlanınca tekrar tara veya "Yazarak gir" ile manuel kaydet.'
         : 'Barkod okunamadı. Kamerayı temiz tut ve barkodu net göster, veya "Yazarak gir" ile manuel kaydet.');
     }
     finally { submittingRef.current = false; setBarcodeLoading(false); }
+  };
+
+  const resetBarcodeState = () => {
+    setPendingProduct(null);
+    setShowCustomGrams(false);
+    setCustomGrams('');
+    setScannedBarcode(null);
+    setBarcodeResult(null);
+  };
+
+  // Porsiyon seçildikten sonra gönderir. Gram HER ZAMAN mesajda açıkça yazılır; log
+  // sunucuda gerçekten işlenmeden ekran kapanmaz (sahte-başarı kuralının aynısı).
+  const sendBarcodeLog = async (grams: number) => {
+    if (!pendingProduct || submittingRef.current) return;
+    const g = Math.round(grams);
+    if (!Number.isFinite(g) || g <= 0 || g > 5000) {
+      haptics.error();
+      Alert.alert('Geçersiz gramaj', '1–5000 g arası bir değer gir.');
+      return;
+    }
+    submittingRef.current = true;
+    setBarcodeLoading(true);
+    try {
+      const { barcode, result } = pendingProduct;
+      const serving = calculateServing(result, g);
+      const msg = serving
+        ? `Barkod: ${barcode} - ${result.product_name}, ${g} g yedim. Bu porsiyon: ${serving.calories} kcal, P:${serving.protein_g}g K:${serving.carbs_g}g Y:${serving.fat_g}g.`
+        : `Barkod: ${barcode} - ${result.product_name}, ${g} g yedim. Besin değerleri veritabanında eksik, tahminle kaydeder misin?`;
+
+      // FIX (audit: çevrimdışı kopya yalanı): bağlantı yoksa mesaj GERÇEKTEN kuyruğa girer;
+      // reconnect'te processOfflineQueue otomatik gönderir. Eski kopya bunu vadedip hiçbir
+      // şey kuyruklamıyordu.
+      if (!(await isOnline())) {
+        await queueMessageOffline(msg);
+        resetBarcodeState();
+        setScreen('main');
+        showSuccessAndClose('Çevrimdışı — bağlanınca eklenecek!');
+        return;
+      }
+
+      const { data, error: sendErr } = await sendMessage(msg);
+      if (sendErr) {
+        setBarcodeResult('Kayıt eklenemedi: ' + sendErr); // pendingProduct durur → tekrar denenebilir
+        return; // finally{} resets submittingRef + barcodeLoading
+      }
+      if (data?.rate_limited) {
+        setBarcodeResult(data.message?.trim()
+          ? data.message.trim().slice(0, 200)
+          : 'Çok hızlı gidiyorsun — birazdan tekrar dene.');
+        return;
+      }
+      if (!hasPersistedAction(data)) {
+        // Koç kaydetmek yerine soru sordu — konuşma sohbette devam ediyor.
+        resetBarcodeState();
+        Alert.alert(
+          'Koç bir şey sordu',
+          data?.message?.trim()
+            ? data.message.trim().slice(0, 300)
+            : 'Koç kaydetmeden önce bir şey sormak istiyor — sohbete bak.',
+          [
+            { text: 'Sohbete git', onPress: () => router.dismissTo('/(tabs)/chat') },
+            { text: 'Kapat', style: 'cancel' },
+          ],
+        );
+        return;
+      }
+      resetBarcodeState();
+      setScreen('main'); // success toast main render dalında yaşar
+      showSuccessAndClose('Kaydın eklendi!');
+      if (user?.id) fetchToday(user.id, dayBoundaryHour).catch(() => {});
+    } finally { submittingRef.current = false; setBarcodeLoading(false); }
   };
 
   const handleVoiceToggle = async () => {
@@ -220,14 +345,14 @@ export default function QuickLogScreen() {
     submittingRef.current = true;
     setLoading(true);
     try {
-      const date = getEffectiveDate(new Date(), dayBoundaryHour);
-      const { error: metricsErr } = await supabase.from('daily_metrics').upsert(
-        { user_id: user.id, date, weight_kg: w, synced: true },
-        { onConflict: 'user_id,date' }
-      );
-      if (metricsErr) throw metricsErr;
-      await fetchToday(user.id, dayBoundaryHour);
+      // FIX (audit: kilo split-brain): tek yazım yolu — updateCurrentWeight hem bugünün
+      // daily_metrics satırını hem profiles.weight_kg'yi günceller. Eskiden yalnız
+      // daily_metrics yazılıyordu; canlıda Profil 80 gösterirken dashboard 79.5 gösterdi.
+      await updateCurrentWeight(user.id, w, dayBoundaryHour);
       showSuccessAndClose('Kilo kaydedildi!');
+      // Toast'ı bekletme — store tazelemeleri arka planda.
+      fetchToday(user.id, dayBoundaryHour).catch(() => {});
+      void useProfileStore.getState().fetch(user.id);
     } catch {
       Alert.alert('Hata', 'Kilo kaydedilemedi. Tekrar dene.');
     } finally {
@@ -314,13 +439,14 @@ export default function QuickLogScreen() {
         <CameraView
           style={{ flex: 1 }}
           barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] }}
-          onBarcodeScanned={(e) => handleBarcodeScan(e.data)}
+          // Porsiyon seçimi beklerken yeni taramaları yut — chooser üstüne ikinci ürün binmesin.
+          onBarcodeScanned={(e) => { if (!pendingProduct) void handleBarcodeScan(e.data); }}
         />
         {/* Overlay */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl, paddingTop: insets.top + 12 }}>
             <TouchableOpacity
-              onPress={() => { setScreen('main'); setScannedBarcode(null); setBarcodeResult(null); }}
+              onPress={() => { setScreen('main'); resetBarcodeState(); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
               accessibilityLabel="Kapat"
@@ -330,20 +456,92 @@ export default function QuickLogScreen() {
             <Text style={{ color: '#fff', fontSize: FONT.lg, fontWeight: '600' }}>Barkod Tara</Text>
             <View style={{ width: 28 }} />
           </View>
-          {/* Result banner */}
+          {/* Result banner / portion chooser */}
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={{ padding: SPACING.xl, paddingBottom: insets.bottom + 24 }}>
             {barcodeLoading && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center' }}>
                 <ActivityIndicator color="#fff" />
-                <Text style={{ color: '#fff', fontSize: FONT.sm, marginTop: SPACING.sm }}>Ürün aranıyor...</Text>
+                <Text style={{ color: '#fff', fontSize: FONT.sm, marginTop: SPACING.sm }}>
+                  {pendingProduct ? 'Kaydediliyor...' : 'Ürün aranıyor...'}
+                </Text>
               </View>
             )}
-            {barcodeResult && (
+            {/* FIX (audit HIGH: porsiyon): göndermeden önce tek dokunuşluk porsiyon seçimi */}
+            {pendingProduct && !barcodeLoading && (
+              <View style={{ backgroundColor: 'rgba(0,0,0,0.85)', borderRadius: RADIUS.md, padding: SPACING.lg }}>
+                <Text style={{ color: '#fff', fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>
+                  {pendingProduct.result.product_name}
+                  {pendingProduct.result.calories_per_100g != null ? ` · ${pendingProduct.result.calories_per_100g} kcal/100g` : ''}
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs, marginBottom: SPACING.md }}>
+                  Ne kadar yedin?
+                </Text>
+                {showCustomGrams ? (
+                  <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                    <TextInput
+                      value={customGrams}
+                      onChangeText={setCustomGrams}
+                      keyboardType="decimal-pad"
+                      autoFocus
+                      maxLength={6}
+                      placeholder="gram"
+                      placeholderTextColor="rgba(255,255,255,0.4)"
+                      accessibilityLabel="Gram miktarı"
+                      style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.sm, color: '#fff', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: FONT.md }}
+                    />
+                    <TouchableOpacity
+                      onPress={() => { haptics.tap(); void sendBarcodeLog(parseFloat(customGrams.replace(',', '.'))); }}
+                      accessibilityRole="button" accessibilityLabel="Gramı kaydet"
+                      style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.xl, justifyContent: 'center' }}>
+                      <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Kaydet</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center' }}>
+                    {pendingProduct.result.serving_size_g && pendingProduct.result.serving_size_g > 0 ? (
+                      <TouchableOpacity
+                        onPress={() => { haptics.tap(); void sendBarcodeLog(pendingProduct.result.serving_size_g as number); }}
+                        accessibilityRole="button" accessibilityLabel={`1 porsiyon, ${Math.round(pendingProduct.result.serving_size_g)} gram`}
+                        style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
+                        <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>
+                          1 porsiyon ({Math.round(pendingProduct.result.serving_size_g)} g)
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity
+                      onPress={() => { haptics.tap(); void sendBarcodeLog(100); }}
+                      accessibilityRole="button" accessibilityLabel="100 gram"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
+                      <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>100 g</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { haptics.tap(); setShowCustomGrams(true); }}
+                      accessibilityRole="button" accessibilityLabel="Özel gram gir"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
+                      <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Özel gram</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {barcodeResult && (
+                  <Text style={{ color: '#FFB4AB', fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>{barcodeResult}</Text>
+                )}
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); resetBarcodeState(); }}
+                  accessibilityRole="button" accessibilityLabel="Vazgeç"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ alignSelf: 'center', marginTop: SPACING.md }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: FONT.sm }}>Vazgeç</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {barcodeResult && !pendingProduct && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg }}>
                 <Text style={{ color: '#fff', fontSize: FONT.sm, textAlign: 'center' }}>{barcodeResult}</Text>
               </View>
             )}
           </View>
+          </KeyboardAvoidingView>
         </View>
       </View>
     );
@@ -420,9 +618,13 @@ export default function QuickLogScreen() {
             color: colors.text, fontSize: FONT.hero, fontWeight: '700',
             textAlign: 'center', width: '70%', borderWidth: 0.5, borderColor: colors.border,
           }}
-          placeholder="73.5" placeholderTextColor={colors.textMuted}
+          // FIX (audit: yanıltıcı 73.5 sabiti): placeholder kullanıcının bilinen son kilosu —
+          // profil boşsa placeholder gösterme, uydurma bir sayı telkin etme.
+          placeholder={profile?.weight_kg ? String(profile.weight_kg) : undefined}
+          placeholderTextColor={colors.textMuted}
           value={weightInput} onChangeText={setWeightInput}
           keyboardType="decimal-pad" autoFocus
+          accessibilityLabel="Kilo (kg)"
         />
         <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.xs, marginBottom: SPACING.xxl }}>kg</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
@@ -571,7 +773,7 @@ export default function QuickLogScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     {/* FIX (audit UI-LAY-01/HIGH): wrap the quick-log scroll in KeyboardAvoidingView so the
         free-text input and its "Kaydet" button are pushed above the keyboard instead of hidden behind it. */}
-    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xxl }}>
         <TouchableOpacity
@@ -590,7 +792,13 @@ export default function QuickLogScreen() {
         {[
           // `navigates` rows fire a router intent that crosses the modal->tab
           // boundary, so they get a transient busy state; in-screen rows don't.
-          { icon: 'create-outline' as const, title: 'Yazarak gir', desc: '2 yumurta, peynir, ekmek yedim', color: colors.primary, navigates: true, onPress: () => router.dismissTo('/(tabs)/chat') },
+          // FIX (audit: çift yazı yolu): 'Yazarak gir' sohbete ışınlamak yerine alttaki
+          // Hızlı kayıt alanına odaklanır — modal içinde TEK kanonik yazı yolu.
+          { icon: 'create-outline' as const, title: 'Yazarak gir', desc: '2 yumurta, peynir, ekmek yedim', color: colors.primary, navigates: false, onPress: () => {
+            quickInputRef.current?.focus();
+            // Klavye açılırken alan görünür kalsın diye başlığına kaydır.
+            setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(quickInputY.current - 8, 0), animated: true }), 50);
+          } },
           { icon: 'camera-outline' as const, title: 'Fotoğraf çek', desc: 'Tabağını fotoğrafla, AI tanısın', color: colors.protein, navigates: true, onPress: handlePhoto },
           { icon: 'barcode-outline' as const, title: 'Barkod okut', desc: 'Paketli ürünü tara', color: colors.carbs, navigates: false, onPress: () => setScreen('barcode') },
           { icon: 'mic-outline' as const, title: 'Sesli giriş', desc: 'Konuşarak kayıt gir', color: colors.pink, navigates: false, onPress: () => setScreen('voice') },
@@ -631,14 +839,20 @@ export default function QuickLogScreen() {
       </View>
 
       {/* Quick text input */}
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
-        Hızlı kayıt
+      {/* FIX (audit TR-i18n): textTransform:'uppercase' locale bilmez — 'Diğer' → 'DIĞER'
+          üretiyordu (canlıda görüldü). Doğru Türkçe büyük harf (İ/I ayrımı) literal yazıldı. */}
+      <Text
+        onLayout={(e) => { quickInputY.current = e.nativeEvent.layout.y; }}
+        style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+        HIZLI KAYIT
       </Text>
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.xxl }}>
         <TextInput
+          ref={quickInputRef}
           style={{ color: colors.text, fontSize: FONT.sm, minHeight: 50, textAlignVertical: 'top' }}
           placeholder="Örnek: 2 dilim ekmek, 1 yumurta, çay"
           placeholderTextColor={colors.textMuted}
+          accessibilityLabel="Hızlı kayıt"
           value={text} onChangeText={setText} multiline maxLength={2000}
         />
         {text.trim() ? (
@@ -654,8 +868,8 @@ export default function QuickLogScreen() {
       </View>
 
       {/* Other entries — 2x2 grid */}
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
-        Diğer kayıtlar
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+        DİĞER KAYITLAR
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
         {[

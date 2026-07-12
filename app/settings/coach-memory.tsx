@@ -12,6 +12,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { getAISummaryForReview, deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
 import { logAuditEvent, logAISummaryAccess } from '@/services/audit-log.service';
+// FIX (audit raw-enum): map periodic_state ('busy_work'...) to its Turkish label.
+import { PERIODIC_LABELS, type PeriodicState } from '@/services/periodic.service';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, CARD_SHADOW, COLORS } from '@/lib/constants';
@@ -103,7 +105,7 @@ export default function CoachMemoryScreen() {
   const handleDeleteNote = (field: string, note: string) => {
     Alert.alert(
       'Notu Sil',
-      'Bu bilgiyi Koçko\'nun hafızasından silmek istediğine emin misin?\n\nBu KVKK Madde 17 kapsamında hakkındır.',
+      'Bu bilgiyi Kochko\'nun hafızasından silmek istediğine emin misin?\n\nBu KVKK Madde 17 kapsamında hakkındır.',
       [
         { text: 'İptal', style: 'cancel' },
         {
@@ -129,7 +131,7 @@ export default function CoachMemoryScreen() {
   const handleClearField = (field: string, label: string) => {
     Alert.alert(
       `${label} Sil`,
-      `"${label}" bilgisini Koçko'nun hafızasından tamamen silmek istediğine emin misin?\n\nKVKK Madde 17 kapsamında hakkındır.`,
+      `"${label}" bilgisini Kochko'nun hafızasından tamamen silmek istediğine emin misin?\n\nKVKK Madde 17 kapsamında hakkındır.`,
       [
         { text: 'İptal', style: 'cancel' },
         {
@@ -218,7 +220,9 @@ export default function CoachMemoryScreen() {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <Stack.Screen options={{ title: 'Kochko\'nun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
+        {/* FIX (audit naming): no `title` here — ALL states inherit the single canonical
+            title from settings/_layout.tsx ('Kochko Seni Nasıl Tanıyor'). */}
+        <Stack.Screen options={{ headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
         <SkeletonScreen cards={4} />
       </View>
     );
@@ -227,7 +231,8 @@ export default function CoachMemoryScreen() {
   if (loadError) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: SPACING.xl }}>
-        <Stack.Screen options={{ title: 'Kochko\'nun Senin Hakkında Bildikleri', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
+        {/* FIX (audit naming): title inherited from _layout.tsx — keep every state consistent. */}
+        <Stack.Screen options={{ headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
         <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
         <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginTop: SPACING.md, textAlign: 'center' }}>
           Yüklenemedi
@@ -295,26 +300,24 @@ export default function CoachMemoryScreen() {
     profileRows.push({ label: 'IF penceresi', value: `${profile.if_eating_start}-${profile.if_eating_end}` });
   }
   if (allergens.length) profileRows.push({ label: 'Alerjenler', value: allergens.join(', ') });
-  if (profile?.periodic_state) profileRows.push({ label: 'Dönemsel durum', value: String(profile.periodic_state) });
+  // FIX (audit raw-enum): 'busy_work' vb. ham enum yerine Türkçe etiket.
+  if (profile?.periodic_state) profileRows.push({ label: 'Dönemsel durum', value: PERIODIC_LABELS[profile.periodic_state as PeriodicState] ?? String(profile.periodic_state) });
 
   const isEmpty = isAiEmpty && profileRows.length === 0 && healthFacts.length === 0;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      {/* FIX (audit UI-SET-02): dropped redundant per-screen `title` override that silently
-          shadowed _layout.tsx and conflicted with the body H1 (and used a different brand spelling).
-          Header title now falls through to _layout.tsx ('Koçko Senin Hakkında Ne Biliyor'),
-          matching the body H1 below. */}
+      {/* FIX (audit naming): title falls through to _layout.tsx ('Kochko Seni Nasıl Tanıyor');
+          the in-body H1 was removed because it merely duplicated the native header. */}
       <Stack.Screen options={{ headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
 
-      {/* Header */}
+      {/* Header — icon + intro only; the screen title lives in the native header. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
         <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: colors.purple + '20', alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="eye" size={24} color={colors.purple} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>Koçko Senin Hakkında Ne Biliyor</Text>
-          <Text style={{ fontSize: FONT.xs, color: colors.textSecondary }}>Her konuşmadan öğrenilenler. Çöp ikonuna dokunarak veya uzun basarak silebilirsin.</Text>
+          <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, lineHeight: 18 }}>Her konuşmadan öğrenilenler. Çöp ikonuna dokunarak veya uzun basarak silebilirsin.</Text>
         </View>
       </View>
 
@@ -382,14 +385,26 @@ export default function CoachMemoryScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={`${KIND_LABEL[h.kind] ?? h.kind}: ${h.text} — silmek için uzun bas`}
                     style={{
-                      flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, paddingVertical: SPACING.sm,
+                      flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.xs,
                       ...(i < healthFacts.length - 1 ? { borderBottomWidth: 0.5, borderBottomColor: colors.divider } : {}),
                     }}
                   >
-                    <View style={{ backgroundColor: colors.error + '18', borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 2, marginTop: 1 }}>
+                    <View style={{ backgroundColor: colors.error + '18', borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 2, alignSelf: 'flex-start', marginTop: SPACING.sm }}>
                       <Text style={{ color: colors.error, fontSize: FONT.xs, fontWeight: '700' }}>{KIND_LABEL[h.kind] ?? h.kind}</Text>
                     </View>
                     <Text style={{ color: colors.text, fontSize: FONT.sm, flex: 1, lineHeight: 20 }}>{h.text}{h.severity ? ` (${h.severity})` : ''}</Text>
+                    {/* FIX (audit KVKK-visibility): every other section has a VISIBLE trash icon —
+                        health rows (the most sensitive data) relied on a hidden long-press only.
+                        Same 44x44 visible pattern as health-events / food-preferences. */}
+                    <TouchableOpacity
+                      onPress={() => handleDeleteConstraint(h.kind, h.subject, h.text)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${KIND_LABEL[h.kind] ?? h.kind} kaydını sil: ${h.text}`}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
+                    </TouchableOpacity>
                   </TouchableOpacity>
                 );
               })}
@@ -406,7 +421,8 @@ export default function CoachMemoryScreen() {
               ═══════════════════════════════════════════ */}
           {(data.userPersona || data.learnedTonePreference || data.nutritionLiteracy) && (
             <>
-              <CategoryTitle title="Koçko Seni Nasıl Tanıyor" icon="person-circle" color={colors.purple} colors={colors} />
+              {/* FIX (audit naming): canonical brand spelling 'Kochko'. */}
+              <CategoryTitle title="Kochko Seni Nasıl Tanıyor" icon="person-circle" color={colors.purple} colors={colors} />
 
               {/* General Summary — #S3: a DERIVED view regenerated from the canonical stores.
                   The delete affordance was removed because deleting a derived paragraph was

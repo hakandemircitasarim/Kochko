@@ -38,6 +38,12 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
 
   // Build actual series using latest reading per week; fill gaps by carrying forward
   // (chart-kit rejects nulls, so we keep straight line through missing weeks).
+  // FIX (fix-pass 07-12, item 10): carry-forward used to be plotted EXACTLY like a
+  // measurement (same solid line, same dots) — empty weeks and the whole future read
+  // as a real flat weight. Chart-kit can't truncate one dataset (each dataset spreads
+  // over its own length, so a shorter series would misalign with the planned line),
+  // so instead: the actual line renders DASHED + faded (it's an interpolation), and
+  // solid dots mark ONLY the weeks with a real measurement (hidePointsAtIndex).
   const actualSeries: number[] = [];
   for (let w = 0; w <= weeks; w++) {
     if (actualByWeek[w]?.length) {
@@ -48,6 +54,12 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
       actualSeries.push(actualSeries[actualSeries.length - 1] ?? startWeight);
     }
   }
+  // Weeks WITHOUT a real measurement → hide their dots. Week 0 keeps its dot: the
+  // goal's start weight is a real datum, not a carry-forward.
+  const measuredWeeks = new Set(Object.keys(actualByWeek).map(Number));
+  measuredWeeks.add(0);
+  const hiddenDotIndexes = Array.from({ length: weeks + 1 }, (_, i) => i)
+    .filter(i => !measuredWeeks.has(i));
 
   // ETA: project based on pace of last 3 weeks.
   // FIX (audit ui-tempochart): carry-forward'lu actualSeries yerine yalnızca GERÇEK ölçüm
@@ -84,10 +96,13 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
         data={{
           labels: labels.map((l, i) => (i % labelStep === 0 ? l : '')),
           datasets: [
-            { data: plannedPoints, color: () => colors.textMuted, strokeWidth: 2 },
-            { data: actualSeries, color: () => colors.primary, strokeWidth: 2 },
+            // Planned trajectory: solid muted reference, no dots.
+            { data: plannedPoints, color: () => colors.textMuted, strokeWidth: 2, withDots: false },
+            // Actual: dashed + faded (interpolated between sparse weigh-ins);
+            // dots below mark the real measurements only.
+            { data: actualSeries, color: () => colors.primary + 'B3', strokeWidth: 2, strokeDashArray: [5, 5] },
           ],
-          legend: ['Planlanan', 'Gerceklesen'],
+          legend: ['Planlanan', 'Gerçekleşen'],
         }}
         width={screenWidth}
         height={200}
@@ -98,8 +113,9 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
           decimalPlaces: 1,
           color: () => colors.primary,
           labelColor: () => colors.textMuted,
-          propsForDots: { r: '2' },
+          propsForDots: { r: '3' },
         }}
+        hidePointsAtIndex={hiddenDotIndexes}
         bezier
         style={{ borderRadius: RADIUS.sm, marginLeft: -SPACING.sm }}
         withInnerLines={false}

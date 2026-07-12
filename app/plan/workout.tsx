@@ -36,12 +36,13 @@ import {
   type PlanRow,
   type WorkoutPlanData,
 } from '@/services/plan.service';
-import { isPlanReady } from '@/lib/plan-readiness';
+import { isPlanReady, type ReadinessExtras } from '@/lib/plan-readiness';
 import { canApprovePlan } from '@/lib/premium-gate';
 import { PlanEmptyState } from '@/components/plan/PlanEmptyState';
 import { PlanPreviewCard } from '@/components/plan/PlanPreviewCard';
 import { PlanActiveView } from '@/components/plan/PlanActiveView';
 import { FullPlanModal } from '@/components/plan/FullPlanModal';
+import { PlanDayAccordion } from '@/components/plan/PlanDayAccordion';
 import { AlternativeComparisonModal } from '@/components/plan/AlternativeComparisonModal';
 import { PlanChatComposer } from '@/components/plan/PlanChatComposer';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
@@ -73,7 +74,20 @@ export default function WorkoutPlanScreen() {
   const [fullyViewed, setFullyViewed] = useState(false);
   const [altCandidate, setAltCandidate] = useState<WorkoutPlanData | null>(null);
   const [showAltModal, setShowAltModal] = useState(false);
+  // FIX (fix-pass 07-12, item 7): health-history completion lives off-profile
+  // (health_events / ai_summary) — fetched in load() for the weak-spot chips.
+  const [readinessExtras, setReadinessExtras] = useState<ReadinessExtras>({});
   const listRef = useRef<FlatList>(null);
+
+  // ── Inline draft review (review fix ux-pass2): SEMANTIC gate — see diet.tsx. ──
+  const draftHeaderHRef = useRef(0);
+  const userDraggedRef = useRef(false);
+  const prevMsgCountRef = useRef(0);
+  const pendingScrollRef = useRef(false);
+  useEffect(() => {
+    if (messages.length > prevMsgCountRef.current) pendingScrollRef.current = true;
+    prevMsgCountRef.current = messages.length;
+  }, [messages.length]);
 
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
@@ -87,15 +101,22 @@ export default function WorkoutPlanScreen() {
     // branch (retry button) instead of leaving `view` stuck on 'loading' forever.
     try {
       if (!profile) await fetchProfile(user.id);
-      const [activeRow, draftRow, goalRes] = await Promise.all([
+      const [activeRow, draftRow, goalRes, healthRes, summaryRes] = await Promise.all([
         getActive(user.id, 'workout'),
         getDraft(user.id, 'workout'),
         supabase.from('goals').select('goal_type, target_weight_kg').eq('user_id', user.id).eq('is_active', true).limit(1),
+        // FIX (fix-pass 07-12, item 7): weak-spot chip data (same sources as onboarding-tasks.service).
+        supabase.from('health_events').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
+        supabase.from('ai_summary').select('onboarding_tasks_completed').eq('user_id', user.id).maybeSingle(),
       ]);
       if (!mountedRef.current) return;
       setActive(activeRow);
       setDraft(draftRow);
       setGoal((goalRes.data as { goal_type?: string; target_weight_kg?: number }[] | null)?.[0] ?? null);
+      setReadinessExtras({
+        healthEventsCount: healthRes.count ?? 0,
+        completedTasks: ((summaryRes.data as Record<string, unknown> | null)?.onboarding_tasks_completed as string[]) ?? [],
+      });
       if (draftRow) {
         setView('draft');
         // FIX (audit Wave3): rehydrate chatSessionId for a persisted draft — otherwise a reloaded
@@ -117,6 +138,9 @@ export default function WorkoutPlanScreen() {
   // useEffect(()=>load(),[load]) double-loaded on every focus. Single source (matches diet.tsx).
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  // FIX (fix-pass 07-12, item 2a): keep the re-lock on version bump (minor revisions
+  // aren't distinguishable from full replacements) but auto-satisfy when the inline
+  // plan still fits the viewport — see diet.tsx.
   useEffect(() => {
     const v = (draft?.plan_data as WorkoutPlanData | undefined)?.version;
     if (v !== undefined) setFullyViewed(false);
@@ -149,7 +173,11 @@ export default function WorkoutPlanScreen() {
     // FIX (audit UX-PRM-07): inform the free user their quota is used before they invest effort.
     if (!(await ensurePlanQuotaAcknowledged())) return;
     const sid = await createHeadlessSession({ title: 'Antrenman planı oluşturma', topicTags: ['plan_workout'] });
-    if (!sid) return;
+    if (!sid) {
+      // FIX (fix-pass 07-12, item 8a): silent return = dead button. Tell the user.
+      Alert.alert('Bağlantı sorunu', 'Koç oturumu açılamadı. Bağlantını kontrol edip tekrar dene.');
+      return;
+    }
     setChatSessionId(sid);
     setSending(true);
     setMessages([{ id: 'trigger', role: 'user', content: '[PLAN_INIT] Profile göre haftalık antrenman programını oluştur.' }]);
@@ -173,11 +201,24 @@ export default function WorkoutPlanScreen() {
   };
 
   const sendUserMessage = async (text: string) => {
-    if (!chatSessionId) return;
     setMessages(prev => [...prev, { id: 'u-' + Date.now(), role: 'user', content: text }]);
+    // FIX (fix-pass 07-12, item 8a): a null session used to swallow the message silently
+    // (dead composer). Re-attempt session creation; if that also fails, say so in-thread.
+    let sid = chatSessionId;
+    if (!sid) {
+      sid = await createHeadlessSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
+      if (!sid) {
+        setMessages(prev => [
+          ...prev,
+          { id: 'err-' + Date.now(), role: 'assistant', content: 'Bağlantı sorunu — mesajın gönderilemedi, tekrar dene.' },
+        ]);
+        return;
+      }
+      setChatSessionId(sid);
+    }
     setSending(true);
     const { data, error } = await invokePlanChat({
-      sessionId: chatSessionId,
+      sessionId: sid,
       message: text,
       planType: 'workout',
     });
@@ -196,7 +237,7 @@ export default function WorkoutPlanScreen() {
   const handleAlternative = async () => {
     if (!chatSessionId || !draft) return;
     setSending(true);
-    const { data } = await invokePlanChat({
+    const { data, error } = await invokePlanChat({
       sessionId: chatSessionId,
       message: '[ALT] Lütfen aynı profilimle FARKLI bir yaklaşımla alternatif bir haftalık antrenman programı üret.',
       planType: 'workout',
@@ -205,6 +246,12 @@ export default function WorkoutPlanScreen() {
     if (data?.plan_snapshot) {
       setAltCandidate(data.plan_snapshot as unknown as WorkoutPlanData);
       setShowAltModal(true);
+    } else {
+      // FIX (fix-pass 07-12, item 8b): don't discard the invoke error — surface it in-thread.
+      setMessages(prev => [
+        ...prev,
+        { id: 'err-' + Date.now(), role: 'assistant', content: error ?? 'Alternatif üretilemedi, tekrar dene.' },
+      ]);
     }
     await load();
   };
@@ -297,7 +344,15 @@ export default function WorkoutPlanScreen() {
     // FIX (audit Wave3): guard against the migration-030 partial UNIQUE(user_id, plan_type) WHERE
     // status='draft' — a blind INSERT over an existing draft threw 23505 and leaked raw SQL into the
     // chat bubble. Continue the existing draft instead.
-    const existing = await getDraft(user.id, 'workout');
+    // FIX (fix-pass 07-12, item 8c): getDraft now throws on network error; we're still in the
+    // ACTIVE view here, where chat bubbles are invisible — use an Alert.
+    let existing: PlanRow | null = null;
+    try {
+      existing = await getDraft(user.id, 'workout');
+    } catch {
+      Alert.alert('Bağlantı sorunu', 'Revizyon başlatılamadı. Bağlantını kontrol edip tekrar dene.');
+      return;
+    }
     if (existing) {
       const sid = await createHeadlessSession({ title: 'Antrenman planı revizyonu', topicTags: ['plan_workout'] });
       if (sid) setChatSessionId(sid);
@@ -376,7 +431,9 @@ export default function WorkoutPlanScreen() {
   }
 
   if (view === 'empty') {
-    const readiness = isPlanReady(profile, goal, 'workout');
+    // FIX (fix-pass 07-12, item 7): pass off-profile task data so a completed
+    // health-history task stops rendering as a weak-spot chip forever.
+    const readiness = isPlanReady(profile, goal, 'workout', readinessExtras);
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <Stack.Screen options={{ title: 'Antrenman planı', headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text, headerShadowVisible: false }} />
@@ -401,6 +458,9 @@ export default function WorkoutPlanScreen() {
           goal={goal}
           onStartRevision={handleStartRevision}
           onOpenHistory={handleHistory}
+          // FIX (fix-pass 07-12, item 1): stale-plan banner CTA → brand-new draft via
+          // the same generation flow as the empty-state 'Plan oluştur'.
+          onCreateFresh={startDraftCreation}
           creatingRevision={sending}
         />
       </View>
@@ -421,19 +481,54 @@ export default function WorkoutPlanScreen() {
           <PlanPreviewCard
             plan={planData}
             planType="workout"
+            weekStart={draft.week_start}
             onPress={() => setShowFullModal(true)}
             updatedLabel={fullyViewed ? 'okundu' : 'az önce güncellendi'}
           />
         </View>
 
+        {/* Chat area — the program renders INLINE as the list header
+            (fix-pass 07-12, item 2b): the day-by-day content used to hide behind
+            the tiny preview card, leaving a huge void above the action bar. */}
         <FlatList
           ref={listRef}
           data={messages}
           keyExtractor={m => m.id}
           style={{ flex: 1 }}
           contentContainerStyle={{ padding: SPACING.md, gap: SPACING.sm }}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+          onScrollBeginDrag={() => { userDraggedRef.current = true; }}
+          onScroll={e => {
+            // Gate path 2 (item 2a): user dragged far enough to see the whole inline
+            // plan. Guarded by onScrollBeginDrag so programmatic scrolls don't count.
+            if (!userDraggedRef.current) return;
+            const { contentOffset, layoutMeasurement } = e.nativeEvent;
+            if (draftHeaderHRef.current > 0
+              && contentOffset.y + layoutMeasurement.height >= draftHeaderHRef.current - 40) {
+              setFullyViewed(true);
+            }
+          }}
+          scrollEventThrottle={100}
+          onContentSizeChange={() => {
+            if (!pendingScrollRef.current) return;
+            pendingScrollRef.current = false;
+            listRef.current?.scrollToEnd({ animated: true });
+          }}
           renderItem={({ item }) => <DraftChatBubble msg={item} />}
+          ListHeaderComponent={
+            <View
+              onLayout={e => { draftHeaderHRef.current = e.nativeEvent.layout.height; }}
+              style={{ paddingBottom: SPACING.xs }}
+            >
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm }}>
+                HAFTALIK TASLAK — GÖZDEN GEÇİR
+              </Text>
+              <PlanDayAccordion
+                plan={planData}
+                resetKey={planData.version ?? 1}
+                onAllDaysViewed={() => setFullyViewed(true)}
+              />
+            </View>
+          }
           ListEmptyComponent={
             sending ? null : (
               <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.lg }}>
@@ -467,6 +562,7 @@ export default function WorkoutPlanScreen() {
           onClose={() => setShowFullModal(false)}
           plan={planData}
           planVersion={planData.version ?? 1}
+          weekStart={draft.week_start}
           onFullyViewed={() => setFullyViewed(true)}
         />
 
@@ -494,6 +590,9 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
   const onUser = getContrastColor(colors.purple);
   const hiddenTrigger = msg.content.startsWith('[PLAN_INIT]') || msg.content.startsWith('[ALT]');
   if (isUser && hiddenTrigger) return null;
+  // Review fix (ux-pass2): sunucu kalıcı plan tekliflerine <confirm_reject/> makine
+  // işaretini ekliyor — bu yüzeyin kendi onay UI'ı var, işareti asla gösterme.
+  const displayContent = msg.content.replace(/<confirm_reject\s*\/?>/g, '').trim();
   return (
     <View
       style={{
@@ -511,7 +610,7 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
       }}
     >
       <Text selectable style={{ color: isUser ? onUser : colors.text, fontSize: 14, lineHeight: 20 }}>
-        {msg.content}
+        {displayContent}
       </Text>
       {msg.reasoning ? (
         <View

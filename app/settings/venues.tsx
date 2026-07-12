@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getVenues, deleteVenue, type Venue } from '@/services/venues.service';
+import { deleteVenue, type Venue } from '@/services/venues.service';
+import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -18,8 +19,24 @@ export default function VenuesScreen() {
   const [venues, setVenues] = useState<Venue[]>([]);
   // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya yanlış 'boş' kartı gösterilmiyordu.
   const [loading, setLoading] = useState(true);
+  // FIX (audit empty-vs-error): getVenues hataları []'a yutuyor — ekran doğrudan sorguluyor
+  // ki fetch hatası 'mekan yok' yerine hata+tekrar dene kartı çizsin.
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => { getVenues().then(setVenues).finally(() => setLoading(false)); }, []);
+  const loadVenues = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    const { data, error } = await supabase.from('user_venues').select('*').order('visit_count', { ascending: false });
+    if (error) {
+      console.warn('user_venues load failed', error);
+      setLoadError(true);
+    } else {
+      setVenues((data ?? []) as Venue[]);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadVenues(); }, [loadVenues]);
 
   const navigateToEatingOut = () => {
     router.push('/(tabs)/chat');
@@ -47,6 +64,16 @@ export default function VenuesScreen() {
         <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
+      ) : loadError ? (
+        /* FIX (audit empty-vs-error): fetch hatası 'mekan yok' değil, hata+tekrar dene (daily.tsx kalıbı). */
+        <Card>
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
+            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Mekanlar yüklenemedi</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+            <Button title="Tekrar dene" size="sm" onPress={loadVenues} />
+          </View>
+        </Card>
       ) : venues.length === 0 ? (
         <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henüz kayıtlı mekan yok. Koçuna "Simit Sarayı'nda yedim" gibi yazdığında mekan otomatik öğrenilir.</Text></Card>
       ) : (

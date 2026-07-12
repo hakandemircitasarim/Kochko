@@ -275,3 +275,15 @@ export function getTaskByKey(key: string): OnboardingTask | null {
   const { checkCompletion, ...rest } = def;
   return rest;
 }
+
+/**
+ * Reverse lookup by taskModeHint — the chat thread renders a visible topic marker
+ * when a task opener fires (the opener prompt itself is an invisible [SYSTEM_INIT],
+ * so without the marker the coach appears to change subject out of nowhere).
+ */
+export function getTaskByModeHint(hint: string): OnboardingTask | null {
+  const def = ONBOARDING_TASKS.find(t => t.taskModeHint === hint);
+  if (!def) return null;
+  const { checkCompletion, ...rest } = def;
+  return rest;
+}

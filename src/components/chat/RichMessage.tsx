@@ -295,14 +295,16 @@ export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: 
   const color = pct > 0.9 ? colors.error : pct > 0.7 ? colors.warning : colors.primary;
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 0.5, borderColor: colors.border }}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
+      {/* ux-pass2: gap + tr-TR thousands — this rendered as the run-together
+          "Haftalık Bütçe332 / 15532 kcal" live (the dashboard shows "15.532"). */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm, marginBottom: SPACING.xs }}>
         <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Haftalık Bütçe</Text>
-        <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500' }}>{consumed} / {total} kcal</Text>
+        <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500' }}>{Math.round(consumed).toLocaleString('tr-TR')} / {Math.round(total).toLocaleString('tr-TR')} kcal</Text>
       </View>
       <View style={{ height: 6, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
         <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 3 }} />
       </View>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, textAlign: 'right' }}>Kalan: {remaining} kcal</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, textAlign: 'right' }}>Kalan: {Math.round(remaining).toLocaleString('tr-TR')} kcal</Text>
     </View>
   );
 }

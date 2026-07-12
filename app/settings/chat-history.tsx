@@ -5,9 +5,11 @@
  * - Session-level listing
  * - Selective/bulk delete
  */
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
 import { Input } from '@/components/ui/Input';
@@ -15,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
+import { haptics } from '@/lib/haptics';
 
 interface ChatSession {
   id: string;
@@ -49,18 +52,43 @@ export default function ChatHistoryScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  // FIX (audit empty-vs-error): distinguish "loading" and "fetch failed" from the confident
+  // 'Henüz sohbet geçmişi yok' empty state.
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  // FIX (audit search-0-results): without this flag, 0 results was indistinguishable from
+  // "never searched" — the results card simply didn't render.
+  const [hasSearched, setHasSearched] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadSessions = useCallback(() => {
     if (!user?.id) return;
+    setLoading(true);
+    setLoadError(false);
     supabase.from('chat_sessions').select('*').eq('user_id', user.id).order('started_at', { ascending: false }).limit(20)
-      .then(({ data }) => setSessions((data ?? []) as ChatSession[]));
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('chat_sessions load failed', error);
+          setLoadError(true);
+        } else {
+          setSessions((data ?? []) as ChatSession[]);
+        }
+        setLoading(false);
+      });
   }, [user?.id]);
+
+  useEffect(() => { loadSessions(); }, [loadSessions]);
+
+  // FIX (audit dead-end): rows previously had only onLongPress (delete) — a session could not
+  // be OPENED at all. Route to the read-only session viewer.
+  const openSession = (sessionId: string) => {
+    router.push(`/settings/session-viewer?sessionId=${sessionId}` as never);
+  };
 
   // Collect unique topic tags from all sessions
   const allTags = Array.from(
@@ -95,12 +123,20 @@ export default function ChatHistoryScreen() {
       query = query.lte('created_at', `${isoTo}T23:59:59`);
     }
 
-    const { data } = await query
+    const { data, error } = await query
       .order('created_at', { ascending: false })
       .limit(30);
 
-    setSearchResults((data ?? []) as SearchResult[]);
     setSearching(false);
+    // FIX (audit empty-vs-error): a failed search must not silently render as "no results".
+    if (error) {
+      console.warn('chat search failed', error);
+      haptics.error();
+      Alert.alert('Arama yapılamadı', 'Bir sorun oluştu, lütfen tekrar dene.');
+      return;
+    }
+    setHasSearched(true);
+    setSearchResults((data ?? []) as SearchResult[]);
   };
 
   const handleDeleteSession = (sessionId: string) => {
@@ -112,9 +148,19 @@ export default function ChatHistoryScreen() {
         {
           text: 'Sil', style: 'destructive',
           onPress: async () => {
-            await supabase.from('chat_messages').delete().eq('session_id', sessionId);
-            await supabase.from('chat_sessions').delete().eq('id', sessionId);
+            // FIX (audit silent-delete): check the delete errors BEFORE wiping local state —
+            // previously a failed delete still removed the row from the list (ghost data).
+            const { error: msgError } = await supabase.from('chat_messages').delete().eq('session_id', sessionId);
+            const { error: sessionError } = await supabase.from('chat_sessions').delete().eq('id', sessionId);
+            if (msgError || sessionError) {
+              console.warn('session delete failed', msgError ?? sessionError);
+              haptics.error();
+              Alert.alert('Silinemedi', 'Sohbet silinemedi, tekrar dene.');
+              return;
+            }
+            haptics.success();
             setSessions(prev => prev.filter(s => s.id !== sessionId));
+            setSearchResults(prev => prev.filter(r => r.session_id !== sessionId));
           },
         },
       ]
@@ -131,8 +177,16 @@ export default function ChatHistoryScreen() {
           text: 'Hepsini Sil', style: 'destructive',
           onPress: async () => {
             if (!user?.id) return;
-            await supabase.from('chat_messages').delete().eq('user_id', user.id);
-            await supabase.from('chat_sessions').delete().eq('user_id', user.id);
+            // FIX (audit silent-delete): verify both deletes succeeded before clearing the UI.
+            const { error: msgError } = await supabase.from('chat_messages').delete().eq('user_id', user.id);
+            const { error: sessionError } = await supabase.from('chat_sessions').delete().eq('user_id', user.id);
+            if (msgError || sessionError) {
+              console.warn('clear-all failed', msgError ?? sessionError);
+              haptics.error();
+              Alert.alert('Silinemedi', 'Sohbet geçmişi silinemedi, tekrar dene.');
+              return;
+            }
+            haptics.success();
             setSessions([]);
             setSearchResults([]);
           },
@@ -190,11 +244,17 @@ export default function ChatHistoryScreen() {
         </ScrollView>
       )}
 
-      {/* Search Results */}
+      {/* Search Results — rows are tappable and open the containing session. */}
       {searchResults.length > 0 && (
         <Card title={`Sonuçlar (${searchResults.length})`}>
           {searchResults.map(r => (
-            <View key={r.id} style={{ paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+            <TouchableOpacity
+              key={r.id}
+              onPress={() => { haptics.tap(); openSession(r.session_id); }}
+              accessibilityRole="button"
+              accessibilityLabel="Sonucun bulunduğu sohbeti aç"
+              style={{ paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}
+            >
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
                 <Text style={{ color: r.role === 'user' ? COLORS.primary : COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>
                   {r.role === 'user' ? 'Sen' : 'Kochko'}
@@ -204,8 +264,17 @@ export default function ChatHistoryScreen() {
                 </Text>
               </View>
               <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }} numberOfLines={3}>{r.content}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
+        </Card>
+      )}
+
+      {/* FIX (audit search-0-results): explicit 'Sonuç bulunamadı' card after a real search. */}
+      {hasSearched && !searching && searchResults.length === 0 && (
+        <Card>
+          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>
+            Sonuç bulunamadı. Farklı bir kelime veya tarih aralığı dene.
+          </Text>
         </Card>
       )}
 
@@ -215,11 +284,32 @@ export default function ChatHistoryScreen() {
         {filteredSessions.length > 0 && <Button title="Hepsini Sil" variant="ghost" size="sm" onPress={handleClearAll} />}
       </View>
 
-      {filteredSessions.length === 0 ? (
+      {/* FIX (audit empty-vs-error): loading and fetch-error render their own states — the
+          'Henüz sohbet geçmişi yok' copy only appears when the fetch genuinely returned 0 rows. */}
+      {loading ? (
+        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : loadError ? (
+        <Card>
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
+            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Sohbet geçmişi yüklenemedi</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+            <Button title="Tekrar dene" size="sm" onPress={loadSessions} />
+          </View>
+        </Card>
+      ) : filteredSessions.length === 0 ? (
         <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Henüz sohbet geçmişi yok.</Text></Card>
       ) : (
         filteredSessions.map(s => (
-          <TouchableOpacity key={s.id} onLongPress={() => handleDeleteSession(s.id)}>
+          <TouchableOpacity
+            key={s.id}
+            onPress={() => { haptics.tap(); openSession(s.id); }}
+            onLongPress={() => handleDeleteSession(s.id)}
+            accessibilityRole="button"
+            accessibilityLabel={`${s.title ?? new Date(s.started_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}, ${s.message_count} mesaj — açmak için dokun, silmek için uzun bas`}
+          >
             <Card>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
@@ -231,16 +321,19 @@ export default function ChatHistoryScreen() {
                     {s.topic_tags && s.topic_tags.length > 0 ? ` | ${s.topic_tags.join(', ')}` : ''}
                   </Text>
                 </View>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
-                  {new Date(s.started_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
+                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+                    {new Date(s.started_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+                </View>
               </View>
             </Card>
           </TouchableOpacity>
         ))
       )}
 
-      <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Uzun bas: sohbet oturumunu sil</Text>
+      <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Dokun: sohbeti aç · Uzun bas: sohbeti sil</Text>
       {/* Spec note: Sohbet silme Katman 2'yi etkilemez */}
     </ScrollView>
   );

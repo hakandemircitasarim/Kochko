@@ -22,11 +22,11 @@ export interface PlateauStrategy {
 }
 
 const STRATEGIES: PlateauStrategy[] = [
-  { id: 'calorie_cycle', name: 'Kalori Dongusu', description: 'Hafta ici/hafta sonu farkli kalori araliği uygulanir. Metabolizma uyandirilir.' },
-  { id: 'refeed', name: 'Refeed Gunu', description: 'Haftada 1 gun kalori bakim seviyesine cikarilir. Genellikle yogun antrenman gununde.' },
-  { id: 'tdee_recalc', name: 'TDEE Yeniden Hesaplama', description: 'Mevcut kiloya gore TDEE yeniden hesaplanir. Kilo dustukce TDEE de duser.' },
-  { id: 'maintenance_break', name: '2 Hafta Bakim', description: 'Kalori acigi tamamen kapatilir, 2 hafta bakim kalorilerinde yenir. Metabolik sifirlama.' },
-  { id: 'training_change', name: 'Antrenman Degisikligi', description: 'Farkli antrenman tipi veya yogunluk. Vucudu yeni uyaranla karsilastirma.' },
+  { id: 'calorie_cycle', name: 'Kalori Döngüsü', description: 'Hafta içi/hafta sonu farklı kalori aralığı uygulanır. Metabolizma uyandırılır.' },
+  { id: 'refeed', name: 'Refeed Günü', description: 'Haftada 1 gün kalori bakım seviyesine çıkarılır. Genellikle yoğun antrenman gününde.' },
+  { id: 'tdee_recalc', name: 'TDEE Yeniden Hesaplama', description: 'Mevcut kiloya göre TDEE yeniden hesaplanır. Kilo düştükçe TDEE de düşer.' },
+  { id: 'maintenance_break', name: '2 Hafta Bakım', description: 'Kalori açığı tamamen kapatılır, 2 hafta bakım kalorilerinde yenir. Metabolik sıfırlama.' },
+  { id: 'training_change', name: 'Antrenman Değişikliği', description: 'Farklı antrenman tipi veya yoğunluk ile vücuda yeni bir uyaran verilir.' },
 ];
 
 /**
@@ -53,7 +53,7 @@ export async function detectPlateau(userId: string): Promise<PlateauStatus> {
   const rows = (data ?? []) as { weight_kg: number; date: string }[];
   const weights = rows.map((r) => r.weight_kg);
   if (weights.length < 2) {
-    return { isInPlateau: false, weeksSinceChange: 0, avgWeight: weights.length ? Math.round(weights[0] * 10) / 10 : null, strategies: [], message: 'Yeterli tarti verisi yok.' };
+    return { isInPlateau: false, weeksSinceChange: 0, avgWeight: weights.length ? Math.round(weights[0] * 10) / 10 : null, strategies: [], message: 'Yeterli tartı verisi yok.' };
   }
   const avg = weights.reduce((s, w) => s + w, 0) / weights.length;
   const k = Math.max(1, Math.floor(weights.length / 3));
@@ -70,7 +70,7 @@ export async function detectPlateau(userId: string): Promise<PlateauStatus> {
     return {
       isInPlateau: true, weeksSinceChange: weeks, avgWeight: roundedAvg,
       strategies: STRATEGIES.slice(0, 3),
-      message: `${weeks} haftadir ${avg.toFixed(1)}kg civarinda kaliyor. Plateau olabilir.`,
+      message: `Kilon ${weeks} haftadır ${avg.toFixed(1).replace('.', ',')} kg civarında kalıyor. Plato olabilir.`,
     };
   }
   // Low-data soft signal: 2-4 weigh-ins over >=12 days that are flat — nudge to weigh more.
@@ -78,7 +78,7 @@ export async function detectPlateau(userId: string): Promise<PlateauStatus> {
     return {
       isInPlateau: true, weeksSinceChange: weeks, avgWeight: roundedAvg,
       strategies: STRATEGIES.slice(0, 2),
-      message: `Son ${weeks} haftada kilon ${avg.toFixed(1)}kg civarinda sabit gorunuyor. Daha sik tartilirsan durumu netlestirebiliriz.`,
+      message: `Son ${weeks} haftada kilon ${avg.toFixed(1).replace('.', ',')} kg civarında sabit görünüyor. Daha sık tartılırsan durumu netleştirebiliriz.`,
     };
   }
 
@@ -110,7 +110,7 @@ export function selectBestStrategy(
     return {
       primary: STRATEGIES.find(s => s.id === 'maintenance_break')!,
       secondary: STRATEGIES.find(s => s.id === 'refeed')!,
-      reasoning: `Uyumun yuksek (%${compliance}) ama ${weeksSinceChange} haftadir kilo degismiyor. Metabolik adaptasyon olabilir. 2 haftalik bakim molasi metabolizmayi sifirlayabilir.`,
+      reasoning: `Uyumun yüksek (%${compliance}) ama ${weeksSinceChange} haftadır kilo değişmiyor. Metabolik adaptasyon olabilir. 2 haftalık bakım molası metabolizmayı sıfırlayabilir.`,
     };
   }
 
@@ -119,7 +119,7 @@ export function selectBestStrategy(
     return {
       primary: STRATEGIES.find(s => s.id === 'training_change')!,
       secondary: STRATEGIES.find(s => s.id === 'calorie_cycle')!,
-      reasoning: 'Guc antrenmanina odaklisin. Antrenman degisikligi (farkli split, farkli tekrar araliklari) vucudu yeni uyaranla karsilastirir.',
+      reasoning: 'Güç antrenmanına odaklısın. Antrenman değişikliği (farklı split, farklı tekrar aralıkları) vücuda yeni bir uyaran verir.',
     };
   }
 
@@ -128,7 +128,7 @@ export function selectBestStrategy(
     return {
       primary: STRATEGIES.find(s => s.id === 'tdee_recalc')!,
       secondary: null,
-      reasoning: `Uyum orani dusuk (%${compliance}). Once TDEE'yi yeniden hesaplayalim ve kayit dogrulugunu arttiralim.`,
+      reasoning: `Uyum oranın düşük (%${compliance}). Önce TDEE'yi yeniden hesaplayalım ve kayıt doğruluğunu artıralım.`,
     };
   }
 
@@ -136,7 +136,7 @@ export function selectBestStrategy(
   return {
     primary: STRATEGIES.find(s => s.id === 'calorie_cycle')!,
     secondary: STRATEGIES.find(s => s.id === 'refeed')!,
-    reasoning: 'Kalori dongusu metabolizmayi canlandirir. Haftada 1 refeed gunu de ekleyebiliriz.',
+    reasoning: 'Kalori döngüsü metabolizmayı canlandırır. Haftada 1 refeed günü de ekleyebiliriz.',
   };
 }
 
@@ -156,13 +156,13 @@ export function applyPlateauStrategy(
           max: currentCalorieTarget.max + 200, // high days
         },
         adjustedProtein: currentProteinTarget,
-        instructions: 'Hafta ici dusuk kalori, hafta sonu yuksek kalori. Ortalama ayni kalir ama metabolizma canlanir.',
+        instructions: 'Hafta içi düşük kalori, hafta sonu yüksek kalori. Ortalama aynı kalır ama metabolizma canlanır.',
       };
     case 'refeed':
       return {
         adjustedCalorie: currentCalorieTarget, // unchanged on normal days
         adjustedProtein: currentProteinTarget,
-        instructions: 'Haftada 1 gun (antrenman gunu) kaloriyi bakim seviyesine cikar. Karbonhidrat agirlikli.',
+        instructions: 'Haftada 1 gün (antrenman günü) kaloriyi bakım seviyesine çıkar. Karbonhidrat ağırlıklı.',
       };
     case 'tdee_recalc':
       return {
@@ -171,7 +171,7 @@ export function applyPlateauStrategy(
           max: Math.round(currentCalorieTarget.max * 0.95),
         },
         adjustedProtein: currentProteinTarget,
-        instructions: 'TDEE yeniden hesaplandi. Kalori araligi %5 dusuruldu. 2 hafta izle.',
+        instructions: 'TDEE yeniden hesaplandı. Kalori aralığı %5 düşürüldü. 2 hafta izle.',
       };
     case 'maintenance_break':
       return {
@@ -180,13 +180,13 @@ export function applyPlateauStrategy(
           max: currentCalorieTarget.max + 300,
         },
         adjustedProtein: currentProteinTarget,
-        instructions: '2 hafta bakim kalorilerinde ye. Acik yok. Metabolik sifirlama. Sonra tekrar deficit.',
+        instructions: '2 hafta bakım kalorilerinde ye. Açık yok. Metabolik sıfırlama. Sonra tekrar kalori açığına dönersin.',
       };
     case 'training_change':
       return {
         adjustedCalorie: currentCalorieTarget,
         adjustedProtein: currentProteinTarget + 5,
-        instructions: 'Antrenman programini degistir: farkli split, farkli tekrar araliklari, yeni hareketler.',
+        instructions: 'Antrenman programını değiştir: farklı split, farklı tekrar aralıkları, yeni hareketler.',
       };
     default:
       return {

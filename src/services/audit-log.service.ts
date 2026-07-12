@@ -133,7 +133,7 @@ export async function applyDataMinimization(userId: string): Promise<{
 
   return {
     aggregated: oldCount,
-    message: `${oldCount} adet 2+ yillik kayit aggrege edilecek.`,
+    message: `2 yıldan eski ${oldCount} kayıt özet veriye dönüştürülecek.`,
   };
 }
 

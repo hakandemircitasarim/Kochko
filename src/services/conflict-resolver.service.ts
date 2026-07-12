@@ -59,10 +59,10 @@ export function detectAllergenConflict(
       if (lower.includes(food)) {
         return {
           type: 'allergen_violation',
-          description: `"${allergen}" alerjenin var ama "${food}" iceren bir yemek girdin.`,
+          description: `"${allergen}" alerjenin var ama "${food}" içeren bir yemek girdin.`,
           oldValue: `Alerjen: ${allergen}`,
           newValue: `Yenen: ${loggedFoodText}`,
-          suggestedQuestion: `${allergen} intoleransin degisti mi, yoksa bu bir istisna miydi?`,
+          suggestedQuestion: `${allergen} intoleransın değişti mi, yoksa bu bir istisna mıydı?`,
         };
       }
     }
@@ -86,20 +86,20 @@ export function detectGoalBehaviorMismatch(
   if (goalType === 'lose_weight' && avgCalories > tdee * 0.95) {
     return {
       type: 'goal_behavior_mismatch',
-      description: `Kilo vermek istiyorsun ama son ${weeks} haftadir kalori alimin TDEE'nin uzerinde.`,
+      description: `Kilo vermek istiyorsun ama son ${weeks} haftadır kalori alımın TDEE'nin üzerinde.`,
       oldValue: `Hedef: kilo ver (TDEE: ${tdee} kcal)`,
-      newValue: `Ortalama tuketim: ${Math.round(avgCalories)} kcal/gun`,
-      suggestedQuestion: 'Hedefini ayarlayalim mi yoksa beslenme planini sikilaştiralim mi?',
+      newValue: `Ortalama tüketim: ${Math.round(avgCalories)} kcal/gün`,
+      suggestedQuestion: 'Hedefini ayarlayalım mı yoksa beslenme planını sıkılaştıralım mı?',
     };
   }
 
   if (goalType === 'gain_weight' && avgCalories < tdee * 1.05) {
     return {
       type: 'goal_behavior_mismatch',
-      description: `Kilo almak istiyorsun ama kalori alimin yeterli degil.`,
+      description: `Kilo almak istiyorsun ama kalori alımın yeterli değil.`,
       oldValue: `Hedef: kilo al (TDEE: ${tdee} kcal)`,
-      newValue: `Ortalama tuketim: ${Math.round(avgCalories)} kcal/gun`,
-      suggestedQuestion: 'Kalori hedefini artirmak mi yoksa hedefi degistirmek mi istiyorsun?',
+      newValue: `Ortalama tüketim: ${Math.round(avgCalories)} kcal/gün`,
+      suggestedQuestion: 'Kalori hedefini artırmak mı yoksa hedefi değiştirmek mi istiyorsun?',
     };
   }
 
@@ -117,10 +117,10 @@ export function detectProfileContradiction(
   if (alcoholFrequency === 'never' && loggedAlcohol) {
     return {
       type: 'profile_contradiction',
-      description: 'Profilinde "alkol kullanmiyorum" yazıyor ama alkol kaydi girdin.',
-      oldValue: 'Alkol: hic',
-      newValue: 'Alkol kaydi girildi',
-      suggestedQuestion: 'Alkol tercihin degisti mi, yoksa bu bir istisna miydi? Profilini guncellememi ister misin?',
+      description: 'Profilinde "alkol kullanmıyorum" yazıyor ama alkol kaydı girdin.',
+      oldValue: 'Alkol: hiç',
+      newValue: 'Alkol kaydı girildi',
+      suggestedQuestion: 'Alkol tercihin değişti mi, yoksa bu bir istisna mıydı? Profilini güncellememi ister misin?',
     };
   }
 

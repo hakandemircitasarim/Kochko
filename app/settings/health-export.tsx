@@ -10,10 +10,14 @@ import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { exportPDF } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
+
+// FIX (audit raw-enum): doctor-facing PDF must not print 'male'/'female' — local label map
+// (same mapping as coach-memory.tsx).
+const GENDER_LABELS: Record<string, string> = { male: 'Erkek', female: 'Kadın', other: 'Diğer' };
 
 export default function HealthExportScreen() {
   const insets = useSafeAreaInsets();
@@ -46,6 +50,15 @@ export default function HealthExportScreen() {
         supabase.from('workout_logs').select('logged_for_date, workout_type, duration_min, intensity').eq('user_id', user.id).gte('logged_for_date', start).lte('logged_for_date', end).order('logged_for_date'),
       ]);
 
+      // FIX (audit false-valid-PDF): a failed fetch used to fall through to '-'/0 values and
+      // still produce a "valid"-looking doctor-facing PDF of dashes and zeros. Abort instead.
+      if (profileRes.error || !profileRes.data || metricsRes.error || reportsRes.error || labRes.error || workoutsRes.error) {
+        console.warn('health-export fetch failed', profileRes.error ?? metricsRes.error ?? reportsRes.error ?? labRes.error ?? workoutsRes.error);
+        haptics.error();
+        Alert.alert('Rapor oluşturulamadı', 'Verilerin alınamadı. Bağlantını kontrol edip tekrar dene.');
+        return;
+      }
+
       const profile = profileRes.data;
       const metrics = metricsRes.data ?? [];
       const reports = reportsRes.data ?? [];
@@ -74,7 +87,9 @@ export default function HealthExportScreen() {
 
       // Build insights list
       const insights: string[] = [];
-      insights.push(`Hasta: Yaş ${age ?? '-'} | Cinsiyet: ${profile?.gender ?? '-'} | Boy: ${profile?.height_cm ?? '-'} cm | Kilo: ${profile?.weight_kg ?? '-'} kg`);
+      // FIX (audit raw-enum): 'male' → 'Erkek' etc. in the doctor-facing PDF.
+      const genderTr = profile?.gender ? GENDER_LABELS[profile.gender as string] ?? String(profile.gender) : '-';
+      insights.push(`Hasta: Yaş ${age ?? '-'} | Cinsiyet: ${genderTr} | Boy: ${profile?.height_cm ?? '-'} cm | Kilo: ${profile?.weight_kg ?? '-'} kg`);
       if (avgCal > 0) insights.push(`Ortalama günlük kalori: ${avgCal} kcal | Protein: ${avgPro} g`);
       const typedWorkouts = workouts as { duration_min: number }[];
       if (typedWorkouts.length > 0) {
@@ -96,7 +111,7 @@ export default function HealthExportScreen() {
 
       const summaryParts: string[] = [];
       summaryParts.push(`Tarih aralığı: ${start} - ${end}.`);
-      summaryParts.push(`Hasta bilgileri: Yaş ${age ?? '-'}, ${profile?.gender ?? '-'}, ${profile?.height_cm ?? '-'} cm.`);
+      summaryParts.push(`Hasta bilgileri: Yaş ${age ?? '-'}, ${genderTr}, ${profile?.height_cm ?? '-'} cm.`);
       if (weightChange !== null) summaryParts.push(`Kilo değişimi: ${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)} kg.`);
       summaryParts.push('Bu rapor Kochko yaşam tarzı koçluk uygulaması tarafından oluşturulmuştur. Tıbbi değerlendirme için sağlık profesyonelinin yorumu gereklidir.');
 
@@ -111,11 +126,13 @@ export default function HealthExportScreen() {
       });
       haptics.success();
     } catch (err) {
+      console.warn('health-export failed', err);
       haptics.error();
       Alert.alert('Hata', 'Rapor oluşturulurken bir hata oluştu. Lütfen tekrar dene.');
+    } finally {
+      // finally: the abort-on-fetch-error path returns early — the button must not stay spinning.
+      setExporting(false);
     }
-
-    setExporting(false);
   };
 
   return (
@@ -152,27 +169,27 @@ export default function HealthExportScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        {/* FIX (audit free-text-ISO): error-prone "YYYY-MM-DD" text inputs replaced with the
+            native date picker (DateTimeField) — stored value stays ISO. */}
         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
           <View style={{ flex: 1 }}>
-            <Input
+            <DateTimeField
               label="Başlangıç"
-              placeholder="2024-01-01"
+              mode="date"
               value={startDate}
-              onChangeText={setStartDate}
-              keyboardType="numbers-and-punctuation"
-              maxLength={10}
-              accessibilityLabel="Başlangıç tarihi, yıl-ay-gün biçiminde"
+              onChange={setStartDate}
+              placeholder="Tarih seç"
+              maximumDate={new Date()}
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Input
+            <DateTimeField
               label="Bitiş"
-              placeholder="2024-03-31"
+              mode="date"
               value={endDate}
-              onChangeText={setEndDate}
-              keyboardType="numbers-and-punctuation"
-              maxLength={10}
-              accessibilityLabel="Bitiş tarihi, yıl-ay-gün biçiminde"
+              onChange={setEndDate}
+              placeholder="Tarih seç"
+              maximumDate={new Date()}
             />
           </View>
         </View>

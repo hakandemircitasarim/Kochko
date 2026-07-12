@@ -3,7 +3,8 @@
  * Full-width card with calorie ring, header, macro bars.
  */
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
@@ -80,6 +81,9 @@ export function HeroSection({
   const hasTargets = targetMax > 0;
   const targetMid = hasTargets ? Math.round((targetMin + targetMax) / 2) : 0;
   const pct = hasTargets ? Math.min(1, consumed / targetMax) : 0;
+  // FIX (ux-pass2 #1): "İyi akşamlar, Hakan Test" — selamlama soyad/tam ad değil,
+  // yalnız ilk adla hitap eder.
+  const firstName = userName?.trim().split(/\s+/)[0];
 
   return (
     <View style={{ paddingTop: insets.top + 8, paddingHorizontal: SPACING.xl }}>
@@ -88,7 +92,7 @@ export function HeroSection({
         <View style={{ flexShrink: 1 }}>
           {/* FIX (audit: tab başlık tutarlılığı) raw 18 → FONT.xl2 token hijyeni */}
           <Text style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text }}>
-            {getGreeting()}{userName ? `, ${userName}` : ''}
+            {getGreeting()}{firstName ? `, ${firstName}` : ''}
           </Text>
           {/* FIX (audit: ölü prop) today selamlamanın altına alt-metin olarak render edilir */}
           {today ? (
@@ -135,15 +139,33 @@ export function HeroSection({
             </View>
           </>
         ) : (
-          <View style={{ alignItems: 'center', paddingVertical: SPACING.xxl }}>
+          /* FIX (ux-pass2 #13): boş durum eylemsiz bir View'dı — artık hedef-belirleme
+             görevini açan gerçek bir CTA (kanonik onboarding_goal task paramlarıyla). */
+          <TouchableOpacity
+            onPress={() => router.push({
+              pathname: '/(tabs)/chat',
+              params: {
+                prefill: 'Hedeflerimi konuşmak istiyorum.',
+                taskModeHint: 'onboarding_goal',
+                taskNonce: String(Date.now()),
+              },
+            })}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Henüz hedef belirlenmedi. Koçuna hedeflerini anlatmak için dokun"
+            style={{ alignItems: 'center', paddingVertical: SPACING.xxl, alignSelf: 'stretch' }}
+          >
             <Ionicons name="nutrition-outline" size={36} color={colors.textMuted} />
             <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: SPACING.md, textAlign: 'center' }}>
               Henüz hedef belirlenmedi
             </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
-              Koçuna hedeflerini anlat
-            </Text>
-          </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.sm }}>
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
+                Koçuna hedeflerini anlat
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+            </View>
+          </TouchableOpacity>
         )}
       </View>
 

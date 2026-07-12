@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, useWindowDimensions, ActivityIndicator, TouchableOpacity, Alert, RefreshControl } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +22,19 @@ import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
 interface MetricPt { date: string; weight_kg: number | null; water_liters: number; sleep_hours: number | null; steps: number | null; }
-interface CompPt { date: string; compliance_score: number; }
+interface CompPt { date: string; compliance_score: number; calorie_actual: number | null; workout_completed: boolean | null; }
+
+// FIX (ux-pass raporlar): daily_reports rows can exist for days the user logged NOTHING
+// (the report job still runs and the score clamps to 0). Those fabricated zeros poisoned
+// the uyum chart (wall of zeros), the "En Kötü" pick (an unlogged day branded worst) and
+// the tile average. A day counts as "logged" only if it has a meal (calorie_actual > 0),
+// a completed workout, or any daily_metrics entry (weight/water/sleep/steps).
+const metricHasLog = (m: MetricPt) =>
+  m.weight_kg != null || (m.water_liters ?? 0) > 0 || m.sleep_hours != null || (m.steps ?? 0) > 0;
+const filterLoggedCompliance = (comp: CompPt[], mets: MetricPt[]): CompPt[] => {
+  const loggedDates = new Set(mets.filter(metricHasLog).map(m => m.date));
+  return comp.filter(c => (c.calorie_actual ?? 0) > 0 || c.workout_completed === true || loggedDates.has(c.date));
+};
 
 // FIX (completeness audit): applying a plateau strategy / mini-cut writes the new band to profiles,
 // but today's ALREADY-projected daily_plans row keeps the OLD calorie/protein targets until the next
@@ -69,6 +81,8 @@ export default function ProgressScreen() {
   const [metrics, setMetrics] = useState<MetricPt[]>([]);
   const [compliance, setCompliance] = useState<CompPt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false); // pull-to-refresh: keep content visible, no skeleton teardown
+  const hasLoadedOnce = useRef(false);
   const [error, setError] = useState(false); // FIX (audit UI-STA-05): distinguish load failure from empty data
   const [plateauMsg, setPlateauMsg] = useState<string | null>(null);
   const [plateauStatus, setPlateauStatus] = useState<PlateauStatus | null>(null);
@@ -101,26 +115,34 @@ export default function ProgressScreen() {
   const load = useCallback(async () => {
     if (!user?.id) { setLoading(false); return; }
     const from = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
-    setError(false); // FIX (audit UI-STA-05): reset before each attempt
     try {
       const [m, c, plateau, maintenance, timeline, engagementData] = await Promise.all([
         supabase.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps').eq('user_id', user.id).gte('date', from).order('date'),
-        supabase.from('daily_reports').select('date, compliance_score').eq('user_id', user.id).gte('date', from).order('date'),
+        // calorie_actual + workout_completed: needed to tell a REAL 0-compliance day from a
+        // report row generated for a day the user never opened the app (see filterLoggedCompliance).
+        supabase.from('daily_reports').select('date, compliance_score, calorie_actual, workout_completed').eq('user_id', user.id).gte('date', from).order('date'),
         detectPlateau(user.id),
         getMaintenanceStatus(user.id),
         getTimelineData(user.id),
         getEngagementMetrics(user.id),
       ]);
-      setMetrics((m.data ?? []) as MetricPt[]);
+      const metricData = (m.data ?? []) as MetricPt[];
+      setMetrics(metricData);
       const compData = (c.data ?? []) as CompPt[];
       setCompliance(compData);
 
       if (plateau.isInPlateau) {
         setPlateauMsg(plateau.message);
         setPlateauStatus(plateau);
-        const avgComp = compData.length > 0 ? Math.round(compData.reduce((s, cc) => s + cc.compliance_score, 0) / compData.length) : null;
-        const trainingStyle = profile?.training_style as string | null ?? null;
-        const deficit = (profile?.tdee_calculated as number ?? 2000) - (profile?.calorie_range_rest_min as number ?? 1800);
+        // Average over LOGGED days only — fabricated zero-days dragged the strategy heuristic down.
+        const loggedComp = filterLoggedCompliance(compData, metricData);
+        const avgComp = loggedComp.length > 0 ? Math.round(loggedComp.reduce((s, cc) => s + cc.compliance_score, 0) / loggedComp.length) : null;
+        // FIX (ux-pass raporlar #7): read the profile via getState() instead of closing over the
+        // whole store object — a new profile identity no longer recreates `load` (which re-ran the
+        // focus effect and tore the screen down to the skeleton gratuitously).
+        const prof = useProfileStore.getState().profile;
+        const trainingStyle = (prof?.training_style as string | null) ?? null;
+        const deficit = ((prof?.tdee_calculated as number) ?? 2000) - ((prof?.calorie_range_rest_min as number) ?? 1800);
         const rec = selectBestStrategy(plateau.weeksSinceChange, trainingStyle, avgComp, deficit);
         setStrategyRec(rec);
       }
@@ -141,6 +163,9 @@ export default function ProgressScreen() {
       }
 
       setEngagement(engagementData);
+      // Clear the error flag only AFTER a successful fetch — clearing it up-front made a failed
+      // silent retry flash the empty new-user layout between error screens.
+      setError(false);
     } catch (err) {
       // Never leave the primary Raporlar tab stuck on the spinner — a single
       // rejected promise (e.g. a network drop) must still clear loading (#R3-1).
@@ -149,9 +174,16 @@ export default function ProgressScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, profile]);
+  }, [user?.id]);
 
-  useEffect(() => { setLoading(true); load(); }, [load]);
+  // FIX (ux-pass raporlar #1): the tab loaded on MOUNT only — log a meal/weight elsewhere,
+  // switch to Raporlar, and everything was stale. Refresh on every focus (same pattern as
+  // app/(tabs)/index.tsx); the skeleton shows only on the very first load, later focuses
+  // refresh silently under the existing content.
+  useFocusEffect(useCallback(() => {
+    if (!hasLoadedOnce.current) { hasLoadedOnce.current = true; setLoading(true); }
+    load();
+  }, [load]));
 
   // D4: Apply plateau strategy
   const handleApplyStrategy = async (strategyId: string) => {
@@ -254,12 +286,29 @@ export default function ProgressScreen() {
   );
 
   const weights = metrics.filter(m => m.weight_kg != null);
-  const fmtLabel = (d: string) => `${new Date(d).getDate()}/${new Date(d).getMonth() + 1}`;
+  // FIX (ux-pass raporlar #5): '5/7' style D/M labels matched nothing else in the app —
+  // use the same tr-TR short form as monthly.tsx ('5 Tem'). Note: react-native-chart-kit has
+  // no true time axis — points are index-spaced, so uneven gaps (4 days vs 23 days) render
+  // equidistant. We do NOT fabricate interpolated points to hide that; only real logged days
+  // are plotted and labeled.
+  const fmtLabel = (d: string) => new Date(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+  // Cap at ~5 labels ('5 Tem' is wider than '5/7'); when data is sparse (≤5 points) every
+  // real point keeps its label — no thinning.
+  const labelsFor = (dates: string[]) => {
+    const step = Math.max(1, Math.ceil(dates.length / 5));
+    return dates.map((d, i) => (i % step === 0 ? fmtLabel(d) : ''));
+  };
   const latestW = weights.length > 0 ? weights[weights.length - 1].weight_kg : null;
   const firstW = weights.length > 0 ? weights[0].weight_kg : null;
   const wChange = latestW && firstW ? latestW - firstW : null;
-  const avgComp = compliance.length > 0 ? Math.round(compliance.reduce((s, c) => s + c.compliance_score, 0) / compliance.length) : null;
-  const avgWater = metrics.length > 0 ? (metrics.reduce((s, m) => s + m.water_liters, 0) / metrics.length).toFixed(1) : null;
+  // FIX (ux-pass raporlar #2/#3/#4): only days with real logs feed the uyum average, the
+  // trend chart and best/worst — report rows fabricated for unlogged days are excluded.
+  const loggedCompliance = filterLoggedCompliance(compliance, metrics);
+  const avgComp = loggedCompliance.length > 0 ? Math.round(loggedCompliance.reduce((s, c) => s + c.compliance_score, 0) / loggedCompliance.length) : null;
+  // Water: average over days the user actually logged water — averaging zeros from untouched
+  // days produced the meaningless '0.0 L/gün' tile.
+  const waterDays = metrics.filter(m => (m.water_liters ?? 0) > 0);
+  const avgWater = waterDays.length > 0 ? (waterDays.reduce((s, m) => s + m.water_liters, 0) / waterDays.length).toFixed(1) : null;
   const sleepDays = metrics.filter(m => m.sleep_hours != null);
   const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1) : null;
 
@@ -267,17 +316,19 @@ export default function ProgressScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={{ padding: SPACING.md, paddingTop: insets.top + 8, paddingBottom: 100 + insets.bottom }}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={() => { setLoading(true); load(); }} tintColor={colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load().finally(() => setRefreshing(false)); }} tintColor={colors.primary} />}
     >
       {/* FIX (audit UI-TAB-05): match the shared tab-title pattern (FONT.xl2/700, insets.top+8, accessibilityRole="header") used by profile.tsx + HeroSection. */}
       <Text accessibilityRole="header" style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
 
-      {/* Summary */}
+      {/* Summary — FIX (ux-pass raporlar #2): '2 uyum' told the user nothing. compliance_score
+          is a 0-100 percent (ai-report clamps it, monthly shows %X) → show it as %X and make
+          every tile's period explicit (son 28 gün penceresi). */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md, gap: SPACING.sm }}>
-        <SummaryBox icon="scale-outline" iconColor={colors.pink} value={latestW ? `${latestW}` : '-'} label="kg" delta={wChange} />
-        <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={avgComp != null ? `${avgComp}` : '-'} label="uyum" />
-        <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater ?? '-'} label="L/gün" />
-        <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep ?? '-'} label="sa/gün" />
+        <SummaryBox icon="scale-outline" iconColor={colors.pink} value={latestW ? `${latestW}` : '-'} label="kg" period="son tartı" delta={wChange} />
+        <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={avgComp != null ? `%${avgComp}` : '-'} label="uyum" period="28 gün ort." />
+        <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater ?? '-'} label="L/gün" period="28 gün ort." />
+        <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep ?? '-'} label="sa/gün" period="28 gün ort." />
       </View>
 
       {/* Weight Chart */}
@@ -292,7 +343,7 @@ export default function ProgressScreen() {
               data={{
                 // FIX (audit ui-progress-charts): labels must be SAME length as data so
                 // chart-kit aligns each tick to its data index (was filtered → left-clustered).
-                labels: (() => { const step = Math.max(1, Math.floor(weights.length / 5)); return weights.map((w, i) => (i % step === 0 ? fmtLabel(w.date) : '')); })(),
+                labels: labelsFor(weights.map(w => w.date)),
                 datasets: [{ data: weights.map(w => w.weight_kg as number) }],
               }}
               width={chartWidth} height={180} chartConfig={weightChartConfig} bezier style={{ borderRadius: RADIUS.md }}
@@ -311,22 +362,33 @@ export default function ProgressScreen() {
         </Card>
       )}
 
-      {/* Compliance Chart */}
-      {compliance.length >= 2 ? (
+      {/* Compliance Chart — FIX (ux-pass raporlar #3): only LOGGED days are plotted (the wall of
+          fabricated zeros for untracked days is gone), and the y-axis is pinned to 0-100 with %
+          labels so the scale reads as the percent it is everywhere else (was auto-scaling to the
+          data max, e.g. 0-20). */}
+      {loggedCompliance.length >= 2 ? (
         <Card title="Uyum Puanı Trendi">
           <View
             accessible
             accessibilityRole="image"
-            accessibilityLabel={`Uyum puanı trendi grafiği. ${compliance.length} kayıt.${avgComp != null ? ` Ortalama ${avgComp} puan.` : ''}`}
+            accessibilityLabel={`Uyum puanı trendi grafiği. ${loggedCompliance.length} kayıtlı gün.${avgComp != null ? ` Ortalama yüzde ${avgComp}.` : ''}`}
           >
             <LineChart
               data={{
                 // FIX (audit ui-progress-charts): labels veri ile EŞİT uzunlukta (sola kümelenme giderildi).
-                labels: (() => { const step = Math.max(1, Math.floor(compliance.length / 5)); return compliance.map((c, i) => (i % step === 0 ? fmtLabel(c.date) : '')); })(),
-                datasets: [{ data: compliance.map(c => c.compliance_score) }],
+                labels: labelsFor(loggedCompliance.map(c => c.date)),
+                datasets: [
+                  { data: loggedCompliance.map(c => c.compliance_score) },
+                  // Invisible 0/100 anchor dataset: pins chart-kit's auto-scale to the full
+                  // percent range (the lib has no explicit yMin/yMax API).
+                  { data: [0, 100], withDots: false, strokeWidth: 0, color: () => 'transparent' },
+                ],
               }}
               width={chartWidth} height={180}
-              chartConfig={chartConfig}
+              chartConfig={{ ...chartConfig, decimalPlaces: 0 }}
+              formatYLabel={(y) => `%${y}`}
+              segments={5}
+              fromZero
               bezier style={{ borderRadius: RADIUS.md }}
             />
           </View>
@@ -337,17 +399,18 @@ export default function ProgressScreen() {
             <View style={{ width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: colors.success + '15', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
               <Ionicons name="checkmark-circle-outline" size={28} color={colors.success} />
             </View>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginBottom: 4 }}>Henüz rapor yok</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Gün sonu raporları oluşturuldukça görünecek</Text>
+            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginBottom: 4 }}>Henüz yeterli uyum verisi yok</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Kayıt tuttuğun günler burada görünecek</Text>
           </View>
         </Card>
       )}
 
-      {/* Best/Worst */}
-      {compliance.length > 0 && (
+      {/* Best/Worst — FIX (ux-pass raporlar #4): a day with NO logs used to get branded 'En Kötü 0'.
+          Only logged days compete; with fewer than 2 logged days the card hides entirely. */}
+      {loggedCompliance.length >= 2 && (
         <Card title="En İyi / En Kötü">
           {(() => {
-            const sorted = [...compliance].sort((a, b) => b.compliance_score - a.compliance_score);
+            const sorted = [...loggedCompliance].sort((a, b) => b.compliance_score - a.compliance_score);
             const best = sorted[0]; const worst = sorted[sorted.length - 1];
             return (
               <>
@@ -545,7 +608,7 @@ function ReportLink({ label, icon, onPress, colors, last }: { label: string; ico
   );
 }
 
-function SummaryBox({ icon, iconColor, value, label, delta }: { icon: keyof typeof Ionicons.glyphMap; iconColor?: string; value: string; label: string; delta?: number | null }) {
+function SummaryBox({ icon, iconColor, value, label, period, delta }: { icon: keyof typeof Ionicons.glyphMap; iconColor?: string; value: string; label: string; period?: string; delta?: number | null }) {
   const { colors, isDark } = useTheme();
   const tint = iconColor || colors.primary;
   return (
@@ -569,6 +632,8 @@ function SummaryBox({ icon, iconColor, value, label, delta }: { icon: keyof type
       </View>
       <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.text }}>{value}</Text>
       <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 1 }}>{label}</Text>
+      {/* FIX (ux-pass raporlar #2): the period the number covers, spelled out on the tile. */}
+      {period != null && <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 1, textAlign: 'center' }}>{period}</Text>}
       {/* FIX (audit UI-STA-06): at FONT.xs (11px) the base error (#E24B4A) is only 4.39:1 on
           card — below AA-small. Use the lighter `errorText` tone (>=4.5:1). success passes as-is. */}
       {delta != null && <Text style={{ fontSize: FONT.xs, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.errorText }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1)}</Text>}
@@ -582,7 +647,8 @@ function DayRow({ label, date, score, color }: { label: string; date: string; sc
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.xs, gap: SPACING.md }}>
       <Text style={{ fontSize: FONT.sm, fontWeight: '600', width: 50, color }}>{label}</Text>
       <Text style={{ color: colors.text, fontSize: FONT.md, flex: 1 }}>{new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}</Text>
-      <Text style={{ fontSize: FONT.lg, fontWeight: '700', color }}>{score}</Text>
+      {/* FIX (ux-pass raporlar #2): bare '0'/'85' okundu — uyum her yerde yüzde, burada da öyle. */}
+      <Text style={{ fontSize: FONT.lg, fontWeight: '700', color }}>%{score}</Text>
     </View>
   );
 }

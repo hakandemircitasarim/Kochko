@@ -14,15 +14,15 @@ export function checkSuspiciousInput(
 ): string | null {
   switch (type) {
     case 'weight':
-      if (value < 30 || value > 300) return `${value}kg normal aralik disi.`;
+      if (value < 30 || value > 300) return `${value} kg normal aralığın dışında.`;
       if (previousValue && Math.abs(value - previousValue) / previousValue > 0.10)
-        return `${previousValue}kg'dan ${value}kg'a buyuk degisim. Doğru mu?`;
+        return `${previousValue} kg'dan ${value} kg'a büyük değişim. Doğru mu?`;
       break;
     case 'calories':
-      if (value > 5000) return `${value} kcal cok yuksek. Doğru mu?`;
+      if (value > 5000) return `${value} kcal çok yüksek. Doğru mu?`;
       break;
     case 'water':
-      if (value > 6) return `${value}L cok fazla. Doğru mu?`;
+      if (value > 6) return `${value} L çok fazla. Doğru mu?`;
       break;
     case 'sleep':
       if (value > 14 || value < 2) return `${value} saat uyku anormal. Doğru mu?`;
@@ -36,8 +36,8 @@ export function checkSuspiciousInput(
  */
 export function validateAge(birthYear: number): { valid: boolean; message: string } {
   const age = new Date().getFullYear() - birthYear;
-  if (age < 18) return { valid: false, message: 'Bu uygulama 18 yas ve uzeri icindir.' };
-  if (age > 120) return { valid: false, message: 'Gecerli bir dogum yili girin.' };
+  if (age < 18) return { valid: false, message: 'Bu uygulama 18 yaş ve üzeri içindir.' };
+  if (age > 120) return { valid: false, message: 'Geçerli bir doğum yılı gir.' };
   return { valid: true, message: '' };
 }
 
@@ -68,7 +68,7 @@ export function checkExtremePortions(text: string): string | null {
     const word = match[2];
 
     if (quantity > 20 && FOOD_WORDS.some(fw => word.includes(fw))) {
-      return `${quantity} ${word} girdiniz. Bu miktar cok yuksek gorunuyor. Doğru mu?`;
+      return `${quantity} ${word} girdin. Bu miktar çok yüksek görünüyor. Doğru mu?`;
     }
   }
 

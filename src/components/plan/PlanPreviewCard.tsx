@@ -14,13 +14,23 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
-import { DAY_LABELS_TR } from '@/services/plan.service';
+import { DAY_LABELS_TR, DAY_SHORT_TR, formatWeekStartTR } from '@/services/plan.service';
 
 interface Props {
   plan: PlanData;
   planType: 'diet' | 'workout';
   onPress: () => void;
   updatedLabel?: string; // e.g. "az önce güncellendi"
+  /** Stored weekly_plans.week_start (source of truth for the header). The
+   *  LLM-authored plan_data.week_start diverged live (row said 06-07, snapshot
+   *  said 12-07) — pass the row value so the display reflects what's stored. */
+  weekStart?: string;
+}
+
+// FIX (fix-pass 07-12, item 2c): the chip rows read '3 3 - 3 3 - 1' with no day
+// context. Label every chip with its day ('Pzt Sal Çar Per Cum Cmt Paz').
+function dayShort(dayIndex: number, position: number): string {
+  return DAY_SHORT_TR[dayIndex] ?? DAY_SHORT_TR[position] ?? '';
 }
 
 function DietStrip({ plan }: { plan: DietPlanData }) {
@@ -32,28 +42,31 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
       {days.map((d, i) => {
         const hasMeals = (d.meals?.length ?? 0) > 0;
         return (
-        <View
-          // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
-          key={`${d.day_index}-${i}`}
-          style={{
-            flex: 1,
-            height: 28,
-            borderRadius: 6,
-            backgroundColor: hasMeals ? colors.primary + '22' : colors.surfaceLight,
-            borderWidth: 0.5,
-            borderColor: hasMeals ? colors.primary : colors.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Text
+        // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
+        <View key={`${d.day_index}-${i}`} style={{ flex: 1 }}>
+          <View
             style={{
-              fontSize: 11,
-              color: hasMeals ? colors.primary : colors.textMuted,
-              fontWeight: '700',
+              height: 28,
+              borderRadius: 6,
+              backgroundColor: hasMeals ? colors.primary + '22' : colors.surfaceLight,
+              borderWidth: 0.5,
+              borderColor: hasMeals ? colors.primary : colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            {DAY_LABELS_TR[d.day_index]?.[0]}
+            <Text
+              style={{
+                fontSize: 11,
+                color: hasMeals ? colors.primary : colors.textMuted,
+                fontWeight: '700',
+              }}
+            >
+              {DAY_LABELS_TR[d.day_index]?.[0]}
+            </Text>
+          </View>
+          <Text style={{ fontSize: 8, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
+            {dayShort(d.day_index, i)}
           </Text>
         </View>
         );
@@ -72,22 +85,25 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
           ? { bg: colors.surfaceLight, bd: colors.border, fg: colors.textMuted }
           : { bg: colors.purple + '22', bd: colors.purple, fg: colors.purple };
         return (
-          <View
-            // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
-            key={`${d.day_index}-${i}`}
-            style={{
-              flex: 1,
-              height: 28,
-              borderRadius: 6,
-              backgroundColor: tone.bg,
-              borderWidth: 0.5,
-              borderColor: tone.bd,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 11, color: tone.fg, fontWeight: '700' }}>
-              {d.rest_day ? '–' : `${d.exercises?.length ?? 0}`}
+          // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
+          <View key={`${d.day_index}-${i}`} style={{ flex: 1 }}>
+            <View
+              style={{
+                height: 28,
+                borderRadius: 6,
+                backgroundColor: tone.bg,
+                borderWidth: 0.5,
+                borderColor: tone.bd,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ fontSize: 11, color: tone.fg, fontWeight: '700' }}>
+                {d.rest_day ? '–' : `${d.exercises?.length ?? 0}`}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 8, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
+              {dayShort(d.day_index, i)}
             </Text>
           </View>
         );
@@ -96,7 +112,7 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
   );
 }
 
-export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props) {
+export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekStart }: Props) {
   const { colors } = useTheme();
 
   const summary = useMemo(() => {
@@ -145,7 +161,9 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel }: Props
             {planType === 'diet' ? 'Bu haftaki diyetin' : 'Bu haftaki sporun'}
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>
-            Hafta {plan.week_start} · v{plan.version ?? 1}
+            {/* FIX (fix-pass 07-12, item 4c): 'Hafta 2026-07-12' → '12 Temmuz haftası',
+                driven by the STORED row week_start (not the LLM snapshot's). */}
+            {formatWeekStartTR(weekStart ?? plan.week_start)} · v{plan.version ?? 1}
             {updatedLabel ? ` · ${updatedLabel}` : ''}
           </Text>
         </View>

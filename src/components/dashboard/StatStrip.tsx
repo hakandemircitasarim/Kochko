@@ -15,7 +15,11 @@ interface Props {
   steps: number | null;
   sleepHours: number | null;
   weightKg: number | null;
+  // FIX (ux-pass2 #4d): bugün tartı yoksa '-' yerine son bilinen profil kilosu (soluk).
+  lastKnownWeightKg?: number | null;
   onAddWater: () => void;
+  // FIX (ux-pass2 #4a): Kilo kartı Tartı Kaydı modalını açar (ölü modal canlandı).
+  onWeightPress?: () => void;
 }
 
 interface StatCardProps {
@@ -26,13 +30,18 @@ interface StatCardProps {
   sublabel?: string;
   progress?: number;
   onPress?: () => void;
+  a11yHint?: string;
+  // FIX (ux-pass2 #8b): görünür eylem rozeti (ör. '+250 ml') — dokunma eylemi
+  // eskiden yalnız ekran okuyucuya görünürdü.
+  actionChip?: string;
+  valueMuted?: boolean;
 }
 
-function StatCard({ icon, value, label, color, sublabel, progress, onPress }: StatCardProps) {
+function StatCard({ icon, value, label, color, sublabel, progress, onPress, a11yHint, actionChip, valueMuted }: StatCardProps) {
   const { colors } = useTheme();
   const Wrapper = onPress ? TouchableOpacity : View;
   const a11yProps = onPress
-    ? getButtonA11yProps(`${label}, ${value}`, 'Su eklemek için dokun')
+    ? getButtonA11yProps(`${label}, ${value}`, a11yHint ?? 'Eklemek için dokun')
     : { accessibilityRole: 'text' as const, accessibilityLabel: `${label}, ${value}` };
 
   return (
@@ -63,9 +72,17 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress }: St
           <Ionicons name={icon} size={14} color={color} />
         </View>
         <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{label}</Text>
+        {actionChip ? (
+          <View style={{
+            marginLeft: 'auto', backgroundColor: color + '22',
+            borderRadius: RADIUS.full, paddingHorizontal: 6, paddingVertical: 2,
+          }}>
+            <Text style={{ color, fontSize: 10, fontWeight: '700' }}>{actionChip}</Text>
+          </View>
+        ) : null}
       </View>
       {/* FIX (audit UI-TAB-03) numberOfLines={1} — değer hücresi tek satırda kalsın, taşmayı kırpsın */}
-      <Text numberOfLines={1} style={{ color, fontSize: 16, fontWeight: '700' }}>{value}</Text>
+      <Text numberOfLines={1} style={{ color: valueMuted ? colors.textMuted : color, fontSize: 16, fontWeight: '700' }}>{value}</Text>
       {sublabel && <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{sublabel}</Text>}
       {progress !== undefined && (
         <View style={{ height: 4, backgroundColor: colors.progressTrack, borderRadius: 2, overflow: 'hidden', marginTop: SPACING.sm }}>
@@ -78,8 +95,9 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress }: St
 
 // FIX (audit: ölü prop) sleepHours/weightKg artık imzada destructure edilip
 // 2x2 grid'de render ediliyor (eskiden tanımlı ama hiç gösterilmiyordu).
-export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, onAddWater }: Props) {
+export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, lastKnownWeightKg, onAddWater, onWeightPress }: Props) {
   const waterPct = waterTarget > 0 ? waterLiters / waterTarget : 0;
+  const noWeighInToday = weightKg == null && lastKnownWeightKg != null;
 
   return (
     <View style={{ paddingHorizontal: SPACING.xl, gap: SPACING.sm }}>
@@ -91,6 +109,8 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
           color={METRIC_COLORS.water}
           progress={waterTarget > 0 ? waterPct : undefined}
           onPress={onAddWater}
+          a11yHint="Su eklemek için dokun"
+          actionChip={`+${Math.round(WATER_INCREMENT * 1000)} ml`}
         />
         <StatCard
           icon="footsteps"
@@ -110,9 +130,16 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
         <StatCard
           icon="scale"
           // FIX (audit UI-TAB-03) ham DB sayısını biçimlendir — diğer kartlarla tutarlı (DECIMAL(5,2) → 1 ondalık)
-          value={weightKg != null ? `${Number(weightKg).toFixed(1)} kg` : '-'}
+          // FIX (ux-pass2 #4d): bugün tartı yoksa '-' yerine son bilinen kilo, soluk + 'son bilinen' notuyla.
+          value={weightKg != null
+            ? `${Number(weightKg).toFixed(1)} kg`
+            : noWeighInToday ? `${Number(lastKnownWeightKg).toFixed(1)} kg` : '-'}
+          valueMuted={noWeighInToday}
+          sublabel={noWeighInToday ? 'son bilinen' : undefined}
           label="Kilo"
           color={METRIC_COLORS.weight}
+          onPress={onWeightPress}
+          a11yHint="Tartı kaydı girmek için dokun"
         />
       </View>
     </View>

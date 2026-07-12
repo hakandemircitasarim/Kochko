@@ -121,7 +121,7 @@ export function suggestProgression(
     return {
       weight: lastWeight + 2.5,
       reps: targetReps,
-      note: `2 ardisik basari! Agirligi ${lastWeight}kg -> ${lastWeight + 2.5}kg cikiyoruz.`,
+      note: `2 ardışık başarı! Ağırlığı ${String(lastWeight).replace('.', ',')} kg → ${String(lastWeight + 2.5).replace('.', ',')} kg çıkarıyoruz.`,
     };
   }
 
@@ -130,14 +130,14 @@ export function suggestProgression(
     return {
       weight: lastWeight,
       reps: targetReps,
-      note: `Hedef ${targetReps} rep'e ulasamadin, ayni agirlikta devam.`,
+      note: `Hedef ${targetReps} tekrara ulaşamadın, aynı ağırlıkta devam.`,
     };
   }
 
   return {
     weight: lastWeight,
     reps: targetReps,
-    note: 'Devam et, bir sonrakinde agirligi artirabilirsin.',
+    note: 'Devam et, bir sonrakinde ağırlığı artırabilirsin.',
   };
 }
 
@@ -268,7 +268,7 @@ export async function detectPlateauByExercise(
     .map(([weekStart, maxWeight]) => ({ weekStart, maxWeight }));
 
   if (sortedWeeks.length < 4) {
-    return { plateau: false, weeks: 0, maxWeight: 0, message: 'Yeterli hafta yok.' };
+    return { plateau: false, weeks: 0, maxWeight: 0, message: 'Yeterli hafta verisi yok.' };
   }
 
   // Check trailing weeks for unchanged max weight
@@ -288,8 +288,8 @@ export async function detectPlateauByExercise(
     weeks: plateauWeeks,
     maxWeight: latestMax,
     message: isPlateau
-      ? `${exerciseName} icin ${plateauWeeks} haftadir ${latestMax}kg'da takildin. Varyasyon veya deload dene.`
-      : `${exerciseName} ilerliyor, son max: ${latestMax}kg.`,
+      ? `${exerciseName} için ${plateauWeeks} haftadır ${String(latestMax).replace('.', ',')} kg'da takıldın. Varyasyon veya deload dene.`
+      : `${exerciseName} ilerliyor, son maks: ${String(latestMax).replace('.', ',')} kg.`,
   };
 }
 
@@ -347,7 +347,7 @@ export function suggestVariation(exerciseName: string): {
 
   return {
     alternatives: [],
-    message: `${exerciseName} icin alternatif bulunamadi.`,
+    message: `${exerciseName} için alternatif bulunamadı.`,
   };
 }
 
@@ -365,10 +365,10 @@ export function generatePeriodization(
   message: string;
 } {
   const BLOCKS: Record<string, { duration: number; repRange: string; rpeRange: string; intensityNote: string }> = {
-    hypertrophy: { duration: 4, repRange: '8-12', rpeRange: '7-8', intensityNote: 'Orta agirlik, yuksek hacim. Kas buyumesi odakli.' },
-    strength:    { duration: 4, repRange: '3-6',  rpeRange: '8-9', intensityNote: 'Agir agirlik, dusuk hacim. Guc artisi odakli.' },
-    deload:      { duration: 1, repRange: '8-12', rpeRange: '5-6', intensityNote: 'Normal agirliklarin %60\'i. Toparlanma haftasi.' },
-    peak:        { duration: 1, repRange: '1-3',  rpeRange: '9-10', intensityNote: 'Maksimum agirlik, minimalist hacim. Test haftasi.' },
+    hypertrophy: { duration: 4, repRange: '8-12', rpeRange: '7-8', intensityNote: 'Orta ağırlık, yüksek hacim. Kas büyümesi odaklı.' },
+    strength:    { duration: 4, repRange: '3-6',  rpeRange: '8-9', intensityNote: 'Ağır ağırlık, düşük hacim. Güç artışı odaklı.' },
+    deload:      { duration: 1, repRange: '8-12', rpeRange: '5-6', intensityNote: 'Normal ağırlıkların %60\'ı. Toparlanma haftası.' },
+    peak:        { duration: 1, repRange: '1-3',  rpeRange: '9-10', intensityNote: 'Maksimum ağırlık, minimum hacim. Test haftası.' },
   };
 
   const BLOCK_ORDER: Record<string, string> = {
@@ -393,8 +393,8 @@ export function generatePeriodization(
     isBlockComplete: isComplete,
     nextBlock,
     message: isComplete
-      ? `${currentBlock} blogu tamamlandi (${weeksInBlock}/${blockInfo.duration} hafta). Siradaki: ${nextBlock} blogu.`
-      : `${currentBlock} blogu devam ediyor (${weeksInBlock}/${blockInfo.duration} hafta). Rep: ${blockInfo.repRange}, RPE: ${blockInfo.rpeRange}.`,
+      ? `${currentBlock} bloğu tamamlandı (${weeksInBlock}/${blockInfo.duration} hafta). Sıradaki: ${nextBlock} bloğu.`
+      : `${currentBlock} bloğu devam ediyor (${weeksInBlock}/${blockInfo.duration} hafta). Tekrar: ${blockInfo.repRange}, RPE: ${blockInfo.rpeRange}.`,
   };
 }
 
@@ -484,7 +484,7 @@ export function isOverreaching(
     return {
       warning: true,
       level: 'overreaching',
-      message: `Asiri yorgunluk sinyali! Yorgunluk indeksi: ${fatigueIndex}, uyku ort: ${sleepAvg}sa, mood: ${moodAvg}/5. Deload veya dinlenme gunu oneriyorum.`,
+      message: `Aşırı yorgunluk sinyali! Yorgunluk indeksi: ${fatigueIndex}, uyku ort: ${sleepAvg} sa, ruh hâli: ${moodAvg}/5. Deload veya dinlenme günü öneriyorum.`,
     };
   }
 
@@ -492,7 +492,7 @@ export function isOverreaching(
     return {
       warning: true,
       level: 'caution',
-      message: `Yorgunluk indeksi yuksek (${fatigueIndex}) ama uyku/mood normal. Dikkatli devam et, gerekliyse yogunlugu dusur.`,
+      message: `Yorgunluk indeksi yüksek (${fatigueIndex}) ama uyku ve ruh hâli normal. Dikkatli devam et, gerekirse yoğunluğu düşür.`,
     };
   }
 
@@ -500,7 +500,7 @@ export function isOverreaching(
     return {
       warning: true,
       level: 'caution',
-      message: `Uyku (${sleepAvg}sa) ve mood (${moodAvg}/5) dusuk. Antrenman yogunlugunu azaltmayi dusun.`,
+      message: `Uyku (${sleepAvg} sa) ve ruh hâli (${moodAvg}/5) düşük. Antrenman yoğunluğunu azaltmayı düşün.`,
     };
   }
 
@@ -519,26 +519,26 @@ export function getGoalBasedWorkoutType(
     case 'lose_weight':
       return {
         recommendedType: 'mixed',
-        focus: 'Kardiyo agirlikli + guc koruma',
-        note: 'Yag yakim: 3x kardiyo + 2x guc. Kas kaybini onlemek icin guc antrenmanini birakma.',
+        focus: 'Kardiyo ağırlıklı + güç koruma',
+        note: 'Yağ yakımı: 3x kardiyo + 2x güç. Kas kaybını önlemek için güç antrenmanını bırakma.',
       };
     case 'gain_muscle':
       return {
         recommendedType: 'strength',
-        focus: 'Guc agirlikli + minimal kardiyo',
-        note: 'Kas gelistirme: 4x guc + 1x hafif kardiyo. Progresif yuklenmeye odaklan.',
+        focus: 'Güç ağırlıklı + minimal kardiyo',
+        note: 'Kas geliştirme: 4x güç + 1x hafif kardiyo. Progresif yüklenmeye odaklan.',
       };
     case 'gain_weight':
       return {
         recommendedType: 'strength',
-        focus: 'Bilesik hareketler + az kardiyo',
-        note: 'Kilo alma: agir bilesik hareketler (squat, deadlift, bench). Kardiyo minimumda.',
+        focus: 'Bileşik hareketler + az kardiyo',
+        note: 'Kilo alma: ağır bileşik hareketler (squat, deadlift, bench). Kardiyo minimumda.',
       };
     case 'health':
       return {
         recommendedType: 'mixed',
-        focus: 'Dengeli — guc + kardiyo + esneklik',
-        note: 'Genel saglik: 2x guc + 2x kardiyo + 1x yoga/mobilite.',
+        focus: 'Dengeli — güç + kardiyo + esneklik',
+        note: 'Genel sağlık: 2x güç + 2x kardiyo + 1x yoga/mobilite.',
       };
     case 'conditioning':
       return {
@@ -550,7 +550,7 @@ export function getGoalBasedWorkoutType(
       return {
         recommendedType: 'mixed',
         focus: 'Dengeli antrenman',
-        note: '3x guc + 2x kardiyo.',
+        note: '3x güç + 2x kardiyo.',
       };
   }
 }
@@ -565,10 +565,10 @@ export function getWorkoutNutritionTiming(
 
   return {
     preWorkout: isStrength
-      ? '1-2 saat once: 30-50g karb + 15-20g protein (muz + yulaf, ekmek + peynir)'
-      : '1 saat once: hafif karb (muz, hurma). Tok karna yapma.',
+      ? '1-2 saat önce: 30-50 g karbonhidrat + 15-20 g protein (muz + yulaf, ekmek + peynir)'
+      : '1 saat önce: hafif karbonhidrat (muz, hurma). Tok karna yapma.',
     postWorkout: isStrength
-      ? '30dk-1 saat icinde: 30-40g protein + 40-60g karb (tavuk + pirinc, shake + muz)'
-      : '20-30g protein + bol su.',
+      ? '30 dk-1 saat içinde: 30-40 g protein + 40-60 g karbonhidrat (tavuk + pirinç, shake + muz)'
+      : '20-30 g protein + bol su.',
   };
 }

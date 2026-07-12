@@ -49,7 +49,9 @@ export default function ChallengesScreen() {
       setShowSystem(false);
       load();
     } catch (e) {
-      Alert.alert('Hata', (e as Error).message);
+      // FIX (audit raw-error): fixed Turkish copy for the user; raw error to the console only.
+      console.warn('startChallenge failed', e);
+      Alert.alert('Hata', 'Challenge başlatılamadı, tekrar dene.');
     }
   };
 
@@ -81,7 +83,9 @@ export default function ChallengesScreen() {
       setCustomTitle(''); setCustomDays('14'); setCustomThreshold(''); setCustomType('custom');
       load();
     } catch (e) {
-      Alert.alert('Hata', (e as Error).message);
+      // FIX (audit raw-error): fixed Turkish copy for the user; raw error to the console only.
+      console.warn('startChallenge (custom) failed', e);
+      Alert.alert('Hata', 'Challenge başlatılamadı, tekrar dene.');
     }
   };
 
@@ -193,8 +197,10 @@ export default function ChallengesScreen() {
           <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: 4 }}>Süre (gün)</Text>
+              {/* FIX (audit a11y): screen readers get the visible label. */}
               <TextInput
                 value={customDays} onChangeText={setCustomDays} keyboardType="numeric"
+                accessibilityLabel="Süre (gün)"
                 style={{
                   backgroundColor: COLORS.surfaceLight, borderRadius: 8,
                   padding: SPACING.sm, color: COLORS.text, fontSize: FONT.md,
@@ -203,10 +209,12 @@ export default function ChallengesScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: 4 }}>Eşik (ops.)</Text>
+              {/* FIX (audit a11y): screen readers get the visible label. */}
               <TextInput
                 value={customThreshold} onChangeText={setCustomThreshold} keyboardType="numeric"
                 placeholder="örn. 10000"
                 placeholderTextColor={COLORS.textMuted}
+                accessibilityLabel="Eşik"
                 style={{
                   backgroundColor: COLORS.surfaceLight, borderRadius: 8,
                   padding: SPACING.sm, color: COLORS.text, fontSize: FONT.md,

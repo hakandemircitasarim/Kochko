@@ -86,7 +86,7 @@ export async function useTemplate(
     .single();
 
   if (logErr || !log) {
-    return { error: logErr?.message ?? 'Kayit olusturulamadi.' };
+    return { error: logErr?.message ?? 'Kayıt oluşturulamadı.' };
   }
 
   // Insert each item linked to the parent meal_log

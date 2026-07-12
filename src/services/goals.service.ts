@@ -248,7 +248,7 @@ export async function getAIGoalSuggestions(
     if (avgWater < 1.5) {
       suggestions.push({
         goalType: 'health',
-        reasoning: 'Su tuketiminiz dusuk (ort. ' + avgWater.toFixed(1) + 'L). Once su aliskanligi oturalim.',
+        reasoning: 'Su tüketimin düşük (ort. ' + avgWater.toFixed(1).replace('.', ',') + ' L). Önce su alışkanlığını oturtalım.',
         priority: 'high',
       });
     }
@@ -258,7 +258,7 @@ export async function getAIGoalSuggestions(
     if (avgSleep > 0 && avgSleep < 6) {
       suggestions.push({
         goalType: 'health',
-        reasoning: 'Uyku ortalamaniz ' + avgSleep.toFixed(1) + ' saat. Uyku duzeni hedefi eklenmeli.',
+        reasoning: 'Uyku ortalaman ' + avgSleep.toFixed(1).replace('.', ',') + ' saat. Uyku düzeni hedefi ekleyelim.',
         priority: 'high',
       });
     }
@@ -268,7 +268,7 @@ export async function getAIGoalSuggestions(
   if (currentWeight && targetWeight && Math.abs(currentWeight - targetWeight) <= 1) {
     suggestions.push({
       goalType: 'maintain',
-      reasoning: 'Hedefe cok yakinsiniz! Bakim moduna gecis onerilir.',
+      reasoning: 'Hedefe çok yakınsın! Bakım moduna geçmeyi düşünebilirsin.',
       priority: 'high',
     });
   }
@@ -289,7 +289,7 @@ export function checkAggressiveGoal(
   if (weeklyRateKg > maxSafe) {
     return {
       isAggressive: true,
-      warning: `Haftada ${weeklyRateKg}kg kayip cok hizli. Saglikli ve surudrulebilir kayip haftada 0.5-1kg arasi. Haftada 0.5-0.75kg oneririz.`,
+      warning: `Haftada ${String(weeklyRateKg).replace('.', ',')} kg kayıp çok hızlı. Sağlıklı ve sürdürülebilir kayıp haftada 0,5-1 kg arası. Haftada 0,5-0,75 kg öneririm.`,
       suggestedRate: 0.75,
     };
   }
@@ -297,7 +297,7 @@ export function checkAggressiveGoal(
   if (weeklyRateKg > 0.75 && currentWeight && currentWeight < 70) {
     return {
       isAggressive: true,
-      warning: `Mevcut kilonuzda (${currentWeight}kg) haftada ${weeklyRateKg}kg kayip yuksek olabilir. Haftada 0.5kg oneririz.`,
+      warning: `Mevcut kilonda (${String(currentWeight).replace('.', ',')} kg) haftada ${String(weeklyRateKg).replace('.', ',')} kg kayıp yüksek olabilir. Haftada 0,5 kg öneririm.`,
       suggestedRate: 0.5,
     };
   }
@@ -316,7 +316,7 @@ export function integrateWithPlateau(
   if (weeksSinceChange >= 4) {
     return {
       shouldAdjust: true,
-      suggestion: `${weeksSinceChange} haftadir kilo degismiyor. Hedef hizini gecici olarak yaveslatmayi veya 2 haftalik bakim molasi vermeyi dusunebilirsin.`,
+      suggestion: `${weeksSinceChange} haftadır kilo değişmiyor. Hedef hızını geçici olarak yavaşlatmayı veya 2 haftalık bakım molası vermeyi düşünebilirsin.`,
     };
   }
   return { shouldAdjust: false, suggestion: '' };

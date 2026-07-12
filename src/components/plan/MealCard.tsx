@@ -4,7 +4,7 @@
  * green glow when the meal just changed in a new snapshot).
  */
 import { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
@@ -16,6 +16,10 @@ interface Props {
   expanded: boolean;
   onToggle: () => void;
   onEditPress?: () => void;   // opens chat with prefill "X'i değiştir"
+  // 'Bunu yedim' — one-tap plan→diary (fix-pass 07-12, item 9). Only the ACTIVE
+  // plan's TODAY section passes these; drafts/history render without the button.
+  onLogPress?: () => void;
+  logStatus?: 'saving' | 'done';
 }
 
 const MEAL_ICONS: Record<DietMeal['meal_type'], string> = {
@@ -25,7 +29,7 @@ const MEAL_ICONS: Record<DietMeal['meal_type'], string> = {
   snack: 'cafe-outline',
 };
 
-export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress }: Props) {
+export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, onLogPress, logStatus }: Props) {
   const { colors } = useTheme();
   const glow = useRef(new Animated.Value(0)).current;
 
@@ -147,26 +151,65 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress }:
             </Text>
           ) : null}
 
-          {onEditPress ? (
-            <TouchableOpacity
-              onPress={onEditPress}
-              style={{
-                marginTop: SPACING.sm,
-                alignSelf: 'flex-start',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                backgroundColor: colors.surfaceLight,
-                borderRadius: RADIUS.full,
-                paddingHorizontal: SPACING.sm,
-                paddingVertical: 4,
-              }}
-            >
-              <Ionicons name="create-outline" size={12} color={colors.textSecondary} />
-              <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                Bu öğünü değiştir
-              </Text>
-            </TouchableOpacity>
+          {(onEditPress || onLogPress) ? (
+            <View style={{ marginTop: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+              {onLogPress ? (
+                <TouchableOpacity
+                  onPress={onLogPress}
+                  disabled={!!logStatus}
+                  accessibilityRole="button"
+                  accessibilityLabel={logStatus === 'done' ? 'Günlüğe eklendi' : 'Bunu yedim, günlüğe ekle'}
+                  accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: logStatus === 'done' ? colors.successLight : colors.primary + '18',
+                    borderRadius: RADIUS.full,
+                    paddingHorizontal: SPACING.sm,
+                    paddingVertical: 4,
+                  }}
+                >
+                  {logStatus === 'saving' ? (
+                    <ActivityIndicator size="small" color={colors.primary} style={{ transform: [{ scale: 0.7 }] }} />
+                  ) : (
+                    <Ionicons
+                      name={logStatus === 'done' ? 'checkmark-circle' : 'add-circle-outline'}
+                      size={12}
+                      color={logStatus === 'done' ? colors.success : colors.primary}
+                    />
+                  )}
+                  <Text
+                    style={{
+                      color: logStatus === 'done' ? colors.success : colors.primary,
+                      fontSize: 11,
+                      fontWeight: '700',
+                    }}
+                  >
+                    {logStatus === 'done' ? 'Günlüğe eklendi' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yedim'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {onEditPress ? (
+                <TouchableOpacity
+                  onPress={onEditPress}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: colors.surfaceLight,
+                    borderRadius: RADIUS.full,
+                    paddingHorizontal: SPACING.sm,
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Ionicons name="create-outline" size={12} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                    Bu öğünü değiştir
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           ) : null}
         </View>
       )}

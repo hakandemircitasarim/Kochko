@@ -114,7 +114,14 @@ export default function RegisterScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: COLORS.background }}
+      // FIX (audit UI-CHT-01 kalıbı): her iki platformda da 'padding'. Expo SDK 55'in zorunlu
+      // edge-to-edge'i altında Android 'height' pencereyi yanlış ölçüyor ve form alanlarını/
+      // butonu klavyenin altında bırakabiliyordu (bkz. app/chat/[sessionId].tsx'teki fix notu).
+      // İçerik ScrollView'da: 'padding' ile "Kayıt Ol" butonu kaydırılarak erişilebilir kalır.
+      behavior="padding"
+    >
       <ScrollView
         contentContainerStyle={{
           flexGrow: 1,

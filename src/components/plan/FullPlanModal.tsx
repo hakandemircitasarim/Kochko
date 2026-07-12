@@ -5,6 +5,12 @@
  *
  * Resets the tracking when a new snapshot arrives (parent controls via
  * the `planVersion` prop — changing it re-runs the useEffect).
+ *
+ * FIX (fix-pass 07-12, item 2a): fullyViewed used to fire ONLY from onScroll —
+ * when the content fits the viewport no scroll event ever fires on Android, so
+ * the approve gate stayed locked forever. We now also measure the viewport
+ * (onLayout) and content (onContentSizeChange) and auto-satisfy when the whole
+ * plan is visible without scrolling.
  */
 import { useState, useRef, useEffect } from 'react';
 import {
@@ -14,49 +20,60 @@ import {
   TouchableOpacity,
   Modal,
   Platform,
-  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { MealCard } from './MealCard';
-import { ExerciseCard } from './ExerciseCard';
-import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
+import { PlanDayAccordion } from './PlanDayAccordion';
+import { formatWeekStartTR, type PlanData } from '@/services/plan.service';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   plan: PlanData;
   planVersion: number; // used to reset scroll tracking when snapshot changes
+  /** Stored weekly_plans.week_start (source of truth). Falls back to the
+   *  LLM-authored plan_data.week_start when the row value isn't passed. */
+  weekStart?: string;
   highlightedCells?: Array<{ dayIndex: number; mealType?: string }>;
   onMealEdit?: (dayIndex: number, mealType: string) => void;
   onFullyViewed?: () => void;
 }
-
-const { height: SCREEN_H } = Dimensions.get('window');
 
 export function FullPlanModal({
   visible,
   onClose,
   plan,
   planVersion,
+  weekStart,
   highlightedCells,
   onMealEdit,
   onFullyViewed,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
-  const [expandedDay, setExpandedDay] = useState(0);
-  const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
   const [fullyViewed, setFullyViewed] = useState(false);
 
-  // Reset when snapshot version changes (new plan_snapshot arrived).
+  // Ref mirrors the viewed flag so callbacks never act on a stale closure.
+  const fullyViewedRef = useRef(false);
+
+  const markFullyViewed = () => {
+    if (fullyViewedRef.current) return;
+    fullyViewedRef.current = true;
+    setFullyViewed(true);
+    onFullyViewed?.();
+  };
+
+  // Review fix (ux-pass2): geometry unlocks REMOVED. The body is an accordion that
+  // renders one expanded day at a time, so "content fits the viewport" ≠ "plan
+  // reviewed" — the fit-check unlocked with 6 of 7 days never opened. The gate is
+  // now SEMANTIC: PlanDayAccordion fires onAllDaysViewed when every content day
+  // has been expanded at least once; scroll-to-end stays as a secondary path.
   useEffect(() => {
+    fullyViewedRef.current = false;
     setFullyViewed(false);
-    setExpandedDay(0);
-    setExpandedMeal(null);
   }, [planVersion]);
 
   // Reset scroll when modal becomes visible on a new version.
@@ -67,10 +84,7 @@ export function FullPlanModal({
   const handleScroll = ({ nativeEvent }: { nativeEvent: { layoutMeasurement: { height: number }; contentOffset: { y: number }; contentSize: { height: number } } }) => {
     const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
     const reachedEnd = layoutMeasurement.height + contentOffset.y >= contentSize.height - 80;
-    if (reachedEnd && !fullyViewed) {
-      setFullyViewed(true);
-      onFullyViewed?.();
-    }
+    if (reachedEnd) markFullyViewed();
   };
 
   const isDiet = plan.plan_type === 'diet';
@@ -104,7 +118,8 @@ export function FullPlanModal({
               {isDiet ? 'Haftalık Diyet' : 'Haftalık Spor'}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-              {plan.week_start} · v{plan.version ?? 1}
+              {/* FIX (fix-pass 07-12, item 4b): '2026-06-15' ham ISO yerine '15 Haziran haftası' */}
+              {formatWeekStartTR(weekStart ?? plan.week_start)} · v{plan.version ?? 1}
             </Text>
           </View>
           {fullyViewed ? (
@@ -137,109 +152,15 @@ export function FullPlanModal({
             paddingBottom: Math.max(insets.bottom, SPACING.lg) + SPACING.lg,
           }}
         >
-          {(Array.isArray(plan.days) ? plan.days : []).map((day, dayIdx) => {
-            // FIX (audit UI-PLN-06): key + expand-state by array position, not the
-            // untrusted LLM-authored day.day_index (duplicate indices would collide).
-            const isOpen = expandedDay === dayIdx;
-            return (
-              <View key={`${day.day_index}-${dayIdx}`} style={{ marginBottom: SPACING.md }}>
-                <TouchableOpacity
-                  // Keep at least one day expanded: re-tapping the open day is a no-op
-                  // so the user can't collapse into a blank screen with nothing to re-open.
-                  onPress={() => setExpandedDay(dayIdx)}
-                  activeOpacity={0.8}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${day.day_label}, ${isOpen ? 'açık' : 'aç'}`}
-                  accessibilityState={{ expanded: isOpen }}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.surfaceLight,
-                    borderRadius: RADIUS.md,
-                    paddingHorizontal: SPACING.md,
-                    paddingVertical: SPACING.sm,
-                    gap: SPACING.sm,
-                  }}
-                >
-                  <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', flex: 1 }}>
-                    {day.day_label}
-                  </Text>
-                  {isDiet ? (
-                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-                      {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals) */}
-                      {Math.round((day as DietPlanData['days'][number]).total_kcal)} kcal
-                    </Text>
-                  ) : (
-                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-                      {(day as WorkoutPlanData['days'][number]).rest_day
-                        ? 'Dinlenme'
-                        : `${(day as WorkoutPlanData['days'][number]).exercises?.length ?? 0} egzersiz`}
-                    </Text>
-                  )}
-                  <Ionicons
-                    name={isOpen ? 'chevron-up' : 'chevron-down'}
-                    size={16}
-                    color={colors.textMuted}
-                  />
-                </TouchableOpacity>
-
-                {isOpen ? (
-                  <View style={{ marginTop: SPACING.sm }}>
-                    {isDiet ? (
-                      ((day as DietPlanData['days'][number]).meals ?? []).length === 0 ? (
-                        <Text
-                          style={{
-                            color: colors.textMuted,
-                            fontSize: FONT.xs,
-                            fontStyle: 'italic',
-                            textAlign: 'center',
-                            paddingVertical: SPACING.md,
-                          }}
-                        >
-                          Bu gün için öğün yok.
-                        </Text>
-                      ) : (
-                        ((day as DietPlanData['days'][number]).meals ?? []).map(meal => {
-                          // FIX (audit UI-PLN-06): scope meal key by array position so
-                          // duplicate day_index values can't share expand-state.
-                          const key = `${dayIdx}-${meal.meal_type}`;
-                          const isHl = !!highlightedCells?.find(
-                            c => c.dayIndex === day.day_index && c.mealType === meal.meal_type,
-                          );
-                          return (
-                            <MealCard
-                              key={key}
-                              meal={meal}
-                              highlighted={isHl}
-                              expanded={expandedMeal === key}
-                              onToggle={() => setExpandedMeal(expandedMeal === key ? null : key)}
-                              onEditPress={onMealEdit ? () => onMealEdit(day.day_index, meal.meal_type) : undefined}
-                            />
-                          );
-                        })
-                      )
-                    ) : (day as WorkoutPlanData['days'][number]).rest_day ? (
-                      <Text
-                        style={{
-                          color: colors.textMuted,
-                          fontSize: FONT.xs,
-                          fontStyle: 'italic',
-                          textAlign: 'center',
-                          paddingVertical: SPACING.md,
-                        }}
-                      >
-                        Dinlenme günü — hafif yürüyüş ve esneme yeterli.
-                      </Text>
-                    ) : (
-                      ((day as WorkoutPlanData['days'][number]).exercises ?? []).map((ex, i) => (
-                        <ExerciseCard key={i} exercise={ex} />
-                      ))
-                    )}
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
+          {/* Day-by-day body — extracted to PlanDayAccordion (fix-pass 07-12, item 2b)
+              so the draft screens can render the same list inline. */}
+          <PlanDayAccordion
+            plan={plan}
+            resetKey={planVersion}
+            highlightedCells={highlightedCells}
+            onMealEdit={onMealEdit}
+            onAllDaysViewed={markFullyViewed}
+          />
 
           {!fullyViewed ? (
             <View

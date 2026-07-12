@@ -12,6 +12,7 @@ import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { getOrCreateActiveSession } from '@/services/chat.service';
+import { getTaskByKey } from '@/services/onboarding-tasks.service';
 import type { MissingField } from '@/lib/plan-readiness';
 
 interface Props {
@@ -30,12 +31,18 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
     // #S1 (one-thread): task topics land in THE coach conversation (topic behavior rides the
     // task_mode_hint request param, not the session row) — no more per-task session islands.
     const id = await getOrCreateActiveSession();
-    if (id) {
-      router.push({
-        pathname: `/chat/${id}` as never,
-        params: { taskModeHint: `onboarding_${taskKey === 'introduce_yourself' ? 'intro' : taskKey === 'set_goal' ? 'goal' : taskKey}` },
-      });
+    if (!id) return;
+    // FIX (fix-pass 07-12, item 6): hints were hand-built as `onboarding_${taskKey}`,
+    // producing values the server doesn't recognize (e.g. 'onboarding_daily_routine' vs
+    // canonical 'onboarding_routine'). Use the task registry's own taskModeHint + a
+    // taskNonce like every other caller so re-taps re-fire the topic opener.
+    const task = getTaskByKey(taskKey);
+    const params: Record<string, string> = { taskNonce: String(Date.now()) };
+    if (task) {
+      params.taskModeHint = task.taskModeHint;
+      params.prefill = task.prefillMessage;
     }
+    router.push({ pathname: `/chat/${id}` as never, params });
   };
 
   const accent = planType === 'diet' ? colors.primary : colors.purple;

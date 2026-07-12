@@ -151,7 +151,7 @@ export function lightenPlanForReturn(
   return {
     adjustedMin: Math.max(floor, Math.round(originalCalorieMin * factor)),
     adjustedMax: Math.round(originalCalorieMax * factor),
-    note: `Ilk 3 gun plan %${lighteningPercent} hafifletildi. Yavasyavas eski ritme donecegiz.`,
+    note: `İlk 3 gün plan %${lighteningPercent} hafifletildi. Yavaş yavaş eski ritme döneceğiz.`,
   };
 }
 
@@ -161,11 +161,11 @@ export function lightenPlanForReturn(
  */
 export function getReOnboardingQuestions(): string[] {
   return [
-    'Mevcut kilonuz nedir?',
-    'Hedefiniz degisti mi?',
-    'Yasam tarzinizda buyuk bir degisiklik oldu mu? (is, evlilik, hamilelik vs.)',
-    'Antrenman durumunuz nedir? (aktif/pasif/yeni basliyor)',
-    'Herhangi bir saglik sorununuz var mi?',
+    'Şu anki kilon ne?',
+    'Hedefin değişti mi?',
+    'Yaşam tarzında büyük bir değişiklik oldu mu? (iş, evlilik, hamilelik vs.)',
+    'Antrenman durumun ne? (aktif/pasif/yeni başlıyor)',
+    'Herhangi bir sağlık sorunun var mı?',
   ];
 }
 

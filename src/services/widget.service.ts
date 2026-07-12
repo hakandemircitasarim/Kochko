@@ -183,16 +183,16 @@ export async function getWidgetData(userId: string): Promise<WidgetData> {
 export function formatWidgetSummary(data: WidgetData): string {
   const parts: string[] = [
     `${data.todayCalories}/${data.calorieTarget} kcal`,
-    `${data.todayProtein}g protein`,
-    `${data.waterLiters}L su`,
+    `${data.todayProtein} g protein`,
+    `${String(data.waterLiters).replace('.', ',')} L su`,
   ];
 
   if (data.streak > 1) {
-    parts.push(`${data.streak} gun seri`);
+    parts.push(`${data.streak} gün seri`);
   }
 
   if (data.steps > 0) {
-    parts.push(`${data.steps} adim`);
+    parts.push(`${data.steps} adım`);
   }
 
   return parts.join(' | ');

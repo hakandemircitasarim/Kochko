@@ -78,6 +78,9 @@ export default function TabLayout() {
       tabBarIconStyle: {
         marginBottom: -2,
       },
+      // ux-pass2: the chat thread lives inside its tab now — hide the bar while the
+      // keyboard is up so the composer sits directly on the keyboard.
+      tabBarHideOnKeyboard: true,
       headerShown: false,
     }}>
       <Tabs.Screen name="index" options={{

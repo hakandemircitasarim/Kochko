@@ -4,14 +4,27 @@
  * when the user's profile has materially changed since approval.
  */
 import { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
+import { getEffectiveDate } from '@/lib/day-boundary';
 import { MealCard } from './MealCard';
 import { ExerciseCard } from './ExerciseCard';
-import { DAY_LABELS_TR, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
+import {
+  dayLabelTR,
+  formatWeekStartTR,
+  isPlanStale,
+  planWeeksAgo,
+  logPlannedMeal,
+  undoPlannedMealLog,
+  type PlanRow,
+  type DietPlanData,
+  type DietMeal,
+  type WorkoutPlanData,
+} from '@/services/plan.service';
 import type { Profile } from '@/types/database';
 
 interface Props {
@@ -20,6 +33,9 @@ interface Props {
   goal?: { goal_type?: string; target_weight_kg?: number } | null;
   onStartRevision: () => void;
   onOpenHistory: () => void;
+  /** Start a brand-new draft via the normal generation flow (same path as the
+   *  empty-state 'Plan oluştur'). Used by the stale-plan banner CTA. */
+  onCreateFresh?: () => void;
   creatingRevision?: boolean;
 }
 
@@ -70,7 +86,7 @@ function detectDrift(
   return { soft, hard };
 }
 
-export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, creatingRevision }: Props) {
+export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, onCreateFresh, creatingRevision }: Props) {
   const { colors } = useTheme();
 
   const drift = useMemo(() => detectDrift(plan, profile, goal ?? null), [plan, profile, goal]);
@@ -85,16 +101,64 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
     ? ((data as { days: AnyDay[] }).days)
     : [];
 
-  // FIX (audit UI-PLN-06): track the expanded day by ARRAY POSITION, not the
-  // untrusted LLM-authored day_index (duplicate indices would collide on key +
-  // toggle). Lazy-init to the array slot whose day_index is today so the active
-  // plan still opens on today and never lands on a fully-collapsed list.
-  const [expandedDay, setExpandedDay] = useState(() => {
+  // FIX (fix-pass 07-12, item 5): today used to be buried as the 6th row of the
+  // 7-day list. Pin today's section to the top ("Bugün · Cumartesi") and keep the
+  // remaining days in week order below — least invasive way to make the day the
+  // user actually needs reachable without scrolling.
+  const orderedDays = useMemo(() => {
     const t = todayIndex();
     const i = days.findIndex(d => d.day_index === t);
-    return i >= 0 ? i : 0;
-  });
+    if (i <= 0) return days; // today already first, or not found → keep week order
+    return [days[i], ...days.slice(0, i), ...days.slice(i + 1)];
+  }, [days]);
+
+  // FIX (audit UI-PLN-06): track the expanded day by ARRAY POSITION, not the
+  // untrusted LLM-authored day_index (duplicate indices would collide on key +
+  // toggle). Today is pinned to position 0, so 0 opens on today whenever the
+  // plan has a slot for it, and the list never lands fully collapsed.
+  const [expandedDay, setExpandedDay] = useState(0);
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
+
+  // ── 'Bunu yedim' (fix-pass 07-12, item 9): one-tap deterministic plan→diary. ──
+  const [mealLogState, setMealLogState] = useState<Record<string, 'saving' | 'done'>>({});
+  const handleLogMeal = async (key: string, meal: DietMeal) => {
+    if (mealLogState[key]) return;
+    setMealLogState(s => ({ ...s, [key]: 'saving' }));
+    // Review fix (ux-pass2): honor the user's configured day boundary like every
+    // other logging surface — the bare default split diaries at custom boundaries.
+    const dayBoundaryHour = (profile?.day_boundary_hour as number) ?? 4;
+    const { mealLogId, error } = await logPlannedMeal(meal, getEffectiveDate(new Date(), dayBoundaryHour));
+    if (error || !mealLogId) {
+      haptics.error();
+      setMealLogState(s => {
+        const next = { ...s };
+        delete next[key];
+        return next;
+      });
+      Alert.alert('Eklenemedi', 'Öğün günlüğe eklenemedi. Bağlantını kontrol edip tekrar dene.');
+      return;
+    }
+    haptics.success();
+    setMealLogState(s => ({ ...s, [key]: 'done' }));
+    Alert.alert('Günlüğe eklendi', `"${meal.name}" bugünkü öğünlerine eklendi.`, [
+      {
+        text: 'Geri al',
+        onPress: async () => {
+          await undoPlannedMealLog(mealLogId);
+          setMealLogState(s => {
+            const next = { ...s };
+            delete next[key];
+            return next;
+          });
+        },
+      },
+      { text: 'Tamam' },
+    ]);
+  };
+
+  // FIX (fix-pass 07-12, item 1): weekly plan whose week is over = STALE.
+  const stale = isPlanStale(plan.week_start);
+  const staleWeeks = planWeeksAgo(plan.week_start);
 
   return (
     <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: SPACING.sm }}>
@@ -119,8 +183,12 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               {isDiet ? 'Aktif diyet planın' : 'Aktif spor planın'}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-              {plan.week_start} · onaylandı
-              {plan.approved_at ? ` · ${new Date(plan.approved_at).toLocaleDateString('tr-TR')}` : ''}
+              {/* FIX (fix-pass 07-12, item 4a): '2026-06-15 · onaylandı · 19.06.2026' karışık
+                  format yerine '15 Haziran haftası · onaylandı 19 Haziran'. */}
+              {formatWeekStartTR(plan.week_start)} · onaylandı
+              {plan.approved_at
+                ? ` ${new Date(plan.approved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}`
+                : ''}
             </Text>
           </View>
         </View>
@@ -164,6 +232,51 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* FIX (fix-pass 07-12, item 1): stale-plan banner. A "weekly" plan lived 4 weeks
+          live because nothing rolls it over — surface it and offer a fresh draft via the
+          normal generation flow. The old plan is NOT deleted; approving the new draft
+          archives it (superseded), same as always. */}
+      {stale && onCreateFresh ? (
+        <View
+          style={{
+            backgroundColor: colors.card,
+            borderRadius: RADIUS.lg,
+            borderWidth: 1,
+            borderColor: colors.primary,
+            padding: SPACING.md,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700', flex: 1 }}>
+              Bu plan {Math.max(1, staleWeeks)} hafta önceydi
+            </Text>
+          </View>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>
+            Sana güncel bir haftalık plan hazırlayayım — onayladığında bu plan geçmişe kaydolur.
+          </Text>
+          <TouchableOpacity
+            onPress={onCreateFresh}
+            disabled={creatingRevision}
+            accessibilityRole="button"
+            accessibilityLabel="Yeni haftalık plan hazırla"
+            accessibilityState={{ disabled: !!creatingRevision, busy: !!creatingRevision }}
+            style={{
+              backgroundColor: colors.primary,
+              borderRadius: RADIUS.md,
+              paddingVertical: SPACING.sm,
+              alignItems: 'center',
+              marginTop: SPACING.sm,
+              opacity: creatingRevision ? 0.6 : 1,
+            }}
+          >
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>
+              {creatingRevision ? 'Hazırlanıyor...' : 'Yeni haftalık plan hazırla'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {/* Drift banners */}
       {drift.hard.length > 0 ? (
@@ -238,9 +351,12 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
           Bu planın içeriği eksik görünüyor. Plan sekmesinden yeni bir plan oluşturabilirsin.
         </Text>
-      ) : days.map((day, dayIdx) => {
+      ) : orderedDays.map((day, dayIdx) => {
         // FIX (audit UI-PLN-06): compare/key by array position, not day.day_index.
         const isOpen = expandedDay === dayIdx;
+        const isToday = day.day_index === todayIndex();
+        // FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled labels ('Sali' → 'Salı').
+        const label = dayLabelTR(day.day_index, day.day_label);
         return (
           <View key={`${day.day_index}-${dayIdx}`}>
             <TouchableOpacity
@@ -251,13 +367,15 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                 alignItems: 'center',
                 backgroundColor: colors.surfaceLight,
                 borderRadius: RADIUS.md,
+                borderWidth: isToday ? 1 : 0,
+                borderColor: isToday ? colors.primary + '66' : undefined,
                 paddingHorizontal: SPACING.md,
                 paddingVertical: SPACING.sm,
                 gap: SPACING.sm,
               }}
             >
-              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', flex: 1 }}>
-                {day.day_label ?? DAY_LABELS_TR[day.day_index]}
+              <Text style={{ color: isToday ? colors.primary : colors.text, fontSize: FONT.sm, fontWeight: '700', flex: 1 }}>
+                {isToday ? `Bugün · ${label}` : label}
               </Text>
               {isDiet ? (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
@@ -290,6 +408,9 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                         meal={meal}
                         expanded={expandedMeal === key}
                         onToggle={() => setExpandedMeal(expandedMeal === key ? null : key)}
+                        // 'Bunu yedim' only on the ACTIVE plan's TODAY (fix-pass 07-12, item 9).
+                        onLogPress={isToday ? () => handleLogMeal(key, meal) : undefined}
+                        logStatus={mealLogState[key]}
                       />
                     );
                   })

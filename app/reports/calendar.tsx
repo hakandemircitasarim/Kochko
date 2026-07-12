@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getMonthSummaries, type DaySummary } from '@/services/calendar.service';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -16,10 +17,29 @@ export default function CalendarScreen() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [days, setDays] = useState<DaySummary[]>([]);
   const [selected, setSelected] = useState<DaySummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [attempt, setAttempt] = useState(0); // retry trigger
 
-  // FIX (audit Wave3): catch loader rejection so a network failure degrades to an empty month grid
-  // instead of an unhandled promise rejection.
-  useEffect(() => { getMonthSummaries(year, month).then(setDays).catch(() => setDays([])); }, [year, month]);
+  // FIX (ux-pass raporlar #6): the grid had no loading state (blank flash), month navigation left
+  // the OLD month's days under the new title until the fetch landed, and a network failure silently
+  // rendered a 'veri yok' month. Now: clear grid + selected day immediately on month change, show a
+  // spinner while loading, and surface an explicit retry on failure. The `cancelled` guard drops
+  // stale responses when the user taps through months quickly.
+  // (Not: getMonthSummaries sorgu-içi supabase hatalarını yutup boş ay döndürüyor — servis başka
+  // ekipte olduğundan burada yalnız promise rejection'ları yakalanabiliyor.)
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(false);
+    setDays([]);
+    setSelected(null);
+    getMonthSummaries(year, month)
+      .then(d => { if (!cancelled) setDays(d); })
+      .catch(() => { if (!cancelled) setLoadError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [year, month, attempt]);
 
   const prevMonth = () => { if (month === 1) { setMonth(12); setYear(y => y - 1); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 12) { setMonth(1); setYear(y => y + 1); } else setMonth(m => m + 1); };
@@ -74,7 +94,24 @@ export default function CalendarScreen() {
         ))}
       </View>
 
+      {/* Loading: spinner in place of the grid (no blank flash, no stale month). */}
+      {loading && (
+        <View style={{ paddingVertical: SPACING.xxl, alignItems: 'center' }} accessibilityLabel="Takvim yükleniyor">
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      )}
+
+      {/* Load failure: explicit retry instead of a silent 'veri yok' month. */}
+      {!loading && loadError && (
+        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
+          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginBottom: SPACING.xs }}>Yüklenemedi</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+          <Button title="Tekrar dene" onPress={() => setAttempt(a => a + 1)} size="md" />
+        </View>
+      )}
+
       {/* Calendar grid */}
+      {!loading && !loadError && (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
         {/* Empty cells for offset */}
         {Array.from({ length: offset }).map((_, i) => (
@@ -109,8 +146,10 @@ export default function CalendarScreen() {
           );
         })}
       </View>
+      )}
 
-      {/* Color legend */}
+      {/* Color legend (only meaningful next to a rendered grid) */}
+      {!loading && !loadError && (
       <View
         style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.md }}
         accessibilityLabel="Renk açıklaması: yeşil iyi, turuncu orta, kırmızı düşük uyum, boş hücre veri yok"
@@ -130,6 +169,7 @@ export default function CalendarScreen() {
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>Veri yok</Text>
         </View>
       </View>
+      )}
 
       {/* Selected day detail */}
       {selected && (

@@ -25,13 +25,15 @@ export function useStreak() {
   // exceeded" infinite loop (the whole authed app spins).
   const checkForMilestones = useCallback(async () => {
     if (!user?.id) return;
-    // Get weight + day_boundary_hour for streak/milestone check (#R2-L7).
-    const { data: profile } = await supabase.from('profiles').select('weight_kg, day_boundary_hour').eq('id', user.id).single();
+    // FIX (ux-pass2 #15): profile/firstMetric/goal okumaları birbirinden bağımsız —
+    // sıralı şelale yerine paralel çek (calculateStreak yine profile'ı bekler).
+    const [{ data: profile }, { data: firstMetric }, { data: goal }] = await Promise.all([
+      supabase.from('profiles').select('weight_kg, day_boundary_hour').eq('id', user.id).single(),
+      supabase.from('daily_metrics').select('weight_kg').eq('user_id', user.id).order('date').limit(1).single(),
+      supabase.from('goals').select('target_weight_kg, goal_type').eq('user_id', user.id).eq('is_active', true).single(),
+    ]);
     const s = await calculateStreak(user.id, (profile?.day_boundary_hour as number | null) ?? 4);
     setStreak(s);
-
-    const { data: firstMetric } = await supabase.from('daily_metrics').select('weight_kg').eq('user_id', user.id).order('date').limit(1).single();
-    const { data: goal } = await supabase.from('goals').select('target_weight_kg, goal_type').eq('user_id', user.id).eq('is_active', true).single();
 
     const achievement = await checkMilestones(
       user.id,

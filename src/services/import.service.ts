@@ -40,11 +40,11 @@ export interface ImportResult {
  */
 export async function importMealsFromCSV(csvText: string): Promise<ImportResult> {
   const lines = csvText.split('\n').filter(l => l.trim());
-  if (lines.length < 2) return { success: false, recordsImported: 0, errors: ['Veri bulunamadi.'] };
+  if (lines.length < 2) return { success: false, recordsImported: 0, errors: ['Veri bulunamadı.'] };
 
   // meal_logs.user_id is NOT NULL + RLS WITH CHECK(auth.uid()=user_id)
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { success: false, recordsImported: 0, errors: ['Oturum bulunamadi.'] };
+  if (!user) return { success: false, recordsImported: 0, errors: ['Oturum bulunamadı.'] };
 
   // Skip header
   const dataLines = lines.slice(1);
@@ -59,7 +59,7 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
     const calories = parseInt(caloriesStr);
     const protein = parseFloat(proteinStr);
 
-    if (isNaN(calories)) { errors.push(`Gecersiz kalori: ${line}`); continue; }
+    if (isNaN(calories)) { errors.push(`Geçersiz kalori: ${line}`); continue; }
 
     // Create meal log
     const { data: log, error: logErr } = await supabase.from('meal_logs').insert({
@@ -71,7 +71,7 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
       synced: true,
     }).select('id').single();
 
-    if (logErr || !log) { errors.push(`Kayit olusturulamadi: ${line}`); continue; }
+    if (logErr || !log) { errors.push(`Kayıt oluşturulamadı: ${line}`); continue; }
 
     const { error: itemErr } = await supabase.from('meal_log_items').insert({
       meal_log_id: log.id,
@@ -88,7 +88,7 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
     if (itemErr) {
       // Roll back the empty parent log so no orphan meal_log remains
       await supabase.from('meal_logs').delete().eq('id', log.id);
-      errors.push(`Item eklenemedi: ${line}`);
+      errors.push(`Öğe eklenemedi: ${line}`);
       continue;
     }
     imported++;
@@ -103,11 +103,11 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
  */
 export async function importWeightsFromCSV(csvText: string): Promise<ImportResult> {
   const lines = csvText.split('\n').filter(l => l.trim());
-  if (lines.length < 2) return { success: false, recordsImported: 0, errors: ['Veri bulunamadi.'] };
+  if (lines.length < 2) return { success: false, recordsImported: 0, errors: ['Veri bulunamadı.'] };
 
   // daily_metrics.user_id is NOT NULL + RLS WITH CHECK(auth.uid()=user_id)
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { success: false, recordsImported: 0, errors: ['Oturum bulunamadi.'] };
+  if (!user) return { success: false, recordsImported: 0, errors: ['Oturum bulunamadı.'] };
 
   const dataLines = lines.slice(1);
   const errors: string[] = [];
@@ -119,7 +119,7 @@ export async function importWeightsFromCSV(csvText: string): Promise<ImportResul
 
     const [date, weightStr] = parts;
     const weight = parseFloat(weightStr);
-    if (isNaN(weight) || weight < 20 || weight > 300) { errors.push(`Gecersiz kilo: ${line}`); continue; }
+    if (isNaN(weight) || weight < 20 || weight > 300) { errors.push(`Geçersiz kilo: ${line}`); continue; }
 
     // No water_liters here: on the merge path the upsert REPLACES every given
     // column, so a hardcoded 0 silently wiped the day's existing water total.

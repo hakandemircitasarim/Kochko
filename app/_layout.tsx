@@ -33,6 +33,22 @@ export default function RootLayout() {
 
   useEffect(() => { initialize(); }, [initialize]);
 
+  // FIX (ux-pass2, W#46): drain the offline chat queue on app START. The reconnect
+  // listener only fires on a live offline→online transition — a message queued
+  // offline, app closed, reopened online later would silently never send.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { getOfflineQueueSize, processOfflineQueue } = await import('@/services/chat.service');
+        if (cancelled) return;
+        if ((await getOfflineQueueSize()) > 0) await processOfflineQueue();
+      } catch { /* best-effort */ }
+    })();
+    return () => { cancelled = true; };
+  }, [session]);
+
   // Global protected-route guard: if the session is lost WHILE the user is inside
   // the app (cross-device logout, admin revoke, failed silent refresh — all call
   // signOut() without navigating), return them to login. app/index.tsx only guards

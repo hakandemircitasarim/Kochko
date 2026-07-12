@@ -60,7 +60,7 @@ export async function generateMilestoneCard(data: MilestoneCardData): Promise<st
 <body>
   <div class="wrap">
     <div class="brand">KOCHKO</div>
-    ${data.value ? `<div class="badge">${data.theme === 'streak' ? 'SERI' : data.theme === 'success' ? 'BASARI' : 'MILESTONE'}</div>` : ''}
+    ${data.value ? `<div class="badge">${data.theme === 'streak' ? 'SERİ' : data.theme === 'success' ? 'BAŞARI' : 'KİLOMETRE TAŞI'}</div>` : ''}
     ${data.value ? `<div class="value">${data.value}</div>` : ''}
     <div class="title">${data.title}</div>
     ${data.subtitle ? `<div class="subtitle">${data.subtitle}</div>` : ''}
@@ -83,5 +83,5 @@ export async function generateMilestoneCard(data: MilestoneCardData): Promise<st
 export async function shareMilestoneCard(data: MilestoneCardData): Promise<boolean> {
   const uri = await generateMilestoneCard(data);
   if (!uri) return false;
-  return shareImage(uri, 'Kochko milestone');
+  return shareImage(uri, 'Kochko ile paylaş');
 }
