@@ -1747,9 +1747,14 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
               user_id: userId,
               plan_type: expectedType,
               status: 'draft',
-              // Monday-anchor whatever the model emitted — the projection step
-              // already re-anchors for the same reason; persist consistently.
-              week_start: getWeekStart((planSnapshot.week_start as string) || effectiveToday),
+              // Anchor to the user's CURRENT calendar week (Monday of "today"),
+              // IGNORING the model-emitted week_start. The model sometimes picks
+              // next Monday (e.g. generating on a Sunday), which used to persist a
+              // future week_start while the daily-plans projection anchored to
+              // Monday-of-today — a split-brain where the plan claimed "13 Temmuz
+              // haftası" yet showed today's meals as "Bugün". The projection at
+              // getWeekStart(requestToday) does exactly this; persist to match it.
+              week_start: getWeekStart(effectiveToday),
               plan_data: { ...planSnapshot, version: 1 },
               user_revisions: [],
             })

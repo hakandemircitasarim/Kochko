@@ -40,9 +40,22 @@ interface Props {
 }
 
 // 0 = Monday in our day_index convention (matches the dashboard helper).
-function todayIndex(): number {
-  const raw = new Date().getDay();
-  return raw === 0 ? 6 : raw - 1;
+// The day-of-week index (0=Mon..6=Sun) of TODAY within a specific plan's week,
+// or -1 when today falls outside [week_start, week_start+6]. Weekday-name matching
+// alone was wrong: a plan for a future week (generated on a Sunday, week_start =
+// next Monday) or a stale past week would still label one of its days "Bugün".
+// Only a plan whose week actually contains today has a "today" row.
+function todayIndexInWeek(weekStart: string): number {
+  if (!weekStart) return -1;
+  // Parse the 'YYYY-MM-DD' week_start as LOCAL midnight (bare `new Date('YYYY-MM-DD')`
+  // parses as UTC, shifting the day for UTC+ users).
+  const start = new Date(weekStart.length <= 10 ? `${weekStart}T00:00:00` : weekStart);
+  if (isNaN(start.getTime())) return -1;
+  start.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((today.getTime() - start.getTime()) / 86_400_000);
+  return diffDays >= 0 && diffDays <= 6 ? diffDays : -1;
 }
 
 // Drift detection per MASTER_PLAN §4.8.
@@ -105,12 +118,15 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
   // 7-day list. Pin today's section to the top ("Bugün · Cumartesi") and keep the
   // remaining days in week order below — least invasive way to make the day the
   // user actually needs reachable without scrolling.
+  // -1 when today is outside this plan's week (future or stale plan) — then no day
+  // is "Bugün" and the list stays in natural Mon..Sun order.
+  const todayDayIndex = todayIndexInWeek(plan.week_start);
   const orderedDays = useMemo(() => {
-    const t = todayIndex();
-    const i = days.findIndex(d => d.day_index === t);
+    if (todayDayIndex < 0) return days; // today outside this plan's week → keep natural order
+    const i = days.findIndex(d => d.day_index === todayDayIndex);
     if (i <= 0) return days; // today already first, or not found → keep week order
     return [days[i], ...days.slice(0, i), ...days.slice(i + 1)];
-  }, [days]);
+  }, [days, todayDayIndex]);
 
   // FIX (audit UI-PLN-06): track the expanded day by ARRAY POSITION, not the
   // untrusted LLM-authored day_index (duplicate indices would collide on key +
@@ -354,7 +370,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
       ) : orderedDays.map((day, dayIdx) => {
         // FIX (audit UI-PLN-06): compare/key by array position, not day.day_index.
         const isOpen = expandedDay === dayIdx;
-        const isToday = day.day_index === todayIndex();
+        const isToday = todayDayIndex >= 0 && day.day_index === todayDayIndex;
         // FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled labels ('Sali' → 'Salı').
         const label = dayLabelTR(day.day_index, day.day_label);
         return (
