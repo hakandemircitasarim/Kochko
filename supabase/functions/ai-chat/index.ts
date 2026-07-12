@@ -1543,20 +1543,44 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // Retry ONCE with a JSON-only re-gen before giving up. (Same shape as the meal
     // forced-extraction net.) Skipped on the approval turn (client drives promotion).
     if (!snapshotUsable(planSnapshot) && user_approved !== true && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
-      console.warn('[plan_snapshot] first pass produced no usable snapshot — forcing JSON-only regen', { parseError: snapshotParseError, hadSnapshot: !!planSnapshot });
+      // ROOT-CAUSE FIX (ux-pass3, turn-log verified): the first pass and the OLD text-based
+      // regen both produced only ~26 tokens — the model echoed the example intro sentence
+      // ("Profiline bakarak 7 günlük menünü hazırladım — işte plan:") and STOPPED, emitting
+      // NO <plan_snapshot> (finish_reason 'stop', not truncation). A prose-embedded XML block
+      // is trivial for the model to skip. The reliable path (how ai-plan generates plans) is
+      // response_format=json_object, which forces a COMPLETE JSON object and makes an early
+      // prose stop impossible. Regen now asks for the plan JSON DIRECTLY (jsonMode) and uses
+      // the returned object as the snapshot — no XML unwrap, no lazy skip.
+      console.warn('[plan_snapshot] first pass produced no usable snapshot — forcing json_object regen', { parseError: snapshotParseError, hadSnapshot: !!planSnapshot, firstPassTokens: turnReceipt?.completionTokens });
       try {
-        const forcedRaw = await chatCompletion<string>(
+        const isDietRegen = task_mode_hint === 'plan_diet';
+        // The word "json" MUST appear in the prompt or OpenAI rejects response_format=json_object.
+        const schemaHint = isDietRegen
+          ? '{"plan_type":"diet","week_start":"YYYY-MM-DD","targets":{"kcal":N,"protein":N,"carbs":N,"fat":N},"reasoning":"kisa","days":[{"day_index":0,"day_label":"Pazartesi","meals":[{"meal_type":"breakfast","time":"08:00","name":"...","items":[{"name":"...","grams":N,"kcal":N,"protein":N,"carbs":N,"fat":N}],"total_kcal":N,"total_protein":N,"total_carbs":N,"total_fat":N}],"total_kcal":N,"total_protein":N,"total_carbs":N,"total_fat":N}],"version":1}'
+          : '{"plan_type":"workout","week_start":"YYYY-MM-DD","reasoning":"kisa","days":[{"day_index":0,"day_label":"Pazartesi","rest_day":false,"exercises":[{"name":"...","sets":N,"reps":"8-12","rest_sec":90,"notes":"..."}]}],"version":1}';
+        const forced = await chatCompletion<Record<string, unknown>>(
           [
             ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
-            { role: 'user', content: 'Onceki yanitindaki <plan_snapshot> blogu eksik/gecersiz/yarim idi. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> blogu uret: "days" dizisinde 7 GUN (day_index 0-6) eksiksiz, diyet ise "targets" objesi dolu. "..." / "devami benzer" / kisaltma KULLANMA, markdown (```) KULLANMA, blok disina HICBIR sey yazma, trailing virgul birakma.' },
+            { role: 'user', content: `SADECE gecerli bir JSON objesi don — haftalik ${isDietRegen ? 'diyet' : 'antrenman'} planinin TAMAMI. Prose/aciklama/markdown YOK, yalnizca json. Sema (aynen bu alanlar): ${schemaHint}. ZORUNLU: "days" dizisinde TAM 7 gun (day_index 0..6, Pazartesi..Pazar), her gun eksiksiz${isDietRegen ? ', "targets" dolu, her gunun ogun total_kcal toplami targets.kcal ile ~esit' : ', dinlenme gunlerinde rest_day:true'}. "...", kisaltma, "devami benzer" YASAK. Kullanicinin alerjen/sevmedigi besinlerini ASLA koyma.` },
           ],
-          { model: modelSelection.model, temperature: 0.2, maxTokens: 8000, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
+          { model: modelSelection.model, temperature: 0.2, maxTokens: 8000, jsonMode: true, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
         );
-        const retry = extractPlanSnapshot(forcedRaw);
-        if (snapshotUsable(retry.snapshot)) { planSnapshot = retry.snapshot; snapshotParseError = undefined; }
-        else { snapshotParseError = retry.parseError ?? 'incomplete snapshot (missing days/targets)'; planSnapshot = null; }
+        // json_object returns a parsed object. It IS the snapshot — unless the model nested it
+        // under a wrapper key ({"plan": {...}} / {"plan_snapshot": {...}}); unwrap defensively.
+        let candidate: Record<string, unknown> | null = (forced && typeof forced === 'object') ? forced : null;
+        if (candidate && !Array.isArray(candidate.days)) {
+          const nested = Object.values(candidate).find(v => v && typeof v === 'object' && Array.isArray((v as Record<string, unknown>).days));
+          if (nested) candidate = nested as Record<string, unknown>;
+        }
+        if (snapshotUsable(candidate)) { planSnapshot = candidate; snapshotParseError = undefined; }
+        else { snapshotParseError = 'json_object regen still missing days/targets'; planSnapshot = null; }
       } catch (e) {
-        console.error('[plan_snapshot] forced regen threw', (e as Error).message);
+        const emsg = (e as Error).message;
+        console.error('[plan_snapshot] forced json regen threw', emsg);
+        // Observability (ux-pass3 diag): the regen's onReceipt only fires on SUCCESS, so a
+        // throw leaves no ai_turn_log row and the failure is invisible. Persist the error so
+        // it's queryable (system_mode carries a truncated reason).
+        writeTurnLog(userId, 'ai-chat', `plan_regen_error:${emsg.slice(0, 80)}`, null).then(() => {}, () => {});
         if (!snapshotUsable(planSnapshot)) planSnapshot = null; // never persist an unusable first-pass snapshot
       }
     }
@@ -1739,6 +1763,17 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       }
     } else if (snapshotParseError) {
       console.log(`[plan_snapshot] parse error: ${snapshotParseError}`);
+    }
+
+    // HONESTY GUARD (ux-pass3): on a plan-negotiation turn where NO plan was persisted
+    // (generation failed even after the json_object regen), the model's prose still says
+    // "işte plan:" — a dead-end promising a plan that never arrived. Signal the failure so
+    // the client shows a real error+retry instead of silently reverting to the active view,
+    // and replace the misleading tail with an honest line.
+    if (!persistedPlan && !user_approved && (task_mode_hint === 'plan_diet' || task_mode_hint === 'plan_workout')) {
+      if (!planPersistError) planPersistError = 'generation_failed';
+      console.error('[plan_snapshot] no plan persisted after regen', { planPersistError, firstPassTokens: turnReceipt?.completionTokens });
+      assistantMessage = 'Planı şu an oluşturamadım — bir sorun oldu. Birkaç saniye sonra "tekrar dene" ile yeniden başlatabilirsin.';
     }
 
     // Authoritative approval path (MASTER_PLAN §4.4 rev2.1): when client signals

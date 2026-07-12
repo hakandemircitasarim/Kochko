@@ -222,6 +222,21 @@ export default function DietPlanScreen() {
       Alert.alert('Plan oluşturulamadı', error ?? 'Bir sorun oluştu, lütfen tekrar dene.');
       return;
     }
+    // FIX (ux-pass3): the server can return a friendly reply with NO persisted plan
+    // (generation_failed — the model produced only the intro and skipped the snapshot).
+    // Without this the screen silently reverted to the active view and the user got a
+    // dead-end "işte plan:" with nothing attached. Detect it and offer a retry.
+    if (!data.plan_snapshot || data.plan_persist_error) {
+      Alert.alert(
+        'Plan oluşturulamadı',
+        'Koç planı hazırlarken bir sorun oldu. Tekrar denemek ister misin?',
+        [
+          { text: 'Tekrar dene', onPress: () => { void startDraftCreation(); } },
+          { text: 'Vazgeç', style: 'cancel' },
+        ],
+      );
+      return;
+    }
     setMessages(prev => [
       ...prev,
       { id: 'a-' + Date.now(), role: 'assistant', content: data.message, reasoning: data.plan_reasoning },

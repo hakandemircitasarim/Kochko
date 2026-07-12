@@ -193,6 +193,19 @@ export default function WorkoutPlanScreen() {
       Alert.alert('Plan oluşturulamadı', error ?? 'Bir sorun oluştu, lütfen tekrar dene.');
       return;
     }
+    // FIX (ux-pass3): reply with NO persisted plan (generation_failed) → real retry,
+    // not a silent revert to the active/empty view with a dead-end "işte plan:".
+    if (!data.plan_snapshot || data.plan_persist_error) {
+      Alert.alert(
+        'Plan oluşturulamadı',
+        'Koç planı hazırlarken bir sorun oldu. Tekrar denemek ister misin?',
+        [
+          { text: 'Tekrar dene', onPress: () => { void startDraftCreation(); } },
+          { text: 'Vazgeç', style: 'cancel' },
+        ],
+      );
+      return;
+    }
     setMessages(prev => [
       ...prev,
       { id: 'a-' + Date.now(), role: 'assistant', content: data.message, reasoning: data.plan_reasoning },
