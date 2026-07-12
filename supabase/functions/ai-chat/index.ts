@@ -6027,14 +6027,20 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
     p_patch: { tdee_notes: `Son TDEE ${tdee} kcal @ ${currentWeight.toFixed(1)}kg (${new Date().toISOString().split('T')[0]})` },
   }).then(() => {}, () => {});
 
-  // Notify user so they know targets shifted
-  const reason = lastWeight
-    ? `Kilon ${lastWeight.toFixed(1)} → ${currentWeight.toFixed(1)}kg degisti`
-    : 'İlk TDEE hesaplamasi';
+  // Notify user so they know targets shifted.
+  // #ux-pass3: the template claimed "kilon değişti" on EVERY recalc — a 30-day routine
+  // refresh with identical weight produced the nonsense "Kilon 80.0 → 80.0kg degisti"
+  // live. Say what actually happened, with proper Turkish.
+  const weightActuallyChanged = lastWeight != null && Math.abs(currentWeight - lastWeight) >= 0.1;
+  const reason = !lastWeight
+    ? 'İlk TDEE hesaplaman hazır'
+    : weightActuallyChanged
+      ? `Kilon ${lastWeight.toFixed(1).replace('.', ',')} → ${currentWeight.toFixed(1).replace('.', ',')} kg değişti`
+      : 'Rutin kontrol: hedeflerini güncel kilona göre tazeledim';
   const content = inMaintenance
     // In maintenance we deliberately didn't touch the ranges (ramp owns them).
-    ? `${reason}. Yeni TDEE ${tdee} kcal, protein ${proteinG}g, su ${waterTarget}L. (Bakım dönemi: kalori aralığın korunuyor.)`
-    : `${reason}. Yeni TDEE ${tdee} kcal, kalori araligi ${restMin}-${safeTrainingMax} kcal, protein ${proteinG}g, su ${waterTarget}L.`;
+    ? `${reason}. Yeni TDEE ${tdee} kcal, protein ${proteinG} g, su ${waterTarget} L. (Bakım dönemi: kalori aralığın korunuyor.)`
+    : `${reason}. Yeni TDEE ${tdee} kcal, dinlenme aralığı ${restMin}–${safeRestMax} kcal, protein ${proteinG} g, su ${waterTarget} L.`;
   await supabaseAdmin.from('coaching_messages').insert({
     user_id: userId,
     trigger_type: 'tdee_recalculated',

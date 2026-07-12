@@ -496,6 +496,23 @@ export async function clearChatCaches(userId: string): Promise<void> {
 }
 
 /**
+ * The set of headless plan-negotiation session ids for this user. These sessions carry
+ * topic_tags {plan_diet|plan_workout} (createHeadlessSession) and their turns must NEVER
+ * appear in the coach thread — the task_mode/content heuristics missed the ASSISTANT
+ * replies (stored as detected mode 'plan', no [PLAN_INIT] prefix), so a fresh-plan
+ * generation leaked "Profiline bakarak 7 günlük menünü hazırladım" into the thread
+ * (ux-pass3, emulator-verified). Session-level exclusion is the robust discriminator.
+ */
+async function getPlanSessionIds(userId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from('chat_sessions')
+    .select('id')
+    .eq('user_id', userId)
+    .overlaps('topic_tags', ['plan_diet', 'plan_workout']);
+  return ((data as { id: string }[]) ?? []).map(r => r.id);
+}
+
+/**
  * Returns NULL on fetch failure — the empty array is reserved for a genuinely empty
  * thread. Conflating the two rendered the fresh-account empty state over weeks of
  * history on any network hiccup (ux-pass2, W#8/#73: the "her şey silindi" moment).
@@ -504,20 +521,18 @@ export async function loadSessionMessages(_sessionId: string, limit = 50): Promi
   try {
     // #S1 THREAD CONTINUITY: the conversation is USER-scoped, not session-scoped — a user with
     // weeks of coaching history must NEVER open an empty chat ("her şey silindi" feel). History
-    // flows across legacy sessions; plan-negotiation turns (they live in the plan screens) and
-    // machine [SYSTEM_INIT] kickoffs are excluded. Newest page first, reversed to chronological.
+    // flows across legacy sessions; plan-negotiation sessions are excluded by id (below).
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user?.id) return null;
-    const { data, error } = await supabase
+    const planSessionIds = await getPlanSessionIds(session.user.id);
+    let q = supabase
       .from('chat_messages')
       .select('id, role, content, task_mode, created_at, actions_executed')
       .eq('user_id', session.user.id)
-      .or('task_mode.is.null,task_mode.not.in.("plan_diet","plan_workout")')
       .not('content', 'like', '[SYSTEM_INIT]%')
-      // Plan-negotiation kickoffs live in headless plan sessions; historical rows were
-      // stored with the DETECTED mode (e.g. 'register'), so the task_mode exclusion
-      // alone let them leak into the thread (seen live, ux-pass2).
-      .not('content', 'like', '[PLAN_INIT]%')
+      .not('content', 'like', '[PLAN_INIT]%');
+    if (planSessionIds.length > 0) q = q.not('session_id', 'in', `(${planSessionIds.join(',')})`);
+    const { data, error } = await q
       .order('created_at', { ascending: false })
       .limit(limit);
     if (error) return null;
@@ -549,14 +564,16 @@ export async function loadOlderSessionMessages(
     // #S1: same user-scoped thread window as loadSessionMessages, strictly older page.
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user?.id) return [];
-    const { data } = await supabase
+    const planSessionIds = await getPlanSessionIds(session.user.id);
+    let q = supabase
       .from('chat_messages')
       .select('id, role, content, task_mode, created_at, actions_executed')
       .eq('user_id', session.user.id)
-      .or('task_mode.is.null,task_mode.not.in.("plan_diet","plan_workout")')
       .not('content', 'like', '[SYSTEM_INIT]%')
       .not('content', 'like', '[PLAN_INIT]%')
-      .lt('created_at', beforeCreatedAt)
+      .lt('created_at', beforeCreatedAt);
+    if (planSessionIds.length > 0) q = q.not('session_id', 'in', `(${planSessionIds.join(',')})`);
+    const { data } = await q
       .order('created_at', { ascending: false })
       .limit(limit);
     return ((data as ChatMessage[]) ?? []).reverse();

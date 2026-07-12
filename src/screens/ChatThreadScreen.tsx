@@ -724,28 +724,33 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawParams.taskModeHint]));
 
-  // Silent reconcile on tab re-entry (review fix): quick-log/other surfaces write into
-  // this same thread while we stay mounted — without a focus reload those turns are
-  // invisible until the next cold open.
+  // Silent reconcile on tab re-entry (review fix, emulator-verified ux-pass3): quick-log
+  // and other surfaces write into this same thread while we stay mounted — without a
+  // focus reload those turns are invisible until a cold open. Gate on `sending` (a live
+  // generation owns the state) rather than taskModeHint — the old taskModeHint gate meant
+  // the thread NEVER reloaded once a topic pill was showing, so a FAB meal logged mid-topic
+  // stayed hidden and the stale task opener kept showing as the newest message.
   const firstFocusRef = useRef(true);
+  const sendingRef = useRef(sending);
+  sendingRef.current = sending;
   useFocusEffect(useCallback(() => {
     if (firstFocusRef.current) { firstFocusRef.current = false; return; }
-    if (!sessionId || taskModeHint) return;
+    if (!sessionId || sendingRef.current) return;
     let cancelled = false;
     loadSessionMessages(sessionId).then(fresh => {
-      if (cancelled || !fresh || fresh.length === 0) return;
+      if (cancelled || sendingRef.current || !fresh || fresh.length === 0) return;
       setMessages(prev => {
         const prevNewest = [...prev].reverse().find(m => !m.topicMarker);
         const freshNewest = fresh[fresh.length - 1];
         // Only replace when the server actually has newer content — never clobber
-        // optimistic local bubbles for nothing.
+        // optimistic local bubbles (or a just-fired topic marker) for nothing.
         if (prevNewest && freshNewest && prevNewest.id === freshNewest.id) return prev;
         return fresh.map(m => ({ ...m } as UIMessage));
       });
     }).catch(() => {});
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, taskModeHint]));
+  }, [sessionId]));
 
   // Scroll to the live end. Pass force=true when the user just sent/tapped something
   // (always follow their own action); otherwise only follow when they were already
