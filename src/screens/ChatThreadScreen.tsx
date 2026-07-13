@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import {
   sendMessageToSession, sendPhotoToSession, loadSessionMessages, loadOlderSessionMessages,
   queueMessageOffline, processOfflineQueue, getOfflineQueueSize, getCachedThread,
+  getTaskOpenerFiredAt, markTaskOpenerFired,
   type ChatMessage,
 } from '@/services/chat.service';
 import { getTaskByKey, getTaskByModeHint, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
@@ -592,6 +593,23 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       const taskKey = taskModeHint ? `${taskModeHint}-${taskNonce ?? ''}` : null;
       if (taskKey && taskInitKeyRef.current !== taskKey) {
         taskInitKeyRef.current = taskKey;
+        // Opener recency guard (ux-pass5, emulator-verified defect): re-opening the same
+        // topic within minutes re-fired the opener and the coach re-asked the IDENTICAL
+        // question (4× "Bugün neler yedin?" in one evening). If this task's opener fired
+        // recently, the question is still the freshest thing on screen — enter task mode
+        // silently instead of asking again. Timestamps are user-scoped + persisted, so
+        // rail re-taps, donut re-taps and stale nav params are all covered.
+        const OPENER_COOLDOWN_MS = 15 * 60_000;
+        const firedAt = user?.id && taskModeHint ? await getTaskOpenerFiredAt(user.id, taskModeHint) : null;
+        if (firedAt && Date.now() - firedAt < OPENER_COOLDOWN_MS) {
+          if (!cancelled) {
+            setMessages(data.map(m => ({ ...m } as UIMessage)));
+            setHasMoreOlder(data.length >= 50);
+            setLoading(false);
+            setPrefillApplied(true);
+          }
+          return;
+        }
         // Visible topic-entry marker (ux-pass2): the opener prompt is invisible, so without
         // this the coach appears to spontaneously switch subjects.
         const topicTitle = getTaskByModeHint(taskModeHint!)?.title ?? null;
@@ -614,6 +632,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           `[SYSTEM_INIT] Bu konuyu tek kısa cümleyle sıcak bir şekilde aç ve ilk sorunu sor. Profil verilerini/sayıları LİSTELEME, istatistik okuma — sadece samimi bir giriş + tek soru. Sohbet zaten sürüyor: selamlama veya kendini tanıtma YOK.`,
           taskModeHint,
         );
+        // Mark on success even if this screen instance got cancelled mid-flight — the
+        // opener PERSISTED server-side either way; only a failed send may retry freely.
+        if (response && user?.id && taskModeHint) void markTaskOpenerFired(user.id, taskModeHint);
         if (!cancelled && response) {
           setMessages(prev => [...prev,
             { id: response.assistant_message_id ?? `a-${Date.now()}`, role: 'assistant', content: response.message, task_mode: response.task_mode, created_at: new Date().toISOString() },

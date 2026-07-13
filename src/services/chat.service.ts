@@ -491,7 +491,39 @@ export async function clearChatCaches(userId: string): Promise<void> {
     await AsyncStorage.multiRemove([
       `${THREAD_CACHE_KEY}:${userId}`,
       `${ACTIVE_SESSION_CACHE_KEY}:${userId}`,
+      `${TASK_OPENER_TS_KEY}:${userId}`,
     ]);
+  } catch { /* best-effort */ }
+}
+
+// ── Task-opener recency guard (ux-pass5) ────────────────────────────────────
+// Re-opening the same task topic within minutes used to re-fire the [SYSTEM_INIT]
+// opener and the coach re-asked the IDENTICAL question with no memory of having
+// just asked (observed live: 4× "Bugün neler yedin?" in one evening — reads as a
+// broken bot). Persist a per-task last-fired timestamp (user-scoped, survives
+// restarts) so any trigger path — rail chip re-tap, donut CTA, stale nav params —
+// skips the duplicate LLM opener while the question is still fresh on screen.
+const TASK_OPENER_TS_KEY = '@kochko_task_opener_ts_v1';
+
+export async function getTaskOpenerFiredAt(userId: string, taskModeHint: string): Promise<number | null> {
+  try {
+    const raw = await AsyncStorage.getItem(`${TASK_OPENER_TS_KEY}:${userId}`);
+    if (!raw) return null;
+    const map = JSON.parse(raw) as Record<string, number>;
+    const ts = map[taskModeHint];
+    return typeof ts === 'number' ? ts : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function markTaskOpenerFired(userId: string, taskModeHint: string): Promise<void> {
+  try {
+    const key = `${TASK_OPENER_TS_KEY}:${userId}`;
+    const raw = await AsyncStorage.getItem(key);
+    const map = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+    map[taskModeHint] = Date.now();
+    await AsyncStorage.setItem(key, JSON.stringify(map));
   } catch { /* best-effort */ }
 }
 

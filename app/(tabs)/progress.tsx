@@ -389,6 +389,11 @@ export default function ProgressScreen() {
               formatYLabel={(y) => `%${y}`}
               segments={5}
               fromZero
+              // FIX (ux-pass5, emulator): chart-kit fills the area under EVERY dataset and has
+              // no per-dataset opt-out — the invisible 0→100 scale-anchor line above got its own
+              // bezier fill, ballooning a phantom area to the top-right of the card. Kill fills
+              // on this chart; the line+dots carry the data.
+              withShadow={false}
               bezier style={{ borderRadius: RADIUS.md }}
             />
           </View>

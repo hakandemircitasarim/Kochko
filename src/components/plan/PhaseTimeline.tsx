@@ -32,12 +32,14 @@ const GOAL_COLORS: Record<string, string> = {
   conditioning: COLORS.coral,
 };
 
+// FIX (ux-pass5, emulator): 'Cut'/'Bulk'/aksansız 'Bakim'/'Saglik' segmentleri TR arayüzde
+// İngilizce jargon + bozuk Türkçe olarak görünüyordu.
 const GOAL_LABELS: Record<string, string> = {
-  lose_weight: 'Cut',
-  gain_weight: 'Bulk',
+  lose_weight: 'Yağ Yakımı',
+  gain_weight: 'Kilo Alma',
   gain_muscle: 'Kas',
-  maintain: 'Bakim',
-  health: 'Saglik',
+  maintain: 'Koruma',
+  health: 'Sağlık',
   conditioning: 'Kondisyon',
 };
 
@@ -55,7 +57,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
       borderColor: COLORS.border,
     }}>
       <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '700', marginBottom: SPACING.sm }}>
-        Hedef Fazlari
+        Hedef Fazları
       </Text>
 
       {/* Timeline bar */}
@@ -83,7 +85,11 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
               borderRightWidth: i < phases.length - 1 ? 1 : 0,
               borderRightColor: COLORS.background,
             }}>
-              <Text style={{
+              <Text
+                // FIX (ux-pass5): TR etiketler eski 'Cut'/'Bulk'tan uzun — dar fazda 32px
+                // barın dışına sarmasın.
+                numberOfLines={1}
+                style={{
                 // FIX (audit accent-contrast): aktif faz metnini sabit beyaz yerine faz
                 // rengine göre kontrast-güvenli seç (WCAG AA).
                 color: phase.isActive ? (getContrastColor(color) === 'black' ? COLORS.background : '#fff') : COLORS.textSecondary,
@@ -116,7 +122,9 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
                   fontWeight: phase.isActive ? '600' : '400',
                 }}
               >
-                {phase.label ?? `${phase.targetWeeks}h`}
+                {/* FIX (ux-pass5): phase_label'sız hedeflerde servis çiğ goal_type düşürür
+                    ('lose_weight' ekranda görünüyordu) — bilinen enum'ları insanileştir. */}
+                {GOAL_LABELS[phase.label] ?? phase.label ?? `${phase.targetWeeks} hafta`}
               </Text>
             </View>
           );

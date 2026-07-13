@@ -181,7 +181,7 @@ export default function GoalsScreen() {
     try {
       // Deactivate existing active goals before creating new phase
       await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
-      const phaseLabel = goalType === 'lose_weight' ? 'Yağ Yakım'
+      const phaseLabel = goalType === 'lose_weight' ? 'Yağ Yakımı'
         : goalType === 'gain_weight' ? 'Kilo Alma'
         : goalType === 'gain_muscle' ? 'Kas Geliştirme'
         : goalType === 'maintain' ? 'Koruma'
