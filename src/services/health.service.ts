@@ -13,15 +13,14 @@ export interface HealthEvent {
   is_ongoing: boolean;
 }
 
+// FIX (ux-pass5): errors were swallowed into [] — indistinguishable from "no records", so the
+// screen rendered a confident 'Henüz sağlık olayın yok' over a network/RLS failure on
+// safety-critical data. Throw instead; the only caller (app/settings/health-events.tsx,
+// verified repo-wide) now shows an explicit error+retry state.
 export async function getHealthEvents(): Promise<HealthEvent[]> {
-  try {
-    const { data, error } = await supabase.from('health_events').select('*').order('event_date', { ascending: false });
-    if (error) { console.error('getHealthEvents error:', error.message); return []; }
-    return (data ?? []) as HealthEvent[];
-  } catch (err) {
-    console.error('getHealthEvents unexpected error:', err);
-    return [];
-  }
+  const { data, error } = await supabase.from('health_events').select('*').order('event_date', { ascending: false });
+  if (error) { console.error('getHealthEvents error:', error.message); throw new Error(error.message); }
+  return (data ?? []) as HealthEvent[];
 }
 
 export async function addHealthEvent(event: Omit<HealthEvent, 'id'>): Promise<boolean> {

@@ -117,6 +117,11 @@ export default function GoalsScreen() {
     );
     setAiSuggestions(suggestions);
     setLoadingSuggestions(false);
+    // FIX (ux-pass5): boş öneri listesi meşru bir sonuç (su/uyku iyi + hedefe uzak) ama ekranda
+    // HİÇBİR ŞEY değişmiyordu — spinner bitiyor, buton "bozuk" gibi okunuyordu. Söyle.
+    if (suggestions.length === 0) {
+      Alert.alert('Öneri yok', 'Şu an için yeni bir hedef önerim yok — su, uyku ve kilo verilerin bir hedef değişikliği gerektirmiyor.');
+    }
   };
 
   // FIX (audit UX-FRM-02): decimal-pad tr-TR Android'de virgül üretir ('70,5'); çıplak
@@ -178,9 +183,17 @@ export default function GoalsScreen() {
     // FIX (audit settings-save-guards): iki ardışık await try/catch'siz çalışıyordu —
     // biri throw ederse setSaving(false) hiç çalışmaz, Button kalıcı spinner'da kilitlenir
     // ve kullanıcıya hata gösterilmezdi. finally + Türkçe hata Alert ekle.
+    // FIX (ux-pass5): supabase-js reddetmez, {error} ile RESOLVE eder — üç yazma da (deactivate,
+    // addPhase insert, kalori bandı) hatasını yutuyordu; her şey başarısızken bile "Hedef
+    // kaydedildi" + router.back() çalışıyordu. Artık her yazmanın error'u kontrol edilip throw
+    // ediliyor; deactivate başarılı olup insert patlarsa kullanıcı SIFIR aktif hedefle
+    // kalmasın diye önceki hedef best-effort geri açılıyor (stage takibi).
+    let stage: 'deactivate' | 'insert' | 'band' = 'deactivate';
     try {
       // Deactivate existing active goals before creating new phase
-      await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
+      const { error: deactivateError } = await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
+      if (deactivateError) throw deactivateError;
+      stage = 'insert';
       const phaseLabel = goalType === 'lose_weight' ? 'Yağ Yakımı'
         : goalType === 'gain_weight' ? 'Kilo Alma'
         : goalType === 'gain_muscle' ? 'Kas Geliştirme'
@@ -190,7 +203,8 @@ export default function GoalsScreen() {
       // Single-goal "replace" intent: the deactivate above cleared the old active
       // goal, so this new one must be active (else the user is left with ZERO active
       // goals and the dashboard / plan-gen / streak / progress all read nothing).
-      await addPhase(user.id, goalType, tw || null, weeks, phaseLabel, true);
+      await addPhase(user.id, goalType, tw || null, weeks, phaseLabel, true); // throws on insert error (ux-pass5)
+      stage = 'band';
 
       // #journey MEDIUM: editing the goal/timeline must RE-CUT the actual calorie band, not just
       // the displayed ETA. Recompute timeline-aware targets and persist so the plan the user eats
@@ -208,19 +222,34 @@ export default function GoalsScreen() {
           targetWeightKg: tw || null,
           targetWeeks: weeks,
         });
-        await supabase.from('profiles').update({
+        // FIX (ux-pass5): kalori bandı yazması da hatasını yutuyordu — kontrol et.
+        const { error: bandError } = await supabase.from('profiles').update({
           calorie_range_training_min: t.trainingDay.min,
           calorie_range_training_max: t.trainingDay.max,
           calorie_range_rest_min: t.restDay.min,
           calorie_range_rest_max: t.restDay.max,
           weekly_calorie_budget: t.weeklyBudget,
         }).eq('id', user.id);
+        if (bandError) throw bandError;
       }
       haptics.success();
       Alert.alert('Başarılı', 'Hedef kaydedildi.', [{ text: 'Tamam', onPress: () => router.back() }]);
     } catch (e) {
       haptics.error();
-      Alert.alert('Kaydedilemedi', 'Hedef kaydedilemedi, lütfen tekrar dene.');
+      console.warn('[goals] save failed at stage', stage, e);
+      // FIX (ux-pass5): aşamaya göre dürüst hata mesajı; insert aşamasında patladıysa
+      // deactivate çoktan geçti demektir → önceki hedefi geri açmayı dene ki kullanıcı
+      // sıfır aktif hedefle (boş dashboard/plan) kalmasın.
+      if (stage === 'insert' && existingGoal?.id) {
+        const { error: reactivateError } = await supabase.from('goals').update({ is_active: true }).eq('id', existingGoal.id);
+        Alert.alert('Kaydedilemedi', !reactivateError
+          ? 'Yeni hedef kaydedilemedi; önceki hedefin geri açıldı. Lütfen tekrar dene.'
+          : 'Hedef kaydedilemedi ve önceki hedefin geri açılamadı. Bağlantını kontrol edip hedefini yeniden kaydet.');
+      } else if (stage === 'band') {
+        Alert.alert('Kısmen kaydedildi', 'Hedef oluşturuldu ama kalori hedefleri güncellenemedi. Lütfen tekrar "Kaydet"e bas.');
+      } else {
+        Alert.alert('Kaydedilemedi', 'Hedef kaydedilemedi, lütfen tekrar dene.');
+      }
     } finally {
       setSaving(false);
     }
@@ -340,7 +369,9 @@ export default function GoalsScreen() {
         {/* Weekly rate display */}
         {weeklyRate > 0 && (
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.md }}>
-            Haftalık tempo: {weeklyRate.toFixed(2)} kg/hafta
+            {/* FIX (ux-pass5): TR virgül ondalık — aynı ekran virgüllü girdi kabul edip ('70,5')
+                noktalı çıktı ('0.54') gösteriyordu. */}
+            Haftalık tempo: {weeklyRate.toFixed(2).replace('.', ',')} kg/hafta
           </Text>
         )}
 

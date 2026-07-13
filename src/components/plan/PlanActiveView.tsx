@@ -212,6 +212,10 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           <TouchableOpacity
             onPress={onStartRevision}
             disabled={creatingRevision}
+            // FIX (ux-pass5): announce as a button with busy/disabled state (was a text blob).
+            accessibilityRole="button"
+            accessibilityLabel="Kochko ile konuş"
+            accessibilityState={{ disabled: !!creatingRevision, busy: !!creatingRevision }}
             style={{
               flex: 1,
               backgroundColor: colors.primary,
@@ -231,6 +235,9 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onOpenHistory}
+            // FIX (ux-pass5): announce as a button (was a text blob to TalkBack).
+            accessibilityRole="button"
+            accessibilityLabel="Plan geçmişi"
             style={{
               backgroundColor: colors.surfaceLight,
               borderRadius: RADIUS.md,
@@ -354,7 +361,15 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               • {m}
             </Text>
           ))}
-          <TouchableOpacity onPress={onStartRevision} style={{ marginTop: SPACING.xs }}>
+          {/* FIX (ux-pass5): the banner's only action was a bare ~15px text link with no
+              role — padding + hitSlop lift it to ≥44px effective and TalkBack gets a button. */}
+          <TouchableOpacity
+            onPress={onStartRevision}
+            accessibilityRole="button"
+            accessibilityLabel="Planı güncelle"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ marginTop: SPACING.xs, alignSelf: 'flex-start', paddingVertical: SPACING.sm }}
+          >
             <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '700' }}>
               Planı güncelle →
             </Text>
@@ -378,6 +393,11 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             <TouchableOpacity
               onPress={() => setExpandedDay(isOpen ? -1 : dayIdx)}
               activeOpacity={0.8}
+              // FIX (ux-pass5): same a11y treatment as the visually identical draft accordion
+              // (PlanDayAccordion) — role + label + expanded state for the daily-use plan.
+              accessibilityRole="button"
+              accessibilityLabel={`${isToday ? `Bugün, ${label}` : label}, ${isOpen ? 'açık' : 'aç'}`}
+              accessibilityState={{ expanded: isOpen }}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',

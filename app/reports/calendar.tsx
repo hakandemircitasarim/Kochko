@@ -26,8 +26,8 @@ export default function CalendarScreen() {
   // rendered a 'veri yok' month. Now: clear grid + selected day immediately on month change, show a
   // spinner while loading, and surface an explicit retry on failure. The `cancelled` guard drops
   // stale responses when the user taps through months quickly.
-  // (Not: getMonthSummaries sorgu-içi supabase hatalarını yutup boş ay döndürüyor — servis başka
-  // ekipte olduğundan burada yalnız promise rejection'ları yakalanabiliyor.)
+  // FIX (ux-pass5): getMonthSummaries artık sorgu-içi supabase hatalarını yutmuyor — hata fırlatıyor,
+  // yani aşağıdaki .catch → 'Tekrar dene' dalı ağ kopmasında da çalışıyor.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);

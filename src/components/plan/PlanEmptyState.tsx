@@ -3,11 +3,12 @@
  * CTA is disabled when prerequisites are missing; each missing field becomes
  * a clickable card routing to the correct onboarding task chat.
  */
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
 import { useTheme } from '@/lib/theme';
+import { haptics } from '@/lib/haptics';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -31,7 +32,13 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
     // #S1 (one-thread): task topics land in THE coach conversation (topic behavior rides the
     // task_mode_hint request param, not the session row) — no more per-task session islands.
     const id = await getOrCreateActiveSession();
-    if (!id) return;
+    if (!id) {
+      // FIX (ux-pass5): silent return = dead missing-info card (same convention as
+      // diet.tsx fix-pass 07-12 item 8a) — tell the user the tap didn't dead-end for no reason.
+      haptics.error();
+      Alert.alert('Bağlantı sorunu', 'Koç oturumu açılamadı. Bağlantını kontrol edip tekrar dene.');
+      return;
+    }
     // FIX (fix-pass 07-12, item 6): hints were hand-built as `onboarding_${taskKey}`,
     // producing values the server doesn't recognize (e.g. 'onboarding_daily_routine' vs
     // canonical 'onboarding_routine'). Use the task registry's own taskModeHint + a

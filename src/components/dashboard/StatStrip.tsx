@@ -104,7 +104,9 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
       <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
         <StatCard
           icon="water"
-          value={waterTarget > 0 ? `${waterLiters.toFixed(1)} / ${waterTarget.toFixed(1)}L` : `${waterLiters.toFixed(1)}L`}
+          // FIX (ux-pass5): TR ondalık — toFixed her zaman '.' basar; koç/servis yüzeyleri
+          // (plateau, goals, widget) ',' kullanıyor. Aynı ekranda '1.5L' / chat'te '1,5L' olmaz.
+          value={waterTarget > 0 ? `${waterLiters.toFixed(1).replace('.', ',')} / ${waterTarget.toFixed(1).replace('.', ',')}L` : `${waterLiters.toFixed(1).replace('.', ',')}L`}
           label="Su"
           color={METRIC_COLORS.water}
           progress={waterTarget > 0 ? waterPct : undefined}
@@ -123,7 +125,8 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
         <StatCard
           icon="moon"
           // FIX (audit UI-TAB-03) ham DB sayısını biçimlendir — diğer kartlarla tutarlı (DECIMAL(3,1) → 1 ondalık)
-          value={sleepHours != null ? `${Number(sleepHours).toFixed(1)} sa` : '-'}
+          // FIX (ux-pass5): TR ondalık virgül.
+          value={sleepHours != null ? `${Number(sleepHours).toFixed(1).replace('.', ',')} sa` : '-'}
           label="Uyku"
           color={METRIC_COLORS.sleep}
         />
@@ -131,9 +134,10 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
           icon="scale"
           // FIX (audit UI-TAB-03) ham DB sayısını biçimlendir — diğer kartlarla tutarlı (DECIMAL(5,2) → 1 ondalık)
           // FIX (ux-pass2 #4d): bugün tartı yoksa '-' yerine son bilinen kilo, soluk + 'son bilinen' notuyla.
+          // FIX (ux-pass5): TR ondalık virgül.
           value={weightKg != null
-            ? `${Number(weightKg).toFixed(1)} kg`
-            : noWeighInToday ? `${Number(lastKnownWeightKg).toFixed(1)} kg` : '-'}
+            ? `${Number(weightKg).toFixed(1).replace('.', ',')} kg`
+            : noWeighInToday ? `${Number(lastKnownWeightKg).toFixed(1).replace('.', ',')} kg` : '-'}
           valueMuted={noWeighInToday}
           sublabel={noWeighInToday ? 'son bilinen' : undefined}
           label="Kilo"

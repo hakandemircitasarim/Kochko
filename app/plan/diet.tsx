@@ -280,6 +280,9 @@ export default function DietPlanScreen() {
 
   const handleAlternative = async () => {
     if (!chatSessionId || !draft) return;
+    // FIX (ux-pass5): re-entrancy guard — the alt modal's "2 alternatif daha" button used
+    // to fire a parallel invokePlanChat per re-tap during the 10-30s LLM wait.
+    if (sending) return;
     // Ask AI for a second-approach snapshot; we capture it client-side without persisting
     // to the draft row, so the user can pick between current draft and alternative.
     setSending(true);
@@ -304,6 +307,9 @@ export default function DietPlanScreen() {
   };
 
   const pickCurrent = async () => {
+    // FIX (ux-pass5): haptic moved here from the modal — keeping the current draft is a
+    // local, infallible action so immediate success feedback is honest.
+    haptics.success();
     setAltCandidate(null);
     setShowAltModal(false);
   };
@@ -315,12 +321,14 @@ export default function DietPlanScreen() {
       reason: 'Kullanıcı alternatifi seçti',
     });
     if (!updated) {
-      setMessages(prev => [
-        ...prev,
-        { id: 'err-' + Date.now(), role: 'assistant', content: 'Alternatif uygulanamadı, tekrar dene.' },
-      ]);
+      // FIX (ux-pass5): the failure bubble was appended to a chat list hidden BEHIND the
+      // still-open fullscreen modal (invisible until manual close) — Alert renders above it.
+      haptics.error();
+      Alert.alert('Alternatif uygulanamadı', 'Bağlantını kontrol edip tekrar dene.');
       return;
     }
+    // FIX (ux-pass5): success haptic AFTER the persist succeeded (was fired pre-network in the modal).
+    haptics.success();
     setAltCandidate(null);
     setShowAltModal(false);
     await load();
@@ -647,6 +655,9 @@ export default function DietPlanScreen() {
             onPickA={pickCurrent}
             onPickB={pickAlternative}
             onRequestMore={handleAlternative}
+            // FIX (ux-pass5): give the in-modal "2 alternatif daha" button an in-flight state
+            // (the composer's TypingIndicator is occluded by this fullscreen modal).
+            loadingMore={sending}
           />
         ) : null}
       </KeyboardAvoidingView>

@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity, Animated } from 'react-native';
 import { router } from 'expo-router';
+// FIX (ux-pass5): unsaved-changes guard — usePreventRemove intercepts header-back/swipe-back.
+import { useNavigation, usePreventRemove } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
@@ -8,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 import type {
@@ -101,6 +104,25 @@ export default function EditProfileScreen() {
   const [chest, setChest] = useState('');
   const [thigh, setThigh] = useState('');
 
+  // FIX (ux-pass5): unsaved-changes guard — the 30-field form silently discarded every edit
+  // on header-back / swipe-back. Snapshot the form as loaded (baselineArmed flips exactly
+  // once, at the end of the profile-load effect below) and only intercept while dirty.
+  const [baselineArmed, setBaselineArmed] = useState(false);
+  const initialSnapshot = useRef<string | null>(null);
+  const currentSnapshot = JSON.stringify([
+    heightCm, weightKg, birthYear, gender, activity, equipment, cookingSkill, budget,
+    trainingStyle, dietMode, sleepTime, wakeTime, workStart, workEnd, occupation, mealCount,
+    unitSystem, portionLang, alcoholFreq, dayBoundary, bodyFat, muscleMass, waist, hip, chest, thigh,
+  ]);
+
+  // FIX (ux-pass5): success toast state (log.tsx SavedBadge kalıbı) — replaces the blocking
+  // 'Kaydedildi' Alert that cost a mandatory extra Tamam tap on the happy path.
+  const [savedToast, setSavedToast] = useState(false);
+  const successScale = useRef(new Animated.Value(0.6)).current;
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Clear the auto-close timer if the screen unmounts first (prevents a double back()).
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+
   // Load from profile
   useEffect(() => {
     if (!profile) return;
@@ -130,7 +152,29 @@ export default function EditProfileScreen() {
     if (profile.hip_cm) setHip(String(profile.hip_cm));
     if (profile.chest_cm) setChest(String(profile.chest_cm));
     if (profile.thigh_cm) setThigh(String(profile.thigh_cm));
+    // FIX (ux-pass5): arm the dirty-check baseline — captured on the NEXT render, after the
+    // setters above have been applied.
+    setBaselineArmed(true);
   }, [profile]);
+
+  // FIX (ux-pass5): capture the baseline on the render where the loaded values are applied;
+  // falls back to the defaults snapshot when there is no profile to load.
+  useEffect(() => {
+    if (baselineArmed || !profile) initialSnapshot.current = currentSnapshot;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baselineArmed]);
+
+  const isDirty = initialSnapshot.current !== null && currentSnapshot !== initialSnapshot.current;
+  const navigation = useNavigation();
+  // FIX (ux-pass5): confirm-on-leave while dirty — covers the native header back arrow, the
+  // iOS swipe gesture and the Android hardware back; the clean path is untouched.
+  usePreventRemove(isDirty, ({ data }) => {
+    haptics.warning();
+    Alert.alert('Kaydedilmemiş değişiklikler var', 'Şimdi çıkarsan yaptığın değişiklikler kaybolur.', [
+      { text: 'Vazgeç', style: 'cancel' },
+      { text: 'Çık', style: 'destructive', onPress: () => navigation.dispatch(data.action) },
+    ]);
+  });
 
   // FIX (audit UX-FRM-01): single comma-normalizing parser shared by the inline
   // validator and the save mapping. tr-TR decimal-pad emits ',', so parseFloat('80,5')
@@ -197,7 +241,15 @@ export default function EditProfileScreen() {
         thigh_cm: thigh ? parseNum(thigh) : null,
       } as never);
       haptics.success();
-      Alert.alert('Kaydedildi', 'Profil güncellendi.', [{ text: 'Tamam', onPress: () => router.back() }]);
+      // FIX (ux-pass5): mark the just-saved values as the clean baseline so the
+      // unsaved-changes guard doesn't fire on the way out.
+      initialSnapshot.current = currentSnapshot;
+      // FIX (ux-pass5): blocking 'Kaydedildi' Alert → log.tsx's auto-dismissing checkmark
+      // toast (1.2s → back, tap to close immediately). Zero extra taps on the happy path.
+      setSavedToast(true);
+      successScale.setValue(0.6);
+      Animated.spring(successScale, { toValue: 1, friction: 4, tension: 130, useNativeDriver: true }).start();
+      closeTimer.current = setTimeout(() => { setSavedToast(false); router.back(); }, 1200);
     } catch {
       haptics.error();
       Alert.alert('Kaydedilemedi', 'Profil güncellenemedi. Lütfen tekrar deneyin.');
@@ -205,6 +257,26 @@ export default function EditProfileScreen() {
       setSaving(false);
     }
   };
+
+  // FIX (ux-pass5): success toast screen (log.tsx kalıbı) — auto-returns in 1.2s, a tap
+  // cancels the timer and returns immediately.
+  if (savedToast) {
+    return (
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={() => { if (closeTimer.current) clearTimeout(closeTimer.current); setSavedToast(false); router.back(); }}
+        accessibilityRole="button"
+        accessibilityLabel="Profil güncellendi. Kapatmak için dokun"
+        style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.xxl, alignItems: 'center', borderWidth: 0.5, borderColor: COLORS.border }}>
+          <Animated.View style={{ transform: [{ scale: successScale }] }}>
+            <Ionicons name="checkmark-circle" size={48} color={COLORS.primary} />
+          </Animated.View>
+          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md }}>Profil güncellendi</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>

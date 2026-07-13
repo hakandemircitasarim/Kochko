@@ -1,12 +1,13 @@
 /**
  * Activity Timeline - Meals and workouts in a unified timeline view.
  */
-import React from 'react';
-import { View, Text, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
+import { haptics } from '@/lib/haptics';
 
 interface MealEntry {
   id: string;
@@ -94,11 +95,21 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
 
   const totalActivities = activities.length;
 
+  // FIX (ux-pass5): silme ağ turu boyunca satırda hiçbir gösterge yoktu — satır 1-3 sn
+  // dokunulmamış görünüp 'silinmedi' hissi veriyor, tekrar dokunuş akışı yeniden başlatıyordu.
+  // Silinen satır devre dışı + spinner; eşzamanlı ikinci silme de kilitlenir.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const runDelete = async (activity: Activity) => {
+    if (deletingId) return;
+    setDeletingId(activity.id);
     try {
       await (activity.type === 'meal' ? onDeleteMeal(activity.id) : onDeleteWorkout(activity.id));
+      haptics.success();
     } catch {
+      haptics.error();
       Alert.alert('Silinemedi', 'Bir şeyler ters gitti, lütfen tekrar dene.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -153,10 +164,20 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
             <TouchableOpacity
               key={activity.id}
               activeOpacity={0.7}
+              // FIX (ux-pass5): silme sürerken satır devre dışı — çift tetikleme ve
+              // 'ölü satır' yeniden-dokunuşları engellenir.
+              disabled={deletingId === activity.id}
+              // FIX (ux-pass5): etkileşimli satırlar rolsüz/etiketsizdi — ekran okuyucu
+              // eylemsiz metin olarak okuyordu; sil/detay yolu keşfedilemezdi.
+              accessibilityRole="button"
+              accessibilityLabel={[activity.label, activity.text, activity.detail, activity.time ? `saat ${activity.time}` : '']
+                .filter(Boolean).join(', ')}
+              accessibilityHint="Detayı görmek için dokun, silmek için basılı tut"
               // FIX (ux-pass2 #14): satırlar dokunulabilir görünüyordu ama yalnız gizli
               // long-press'e cevap veriyordu — tap artık saat + detay gösteren ve 'Sil'
               // sunan gerçek bir eylem.
               onPress={() => {
+                haptics.tap(); // FIX (ux-pass5): kardeş dokunuşlarla (log.tsx satırları) tutarlı dokunsal onay.
                 const metaLine = [activity.time ? `Saat: ${activity.time}` : null, activity.detail || null]
                   .filter(Boolean).join(' · ');
                 Alert.alert(
@@ -169,6 +190,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
                 );
               }}
               onLongPress={() => {
+                haptics.tap(); // FIX (ux-pass5): long-press'e de dokunsal onay.
                 // FIX (audit UX-FBK-01/HIGH): a long-press used to delete the meal/workout
                 // INSTANTLY with no confirmation and no undo (workout delete is a hard delete) —
                 // far too easy to wipe a log by accident. Require an explicit destructive confirm.
@@ -185,6 +207,8 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
               style={{
                 flexDirection: 'row', alignItems: 'center',
                 paddingVertical: SPACING.sm,
+                // FIX (ux-pass5): silinen satır soluklaşır — işlemde olduğu görünür.
+                opacity: deletingId === activity.id ? 0.5 : 1,
                 ...(idx < totalActivities - 1 ? { borderBottomWidth: 0.5, borderBottomColor: colors.divider } : {}),
               }}
             >
@@ -222,8 +246,10 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
                 </Text>
               ) : null}
 
-              {/* Detail */}
-              {activity.detail ? (
+              {/* Detail — FIX (ux-pass5): silme sürerken rozet yerine spinner. */}
+              {deletingId === activity.id ? (
+                <ActivityIndicator size="small" color={activity.color} />
+              ) : activity.detail ? (
                 <View style={{ backgroundColor: activity.color + '12', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 3 }}>
                   <Text style={{ fontSize: FONT.xs, color: activity.color, fontWeight: '700' }}>{activity.detail}</Text>
                 </View>

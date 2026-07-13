@@ -75,7 +75,8 @@ export default function ProfileScreen() {
   }, [user?.id]);
 
   const displayName = (profile?.display_name as string) || user?.email?.split('@')[0] || 'Kullanıcı';
-  const initials = displayName.slice(0, 2).toUpperCase();
+  // FIX (ux-pass5): toUpperCase i→I bozuyordu ('irem'→'IR'); tr-TR ile i→İ ('İR').
+  const initials = displayName.slice(0, 2).toLocaleUpperCase('tr-TR');
 
   // FIX (audit tenure): "X gündür Kochko'da" previously showed the LOG STREAK (1 gün for a
   // 32-day-old account). Tenure = whole days since profiles.created_at.
@@ -216,8 +217,11 @@ export default function ProfileScreen() {
 
 function SectionTitle({ label, colors }: { label: string; colors: any }) {
   return (
-    <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
-      {label}
+    // FIX (ux-pass5): textTransform:'uppercase' locale bilmez — 'Veri & gizlilik' iOS/EN-locale
+    // Android'de 'VERI & GIZLILIK' oluyordu. Metin tr-TR ile büyütülür, CSS transform kaldırıldı
+    // (PlanOverviewCards #11e ile aynı desen).
+    <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+      {label.toLocaleUpperCase('tr-TR')}
     </Text>
   );
 }

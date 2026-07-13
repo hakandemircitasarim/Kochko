@@ -2,7 +2,7 @@
  * All-Time Report Screen
  * Spec 8.4: Başlangıçtan bugüne toplam ilerleme.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -33,6 +33,9 @@ export default function AllTimeReportScreen() {
     totalWorkouts: 0, longestStreak: 0, avgCompliance: 0,
     daysActive: 0, achievements: 0,
   });
+  // FIX (ux-pass5): remember a successful load — loadStats re-runs when the streak hook resolves,
+  // and a refresh failure must not swap already-shown stats for the full-screen error state.
+  const loadedRef = useRef(false);
 
   const loadStats = useCallback(() => {
     if (!user?.id) return;
@@ -47,6 +50,16 @@ export default function AllTimeReportScreen() {
       supabase.from('daily_reports').select('compliance_score, date').eq('user_id', user.id).order('date', { ascending: true }),
       supabase.from('achievements').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
     ]).then(([profileRes, firstWeightRes, mealsRes, workoutsRes, reportsRes, achievementsRes]) => {
+      // FIX (ux-pass5): supabase-js never rejects — offline, every result resolves as
+      // { data/count: null, error }, so the .catch below never fired and the screen fabricated a
+      // zeroed lifetime ("Toplam Öğün 0", "Aktif Gün 0"). Check every result's error; PGRST116
+      // (.single() with 0 rows) is legit for brand-new accounts, not a failure.
+      const failed = [profileRes, firstWeightRes, mealsRes, workoutsRes, reportsRes, achievementsRes]
+        .some(r => r.error && r.error.code !== 'PGRST116');
+      if (failed) {
+        if (!loadedRef.current) setError(true); // keep already-loaded stats on a later refresh failure
+        return;
+      }
       const profile = profileRes.data;
       const reports = (reportsRes.data ?? []) as { compliance_score: number; date: string }[];
       const avgComp = reports.length > 0
@@ -86,6 +99,7 @@ export default function AllTimeReportScreen() {
         daysActive,
         achievements: achievementsRes.count ?? 0,
       });
+      loadedRef.current = true; // FIX (ux-pass5)
     }).catch(() => {
       // Network/auth failure must not strand the user on an infinite spinner — show a
       // recoverable error state with a retry instead (#screen-states).
@@ -131,11 +145,13 @@ export default function AllTimeReportScreen() {
       {totalWeightChange !== null && (
         <Card title="Toplam İlerleme">
           <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
+            {/* FIX (ux-pass5): TR ondalık — virgül ("-4,5 kg"), nokta değil. */}
             <Text style={{ color: totalWeightChange < 0 ? COLORS.success : COLORS.error, fontSize: FONT.hero, fontWeight: '800' }}>
-              {totalWeightChange > 0 ? '+' : ''}{totalWeightChange.toFixed(1)} kg
+              {totalWeightChange > 0 ? '+' : ''}{totalWeightChange.toFixed(1).replace('.', ',')} kg
             </Text>
             <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
-              {stats.startWeight} kg → {stats.currentWeight} kg
+              {/* FIX (ux-pass5): DB ondalıkları da virgülle ("81,5 kg → 79,5 kg"). */}
+              {String(stats.startWeight).replace('.', ',')} kg → {String(stats.currentWeight).replace('.', ',')} kg
             </Text>
           </View>
         </Card>

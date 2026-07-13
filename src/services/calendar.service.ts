@@ -32,6 +32,12 @@ export async function getMonthSummaries(year: number, month: number): Promise<Da
       .gte('logged_for_date', startDate).lte('logged_for_date', endDate),
   ]);
 
+  // FIX (ux-pass5): supabase-js never rejects — failures resolve as { data: null, error }, so
+  // swallowing the per-query errors returned a fully-populated "veri yok" month offline. Throw so
+  // the caller's existing .catch → retry state (app/reports/calendar.tsx) becomes reachable.
+  const failedRes = [reportsRes, metricsRes, mealsRes, workoutsRes].find(r => r.error);
+  if (failedRes?.error) throw failedRes.error;
+
   const reports = new Map((reportsRes.data ?? []).map((r: { date: string; compliance_score: number; calorie_actual: number }) => [r.date, r]));
   const metrics = new Map((metricsRes.data ?? []).map((m: { date: string; weight_kg: number }) => [m.date, m]));
   const mealDates = new Set((mealsRes.data ?? []).map((m: { logged_for_date: string }) => m.logged_for_date));

@@ -25,11 +25,16 @@ export default function SettingsScreen() {
   const { openDelete } = useLocalSearchParams<{ openDelete?: string }>();
 
   // Typed-confirm gate for account deletion: the destructive call only fires
-  // after the user types "SIL" in the second modal.
+  // after the user types "SİL" in the second modal.
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
-  const canDelete = deleteConfirm.trim().toUpperCase() === 'SIL';
+  // FIX (ux-pass5): the forced-caps TR keyboard (autoCapitalize="characters") emits 'SİL'
+  // (dotted İ, U+0130), which the old ASCII `toUpperCase() === 'SIL'` never matched — the
+  // KVKK deletion flow was a silent dead-end on the default Turkish keyboard. Uppercase
+  // with tr-TR, then fold İ→I so both 'SİL' and 'SIL' (and lowercase 'sil') pass; the
+  // typed-confirm friction stays intact.
+  const canDelete = deleteConfirm.trim().toLocaleUpperCase('tr-TR').replace(/İ/g, 'I') === 'SIL';
 
   // FIX (audit dead-drop): profile's 'Hesabı sil' row lands here with ?openDelete=1 —
   // open the shared typed-confirm modal directly instead of dropping the user at the
@@ -57,7 +62,7 @@ export default function SettingsScreen() {
     setDeleteOpen(true);
   };
 
-  // Step 2: only reachable once "SIL" is typed — runs the original deletion call.
+  // Step 2: only reachable once "SİL" is typed — runs the original deletion call.
   const confirmDelete = async () => {
     if (!canDelete || deleting) return;
     if (user?.id) {
@@ -214,7 +219,7 @@ export default function SettingsScreen() {
       <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xxl }}>Kochko v1.0.0</Text>
     </ScrollView>
 
-    {/* Typed-confirm gate: requires typing "SIL" before the irreversible deletion request. */}
+    {/* Typed-confirm gate: requires typing "SİL" before the irreversible deletion request. */}
     <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={closeDeleteModal}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: SPACING.xl }}>
         <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.xl }}>
@@ -226,12 +231,14 @@ export default function SettingsScreen() {
             Hesabın silinmek üzere işaretlenecek. 30 gün içinde tekrar giriş yaparsan hesabın otomatik olarak yeniden aktif olur. 30 gün sonra tüm verilerin kalıcı olarak silinecek.
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>
-            Onaylamak için <Text style={{ color: colors.error, fontWeight: '700' }}>SIL</Text> yaz
+            {/* FIX (ux-pass5): display the correct Turkish spelling 'SİL' — the copy told users
+                to type an ASCII string the forced-caps TR keyboard can't naturally produce. */}
+            Onaylamak için <Text style={{ color: colors.error, fontWeight: '700' }}>SİL</Text> yaz
           </Text>
           <TextInput
             value={deleteConfirm}
             onChangeText={setDeleteConfirm}
-            placeholder="SIL"
+            placeholder="SİL"
             placeholderTextColor={colors.textMuted}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -270,9 +277,12 @@ export default function SettingsScreen() {
 }
 
 function SectionTitle({ label, colors }: { label: string; colors: ThemeColors }) {
+  // FIX (ux-pass5): textTransform:'uppercase' uppercases locale-blind (i→I), misspelling the
+  // dotted-i labels ('PROFIL', 'TAKIP VE ILERLEME', 'TERCIHLER'...); pre-uppercase with
+  // tr-TR instead (same fix class as PlanOverviewCards #11e).
   return (
-    <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-      {label}
+    <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, letterSpacing: 0.5 }}>
+      {label.toLocaleUpperCase('tr-TR')}
     </Text>
   );
 }

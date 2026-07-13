@@ -91,6 +91,9 @@ export default function ProgressScreen() {
   const [maintenanceData, setMaintenanceData] = useState<MaintenanceStatus | null>(null);
   const [miniCutOffered, setMiniCutOffered] = useState(false);
   const [miniCutLoading, setMiniCutLoading] = useState(false);
+  // FIX (ux-pass5): strateji uygulama için in-flight kilidi (miniCutLoading deseninin eşi) —
+  // hangi kartın döndüğünü de bilelim diye id tutuyoruz.
+  const [applyingStrategyId, setApplyingStrategyId] = useState<string | null>(null);
   const [timelinePhases, setTimelinePhases] = useState<{ phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]; currentWeek: number } | null>(null);
   const [engagement, setEngagement] = useState<EngagementMetrics | null>(null);
 
@@ -126,6 +129,13 @@ export default function ProgressScreen() {
         getTimelineData(user.id),
         getEngagementMetrics(user.id),
       ]);
+      // FIX (ux-pass5): supabase-js reddetmez, {data:null,error} ile resolve eder — iki direkt
+      // sorgunun hatası hiç okunmuyordu: başarısız bir focus-refresh setMetrics([]) ile yüklü
+      // veriyi SİLİYOR, UI-STA-05 hata kartı (aşağıda) hiç erişilemiyordu. Hata varsa mevcut
+      // catch'e fırlat: önceki veri varsa state'e boş yazılmadığı için aynen korunur; yoksa
+      // setError(true) → "Tekrar dene" kartı.
+      if (m.error) throw m.error;
+      if (c.error) throw c.error;
       const metricData = (m.data ?? []) as MetricPt[];
       setMetrics(metricData);
       const compData = (c.data ?? []) as CompPt[];
@@ -187,39 +197,47 @@ export default function ProgressScreen() {
 
   // D4: Apply plateau strategy
   const handleApplyStrategy = async (strategyId: string) => {
-    if (!profile || !user?.id) return;
-    const currentCalorie = {
-      min: (profile.calorie_range_rest_min as number) ?? 1800,
-      max: (profile.calorie_range_rest_max as number) ?? 2200,
-    };
-    const weightKg = (profile.weight_kg as number | null) ?? null;
-    const proteinPerKg = (profile.protein_per_kg as number | null) ?? null;
-    const currentProtein = (weightKg && proteinPerKg) ? Math.round(weightKg * proteinPerKg) : 120;
-    const result = applyPlateauStrategy(strategyId, currentCalorie, currentProtein);
+    // FIX (ux-pass5): in-flight durumu yoktu — yavaş bağlantıda 'Onayla' saniyelerce tepkisiz
+    // görünüp ikinci tıklamada (ya da diğer stratejide) akışı İKİ kez çalıştırıyordu (çift yazma
+    // + üst üste iki alert). miniCutLoading deseniyle kilitle; kartlar disabled + spinner alır.
+    if (!profile || !user?.id || applyingStrategyId) return;
+    setApplyingStrategyId(strategyId);
+    try {
+      const currentCalorie = {
+        min: (profile.calorie_range_rest_min as number) ?? 1800,
+        max: (profile.calorie_range_rest_max as number) ?? 2200,
+      };
+      const weightKg = (profile.weight_kg as number | null) ?? null;
+      const proteinPerKg = (profile.protein_per_kg as number | null) ?? null;
+      const currentProtein = (weightKg && proteinPerKg) ? Math.round(weightKg * proteinPerKg) : 120;
+      const result = applyPlateauStrategy(strategyId, currentCalorie, currentProtein);
 
-    const profileUpdate: Record<string, number> = {
-      calorie_range_rest_min: result.adjustedCalorie.min,
-      calorie_range_rest_max: result.adjustedCalorie.max,
-    };
-    // protein_target_g is not a profiles column (it lives on daily_plans); persist the
-    // protein intent via protein_per_kg instead so the adjusted protein is not lost.
-    if (weightKg) profileUpdate.protein_per_kg = Math.round((result.adjustedProtein / weightKg) * 10) / 10;
+      const profileUpdate: Record<string, number> = {
+        calorie_range_rest_min: result.adjustedCalorie.min,
+        calorie_range_rest_max: result.adjustedCalorie.max,
+      };
+      // protein_target_g is not a profiles column (it lives on daily_plans); persist the
+      // protein intent via protein_per_kg instead so the adjusted protein is not lost.
+      if (weightKg) profileUpdate.protein_per_kg = Math.round((result.adjustedProtein / weightKg) * 10) / 10;
 
-    const { error } = await supabase.from('profiles').update(profileUpdate).eq('id', user.id);
+      const { error } = await supabase.from('profiles').update(profileUpdate).eq('id', user.id);
 
-    if (error) {
-      haptics.error();
-      Alert.alert('Hata', 'Strateji uygulanamadı, lütfen tekrar dene.', [{ text: 'Tamam' }]);
-      return;
+      if (error) {
+        haptics.error();
+        Alert.alert('Hata', 'Strateji uygulanamadı, lütfen tekrar dene.', [{ text: 'Tamam' }]);
+        return;
+      }
+
+      // Reflect the new band on today's plan now (not next roll-forward).
+      await reprojectTodayPlanBand(user.id, (profile.day_boundary_hour as number) ?? 4, result.adjustedCalorie.min, result.adjustedCalorie.max, result.adjustedProtein);
+
+      haptics.success();
+      useProfileStore.getState().fetch(user.id);
+      Alert.alert('Strateji Uygulandı', result.instructions, [{ text: 'Tamam' }]);
+      setStrategyRec(null);
+    } finally {
+      setApplyingStrategyId(null);
     }
-
-    // Reflect the new band on today's plan now (not next roll-forward).
-    await reprojectTodayPlanBand(user.id, (profile.day_boundary_hour as number) ?? 4, result.adjustedCalorie.min, result.adjustedCalorie.max, result.adjustedProtein);
-
-    haptics.success();
-    useProfileStore.getState().fetch(user.id);
-    Alert.alert('Strateji Uygulandı', result.instructions, [{ text: 'Tamam' }]);
-    setStrategyRec(null);
   };
 
   // D6: Activate mini-cut mode
@@ -307,10 +325,11 @@ export default function ProgressScreen() {
   const avgComp = loggedCompliance.length > 0 ? Math.round(loggedCompliance.reduce((s, c) => s + c.compliance_score, 0) / loggedCompliance.length) : null;
   // Water: average over days the user actually logged water — averaging zeros from untouched
   // days produced the meaningless '0.0 L/gün' tile.
+  // FIX (ux-pass5): TR virgül ondalık — tarih/adım tr-TR iken tile'lar '2.3'/'7.5' basıyordu.
   const waterDays = metrics.filter(m => (m.water_liters ?? 0) > 0);
-  const avgWater = waterDays.length > 0 ? (waterDays.reduce((s, m) => s + m.water_liters, 0) / waterDays.length).toFixed(1) : null;
+  const avgWater = waterDays.length > 0 ? (waterDays.reduce((s, m) => s + m.water_liters, 0) / waterDays.length).toFixed(1).replace('.', ',') : null;
   const sleepDays = metrics.filter(m => m.sleep_hours != null);
-  const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1) : null;
+  const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1).replace('.', ',') : null;
 
   return (
     <ScrollView
@@ -325,7 +344,9 @@ export default function ProgressScreen() {
           is a 0-100 percent (ai-report clamps it, monthly shows %X) → show it as %X and make
           every tile's period explicit (son 28 gün penceresi). */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md, gap: SPACING.sm }}>
-        <SummaryBox icon="scale-outline" iconColor={colors.pink} value={latestW ? `${latestW}` : '-'} label="kg" period="son tartı" delta={wChange} />
+        {/* FIX (ux-pass5): kilo değeri de virgül ondalık — aynı tile'daki delta rozeti virgüle
+            çevrildi, '74.5' + '+1,5' karışımı olmasın. */}
+        <SummaryBox icon="scale-outline" iconColor={colors.pink} value={latestW ? `${latestW}`.replace('.', ',') : '-'} label="kg" period="son tartı" delta={wChange} />
         <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={avgComp != null ? `%${avgComp}` : '-'} label="uyum" period="28 gün ort." />
         <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater ?? '-'} label="L/gün" period="28 gün ort." />
         <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep ?? '-'} label="sa/gün" period="28 gün ort." />
@@ -451,17 +472,21 @@ export default function ProgressScreen() {
               <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', marginBottom: SPACING.sm, letterSpacing: 1 }}>ÖNERİLEN STRATEJİLER</Text>
               <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.sm }}>{strategyRec.reasoning}</Text>
 
-              {/* Primary strategy */}
+              {/* Primary strategy — FIX (ux-pass5): in-flight'ta disabled + busy + spinner
+                  (miniCutLoading butonuyla aynı desen), çift tıklama/çift yazma kapandı. */}
               <TouchableOpacity
                 onPress={() => { haptics.tap(); handleApplyStrategy(strategyRec.primary.id); }}
+                disabled={applyingStrategyId != null}
                 accessibilityRole="button"
                 accessibilityLabel={`${strategyRec.primary.name} stratejisini onayla`}
+                accessibilityState={{ disabled: applyingStrategyId != null, busy: applyingStrategyId === strategyRec.primary.id }}
                 style={{
                   backgroundColor: colors.card,
                   borderRadius: RADIUS.md,
                   padding: SPACING.md,
                   marginBottom: SPACING.sm,
                   borderWidth: 0.5, borderColor: colors.border,
+                  opacity: applyingStrategyId != null ? 0.6 : 1,
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
@@ -470,7 +495,10 @@ export default function ProgressScreen() {
                 </View>
                 <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 20 }}>{strategyRec.primary.description}</Text>
                 <View style={{ backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm }}>
-                  <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Onayla</Text>
+                  {applyingStrategyId === strategyRec.primary.id
+                    ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
+                    : <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Onayla</Text>
+                  }
                 </View>
               </TouchableOpacity>
 
@@ -478,13 +506,16 @@ export default function ProgressScreen() {
               {strategyRec.secondary && (
                 <TouchableOpacity
                   onPress={() => { haptics.tap(); handleApplyStrategy(strategyRec.secondary!.id); }}
+                  disabled={applyingStrategyId != null}
                   accessibilityRole="button"
                   accessibilityLabel={`${strategyRec.secondary.name} stratejisini dene`}
+                  accessibilityState={{ disabled: applyingStrategyId != null, busy: applyingStrategyId === strategyRec.secondary.id }}
                   style={{
                     backgroundColor: colors.card,
                     borderRadius: RADIUS.md,
                     padding: SPACING.md,
                     borderWidth: 0.5, borderColor: colors.border,
+                    opacity: applyingStrategyId != null ? 0.6 : 1,
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
@@ -493,7 +524,10 @@ export default function ProgressScreen() {
                   </View>
                   <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 20 }}>{strategyRec.secondary.description}</Text>
                   <View style={{ backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm, borderWidth: 1, borderColor: colors.border }}>
-                    <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Bunu Dene</Text>
+                    {applyingStrategyId === strategyRec.secondary.id
+                      ? <ActivityIndicator size="small" color={colors.textSecondary} />
+                      : <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Bunu Dene</Text>
+                    }
                   </View>
                 </TouchableOpacity>
               )}
@@ -520,8 +554,10 @@ export default function ProgressScreen() {
           {/* D6: Tolerance band info */}
           {maintenanceData?.toleranceBand && maintenanceData.toleranceBand.min != null && maintenanceData.toleranceBand.max != null && (
             <View style={{ marginTop: SPACING.sm, flexDirection: 'row', justifyContent: 'space-between', backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.sm }}>
+              {/* FIX (ux-pass5): TR virgül ondalık — hemen üstteki maintenanceMsg aynı bandı
+                  virgülle ('72,5-75,5') yazarken bu satır noktalıydı; tek kartta iki biçim. */}
               <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
-                Band: {maintenanceData.toleranceBand.min.toFixed(1)} - {maintenanceData.toleranceBand.max.toFixed(1)} kg
+                Band: {maintenanceData.toleranceBand.min.toFixed(1).replace('.', ',')} - {maintenanceData.toleranceBand.max.toFixed(1).replace('.', ',')} kg
               </Text>
               <Text style={{
                 // FIX (audit UI-STA-06): FONT.xs status label on surfaceLight — base error is
@@ -571,11 +607,13 @@ export default function ProgressScreen() {
         <Card title="Etkileşim">
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm }}>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
-              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.avgDailyMeals}</Text>
+              {/* FIX (ux-pass5): TR ondalık virgül ("0,9"). */}
+              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{String(engagement.avgDailyMeals).replace('.', ',')}</Text>
               <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 2 }}>Öğün/Gün</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
-              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.avgDailyMessages}</Text>
+              {/* FIX (ux-pass5): TR ondalık virgül ("9,3"). */}
+              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{String(engagement.avgDailyMessages).replace('.', ',')}</Text>
               <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 2 }}>Mesaj/Gün</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
@@ -641,7 +679,8 @@ function SummaryBox({ icon, iconColor, value, label, period, delta }: { icon: ke
       {period != null && <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 1, textAlign: 'center' }}>{period}</Text>}
       {/* FIX (audit UI-STA-06): at FONT.xs (11px) the base error (#E24B4A) is only 4.39:1 on
           card — below AA-small. Use the lighter `errorText` tone (>=4.5:1). success passes as-is. */}
-      {delta != null && <Text style={{ fontSize: FONT.xs, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.errorText }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1)}</Text>}
+      {/* FIX (ux-pass5): TR virgül ondalık — kilo farkı rozeti '+1.5' değil '+1,5' okusun. */}
+      {delta != null && <Text style={{ fontSize: FONT.xs, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.errorText }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1).replace('.', ',')}</Text>}
     </View>
   );
 }

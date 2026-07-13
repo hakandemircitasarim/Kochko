@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getHealthEvents, addHealthEvent, type HealthEvent } from '@/services/health.service';
@@ -21,8 +21,25 @@ export default function HealthEventsScreen() {
   const [desc, setDesc] = useState('');
   const [date, setDate] = useState('');
   const [ongoing, setOngoing] = useState(false);
+  // FIX (ux-pass5 UI-STA-03 + empty-vs-error): loading + error states — the confident
+  // 'Henüz sağlık olayın yok' card used to render during every fetch and permanently on a
+  // failed fetch (safety-critical data: alerji/ameliyat). Mirrors the lab-values.tsx fix.
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
-  useEffect(() => { getHealthEvents().then(setEvents); }, []);
+  const loadEvents = useCallback(async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      setEvents(await getHealthEvents());
+    } catch (err) {
+      console.warn('health_events load failed', err);
+      setLoadError(true);
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadEvents(); }, [loadEvents]);
 
   const handleAdd = async () => {
     if (!desc.trim()) return;
@@ -32,7 +49,9 @@ export default function HealthEventsScreen() {
       return;
     }
     setShowAdd(false); setDesc(''); setDate('');
-    getHealthEvents().then(setEvents);
+    // FIX (ux-pass5): getHealthEvents now throws on failure — route the refresh through
+    // loadEvents so a failed refetch shows the error card instead of an unhandled rejection.
+    loadEvents();
   };
 
   // FIX (audit ui-destructive-delete): yıkıcı silmeye onay diyaloğu eklendi (yanlışlıkla silmeyi önler).
@@ -79,9 +98,28 @@ export default function HealthEventsScreen() {
         </Card>
       )}
 
+      {/* FIX (ux-pass5 UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi (lab-values kalıbı). */}
+      {loading && events.length === 0 && (
+        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      )}
+
+      {/* FIX (ux-pass5 empty-vs-error): fetch hatası kendinden emin boş-durum yerine hata+tekrar dene kartı (lab-values kalıbı). */}
+      {!loading && loadError && (
+        <Card style={{ marginTop: SPACING.md }}>
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
+            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Sağlık olayları yüklenemedi</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
+            <Button title="Tekrar dene" size="sm" onPress={loadEvents} />
+          </View>
+        </Card>
+      )}
+
       {/* FIX (audit UI-STA-04): boş durumda (yeni kullanıcı / kayıt yok) form altında hiçbir şey çıkmıyordu; kardeş liste ekranları gibi açıklayıcı boş-durum kartı eklendi. */}
       {/* FIX (audit UI-SET-04): form açıkken boş-durum kartını gizle (form zaten görünüyor). */}
-      {events.length === 0 && !showAdd && (
+      {!loading && !loadError && events.length === 0 && !showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
           <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz sağlık olayın yok</Text>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Ameliyat, sakatlık, kronik hastalık veya alerji gibi kayıtları buraya ekle; koçun planı bunlara göre güvenli tutar.</Text>

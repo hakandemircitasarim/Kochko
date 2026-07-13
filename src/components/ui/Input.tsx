@@ -49,6 +49,11 @@ export const Input = forwardRef<TextInput, Props>(function Input(
           placeholderTextColor={colors.textSecondary}
           secureTextEntry={masked}
           {...props}
+          // FIX (ux-pass5, audit UX-A11-03): the visual label was only a sibling <Text> —
+          // screen readers heard just the placeholder (or the bare value once filled) on
+          // visually identical fields. Placed after the spread so an explicit
+          // accessibilityLabel from a consumer still wins.
+          accessibilityLabel={props.accessibilityLabel ?? label}
         />
         {secureToggle && (
           <Pressable

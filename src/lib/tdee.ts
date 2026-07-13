@@ -270,11 +270,13 @@ export function validateWeeklyRate(
   const totalChange = Math.abs(currentWeight - targetWeight);
   const rate = totalChange / targetWeeks;
 
+  // FIX (ux-pass5): TR virgül ondalık + 'kg' öncesi eksik boşluk — güvenlik uyarısı
+  // '1.2kg' yerine app genelindeki biçimle '1,2 kg' okusun (bkz. goals.service checkAggressiveGoal).
   if (rate > 1.0) {
     return {
       valid: false,
       rate,
-      message: `Haftalık ${rate.toFixed(1)}kg çok agresif. Maksimum 1kg/hafta önerilir.`,
+      message: `Haftalık ${rate.toFixed(1).replace('.', ',')} kg çok agresif. Maksimum 1 kg/hafta önerilir.`,
     };
   }
 
@@ -282,7 +284,7 @@ export function validateWeeklyRate(
     return {
       valid: true,
       rate,
-      message: `Haftalık ${rate.toFixed(1)}kg yüksek ama uygulanabilir. Dikkatli takip gerekir.`,
+      message: `Haftalık ${rate.toFixed(1).replace('.', ',')} kg yüksek ama uygulanabilir. Dikkatli takip gerekir.`,
     };
   }
 

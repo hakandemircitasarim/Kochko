@@ -2,14 +2,16 @@
  * Monthly Report Screen
  * Spec 8.3: Aylik rapor - hedefe yaklasma, trend, risk sinyalleri.
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
+import { getEffectiveDate } from '@/lib/day-boundary';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { ComplianceScore } from '@/components/reports/ComplianceScore';
+import { CircularProgress } from '@/components/ui/CircularProgress';
 import { ProgressChart } from '@/components/reports/ProgressChart';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -41,19 +43,26 @@ export default function MonthlyReportScreen() {
   const [generating, setGenerating] = useState(false);
   const [weightData, setWeightData] = useState<{ label: string; value: number }[]>([]);
   const [dailyAvgCompliance, setDailyAvgCompliance] = useState<number>(0);
+  // FIX (ux-pass5): remember a successful load so a later refresh failure keeps the shown data
+  // instead of swapping it for the full-screen error state.
+  const loadedRef = useRef(false);
+  const dayBoundaryHour = useProfileStore(s => (s.profile?.day_boundary_hour as number) ?? 4);
 
   const loadData = useCallback(() => {
     if (!user?.id) return;
     setLoading(true);
     setError(false);
-    const now = new Date();
     // #S13: build month bounds as plain calendar strings, NOT via Date->toISOString (which
     // converts LOCAL midnight to UTC and rolls back a day in UTC+ zones, e.g. Turkey gave
     // monthStart '2026-05-31'). That made .eq('month_start', monthStart) never match the
     // edge-persisted UTC '2026-06-01' row, so the cached monthly report never loaded and the
     // screen re-triggered a paid LLM generation every visit. Mirrors calendar.service.ts.
-    const _y = now.getFullYear();
-    const _m = now.getMonth(); // 0-based
+    // FIX (ux-pass5): anchor the month to the user's EFFECTIVE day (day_boundary_hour, default
+    // 04:00) like daily.tsx — at 00:51 on the 1st the experiential day is still the previous
+    // month; raw getMonth() showed an empty new month + a paid regeneration prompt.
+    const eff = getEffectiveDate(new Date(), dayBoundaryHour); // YYYY-MM-DD, local + boundary-aware
+    const _y = Number(eff.slice(0, 4));
+    const _m = Number(eff.slice(5, 7)) - 1; // 0-based
     const _mm = String(_m + 1).padStart(2, '0');
     const monthStart = `${_y}-${_mm}-01`;
     const monthEnd = `${_y}-${_mm}-${String(new Date(_y, _m + 1, 0).getDate()).padStart(2, '0')}`;
@@ -72,6 +81,17 @@ export default function MonthlyReportScreen() {
       supabase.from('daily_reports').select('compliance_score').eq('user_id', user.id)
         .gte('date', monthStart).lte('date', monthEnd),
     ]).then(([reportsRes, goalRes, monthlyRes, metricsRes, dailyRes]) => {
+      // FIX (ux-pass5): supabase-js never rejects — network failures resolve as { data: null, error }
+      // on each result, so the Wave3 .catch below never fired and an offline open rendered a confident
+      // all-zero month (uyum %0 + paid "Rapor Oluştur" over the cached row). Check every result's
+      // error; PGRST116 (the monthly .single() with 0 rows) is the legit "henüz rapor yok" case.
+      const failed = [reportsRes, goalRes, monthlyRes, metricsRes, dailyRes]
+        .some(r => r.error && r.error.code !== 'PGRST116');
+      if (failed) {
+        if (!loadedRef.current) setError(true); // keep already-loaded data on a later refresh failure
+        setLoading(false);
+        return;
+      }
       // #S15: keep legitimate 0-score (fully-missed) days in the average — the edge's
       // authoritative avg_compliance counts zeros, so dropping them here over-reported
       // adherence. Only filter out null/non-numeric.
@@ -88,13 +108,14 @@ export default function MonthlyReportScreen() {
         .filter(m => m.weight_kg != null)
         .map(m => ({ label: m.date, value: m.weight_kg as number }));
       setWeightData(weights);
+      loadedRef.current = true; // FIX (ux-pass5)
       setLoading(false);
     }).catch(() => {
       // FIX (audit Wave3): surface the error branch instead of spinning forever.
       setError(true);
       setLoading(false);
     });
-  }, [user?.id]);
+  }, [user?.id, dayBoundaryHour]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -143,6 +164,11 @@ export default function MonthlyReportScreen() {
   // Prefer weekly aggregate; fall back to the daily-report average so early users
   // (daily_reports but no weekly_reports yet) don't see a misleading 0 (#R2-15).
   const avgCompliance = weeklyAvgCompliance > 0 ? weeklyAvgCompliance : dailyAvgCompliance;
+  // FIX (ux-pass5, emulator): compliance is a PERCENT app-wide ("%15 uyum") but the donut showed a
+  // bare "1". Values are already 0-100 (ai-report clamps them server-side; the local averages are
+  // built from 0-100 compliance_score rows), so format as %N without rescaling.
+  const complianceScore = aiReport?.avg_compliance ?? avgCompliance;
+  const complianceColor = complianceScore >= 70 ? COLORS.success : complianceScore >= 40 ? COLORS.warning : COLORS.error;
 
   // weekly_reports has no weight_start/weight_end columns — derive month-boundary weights from
   // the daily_metrics weights already loaded (weightData is ascending by date).
@@ -155,7 +181,12 @@ export default function MonthlyReportScreen() {
 
       {/* Overall Compliance */}
       <Card title="Ortalama Uyum">
-        <ComplianceScore score={aiReport?.avg_compliance ?? avgCompliance} />
+        {/* FIX (ux-pass5, emulator): ComplianceScore (başka kümenin dosyası) ringde çıplak sayı basıyordu;
+            %N için ringi burada doğrudan çiz — görünüm aynı (120/8 ring + alt etiket). */}
+        <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
+          <CircularProgress progress={complianceScore / 100} value={`%${complianceScore}`} size={120} strokeWidth={8} color={complianceColor} a11yLabel="Ortalama uyum" />
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, marginTop: SPACING.sm }}>Uyum Puanı</Text>
+        </View>
       </Card>
 
       {/* Weight Chart */}
@@ -164,10 +195,12 @@ export default function MonthlyReportScreen() {
           <View
             accessible
             accessibilityRole="image"
-            accessibilityLabel={`Kilo grafiği: ${firstWeight?.toFixed(1)} kilodan ${lastWeight?.toFixed(1)} kiloya`}
+            // FIX (ux-pass5): TR ondalık — virgül, nokta değil ("73,5 kilodan").
+            accessibilityLabel={`Kilo grafiği: ${firstWeight?.toFixed(1).replace('.', ',')} kilodan ${lastWeight?.toFixed(1).replace('.', ',')} kiloya`}
           >
             {/* FIX (audit ui-weight-chart): kilo grafiği marka kilo rengiyle (METRIC_COLORS.weight, pembe) tutarlı; eskiden COLORS.secondary (mor) idi. */}
-            <ProgressChart data={weightData} unit=" kg" color={METRIC_COLORS.weight} height={150} />
+            {/* FIX (ux-pass5, emulator): height=150 x-ekseni etiketlerini kartın alt kenarında ortadan kesiyordu — ProgressChart'ın yeni 180 varsayılanına bırak (progress.tsx grafikleriyle aynı). */}
+            <ProgressChart data={weightData} unit=" kg" color={METRIC_COLORS.weight} />
           </View>
         </Card>
       )}
@@ -175,20 +208,21 @@ export default function MonthlyReportScreen() {
       {/* Weight Trend */}
       {weightChange !== null && (
         <Card title="Kilo Trendi">
+          {/* FIX (ux-pass5): TR ondalık — kilo değerleri virgülle ("73,5 kg", "+1,2 kg"). */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View>
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Ay başı</Text>
-              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{firstWeight?.toFixed(1)} kg</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{firstWeight?.toFixed(1).replace('.', ',')} kg</Text>
             </View>
             <View style={{ alignItems: 'center' }}>
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Değişim</Text>
               <Text style={{ color: weightChange < 0 ? COLORS.success : weightChange > 0 ? COLORS.error : COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>
-                {weightChange > 0 ? '+' : ''}{weightChange.toFixed(1)} kg
+                {weightChange > 0 ? '+' : ''}{weightChange.toFixed(1).replace('.', ',')} kg
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Ay sonu</Text>
-              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{lastWeight?.toFixed(1)} kg</Text>
+              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{lastWeight?.toFixed(1).replace('.', ',')} kg</Text>
             </View>
           </View>
         </Card>
@@ -290,7 +324,8 @@ export default function MonthlyReportScreen() {
       {!!(profile?.target_weight_kg) && lastWeight && (
         <Card title="Hedefe Kalan">
           <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>
-            {Math.abs(lastWeight - (profile.target_weight_kg as number)).toFixed(1)} kg
+            {/* FIX (ux-pass5): TR ondalık virgül. */}
+            {Math.abs(lastWeight - (profile.target_weight_kg as number)).toFixed(1).replace('.', ',')} kg
           </Text>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>
             Hedef: {profile.target_weight_kg as number} kg

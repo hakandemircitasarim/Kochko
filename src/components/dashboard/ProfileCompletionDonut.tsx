@@ -153,7 +153,9 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
       style={{
         backgroundColor: colors.card,
         borderRadius: RADIUS.xl,
-        borderWidth: 1,
+        // FIX (ux-pass5): kardeş dashboard kartları 0.5 hairline kullanıyor — 1'lik kalın
+        // kenarlık aynı ekranda iki farklı çizgi ağırlığı karıştırıyordu.
+        borderWidth: 0.5,
         borderColor: colors.border,
         padding: SPACING.md,
         flexDirection: 'row',
@@ -191,7 +193,8 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
             {pct}%
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600', letterSpacing: 1 }}>
-            PROFIL
+            {/* FIX (ux-pass5): 'PROFIL' noktasız I ile yanlış Türkçe — doğrusu 'PROFİL'. */}
+            PROFİL
           </Text>
         </View>
       </View>

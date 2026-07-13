@@ -27,7 +27,10 @@ function formatShortDate(label: string): string {
   return label;
 }
 
-export function ProgressChart({ data, color = COLORS.primary, unit = '', height = 150 }: Props) {
+// FIX (ux-pass5, emulator): chart-kit draws the x-label row INSIDE the svg; at 150px the "11/07"
+// labels clipped mid-glyph at the card's bottom edge. 180 matches app/(tabs)/progress.tsx, where
+// the same library renders the label row fully.
+export function ProgressChart({ data, color = COLORS.primary, unit = '', height = 180 }: Props) {
   if (data.length === 0) {
     return (
       <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
@@ -56,15 +59,16 @@ export function ProgressChart({ data, color = COLORS.primary, unit = '', height 
   return (
     <View>
       {/* Summary labels — readable size + AA-contrast textSecondary */}
+      {/* FIX (ux-pass5): TR ondalık — virgül ("72,5 kg"), nokta değil. */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>
-          En düşük {min.toFixed(1)}{unit}
+          En düşük {min.toFixed(1).replace('.', ',')}{unit}
         </Text>
         <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '700' }}>
-          Son {last.toFixed(1)}{unit}
+          Son {last.toFixed(1).replace('.', ',')}{unit}
         </Text>
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>
-          En yüksek {max.toFixed(1)}{unit}
+          En yüksek {max.toFixed(1).replace('.', ',')}{unit}
         </Text>
       </View>
 

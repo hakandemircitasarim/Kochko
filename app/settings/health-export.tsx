@@ -112,7 +112,9 @@ export default function HealthExportScreen() {
       const summaryParts: string[] = [];
       summaryParts.push(`Tarih aralığı: ${start} - ${end}.`);
       summaryParts.push(`Hasta bilgileri: Yaş ${age ?? '-'}, ${genderTr}, ${profile?.height_cm ?? '-'} cm.`);
-      if (weightChange !== null) summaryParts.push(`Kilo değişimi: ${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)} kg.`);
+      // FIX (ux-pass5): the Özet line printed a dot decimal ('+1.5 kg') while the metric card in
+      // the SAME PDF uses a comma (export.service.ts:170) — mirror its exact formatting.
+      if (weightChange !== null) summaryParts.push(`Kilo değişimi: ${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1).replace('.', ',')} kg.`);
       summaryParts.push('Bu rapor Kochko yaşam tarzı koçluk uygulaması tarafından oluşturulmuştur. Tıbbi değerlendirme için sağlık profesyonelinin yorumu gereklidir.');
 
       await exportPDF({

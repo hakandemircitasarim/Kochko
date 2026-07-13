@@ -69,9 +69,14 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
       }}
     >
       {/* Header */}
+      {/* FIX (ux-pass5): expandable header announced as a button with expanded state
+          (matches PlanDayAccordion) — was a text blob to TalkBack, hiding the actions inside. */}
       <TouchableOpacity
         onPress={onToggle}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${MEAL_LABELS_TR[meal.meal_type]}, ${meal.name}, ${Math.round(meal.total_kcal)} kalori, ${expanded ? 'açık' : 'aç'}`}
+        accessibilityState={{ expanded }}
         style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
       >
         <View
@@ -160,6 +165,9 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                   accessibilityRole="button"
                   accessibilityLabel={logStatus === 'done' ? 'Günlüğe eklendi' : 'Bunu yedim, günlüğe ekle'}
                   accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
+                  // FIX (ux-pass5): chip was ~23px tall with no hitSlop — flagship one-tap
+                  // logging kept missing. paddingVertical 8 (~32px visual) + hitSlop → ≥44px effective.
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -167,7 +175,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                     backgroundColor: logStatus === 'done' ? colors.successLight : colors.primary + '18',
                     borderRadius: RADIUS.full,
                     paddingHorizontal: SPACING.sm,
-                    paddingVertical: 4,
+                    paddingVertical: 8,
                   }}
                 >
                   {logStatus === 'saving' ? (
@@ -193,6 +201,11 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
               {onEditPress ? (
                 <TouchableOpacity
                   onPress={onEditPress}
+                  // FIX (ux-pass5): same undersized target as the log chip + TalkBack read it
+                  // as plain text — add role/label and grow to ≥44px effective.
+                  accessibilityRole="button"
+                  accessibilityLabel={`${meal.name} öğününü değiştir`}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
@@ -200,7 +213,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                     backgroundColor: colors.surfaceLight,
                     borderRadius: RADIUS.full,
                     paddingHorizontal: SPACING.sm,
-                    paddingVertical: 4,
+                    paddingVertical: 8,
                   }}
                 >
                   <Ionicons name="create-outline" size={12} color={colors.textSecondary} />

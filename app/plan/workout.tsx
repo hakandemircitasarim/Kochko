@@ -249,6 +249,9 @@ export default function WorkoutPlanScreen() {
 
   const handleAlternative = async () => {
     if (!chatSessionId || !draft) return;
+    // FIX (ux-pass5): re-entrancy guard — the alt modal's "2 alternatif daha" button used
+    // to fire a parallel invokePlanChat per re-tap during the 10-30s LLM wait.
+    if (sending) return;
     setSending(true);
     const { data, error } = await invokePlanChat({
       sessionId: chatSessionId,
@@ -270,6 +273,9 @@ export default function WorkoutPlanScreen() {
   };
 
   const pickCurrent = () => {
+    // FIX (ux-pass5): haptic moved here from the modal — keeping the current draft is a
+    // local, infallible action so immediate success feedback is honest.
+    haptics.success();
     setAltCandidate(null);
     setShowAltModal(false);
   };
@@ -281,12 +287,14 @@ export default function WorkoutPlanScreen() {
       reason: 'Kullanıcı alternatifi seçti',
     });
     if (!updated) {
-      setMessages(prev => [
-        ...prev,
-        { id: 'err-' + Date.now(), role: 'assistant', content: 'Alternatif uygulanamadı, tekrar dene.' },
-      ]);
+      // FIX (ux-pass5): the failure bubble was appended to a chat list hidden BEHIND the
+      // still-open fullscreen modal (invisible until manual close) — Alert renders above it.
+      haptics.error();
+      Alert.alert('Alternatif uygulanamadı', 'Bağlantını kontrol edip tekrar dene.');
       return;
     }
+    // FIX (ux-pass5): success haptic AFTER the persist succeeded (was fired pre-network in the modal).
+    haptics.success();
     setAltCandidate(null);
     setShowAltModal(false);
     await load();
@@ -588,6 +596,9 @@ export default function WorkoutPlanScreen() {
             onPickA={pickCurrent}
             onPickB={pickAlternative}
             onRequestMore={handleAlternative}
+            // FIX (ux-pass5): give the in-modal "2 alternatif daha" button an in-flight state
+            // (the composer's TypingIndicator is occluded by this fullscreen modal).
+            loadingMore={sending}
           />
         ) : null}
       </KeyboardAvoidingView>
@@ -625,18 +636,21 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
       <Text selectable style={{ color: isUser ? onUser : colors.text, fontSize: 14, lineHeight: 20 }}>
         {displayContent}
       </Text>
+      {/* FIX (ux-pass5): drifted from the diet.tsx twin — hardcoded white rgba on the purple
+          bubble was ~2.8:1 at 11-12px (AA fail) AND clashed with the black body text
+          (getContrastColor(purple) === 'black'). Same contrast-aware branch as diet's. */}
       {msg.reasoning ? (
         <View
           style={{
             marginTop: SPACING.sm,
             paddingTop: SPACING.sm,
             borderTopWidth: 0.5,
-            borderTopColor: isUser ? 'rgba(255,255,255,0.3)' : colors.divider,
+            borderTopColor: isUser ? (onUser === 'black' ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.3)') : colors.divider,
           }}
         >
           <Text
             style={{
-              color: isUser ? 'rgba(255,255,255,0.75)' : colors.textMuted,
+              color: isUser ? (onUser === 'black' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.75)') : colors.textMuted,
               fontSize: 11,
               fontWeight: '700',
               letterSpacing: 1,
@@ -646,7 +660,7 @@ function DraftChatBubble({ msg }: { msg: ChatMsg }) {
           </Text>
           <Text
             style={{
-              color: isUser ? 'rgba(255,255,255,0.85)' : colors.textSecondary,
+              color: isUser ? (onUser === 'black' ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.85)') : colors.textSecondary,
               fontSize: 12,
               marginTop: 3,
               lineHeight: 17,

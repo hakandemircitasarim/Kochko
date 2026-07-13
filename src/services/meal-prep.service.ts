@@ -383,7 +383,11 @@ export function getContainerSuggestions(items: PrepItem[]): ContainerSuggestion 
   for (const item of items) {
     // Estimate based on quantity text
     const qty = parseInt(item.quantity) || 1;
-    if (item.recipeName.toLowerCase().includes('corba') || item.recipeName.toLowerCase().includes('yahnni')) {
+    // FIX (ux-pass5): 'corba' (ASCII c) never matched real 'Çorba' names — toLowerCase keeps
+    // the ç — and 'yahnni' was a typo, so the large-container branch was unreachable. Match
+    // both the accented and aksansız forms (same convention as classifyDish's /çorba|corba/).
+    const name = item.recipeName.toLowerCase();
+    if (name.includes('çorba') || name.includes('corba') || name.includes('yahni')) {
       large += qty; // Soups/stews need large containers
     } else if (qty >= 3) {
       medium += qty;

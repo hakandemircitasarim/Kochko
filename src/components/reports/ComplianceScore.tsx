@@ -33,7 +33,8 @@ export function ComplianceScore({ score, label = 'Uyum Puanı', size = 'large' }
     >
       <CircularProgress
         progress={score / 100}
-        value={score}
+        // FIX (ux-pass5): uyum her yerde yüzde ("%15 uyum") — çıplak "72" değil "%72".
+        value={`%${score}`}
         size={ringSize}
         strokeWidth={ringWidth}
         color={color}
@@ -50,7 +51,8 @@ export function ComplianceBadge({ score }: { score: number }) {
   const color = getComplianceColor(score);
   return (
     <View style={{ backgroundColor: color + '20', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 }}>
-      <Text style={{ color, fontSize: FONT.xs, fontWeight: '700' }}>{score}</Text>
+      {/* FIX (ux-pass5): rozet de yüzde formatında — büyük halka ile tutarlı. */}
+      <Text style={{ color, fontSize: FONT.xs, fontWeight: '700' }}>%{score}</Text>
     </View>
   );
 }

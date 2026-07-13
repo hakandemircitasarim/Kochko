@@ -46,8 +46,13 @@ export default function WeeklyReportScreen() {
     setLoading(true);
     setError(false);
     try {
-      const { data } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
-      if (data) {
+      const { data, error: loadError } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
+      // FIX (ux-pass5): supabase-js never rejects — failures resolve as { data: null, error }, so the
+      // catch below never fired and a network drop rendered "Henüz haftalık rapor yok." over existing
+      // reports. PGRST116 (.single() with 0 rows) is the legit "rapor yok" case, not a failure.
+      if (loadError && loadError.code !== 'PGRST116') {
+        setError(true);
+      } else if (data) {
         setReport(data as WeeklyReport);
         await loadAlcoholData(user.id, (data as WeeklyReport).week_start);
       }
@@ -74,6 +79,10 @@ export default function WeeklyReportScreen() {
       supabase.from('daily_reports').select('date, alcohol_calories').eq('user_id', userId).gte('date', ws.toISOString().split('T')[0]).lte('date', we.toISOString().split('T')[0]),
       supabase.from('daily_reports').select('alcohol_calories').eq('user_id', userId).gte('date', prevWs.toISOString().split('T')[0]).lte('date', prevWe.toISOString().split('T')[0]),
     ]);
+
+    // FIX (ux-pass5): both queries resolve { data: null, error } on failure — don't fabricate a
+    // 0 kcal alcohol week from a failed fetch; leave `alcohol` null so the card stays hidden.
+    if (thisWeekRows.error || prevWeekRows.error) return;
 
     let weekdayKcal = 0, weekendKcal = 0, thisWeekTotal = 0;
     for (const r of (thisWeekRows.data ?? []) as { date: string; alcohol_calories: number | null }[]) {
@@ -123,7 +132,9 @@ export default function WeeklyReportScreen() {
 
   if (loading) return <SkeletonScreen cards={3} />;
 
-  if (error) {
+  // FIX (ux-pass5): only replace the screen with the error state when nothing is loaded —
+  // a refresh failure must not hide an already-shown report.
+  if (error && !report) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
         <Text style={{ color: COLORS.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.lg }}>
@@ -183,7 +194,8 @@ export default function WeeklyReportScreen() {
                   <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{w.kg} kg</Text>
                   {i > 0 && (
                     <Text style={{ fontSize: FONT.sm, fontWeight: '500', color: w.kg < report.weight_trend[i - 1].kg ? COLORS.success : w.kg > report.weight_trend[i - 1].kg ? COLORS.error : COLORS.textMuted }}>
-                      {w.kg < report.weight_trend[i - 1].kg ? '' : '+'}{(w.kg - report.weight_trend[i - 1].kg).toFixed(1)}
+                      {/* FIX (ux-pass5): TR ondalık virgül. */}
+                      {w.kg < report.weight_trend[i - 1].kg ? '' : '+'}{(w.kg - report.weight_trend[i - 1].kg).toFixed(1).replace('.', ',')}
                     </Text>
                   )}
                 </View>

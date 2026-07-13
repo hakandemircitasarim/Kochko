@@ -65,7 +65,10 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
               {DAY_LABELS_TR[d.day_index]?.[0]}
             </Text>
           </View>
-          <Text style={{ fontSize: 8, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
+          {/* FIX (ux-pass5): fontSize 8 was illegible (smallest text in the app; defeats the
+              day-context labels). 10 keeps hierarchy under the 11px chip letter and fits the
+              ~40px flex column ('Pzt' at 10/600 ≈ 20px wide). */}
+          <Text style={{ fontSize: 10, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
             {dayShort(d.day_index, i)}
           </Text>
         </View>
@@ -102,7 +105,8 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
                 {d.rest_day ? '–' : `${d.exercises?.length ?? 0}`}
               </Text>
             </View>
-            <Text style={{ fontSize: 8, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
+            {/* FIX (ux-pass5): fontSize 8 → 10, see DietStrip. */}
+            <Text style={{ fontSize: 10, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
               {dayShort(d.day_index, i)}
             </Text>
           </View>

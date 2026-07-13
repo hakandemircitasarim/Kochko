@@ -225,7 +225,9 @@ export function PlanChatComposer({
           style={{
             flex: 1,
             color: disabled ? colors.textMuted : colors.text,
-            fontSize: 13,
+            // FIX (ux-pass5): raw 13 drifted from the main chat composer's 14 — same
+            // "type to the coach" affordance, same size, via the FONT token.
+            fontSize: FONT.md,
             paddingVertical: 6,
             maxHeight: 120,
           }}
@@ -243,6 +245,9 @@ export function PlanChatComposer({
           accessibilityRole="button"
           accessibilityLabel="Mesajı gönder"
           accessibilityState={{ disabled: !text.trim() || !!disabled || !!sending, busy: !!sending }}
+          // FIX (ux-pass5): 32x32 with no hitSlop was the app's only bare send target
+          // (main chat's twin carries hitSlop 8) — 48x48 effective.
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={{
             width: 32,
             height: 32,

@@ -51,6 +51,11 @@ export default function PremiumScreen() {
   const user = useAuthStore(s => s.user);
   const { profile, update, fetch: fetchProfile } = useProfileStore();
   const { isActive, isInTrial, trialDaysLeft, isExpired } = usePremium();
+  // FIX (ux-pass5): same trial_used read as usePremium.ts — while PURCHASE_ENABLED is false,
+  // an expired-trial user's ONLY button ('7 gün ücretsiz dene') was guaranteed to fail with
+  // the 'hakkını daha önce kullanmışsın' alert. Gate the CTA on trial eligibility so that
+  // state gets an honest disabled message instead of a dead-end button.
+  const trialUsed = (profile as Record<string, unknown>)?.trial_used === true;
 
   const handleSubscribe = async () => {
     // Production: RevenueCat / App Store IAP entegrasyonu
@@ -234,7 +239,11 @@ export default function PremiumScreen() {
       {/* FIX (audit duplicate-title): Native header (title "Premium'a Geç") renders the title; in-body H1 removed as redundant. */}
       {isExpired && (
         <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.sm, marginTop: SPACING.sm }}>
-          <Text style={{ color: COLORS.warning, fontSize: FONT.sm, textAlign: 'center' }}>Premium süren doldu. Yenile.</Text>
+          {/* FIX (ux-pass5): 'Yenile.' pointed at an affordance that can't succeed while
+              purchases are unwired and the trial is spent — say what's actually possible. */}
+          <Text style={{ color: COLORS.warning, fontSize: FONT.sm, textAlign: 'center' }}>
+            {!PURCHASE_ENABLED && trialUsed ? 'Premium süren doldu. Satın alma yakında aktif olacak.' : 'Premium süren doldu. Yenile.'}
+          </Text>
         </View>
       )}
       <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yaşam tarzı koçunun tam gücünü aç.</Text>
@@ -276,6 +285,16 @@ export default function PremiumScreen() {
           <View style={{ marginTop: SPACING.md }}>
             <Button title="Satın Alımları Geri Yükle" variant="ghost" onPress={handleRestorePurchases} />
           </View>
+        </>
+      ) : trialUsed ? (
+        // FIX (ux-pass5): expired-trial + purchases unwired — the trial CTA could only error
+        // ('hakkını daha önce kullanmışsın'). Honest disabled state instead; the working CTA
+        // below stays for trial-eligible users and the PURCHASE_ENABLED branch is untouched.
+        <>
+          <Button title="Deneme süren kullanıldı" onPress={() => {}} size="lg" disabled />
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+            7 günlük ücretsiz denemeni daha önce kullandın. Premium satın alma App Store / Google Play üzerinden çok yakında aktif olacak.
+          </Text>
         </>
       ) : (
         <>

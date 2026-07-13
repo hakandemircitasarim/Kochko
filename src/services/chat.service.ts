@@ -587,15 +587,18 @@ export async function loadSessionMessages(_sessionId: string, limit = 50): Promi
 // resume. This fetches the page of messages STRICTLY OLDER than `beforeCreatedAt`
 // (newest-first then reversed to chronological), so the chat screen can prepend an older
 // page when the user taps "Daha eski mesajları yükle" / scrolls to the top.
+// FIX (ux-pass5): returns NULL on fetch failure — [] is reserved for a genuinely empty
+// page (same contract as loadSessionMessages). The old error-[] made the screen read a
+// transient network blip as end-of-history and permanently hide the load-older button.
 export async function loadOlderSessionMessages(
   _sessionId: string,
   beforeCreatedAt: string,
   limit = 50,
-): Promise<ChatMessage[]> {
+): Promise<ChatMessage[] | null> {
   try {
     // #S1: same user-scoped thread window as loadSessionMessages, strictly older page.
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) return [];
+    if (!session?.user?.id) return null;
     const planSessionIds = await getPlanSessionIds(session.user.id);
     let q = supabase
       .from('chat_messages')
@@ -605,12 +608,13 @@ export async function loadOlderSessionMessages(
       .not('content', 'like', '[PLAN_INIT]%')
       .lt('created_at', beforeCreatedAt);
     if (planSessionIds.length > 0) q = q.not('session_id', 'in', `(${planSessionIds.join(',')})`);
-    const { data } = await q
+    const { data, error } = await q
       .order('created_at', { ascending: false })
       .limit(limit);
+    if (error) return null; // non-throwing Supabase errors were silently read as "no rows"
     return ((data as ChatMessage[]) ?? []).reverse();
   } catch {
-    return [];
+    return null;
   }
 }
 

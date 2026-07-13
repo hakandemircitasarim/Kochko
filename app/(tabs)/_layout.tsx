@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Tabs, router } from 'expo-router';
 import { View, TouchableOpacity, Platform, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,11 +23,20 @@ function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
 
 function FABButton() {
   const { colors } = useTheme();
+  // FIX (ux-pass5): hızlı çift dokunuş iki /log modalını üst üste yığıyordu (expo-router
+  // push duplike rotaya izin verir; log.tsx'in auto router.back'i yalnız üsttekini kapatınca
+  // altta aynı ekran yeniden beliriyordu). Kısa pencere içinde ikinci push yutulur.
+  const lastPushRef = useRef(0);
   return (
     <View style={styles.fabContainer}>
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={() => router.push('/log')}
+        onPress={() => {
+          const now = Date.now();
+          if (now - lastPushRef.current < 800) return;
+          lastPushRef.current = now;
+          router.push('/log');
+        }}
         activeOpacity={0.8}
         accessibilityRole="button"
         accessibilityLabel="Hızlı kayıt — öğün, su, tartı, antrenman"

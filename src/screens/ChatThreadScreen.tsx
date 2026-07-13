@@ -379,6 +379,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // load returns a full page (PAGE_SIZE), implying older history exists beyond the window.
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  // FIX (ux-pass5): a FAILED older-page fetch must not read as end-of-history — this flag
+  // keeps the load-older button visible with a retry label instead of latching it away.
+  const [olderLoadFailed, setOlderLoadFailed] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
   const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -723,6 +726,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
 
   // Quick Log "Fotoğraf çek" deep-link: log.tsx sends openCamera through
   // (tabs)/chat.tsx into this screen — fire the camera once PER NAVIGATION.
+  // FIX (ux-pass5): log.tsx now sends a Date.now() NONCE instead of the constant 'true'.
+  // With the constant, latching the ref made the deep link one-shot per app session (the
+  // consume-and-clear setParams below normalizes '' to undefined at the param read, so it
+  // never re-armed the ref); a fresh nonce always differs from the latch and re-fires.
   const cameraHandledRef = useRef<string | null>(null);
   useEffect(() => {
     if (openCamera && cameraHandledRef.current !== openCamera && !loading) {
@@ -736,14 +743,33 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // Leaving the tab exits an active task topic (old semantics: the task ended when the
   // pushed screen unmounted; embedded, the screen never unmounts — without this the
   // composer could stay task-locked forever).
+  // FIX (ux-pass5): the old version called router.setParams inside the BLUR cleanup — but
+  // the global setParams dispatches to the currently-FOCUSED route, and on blur that is
+  // already the DESTINATION tab. So the chat route's task params were never cleared (task
+  // pill/lock survived the hop) and ''-junk params were written onto the other tab. Now the
+  // blur cleanup only RECORDS the stale task key; the clear runs on the next FOCUS, when the
+  // chat route is the focused route again and setParams actually targets it. Keyed on
+  // hint+nonce so a NEW task navigation made while we were away (always carries a fresh
+  // Date.now() nonce) is never wiped — the 15-min opener cooldown above stays as
+  // defense-in-depth for same-task re-entries.
+  const staleTaskKeyRef = useRef<string | null>(null);
   useFocusEffect(useCallback(() => {
+    const currentKey = rawParams.taskModeHint
+      ? `${rawParams.taskModeHint}|${rawParams.taskNonce ?? ''}`
+      : null;
+    if (staleTaskKeyRef.current !== null && staleTaskKeyRef.current === currentKey) {
+      router.setParams({ taskModeHint: '', taskNonce: '', prefill: '' });
+    }
+    staleTaskKeyRef.current = null;
     return () => {
+      // Blur (or in-focus task switch, which the focus body's key mismatch ignores):
+      // mark the active task as stale — do NOT setParams here (wrong route, see above).
       if (rawParams.taskModeHint) {
-        router.setParams({ taskModeHint: '', taskNonce: '', prefill: '' });
+        staleTaskKeyRef.current = `${rawParams.taskModeHint}|${rawParams.taskNonce ?? ''}`;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawParams.taskModeHint]));
+  }, [rawParams.taskModeHint, rawParams.taskNonce]));
 
   // Silent reconcile on tab re-entry (review fix, emulator-verified ux-pass3): quick-log
   // and other surfaces write into this same thread while we stay mounted — without a
@@ -1375,8 +1401,17 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     const oldest = messages.find(m => !isClientId(m.id)) ?? messages[0];
     if (!oldest?.created_at) return;
     setLoadingOlder(true);
+    setOlderLoadFailed(false);
     try {
       const older = await loadOlderSessionMessages(sessionId, oldest.created_at);
+      // FIX (ux-pass5): null = fetch FAILED (network/5xx). The old error-[] flipped
+      // hasMoreOlder false permanently, so one blip silently amputated all older history.
+      // Keep hasMoreOlder true and surface a retry label — the button stays tappable.
+      if (older === null) {
+        haptics.error();
+        setOlderLoadFailed(true);
+        return;
+      }
       if (older.length > 0) {
         setMessages(prev => {
           const seen = new Set(prev.map(m => m.id));
@@ -1569,9 +1604,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               >
                 {loadingOlder
                   ? <ActivityIndicator size="small" color={colors.textSecondary} />
-                  : <Ionicons name="arrow-up" size={13} color={colors.textSecondary} />}
+                  : <Ionicons name={olderLoadFailed ? 'refresh' : 'arrow-up'} size={13} color={colors.textSecondary} />}
                 <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
-                  {loadingOlder ? 'Yükleniyor…' : 'Daha eski mesajları yükle'}
+                  {/* FIX (ux-pass5): failed page fetch shows a retry cue instead of vanishing */}
+                  {loadingOlder ? 'Yükleniyor…' : olderLoadFailed ? 'Yüklenemedi — tekrar dene' : 'Daha eski mesajları yükle'}
                 </Text>
               </TouchableOpacity>
             ) : null}

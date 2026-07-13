@@ -33,6 +33,10 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
   // FIX (audit UI-STA-02): track first-fetch completion so we don't flash the
   // 'planın yok' empty state before getActive() resolves on initial mount.
   const [loaded, setLoaded] = useState(false);
+  // FIX (ux-pass5): ilk yükleme hata verirse loaded=false kalıyor ve kartlar sonsuza dek
+  // 'Yükleniyor…' gösteriyordu (pull-to-refresh bu bileşeni yeniden yüklemez). Önceki veri
+  // yokken hata durumunu işaretle — render kompakt hata kartı + tekrar dene gösterir.
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -50,8 +54,12 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
       setDietHasDraft(!!dDraft);
       setWorkoutHasDraft(!!wDraft);
       setLoaded(true);
+      setLoadError(false);
     } catch (err) {
       console.warn('PlanOverviewCards load failed:', err);
+      // FIX (ux-pass5): yalnız işaretle — loaded=true (önceki veri var) ise render son
+      // bilinen kartları korumaya devam eder, hata kartı yalnız ilk yükleme boşken çıkar.
+      setLoadError(true);
     }
   }, [userId]);
 
@@ -68,6 +76,29 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
 
   return (
     <View style={{ gap: SPACING.sm }}>
+      {!loaded && loadError ? (
+        /* FIX (ux-pass5): ilk yükleme başarısız + elde veri yok — 'Yükleniyor…'da takılı
+           kalmak yerine kompakt hata kartı + tekrar dene (dashboard hata kartı deseni). */
+        <TouchableOpacity
+          onPress={() => load()}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Planlar yüklenemedi. Tekrar denemek için dokun"
+          style={{
+            backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md,
+            borderWidth: 0.5, borderColor: colors.border,
+            flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+          }}
+        >
+          <Ionicons name="cloud-offline-outline" size={22} color={colors.textMuted} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>Planlar yüklenemedi</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>Tekrar denemek için dokun</Text>
+          </View>
+          <Ionicons name="refresh" size={16} color={colors.primary} />
+        </TouchableOpacity>
+      ) : (
+        <>
       <PlanCard
         title="Bu haftaki diyetin"
         icon="restaurant-outline"
@@ -92,6 +123,8 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
         currentWeekStart={currentWeekStart}
         onPress={() => router.push('/plan/workout' as never)}
       />
+        </>
+      )}
       <TouchableOpacity
         onPress={() => router.push('/plan/history' as never)}
         activeOpacity={0.7}
@@ -223,7 +256,9 @@ function PlanCard({
         backgroundColor: colors.card,
         borderRadius: RADIUS.md,
         padding: SPACING.md,
-        borderWidth: 1,
+        // FIX (ux-pass5): kardeş dashboard kartları (StatStrip, HeroSection, CoachingNudge,
+        // ui/Card) 0.5 hairline — 1'lik kenarlık aynı ekranda 2x kalın görünüyordu.
+        borderWidth: 0.5,
         borderColor: colors.border,
       }}
     >

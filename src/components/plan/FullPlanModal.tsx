@@ -109,6 +109,9 @@ export function FullPlanModal({
             onPress={onClose}
             accessibilityRole="button"
             accessibilityLabel="Kapat"
+            // FIX (ux-pass5): the modal's only visible exit was a 32px corner target —
+            // hitSlop 12 (same as AlternativeComparisonModal's close) reaches ~56px effective.
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             style={{ padding: 4 }}
           >
             <Ionicons name="close" size={24} color={colors.text} />

@@ -2,7 +2,7 @@
  * Ana Sayfa (Dashboard) — Bilgi odakli, flat dark design
  * Kalori halkasi, hizli istatistikler, haftalik butce, diyet/spor planlari
  */
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -77,8 +77,17 @@ export default function TodayScreen() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [showWeightInput, setShowWeightInput] = useState(false);
   const [weightInput, setWeightInput] = useState('');
+  // FIX (ux-pass5): tartı yazımı sürerken Kaydet ölü görünüyor, yeniden dokunuşlar
+  // eşzamanlı duplike yazım tetikliyordu — in-flight durumu (log.tsx loading deseni).
+  const [weightSaving, setWeightSaving] = useState(false);
   const [coachingMessages, setCoachingMessages] = useState<CoachingMessage[]>([]);
   const [returnStatus, setReturnStatus] = useState<ReturnStatus | null>(null);
+  // FIX (ux-pass5): önceki veri varken başarısız pull-to-refresh tamamen sessizdi
+  // (fetchToday reddetmez, fetchError yalnız lastFetchedAt==null'da tüketiliyordu) —
+  // spinner normal bitip bayat sayılar kalıyordu. Hafif, geçici bir uyarı şeridi.
+  const [refreshFailedToast, setRefreshFailedToast] = useState(false);
+  const refreshToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (refreshToastTimer.current) clearTimeout(refreshToastTimer.current); }, []);
 
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
   // Prefer dynamic water target from dashboard store (respects today's training
@@ -143,6 +152,17 @@ export default function TodayScreen() {
         checkForMilestones(),
         getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {}),
       ]);
+      // FIX (ux-pass5): fetchToday hatayı içeride yutar ve store.fetchError'a yazar —
+      // elde önceki veri varken (lastFetchedAt != null) başarısız yenilemeyi sessiz
+      // bırakma; 4 sn'lik engellemeyen bir uyarı göster.
+      const { fetchError: refreshErr, lastFetchedAt: fetchedTs } = useDashboardStore.getState();
+      if (refreshErr && fetchedTs != null) {
+        if (refreshToastTimer.current) clearTimeout(refreshToastTimer.current);
+        setRefreshFailedToast(true);
+        refreshToastTimer.current = setTimeout(() => setRefreshFailedToast(false), 4000);
+      } else {
+        setRefreshFailedToast(false);
+      }
     } catch (err) {
       console.warn('pull refresh failed:', err);
     } finally {
@@ -223,8 +243,14 @@ export default function TodayScreen() {
   };
 
   const handleWeightSave = async () => {
+    // FIX (ux-pass5): yazım sürerken ikinci tetikleme (buton veya klavye done) yutulur.
+    if (weightSaving) return;
     const w = parseFloat(weightInput.replace(',', '.'));
-    if (!w || w < 20 || w > 300 || !user?.id) return;
+    if (!user?.id) return;
+    // FIX (ux-pass5): geçersiz girişte sessiz return Kaydet'i ölü buton gibi gösteriyordu —
+    // log.tsx tartı akışıyla aynı geribildirim (haptics.error + Geçersiz kilo alert'i).
+    if (!w || w < 20 || w > 300) { haptics.error(); return Alert.alert('Geçersiz kilo', '20–300 kg arası bir değer gir.'); }
+    setWeightSaving(true);
     try {
       // FIX (ux-pass2 #4c): canlı bug — Tartı yalnız daily_metrics'e yazınca Profil 80,
       // dashboard 79.5 gösteriyordu. updateCurrentWeight iki tabloyu birlikte günceller.
@@ -237,6 +263,8 @@ export default function TodayScreen() {
       console.warn('weight save failed:', err);
       haptics.error();
       Alert.alert('Hata', 'Tartı kaydedilemedi. Lütfen tekrar deneyin.');
+    } finally {
+      setWeightSaving(false);
     }
   };
 
@@ -268,11 +296,20 @@ export default function TodayScreen() {
         <TouchableOpacity
           style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}
           activeOpacity={1} onPress={() => setShowWeightInput(false)}
+          // FIX (ux-pass5): backdrop dokunulabiliri accessible varsayılanıyla modalın
+          // input/butonlarını tek a11y düğümüne düzleştiriyordu — ekran okuyucu için
+          // kapsayıcı olmaktan çıkar, içerik ayrı ayrı odaklanır.
+          accessible={false}
         >
-          <View style={{
-            backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl,
-            width: '80%', alignItems: 'center', borderWidth: 0.5, borderColor: colors.border,
-          }}>
+          <View
+            // FIX (ux-pass5): kart gövdesine (başlık, 'kg', padding) dokunuş backdrop'a
+            // kabarcıklanıp modalı sessizce kapatıyor, yazılan değer kayboluyordu — kart
+            // dokunuşu kendinde tutar (responder), yalnız kart DIŞI backdrop'u tetikler.
+            onStartShouldSetResponder={() => true}
+            style={{
+              backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl,
+              width: '80%', alignItems: 'center', borderWidth: 0.5, borderColor: colors.border,
+            }}>
             <View style={{
               width: 48, height: 48, borderRadius: RADIUS.sm,
               backgroundColor: METRIC_COLORS.weight + '18',
@@ -315,11 +352,13 @@ export default function TodayScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleWeightSave}
+                // FIX (ux-pass5): yazım sürerken devre dışı + 'Kaydediliyor...' (log.tsx deseni).
+                disabled={weightSaving}
                 accessibilityRole="button"
                 accessibilityLabel="Tartıyı kaydet"
-                style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}
+                style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: weightSaving ? 0.5 : 1 }}
               >
-                <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>Kaydet</Text>
+                <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{weightSaving ? 'Kaydediliyor...' : 'Kaydet'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -338,12 +377,37 @@ export default function TodayScreen() {
             flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
             backgroundColor: colors.primary, borderRadius: RADIUS.md,
             paddingVertical: SPACING.md, paddingHorizontal: SPACING.lg,
-            shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 6,
+            // FIX (ux-pass5): uygulamadaki TEK drop shadow buradaydı — tasarım sistemi gölgesiz
+            // (theme.ts 'no shadows', CARD_SHADOW deprecated). Gölge kaldırıldı; kenar tanımı
+            // kardeş kartlardaki 0.5 hairline border ile.
+            borderWidth: 0.5, borderColor: colors.border,
             maxWidth: '100%',
           }}>
             <Ionicons name="trophy" size={20} color={getContrastColor(colors.primary)} />
             <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700', flexShrink: 1 }}>
               {newAchievement}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* FIX (ux-pass5): başarısız pull-to-refresh + eldeki veri bayat — sessiz kalma;
+          achievement toast'ın görsel dilinde hafif, engellemeyen, 4 sn'lik uyarı. */}
+      {refreshFailedToast && (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: insets.top + SPACING.sm, left: SPACING.md, right: SPACING.md, zIndex: 49, alignItems: 'center' }}
+        >
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+            backgroundColor: colors.card, borderRadius: RADIUS.md,
+            borderWidth: 0.5, borderColor: colors.border,
+            paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg,
+            maxWidth: '100%',
+          }}>
+            <Ionicons name="cloud-offline-outline" size={16} color={colors.warning} />
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, flexShrink: 1 }}>
+              Yenilenemedi — son kaydedilen veriler gösteriliyor
             </Text>
           </View>
         </View>
@@ -400,8 +464,10 @@ export default function TodayScreen() {
           <TouchableOpacity
             onPress={() => { haptics.tap(); router.push('/settings/premium'); }}
             activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={`Denemen ${trialDaysLeft} gün sonra bitiyor. Premium'a geçmek için dokun`}
+            // FIX (ux-pass5): dış dokunulabilir accessible varsayılanıyla alt öğeleri tek a11y
+            // düğümüne düzleştiriyordu — 'Kapat' ekran okuyucuya çıkmıyor, banner kapatılamayan
+            // bir upsell'e dönüyordu. Dış katman kapsayıcı değil; gövde ve Kapat ayrı düğmeler.
+            accessible={false}
             style={{
               backgroundColor: colors.card, borderRadius: RADIUS.md,
               // FIX (audit UI-LAY-02) return banner yoksa bu banner ScrollView'ın
@@ -411,12 +477,19 @@ export default function TodayScreen() {
               borderLeftWidth: 3, borderLeftColor: colors.warning,
             }}
           >
-            <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '600', marginBottom: 4 }}>
-              DENEME SÜRESİ
-            </Text>
-            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 18, paddingRight: 24 }}>
-              Denemen {trialDaysLeft} gün sonra bitiyor — Premium'a geç
-            </Text>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); router.push('/settings/premium'); }}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={`Denemen ${trialDaysLeft} gün sonra bitiyor. Premium'a geçmek için dokun`}
+            >
+              <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '600', marginBottom: 4 }}>
+                DENEME SÜRESİ
+              </Text>
+              <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 18, paddingRight: 24 }}>
+                Denemen {trialDaysLeft} gün sonra bitiyor — Premium'a geç
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => { haptics.tap(); setTrialBannerDismissed(true); }}
               accessibilityRole="button"
@@ -506,10 +579,14 @@ export default function TodayScreen() {
             <CoachingNudge
               messages={coachingMessages.slice(0, 1)}
               onDismiss={(id) => {
+                // FIX (ux-pass5): iki kart üstteki görsel ikizi (return/trial banner Kapat)
+                // haptics.tap() veriyor — nudge kapatma aynı dokunsal onayı verir.
+                haptics.tap();
                 markMessageRead(id);
                 setCoachingMessages(prev => prev.filter(m => m.id !== id));
               }}
               onTap={(msg) => {
+                haptics.tap(); // FIX (ux-pass5): kardeş dokunuşlarla tutarlı dokunsal onay.
                 markMessageRead(msg.id);
                 setCoachingMessages(prev => prev.filter(m => m.id !== msg.id));
                 // FIX (ux-pass2 #5): prefill=msg.content KOÇUN kendi metnini KULLANICININ

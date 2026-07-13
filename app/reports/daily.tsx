@@ -3,7 +3,9 @@ import { View, Text, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
+import { getEffectiveDate } from '@/lib/day-boundary';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ComplianceScore } from '@/components/reports/ComplianceScore';
@@ -44,15 +46,24 @@ export default function DailyReportScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const today = new Date().toISOString().split('T')[0];
+  // FIX (ux-pass5): 'today' was the UTC calendar date (toISOString jumps to "tomorrow" at local
+  // 21:00 in UTC+3) and ignored the user's day boundary — at 00:51 the screen offered a gün-sonu
+  // raporu for a day that hasn't experientially started (and would generate a zero-data report
+  // for the wrong date). Use the same effective-day anchor as the diary/dashboard.
+  const dayBoundaryHour = useProfileStore(s => (s.profile?.day_boundary_hour as number) ?? 4);
+  const today = getEffectiveDate(new Date(), dayBoundaryHour);
 
   const loadReport = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
     setError(false);
     try {
-      const { data } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single();
-      if (data) setReport(data as DailyReport);
+      const { data, error: loadError } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single();
+      // FIX (ux-pass5): supabase-js never rejects — failures resolve as { data: null, error }, so the
+      // catch below never fired and an offline open showed "Rapor henüz oluşturulmamış." over an
+      // existing report. PGRST116 (.single() with 0 rows) is the legit "rapor yok" case, not a failure.
+      if (loadError && loadError.code !== 'PGRST116') setError(true);
+      else if (data) setReport(data as DailyReport);
     } catch {
       setError(true);
     } finally {
@@ -91,7 +102,9 @@ export default function DailyReportScreen() {
 
   if (loading) return <SkeletonScreen cards={3} />;
 
-  if (error) return (
+  // FIX (ux-pass5): only replace the screen with the error state when nothing is loaded —
+  // a refresh failure must not hide an already-shown report.
+  if (error && !report) return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
       <Ionicons name="cloud-offline-outline" size={48} color={COLORS.textMuted} />
       <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>Rapor yüklenemedi</Text>

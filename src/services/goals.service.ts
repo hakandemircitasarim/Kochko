@@ -74,7 +74,11 @@ export async function addPhase(
     ? Math.round((Math.abs(startWeight - targetWeight) / targetWeeks) * 100) / 100
     : targetWeight ? 0.5 : null;
 
-  await supabase.from('goals').insert({
+  // FIX (ux-pass5): supabase-js REDDETMEZ, {error} ile resolve eder — insert sonucu atılıyordu,
+  // RLS/constraint/ağ hatası sessizce void dönüp çağıranlara "başarı" okutuyordu. deletePhase
+  // deseniyle throw: her iki çağıran da (settings/goals.tsx handleSave, multi-phase-goals.tsx
+  // handleAdd) zaten try/catch ile sarıyor.
+  const { error } = await supabase.from('goals').insert({
     user_id: userId,
     goal_type: goalType,
     target_weight_kg: targetWeight,
@@ -87,6 +91,10 @@ export async function addPhase(
     start_weight_kg: startWeight,
     weekly_rate: weeklyRate,
   });
+  if (error) {
+    console.error('addPhase error:', error.message);
+    throw new Error(error.message);
+  }
 }
 
 /**

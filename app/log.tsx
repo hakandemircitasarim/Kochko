@@ -65,6 +65,10 @@ export default function QuickLogScreen() {
   // brief busy state so it doesn't look dead while the modal-dismiss + tab-open
   // round-trip resolves on slower devices.
   const [navigatingIndex, setNavigatingIndex] = useState<number | null>(null);
+  // FIX (ux-pass5): the Su (+0.25L) tile awaits a full network upsert before its toast, but
+  // `busy` only covered navigates:true tiles — on a slow connection the tap looked dead and
+  // a re-tap was silently swallowed by submittingRef. This flag drives the tile's spinner.
+  const [waterPending, setWaterPending] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // #ux-regression: a returning/interrupted navigation must not leave the grid permanently
   // disabled (navigatingIndex stuck). Reset whenever the modal regains focus.
@@ -177,7 +181,10 @@ export default function QuickLogScreen() {
   const handlePhoto = () => {
     // Dismiss this modal and jump to the chat tab in one router intent — two
     // separate calls race with the modal dismissal animation on slower devices.
-    router.dismissTo({ pathname: '/(tabs)/chat', params: { openCamera: 'true' } });
+    // FIX (ux-pass5): send a NONCE, not the constant 'true' — the permanently-mounted chat
+    // screen latches the last-handled value, so a constant made this deep link fire exactly
+    // once per app session (second 'Fotoğraf çek' tap silently did nothing).
+    router.dismissTo({ pathname: '/(tabs)/chat', params: { openCamera: String(Date.now()) } });
   };
 
   const handleBarcodeScan = async (barcode: string) => {
@@ -301,6 +308,11 @@ export default function QuickLogScreen() {
         } else {
           Alert.alert('Hata', 'Ses tanıma başarısız.');
         }
+      } else {
+        // FIX (ux-pass5): stopRecording() returning null used to drop silently back to the
+        // idle mic screen — the user's spoken meal description vanished with zero feedback.
+        haptics.error();
+        Alert.alert('Hata', 'Kayıt alınamadı — tekrar dene.');
       }
       setTranscribing(false);
     } else {
@@ -316,6 +328,7 @@ export default function QuickLogScreen() {
     const warning = checkSuspiciousInput('water', newTotal);
     const doAdd = async () => {
       submittingRef.current = true;
+      setWaterPending(true); // FIX (ux-pass5): tile shows a spinner while the upsert is in flight
       try {
         await addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
         showSuccessAndClose('Su eklendi!');
@@ -323,6 +336,7 @@ export default function QuickLogScreen() {
         Alert.alert('Hata', 'Su eklenemedi. Tekrar dene.');
       } finally {
         submittingRef.current = false;
+        setWaterPending(false);
       }
     };
     if (warning) {
@@ -885,17 +899,18 @@ export default function QuickLogScreen() {
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
         {[
-          { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, navigates: true, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
-          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, onPress: () => setScreen('weight') },
-          { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, navigates: false, onPress: () => setScreen('sleep') },
-          { icon: 'water-outline' as const, label: 'Su (+0.25L)', color: colors.protein, navigates: false, onPress: handleWaterAdd },
-          { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, navigates: false, onPress: () => setScreen('recovery') },
+          { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, navigates: true, pending: false, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
+          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, pending: false, onPress: () => setScreen('weight') },
+          { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, navigates: false, pending: false, onPress: () => setScreen('sleep') },
+          // FIX (ux-pass5): pending drives the same busy spinner as navigates-tiles for the awaited upsert
+          { icon: 'water-outline' as const, label: 'Su (+0.25L)', color: colors.protein, navigates: false, pending: waterPending, onPress: handleWaterAdd },
+          { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, navigates: false, pending: false, onPress: () => setScreen('recovery') },
         ].map((action, i) => {
-          const busy = navigatingIndex === 100 + i;
+          const busy = navigatingIndex === 100 + i || action.pending;
           return (
           <TouchableOpacity key={i}
             activeOpacity={0.7}
-            disabled={navigatingIndex !== null}
+            disabled={navigatingIndex !== null || waterPending}
             accessibilityRole="button"
             accessibilityLabel={action.label}
             accessibilityState={{ busy }}
@@ -904,7 +919,7 @@ export default function QuickLogScreen() {
               if (action.navigates) setNavigatingIndex(100 + i);
               action.onPress();
             }}
-            style={{ width: '48%', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm, opacity: navigatingIndex !== null && !busy ? 0.5 : 1 }}>
+            style={{ width: '48%', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm, opacity: (navigatingIndex !== null || waterPending) && !busy ? 0.5 : 1 }}>
             {busy
               ? <ActivityIndicator size="small" color={action.color} />
               : <Ionicons name={action.icon} size={24} color={action.color} />}

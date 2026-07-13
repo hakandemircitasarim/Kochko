@@ -7,7 +7,7 @@
  * Intentionally compact (summary-level, not full meal detail) — users
  * can open FullPlanModal after picking if they want to drill in.
  */
-import { View, Text, ScrollView, TouchableOpacity, Modal, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
@@ -25,9 +25,13 @@ interface Props {
   onPickA: () => void;
   onPickB: () => void;
   onRequestMore?: () => void; // "Hiçbiri olmadı, 2 tane daha göster"
+  // FIX (ux-pass5): onRequestMore fires a 10-30s LLM round-trip while this fullscreen
+  // modal hides the composer's TypingIndicator — the parent passes its `sending` flag
+  // so the button can show an in-flight state and block re-taps.
+  loadingMore?: boolean;
 }
 
-function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanData; label: string; accent: string; onPick: () => void; colors: any }) {
+function DietSummary({ plan, label, accent, onPick, pickDisabled, colors }: { plan: DietPlanData; label: string; accent: string; onPick: () => void; pickDisabled?: boolean; colors: any }) {
   // Candidate snapshot is raw LLM JSON — guard days/meals/targets against a malformed shape.
   const days = Array.isArray(plan?.days) ? plan.days : [];
   const totalKcal = days.reduce((s, d) => s + (d.total_kcal ?? 0), 0);
@@ -81,14 +85,19 @@ function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanDa
 
       <TouchableOpacity
         onPress={onPick}
+        // FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
+        // apply a candidate that's about to be swapped under the finger — block it.
+        disabled={pickDisabled}
         accessibilityRole="button"
         accessibilityLabel={`Plan ${label}'yı seç`}
+        accessibilityState={{ disabled: !!pickDisabled }}
         style={{
           marginTop: SPACING.md,
           backgroundColor: accent,
           borderRadius: RADIUS.md,
           paddingVertical: SPACING.sm,
           alignItems: 'center',
+          opacity: pickDisabled ? 0.5 : 1,
         }}
       >
         <Text style={{ color: getContrastColor(accent), fontSize: FONT.sm, fontWeight: '700' }}>Bunu seç</Text>
@@ -97,7 +106,7 @@ function DietSummary({ plan, label, accent, onPick, colors }: { plan: DietPlanDa
   );
 }
 
-function WorkoutSummary({ plan, label, accent, onPick, colors }: { plan: WorkoutPlanData; label: string; accent: string; onPick: () => void; colors: any }) {
+function WorkoutSummary({ plan, label, accent, onPick, pickDisabled, colors }: { plan: WorkoutPlanData; label: string; accent: string; onPick: () => void; pickDisabled?: boolean; colors: any }) {
   const days = Array.isArray(plan?.days) ? plan.days : [];
   const active = days.filter(d => !d.rest_day);
   const total = active.reduce((s, d) => s + (d.exercises?.length ?? 0), 0);
@@ -152,14 +161,18 @@ function WorkoutSummary({ plan, label, accent, onPick, colors }: { plan: Workout
 
       <TouchableOpacity
         onPress={onPick}
+        // FIX (ux-pass5): see DietSummary — no picking while a new pair is being generated.
+        disabled={pickDisabled}
         accessibilityRole="button"
         accessibilityLabel={`Plan ${label}'yı seç`}
+        accessibilityState={{ disabled: !!pickDisabled }}
         style={{
           marginTop: SPACING.md,
           backgroundColor: accent,
           borderRadius: RADIUS.md,
           paddingVertical: SPACING.sm,
           alignItems: 'center',
+          opacity: pickDisabled ? 0.5 : 1,
         }}
       >
         <Text style={{ color: getContrastColor(accent), fontSize: FONT.sm, fontWeight: '700' }}>Bunu seç</Text>
@@ -176,6 +189,7 @@ export function AlternativeComparisonModal({
   onPickA,
   onPickB,
   onRequestMore,
+  loadingMore,
 }: Props) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -227,26 +241,34 @@ export function AlternativeComparisonModal({
           }}
         >
           <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+            {/* FIX (ux-pass5): success haptic REMOVED from the pick tap — picking B runs a
+                network persist that can fail, so the parent now fires haptics only AFTER
+                the outcome (success post-persist, error + Alert on failure). */}
             {isDiet ? (
               <>
                 {/* Plan A = brand diet teal, Plan B = brand pink — distinct A/B accents, no off-palette hex */}
-                <DietSummary plan={planA as DietPlanData} label="A" accent={colors.primary} onPick={() => { haptics.success(); onPickA(); }} colors={colors} />
-                <DietSummary plan={planB as DietPlanData} label="B" accent={colors.pink} onPick={() => { haptics.success(); onPickB(); }} colors={colors} />
+                <DietSummary plan={planA as DietPlanData} label="A" accent={colors.primary} onPick={onPickA} pickDisabled={loadingMore} colors={colors} />
+                <DietSummary plan={planB as DietPlanData} label="B" accent={colors.pink} onPick={onPickB} pickDisabled={loadingMore} colors={colors} />
               </>
             ) : (
               <>
                 {/* Plan A = brand workout purple, Plan B = brand pink — distinct A/B accents, no off-palette hex */}
-                <WorkoutSummary plan={planA as WorkoutPlanData} label="A" accent={colors.purple} onPick={() => { haptics.success(); onPickA(); }} colors={colors} />
-                <WorkoutSummary plan={planB as WorkoutPlanData} label="B" accent={colors.pink} onPick={() => { haptics.success(); onPickB(); }} colors={colors} />
+                <WorkoutSummary plan={planA as WorkoutPlanData} label="A" accent={colors.purple} onPick={onPickA} pickDisabled={loadingMore} colors={colors} />
+                <WorkoutSummary plan={planB as WorkoutPlanData} label="B" accent={colors.pink} onPick={onPickB} pickDisabled={loadingMore} colors={colors} />
               </>
             )}
           </View>
 
           {onRequestMore ? (
+            // FIX (ux-pass5): the 10-30s LLM call had ZERO in-flight indication inside this
+            // fullscreen modal (the composer's TypingIndicator is occluded) and re-taps fired
+            // parallel generations — spinner + disabled while loadingMore.
             <TouchableOpacity
               onPress={() => { haptics.tap(); onRequestMore(); }}
+              disabled={loadingMore}
               accessibilityRole="button"
-              accessibilityLabel="Hiçbiri olmadı, 2 alternatif daha göster"
+              accessibilityLabel={loadingMore ? 'Yeni alternatifler hazırlanıyor' : 'Hiçbiri olmadı, 2 alternatif daha göster'}
+              accessibilityState={{ disabled: !!loadingMore, busy: !!loadingMore }}
               style={{
                 marginTop: SPACING.lg,
                 alignSelf: 'center',
@@ -257,11 +279,16 @@ export function AlternativeComparisonModal({
                 borderRadius: RADIUS.full,
                 paddingHorizontal: SPACING.md,
                 paddingVertical: SPACING.sm,
+                opacity: loadingMore ? 0.7 : 1,
               }}
             >
-              <Ionicons name="refresh" size={14} color={colors.textSecondary} />
+              {loadingMore ? (
+                <ActivityIndicator size="small" color={colors.textSecondary} style={{ transform: [{ scale: 0.8 }] }} />
+              ) : (
+                <Ionicons name="refresh" size={14} color={colors.textSecondary} />
+              )}
               <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>
-                Hiçbiri olmadı, 2 alternatif daha göster
+                {loadingMore ? 'Yeni alternatifler hazırlanıyor...' : 'Hiçbiri olmadı, 2 alternatif daha göster'}
               </Text>
             </TouchableOpacity>
           ) : null}

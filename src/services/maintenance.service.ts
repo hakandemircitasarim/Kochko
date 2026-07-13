@@ -155,7 +155,10 @@ export async function getMaintenanceStatus(userId: string): Promise<MaintenanceS
   if (reverseDiet && !reverseDiet.isComplete) {
     message = `Reverse diet ${reverseDiet.currentWeek}. hafta: ${reverseDiet.targetCalories} kcal (TDEE'ye haftalık +${REVERSE_DIET_WEEKLY_INCREASE} kcal artış)`;
   } else if (bandStatus === 'exceeded') {
-    message = `Bakım bandının dışına çıktın (${String(toleranceBand.min).replace('.', ',')}-${String(toleranceBand.max).replace('.', ',')} kg). Mini kesim planlayalım mı?`;
+    // FIX (ux-pass5): toFixed(1) ile sabit hassasiyet — progress.tsx'teki "Band:" satırı aynı
+    // değerleri toFixed(1) ile basıyor; String() burada '72,75' vb. üretip aynı kartta iki farklı
+    // biçim gösterebiliyordu. Virgül ondalık korunur.
+    message = `Bakım bandının dışına çıktın (${toleranceBand.min.toFixed(1).replace('.', ',')}-${toleranceBand.max.toFixed(1).replace('.', ',')} kg). Mini kesim planlayalım mı?`;
   } else if (bandStatus === 'approaching_limit') {
     message = `Bakım bandının sınırına yaklaşıyorsun. Dikkatli ol.`;
   } else {
