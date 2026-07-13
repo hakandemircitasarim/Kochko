@@ -442,6 +442,18 @@ export default function QuickLogScreen() {
           // Porsiyon seçimi beklerken yeni taramaları yut — chooser üstüne ikinci ürün binmesin.
           onBarcodeScanned={(e) => { if (!pendingProduct) void handleBarcodeScan(e.data); }}
         />
+        {/* Scan-guide frame: a raw camera feed gives the user no sense of where to
+            aim. A centered reticle + hint is the standard barcode affordance. Hidden
+            once a product is found / while saving so it never sits under the chooser.
+            pointerEvents=none so it never intercepts a tap. */}
+        {!pendingProduct && !barcodeLoading && (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+            <View style={{ width: 260, height: 150, borderRadius: RADIUS.lg, borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)', backgroundColor: 'rgba(255,255,255,0.04)' }} />
+            <Text style={{ color: '#fff', fontSize: FONT.sm, marginTop: SPACING.md, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } }}>
+              Barkodu çerçeveye hizala
+            </Text>
+          </View>
+        )}
         {/* Overlay */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl, paddingTop: insets.top + 12 }}>

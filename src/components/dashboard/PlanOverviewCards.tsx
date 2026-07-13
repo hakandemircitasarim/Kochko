@@ -13,7 +13,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { getActive, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
+import { getActive, getDraft, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
 import { getEffectiveDate } from '@/lib/day-boundary';
 
 interface Props {
@@ -25,6 +25,11 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
   const { colors } = useTheme();
   const [diet, setDiet] = useState<PlanRow | null>(null);
   const [workout, setWorkout] = useState<PlanRow | null>(null);
+  // A generated-but-unapproved draft used to be invisible here: the card showed
+  // 'planın yok' while a draft sat waiting on the plan screen. Track draft presence
+  // so the empty state can say 'Taslak hazır · gözden geçir' instead.
+  const [dietHasDraft, setDietHasDraft] = useState(false);
+  const [workoutHasDraft, setWorkoutHasDraft] = useState(false);
   // FIX (audit UI-STA-02): track first-fetch completion so we don't flash the
   // 'planın yok' empty state before getActive() resolves on initial mount.
   const [loaded, setLoaded] = useState(false);
@@ -34,12 +39,16 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
     // getActive THROWS on fetch error now (error ≠ empty, ux-pass2 W#7) — keep the
     // last-known cards instead of falsely claiming "planın yok" on a network blip.
     try {
-      const [d, w] = await Promise.all([
+      const [d, w, dDraft, wDraft] = await Promise.all([
         getActive(userId, 'diet'),
         getActive(userId, 'workout'),
+        getDraft(userId, 'diet'),
+        getDraft(userId, 'workout'),
       ]);
       setDiet(d);
       setWorkout(w);
+      setDietHasDraft(!!dDraft);
+      setWorkoutHasDraft(!!wDraft);
       setLoaded(true);
     } catch (err) {
       console.warn('PlanOverviewCards load failed:', err);
@@ -65,6 +74,7 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
         color={colors.primary}
         plan={diet}
         planType="diet"
+        hasDraft={dietHasDraft}
         loaded={loaded}
         todayIdx={todayIdx}
         currentWeekStart={currentWeekStart}
@@ -76,6 +86,7 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
         color={colors.purple}
         plan={workout}
         planType="workout"
+        hasDraft={workoutHasDraft}
         loaded={loaded}
         todayIdx={todayIdx}
         currentWeekStart={currentWeekStart}
@@ -111,6 +122,7 @@ function PlanCard({
   color,
   plan,
   planType,
+  hasDraft,
   loaded,
   todayIdx,
   currentWeekStart,
@@ -121,6 +133,7 @@ function PlanCard({
   color: string;
   plan: PlanRow | null;
   planType: 'diet' | 'workout';
+  hasDraft: boolean;
   loaded: boolean;
   todayIdx: number;
   currentWeekStart: string;
@@ -136,6 +149,15 @@ function PlanCard({
       // instead of flashing the 'planın yok' empty state on initial mount.
       if (!loaded) {
         return { primary: 'Yükleniyor…', secondary: '', chip: null };
+      }
+      // A draft exists but nothing is active yet — don't claim 'planın yok'; point
+      // the user at the review screen the tap already opens.
+      if (hasDraft) {
+        return {
+          primary: 'Taslağın hazır',
+          secondary: 'Gözden geçir ve onayla',
+          chip: null,
+        };
       }
       return {
         primary: planType === 'diet' ? 'Diyet planın yok' : 'Antrenman planın yok',
@@ -196,7 +218,7 @@ function PlanCard({
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${primary}. ${secondary}`}
-      accessibilityHint={plan ? 'Plan detayları için aç' : 'Yeni plan oluştur'}
+      accessibilityHint={plan ? 'Plan detayları için aç' : hasDraft ? 'Taslağı gözden geçir' : 'Yeni plan oluştur'}
       style={{
         backgroundColor: colors.card,
         borderRadius: RADIUS.md,
