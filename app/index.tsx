@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 
 export default function Index() {
   const { session, initialized, signOut } = useAuthStore();
@@ -39,20 +40,15 @@ export default function Index() {
   if (!profile) {
     // If the fetch FAILED (transient/network) there's no prior profile to fall back
     // on at cold start — offer a retry instead of spinning forever (#R7-2).
+    // (refactor: shared LoadErrorState)
     if (fetchError) {
       return (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.lg }}>
-            Profilin yüklenemedi. İnternet bağlantını kontrol et.
-          </Text>
-          <TouchableOpacity
-            onPress={() => { if (session?.user?.id) fetchProfile(session.user.id); }}
-            accessibilityRole="button"
-            accessibilityLabel="Tekrar dene"
-            style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
-          >
-            <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
-          </TouchableOpacity>
+        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+          <LoadErrorState
+            title="Profilin yüklenemedi"
+            subtitle="İnternet bağlantını kontrol et."
+            onRetry={() => { if (session?.user?.id) fetchProfile(session.user.id); }}
+          />
         </View>
       );
     }

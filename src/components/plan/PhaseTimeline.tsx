@@ -7,6 +7,7 @@
 import { View, Text } from 'react-native';
 import { COLORS, SPACING, FONT, MAX_FONT_SCALE } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
+import { goalShortLabelTR } from '@/lib/labels';
 
 interface Phase {
   id: string;
@@ -30,17 +31,6 @@ const GOAL_COLORS: Record<string, string> = {
   maintain: COLORS.warning,
   health: COLORS.protein,
   conditioning: COLORS.coral,
-};
-
-// FIX (ux-pass5, emulator): 'Cut'/'Bulk'/aksansız 'Bakim'/'Saglik' segmentleri TR arayüzde
-// İngilizce jargon + bozuk Türkçe olarak görünüyordu.
-const GOAL_LABELS: Record<string, string> = {
-  lose_weight: 'Yağ Yakımı',
-  gain_weight: 'Kilo Alma',
-  gain_muscle: 'Kas',
-  maintain: 'Koruma',
-  health: 'Sağlık',
-  conditioning: 'Kondisyon',
 };
 
 export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
@@ -96,7 +86,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
                 fontSize: FONT.xs,
                 fontWeight: phase.isActive ? '700' : '500',
               }}>
-                {GOAL_LABELS[phase.goalType] ?? phase.goalType}
+                {goalShortLabelTR(phase.goalType)}
               </Text>
             </View>
           );
@@ -124,7 +114,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
               >
                 {/* FIX (ux-pass5): phase_label'sız hedeflerde servis çiğ goal_type düşürür
                     ('lose_weight' ekranda görünüyordu) — bilinen enum'ları insanileştir. */}
-                {GOAL_LABELS[phase.label] ?? phase.label ?? `${phase.targetWeeks} hafta`}
+                {phase.label ? goalShortLabelTR(phase.label) : `${phase.targetWeeks} hafta`}
               </Text>
             </View>
           );

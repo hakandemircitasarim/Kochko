@@ -13,9 +13,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { getContrastColor } from '@/lib/accessibility';
 import { useAuthStore } from '@/stores/auth.store';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import {
   getHistory,
   dayLabelTR,
@@ -137,25 +137,8 @@ export default function PlanHistoryScreen() {
         </View>
       ) : loadError ? (
         // FIX (fix-pass 07-12, item 8c): network failure gets its own state + retry —
-        // mirrors the diet/workout screens' error branch.
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
-          <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>
-            Geçmiş yüklenemedi
-          </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>
-            Bağlantını kontrol edip tekrar dene.
-          </Text>
-          <TouchableOpacity
-            onPress={load}
-            accessibilityRole="button"
-            accessibilityLabel="Tekrar dene"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
-          >
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Tekrar dene</Text>
-          </TouchableOpacity>
-        </View>
+        // mirrors the diet/workout screens' error branch. (refactor: shared LoadErrorState)
+        <LoadErrorState title="Geçmiş yüklenemedi" onRetry={load} />
       ) : rows.length === 0 ? (
         <EmptyState
           icon="archive-outline"

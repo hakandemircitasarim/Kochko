@@ -7,11 +7,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -80,13 +79,11 @@ export default function SessionViewerScreen() {
     );
   }
 
+  // (refactor: shared LoadErrorState)
   if (loadError) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
-        <Ionicons name="cloud-offline-outline" size={48} color={COLORS.textMuted} />
-        <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>Sohbet yüklenemedi</Text>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-        <Button title="Tekrar dene" onPress={load} size="lg" />
+      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <LoadErrorState title="Sohbet yüklenemedi" onRetry={load} />
       </View>
     );
   }

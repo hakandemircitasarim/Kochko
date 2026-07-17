@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
+import { mealTypeLabelTR } from '@/lib/labels';
 
 interface MealEntry {
   id: string;
@@ -30,10 +31,6 @@ interface Props {
   onDeleteMeal: (id: string) => void | Promise<void>;
   onDeleteWorkout: (id: string) => void | Promise<void>;
 }
-
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Ara',
-};
 
 const MEAL_ICONS: Record<string, string> = {
   breakfast: 'sunny-outline', lunch: 'restaurant-outline',
@@ -72,7 +69,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
     ...meals.map(m => ({
       type: 'meal' as const,
       id: m.id,
-      label: MEAL_LABELS[m.meal_type] ?? m.meal_type,
+      label: mealTypeLabelTR(m.meal_type),
       icon: MEAL_ICONS[m.meal_type] ?? 'restaurant-outline',
       text: m.raw_input,
       detail: `${m.calories} kcal`,

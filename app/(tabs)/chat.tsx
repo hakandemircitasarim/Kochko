@@ -14,15 +14,13 @@
  * them from this route.
  */
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { getOrCreateActiveSession, getCachedActiveSessionId } from '@/services/chat.service';
 import ChatThreadScreen from '@/screens/ChatThreadScreen';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { getContrastColor } from '@/lib/accessibility';
 
 // Module-level cache: survives tab remounts within the app session.
 // User-keyed (review fix): an unkeyed id survived an account switch and mounted
@@ -84,24 +82,15 @@ export default function ChatTab() {
     return <ChatThreadScreen sessionId={sessionId} />;
   }
 
+  // (refactor: shared LoadErrorState)
   if (failed) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
-        <Ionicons name="cloud-offline-outline" size={44} color={colors.textMuted} />
-        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginTop: SPACING.md, textAlign: 'center' }}>
-          Koçuna bağlanılamadı
-        </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center', lineHeight: 20 }}>
-          İnternet bağlantını kontrol edip tekrar dene.
-        </Text>
-        <TouchableOpacity
-          onPress={resolve}
-          accessibilityRole="button"
-          accessibilityLabel="Tekrar dene"
-          style={{ marginTop: SPACING.lg, backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm + 2 }}
-        >
-          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>Tekrar dene</Text>
-        </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <LoadErrorState
+          title="Koçuna bağlanılamadı"
+          subtitle="İnternet bağlantını kontrol edip tekrar dene."
+          onRetry={resolve}
+        />
       </View>
     );
   }

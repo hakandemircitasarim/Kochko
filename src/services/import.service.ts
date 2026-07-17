@@ -3,6 +3,7 @@
  * Spec 14.4: MyFitnessPal / Fatsecret / Samsung Health CSV/JSON import
  */
 import { supabase } from '@/lib/supabase';
+import { insertMealLogWithItems } from '@/services/meal-log.service';
 
 export type ImportSource = 'myfitnesspal' | 'fatsecret' | 'samsung_health' | 'generic_csv';
 
@@ -61,34 +62,28 @@ export async function importMealsFromCSV(csvText: string): Promise<ImportResult>
 
     if (isNaN(calories)) { errors.push(`Geçersiz kalori: ${line}`); continue; }
 
-    // Create meal log
-    const { data: log, error: logErr } = await supabase.from('meal_logs').insert({
-      user_id: user.id,
-      raw_input: foodName,
-      meal_type: normalizeMealType(mealType),
-      logged_for_date: date,
-      input_method: 'text',
+    // Shared parent+items+rollback write sequence (meal-log.service)
+    const { error: writeErr, failedStep } = await insertMealLogWithItems({
+      userId: user.id,
+      rawInput: foodName,
+      mealType: normalizeMealType(mealType),
+      loggedForDate: date,
+      inputMethod: 'text',
       synced: true,
-    }).select('id').single();
-
-    if (logErr || !log) { errors.push(`Kayıt oluşturulamadı: ${line}`); continue; }
-
-    const { error: itemErr } = await supabase.from('meal_log_items').insert({
-      meal_log_id: log.id,
-      food_name: foodName,
-      portion_text: '1 porsiyon',
-      // calories is smallint — clamp arbitrary CSV values so one bad row can't
-      // 22003-overflow and fail the insert (#R4-14).
-      calories: Math.min(32767, Math.max(0, Math.round(calories || 0))),
-      protein_g: protein || 0,
-      carbs_g: 0,
-      fat_g: 0,
-      data_source: 'ai_estimate',
+      items: [{
+        name: foodName,
+        portionText: '1 porsiyon',
+        // calories is smallint — clamp arbitrary CSV values so one bad row can't
+        // 22003-overflow and fail the insert (#R4-14).
+        kcal: Math.min(32767, Math.max(0, Math.round(calories || 0))),
+        protein: protein || 0,
+        carbs: 0,
+        fat: 0,
+        dataSource: 'ai_estimate',
+      }],
     });
-    if (itemErr) {
-      // Roll back the empty parent log so no orphan meal_log remains
-      await supabase.from('meal_logs').delete().eq('id', log.id);
-      errors.push(`Öğe eklenemedi: ${line}`);
+    if (writeErr) {
+      errors.push(failedStep === 'items' ? `Öğe eklenemedi: ${line}` : `Kayıt oluşturulamadı: ${line}`);
       continue;
     }
     imported++;

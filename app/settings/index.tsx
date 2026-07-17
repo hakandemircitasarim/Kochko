@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, TouchableOpacity, Modal, TextInput, type ViewStyle } from 'react-native';
+import { View, Text, ScrollView, Alert, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, type ViewStyle } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -221,7 +221,12 @@ export default function SettingsScreen() {
 
     {/* Typed-confirm gate: requires typing "SİL" before the irreversible deletion request. */}
     <Modal visible={deleteOpen} transparent animationType="fade" onRequestClose={closeDeleteModal}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: SPACING.xl }}>
+      {/* FIX (safe-area pass): autoFocus klavyesi küçük ekranlarda kartın alt yarısını
+          (Sil/İptal butonlarını) örtüyordu — KAV kartı klavye üstüne kaldırır. Review fix:
+          daralan alanda uzun kartın ÜSTÜ (uyarı metni) kırpılabilir — ScrollView geri
+          dönüşü sayesinde kullanıcı geri dönüşsüz onay sözünü uyarıyı görmeden yazmaz. */}
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: SPACING.xl }} keyboardShouldPersistTaps="handled">
         <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.xl }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Ionicons name="warning-outline" size={22} color={colors.error} />
@@ -270,7 +275,8 @@ export default function SettingsScreen() {
             />
           </View>
         </View>
-      </View>
+      </ScrollView>
+      </KeyboardAvoidingView>
     </Modal>
     </>
   );

@@ -17,6 +17,7 @@ import { StatStrip } from '@/components/dashboard/StatStrip';
 import { ActivityTimeline } from '@/components/dashboard/ActivityTimeline';
 import { ProfileCompletionDonut } from '@/components/dashboard/ProfileCompletionDonut';
 import { PlanOverviewCards } from '@/components/dashboard/PlanOverviewCards';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 // FIX (ux-pass2 #4c): tek "güncel kilo" yazım yolu — daily_metrics + profiles birlikte.
@@ -523,28 +524,15 @@ export default function TodayScreen() {
           </View>
         ) : fetchError && lastFetchedAt == null ? (
           /* FIX (ux-pass2 #7): fetch başarısız ve elde hiç veri yok — sahte sıfırlanmış
-             gün yerine kompakt hata kartı + tekrar dene (progress.tsx kalıbı). */
+             gün yerine kompakt hata kartı + tekrar dene (progress.tsx kalıbı).
+             (refactor: shared LoadErrorState, embedded) */
           <View style={{
             marginTop: insets.top + SPACING.xxl, marginHorizontal: SPACING.xl,
             backgroundColor: colors.card, borderRadius: RADIUS.md,
             borderWidth: 0.5, borderColor: colors.border,
-            padding: SPACING.xxl, alignItems: 'center',
+            paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl,
           }}>
-            <Ionicons name="cloud-offline-outline" size={36} color={colors.textMuted} />
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.md }}>
-              Veriler yüklenemedi
-            </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center' }}>
-              Bağlantını kontrol edip tekrar dene.
-            </Text>
-            <TouchableOpacity
-              onPress={() => refresh({ force: true })}
-              accessibilityRole="button"
-              accessibilityLabel="Tekrar dene"
-              style={{ marginTop: SPACING.lg, backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm }}
-            >
-              <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Tekrar dene</Text>
-            </TouchableOpacity>
+            <LoadErrorState embedded onRetry={() => refresh({ force: true })} />
           </View>
         ) : (
         <>

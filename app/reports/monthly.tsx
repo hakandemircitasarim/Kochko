@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { ProgressChart } from '@/components/reports/ProgressChart';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { METRIC_COLORS } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
@@ -148,12 +149,11 @@ export default function MonthlyReportScreen() {
   }
 
   // FIX (audit Wave3): error state with retry — mirrors reports/daily.tsx & weekly.tsx.
+  // (refactor: shared LoadErrorState)
   if (error) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
-        <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>Rapor yüklenemedi</Text>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-        <Button title="Tekrar dene" onPress={loadData} size="lg" />
+      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <LoadErrorState title="Rapor yüklenemedi" onRetry={loadData} />
       </View>
     );
   }

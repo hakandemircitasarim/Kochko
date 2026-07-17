@@ -13,9 +13,9 @@ import { getMaintenanceStatus, shouldTriggerMiniCut, type MaintenanceStatus } fr
 import { getTimelineData } from '@/services/goals.service';
 import { getEngagementMetrics, type EngagementMetrics } from '@/services/analytics.service';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
-import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
@@ -294,12 +294,10 @@ export default function ProgressScreen() {
   // FIX (audit UI-STA-05): when the load failed AND we have no data to show, render a
   // retry surface (matching the sibling report screens) instead of empty zero-value cards
   // that look identical to a brand-new user. Stale data, if any, is kept silently.
+  // (refactor: shared LoadErrorState)
   if (error && metrics.length === 0 && compliance.length === 0) return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: SPACING.xl }}>
-      <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-      <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>Veriler yüklenemedi</Text>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-      <Button title="Tekrar dene" onPress={() => { setLoading(true); load(); }} size="lg" />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <LoadErrorState onRetry={() => { setLoading(true); load(); }} />
     </View>
   );
 

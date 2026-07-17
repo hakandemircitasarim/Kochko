@@ -16,6 +16,7 @@
  * snapshot which this service writes via applySnapshot().
  */
 import { supabase } from '@/lib/supabase';
+import { insertMealLogWithItems } from '@/services/meal-log.service';
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -420,13 +421,6 @@ export function dayLabelTR(dayIndex: number, rawLabel?: string | null): string {
   return rawLabel ?? '';
 }
 
-export const MEAL_LABELS_TR: Record<DietMeal['meal_type'], string> = {
-  breakfast: 'Kahvaltı',
-  lunch: 'Öğle',
-  dinner: 'Akşam',
-  snack: 'Atıştırma',
-};
-
 /** Build a skeleton empty diet plan (7 rest days) for the initial draft
  *  placeholder before the AI returns the first snapshot. */
 export function emptyDietPlan(targets: DietPlanData['targets']): DietPlanData {
@@ -465,35 +459,16 @@ export function emptyWorkoutPlan(): WorkoutPlanData {
 
 /**
  * Deterministically log a planned meal into the diary (meal_logs +
- * meal_log_items) with NO LLM round-trip. Mirrors templates.service
- * useTemplate(): same NOT-NULL columns, RLS (auth.uid()=user_id), CHECK
- * constraints (meal_type enum matches DietMeal.meal_type; calories SMALLINT
- * → rounded; data_source='template' is in the migration-084 allow-list).
+ * meal_log_items) with NO LLM round-trip. Shares meal-log.service's write
+ * sequence with templates.service useTemplate(): same NOT-NULL columns, RLS
+ * (auth.uid()=user_id), CHECK constraints (meal_type enum matches
+ * DietMeal.meal_type; calories SMALLINT → rounded; data_source='template'
+ * is in the migration-084 allow-list).
  */
 export async function logPlannedMeal(
   meal: DietMeal,
   loggedForDate: string,
 ): Promise<{ mealLogId: string | null; error: string | null }> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { mealLogId: null, error: 'Oturum bulunamadı.' };
-
-  const { data: log, error: logErr } = await supabase
-    .from('meal_logs')
-    .insert({
-      user_id: user.id,
-      raw_input: `[Plan] ${meal.name}`,
-      meal_type: meal.meal_type,
-      input_method: 'text',
-      logged_for_date: loggedForDate,
-      synced: true,
-    })
-    .select('id')
-    .limit(1);
-  const logId = (log as { id: string }[] | null)?.[0]?.id ?? null;
-  if (logErr || !logId) {
-    return { mealLogId: null, error: logErr?.message ?? 'Kayıt oluşturulamadı.' };
-  }
-
   // Plan meals always carry items in practice; if an LLM snapshot dropped them,
   // fall back to a single roll-up item so the diary still gets the meal totals.
   const items: MealItem[] = (Array.isArray(meal.items) && meal.items.length > 0)
@@ -505,24 +480,26 @@ export async function logPlannedMeal(
         carbs: meal.total_carbs ?? 0,
         fat: meal.total_fat ?? 0,
       }];
-  const rows = items.map(it => ({
-    meal_log_id: logId,
-    food_name: it.name,
-    portion_text: it.grams ? `${it.grams} g` : (it.portion ?? '1 porsiyon'),
-    portion_grams: it.grams ?? null,
-    calories: Math.round(it.kcal ?? 0),
-    protein_g: Math.round((it.protein ?? 0) * 10) / 10,
-    carbs_g: Math.round((it.carbs ?? 0) * 10) / 10,
-    fat_g: Math.round((it.fat ?? 0) * 10) / 10,
-    data_source: 'template',
-  }));
-  const { error: itemsErr } = await supabase.from('meal_log_items').insert(rows);
-  if (itemsErr) {
-    // Roll the empty log back so the user doesn't see a phantom 0 kcal entry.
-    await supabase.from('meal_logs').delete().eq('id', logId);
-    return { mealLogId: null, error: itemsErr.message };
-  }
-  return { mealLogId: logId, error: null };
+
+  // Shared parent+items+rollback write sequence (meal-log.service)
+  const { mealLogId, error } = await insertMealLogWithItems({
+    rawInput: `[Plan] ${meal.name}`,
+    mealType: meal.meal_type,
+    inputMethod: 'text',
+    loggedForDate,
+    synced: true,
+    items: items.map(it => ({
+      name: it.name,
+      portionText: it.grams ? `${it.grams} g` : (it.portion ?? '1 porsiyon'),
+      grams: it.grams ?? null,
+      kcal: Math.round(it.kcal ?? 0),
+      protein: Math.round((it.protein ?? 0) * 10) / 10,
+      carbs: Math.round((it.carbs ?? 0) * 10) / 10,
+      fat: Math.round((it.fat ?? 0) * 10) / 10,
+      dataSource: 'template',
+    })),
+  });
+  return { mealLogId, error };
 }
 
 /** Undo for logPlannedMeal — soft delete, same pattern as the dashboard's deleteMeal. */

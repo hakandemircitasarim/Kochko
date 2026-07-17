@@ -7,8 +7,8 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { mealTypeLabelTR } from '@/lib/labels';
 
-const MEAL_LABELS: Record<string, string> = { breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Ara' };
 const CATEGORY_LABELS: Record<string, string> = { protein: 'Protein', vegetable: 'Sebze', fruit: 'Meyve', dairy: 'Süt Ürünü', grain: 'Tahıl', other: 'Diğer' };
 
 export default function WeeklyMenuScreen() {
@@ -62,6 +62,8 @@ export default function WeeklyMenuScreen() {
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Menü yükleniyor…</Text>
         </Card>
       ) : !plan ? (
+        // LoadErrorState'e taşınmadı: hata ayrı bir retry kartı değil — boş-durum kartına gömülü
+        // metin, CTA'sı da yeniden yükleme değil "Menü Oluştur" (üretim) aksiyonu.
         <Card>
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>
             {error ? error : 'Haftalık menü henüz oluşturulmamış.'}
@@ -91,7 +93,7 @@ export default function WeeklyMenuScreen() {
                 {day.meals.map((meal, mi) => (
                   <View key={mi} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: mi < day.meals.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>{MEAL_LABELS[meal.meal_type] ?? meal.meal_type}</Text>
+                      <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>{mealTypeLabelTR(meal.meal_type)}</Text>
                       <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>{meal.suggestion.name}</Text>
                     </View>
                     <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{meal.suggestion.calories} kcal</Text>

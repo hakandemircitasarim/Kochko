@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
 import { addLabValue, COMMON_LAB_PARAMS, type LabValue } from '@/services/health.service';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -90,7 +90,7 @@ export default function LabValuesScreen() {
   return (
     // FIX (audit lab-values-screen): KeyboardAvoidingView + keyboardShouldPersistTaps —
     // Ref Min/Max + Kaydet klavyenin altında kalıyordu (menstrual.tsx kalıbı).
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Native header (settings/_layout.tsx) already shows the Turkish "Lab Değerleri" title — redundant body heading dropped, disclaimer kept as the screen intro. */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginBottom: SPACING.lg }}>Yaşam tarzı takibi içindir. Tıbbi yorum için doktoruna danış.</Text>
@@ -153,15 +153,10 @@ export default function LabValuesScreen() {
         </View>
       )}
 
-      {/* FIX (audit empty-vs-error): fetch hatası kendinden emin boş-durum yerine hata+tekrar dene kartı (daily.tsx cloud-offline kalıbı). */}
+      {/* FIX (audit empty-vs-error): fetch hatası kendinden emin boş-durum yerine hata+tekrar dene kartı (shared LoadErrorState). */}
       {!loading && loadError && (
         <Card style={{ marginTop: SPACING.md }}>
-          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Lab değerleri yüklenemedi</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-            <Button title="Tekrar dene" size="sm" onPress={loadEntries} />
-          </View>
+          <LoadErrorState embedded title="Lab değerleri yüklenemedi" onRetry={loadEntries} />
         </Card>
       )}
 

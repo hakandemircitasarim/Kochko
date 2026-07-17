@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { logSupplement, type SupplementLog } from '@/services/supplements.service';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 
@@ -67,7 +67,7 @@ export default function SupplementsScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
@@ -102,13 +102,8 @@ export default function SupplementsScreen() {
             <ActivityIndicator color={COLORS.primary} />
           </View>
         ) : loadError ? (
-          /* FIX (audit empty-vs-error): fetch hatası 'kayıt yok' değil, hata+tekrar dene (daily.tsx kalıbı). */
-          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Kayıtlar yüklenemedi</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-            <Button title="Tekrar dene" size="sm" onPress={loadLogs} />
-          </View>
+          /* FIX (audit empty-vs-error): fetch hatası 'kayıt yok' değil, hata+tekrar dene (shared LoadErrorState). */
+          <LoadErrorState embedded title="Kayıtlar yüklenemedi" onRetry={loadLogs} />
         ) : logs.length === 0 ? (
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Bugün supplement kaydı yok.</Text>
         ) : (

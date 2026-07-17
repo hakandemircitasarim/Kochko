@@ -21,11 +21,7 @@ import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service'
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
-
-const GOAL_LABELS: Record<string, string> = {
-  lose_weight: 'Kilo Ver', gain_weight: 'Kilo Al', gain_muscle: 'Kas Kazan',
-  health: 'Sağlıklı Yaşam', maintain: 'Koruma', conditioning: 'Kondisyon',
-};
+import { goalLabelTR } from '@/lib/labels';
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
@@ -120,13 +116,13 @@ export default function ProfileScreen() {
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xxl }}>
         <InfoBox label="Mevcut" value={profile?.weight_kg ? `${profile.weight_kg}` : '-'} unit="kg" colors={colors} />
         <InfoBox label="Hedef" value={goalLoadError ? '—' : goal?.target_weight_kg ? `${goal.target_weight_kg}` : '-'} unit="kg" colors={colors} />
-        <InfoBox label="Amaç" value={goalLoadError ? '—' : goal ? GOAL_LABELS[goal.goal_type] ?? goal.goal_type : '-'} unit="" colors={colors} small />
+        <InfoBox label="Amaç" value={goalLoadError ? '—' : goal ? goalLabelTR(goal.goal_type) : '-'} unit="" colors={colors} small />
       </View>
 
       {/* 5.4 Goals section */}
       <SectionTitle label="Hedefler" colors={colors} />
       <MenuGroup colors={colors}>
-        <MenuRow icon="flag-outline" color={colors.primary} label={goalLoadError ? 'Hedef yüklenemedi' : goal ? `${GOAL_LABELS[goal.goal_type] ?? goal.goal_type}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
+        <MenuRow icon="flag-outline" color={colors.primary} label={goalLoadError ? 'Hedef yüklenemedi' : goal ? `${goalLabelTR(goal.goal_type)}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
         {/* FIX (completeness audit): 'Güç hedefi' now routes to the real strength screen (was the
             weight-goal editor). 'Uyku hedefi' removed — no sleep-goal screen exists, so the row
             promised a feature the app doesn't have and dead-ended in the weight-goal form. */}

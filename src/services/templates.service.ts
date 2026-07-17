@@ -4,6 +4,7 @@
  */
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
+import { insertMealLogWithItems } from '@/services/meal-log.service';
 
 export interface MealTemplate {
   id: string;
@@ -66,48 +67,27 @@ export async function useTemplate(
   const loggedForDate = opts?.loggedForDate ?? getEffectiveDate(new Date());
   const items = (template.items ?? []) as MealTemplate['items'];
 
-  // meal_logs.user_id is NOT NULL + RLS WITH CHECK(auth.uid()=user_id)
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Oturum bulunamadi.' };
-
-  // Create the parent meal_log row
-  const { data: log, error: logErr } = await supabase
-    .from('meal_logs')
-    .insert({
-      user_id: user.id,
-      raw_input: `[Sablon] ${template.name}`,
-      meal_type: mealType,
-      logged_for_date: loggedForDate,
-      input_method: 'template',
-      template_id: templateId,
-      synced: true,
-    })
-    .select('id')
-    .single();
-
-  if (logErr || !log) {
-    return { error: logErr?.message ?? 'Kayıt oluşturulamadı.' };
-  }
-
-  // Insert each item linked to the parent meal_log
-  if (items.length > 0) {
-    const rows = items.map((i) => ({
-      meal_log_id: log.id,
-      food_name: i.name,
-      portion_text: i.portion ?? '1 porsiyon',
-      calories: i.calories ?? 0,
-      protein_g: i.protein_g ?? 0,
-      carbs_g: i.carbs_g ?? 0,
-      fat_g: i.fat_g ?? 0,
-      data_source: 'template',
-    }));
-    const { error: itemsErr } = await supabase.from('meal_log_items').insert(rows);
-    if (itemsErr) {
-      // Roll the empty log back so the user doesn't see a phantom entry
-      await supabase.from('meal_logs').delete().eq('id', log.id);
-      return { error: itemsErr.message };
-    }
-  }
+  // Shared parent+items+rollback write sequence (meal-log.service). Review fix:
+  // session resolution delegated to the helper too — the local copy had already
+  // drifted ('bulunamadi' vs the helper's 'bulunamadı').
+  const { error: writeErr } = await insertMealLogWithItems({
+    rawInput: `[Sablon] ${template.name}`,
+    mealType,
+    loggedForDate,
+    inputMethod: 'template',
+    templateId,
+    synced: true,
+    items: items.map((i) => ({
+      name: i.name,
+      portionText: i.portion ?? '1 porsiyon',
+      kcal: i.calories ?? 0,
+      protein: i.protein_g ?? 0,
+      carbs: i.carbs_g ?? 0,
+      fat: i.fat_g ?? 0,
+      dataSource: 'template',
+    })),
+  });
+  if (writeErr) return { error: writeErr };
 
   // Increment use count only after a successful insert
   await supabase

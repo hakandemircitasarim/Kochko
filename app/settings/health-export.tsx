@@ -14,10 +14,7 @@ import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
-
-// FIX (audit raw-enum): doctor-facing PDF must not print 'male'/'female' — local label map
-// (same mapping as coach-memory.tsx).
-const GENDER_LABELS: Record<string, string> = { male: 'Erkek', female: 'Kadın', other: 'Diğer' };
+import { genderLabelTR } from '@/lib/labels';
 
 export default function HealthExportScreen() {
   const insets = useSafeAreaInsets();
@@ -88,7 +85,7 @@ export default function HealthExportScreen() {
       // Build insights list
       const insights: string[] = [];
       // FIX (audit raw-enum): 'male' → 'Erkek' etc. in the doctor-facing PDF.
-      const genderTr = profile?.gender ? GENDER_LABELS[profile.gender as string] ?? String(profile.gender) : '-';
+      const genderTr = profile?.gender ? genderLabelTR(profile.gender as string) : '-';
       insights.push(`Hasta: Yaş ${age ?? '-'} | Cinsiyet: ${genderTr} | Boy: ${profile?.height_cm ?? '-'} cm | Kilo: ${profile?.weight_kg ?? '-'} kg`);
       if (avgCal > 0) insights.push(`Ortalama günlük kalori: ${avgCal} kcal | Protein: ${avgPro} g`);
       const typedWorkouts = workouts as { duration_min: number }[];

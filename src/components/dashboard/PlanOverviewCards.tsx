@@ -15,6 +15,7 @@ import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getActive, getDraft, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
 import { getEffectiveDate } from '@/lib/day-boundary';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 
 interface Props {
   userId: string | undefined;
@@ -78,25 +79,13 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
     <View style={{ gap: SPACING.sm }}>
       {!loaded && loadError ? (
         /* FIX (ux-pass5): ilk yükleme başarısız + elde veri yok — 'Yükleniyor…'da takılı
-           kalmak yerine kompakt hata kartı + tekrar dene (dashboard hata kartı deseni). */
-        <TouchableOpacity
-          onPress={() => load()}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Planlar yüklenemedi. Tekrar denemek için dokun"
-          style={{
-            backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md,
-            borderWidth: 0.5, borderColor: colors.border,
-            flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-          }}
-        >
-          <Ionicons name="cloud-offline-outline" size={22} color={colors.textMuted} />
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>Planlar yüklenemedi</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>Tekrar denemek için dokun</Text>
-          </View>
-          <Ionicons name="refresh" size={16} color={colors.primary} />
-        </TouchableOpacity>
+           kalmak yerine kompakt hata kartı + tekrar dene (shared LoadErrorState, compact). */
+        <LoadErrorState
+          compact
+          title="Planlar yüklenemedi"
+          subtitle="Tekrar denemek için dokun"
+          onRetry={() => load()}
+        />
       ) : (
         <>
       <PlanCard

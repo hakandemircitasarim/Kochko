@@ -3,15 +3,15 @@
  * Spec 8.4: Başlangıçtan bugüne toplam ilerleme.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useStreak } from '@/hooks/useStreak';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
-import { getContrastColor } from '@/lib/accessibility';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function AllTimeReportScreen() {
   const insets = useSafeAreaInsets();
@@ -117,20 +117,11 @@ export default function AllTimeReportScreen() {
     return <SkeletonScreen cards={3} />;
   }
 
+  // (refactor: shared LoadErrorState)
   if (error) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
-        <Text style={{ color: COLORS.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.lg }}>
-          Rapor yüklenemedi. İnternet bağlantını kontrol et.
-        </Text>
-        <TouchableOpacity
-          onPress={loadStats}
-          accessibilityRole="button"
-          accessibilityLabel="Tekrar dene"
-          style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
-        >
-          <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
-        </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <LoadErrorState title="Rapor yüklenemedi" subtitle="İnternet bağlantını kontrol et." onRetry={loadStats} />
       </View>
     );
   }

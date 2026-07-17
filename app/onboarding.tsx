@@ -15,6 +15,7 @@ import { detectTimezone } from '@/lib/timezone';
 import { startTrialIfEligible } from '@/services/subscription.service';
 import { loadOnboardingDraft, saveOnboardingDraft, clearOnboardingDraft, type OnboardingDraft } from '@/services/onboarding-draft.service';
 import type { GoalType, ActivityLevel, Gender, Goal } from '@/types/database';
+import { GENDER_LABELS_TR, ACTIVITY_LEVEL_LABELS_TR, GOAL_LABELS_INFINITIVE_TR, toOptions } from '@/lib/labels';
 import { calculateBMR, calculateTDEE, calculateTargets } from '@/lib/tdee';
 
 const { width } = Dimensions.get('window');
@@ -58,27 +59,15 @@ const SLIDES = [
   },
 ];
 
-const GOAL_OPTIONS: { value: GoalType; label: string }[] = [
-  { value: 'lose_weight', label: 'Kilo Vermek' },
-  { value: 'gain_muscle', label: 'Kas Kazanmak' },
-  { value: 'maintain', label: 'Kilomu Korumak' },
-  { value: 'health', label: 'Sağlıklı Yaşamak' },
-  { value: 'conditioning', label: 'Kondisyon' },
-];
+// "Hedefin Ne?" cevapları mastar kipinde okunur — etiketler kanonik mastar
+// haritasından gelir; SET küratedir (gain_weight onboarding'de bilinçli yok,
+// sıra da bilinçli), o yüzden düz toOptions değil açık anahtar listesi.
+const GOAL_OPTIONS: { value: GoalType; label: string }[] =
+  (['lose_weight', 'gain_muscle', 'maintain', 'health', 'conditioning'] as GoalType[])
+    .map(value => ({ value, label: GOAL_LABELS_INFINITIVE_TR[value] }));
 
-const GENDER_OPTIONS: { value: Gender; label: string }[] = [
-  { value: 'male', label: 'Erkek' },
-  { value: 'female', label: 'Kadın' },
-  { value: 'other', label: 'Diğer' },
-];
-
-const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
-  { value: 'sedentary', label: 'Hareketsiz' },
-  { value: 'light', label: 'Hafif Hareketli' },
-  { value: 'moderate', label: 'Orta' },
-  { value: 'active', label: 'Aktif' },
-  { value: 'very_active', label: 'Çok Aktif' },
-];
+const GENDER_OPTIONS = toOptions(GENDER_LABELS_TR);
+const ACTIVITY_OPTIONS = toOptions(ACTIVITY_LEVEL_LABELS_TR);
 
 // ─── Main Screen ───
 

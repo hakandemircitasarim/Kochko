@@ -3,7 +3,7 @@
  * Spec 14.4: MyFitnessPal, Fatsecret, Samsung Health CSV/JSON import
  */
 import { useState } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { importMealsFromCSV, importWeightsFromCSV, type ImportResult } from '@/services/import.service';
 import { Button } from '@/components/ui/Button';
@@ -40,7 +40,10 @@ export default function DataImportScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    // FIX (safe-area pass): KAV yoktu — çok satırlı CSV kutusu + 'İçeri Aktar' klavyenin
+    // altında kalıyor, içerik kaydırılarak bile erişilemiyordu (onboarding.tsx:532 kalıbı).
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         {/* FIX (audit diakritik) */}
@@ -111,5 +114,6 @@ export default function DataImportScreen() {
         </Card>
       )}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

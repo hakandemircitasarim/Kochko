@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -66,7 +67,7 @@ export default function HealthEventsScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit ui-settings-duplicate-title): native header (settings/_layout.tsx) renders the title; in-body H1 removed as redundant. */}
       <Button title={showAdd ? 'İptal' : 'Yeni Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} style={{ marginTop: SPACING.lg }} />
 
@@ -105,15 +106,10 @@ export default function HealthEventsScreen() {
         </View>
       )}
 
-      {/* FIX (ux-pass5 empty-vs-error): fetch hatası kendinden emin boş-durum yerine hata+tekrar dene kartı (lab-values kalıbı). */}
+      {/* FIX (ux-pass5 empty-vs-error): fetch hatası kendinden emin boş-durum yerine hata+tekrar dene kartı (shared LoadErrorState). */}
       {!loading && loadError && (
         <Card style={{ marginTop: SPACING.md }}>
-          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Sağlık olayları yüklenemedi</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-            <Button title="Tekrar dene" size="sm" onPress={loadEvents} />
-          </View>
+          <LoadErrorState embedded title="Sağlık olayları yüklenemedi" onRetry={loadEvents} />
         </Card>
       )}
 

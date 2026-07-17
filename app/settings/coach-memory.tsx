@@ -17,9 +17,10 @@ import { PERIODIC_LABELS, type PeriodicState } from '@/services/periodic.service
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, CARD_SHADOW, COLORS } from '@/lib/constants';
-import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { genderLabelTR, activityLevelLabelTR, mealTypeLabelTR, goalInfinitiveLabelTR } from '@/lib/labels';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 
 type SummaryData = NonNullable<Awaited<ReturnType<typeof getAISummaryForReview>>>;
 
@@ -38,10 +39,6 @@ const HABIT_STATUS_ICON: Record<string, { icon: string; color: string }> = {
   established: { icon: 'checkmark-circle', color: COLORS.success },
   struggling: { icon: 'alert-circle', color: COLORS.warning },
   lost: { icon: 'close-circle', color: COLORS.error },
-};
-
-const MEAL_TIME_LABELS: Record<string, string> = {
-  breakfast: 'Kahvaltı', lunch: 'Öğle', dinner: 'Akşam', snack: 'Ara öğün',
 };
 
 export default function CoachMemoryScreen() {
@@ -228,26 +225,17 @@ export default function CoachMemoryScreen() {
     );
   }
 
+  // (refactor: shared LoadErrorState)
   if (loadError) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: SPACING.xl }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         {/* FIX (audit naming): title inherited from _layout.tsx — keep every state consistent. */}
         <Stack.Screen options={{ headerStyle: { backgroundColor: colors.background }, headerTintColor: colors.text }} />
-        <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginTop: SPACING.md, textAlign: 'center' }}>
-          Yüklenemedi
-        </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center', lineHeight: 20 }}>
-          Bilgilerin yüklenirken bir sorun oluştu. Bağlantını kontrol edip tekrar dene.
-        </Text>
-        <TouchableOpacity
-          onPress={loadData}
-          accessibilityRole="button"
-          accessibilityLabel="Tekrar dene"
-          style={{ marginTop: SPACING.lg, backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm + 2 }}
-        >
-          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>Tekrar dene</Text>
-        </TouchableOpacity>
+        <LoadErrorState
+          title="Yüklenemedi"
+          subtitle="Bilgilerin yüklenirken bir sorun oluştu. Bağlantını kontrol edip tekrar dene."
+          onRetry={loadData}
+        />
       </View>
     );
   }
@@ -265,14 +253,6 @@ export default function CoachMemoryScreen() {
 
   // Build profile info rows (Layer 1 — static data from onboarding)
   const age = profile?.birth_year ? new Date().getFullYear() - (profile.birth_year as number) : null;
-  const goalLabels: Record<string, string> = {
-    lose_weight: 'Kilo vermek', gain_weight: 'Kilo almak', gain_muscle: 'Kas kazanmak',
-    health: 'Sağlıklı yaşam', maintain: 'Koruma', conditioning: 'Kondisyon',
-  };
-  const genderLabels: Record<string, string> = { male: 'Erkek', female: 'Kadın', other: 'Diğer' };
-  const activityLabels: Record<string, string> = {
-    sedentary: 'Hareketsiz', light: 'Hafif', moderate: 'Orta', active: 'Aktif', very_active: 'Çok aktif',
-  };
   const dietLabels: Record<string, string> = {
     standard: 'Standart', low_carb: 'Düşük karb', keto: 'Keto', high_protein: 'Yüksek protein',
   };
@@ -284,13 +264,13 @@ export default function CoachMemoryScreen() {
   if (profile?.display_name) profileRows.push({ label: 'İsim', value: String(profile.display_name) });
   else if (user?.email) profileRows.push({ label: 'E-posta', value: user.email });
   if (age) profileRows.push({ label: 'Yaş', value: `${age}` });
-  if (profile?.gender) profileRows.push({ label: 'Cinsiyet', value: genderLabels[profile.gender as string] ?? String(profile.gender) });
+  if (profile?.gender) profileRows.push({ label: 'Cinsiyet', value: genderLabelTR(profile.gender as string) });
   if (profile?.height_cm) profileRows.push({ label: 'Boy', value: `${profile.height_cm} cm` });
   if (profile?.weight_kg) profileRows.push({ label: 'Mevcut kilo', value: `${profile.weight_kg} kg` });
   if (activeGoal?.target_weight_kg) profileRows.push({ label: 'Hedef kilo', value: `${activeGoal.target_weight_kg} kg` });
-  if (activeGoal?.goal_type) profileRows.push({ label: 'Hedef', value: goalLabels[activeGoal.goal_type] ?? activeGoal.goal_type });
+  if (activeGoal?.goal_type) profileRows.push({ label: 'Hedef', value: goalInfinitiveLabelTR(activeGoal.goal_type) });
   if (activeGoal?.weekly_rate) profileRows.push({ label: 'Haftalık tempo', value: `${activeGoal.weekly_rate} kg/hafta` });
-  if (profile?.activity_level) profileRows.push({ label: 'Aktivite', value: activityLabels[profile.activity_level as string] ?? String(profile.activity_level) });
+  if (profile?.activity_level) profileRows.push({ label: 'Aktivite', value: activityLevelLabelTR(profile.activity_level as string) });
   if (profile?.diet_mode) profileRows.push({ label: 'Beslenme', value: dietLabels[profile.diet_mode as string] ?? String(profile.diet_mode) });
   if (profile?.coach_tone) profileRows.push({ label: 'Koç tonu', value: toneLabels[profile.coach_tone as string] ?? String(profile.coach_tone) });
   if (profile?.tdee_calculated) profileRows.push({ label: 'Günlük kalori (TDEE)', value: `${profile.tdee_calculated} kcal` });
@@ -580,7 +560,7 @@ export default function CoachMemoryScreen() {
                     <View style={{ gap: SPACING.xs }}>
                       {Object.entries(data.learnedMealTimes).map(([meal, time]) => (
                         <View key={meal} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
-                          <Text style={{ color: colors.text, fontSize: FONT.sm }}>{MEAL_TIME_LABELS[meal] ?? meal}</Text>
+                          <Text style={{ color: colors.text, fontSize: FONT.sm }}>{mealTypeLabelTR(meal)}</Text>
                           <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>{time}</Text>
                         </View>
                       ))}

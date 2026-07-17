@@ -3,7 +3,7 @@
  * Spec 6.7: Cut/bulk/maintain döngüsü
  */
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -131,7 +131,7 @@ export default function MultiPhaseGoalsScreen() {
 
   return (
     // FIX (audit UI-LAY-04): KeyboardAvoidingView + keyboardShouldPersistTaps — 'Yeni Faz Ekle' formu en altta, klavye altında kalıyordu (lab-values.tsx kalıbı).
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Native Stack header (settings/_layout.tsx) already shows the Turkish title "Çok Fazlı Hedef" — body heading removed to avoid double-title */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>

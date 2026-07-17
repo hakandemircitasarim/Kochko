@@ -483,7 +483,10 @@ export default function QuickLogScreen() {
             <View style={{ width: 28 }} />
           </View>
           {/* Result banner / portion chooser */}
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          {/* Review fix (safe-area pass'in gözünden kaçan kardeş): Android'de behavior
+              undefined = no-op — edge-to-edge altında klavye özel-gram girişini ve
+              Kaydet'i örtüyordu; her iki platformda 'padding' (799. satırdaki eşi gibi). */}
+          <KeyboardAvoidingView behavior="padding">
           <View style={{ padding: SPACING.xl, paddingBottom: insets.bottom + 24 }}>
             {barcodeLoading && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center' }}>
@@ -796,7 +799,7 @@ export default function QuickLogScreen() {
 
   // ====== MAIN SCREEN ======
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
     {/* FIX (audit UI-LAY-01/HIGH): wrap the quick-log scroll in KeyboardAvoidingView so the
         free-text input and its "Kaydet" button are pushed above the keyboard instead of hidden behind it. */}
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }} keyboardShouldPersistTaps="handled">

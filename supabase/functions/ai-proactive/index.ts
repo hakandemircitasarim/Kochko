@@ -691,12 +691,13 @@ serve(async (req: Request) => {
     // the user has been active for ≥3 days (enough to start tracking). Subsequent
     // habits are stacked when prior habit hits ≥80% compliance for 2 weeks.
     const HABIT_SEQUENCE = [
-      { key: 'daily_meal_log', label: 'Gunluk ogun kaydi', anchor: null },
-      { key: 'water_tracking', label: 'Su takibi', anchor: 'Her ogun kaydından sonra su ekle' },
-      { key: 'weight_tracking', label: 'Tarti kaydi (haftada 3x)', anchor: 'Sabah kalktığında tartıl' },
-      { key: 'protein_target', label: 'Protein hedefi', anchor: 'Her ogunde proteini kontrol et' },
-      { key: 'sleep_tracking', label: 'Uyku kaydi', anchor: 'Sabah kalktığında uyku gir' },
-      { key: 'workout_routine', label: 'Antrenman rutini (haftada 3x)', anchor: 'Antrenman gunu sabah plan kontrol' },
+      // FIX (emülatör bulgusu): etiketler/çapalar kullanıcıya nudge içinde görünür — aksansızdı.
+      { key: 'daily_meal_log', label: 'Günlük öğün kaydı', anchor: null },
+      { key: 'water_tracking', label: 'Su takibi', anchor: 'Her öğün kaydından sonra su ekle' },
+      { key: 'weight_tracking', label: 'Tartı kaydı (haftada 3x)', anchor: 'Sabah kalktığında tartıl' },
+      { key: 'protein_target', label: 'Protein hedefi', anchor: 'Her öğünde proteini kontrol et' },
+      { key: 'sleep_tracking', label: 'Uyku kaydı', anchor: 'Sabah kalktığında uyku gir' },
+      { key: 'workout_routine', label: 'Antrenman rutini (haftada 3x)', anchor: 'Antrenman günü sabah plan kontrolü' },
     ];
     for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
       const localH = getUserLocalHour(profile);
@@ -736,7 +737,9 @@ serve(async (req: Request) => {
             user_id: profile.id,
             trigger_type: 'habit_introduce',
             priority: 'medium',
-            content: `Ilk aliskanlik zamani: "${nextHabit.label}". ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Baslayalim mi? Onaylarsan 2 hafta boyunca bu tek sey odagimiz olur.`,
+            // FIX (emülatör bulgusu): aksansız şablon dashboard'da olduğu gibi görünüyordu
+            // ("Ilk aliskanlik zamani… Baslayalim mi?") — düzgün Türkçe.
+            content: `İlk alışkanlık zamanı: "${nextHabit.label}". ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Başlayalım mı? Onaylarsan 2 hafta boyunca bu tek şey odağımız olur.`,
           });
           totalSent++;
           continue;

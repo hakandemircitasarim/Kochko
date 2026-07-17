@@ -61,6 +61,13 @@ export async function invokePlanChat(params: {
   }
 }
 
+// Review fix (reuse): the <confirm_reject/> machine-marker strip lived as 5 inline
+// regex copies across two screens — a renamed/added server marker would be missed at
+// whichever copy is forgotten and render as raw markup in a visible bubble.
+export function stripMachineMarkers(text: string): string {
+  return text.replace(/<confirm_reject\s*\/?>/g, '').trim();
+}
+
 const OFFLINE_QUEUE_KEY = '@kochko_chat_offline_queue';
 const MAX_MESSAGE_LENGTH = 2000;
 const DEFAULT_MAX_RETRIES = 2; // 2 retries = 3 total attempts (1s, 3s backoff)

@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { createTemplate, deleteTemplate, useTemplate, type MealTemplate } from '@/services/templates.service';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function MealTemplatesScreen() {
@@ -85,7 +85,7 @@ export default function MealTemplatesScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Sık yediğin kombinasyonları kaydet, tek dokunuşla tekrar gir.
@@ -118,14 +118,9 @@ export default function MealTemplatesScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : loadError ? (
-        /* FIX (audit empty-vs-error): fetch hatası 'şablon yok' değil, hata+tekrar dene (daily.tsx kalıbı). */
+        /* FIX (audit empty-vs-error): fetch hatası 'şablon yok' değil, hata+tekrar dene (shared LoadErrorState). */
         <Card style={{ marginTop: SPACING.md }}>
-          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Şablonlar yüklenemedi</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-            <Button title="Tekrar dene" size="sm" onPress={load} />
-          </View>
+          <LoadErrorState embedded title="Şablonlar yüklenemedi" onRetry={load} />
         </Card>
       ) : templates.length === 0 && !showAdd ? (
         <Card style={{ marginTop: SPACING.md }}>

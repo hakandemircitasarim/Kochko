@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useProfileStore } from '@/stores/profile.store';
+import { getEffectiveDate } from '@/lib/day-boundary';
 import { getMonthSummaries, type DaySummary } from '@/services/calendar.service';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -12,9 +14,16 @@ const DAY_NAMES = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
 export default function CalendarScreen() {
   const insets = useSafeAreaInsets();
+  // Review fix (efficiency): tüm profile objesine değil tek skalere abone ol —
+  // her profil yazımı 42 hücrelik grid'i yeniden render ediyordu.
+  const dayBoundaryHour = useProfileStore(s => (s.profile?.day_boundary_hour as number) ?? 4);
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  // Review fix: ay durumu da EFEKTİF günden başlar — ayın 1'i 00:30'da takvim
+  // medeni-takvim ayını (yeni ay) açıp efektif günün (dünün) halkasını ekran-dışı
+  // bırakıyordu; kullanıcı '<' ile geri gitmeden 'bugün' hiç görünmüyordu.
+  const effTodayStr = getEffectiveDate(now, dayBoundaryHour);
+  const [year, setYear] = useState(Number(effTodayStr.slice(0, 4)));
+  const [month, setMonth] = useState(Number(effTodayStr.slice(5, 7)));
   const [days, setDays] = useState<DaySummary[]>([]);
   const [selected, setSelected] = useState<DaySummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,11 +57,11 @@ export default function CalendarScreen() {
   const firstDay = new Date(year, month - 1, 1).getDay();
   const offset = firstDay === 0 ? 6 : firstDay - 1;
 
-  // FIX (audit UI-PLN-04): build today's string from LOCAL components, not UTC.
-  // now.toISOString() is UTC, but day.date is built from local calendar values
-  // (calendar.service.ts). In UTC+3, local 00:00-03:00 the UTC date is still
-  // yesterday, so the "today" ring landed on the wrong cell. Same fix as monthly.tsx #S13.
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  // FIX (audit UI-PLN-04 + ux-pass5): "bugün" halkası EFEKTİF günü işaretler —
+  // yerel takvim tarihi bile gün-sınırından (varsayılan 04:00) önce yanlış: 01:00'de
+  // günlük verisi hâlâ dünün hücresine yazılırken halka boş "yarın" hücresindeydi.
+  // Diğer tüm yüzeylerle aynı getEffectiveDate ankrajı (yukarıda ay-init de aynı değeri kullanır).
+  const todayStr = effTodayStr;
 
   const getScoreColor = (score: number | null) => {
     if (score === null) return COLORS.surfaceLight;
@@ -101,13 +110,9 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {/* Load failure: explicit retry instead of a silent 'veri yok' month. */}
+      {/* Load failure: explicit retry instead of a silent 'veri yok' month. (refactor: shared LoadErrorState) */}
       {!loading && loadError && (
-        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginBottom: SPACING.xs }}>Yüklenemedi</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-          <Button title="Tekrar dene" onPress={() => setAttempt(a => a + 1)} size="md" />
-        </View>
+        <LoadErrorState embedded title="Yüklenemedi" onRetry={() => setAttempt(a => a + 1)} />
       )}
 
       {/* Calendar grid */}

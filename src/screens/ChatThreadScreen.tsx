@@ -26,7 +26,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import {
   sendMessageToSession, sendPhotoToSession, loadSessionMessages, loadOlderSessionMessages,
   queueMessageOffline, processOfflineQueue, getOfflineQueueSize, getCachedThread,
-  getTaskOpenerFiredAt, markTaskOpenerFired,
+  getTaskOpenerFiredAt, markTaskOpenerFired, stripMachineMarkers,
   type ChatMessage,
 } from '@/services/chat.service';
 import { getTaskByKey, getTaskByModeHint, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
@@ -39,6 +39,7 @@ import { speak, stopSpeaking } from '@/services/tts.service';
 import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import {
   MacroSummary, MacroRing, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
   RecipeCard, ConfirmRejectButtons, PersonaCard, ConfidenceBadge,
@@ -1003,7 +1004,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
 
       // Detect confirm/reject plan suggestion
       const hasPlanSuggestion = hasConfirmRejectIndicator(messageContent, data.task_mode);
-      messageContent = messageContent.replace(/<confirm_reject\s*\/?>/g, '').trim();
+      messageContent = stripMachineMarkers(messageContent);
 
       // Detect low-confidence verification prompt (Spec 5.32, auto-appended by ai-chat)
       const hasLowConfidenceVerification = hasLowConfidenceVerificationIndicator(messageContent);
@@ -1138,7 +1139,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         const qsParsed = parseQuickSelect(content);
         content = qsParsed.cleanContent;
         const hasPlan = hasConfirmRejectIndicator(content, data.task_mode);
-        content = content.replace(/<confirm_reject\s*\/?>/g, '').trim();
+        content = stripMachineMarkers(content);
         const hasLowConf = hasLowConfidenceVerificationIndicator(content);
         setMessages(prev => [...prev, {
           id: `a-${Date.now()}`, role: 'assistant', content, task_mode: data.task_mode,
@@ -1450,18 +1451,14 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
 
   // History fetch failed with nothing to show — explicit error+retry instead of the
   // fresh-account empty state (ux-pass2, W#8/#73: the "her şey silindi" moment).
+  // (refactor: shared LoadErrorState)
   if (loadError && messages.length === 0) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
-        <Ionicons name="cloud-offline-outline" size={44} color={colors.textMuted} />
-        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', marginTop: SPACING.md, textAlign: 'center' }}>
-          Sohbet geçmişin yüklenemedi
-        </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center', lineHeight: 20 }}>
-          Mesajların güvende — bağlantını kontrol edip tekrar dene.
-        </Text>
-        <TouchableOpacity
-          onPress={() => {
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <LoadErrorState
+          title="Sohbet geçmişin yüklenemedi"
+          subtitle="Mesajların güvende — bağlantını kontrol edip tekrar dene."
+          onRetry={() => {
             // Same load pipeline, fresh run — refs reset so cache hydration and a
             // pending task opener fire again.
             hydratedFromCacheRef.current = false;
@@ -1470,12 +1467,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             setLoading(true);
             setReloadNonce(n => n + 1);
           }}
-          accessibilityRole="button"
-          accessibilityLabel="Tekrar dene"
-          style={{ marginTop: SPACING.lg, backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.sm + 2 }}
-        >
-          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>Tekrar dene</Text>
-        </TouchableOpacity>
+        />
       </View>
     );
   }

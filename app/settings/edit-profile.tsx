@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, ScrollView, Alert, KeyboardAvoidingView, TouchableOpacity, Animated } from 'react-native';
 import { router } from 'expo-router';
 // FIX (ux-pass5): unsaved-changes guard — usePreventRemove intercepts header-back/swipe-back.
 import { useNavigation, usePreventRemove } from '@react-navigation/native';
@@ -14,17 +14,17 @@ import { DateTimeField } from '@/components/ui/DateTimeField';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
+import { GENDER_LABELS_TR, ACTIVITY_LEVEL_LABELS_TR, toOptions } from '@/lib/labels';
 import type {
-  ActivityLevel, Equipment, CookingSkill, BudgetLevel,
+  Gender, ActivityLevel, Equipment, CookingSkill, BudgetLevel,
   TrainingStyle, DietMode, AlcoholFrequency, UnitSystem, PortionLanguage,
 } from '@/types/database';
 
 // ─── Option Arrays ───
 
-const ACTIVITY_OPTIONS: { value: ActivityLevel; label: string }[] = [
-  { value: 'sedentary', label: 'Hareketsiz' }, { value: 'light', label: 'Hafif' },
-  { value: 'moderate', label: 'Orta' }, { value: 'active', label: 'Aktif' }, { value: 'very_active', label: 'Çok Aktif' },
-];
+// Review fix: türetme onboarding.tsx ile birebir kopyaydı — tek kaynaktan (toOptions).
+const GENDER_OPTIONS = toOptions(GENDER_LABELS_TR);
+const ACTIVITY_OPTIONS = toOptions(ACTIVITY_LEVEL_LABELS_TR);
 const EQUIP_OPTIONS: { value: Equipment; label: string }[] = [
   { value: 'home', label: 'Ev' }, { value: 'gym', label: 'Salon' }, { value: 'both', label: 'İkisi' },
 ];
@@ -279,7 +279,7 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
       {/* FIX (audit UI-SET-03): the native Stack header already owns the top safe-area inset;
           adding paddingTop: insets.top here double-counted it. Use the suite-standard plain
           padding (SPACING.md) with only the bottom inset. */}
@@ -292,7 +292,7 @@ export default function EditProfileScreen() {
           <Input label="Boy (cm)" value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" placeholder="175" hint="100–250 cm" error={heightErr} />
           <Input label="Kilo (kg)" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="80" hint="30–300 kg" error={weightErr} />
           <Input label="Doğum Yılı" value={birthYear} onChangeText={setBirthYear} keyboardType="numeric" placeholder="1990" hint="örn: 1990" error={birthYearErr} />
-          <ChipSelect label="Cinsiyet" options={[{ value: 'male', label: 'Erkek' }, { value: 'female', label: 'Kadın' }, { value: 'other', label: 'Diğer' }]} selected={gender} onChange={setGender} />
+          <ChipSelect label="Cinsiyet" options={GENDER_OPTIONS} selected={gender} onChange={setGender} />
         </Card>
 
         {/* Yasam Tarzi */}

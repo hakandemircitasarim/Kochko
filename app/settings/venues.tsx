@@ -7,6 +7,7 @@ import { deleteVenue, type Venue } from '@/services/venues.service';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -65,14 +66,9 @@ export default function VenuesScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
       ) : loadError ? (
-        /* FIX (audit empty-vs-error): fetch hatası 'mekan yok' değil, hata+tekrar dene (daily.tsx kalıbı). */
+        /* FIX (audit empty-vs-error): fetch hatası 'mekan yok' değil, hata+tekrar dene (shared LoadErrorState). */
         <Card>
-          <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-            <Ionicons name="cloud-offline-outline" size={40} color={COLORS.textMuted} />
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>Mekanlar yüklenemedi</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-            <Button title="Tekrar dene" size="sm" onPress={loadVenues} />
-          </View>
+          <LoadErrorState embedded title="Mekanlar yüklenemedi" onRetry={loadVenues} />
         </Card>
       ) : venues.length === 0 ? (
         <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henüz kayıtlı mekan yok. Koçuna "Simit Sarayı'nda yedim" gibi yazdığında mekan otomatik öğrenilir.</Text></Card>

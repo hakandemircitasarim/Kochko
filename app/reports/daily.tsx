@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/Card';
 import { ComplianceScore } from '@/components/reports/ComplianceScore';
 import { DeviationTag } from '@/components/reports/DeviationTag';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 
@@ -103,13 +104,10 @@ export default function DailyReportScreen() {
   if (loading) return <SkeletonScreen cards={3} />;
 
   // FIX (ux-pass5): only replace the screen with the error state when nothing is loaded —
-  // a refresh failure must not hide an already-shown report.
+  // a refresh failure must not hide an already-shown report. (refactor: shared LoadErrorState)
   if (error && !report) return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
-      <Ionicons name="cloud-offline-outline" size={48} color={COLORS.textMuted} />
-      <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>Rapor yüklenemedi</Text>
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>Bağlantını kontrol edip tekrar dene.</Text>
-      <Button title="Tekrar dene" onPress={loadReport} size="lg" />
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <LoadErrorState title="Rapor yüklenemedi" onRetry={loadReport} />
     </View>
   );
 

@@ -6,6 +6,13 @@
  * consolidates shopping lists, tracks storage durations.
  */
 import { supabase } from '@/lib/supabase';
+import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
+
+// Review fix (efficiency): cümle-içi küçük-harf varyantı BİR kez türetilir — eski hâli
+// döngü içinde her öğün için locale-aware lowercase koşturuyordu (7 gün × 4 öğün).
+const MEAL_TR_LOWER: Record<string, string> = Object.fromEntries(
+  Object.entries(MEAL_TYPE_LABELS_TR).map(([k, v]) => [k, v.toLocaleLowerCase('tr-TR')]),
+);
 
 export interface PrepItem {
   recipeName: string;
@@ -180,7 +187,6 @@ export async function generateMealPrepPlan(
   // plan_data may be raw AI days (meal.name) or normalized (meal.suggestion.name).
   type AnyDay = { date?: string; meals?: { meal_type?: string; name?: string; suggestion?: { name: string } }[] };
   const days = (plan.plan_data as AnyDay[]) ?? [];
-  const MEAL_TR: Record<string, string> = { breakfast: 'kahvaltı', lunch: 'öğle', dinner: 'akşam', snack: 'ara öğün' };
   const dishMap = new Map<string, { display: string; count: number; targetMeals: string[] }>();
   for (const day of days) {
     for (const meal of day.meals ?? []) {
@@ -190,7 +196,9 @@ export async function generateMealPrepPlan(
       if (!dishMap.has(key)) dishMap.set(key, { display: name, count: 0, targetMeals: [] });
       const e = dishMap.get(key)!;
       e.count++;
-      e.targetMeals.push(`${dayNameShort(day.date)} ${MEAL_TR[meal.meal_type ?? ''] ?? meal.meal_type ?? ''}`.trim());
+      // Cümle-içi kullanım: kanonik etiketin önceden-küçültülmüş varyantı ("Pzt kahvaltı");
+      // bilinmeyen anahtar eskisi gibi olduğu hâliyle geçer.
+      e.targetMeals.push(`${dayNameShort(day.date)} ${MEAL_TR_LOWER[meal.meal_type ?? ''] ?? meal.meal_type ?? ''}`.trim());
     }
   }
 

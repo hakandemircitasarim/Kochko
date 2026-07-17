@@ -8,7 +8,8 @@ import { View, Text, TouchableOpacity, Animated, ActivityIndicator } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { MEAL_LABELS_TR, type DietMeal } from '@/services/plan.service';
+import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
+import { type DietMeal } from '@/services/plan.service';
 
 interface Props {
   meal: DietMeal;
@@ -75,7 +76,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
         onPress={onToggle}
         activeOpacity={0.7}
         accessibilityRole="button"
-        accessibilityLabel={`${MEAL_LABELS_TR[meal.meal_type]}, ${meal.name}, ${Math.round(meal.total_kcal)} kalori, ${expanded ? 'açık' : 'aç'}`}
+        accessibilityLabel={`${MEAL_TYPE_LABELS_TR[meal.meal_type]}, ${meal.name}, ${Math.round(meal.total_kcal)} kalori, ${expanded ? 'açık' : 'aç'}`}
         accessibilityState={{ expanded }}
         style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
       >
@@ -94,7 +95,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>
-              {MEAL_LABELS_TR[meal.meal_type]}
+              {MEAL_TYPE_LABELS_TR[meal.meal_type]}
             </Text>
             {meal.time ? (
               <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>· {meal.time}</Text>

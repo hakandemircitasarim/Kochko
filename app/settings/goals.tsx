@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Alert, KeyboardAvoidingView, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -19,13 +19,10 @@ import { TempoChart } from '@/components/plan/TempoChart';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { GOAL_LABELS_TR, goalLabelTR } from '@/lib/labels';
 import type { Goal } from '@/types/database';
 
 type GoalType = 'lose_weight' | 'gain_weight' | 'gain_muscle' | 'health' | 'maintain' | 'conditioning';
-const GOAL_LABELS: Record<GoalType, string> = {
-  lose_weight: 'Kilo Ver', gain_weight: 'Kilo Al', gain_muscle: 'Kas Kazan',
-  health: 'Sağlık', maintain: 'Koru', conditioning: 'Kondisyon',
-};
 
 export default function GoalsScreen() {
   const insets = useSafeAreaInsets();
@@ -194,6 +191,9 @@ export default function GoalsScreen() {
       const { error: deactivateError } = await supabase.from('goals').update({ is_active: false }).eq('user_id', user.id).eq('is_active', true);
       if (deactivateError) throw deactivateError;
       stage = 'insert';
+      // Bilinçli lokal: bu, ekrana çizilen bir etiket değil, goals.phase_label olarak
+      // KALICI yazılan faz adı — labels.ts'in dar-segment kısaltmasından ('Kas') bilinçli
+      // olarak daha dolu bir ad ('Kas Geliştirme') kullanır.
       const phaseLabel = goalType === 'lose_weight' ? 'Yağ Yakımı'
         : goalType === 'gain_weight' ? 'Kilo Alma'
         : goalType === 'gain_muscle' ? 'Kas Geliştirme'
@@ -256,7 +256,7 @@ export default function GoalsScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
       <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
         {/* FIX (audit duplicate-title): native header (settings/_layout.tsx) zaten "Hedef Ayarları"
             başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
@@ -325,8 +325,8 @@ export default function GoalsScreen() {
         {/* Goal type selector */}
         <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Hedef Türü</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.lg }}>
-          {(Object.keys(GOAL_LABELS) as GoalType[]).map(g => (
-            <Button key={g} title={GOAL_LABELS[g]} variant={goalType === g ? 'primary' : 'outline'} size="sm" onPress={() => setGoalType(g)} />
+          {(Object.keys(GOAL_LABELS_TR) as GoalType[]).map(g => (
+            <Button key={g} title={GOAL_LABELS_TR[g]} variant={goalType === g ? 'primary' : 'outline'} size="sm" onPress={() => setGoalType(g)} />
           ))}
         </View>
 
@@ -403,7 +403,7 @@ export default function GoalsScreen() {
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                   <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>
-                    {GOAL_LABELS[s.goalType as GoalType] ?? s.goalType}
+                    {goalLabelTR(s.goalType)}
                   </Text>
                   <View style={{
                     paddingVertical: 2, paddingHorizontal: 8, borderRadius: RADIUS.sm,

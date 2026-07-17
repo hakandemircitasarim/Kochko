@@ -1,14 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
-import { getContrastColor } from '@/lib/accessibility';
+import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 
 interface WeeklyReport {
   week_start: string;
@@ -133,21 +133,11 @@ export default function WeeklyReportScreen() {
   if (loading) return <SkeletonScreen cards={3} />;
 
   // FIX (ux-pass5): only replace the screen with the error state when nothing is loaded —
-  // a refresh failure must not hide an already-shown report.
+  // a refresh failure must not hide an already-shown report. (refactor: shared LoadErrorState)
   if (error && !report) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
-        <Text style={{ color: COLORS.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.lg }}>
-          Rapor yüklenemedi. İnternet bağlantını kontrol et.
-        </Text>
-        <TouchableOpacity
-          onPress={loadReport}
-          accessibilityRole="button"
-          accessibilityLabel="Tekrar dene"
-          style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center' }}
-        >
-          <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
-        </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <LoadErrorState title="Rapor yüklenemedi" subtitle="İnternet bağlantını kontrol et." onRetry={loadReport} />
       </View>
     );
   }
