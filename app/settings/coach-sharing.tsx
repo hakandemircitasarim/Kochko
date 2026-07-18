@@ -17,14 +17,16 @@ import { supabase } from '@/lib/supabase';
 import { a11ySwitch, getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
+// FIX (final sweep): labels were SWAPPED/untruthful — 'reports' showed 'Sohbet Geçmişi' and
+// 'metrics' showed 'Profil Bilgileri'. Each key now says what it actually shares.
 const DATA_TYPE_LABELS: Record<string, string> = {
   meals: 'Öğün Kayıtları',
-  metrics: 'Profil Bilgileri',
+  metrics: 'Günlük Metrikler',
   weight: 'Kilo Verileri',
   goals: 'Hedefler',
   plans: 'Haftalık Planlar',
-  chat_summary: 'AI Özeti',
-  reports: 'Sohbet Geçmişi',
+  chat_summary: 'AI Sohbet Özeti',
+  reports: 'Raporlar',
 };
 
 export default function CoachSharingScreen() {
@@ -199,6 +201,15 @@ export default function CoachSharingScreen() {
         </>
       ) : (
         <>
+          {/* FIX (final sweep): honest state — the coach-side viewing panel isn't live yet;
+              don't let the screen imply the coach can already see the data. */}
+          <View style={{ backgroundColor: COLORS.primaryLight, borderWidth: 1, borderColor: COLORS.primary + '33', borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md }}>
+            <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700', marginBottom: 2 }}>Koç paneli yakında</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+              Paylaşım tercihlerin şimdiden kaydediliyor; koçun panel açıldığında seçtiklerini görebilecek.
+            </Text>
+          </View>
+
           {/* Coach info */}
           <Card title="Bağlı Koç">
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

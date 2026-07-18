@@ -274,7 +274,8 @@ serve(async (req: Request) => {
           user_id: profile.id,
           trigger_type: 'snack_hour_nudge',
           priority: 'low',
-          content: `Saat ${match}:00 civarinda atistirma yapma egilimin var. Bir bardak su ic, 5 dakika bekle — istersen o zaman yine degerlendir.`,
+          // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+          content: `Saat ${match}:00 civarında atıştırma yapma eğilimin var. Bir bardak su iç, 5 dakika bekle — istersen o zaman yine değerlendir.`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -323,7 +324,8 @@ serve(async (req: Request) => {
           user_id: profile.id,
           trigger_type: 'motivation_dip',
           priority: 'low',
-          content: `Son haftada biraz yavasladin — olur boyle donemler, hic sorun degil. Bugun sadece tek sey: bir sey ye ve kaydet. O kadar. Yarin devam ederiz.`,
+          // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+          content: `Son haftada biraz yavaşladın — olur böyle dönemler, hiç sorun değil. Bugün sadece tek şey: bir şey ye ve kaydet. O kadar. Yarın devam ederiz.`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -391,7 +393,8 @@ serve(async (req: Request) => {
             user_id: profile.id,
             trigger_type: 'alcohol_next_day',
             priority: 'low',
-            content: `Gecmiste cuma icki → cumartesi ogun atlama kalibini gorduk. Bugun kahvaltiyi atlamamaya calisalim — protein agirlikli hafif birsey yeter. Su 2 bardak.`,
+            // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+            content: `Geçmişte cuma içki → cumartesi öğün atlama kalıbını gördük. Bugün kahvaltıyı atlamamaya çalışalım — protein ağırlıklı hafif bir şey yeter. Su 2 bardak.`,
           });
           totalSent++;
 
@@ -447,7 +450,8 @@ serve(async (req: Request) => {
             user_id: profile.id,
             trigger_type: 'weekly_budget_70',
             priority: 'medium',
-            content: `Haftalik butcenin %${Math.round(pct * 100)}'i tukendi (${consumed}/${weeklyBudget} kcal). Kalan 4 gune ${perDay} kcal/gun duserse dengede kalirsin.`,
+            // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+            content: `Haftalık bütçenin %${Math.round(pct * 100)}'i tükendi (${consumed}/${weeklyBudget} kcal). Kalan 4 güne ${perDay} kcal/gün düşerse dengede kalırsın.`,
           });
           totalSent++;
         } catch { /* non-critical */ }
@@ -498,7 +502,8 @@ serve(async (req: Request) => {
             user_id: profile.id,
             trigger_type: 'weekend_drift',
             priority: 'medium',
-            content: `Son 4 hafta sonu ortalama %${Math.round(avgWeekend)} uyum, hafta ici %${Math.round(avgWeekday)}. Bu hafta sonu icin kucuk bir plan yapalim mi? Cuma aksami hafif yersen cumartesi ogle daha rahat olur.`,
+            // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+            content: `Son 4 hafta sonu ortalama %${Math.round(avgWeekend)} uyum, hafta içi %${Math.round(avgWeekday)}. Bu hafta sonu için küçük bir plan yapalım mı? Cuma akşamı hafif yersen cumartesi öğle daha rahat olur.`,
           });
           totalSent++;
         } catch { /* non-critical */ }
@@ -549,10 +554,11 @@ serve(async (req: Request) => {
           // Reference past wins if any
           const { data: achievements } = await supabaseAdmin
             .from('achievements').select('achievement_type').eq('user_id', profile.id).limit(3);
-          const winRef = (achievements?.length ?? 0) > 0 ? ` ${achievements?.length} basari kazanmisin, bunu kaybetme.` : '';
-          message = `Bir haftadir konusmadik.${winRef} Tek bir ogun kaydiyla geri donebiliriz, baski yok.`;
+          // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+          const winRef = (achievements?.length ?? 0) > 0 ? ` ${achievements?.length} başarı kazanmışsın, bunu kaybetme.` : '';
+          message = `Bir haftadır konuşmadık.${winRef} Tek bir öğün kaydıyla geri dönebiliriz, baskı yok.`;
         } else {
-          message = 'Bir ay oldu. Bugun sadece bir su veya bir kayit. O kadar. Nereden devam edelim?';
+          message = 'Bir ay oldu. Bugün sadece bir su veya bir kayıt. O kadar. Nereden devam edelim?';
         }
 
         await supabaseAdmin.from('coaching_messages').insert({
@@ -563,9 +569,10 @@ serve(async (req: Request) => {
         });
 
         // Push notification (folded in from the former parallel re-engagement loop)
-        const reengageTitle = tier === 'short' ? 'Seni ozledik!'
-          : tier === 'medium' ? 'Bir haftadir gormuyoruz'
-          : 'Yeniden baslayalim mi?';
+        // FIX (final sweep): push titles are user-visible — aksansız → proper Turkish.
+        const reengageTitle = tier === 'short' ? 'Seni özledik!'
+          : tier === 'medium' ? 'Bir haftadır görmüyoruz'
+          : 'Yeniden başlayalım mı?';
         try {
           await sendPushNotification(profile.id, reengageTitle, message, { type: 'reengagement', tier });
         } catch { /* push non-critical */ }
@@ -577,6 +584,20 @@ serve(async (req: Request) => {
     // --- Periodic state end transition (Spec 9) — morning check ---
     // If user's periodic_state_end is 3 days away, send a gentle transition heads-up.
     // If state has already ended, auto-clear and resume.
+    // FIX (final sweep): user-facing TR labels for the periodic_state enum — the end-message
+    // interpolated the RAW enum ("busy_work donemin bitti"). Shared by both the end and the
+    // 3-day-warning paths; extended with the enum values the old inline ternary chain missed.
+    const PERIODIC_STATE_LABELS: Record<string, string> = {
+      ramadan: 'Ramazan',
+      illness: 'Hastalık dönemi',
+      pregnancy: 'Hamilelik',
+      travel: 'Seyahat',
+      holiday: 'Tatil',
+      busy_work: 'Yoğun iş dönemi',
+      exam: 'Sınav dönemi',
+      injury: 'Sakatlık dönemi',
+      custom: 'Özel dönem',
+    };
     for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string; periodic_state: string | null; periodic_state_end: string | null }[]) {
       if (!profile.periodic_state) continue;
       const localH = getUserLocalHour(profile);
@@ -638,11 +659,14 @@ serve(async (req: Request) => {
             status: 'active', paused_at: null,
           }).eq('user_id', profile.id).eq('status', 'paused').then(() => {}, () => {});
 
+          // FIX (final sweep): raw enum leaked to the user ("busy_work donemin bitti") — use the
+          // shared TR label map + proper Turkish copy.
+          const endLabel = PERIODIC_STATE_LABELS[profile.periodic_state] ?? profile.periodic_state;
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
             trigger_type: 'periodic_end',
             priority: 'medium',
-            content: `${profile.periodic_state} donemin bitti. Normal plana donuyoruz — duraklatilmis challenge'lar yeniden aktif.`,
+            content: `${endLabel} bitti. Normal plana dönüyoruz — duraklatılmış challenge'lar yeniden aktif.`,
           });
           totalSent++;
           continue;
@@ -662,24 +686,21 @@ serve(async (req: Request) => {
             .gte('created_at', new Date(Date.now() - 4 * 86400000).toISOString());
           if ((alreadySent ?? 0) > 0) continue;
 
-          const stateLabel = profile.periodic_state === 'ramadan' ? 'Ramazan'
-            : profile.periodic_state === 'illness' ? 'Hastalik donemi'
-            : profile.periodic_state === 'pregnancy' ? 'Hamilelik'
-            : profile.periodic_state === 'travel' ? 'Seyahat'
-            : profile.periodic_state === 'holiday' ? 'Tatil'
-            : profile.periodic_state;
+          // FIX (final sweep): reuse the shared TR label map (covers busy_work/exam/injury/custom
+          // which the old inline chain leaked raw) + proper Turkish copy.
+          const stateLabel = PERIODIC_STATE_LABELS[profile.periodic_state] ?? profile.periodic_state;
 
           const advice = profile.periodic_state === 'ramadan'
-            ? 'Sonraki 3 gunde normal ogun saatlerine gec, IF yi kademeli yeniden etkinlestirelim.'
+            ? 'Sonraki 3 günde normal öğün saatlerine geç, IF\'yi kademeli yeniden etkinleştirelim.'
             : profile.periodic_state === 'illness'
-            ? 'Sonraki 3 gunde hafif antrenmanla geri baslayip, kalori hedefine yavas yaklasalim.'
-            : 'Sonraki 3 gunde normal rutine kademeli donus planliyalim.';
+            ? 'Sonraki 3 günde hafif antrenmanla geri başlayıp, kalori hedefine yavaş yaklaşalım.'
+            : 'Sonraki 3 günde normal rutine kademeli dönüş planlayalım.';
 
           await supabaseAdmin.from('coaching_messages').insert({
             user_id: profile.id,
             trigger_type: 'periodic_transition_3d',
             priority: 'medium',
-            content: `${stateLabel} 3 gun sonra bitiyor. ${advice}`,
+            content: `${stateLabel} 3 gün sonra bitiyor. ${advice}`,
           });
           totalSent++;
         }
@@ -761,7 +782,8 @@ serve(async (req: Request) => {
           user_id: profile.id,
           trigger_type: 'habit_stack',
           priority: 'medium',
-          content: `"${latestActive.name ?? latestActive.key}" aliskanligini %${Math.round(compliance)} uyumla 2 haftadir tutturuyorsun — harika! Sira "${nextHabit.label}" aliskanligina geldi. ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Eklemek ister misin?`,
+          // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+          content: `"${latestActive.name ?? latestActive.key}" alışkanlığını %${Math.round(compliance)} uyumla 2 haftadır tutturuyorsun — harika! Sıra "${nextHabit.label}" alışkanlığına geldi. ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Eklemek ister misin?`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -804,7 +826,8 @@ serve(async (req: Request) => {
           user_id: profile.id,
           trigger_type: 'mvd_reset',
           priority: 'low',
-          content: `Dun MVD modunu kullandin. Bugun normal plana donuyoruz — yumusak baslayalim, istersen kayitlari ben yaparim.`,
+          // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+          content: `Dün MVD modunu kullandın. Bugün normal plana dönüyoruz — yumuşak başlayalım, istersen kayıtları ben yaparım.`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -888,7 +911,8 @@ serve(async (req: Request) => {
             user_id: profile.id,
             trigger_type: 'deload_suggestion',
             priority: 'medium',
-            content: `5+ haftadir yogun calisiyorsun (${heavyCount} agir seans). Bu hafta deload: ayni hareketler %60-70 agirlik, dusuk set. Onaylarsan plani buna gore ayarlayalim.`,
+            // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+            content: `5+ haftadır yoğun çalışıyorsun (${heavyCount} ağır seans). Bu hafta deload: aynı hareketler %60-70 ağırlık, düşük set. Onaylarsan planı buna göre ayarlayalım.`,
           });
           totalSent++;
         } catch { /* non-critical */ }
@@ -946,7 +970,8 @@ serve(async (req: Request) => {
                 user_id: profile.id,
                 trigger_type: 'progressive_overload',
                 priority: 'medium',
-                content: `${lift}: 2 seanstir ${TARGET_REPS}+ rep tutturuyorsun. Bir sonraki seans ${sessionList[0].weight}kg -> ${nextWeight}kg deneyelim.`,
+                // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+                content: `${lift}: 2 seanstır ${TARGET_REPS}+ rep tutturuyorsun. Bir sonraki seans ${sessionList[0].weight}kg -> ${nextWeight}kg deneyelim.`,
               });
               totalSent++;
               break; // only one lift per user per Monday
@@ -1188,7 +1213,8 @@ serve(async (req: Request) => {
                 if (allExceeded) {
                   await supabaseAdmin.from('coaching_messages').insert({
                     user_id: profile.id,
-                    content: 'MINI CUT ONERISI: Hedef kilonun 1.5kg ustundesin. 2-4 haftalik mini cut donemi onerilir.',
+                    // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+                    content: 'MİNİ CUT ÖNERİSİ: Hedef kilonun 1.5kg üstündesin. 2-4 haftalık mini cut dönemi önerilir.',
                     trigger_type: 'mini_cut_suggestion',
                     priority: 'high',
                     read: false,
@@ -1231,13 +1257,14 @@ serve(async (req: Request) => {
               (Date.now() - new Date(achievement.achieved_at as string).getTime()) / (7 * 24 * 60 * 60 * 1000)
             ));
             if (weeksSinceGoalReached === 4 || weeksSinceGoalReached === 12 || weeksSinceGoalReached === 24) {
+              // FIX (final sweep): aksansız + typo ("Cogul insan") → proper Turkish, meaning unchanged.
               let reinforcementMsg: string;
               if (weeksSinceGoalReached >= 24) {
-                reinforcementMsg = '6 aydir hedef kilonda tutunuyorsun! Bu inanilmaz bir basari. Cogul insan bunu basaramaz.';
+                reinforcementMsg = '6 aydır hedef kilonda tutunuyorsun! Bu inanılmaz bir başarı. Çoğu insan bunu başaramaz.';
               } else if (weeksSinceGoalReached >= 12) {
-                reinforcementMsg = '3 aydir bakim modunda basarilisin. Aliskanliklarinin gucunun kaniti bu.';
+                reinforcementMsg = '3 aydır bakım modunda başarılısın. Alışkanlıklarının gücünün kanıtı bu.';
               } else {
-                reinforcementMsg = '1 aydir hedef kilonda kalmaya devam ediyorsun. Harika gidiyorsun!';
+                reinforcementMsg = '1 aydır hedef kilonda kalmaya devam ediyorsun. Harika gidiyorsun!';
               }
               // Only send once per milestone (check not already sent this week)
               const oneWeekAgo = new Date(Date.now() - 7 * 86400000).toISOString();

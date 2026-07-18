@@ -186,7 +186,8 @@ export async function handleUndo(userId: string, intendedType: UndoTargetType | 
     const typeLabel = intendedType === 'meal' ? 'öğün' : intendedType === 'workout' ? 'antrenman' : intendedType === 'supplement' ? 'takviye' : null;
     return {
       handled: true,
-      response: typeLabel ? `Geri alinacak bir ${typeLabel} kaydi bulunamadi.` : 'Geri alinacak bir kayit bulunamadi.',
+      // FIX (final sweep): aksansız → proper Turkish (matches the accented success string below).
+      response: typeLabel ? `Geri alınacak bir ${typeLabel} kaydı bulunamadı.` : 'Geri alınacak bir kayıt bulunamadı.',
       undoneAction: null,
       shouldContinueNormal: false,
     };

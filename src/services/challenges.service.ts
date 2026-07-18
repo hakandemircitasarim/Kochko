@@ -18,7 +18,8 @@ export interface Challenge {
 // System-defined challenges (Spec 13.5)
 export const SYSTEM_CHALLENGES = [
   { title: '7 Gun Seker Yok', target: { metric: 'no_sugar', goal: 1, period: 'daily', duration_days: 7 } },
-  { title: '30 Gun 10.000 Adim', target: { metric: 'steps', goal: 10000, period: 'daily', duration_days: 30 } },
+  // FIX (final sweep): restore Turkish diacritics in the user-facing preset title.
+  { title: '30 Gün 10.000 Adım', target: { metric: 'steps', goal: 10000, period: 'daily', duration_days: 30 } },
   { title: '14 Gun Protein Hedefi', target: { metric: 'protein_met', goal: 1, period: 'daily', duration_days: 14 } },
   { title: '14 Gun Su Hedefi', target: { metric: 'water_met', goal: 1, period: 'daily', duration_days: 14 } },
   { title: '7 Gun Her Gun Antrenman', target: { metric: 'workout', goal: 1, period: 'daily', duration_days: 7 } },

@@ -192,6 +192,7 @@ async function invokeChat(
   }
   let lastFriendly = 'Bağlantı hatası. Lütfen tekrar dene.';
   let serverRetries = 0; // 5xx/AI-down attempts already spent (cap at 1 extra)
+  let busyRetries = 0;   // request-journal 'busy' interims absorbed (cap 3 ≈ +15s)
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Promise.race gives us a hard upper bound on wait time. Supabase client
@@ -209,7 +210,25 @@ async function invokeChat(
       ),
     ]);
     const { data, error } = result as { data: unknown; error: { message: string } | null };
-    if (!error) return { data: data as ChatResponse, error: null };
+    if (!error) {
+      const resp = data as (ChatResponse & { busy?: boolean }) | null;
+      // FIX (final sweep): request-journal'ın 'busy' ara yanıtı ("Mesajını işliyorum…")
+      // istemcide hiç okunmuyordu — koçun NİHAİ balonu gibi görünüyor ve mesajı yeniden
+      // yazan kullanıcı YENİ idempotency anahtarıyla ikinci bir tura (çift kayıt riski)
+      // yol açıyordu. AYNI anahtarla yeniden dene: journal, tur commit'lenince gerçek
+      // zarfı aynen döndürür. attempt-- bilinçli — busy denemeleri zaman-aşımı/5xx
+      // bütçesinden yemez (kendi 3'lük tavanı var).
+      if (resp?.busy === true) {
+        if (busyRetries < 3) {
+          busyRetries++;
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          attempt--;
+          continue;
+        }
+        return { data: null, error: 'Yanıtın hazırlanması uzun sürdü — birkaç saniye içinde sohbete düşecek.' };
+      }
+      return { data: resp as ChatResponse, error: null };
+    }
 
     // Timeout: retry unless we're on the last attempt. The retry loop will hit
     // the same timeout again if the server really is down.
@@ -542,7 +561,7 @@ export async function markTaskOpenerFired(userId: string, taskModeHint: string):
  * generation leaked "Profiline bakarak 7 günlük menünü hazırladım" into the thread
  * (ux-pass3, emulator-verified). Session-level exclusion is the robust discriminator.
  */
-async function getPlanSessionIds(userId: string): Promise<string[]> {
+export async function getPlanSessionIds(userId: string): Promise<string[]> {
   const { data } = await supabase
     .from('chat_sessions')
     .select('id')

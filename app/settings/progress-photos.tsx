@@ -8,6 +8,8 @@ import { View, Text, ScrollView, Image, TouchableOpacity, Alert, Dimensions, Mod
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+// FIX (final sweep): legacy API — documentDirectory/copyAsync (same import style as export.service.ts).
+import * as FileSystem from 'expo-file-system/legacy';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { usePremium } from '@/hooks/usePremium';
@@ -95,11 +97,25 @@ export default function ProgressPhotosScreen() {
 
   const savePhoto = async (uri: string) => {
     if (!user?.id) return;
+    // FIX (final sweep): ImagePicker returns a CACHE uri — the OS can purge the cache and
+    // the photo would be permanently lost. Copy into the app's document directory first and
+    // store THAT path. Fix-forward only: existing cache-URI rows are left as-is.
+    let storedUri = uri;
+    try {
+      const dir = FileSystem.documentDirectory + 'progress-photos/';
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); // idempotent (mkdir -p)
+      const dest = dir + Date.now() + '.jpg';
+      await FileSystem.copyAsync({ from: uri, to: dest });
+      storedUri = dest;
+    } catch (e) {
+      // Copy failed → fall back to the picker uri (a save now beats losing the photo).
+      console.warn('progress photo copy to document dir failed', e);
+    }
     // Store locally - photos are NOT sent to AI (Spec 3.1).
     // storage_path holds the on-device URI; nothing is uploaded to cloud/AI.
     const { data, error } = await supabase.from('progress_photos').insert({
       user_id: user.id,
-      storage_path: uri,
+      storage_path: storedUri,
       pose_type: selectedPose,
       photo_date: new Date().toISOString().slice(0, 10),
       note: null,
@@ -107,6 +123,8 @@ export default function ProgressPhotosScreen() {
     if (error) {
       // FIX (audit raw-error): fixed Turkish copy for the user; raw PostgREST error to console only.
       console.warn('progress_photos insert failed', error);
+      // FIX (final sweep): don't leave an orphan copy behind when the DB row failed.
+      if (storedUri !== uri) FileSystem.deleteAsync(storedUri, { idempotent: true }).catch(() => {});
       Alert.alert('Kaydedilemedi', 'Fotoğraf kaydedilemedi, tekrar dene.');
       return;
     }
@@ -117,6 +135,12 @@ export default function ProgressPhotosScreen() {
     Alert.alert('Sil', 'Bu fotoğrafı silmek istiyor musun?', [
       { text: 'İptal', style: 'cancel' },
       { text: 'Sil', style: 'destructive', onPress: async () => {
+        // FIX (final sweep): also remove the copied file from document storage (best-effort;
+        // only our own copies — legacy cache/gallery URIs are left alone).
+        const photo = photos.find(p => p.id === id);
+        if (photo?.storage_path && FileSystem.documentDirectory && photo.storage_path.startsWith(FileSystem.documentDirectory)) {
+          FileSystem.deleteAsync(photo.storage_path, { idempotent: true }).catch(() => {});
+        }
         await supabase.from('progress_photos').delete().eq('id', id);
         setPhotos(prev => prev.filter(p => p.id !== id));
       }},

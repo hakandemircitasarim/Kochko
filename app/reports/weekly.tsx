@@ -32,6 +32,14 @@ interface AlcoholWeeklyData {
   weekendKcal: number;
 }
 
+// FIX (final sweep): plan_revision keys are raw English identifiers (calorie_adj…) — map the
+// known ones to Turkish; unknown keys keep the old s/_/ / fallback.
+const PLAN_REVISION_LABELS: Record<string, string> = {
+  calorie_adj: 'Kalori ayarı',
+  protein_adj: 'Protein ayarı',
+  workout_change: 'Antrenman değişikliği',
+};
+
 export default function WeeklyReportScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
@@ -269,7 +277,7 @@ export default function WeeklyReportScreen() {
               {Object.entries(report.plan_revision).map(([key, val]) =>
                 val != null ? (
                   <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs }}>
-                    <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>{key.replace(/_/g, ' ')}</Text>
+                    <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>{PLAN_REVISION_LABELS[key] ?? key.replace(/_/g, ' ')}</Text>
                     <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>{String(val)}</Text>
                   </View>
                 ) : null

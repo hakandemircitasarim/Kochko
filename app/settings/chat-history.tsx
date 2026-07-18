@@ -11,6 +11,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
+import { getPlanSessionIds } from '@/services/chat.service';
 import { useAuthStore } from '@/stores/auth.store';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -67,20 +68,32 @@ export default function ChatHistoryScreen() {
   const [dateTo, setDateTo] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  const loadSessions = useCallback(() => {
+  const loadSessions = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
     setLoadError(false);
-    supabase.from('chat_sessions').select('*').eq('user_id', user.id).order('started_at', { ascending: false }).limit(20)
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn('chat_sessions load failed', error);
-          setLoadError(true);
-        } else {
-          setSessions((data ?? []) as ChatSession[]);
-        }
-        setLoading(false);
-      });
+    try {
+      // FIX (final sweep): plan üretiminin görünmez makine oturumları (topic_tags
+      // plan_diet/plan_workout) burada listeleniyor, "[PLAN_INIT] …" satırları kullanıcı
+      // mesajı gibi görünüyordu — koç thread'inin kullandığı aynı oturum-seviyesi
+      // dışlamayla süz.
+      const planIds = await getPlanSessionIds(user.id);
+      let q = supabase.from('chat_sessions').select('*').eq('user_id', user.id)
+        .order('started_at', { ascending: false }).limit(20);
+      if (planIds.length > 0) q = q.not('id', 'in', `(${planIds.join(',')})`);
+      const { data, error } = await q;
+      if (error) {
+        console.warn('chat_sessions load failed', error);
+        setLoadError(true);
+      } else {
+        setSessions((data ?? []) as ChatSession[]);
+      }
+    } catch (e) {
+      console.warn('chat_sessions load failed', e);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
   useEffect(() => { loadSessions(); }, [loadSessions]);

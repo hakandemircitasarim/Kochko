@@ -3,7 +3,7 @@
  * Flat design, no gradients
  */
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
@@ -35,14 +35,17 @@ interface StatCardProps {
   // eskiden yalnız ekran okuyucuya görünürdü.
   actionChip?: string;
   valueMuted?: boolean;
+  // FIX (final sweep): opt-out of the default "label, value" screen-reader text
+  // (e.g. 'Adım sayımı yakında' instead of 'Adım, Yakında').
+  a11yLabel?: string;
 }
 
-function StatCard({ icon, value, label, color, sublabel, progress, onPress, a11yHint, actionChip, valueMuted }: StatCardProps) {
+function StatCard({ icon, value, label, color, sublabel, progress, onPress, a11yHint, actionChip, valueMuted, a11yLabel }: StatCardProps) {
   const { colors } = useTheme();
   const Wrapper = onPress ? TouchableOpacity : View;
   const a11yProps = onPress
-    ? getButtonA11yProps(`${label}, ${value}`, a11yHint ?? 'Eklemek için dokun')
-    : { accessibilityRole: 'text' as const, accessibilityLabel: `${label}, ${value}` };
+    ? getButtonA11yProps(a11yLabel ?? `${label}, ${value}`, a11yHint ?? 'Eklemek için dokun')
+    : { accessibilityRole: 'text' as const, accessibilityLabel: a11yLabel ?? `${label}, ${value}` };
 
   return (
     <Wrapper
@@ -116,7 +119,11 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
         />
         <StatCard
           icon="footsteps"
-          value={steps ? steps.toLocaleString('tr-TR') : '-'}
+          // FIX (final sweep): expo-sensors Pedometer is iOS-only — on Android the tile
+          // showed '-' forever. Be honest: 'Yakında' (muted) until a step source exists.
+          value={Platform.OS === 'android' ? 'Yakında' : steps ? steps.toLocaleString('tr-TR') : '-'}
+          valueMuted={Platform.OS === 'android'}
+          a11yLabel={Platform.OS === 'android' ? 'Adım sayımı yakında' : undefined}
           label="Adım"
           color={METRIC_COLORS.steps}
         />

@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/stores/auth.store';
+import { isoDateMondayOfWeek } from '@/services/plan.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -33,6 +35,12 @@ export default function HouseholdScreen() {
   const [householdName, setHouseholdName] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // FIX (final sweep): checked-off items were component-local and vanished on unmount.
+  // Persist per household + ISO week (Monday anchor, same helper as the plan flow) so the
+  // list survives navigation and resets naturally when a new week's menu lands.
+  const checkedStorageKey = (householdId: string) =>
+    `@kochko_household_checked:${householdId}:${isoDateMondayOfWeek(new Date())}`;
+
   const loadData = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
@@ -46,6 +54,11 @@ export default function HouseholdScreen() {
         ]);
         setMembers(m);
         setShoppingList(s);
+        // FIX (final sweep): hydrate this week's checked-off items (best-effort).
+        try {
+          const stored = await AsyncStorage.getItem(checkedStorageKey(h.id));
+          setCheckedItems(stored ? new Set(JSON.parse(stored) as string[]) : new Set());
+        } catch { /* corrupt/missing entry → start unchecked */ }
       }
     } catch (e) {
       console.error('Household load error', e);
@@ -121,12 +134,14 @@ export default function HouseholdScreen() {
   };
 
   const toggleCheck = (key: string) => {
-    setCheckedItems(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    const next = new Set(checkedItems);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setCheckedItems(next);
+    // FIX (final sweep): write-through so the checked state survives unmount (best-effort).
+    if (household) {
+      AsyncStorage.setItem(checkedStorageKey(household.id), JSON.stringify([...next])).catch(() => {});
+    }
   };
 
   if (loading) {
@@ -265,7 +280,10 @@ export default function HouseholdScreen() {
                       </Text>
                     </View>
                     <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>
-                      {item.totalAmount} {item.unit}
+                      {/* FIX (final sweep): totalAmount = MEMBER COUNT, unit = the full amount string —
+                          '{count} {unit}' rendered '1 500 g' as if it were 1500 g. Show the amount,
+                          plus how many members need it when shared. */}
+                      {`${item.unit}${item.totalAmount > 1 ? ` · ${item.totalAmount} kişi` : ''}`}
                     </Text>
                   </TouchableOpacity>
                 );

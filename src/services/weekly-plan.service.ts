@@ -159,6 +159,29 @@ export async function getCurrentWeeklyPlan(): Promise<WeeklyPlan | null> {
   return normalizeWeeklyPlan(data);
 }
 
+// FIX (final sweep): minimal mirror of chat.service's extractStatus/extractServerError (not
+// exported there) — supabase-js FunctionsHttpError hides the real HTTP status and body in
+// error.context (a Response); without reading them every failure collapses into one message.
+function extractInvokeStatus(error: unknown): number | null {
+  const ctx = (error as { context?: unknown } | null)?.context;
+  if (ctx && typeof ctx === 'object' && 'status' in (ctx as object)) {
+    const s = (ctx as { status?: unknown }).status;
+    return typeof s === 'number' ? s : null;
+  }
+  return null;
+}
+
+async function extractInvokeServerError(error: unknown): Promise<string | null> {
+  const ctx = (error as { context?: unknown } | null)?.context;
+  if (ctx && typeof (ctx as { clone?: unknown }).clone === 'function') {
+    try {
+      const body = await (ctx as Response).clone().json();
+      if (body && typeof body === 'object' && 'error' in body) return String((body as { error: unknown }).error);
+    } catch { /* body not JSON or already consumed */ }
+  }
+  return null;
+}
+
 export async function generateWeeklyPlan(modificationRequest?: string): Promise<{ data: WeeklyPlan | null; error: string | null }> {
   // FIX (audit AI-PLN-02): this is the SOLE production caller of the ai-plan edge function, and it
   // ALWAYS sends body.type='weekly'. The edge function's daily branch is dormant (it would write a
@@ -170,7 +193,16 @@ export async function generateWeeklyPlan(modificationRequest?: string): Promise<
   const { error } = await supabase.functions.invoke('ai-plan', { body });
   // Never surface the raw supabase-js 'Edge Function returned a non-2xx status
   // code' to the user (e.g. on an OpenAI outage) — show a friendly Turkish msg.
-  if (error) return { data: null, error: 'Menü şu an oluşturulamıyor, birazdan tekrar dene.' };
+  if (error) {
+    // FIX (final sweep): the server's 403 {error:'needs_premium'} upsell died into the generic
+    // copy — a free user was told "try again later" for a paywalled feature. Surface it.
+    const status = extractInvokeStatus(error);
+    const serverErr = await extractInvokeServerError(error);
+    if (status === 403 && serverErr === 'needs_premium') {
+      return { data: null, error: "Haftalık menü planlama Premium özelliğidir — Premium'a geçerek açabilirsin." };
+    }
+    return { data: null, error: 'Menü şu an oluşturulamıyor, birazdan tekrar dene.' };
+  }
   // The function's response body is the raw AI JSON (no row id) — the persisted
   // weekly_plans row is the source of truth, so re-read it for the screen.
   const plan = await getCurrentWeeklyPlan();

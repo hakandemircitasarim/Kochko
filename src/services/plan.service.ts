@@ -177,36 +177,11 @@ export async function getHistory(userId: string, planType: PlanType, limit = 20)
 }
 
 // ─── Writes ──────────────────────────────────────────────────────────────
-
-/**
- * Create a new draft. Fails if one already exists (partial unique index).
- * Caller should first check getDraft() and either resume or discard the
- * existing draft before creating a new one.
- */
-export async function createDraft(
-  userId: string,
-  planType: PlanType,
-  initialSnapshot: PlanData,
-): Promise<PlanRow | null> {
-  const weekStart = initialSnapshot.week_start || isoDateMondayOfWeek(new Date());
-  const { data, error } = await supabase
-    .from('weekly_plans')
-    .insert({
-      user_id: userId,
-      plan_type: planType,
-      status: 'draft',
-      week_start: weekStart,
-      plan_data: { ...initialSnapshot, version: 1 },
-      user_revisions: [],
-    })
-    .select('*')
-    .limit(1);
-  if (error) {
-    console.warn('[plan.service] createDraft failed:', error.message);
-    return null;
-  }
-  return (data as PlanRow[] | null)?.[0] ?? null;
-}
+// Yarım-iş temizliği (final sweep): createDraft ve approveDraft SİLİNDİ — taslak
+// yaratma/onaylama artık yalnız sunucuda (ai-chat: json_object üretim + atomik
+// promote_weekly_plan RPC'si). Buradaki eski kopyalar non-atomikti ve hafta
+// ankrajı yapmıyordu; çağıranı kalmadığı hâlde durması gelecekte yanlış yolu
+// davet ediyordu.
 
 /**
  * Replace the entire plan_data of the current draft with a new snapshot
@@ -239,51 +214,6 @@ export async function applySnapshot(
     .select('*')
     .limit(1);
   return (data as PlanRow[] | null)?.[0] ?? null;
-}
-
-/**
- * Promote draft → active. Archives the previous active (superseded) atomically
- * as far as the client can manage; the partial unique index would reject a
- * collision, so we sequence: archive old → promote new. If the network drops
- * between steps the user ends up with 0 active plans; next approve retries.
- */
-export async function approveDraft(
-  userId: string,
-  planType: PlanType,
-  draftId: string,
-  profileSnapshot: Record<string, unknown>,
-): Promise<{ activated: PlanRow | null; error?: string }> {
-  // Step 1 — archive current active. getActive now THROWS on fetch error (error ≠
-  // empty); keep this function's documented no-throw {activated, error} contract.
-  let previousActive: PlanRow | null = null;
-  try {
-    previousActive = await getActive(userId, planType);
-  } catch {
-    return { activated: null, error: 'Mevcut plan okunamadı — bağlantını kontrol edip tekrar dene.' };
-  }
-  if (previousActive) {
-    await supabase
-      .from('weekly_plans')
-      .update({ status: 'archived', archived_reason: 'superseded', superseded_by: draftId })
-      .eq('id', previousActive.id);
-  }
-
-  // Step 2 — promote draft.
-  const { data, error } = await supabase
-    .from('weekly_plans')
-    .update({
-      status: 'active',
-      approved_at: new Date().toISOString(),
-      approval_snapshot: profileSnapshot,
-    })
-    .eq('id', draftId)
-    .select('*')
-    .limit(1);
-
-  if (error) {
-    return { activated: null, error: error.message };
-  }
-  return { activated: (data as PlanRow[] | null)?.[0] ?? null };
 }
 
 /**

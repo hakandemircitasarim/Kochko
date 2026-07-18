@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView } from 'react-native';
+import { View, Text, ScrollView, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getActiveChallenges, getCompletedChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
@@ -155,7 +155,8 @@ export default function ChallengesScreen() {
 
       {showSystem && (
         <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
-          {SYSTEM_CHALLENGES.map((c, i) => (
+          {/* FIX (final sweep): steps preset hidden on Android — Pedometer is iOS-only, the challenge could never score. */}
+          {SYSTEM_CHALLENGES.filter(c => Platform.OS !== 'android' || c.target.metric !== 'steps').map((c, i) => (
             <Card key={i}>
               <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>{c.title}</Text>
               <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 4 }}>{c.target.duration_days} gün</Text>
@@ -184,7 +185,8 @@ export default function ChallengesScreen() {
           />
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginBottom: SPACING.sm }}>Tip</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: SPACING.sm }}>
-            {(['water', 'protein', 'steps', 'sleep', 'custom'] as const).map(t => (
+            {/* FIX (final sweep): steps type hidden on Android — Pedometer is iOS-only, the metric would never fill. */}
+            {(['water', 'protein', 'steps', 'sleep', 'custom'] as const).filter(t => Platform.OS !== 'android' || t !== 'steps').map(t => (
               <Button
                 key={t}
                 title={t === 'water' ? 'Su' : t === 'protein' ? 'Protein' : t === 'steps' ? 'Adım' : t === 'sleep' ? 'Uyku' : 'Özel'}

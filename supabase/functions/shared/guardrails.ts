@@ -400,7 +400,8 @@ export function detectEmergency(text: string): { isEmergency: boolean; message: 
     if (lower.includes(phrase)) {
       return {
         isEmergency: true,
-        message: 'Bu ciddi bir belirti. Lutfen HEMEN 112\'yi ara veya en yakin acil servise git. Ben yasam tarzi kocuyum, acil tibbi durumlar icin yetkim yok. Sagligin her seyden onemli.',
+        // FIX (final sweep): aksansız → proper Turkish, meaning unchanged. Phrase list above untouched.
+        message: 'Bu ciddi bir belirti. Lütfen HEMEN 112\'yi ara veya en yakın acil servise git. Ben yaşam tarzı koçuyum, acil tıbbi durumlar için yetkim yok. Sağlığın her şeyden önemli.',
       };
     }
   }
@@ -457,7 +458,9 @@ export function detectCrisis(text: string): { isCrisis: boolean; message: string
   if (crisisPhrases.some(p => lower.includes(p)) || CRISIS_RE.some(r => r.test(lower))) {
     return {
       isCrisis: true,
-      message: 'Soyledigin sey beni cok endiselendirdi ve bunu benimle paylastigin icin degerlisin. Yalniz degilsin. Lutfen su an guvende degilsen ya da kendine zarar verme dusuncen guicluyse HEMEN 112\'yi ara. Ayrica guvendigin birine — bir yakinina, bir doktora veya bir psikolog/psikiyatriste — hemen ulas; bu duygularla bas etmende profesyonel destek cok yardimci olur. Ben bir yasam tarzi kocuyum ve bu konuda profesyonel destegin yerini tutamam, ama senin icin gercekten endiseleniyorum. Hayatin cok degerli.',
+      // FIX (final sweep): crisis reply was aksansız ASCII with a literal typo ("guicluyse") —
+      // proper diacritical Turkish, meaning unchanged. Detection lists/regexes above untouched.
+      message: 'Söylediğin şey beni çok endişelendirdi ve bunu benimle paylaştığın için değerlisin. Yalnız değilsin. Lütfen şu an güvende değilsen ya da kendine zarar verme düşüncen güçlüyse HEMEN 112\'yi ara. Ayrıca güvendiğin birine — bir yakınına, bir doktora veya bir psikolog/psikiyatriste — hemen ulaş; bu duygularla baş etmende profesyonel destek çok yardımcı olur. Ben bir yaşam tarzı koçuyum ve bu konuda profesyonel desteğin yerini tutamam, ama senin için gerçekten endişeleniyorum. Hayatın çok değerli.',
     };
   }
   return { isCrisis: false, message: '' };
@@ -482,7 +485,9 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
       return {
         isRisk: true,
         severity: 'high',
-        message: 'Bu konuda sana yardimci olabilecek bir profesyonele ulasman cok onemli. Turkiye Yeme Bozukluklari Dernegi veya bir uzman psikolog ile gorusmenizi oneririm. Yalniz degilsin.',
+        // FIX (final sweep): aksansız → proper Turkish; also "gorusmenizi" (siz) normalized to
+        // "görüşmeni" to match the informal "sana/ulaşman" register of the same sentence.
+        message: 'Bu konuda sana yardımcı olabilecek bir profesyonele ulaşman çok önemli. Türkiye Yeme Bozuklukları Derneği veya bir uzman psikolog ile görüşmeni öneririm. Yalnız değilsin.',
       };
     }
   }
@@ -503,7 +508,8 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
       return {
         isRisk: true,
         severity: 'medium',
-        message: 'Gunde bu kadar dusuk kalori (gunluk minimumun cok altinda) saglik icin riskli ve surdurulemez. Bu konuda bir uzman diyetisyen veya psikolog ile gorusmeni oneririm — saglikli ve kalici bir tempo icin birlikte daha guvenli bir plan kurabiliriz.',
+        // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+        message: 'Günde bu kadar düşük kalori (günlük minimumun çok altında) sağlık için riskli ve sürdürülemez. Bu konuda bir uzman diyetisyen veya psikolog ile görüşmeni öneririm — sağlıklı ve kalıcı bir tempo için birlikte daha güvenli bir plan kurabiliriz.',
       };
     }
   }
@@ -511,7 +517,8 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
     return {
       isRisk: true,
       severity: 'medium',
-      message: 'Cok hizli kilo verme istegini anliyorum ama saglikli kayip haftada 0.5-1 kg arasidir; daha hizlisi kas kaybi ve saglik riski getirir. Istersen bir uzman diyetisyen/psikolog destegiyle guvenli ve kalici bir plan kuralim.',
+      // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+      message: 'Çok hızlı kilo verme isteğini anlıyorum ama sağlıklı kayıp haftada 0.5-1 kg arasıdır; daha hızlısı kas kaybı ve sağlık riski getirir. İstersen bir uzman diyetisyen/psikolog desteğiyle güvenli ve kalıcı bir plan kuralım.',
     };
   }
 
@@ -522,7 +529,8 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
     return {
       isRisk: true,
       severity: 'medium',
-      message: 'Anlattiklarin beni endiselendiiriyor. Bir uzman diyetisyen veya psikolog ile gorusmeni oneririm. Bu konuda profesyonel destek almak guclu bir adimdir.',
+      // FIX (final sweep): typo ("endiselendiiriyor") + aksansız → proper Turkish, meaning unchanged.
+      message: 'Anlattıkların beni endişelendiriyor. Bir uzman diyetisyen veya psikolog ile görüşmeni öneririm. Bu konuda profesyonel destek almak güçlü bir adımdır.',
     };
   }
 
@@ -541,7 +549,8 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
       return {
         isRisk: true,
         severity: 'medium',
-        message: 'Anlattiklarin beni endiselendiiriyor. Bir uzman diyetisyen veya psikolog ile gorusmeni oneririm. Bu konuda profesyonel destek almak guclu bir adimdir.',
+        // FIX (final sweep): typo ("endiselendiiriyor") + aksansız → proper Turkish, meaning unchanged.
+        message: 'Anlattıkların beni endişelendiriyor. Bir uzman diyetisyen veya psikolog ile görüşmeni öneririm. Bu konuda profesyonel destek almak güçlü bir adımdır.',
       };
     }
   }

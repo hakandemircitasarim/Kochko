@@ -251,7 +251,8 @@ serve(async (req: Request) => {
       if (injectionDetected) {
         // #ux-fix (re-greeting/self-intro spam, live 07-11): mid-thread "Ben Kochko..." reads broken
         // in the ONE continuous conversation — the refusal keeps the role anchor without re-introducing.
-        const rejectMsg = 'Bu konuda yardimci olamam — benim alanim beslenme ve antrenman. Bu konularla ilgili bir sorun varsa konusalim.';
+        // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+        const rejectMsg = 'Bu konuda yardımcı olamam — benim alanım beslenme ve antrenman. Bu konularla ilgili bir sorun varsa konuşalım.';
         await storeMessages(userId, message, rejectMsg, undefined, undefined, undefined, undefined, session_id);
         return respond({ message: rejectMsg, actions: [], task_mode: 'coaching' });
       }
@@ -1001,12 +1002,14 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
         // acknowledgement if the model's original reply was empty (otherwise its own
         // narration — "harika, ~350 kcal" — is fine and the UI shows the saved chip).
         if (!assistantMessage.trim()) {
-          assistantMessage = 'Tamamdir, ogununu kaydediyorum.';
+          // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+          assistantMessage = 'Tamamdır, öğününü kaydediyorum.';
         }
       } else {
         // Couldn't parse a meal_log — keep the existing explicit-confirm fallback.
         console.warn('[meal_safety_net] forced extraction returned null — falling back to confirm prompt');
-        assistantMessage = 'Bunu ogun olarak kaydedeyim mi? "Evet" dersen kalori ve makrolariyla ekleyeyim - istersen porsiyonlari biraz netlestir, daha dogru hesaplarim.';
+        // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+        assistantMessage = 'Bunu öğün olarak kaydedeyim mi? "Evet" dersen kalori ve makrolarıyla ekleyeyim - istersen porsiyonları biraz netleştir, daha doğru hesaplarım.';
       }
     }
 
@@ -1023,7 +1026,8 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       if (forcedWorkout) {
         actions.push(forcedWorkout);
         console.warn('[workout_safety_net] forced workout_log injected');
-        if (!assistantMessage.trim()) assistantMessage = 'Antrenmanini kaydediyorum, eline saglik!';
+        // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
+        if (!assistantMessage.trim()) assistantMessage = 'Antrenmanını kaydediyorum, eline sağlık!';
       }
     }
 
@@ -1946,6 +1950,15 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
         if (!gateActive) {
           const { data: slotOk, error: slotErr } = await supabaseAdmin.rpc('consume_free_plan_slot', { p_user: userId, p_plan_type: expectedType });
           if (slotErr || slotOk !== true) planPersistError = 'free_quota_used';
+        }
+        // FIX (final sweep): ESKİ bir taslağı onaylamak bayat-doğan plan üretiyordu —
+        // 11 Tem'de üretilen taslak (week_start=önceki hafta) bugün onaylanınca aktif
+        // plan anında "geçen haftadan kaldı" banner'ıyla açılıyordu. Promote öncesi
+        // week_start'ı BUGÜNÜN haftasına çek (projeksiyon + taze-üretim ile aynı ankraj).
+        if (!planPersistError) {
+          await supabaseAdmin.from('weekly_plans')
+            .update({ week_start: getWeekStart(effectiveToday) })
+            .eq('id', draft.id);
         }
         const { data: activatedId, error: promoteErr } = planPersistError
           ? { data: null, error: null }

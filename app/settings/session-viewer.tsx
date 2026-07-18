@@ -60,9 +60,12 @@ export default function SessionViewerScreen() {
       return;
     }
     // Read-only transcript: only the visible conversation (user + coach turns).
+    // FIX (final sweep): makine tetikleyicileri ([PLAN_INIT]/[ALT]/[SYSTEM_INIT])
+    // kullanıcının yazdığı mesaj gibi görünüyordu — thread'deki gibi gizle.
     setMessages(
       ((data ?? []) as Msg[])
         .filter(m => m.role === 'user' || m.role === 'assistant')
+        .filter(m => !/^\[(PLAN_INIT|ALT|SYSTEM_INIT)\]/.test(m.content))
         .map(m => ({ ...m, content: sanitizeTranscript(m.content) }))
         .filter(m => m.content.length > 0),
     );
