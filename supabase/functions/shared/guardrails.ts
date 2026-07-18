@@ -162,10 +162,14 @@ export function checkAllergens(
         return true;
       }
       if (normToken.length >= 3 && normItems.includes(normToken)) return true;
-      // Reverse direction: a short meal item is contained in a compound token
-      // (e.g. item "süt" vs allergen token "süt ürünleri").
+      // Reverse direction: a short meal item equals a WHOLE WORD of a compound
+      // token (e.g. item "süt" vs allergen token "süt ürünleri"). FIX (canlı bulgu):
+      // düz substring 'bal'⊂'balık' eşleşiyordu — tatlı önerisindeki BAL, deniz-ürünleri
+      // alerjeninde sahte alarm verdi (isim çözülemeyince de "alerjen alerjisi kayıtlı"
+      // düştü). Tam-kelime eşitliği hedeflenen bileşik-token durumunu aynen korur.
+      const tokenWords = token.split(/\s+/);
       for (const item of textItems) {
-        if (item.length >= 3 && token.includes(item)) return true;
+        if (item.length >= 3 && tokenWords.includes(item)) return true;
       }
     }
     return false;

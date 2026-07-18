@@ -14,7 +14,7 @@ import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Animated,
-  NativeSyntheticEvent, NativeScrollEvent, BackHandler,
+  NativeSyntheticEvent, NativeScrollEvent, BackHandler, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,7 +29,7 @@ import {
   getTaskOpenerFiredAt, markTaskOpenerFired, stripMachineMarkers,
   type ChatMessage,
 } from '@/services/chat.service';
-import { getTaskByKey, getTaskByModeHint, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
+import { getTaskByKey, getTaskByModeHint, getIncompleteTasks, getTasksWithStatus, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 import { lookupBarcode, calculateServing } from '@/services/barcode.service';
 import { saveRecipe, type RecipeIngredient } from '@/services/recipes.service';
@@ -247,6 +247,20 @@ function parseReasoning(content: string): { cleanContent: string; reasoning: str
   return { cleanContent, reasoning: reasoning || null };
 }
 
+// FIX (kullanıcı bulgusu): DB'den/önbellekten YÜKLENEN mesajlar reasoning'lerini
+// kaybediyordu — sanitizeAssistantText <reasoning>'i yakalamadan siliyor, "Düşünce
+// süreci" paneli yeniden açılışta ölüyordu. Bütün yükleme yolları (ilk sayfa, cache
+// hidrasyonu, poll, focus-reconcile, eski-sayfa prepend) bu eşleyiciden geçer:
+// parseReasoning ÖNCE çalışır, blok içerikten sökülüp mesajın `reasoning` alanına
+// taşınır — panel canlı mesajlardaki gibi reload sonrası da çalışır.
+function toUIMessage(m: ChatMessage): UIMessage {
+  if (m.role === 'assistant' && m.content.includes('<reasoning>')) {
+    const { cleanContent, reasoning } = parseReasoning(m.content);
+    return { ...m, content: cleanContent, reasoning };
+  }
+  return { ...m };
+}
+
 function parseQuickSelect(content: string): { cleanContent: string; options: string[] | null } {
   const match = content.match(/<quick_select>([\s\S]*?)<\/quick_select>/);
   if (!match) return { cleanContent: content, options: null };
@@ -365,11 +379,43 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     getIncompleteTasks(user.id).then(setRailTasks).catch(() => {});
     // refetch after a task completes so the finished card drops off the rail
   }, [user?.id, completedTaskCount]);
+  // FIX (kullanıcı bulgusu): tamamlanma kartındaki öneriler TAMAMLANMIŞ konuları
+  // gösterebiliyordu — sunucunun next_suggestions'ı durumdan habersiz. Eksik konu
+  // anahtarları TaskCompletionCard'a inilir ve orada filtre olarak kullanılır.
+  // useMemo: MessageBubble memo'lu — her render'da taze dizi kimliği memoyu kırardı.
+  const incompleteKeys = useMemo(() => railTasks.map(t => t.key), [railTasks]);
   const openTaskTopic = useCallback((task: OnboardingTask) => {
     // taskNonce: same task re-tapped must re-fire the topic opener (identical params wouldn't).
     // Embedded in the tab: swap params in place — no route replace, no remount, no reload.
     router.setParams({ prefill: task.prefillMessage, taskModeHint: task.taskModeHint, taskNonce: String(Date.now()) });
   }, []);
+  // FIX (kullanıcı bulgusu: "toplam kartları görmeliyiz — hangileri bitti hangileri
+  // bitmedi"): başlıktaki "Konular" genel bakış modalının durumu. Liste modal her
+  // açılışta tazelenir; hata dürüst bir "tekrar dene" satırı olarak yüzeye çıkar.
+  const [topicsModalVisible, setTopicsModalVisible] = useState(false);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [topicsError, setTopicsError] = useState(false);
+  const [topicsList, setTopicsList] = useState<{ task: OnboardingTask; completed: boolean }[]>([]);
+  const loadTopicsList = useCallback(async () => {
+    if (!user?.id) return;
+    setTopicsLoading(true);
+    setTopicsError(false);
+    try {
+      setTopicsList(await getTasksWithStatus(user.id));
+    } catch {
+      setTopicsError(true);
+    } finally {
+      setTopicsLoading(false);
+    }
+  }, [user?.id]);
+  const openTopicsModal = useCallback(() => {
+    haptics.tap();
+    setTopicsModalVisible(true);
+    void loadTopicsList();
+  }, [loadTopicsList]);
+  // FIX (kullanıcı bulgusu: "klavye düzeni çok kalabalık"): kamera + barkod + geçmiş
+  // tarih tek "+" düğmesinin arkasında — açılınca composer ÜSTÜNDE kompakt çip sırası.
+  const [showAttachTray, setShowAttachTray] = useState(false);
   const [prefillApplied, setPrefillApplied] = useState(false);
   const [sending, setSending] = useState(false);
   // Intentional, context-aware label under the typing dots so long LLM waits read
@@ -460,7 +506,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       if (cancelled || sent === 0) return;
       const fresh = await loadSessionMessages(sessionId);
       if (cancelled || !fresh) return;
-      setMessages(fresh.map(m => ({ ...m })));
+      setMessages(fresh.map(toUIMessage));
       setHasMoreOlder(fresh.length >= 50);
       scrollToBottom(true);
     })();
@@ -570,7 +616,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       hydratedFromCacheRef.current = true;
       getCachedThread().then(cached => {
         if (!cancelled && cached && cached.length > 0) {
-          setMessages(prev => (prev.length === 0 ? cached.map(m => ({ ...m } as UIMessage)) : prev));
+          setMessages(prev => (prev.length === 0 ? cached.map(toUIMessage) : prev));
           setLoading(false);
         }
       }).catch(() => {});
@@ -607,7 +653,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         const firedAt = user?.id && taskModeHint ? await getTaskOpenerFiredAt(user.id, taskModeHint) : null;
         if (firedAt && Date.now() - firedAt < OPENER_COOLDOWN_MS) {
           if (!cancelled) {
-            setMessages(data.map(m => ({ ...m } as UIMessage)));
+            setMessages(data.map(toUIMessage));
             setHasMoreOlder(data.length >= 50);
             setLoading(false);
             setPrefillApplied(true);
@@ -617,7 +663,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         // Visible topic-entry marker (ux-pass2): the opener prompt is invisible, so without
         // this the coach appears to spontaneously switch subjects.
         const topicTitle = getTaskByModeHint(taskModeHint!)?.title ?? null;
-        const withMarker: UIMessage[] = data.map(m => ({ ...m } as UIMessage));
+        const withMarker: UIMessage[] = data.map(toUIMessage);
         if (topicTitle) {
           withMarker.push({
             id: `topic-${taskNonce ?? Date.now()}`, role: 'assistant', content: '',
@@ -663,7 +709,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         setLoading(false);
       } else {
         if (!cancelled) {
-          setMessages(data.map(m => ({ ...m })));
+          setMessages(data.map(toUIMessage));
           // FIX (audit UX-CHT-06): a full first page (50 rows) means older history exists
           // beyond the window — enable the "Daha eski mesajları yükle" affordance.
           setHasMoreOlder(data.length >= 50);
@@ -686,7 +732,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               if (cancelled) { setSending(false); return; }
               const freshNewest = fresh && fresh.length > 0 ? fresh[fresh.length - 1] : null;
               if (freshNewest && freshNewest.role === 'assistant') {
-                setMessages(fresh!.map(m => ({ ...m })));
+                setMessages(fresh!.map(toUIMessage));
                 setSending(false);
               } else if (replyPollCountRef.current < 4) {
                 setTimeout(poll, 5000);
@@ -793,7 +839,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         // Only replace when the server actually has newer content — never clobber
         // optimistic local bubbles (or a just-fired topic marker) for nothing.
         if (prevNewest && freshNewest && prevNewest.id === freshNewest.id) return prev;
-        return fresh.map(m => ({ ...m } as UIMessage));
+        return fresh.map(toUIMessage);
       });
     }).catch(() => {});
     return () => { cancelled = true; };
@@ -1034,6 +1080,14 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         reasoning,
       };
       setMessages(prev => [...prev, reply]);
+
+      // FIX (kullanıcı bulgusu: "chat tıkandı"): görev tamamlandığı anda konu paramları
+      // BURADA temizlenir — composer hiç kilitlenmez, görev rayı (!taskModeHint kapılı)
+      // hemen geri gelir. Eski akış kullanıcıyı "yukarıdaki karta dokun" çıkmazına
+      // bırakıyordu; tamamlanma artık konuyu KAPATIR, sohbeti değil.
+      if (data.task_completion?.completed && taskModeHint) {
+        router.setParams({ taskModeHint: '', taskNonce: '', prefill: '' });
+      }
 
       // Refresh dashboard AND profile if actions were executed
       if (data.actions.some(a => a.feedback) && user?.id) {
@@ -1282,53 +1336,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     return { protein: t.proteinG, carbs: t.carbsG, fat: t.fatG };
   }, [profile?.calorie_range_rest_min, profile?.calorie_range_rest_max, profile?.protein_per_kg, profile?.weight_kg, profile?.macro_carb_pct, profile?.macro_fat_pct, planCalMin, planCalMax, planProteinT, planCarbsT, planFatT]);
 
-  // "Neden bu öneriyi yaptın?" handler
-  const handleAskWhy = useCallback((messageContent: string) => {
-    // FIX (audit UX-CHT-04): in-flight guard — mirror handleSend/handleQuickSelect so a
-    // double-tap on "Neden?" can't fire two concurrent sends.
-    if (sending) return;
-    haptics.tap();
-    setInput('Neden bu öneriyi yaptın?');
-    // Trigger send after state update
-    setTimeout(async () => {
-      const text = 'Neden bu öneriyi yaptın?';
-      const userMsg: UIMessage = {
-        id: `u-${Date.now()}`,
-        role: 'user',
-        content: text,
-        created_at: new Date().toISOString(),
-      };
-      setMessages(prev => [...prev, userMsg]);
-      setInput('');
-      setTypingLabel(undefined);
-      setSending(true);
-      scrollToBottom(true);
-
-      const { data, error } = await sendMessageToSession(sessionId, text);
-      if (data) {
-        // FIX (audit UX-CHT-05): ask-why reaches the server and consumes quota — reconcile.
-        syncRemainingFromServer(isPremium, data.remaining).then(setRemainingMsgs);
-        const reply: UIMessage = {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          content: data.message,
-          task_mode: data.task_mode,
-          created_at: new Date().toISOString(),
-          actions: data.actions,
-          showFeedback: false,
-        };
-        setMessages(prev => [...prev, reply]);
-      } else {
-        // Flip the user's bubble to a failed/retry state rather than rendering
-        // the error as a fake assistant reply.
-        setMessages(prev => prev.map(m => m.id === userMsg.id
-          ? { ...m, failed: true, errorMessage: error ?? 'Bağlantı hatası. Tekrar dene.', retryPayload: { text, photoUri: null } }
-          : m));
-      }
-      setSending(false);
-      scrollToBottom();
-    }, 0);
-  }, [sending, scrollToBottom, isPremium, sessionId]);
+  // FIX (kullanıcı bulgusu): handleAskWhy silindi — "Neden bu öneriyi yaptın?"
+  // fallback'i sohbete MESAJ yazıyordu. Reasoning artık yalnızca mesajın kendi
+  // <reasoning> paneli olarak açılır (MessageBubble); chat'e yazan yol yok.
 
   // Undo handler — routed through the SAME visible send path as a normal message
   // (FIX audit UX-CHT-02). The old banner onPress fire-and-forget'd the request and
@@ -1416,7 +1426,8 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       if (older.length > 0) {
         setMessages(prev => {
           const seen = new Set(prev.map(m => m.id));
-          const fresh = older.filter(m => !seen.has(m.id)).map(m => ({ ...m } as UIMessage));
+          // FIX (kullanıcı bulgusu): eski-sayfa prepend'i de reasoning'i yakalar (toUIMessage).
+          const fresh = older.filter(m => !seen.has(m.id)).map(toUIMessage);
           return [...fresh, ...prev];
         });
       }
@@ -1472,15 +1483,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     );
   }
 
-  // Task lock: while a task topic is active, a server-validated task_completion "closes" the
-  // topic — composer locks until the user picks a next-task card or exits task mode.
-  // #S1 (one-thread): scope the lock to the LAST message only. In the eternal thread, ANY old
-  // completed-task message used to satisfy `messages.some(...)`, permanently locking the composer
-  // forever after the first completed task — the conversation must always stay writable.
-  const lastMsg = messages.length > 0 ? (messages[messages.length - 1] as UIMessage) : undefined;
-  const taskSessionClosed = !!taskModeHint && !!lastMsg?.taskCompletion?.completed;
-
-  const sendDisabled = (!input.trim() && !photo) || sending || taskSessionClosed;
+  // FIX (kullanıcı bulgusu: "chat tıkandı"): taskSessionClosed kilidi TAMAMEN kaldırıldı.
+  // Tamamlanma composer'ı asla kilitlememeli — handleSend görev bitince konu paramlarını
+  // zaten temizliyor; yazma her zaman serbest, placeholder her zaman 'Mesajını yaz...'.
+  const sendDisabled = (!input.trim() && !photo) || sending;
 
   return (
     <KeyboardAvoidingView
@@ -1535,6 +1541,17 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             </Text>
           </View>
         </View>
+        {/* FIX (kullanıcı bulgusu: "toplam kartları görmeliyiz — hangileri bitti hangileri
+            bitmedi"): tüm konuların durum dökümünü açan genel bakış düğmesi. */}
+        <TouchableOpacity
+          onPress={openTopicsModal}
+          style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight }}
+          accessibilityRole="button"
+          accessibilityLabel="Konulara genel bakış"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="list-circle-outline" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={handleCopyConversation}
           style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight }}
@@ -1577,7 +1594,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               if (item.kind === 'separator') return <DateSeparator label={item.label} />;
               const m = item.msg as UIMessage;
               if (m.topicMarker) return <TopicMarker label={m.topicMarker} />;
-              return <MessageBubble message={m} onAskWhy={handleAskWhy} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} sending={sending} />;
+              return <MessageBubble message={m} incompleteKeys={incompleteKeys} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} sending={sending} />;
             }}
             // Inverted list: ListFooter renders at the VISUAL TOP — that's where the
             // "load older" control belongs (FIX audit UX-CHT-06).
@@ -1828,6 +1845,39 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         paddingBottom: SPACING.sm,
         borderTopWidth: 0.5, borderTopColor: colors.border, backgroundColor: colors.background,
       }}>
+        {/* FIX (kullanıcı bulgusu: "klavye düzeni çok kalabalık"): "+" ile açılan kompakt
+            çip sırası — kamera/barkod/geçmiş-tarih buraya taşındı. KAV içinde composer'ın
+            hemen üstünde render edildiği için klavyeyle kavga etmez, birlikte yükselir.
+            Bir çipe dokunmak mevcut işleyiciyi AYNEN çağırır ve sırayı kapatır. */}
+        {showAttachTray && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.sm }}>
+            {([
+              { key: 'photo', icon: 'camera-outline', label: 'Fotoğraf', onPress: takePhoto },
+              { key: 'barcode', icon: 'barcode-outline', label: 'Barkod', onPress: openBarcodeScanner },
+              { key: 'backdate', icon: 'calendar-outline', label: 'Geçmiş tarih', onPress: handleBackdateButton },
+            ] as const).map((chip) => {
+              const backdateActive = chip.key === 'backdate' && !!backdateDate;
+              return (
+                <TouchableOpacity
+                  key={chip.key}
+                  onPress={() => { haptics.tap(); setShowAttachTray(false); void chip.onPress(); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={backdateActive ? `Kayıt tarihi: ${backdateDate}` : chip.label}
+                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: 6,
+                    backgroundColor: colors.card, borderWidth: 0.5,
+                    borderColor: backdateActive ? colors.warning : colors.border,
+                    borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7,
+                  }}
+                >
+                  <Ionicons name={chip.icon} size={14} color={backdateActive ? colors.warning : colors.textSecondary} />
+                  <Text style={{ color: colors.text, fontSize: FONT.xs, fontWeight: '600' }}>{chip.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
         {/* Char counter — surfaces only when the user is approaching the cap,
             so it doesn't add noise for 99% of messages. */}
         {input.length > 1800 && (
@@ -1851,13 +1901,12 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           {/* Text input */}
           <TextInput
             style={{
-              flex: 1, color: taskSessionClosed ? colors.textMuted : colors.text, fontSize: 14,
+              flex: 1, color: colors.text, fontSize: 14,
               paddingVertical: 8, maxHeight: 120, lineHeight: 20,
             }}
-            placeholder={
-              rateLimitCountdown > 0 ? `Limit doldu — ${rateLimitCountdown}s sonra` :
-              taskSessionClosed ? 'Bu konu tamamlandı — yukarıdaki karta dokun' : 'Mesajını yaz...'
-            }
+            // FIX (kullanıcı bulgusu: "chat tıkandı"): 'Bu konu tamamlandı — yukarıdaki
+            // karta dokun' kilit placeholder'ı kaldırıldı — tamamlanma yazmayı kapatmaz.
+            placeholder={rateLimitCountdown > 0 ? `Limit doldu — ${rateLimitCountdown}s sonra` : 'Mesajını yaz...'}
             placeholderTextColor={colors.textMuted}
             value={input} onChangeText={setInput}
             multiline maxLength={2000}
@@ -1865,46 +1914,28 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             // `!sending` gate froze typing for the whole 10-60s LLM round-trip AND
             // (Android) flipping editable on a focused input dropped the keyboard after
             // every send. The SEND button still gates on `sending`.
-            editable={!taskSessionClosed && rateLimitCountdown === 0}
+            editable={rateLimitCountdown === 0}
             accessibilityLabel="Mesajını yaz"
           />
 
-          {/* Icon buttons */}
+          {/* Icon buttons — FIX (kullanıcı bulgusu: "klavye düzeni çok kalabalık"):
+              kamera + barkod + geçmiş-tarih tek "+" düğmesinin arkasına toplandı
+              (çip sırası yukarıda); satırda birincil eylemler (mikrofon + gönder) kaldı.
+              İşleyiciler/izin akışları birebir aynı — yalnızca yerleşim değişti. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
             <TouchableOpacity
-              onPress={takePhoto}
+              onPress={() => { haptics.tap(); setShowAttachTray(v => !v); }}
               accessibilityRole="button"
-              accessibilityLabel="Foto çek"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{
-                width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
-                justifyContent: 'center', alignItems: 'center',
-              }}>
-              <Ionicons name="camera-outline" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={openBarcodeScanner}
-              accessibilityRole="button"
-              accessibilityLabel="Barkod okut"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{
-                width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated,
-                justifyContent: 'center', alignItems: 'center',
-              }}>
-              <Ionicons name="barcode-outline" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleBackdateButton}
-              accessibilityRole="button"
-              accessibilityLabel={backdateDate ? `Kayıt tarihi: ${backdateDate}` : 'Geçmiş tarihe kaydet'}
+              accessibilityLabel={showAttachTray ? 'Ek seçenekleri gizle' : 'Ek seçenekleri göster: fotoğraf, barkod, geçmiş tarih'}
+              accessibilityState={{ expanded: showAttachTray }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
                 width: 32, height: 32, borderRadius: 16,
-                backgroundColor: backdateDate ? colors.warning : colors.cardElevated,
+                backgroundColor: showAttachTray ? colors.primary + '22' : colors.cardElevated,
                 justifyContent: 'center', alignItems: 'center',
               }}>
-              <Ionicons name="calendar-outline" size={16}
-                color={backdateDate ? (getContrastColor(colors.warning) === 'black' ? '#0D0D12' : '#fff') : colors.textSecondary} />
+              <Ionicons name="add-circle-outline" size={18}
+                color={showAttachTray ? colors.primary : colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleVoiceToggle}
@@ -1939,6 +1970,88 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           </View>
         </View>
       </View>
+
+      {/* FIX (kullanıcı bulgusu: "toplam kartları görmeliyiz — hangileri bitti hangileri
+          bitmedi"): Konular genel bakış modalı. Ayarlar'daki silme-onayı modalının
+          desenini izler (fade + karartma + colors.card kart, RADIUS.lg). Bekleyen satıra
+          dokunmak mevcut openTaskTopic akışını çağırır; tamamlananlar etkileşimsiz. */}
+      <Modal visible={topicsModalVisible} transparent animationType="fade" onRequestClose={() => setTopicsModalVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: SPACING.xl }}>
+          <View style={{
+            backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 0.5,
+            borderColor: colors.border, padding: SPACING.xl, maxHeight: '78%',
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md }}>
+              <Text style={{ flex: 1, color: colors.text, fontSize: FONT.xl2, fontWeight: '700' }}>Konular</Text>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setTopicsModalVisible(false); }}
+                accessibilityRole="button"
+                accessibilityLabel="Kapat"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {topicsLoading ? (
+              <View style={{ paddingVertical: SPACING.xxl, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : topicsError ? (
+              // Dürüst hata durumu — ağ hatası asla "hiçbir konu tamamlanmadı" gibi görünmez.
+              <View style={{ alignItems: 'center', paddingVertical: SPACING.lg, gap: SPACING.sm }}>
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>
+                  Konular yüklenemedi — bağlantını kontrol edip tekrar dene.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); void loadTopicsList(); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Tekrar dene"
+                  style={{
+                    paddingVertical: 6, paddingHorizontal: SPACING.lg,
+                    borderRadius: RADIUS.pill, backgroundColor: colors.primary + '18',
+                  }}
+                >
+                  <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>Tekrar dene</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {topicsList.map(({ task, completed }) => (
+                  <TouchableOpacity
+                    key={task.key}
+                    disabled={completed}
+                    onPress={() => { haptics.tap(); setTopicsModalVisible(false); openTaskTopic(task); }}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: completed }}
+                    accessibilityLabel={completed ? `${task.title} — tamamlandı` : `${task.title} — konuyu aç`}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+                      paddingVertical: SPACING.sm + 2,
+                    }}
+                  >
+                    <Ionicons
+                      name={completed ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={18}
+                      color={completed ? colors.success : colors.textMuted}
+                    />
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        flex: 1, fontSize: FONT.sm,
+                        color: completed ? colors.textMuted : colors.text,
+                        fontWeight: completed ? '400' : '600',
+                      }}
+                    >
+                      {task.title}
+                    </Text>
+                    {!completed && <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -2100,9 +2213,11 @@ function MessageBubbleFrame({ isUser, animate = true, children }: { isUser: bool
 // props change. With the now-stable (useMemo/useCallback) props from the parent,
 // unrelated re-renders (keyboard, per-second rate-limit countdown, dashboard totals)
 // no longer re-render every visible bubble.
-const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, sending }: {
+const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, sending }: {
   message: UIMessage;
-  onAskWhy: (content: string) => void;
+  // FIX (kullanıcı bulgusu): tamamlanma kartının öneri filtresi — henüz EKSİK konu
+  // anahtarları (parent'ın railTasks'i). Tamamlanmış bir konu asla önerilmez.
+  incompleteKeys: string[];
   dashboardMacros: { protein: number; carbs: number; fat: number };
   macroTargets: { protein: number; carbs: number; fat: number };
   onQuickSelect: (option: string) => void;
@@ -2256,6 +2371,7 @@ const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboard
         {!isUser && message.taskCompletion && (
           <TaskCompletionCard
             taskCompletion={message.taskCompletion}
+            incompleteKeys={incompleteKeys}
             colors={colors}
           />
         )}
@@ -2372,23 +2488,30 @@ const MessageBubble = memo(function MessageBubble({ message, onAskWhy, dashboard
             contextType={message.task_mode === 'recipe' ? 'recipe' : message.task_mode === 'plan' ? 'meal_suggestion' : 'coaching_message'}
             contextId={message.id}
           />
-          {/* Transparency: reveal the AI's reasoning for THIS message inline (like
-              ChatGPT's "show thinking"). If the reply already carries reasoning we
-              just toggle it — no extra chat round-trip. Only fall back to asking
-              the model when this message has no pre-emitted reasoning. */}
+        </View>
+      )}
+
+      {/* FIX (kullanıcı bulgusu: "Neden bu öneriyi yaptın?" sohbete mesaj yazıyordu —
+          saçma): düğme YALNIZCA mesajın hazır <reasoning>'i varsa render edilir ve
+          sadece paneli açıp kapatır — chat'e fallback mesajı gönderen yol silindi.
+          showFeedback kapısından da çıkarıldı: DB'den yüklenen mesajlar showFeedback
+          taşımaz ama reasoning taşır (toUIMessage) — panel reload sonrası da çalışmalı. */}
+      {!isUser && message.reasoning && (
+        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs }}>
           <TouchableOpacity
-            onPress={() => { haptics.tap(); if (message.reasoning) setShowReasoning(v => !v); else onAskWhy(message.content); }}
+            onPress={() => { haptics.tap(); setShowReasoning(v => !v); }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
-            accessibilityLabel={message.reasoning ? (showReasoning ? 'Düşünce akışını gizle' : 'Düşünce akışını göster') : 'Neden bu öneriyi yaptın?'}
+            accessibilityState={{ expanded: showReasoning }}
+            accessibilityLabel={showReasoning ? 'Düşünce sürecini gizle' : 'Düşünce süreci'}
             style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
             <Ionicons name="bulb-outline" size={12} color={colors.textSecondary} />
             <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
-              {message.reasoning ? (showReasoning ? 'Düşünce akışını gizle' : 'Neden bu öneriyi yaptım?') : 'Neden bu öneriyi yaptın?'}
+              {showReasoning ? 'Düşünce sürecini gizle' : 'Düşünce süreci'}
             </Text>
           </TouchableOpacity>
-          {message.reasoning && showReasoning && (
+          {showReasoning && (
             <View style={{
               marginTop: SPACING.xs, padding: SPACING.sm, borderRadius: RADIUS.md,
               backgroundColor: isDark ? '#FFFFFF0A' : '#0000000A',
@@ -2487,9 +2610,13 @@ function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
 
 function TaskCompletionCard({
   taskCompletion,
+  incompleteKeys,
   colors,
 }: {
   taskCompletion: { completed: string; summary: string; next_suggestions: string[] };
+  // FIX (kullanıcı bulgusu): henüz eksik konu anahtarları — öneriler bununla filtrelenir,
+  // tamamlanmış bir konu asla "devam edebileceğin konu" olarak geri gelmez.
+  incompleteKeys: string[];
   colors: any;
 }) {
   // Phase 7: mini celebration on mount — scale-in bounce on the summary chip +
@@ -2505,10 +2632,20 @@ function TaskCompletionCard({
     ]).start();
   }, [chipScale, chipOpacity]);
 
-  const suggestionTasks = taskCompletion.next_suggestions
+  // FIX (kullanıcı bulgusu): sunucunun next_suggestions'ı tamamlanma durumundan habersiz —
+  // TAMAMLANMIŞ konular öneri kartı olarak dönebiliyordu. Önce eksik-konu filtresi; filtre
+  // hepsini elediyse sıradaki eksik konulara düş (kullanıcının her zaman gidecek bir yeri
+  // olsun); hiç eksik konu kalmadıysa kart yerine kutlama satırı (aşağıda).
+  const nonNullTask = (t: ReturnType<typeof getTaskByKey>): t is NonNullable<ReturnType<typeof getTaskByKey>> => t !== null;
+  const serverSuggestions = taskCompletion.next_suggestions
+    .filter(k => incompleteKeys.includes(k))
     .map(getTaskByKey)
-    .filter((t): t is NonNullable<ReturnType<typeof getTaskByKey>> => t !== null)
+    .filter(nonNullTask)
     .slice(0, 3);
+  const suggestionTasks = serverSuggestions.length > 0
+    ? serverSuggestions
+    : incompleteKeys.slice(0, 3).map(getTaskByKey).filter(nonNullTask);
+  const allTopicsDone = incompleteKeys.length === 0;
 
   const handleTap = (task: NonNullable<ReturnType<typeof getTaskByKey>>) => {
     // #S1 (one-thread): the next topic CONTINUES the same conversation. Embedded in the
@@ -2587,6 +2724,13 @@ function TaskCompletionCard({
             </TouchableOpacity>
           ))}
         </View>
+      )}
+      {/* FIX (kullanıcı bulgusu): hiç eksik konu kalmadıysa öneri kartı yerine küçük
+          kutlama satırı — boş bir "DEVAM EDEBİLECEĞİN KONULAR" başlığı asla görünmez. */}
+      {allTopicsDone && (
+        <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: SPACING.xs }}>
+          Tüm konular tamamlandı 🎉
+        </Text>
       )}
       {/* Dead-end escape (ux-pass2, W#28/#47): ALWAYS render "Sohbete devam et" — the old
           suggestionTasks.length === 0 gate meant that whenever next-task cards DID render

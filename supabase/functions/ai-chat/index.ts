@@ -2150,17 +2150,20 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       console.log(`[task_completion] validation for ${claimedTaskKey}: ${validation.valid ? 'PASSED' : 'FAILED (' + validation.missingReason + ')'}`);
       if (validation.valid) {
         // Build next_suggestions: prefer AI's whitelisted list, else compute from incomplete tasks.
+        // FIX (kullanıcı bulgusu: "gösterilen kartlarda kapanmış konular vardı"): AI'nın önerileri
+        // yalnız geçerli-anahtar filtresinden geçiyordu — TAMAMLANMIŞLIK filtresi yoktu. Tamamlanan
+        // listesi artık her iki yol için de baştan çekilir ve AI önerileri de ona göre elenir.
+        const { data: summaryRow } = await supabaseAdmin
+          .from('ai_summary').select('onboarding_tasks_completed').eq('user_id', userId).maybeSingle();
+        const completedList = (summaryRow?.onboarding_tasks_completed as string[] | null) ?? [];
+        const isOpen = (k: string) => k !== claimedTaskKey && !completedList.includes(k);
         let suggestions = Array.isArray(rawCompletion?.next_suggestions)
-          ? rawCompletion!.next_suggestions!.filter((k) => VALID_TASK_KEYS.has(k))
+          ? rawCompletion!.next_suggestions!.filter((k) => VALID_TASK_KEYS.has(k) && isOpen(k))
           : [];
         if (suggestions.length === 0) {
-          // Fallback: any tasks not yet in ai_summary.onboarding_tasks_completed.
-          const { data: summaryRow } = await supabaseAdmin
-            .from('ai_summary').select('onboarding_tasks_completed').eq('user_id', userId).maybeSingle();
-          const completedList = (summaryRow?.onboarding_tasks_completed as string[] | null) ?? [];
-          const allKeys = ['introduce_yourself', 'set_goal', 'daily_routine', 'eating_habits',
-                           'allergies', 'kitchen_logistics', 'exercise_history', 'health_history'];
-          suggestions = allKeys.filter((k) => k !== claimedTaskKey && !completedList.includes(k));
+          // Fallback: tamamlanmamış TÜM görevlerden (eski liste 8 anahtara sabitti —
+          // kanonik VALID_TASK_KEYS kümesinin tamamı kullanılır).
+          suggestions = [...VALID_TASK_KEYS].filter(isOpen);
         }
         validatedCompletion = {
           completed: claimedTaskKey,

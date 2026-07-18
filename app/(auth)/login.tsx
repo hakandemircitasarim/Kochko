@@ -11,6 +11,13 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 const TERMS_URL = 'https://kochko.app/kullanim-kosullari';
 const PRIVACY_URL = 'https://kochko.app/gizlilik';
 
+// FIX (kullanıcı bulgusu): Google provider'ı Supabase'te henüz yapılandırılmadı
+// (Google Cloud client ID/secret gerekiyor — sahibin aksiyonu). Ölü buton tarayıcıda
+// bozuk bir sayfaya düşüyordu; kimlikler girilene dek buton GİZLİ (PURCHASE_ENABLED
+// deseni). Aktive etmek için: Google Cloud'da OAuth client → Supabase Auth → Google
+// provider'a ID+secret → bu bayrağı true yap (register.tsx'te de aynı bayrak var).
+const GOOGLE_LOGIN_ENABLED = false;
+
 // FIX (audit UX-FRM-04): basic client-side e-posta format kontrolü — bozuk bir
 // e-posta sunucuya ulaşıp İngilizce bir hata döndürmeden önce yakalanır.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -132,9 +139,13 @@ export default function LoginScreen() {
           {"'nı kabul etmiş olursun."}
         </Text>
 
-        {/* Social Login Buttons (Spec 1.1) */}
-        <Button title="Google ile Giriş Yap" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
-        <View style={{ height: SPACING.sm }} />
+        {/* Social Login Buttons (Spec 1.1) — Google, provider yapılandırılana dek gizli. */}
+        {GOOGLE_LOGIN_ENABLED && (
+          <>
+            <Button title="Google ile Giriş Yap" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
+            <View style={{ height: SPACING.sm }} />
+          </>
+        )}
         {Platform.OS === 'ios' && (
           <>
             <Button title="Apple ile Giriş Yap" onPress={handleApple} loading={loading} variant="outline" size="lg" />

@@ -1,12 +1,20 @@
 /**
  * Şifre Sıfırlama ekranı — kochko://reset-password deep link hedefi (#R5-2).
- * resetPassword() e-postası bu yola yönlendirir; Supabase PASSWORD_RECOVERY
- * oturumu kurar (auth.store onAuthStateChange session'ı set eder). Kullanıcı
- * burada yeni şifresini girer; updateUser ile değiştirilir, sonra login'e döner.
+ *
+ * FIX (kullanıcı bulgusu: "reset password çalışmıyor" — iki kök neden):
+ * 1) Supabase auth config'te site_url localhost + redirect allowlist BOŞTU →
+ *    e-posta linki uygulamaya hiç dönmüyordu (Management API'den düzeltildi:
+ *    site_url=kochko://, allowlist=kochko://**).
+ * 2) RN'de supabase-js deep-link'teki recovery token'larını OTOMATİK oturuma
+ *    çevirmez (detectSessionInUrl:false) — ekran oturumu hazır varsayıyordu ve
+ *    updateUser "session yok" ile düşüyordu. Artık gelen URL'den fragment
+ *    token'ları (implicit flow) veya ?code= (PKCE) yakalanıp oturum kurulur;
+ *    form ancak oturum hazır olunca açılır, geçersiz/bayat linkte dürüst hata.
  */
-import { useState } from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Alert } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, ScrollView, KeyboardAvoidingView, Alert, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
@@ -14,12 +22,54 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
+type LinkState = 'checking' | 'ready' | 'invalid';
+
+/** URL'den recovery oturumu kur — fragment token'ları (implicit) ve ?code= (PKCE) desteklenir. */
+async function establishRecoverySession(url: string | null): Promise<boolean> {
+  if (!url) return false;
+  try {
+    const hash = url.split('#')[1] ?? '';
+    const hashParams = new URLSearchParams(hash);
+    const accessToken = hashParams.get('access_token');
+    const refreshToken = hashParams.get('refresh_token');
+    if (accessToken && refreshToken) {
+      const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+      return !error;
+    }
+    const code = new URL(url).searchParams.get('code');
+    if (code) {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      return !error;
+    }
+  } catch { /* bozuk URL → invalid'e düş */ }
+  return false;
+}
+
 export default function ResetPasswordScreen() {
   const insets = useSafeAreaInsets();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [saving, setSaving] = useState(false);
+  const [linkState, setLinkState] = useState<LinkState>('checking');
   const signOut = useAuthStore((s) => s.signOut);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Zaten oturum varsa (recovery kurulmuş ya da kullanıcı girişli) form açılır.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) { if (!cancelled) setLinkState('ready'); return; }
+      const initialUrl = await Linking.getInitialURL();
+      const ok = await establishRecoverySession(initialUrl);
+      if (!cancelled) setLinkState(ok ? 'ready' : 'invalid');
+    })();
+    // Uygulama açıkken gelen link (sıcak başlangıç).
+    const sub = Linking.addEventListener('url', async ({ url }) => {
+      const ok = await establishRecoverySession(url);
+      if (!cancelled && ok) setLinkState('ready');
+    });
+    return () => { cancelled = true; sub.remove(); };
+  }, []);
 
   const handleSave = async () => {
     if (password.length < 6) {
@@ -34,8 +84,6 @@ export default function ResetPasswordScreen() {
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) {
-        // Most common cause: the recovery link expired or the session isn't a
-        // recovery session — guide the user to request a fresh link.
         Alert.alert(
           'Şifre değiştirilemedi',
           'Sıfırlama bağlantısının süresi dolmuş olabilir. Lütfen giriş ekranından yeni bir bağlantı iste.',
@@ -52,6 +100,29 @@ export default function ResetPasswordScreen() {
       setSaving(false);
     }
   };
+
+  if (linkState === 'checking') {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center', gap: SPACING.md }}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Bağlantı doğrulanıyor…</Text>
+      </View>
+    );
+  }
+
+  if (linkState === 'invalid') {
+    return (
+      <View style={{ flex: 1, backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
+        <Text style={{ fontSize: FONT.xl, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.sm, textAlign: 'center' }}>
+          Bağlantı geçersiz
+        </Text>
+        <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.xl, textAlign: 'center', lineHeight: 22 }}>
+          Sıfırlama bağlantısının süresi dolmuş ya da bağlantı eksik. Giriş ekranından yeni bir bağlantı isteyebilirsin.
+        </Text>
+        <Button title="Giriş ekranına dön" onPress={() => router.replace('/(auth)/login')} size="lg" />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">

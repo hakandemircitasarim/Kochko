@@ -13,6 +13,10 @@ import { haptics } from '@/lib/haptics';
 const TERMS_URL = 'https://kochko.app/kullanim-kosullari';
 const PRIVACY_URL = 'https://kochko.app/gizlilik';
 
+// FIX (kullanıcı bulgusu): Google provider yapılandırılana dek buton gizli — login.tsx'teki
+// aynı bayrak ve gerekçe (Supabase'te external_google_enabled=false, ölü buton bozuk sayfa açıyordu).
+const GOOGLE_LOGIN_ENABLED = false;
+
 // FIX (audit UX-FRM-04): basic client-side e-posta format kontrolü — bozuk bir
 // e-posta sunucuya ulaşıp İngilizce bir hata döndürmeden önce yakalanır.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -161,9 +165,13 @@ export default function RegisterScreen() {
           {"'nı kabul edersin."}
         </Text>
 
-        {/* Social Register Buttons (Spec 1.1) */}
-        <Button title="Google ile Kayıt Ol" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
-        <View style={{ height: SPACING.sm }} />
+        {/* Social Register Buttons (Spec 1.1) — Google, provider yapılandırılana dek gizli. */}
+        {GOOGLE_LOGIN_ENABLED && (
+          <>
+            <Button title="Google ile Kayıt Ol" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
+            <View style={{ height: SPACING.sm }} />
+          </>
+        )}
         {Platform.OS === 'ios' && (
           <>
             <Button title="Apple ile Kayıt Ol" onPress={handleApple} loading={loading} variant="outline" size="lg" />
