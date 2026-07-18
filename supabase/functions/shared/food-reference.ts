@@ -48,7 +48,10 @@ const FOODS: FoodEntry[] = [
   F('ekmek', ['ekmek', 'beyaz ekmek', 'somun'], 265, 9, 49, 3.2, { sliceG: 25 }),
   F('tam buğday ekmeği', ['tam buğday ekmeği', 'tam bugday ekmek', 'kepekli ekmek', 'esmer ekmek'], 247, 13, 41, 3.4, { sliceG: 28 }),
   F('simit', ['simit', 'gevrek'], 320, 9, 58, 5, { pieceG: 100 }),
-  F('yulaf', ['yulaf', 'yulaf ezmesi', 'oatmeal'], 68, 2.4, 12, 1.4, { portionG: 220 }),
+  // FIX (canlı test): giriş KURU baza çevrildi — "60 gram yulaf" diyen kuru tartar
+  // (389/100g); eski pişmiş-lapa bazı (68/100g) gram girişlerini ~3,4× eksik sayıyordu.
+  // portionG 40g kuru ≈ eski 220g lapa kâsesi (~150 kcal) — "1 kase" eşdeğer kalır.
+  F('yulaf', ['yulaf', 'yulaf ezmesi', 'oatmeal'], 389, 13.5, 66, 7, { portionG: 40 }),
   F('patates', ['patates', 'haşlanmış patates', 'haslanmis patates', 'patates püresi', 'patates puresi'], 87, 2, 20, 0.1, { pieceG: 150, portionG: 150 }),
   F('patates kızartması', ['patates kızartması', 'patates kizartmasi', 'french fries', 'cips patates'], 312, 3.4, 41, 15, { portionG: 130 }),
   F('börek', ['börek', 'borek', 'su böreği', 'sigara böreği', 'kıymalı börek'], 300, 7, 30, 17, { sliceG: 120 }),

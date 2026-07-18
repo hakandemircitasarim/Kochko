@@ -964,12 +964,36 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // yedim") buried in an emotional message routes to recovery/coaching and the meal was
     // silently DROPPED — the coach attuned but forgot to log. looksLikeMealReport is past-tense
     // so hypotheticals ("yersem") are excluded; simulation mode is skipped (what-if projections).
+    // FIX (canlı test 07-17): PORSIYON-NETLEŞTİRME CEVABI da öğün raporudur. "2 dilim ekmek
+    // ve peynir" → koç porsiyon sordu → "50 gram peynir" cevabında model meal_log'u atlayınca
+    // hiçbir şey kaydedilmiyordu; cevapta yeme fiili olmadığından looksLikeMealReport da
+    // ateşlemiyordu. Önceki asistan turu porsiyon/miktar SORUSUYSA ve bu mesaj bir miktar
+    // içeriyorsa, bekleyen parse'ı önceki KULLANICI mesajıyla birleştirip zorla çıkar.
+    // (Soru turlarında model hiçbir şey loglamaz — gözlenen iki canlı akışta da öyle — bu
+    // yüzden birleşik çıkarım çift kayıt üretmez; net zaten yalnız aksiyonsuz turda koşar.)
+    let clarificationMealContext: string | null = null;
+    if (message && !actions.some(a => a.type === 'meal_log') && effectiveMode !== 'simulation') {
+      let prevA: string | undefined; let prevU: string | undefined;
+      for (let li = ctx.layer4.length - 1; li >= 0; li--) {
+        if (!prevA && ctx.layer4[li].role === 'assistant') prevA = ctx.layer4[li].content;
+        else if (prevA && !prevU && ctx.layer4[li].role === 'user') { prevU = ctx.layer4[li].content; break; }
+      }
+      const paLow = (prevA ?? '').toLocaleLowerCase('tr');
+      const askedPortion = !!prevA && prevA.includes('?')
+        && /(porsiyon|miktar|kaç gram|kac gram|gramaj|kase|kâse|dilim|bardak|ne kadar)/.test(paLow)
+        && /(kayd|logla|ekle|tamamla)/.test(paLow);
+      const answeredQuantity = /\d+\s*(gram|gr\b|g\b|adet|dilim|kase|kâse|porsiyon|bardak|ml\b|litre)/
+        .test(message.toLocaleLowerCase('tr'));
+      if (askedPortion && answeredQuantity && prevU) {
+        clarificationMealContext = `${prevU}. Porsiyon netleştirmesi: ${message}`;
+      }
+    }
     if (message
-      && looksLikeMealReport(message)
+      && (looksLikeMealReport(message) || clarificationMealContext)
       && !actions.some(a => a.type === 'meal_log')
       && effectiveMode !== 'simulation') {
-      console.warn('[meal_safety_net] meal intent, no meal_log action — attempting forced extraction', { mode: effectiveMode });
-      const forcedAction = await forceMealLogAction(userId, message, modelSelection.model);
+      console.warn('[meal_safety_net] meal intent, no meal_log action — attempting forced extraction', { mode: effectiveMode, clarification: !!clarificationMealContext });
+      const forcedAction = await forceMealLogAction(userId, clarificationMealContext ?? message, modelSelection.model);
       if (forcedAction) {
         actions.push(forcedAction);
         console.warn('[meal_safety_net] forced meal_log injected', { meal_type: forcedAction.meal_type, items: (forcedAction.items as unknown[] | undefined)?.length ?? 0 });
