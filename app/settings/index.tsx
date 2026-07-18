@@ -155,7 +155,7 @@ export default function SettingsScreen() {
       <SectionTitle label="Sosyal" colors={colors} />
       <MenuGroup colors={colors}>
         <Row icon="people-outline" iconColor={colors.protein} label="Aile Planı" onPress={() => router.push('/settings/household')} colors={colors} />
-        <Row icon="share-social-outline" iconColor={colors.primary} label="Koç Paylaşımı" onPress={() => router.push('/settings/coach-sharing')} colors={colors} last />
+        <Row icon="document-text-outline" iconColor={colors.primary} label="Koç Özeti (PDF)" onPress={() => router.push('/settings/coach-sharing')} colors={colors} last />
       </MenuGroup>
 
       {/* Preferences */}

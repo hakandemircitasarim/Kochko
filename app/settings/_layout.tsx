@@ -21,7 +21,7 @@ export default function SettingsLayout() {
           'Kochko Seni Nasıl Tanıyor'. Menu rows (profile + settings index), this native header
           and the screen's own state branches all inherit/use it now. */}
       <Stack.Screen name="coach-memory" options={{ title: 'Kochko Seni Nasıl Tanıyor' }} />
-      <Stack.Screen name="coach-sharing" options={{ title: 'Koç Paylaşımı' }} />
+      <Stack.Screen name="coach-sharing" options={{ title: 'Koç Özeti' }} />
       <Stack.Screen name="coach-tone" options={{ title: 'Koç Tonu' }} />
       <Stack.Screen name="data-import" options={{ title: 'Veri İçeri Aktar' }} />
       <Stack.Screen name="day-boundary" options={{ title: 'Gün Dönümü' }} />
