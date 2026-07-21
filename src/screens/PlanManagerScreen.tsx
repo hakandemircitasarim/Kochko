@@ -20,6 +20,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
+  TouchableOpacity,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -46,6 +47,7 @@ import {
   type PlanData,
   type PlanType,
 } from '@/services/plan.service';
+import { mealTypeLabelTR } from '@/lib/labels';
 import { isPlanReady, type ReadinessExtras } from '@/lib/plan-readiness';
 import { canApprovePlan } from '@/lib/premium-gate';
 import { PlanEmptyState } from '@/components/plan/PlanEmptyState';
@@ -451,6 +453,11 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
       } else if (planType === 'workout' && persistErr?.startsWith('injury_violation')) {
         // Workout-only branch (drift preserved: diet fell through to the generic line).
         reason = 'Bu plan sakatlık bildirimlerinle çakışan egzersizler içeriyor. Yeniden oluşturalım.';
+      } else if (persistErr === 'free_quota_used' || persistErr?.includes('quota')) {
+        // FIX (ux-readiness): the free-tier plan cap hit at approval time — show the friendly paywall
+        // copy + route to premium instead of leaking the raw "free_quota_used" code into the bubble.
+        reason = cfg.paywallMessage;
+        router.push('/settings/premium' as never);
       } else if (persistErr) {
         reason = `Plan kaydedilemedi: ${persistErr}`;
       }
@@ -464,6 +471,10 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
       ...prev,
       { id: 'a-' + Date.now(), role: 'assistant', content: data.message },
     ]);
+    // FIX (ux-readiness): refresh the profile so plans_used_free is fresh — otherwise a same-session
+    // SECOND plan/revision reads the stale count, skips the up-front quota warning, and only walls at
+    // "Onayla" (the invest-then-wall this warning was added to prevent).
+    if (user?.id) await fetchProfile(user.id);
     // Reload to switch to active view.
     await load();
     setChatSessionId(null);
@@ -479,8 +490,42 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
     startDraftCreation();
   };
 
+  // FIX (ux-audit blocker #3): a clean escape from the draft/revision view. Before this, opening
+  // "Kochko ile konuş" INSERTed a draft copy of the active plan, and the only exits were "Onayla ve
+  // kaydet" (paywall for free users) or "Baştan başla" (delete+regenerate) — so a user who just
+  // wanted to peek or tweak one meal was trapped in revision mode, having lost the active plan's
+  // one-tap logging. Discarding the draft returns to the active plan (or the empty state).
+  const handleDiscardDraft = () => {
+    if (!draft) return;
+    const hasActive = !!active;
+    Alert.alert(
+      hasActive ? 'Revizyondan çık' : 'Taslağı sil',
+      hasActive
+        ? 'Bu taslak silinecek ve mevcut planına döneceksin. Bu taslakta yaptığın değişiklikler kaybolur.'
+        : 'Bu taslak silinecek. Emin misin?',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: hasActive ? 'Çık' : 'Sil',
+          style: 'destructive',
+          onPress: async () => {
+            haptics.tap();
+            await discardDraft(draft.id);
+            setMessages([]);
+            setChatSessionId(null);
+            await load(); // active exists → 'active'; otherwise → 'empty'
+          },
+        },
+      ],
+    );
+  };
+
   const handleStartRevision = async () => {
     if (!user?.id || !active) return;
+    // FIX (ux-audit major): warn a free user whose quota is used BEFORE they invest a whole
+    // revision conversation, exactly like startDraftCreation does — otherwise they negotiate a
+    // full revision and only hit the paywall at "Onayla ve kaydet" (invest-then-wall).
+    if (!(await ensurePlanQuotaAcknowledged())) return;
     // FIX (audit Wave3): check for an existing draft before INSERT. migration 030 enforces a
     // partial UNIQUE(user_id, plan_type) WHERE status='draft', so a blind INSERT over an existing
     // draft threw 23505 and the raw Postgres "duplicate key" string leaked into the chat bubble.
@@ -555,7 +600,9 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
   // Prefill for "bu öğünü değiştir" taps (diet-only surfaces: accordion + full modal).
   const sendMealEdit = (planData: PlanData, dayIndex: number, mealType: string) => {
     const label = dayLabelTR(dayIndex, planData.days?.[dayIndex]?.day_label);
-    sendUserMessage(`${label} - ${mealType} öğününü değiştirir misin?`);
+    // FIX (ux-readiness): map the raw English meal_type enum to its Turkish label so the user's own
+    // chat bubble doesn't read "Pazartesi - lunch öğününü değiştirir misin?".
+    sendUserMessage(`${label} - ${mealTypeLabelTR(mealType)} öğününü değiştirir misin?`);
   };
 
   // ─── Render ───
@@ -627,7 +674,22 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
         behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        <Stack.Screen options={screenOptions(cfg.draftHeaderTitle)} />
+        {/* FIX (ux-audit blocker #3): a discoverable "Çık"/"İptal" in the header — the only clean
+            escape from the draft that returns to the active plan (or empty), instead of being
+            forced through the paywall or a destructive "Baştan başla". */}
+        <Stack.Screen options={{
+          ...screenOptions(cfg.draftHeaderTitle),
+          headerRight: () => (
+            <TouchableOpacity
+              onPress={handleDiscardDraft}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={active ? 'Revizyondan çık, mevcut plana dön' : 'Taslağı sil'}
+            >
+              <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600' }}>{active ? 'Çık' : 'İptal'}</Text>
+            </TouchableOpacity>
+          ),
+        }} />
 
         {/* Sticky preview card */}
         <View style={{ padding: SPACING.md, paddingBottom: 0 }}>

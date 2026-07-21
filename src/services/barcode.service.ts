@@ -302,7 +302,10 @@ function notFound(): BarcodeResult {
 export function calculateServing(result: BarcodeResult, servingGrams: number): {
   calories: number; protein_g: number; carbs_g: number; fat_g: number;
 } | null {
-  if (!result.found || !result.calories_per_100g) return null;
+  // FIX (ux-round4 #6 review): distinguish "no data" (null) from a legitimately 0 kcal/100g product
+  // (zero-cal soda, water, sugar-free gum). `!result.calories_per_100g` treated 0 as missing, so
+  // the meal-log path told the AI "değerler eksik, tahminle" and it estimated non-zero calories.
+  if (!result.found || result.calories_per_100g == null) return null;
 
   const factor = servingGrams / 100;
   return {

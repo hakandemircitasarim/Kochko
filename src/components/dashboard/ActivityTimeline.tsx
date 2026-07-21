@@ -9,6 +9,7 @@ import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { mealTypeLabelTR } from '@/lib/labels';
+import { showToast } from '@/components/ui/Toast';
 
 interface MealEntry {
   id: string;
@@ -102,9 +103,17 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
     try {
       await (activity.type === 'meal' ? onDeleteMeal(activity.id) : onDeleteWorkout(activity.id));
       haptics.success();
-    } catch {
+      // FIX (ux-ideas #15): visible confirmation for a delete (was haptic-only) via the shared toast.
+      showToast(activity.type === 'meal' ? 'Öğün silindi' : 'Antrenman silindi', { variant: 'info' });
+    } catch (err) {
       haptics.error();
-      Alert.alert('Silinemedi', 'Bir şeyler ters gitti, lütfen tekrar dene.');
+      // FIX (ux-round2 #18): delete can't be queued offline (the store throws 'offline: …'). The
+      // old generic 'tekrar dene' sent the user into a retry loop that failed identically — tell
+      // the real reason so they know to reconnect, not re-tap.
+      const offline = err instanceof Error && err.message.startsWith('offline:');
+      Alert.alert('Silinemedi', offline
+        ? 'Çevrimdışısın — silmek için internet gerekiyor. Bağlanınca tekrar dene.'
+        : 'Bir şeyler ters gitti, lütfen tekrar dene.');
     } finally {
       setDeletingId(null);
     }
@@ -116,7 +125,8 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
         <Text style={{ fontSize: FONT.md, fontWeight: '700', color: colors.text }}>Aktiviteler</Text>
         {totalActivities > 0 && (
-          <View style={{ backgroundColor: colors.primary + '18', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 }}>
+          /* FIX (ux-polish): label the count so a screen reader says "3 aktivite", not a bare "3". */
+          <View accessible accessibilityLabel={`${totalActivities} aktivite`} style={{ backgroundColor: colors.primary + '18', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 }}>
             <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700' }}>{totalActivities}</Text>
           </View>
         )}
@@ -182,6 +192,10 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
                   metaLine ? `${activity.text}\n\n${metaLine}` : activity.text,
                   [
                     { text: 'Kapat', style: 'cancel' },
+                    // FIX (ux-ideas #22): a mis-parsed log ("2 yumurta" → "3 yumurta") no longer
+                    // forces a full delete + re-entry. "Düzenle" opens the coach prefilled to
+                    // correct THIS entry — the AI-first way to fix a quantity/calorie.
+                    { text: 'Düzenle', onPress: () => { haptics.tap(); router.push({ pathname: '/(tabs)/chat', params: { prefill: `"${activity.text}" kaydımı düzeltmek istiyorum: `, taskNonce: String(Date.now()) } }); } },
                     { text: 'Sil', style: 'destructive', onPress: () => runDelete(activity) },
                   ],
                 );

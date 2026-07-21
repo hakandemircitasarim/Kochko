@@ -1,21 +1,31 @@
 /**
  * CoachingNudge — Shows proactive coaching messages on the dashboard.
- * Taps dismiss the message. Flat dark design.
+ * Taps open the relevant screen; offer-type nudges get inline Evet/Sonra. Flat dark design.
  */
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, RADIUS } from '@/lib/constants';
+import { getContrastColor } from '@/lib/accessibility';
+import { SPACING, RADIUS, FONT } from '@/lib/constants';
 import type { CoachingMessage } from '@/services/coaching-messages.service';
+
+// FIX (ux-ideas #17): trigger types that are an accept/decline OFFER — these get inline
+// "Evet / Sonra" buttons so the user can act in one tap instead of open-chat-then-type-"evet".
+const SUGGESTION_TRIGGERS = new Set([
+  'deload_suggestion', 'habit_introduce', 'habit_stack', 'progressive_overload',
+  'mini_cut_suggestion', 'maintain',
+]);
 
 export function CoachingNudge({
   messages,
   onDismiss,
   onTap,
+  onAccept,
 }: {
   messages: CoachingMessage[];
   onDismiss: (id: string) => void;
   onTap: (msg: CoachingMessage) => void;
+  onAccept?: (msg: CoachingMessage) => void;
 }) {
   const { colors } = useTheme();
   const PRIORITY_COLORS: Record<string, string> = {
@@ -29,19 +39,14 @@ export function CoachingNudge({
     <View style={{ gap: SPACING.sm, marginBottom: SPACING.md }}>
       {messages.map((msg) => {
         const accentColor = PRIORITY_COLORS[msg.priority] ?? colors.primary;
+        const showOffer = !!onAccept && SUGGESTION_TRIGGERS.has(msg.trigger_type);
         return (
-          <TouchableOpacity
+          // FIX (ux-pass5): the card is a plain View (not an outer TouchableOpacity) so the
+          // content-tap, close, and Evet/Sonra are three distinct, screen-reader-visible buttons
+          // instead of one flattened a11y node.
+          <View
             key={msg.id}
-            onPress={() => onTap(msg)}
-            activeOpacity={0.7}
-            // FIX (ux-pass5): dış dokunulabilir varsayılan accessible={true} ile tüm alt
-            // öğeleri tek a11y düğümüne düzleştiriyordu — 'Bildirimi kapat' ekran okuyucuya
-            // hiç çıkmıyordu (nudge kapatılamıyor, tek eylem chat'e zorluyordu). Dış katman
-            // artık a11y kapsayıcı değil; kart gövdesi ve kapat düğmesi iki ayrı, gerçek düğme.
-            accessible={false}
             style={{
-              flexDirection: 'row',
-              alignItems: 'flex-start',
               backgroundColor: colors.card,
               borderRadius: RADIUS.md,
               padding: SPACING.md,
@@ -51,37 +56,66 @@ export function CoachingNudge({
               borderColor: colors.border,
             }}
           >
-            <TouchableOpacity
-              onPress={() => onTap(msg)}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel={msg.content}
-              accessibilityHint="Koç ile bu konuda konuşmak için dokun"
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start' }}
-            >
-              <Ionicons
-                name="chatbubble-ellipses-outline" size={18} color={accentColor}
-                style={{ marginRight: SPACING.sm, marginTop: 1 }}
-                accessible={false} importantForAccessibility="no"
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
-                  {msg.content}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
-                  {new Date(msg.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+              <TouchableOpacity
+                onPress={() => onTap(msg)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={msg.content}
+                accessibilityHint="İlgili ekranı açmak için dokun"
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start' }}
+              >
+                <Ionicons
+                  name="chatbubble-ellipses-outline" size={18} color={accentColor}
+                  style={{ marginRight: SPACING.sm, marginTop: 1 }}
+                  accessible={false} importantForAccessibility="no"
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
+                    {msg.content}
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
+                    {new Date(msg.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              {/* FIX (ux-polish): 16px icon + hitSlop 14 ≈ 44dp min touch target (was ~36dp). */}
+              <TouchableOpacity
+                onPress={() => onDismiss(msg.id)}
+                hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+                accessibilityRole="button"
+                accessibilityLabel="Bildirimi kapat"
+              >
+                <Ionicons name="close" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* FIX (ux-ideas #17): one-tap accept for offer-type nudges (habit stacking, deload,
+                progressive overload…). "Evet" opens the coach with an affirmation prefilled;
+                "Sonra" dismisses. Turns a 3-step accept (find card → open chat → type "evet")
+                into a single tap so the habit-stacking loop actually closes. */}
+            {showOffer && (
+              <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
+                <TouchableOpacity
+                  onPress={() => onAccept!(msg)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Evet, uygulayalım"
+                  style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.primary }}
+                >
+                  <Ionicons name="checkmark" size={14} color={getContrastColor(colors.primary)} />
+                  <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>Evet</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onDismiss(msg.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sonra"
+                  style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight }}
+                >
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '700' }}>Sonra</Text>
+                </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => onDismiss(msg.id)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Bildirimi kapat"
-            >
-              <Ionicons name="close" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          </TouchableOpacity>
+            )}
+          </View>
         );
       })}
     </View>

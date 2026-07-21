@@ -12,6 +12,10 @@ import { detectPlateau, selectBestStrategy, applyPlateauStrategy, type PlateauSt
 import { getMaintenanceStatus, shouldTriggerMiniCut, type MaintenanceStatus } from '@/services/maintenance.service';
 import { getTimelineData } from '@/services/goals.service';
 import { getEngagementMetrics, type EngagementMetrics } from '@/services/analytics.service';
+import { calculateStreak } from '@/services/achievements.service';
+import { calculateGoalProgress, type GoalProgress } from '@/lib/goal-progress';
+import type { Goal } from '@/types/database';
+import { GoalProgressCard } from '@/components/dashboard/GoalProgressCard';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { Card } from '@/components/ui/Card';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
@@ -35,6 +39,20 @@ const filterLoggedCompliance = (comp: CompPt[], mets: MetricPt[]): CompPt[] => {
   const loggedDates = new Set(mets.filter(metricHasLog).map(m => m.date));
   return comp.filter(c => (c.calorie_actual ?? 0) > 0 || c.workout_completed === true || loggedDates.has(c.date));
 };
+
+// FIX (ux-ideas #12): period-over-period trend for the summary tiles — last 14 days vs the
+// previous 14 — so "%68 uyum" gains direction ("geçen döneme göre +%9"). `positive` = an
+// improvement (higher is better for compliance/water/sleep). The weight tile keeps its own
+// `delta` (lower is better), so the two coloring semantics never collide.
+type SummaryTrend = { dir: 'up' | 'down' | 'flat'; positive: boolean; value: string };
+function mkTrend(delta: number | null, decimals: number, fmt: (mag: string) => string): SummaryTrend | undefined {
+  if (delta == null) return undefined;
+  const f = Math.pow(10, decimals);
+  const r = Math.round(delta * f) / f;
+  if (r === 0) return { dir: 'flat', positive: true, value: 'sabit' };
+  const mag = Math.abs(r).toFixed(decimals).replace('.', ',');
+  return { dir: r > 0 ? 'up' : 'down', positive: r > 0, value: (r > 0 ? '+' : '−') + fmt(mag) };
+}
 
 // FIX (completeness audit): applying a plateau strategy / mini-cut writes the new band to profiles,
 // but today's ALREADY-projected daily_plans row keeps the OLD calorie/protein targets until the next
@@ -96,6 +114,11 @@ export default function ProgressScreen() {
   const [applyingStrategyId, setApplyingStrategyId] = useState<string | null>(null);
   const [timelinePhases, setTimelinePhases] = useState<{ phases: { id: string; label: string; goalType: string; targetWeeks: number; isActive: boolean; isCompleted: boolean }[]; currentWeek: number } | null>(null);
   const [engagement, setEngagement] = useState<EngagementMetrics | null>(null);
+  // FIX (ux-ideas #12): active goal + derived progress for the weight-chart target line + ETA rozet.
+  const [activeGoal, setActiveGoal] = useState<Goal | null>(null);
+  const [goalProgress, setGoalProgress] = useState<GoalProgress | null>(null);
+  // FIX (ux-ideas #11): current active streak, surfaced as the top card.
+  const [streak, setStreak] = useState(0);
 
   const chartConfig = {
     backgroundGradientFrom: colors.card,
@@ -119,7 +142,7 @@ export default function ProgressScreen() {
     if (!user?.id) { setLoading(false); return; }
     const from = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
     try {
-      const [m, c, plateau, maintenance, timeline, engagementData] = await Promise.all([
+      const [m, c, plateau, maintenance, timeline, engagementData, goalRes, streakVal] = await Promise.all([
         supabase.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps').eq('user_id', user.id).gte('date', from).order('date'),
         // calorie_actual + workout_completed: needed to tell a REAL 0-compliance day from a
         // report row generated for a day the user never opened the app (see filterLoggedCompliance).
@@ -128,6 +151,12 @@ export default function ProgressScreen() {
         getMaintenanceStatus(user.id),
         getTimelineData(user.id),
         getEngagementMetrics(user.id),
+        // FIX (ux-ideas #12): active goal for the target line + ETA. Best-effort (not in the
+        // failure gate) so a goals hiccup never blanks the whole Raporlar tab.
+        supabase.from('goals').select('*').eq('user_id', user.id).eq('is_active', true).order('phase_order').limit(1).maybeSingle(),
+        // FIX (ux-ideas #11): current active streak for the top card. Best-effort (own .catch)
+        // so a streak hiccup never rejects the Promise.all and blanks the whole tab.
+        calculateStreak(user.id, (useProfileStore.getState().profile?.day_boundary_hour as number) ?? 4).catch(() => 0),
       ]);
       // FIX (ux-pass5): supabase-js reddetmez, {data:null,error} ile resolve eder — iki direkt
       // sorgunun hatası hiç okunmuyordu: başarısız bir focus-refresh setMetrics([]) ile yüklü
@@ -140,6 +169,22 @@ export default function ProgressScreen() {
       setMetrics(metricData);
       const compData = (c.data ?? []) as CompPt[];
       setCompliance(compData);
+
+      // FIX (ux-ideas #12): derive goal progress from the active goal + the loaded weigh-ins.
+      const goal = (goalRes.error ? null : (goalRes.data as Goal | null)) ?? null;
+      setActiveGoal(goal);
+      if (goal) {
+        const weighIns = metricData.filter(x => x.weight_kg != null);
+        const prof = useProfileStore.getState().profile;
+        const curW = (weighIns.length ? weighIns[weighIns.length - 1].weight_kg : null) ?? (prof?.weight_kg as number | null) ?? null;
+        // FIX (ux-review): baseline mirrors dashboard.store (start_weight_kg ?? profile.weight_kg).
+        // Do NOT fall back to weighIns[0] — that's only the oldest weigh-in in the 28-day query
+        // window, which understates progress for older goals and diverges from the Dashboard card.
+        const startW = goal.start_weight_kg ?? (prof?.weight_kg as number | null) ?? null;
+        setGoalProgress(curW && startW ? calculateGoalProgress(goal, curW, startW) : null);
+      } else {
+        setGoalProgress(null);
+      }
 
       if (plateau.isInPlateau) {
         setPlateauMsg(plateau.message);
@@ -173,6 +218,7 @@ export default function ProgressScreen() {
       }
 
       setEngagement(engagementData);
+      setStreak(streakVal);
       // Clear the error flag only AFTER a successful fetch — clearing it up-front made a failed
       // silent retry flash the empty new-user layout between error screens.
       setError(false);
@@ -302,6 +348,9 @@ export default function ProgressScreen() {
   );
 
   const weights = metrics.filter(m => m.weight_kg != null);
+  // FIX (ux-ideas #12): target-weight reference for the chart overlay.
+  const targetW = (activeGoal?.target_weight_kg != null && Number.isFinite(activeGoal.target_weight_kg)) ? activeGoal.target_weight_kg : null;
+  const isWeightGoal = !!activeGoal && (activeGoal.goal_type === 'lose_weight' || activeGoal.goal_type === 'gain_weight' || activeGoal.goal_type === 'gain_muscle');
   // FIX (ux-pass raporlar #5): '5/7' style D/M labels matched nothing else in the app —
   // use the same tr-TR short form as monthly.tsx ('5 Tem'). Note: react-native-chart-kit has
   // no true time axis — points are index-spaced, so uneven gaps (4 days vs 23 days) render
@@ -328,6 +377,35 @@ export default function ProgressScreen() {
   const avgWater = waterDays.length > 0 ? (waterDays.reduce((s, m) => s + m.water_liters, 0) / waterDays.length).toFixed(1).replace('.', ',') : null;
   const sleepDays = metrics.filter(m => m.sleep_hours != null);
   const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1).replace('.', ',') : null;
+  // FIX (ux-round4 #21): adımlar her gün toplanıyor ama hiçbir yerde gösterilmiyordu. Ortalamayı
+  // yalnızca adım GİRİLEN günler üzerinden al (0'ları katmak anlamsız '0 adım' üretirdi) ve TR
+  // binlik ayıracıyla göster (Intl'e güvenmeden, elle). Adım verisi yoksa tile gizli.
+  const stepsDays = metrics.filter(m => (m.steps ?? 0) > 0);
+  const avgStepsNum = stepsDays.length > 0 ? Math.round(stepsDays.reduce((s, m) => s + (m.steps ?? 0), 0) / stepsDays.length) : null;
+  const avgSteps = avgStepsNum != null ? String(avgStepsNum).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : null;
+
+  // FIX (ux-ideas #12): last-14-days vs previous-14-days averages → directional trend on the
+  // uyum/su/uyku tiles. undefined (hidden) unless BOTH windows have data, so a new user with
+  // only a few days sees no misleading arrow.
+  const trendCutoff = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
+  const avgList = (nums: number[]) => nums.length ? nums.reduce((s, n) => s + n, 0) / nums.length : null;
+  const deltaOf = (recent: number | null, prev: number | null) => (recent != null && prev != null) ? recent - prev : null;
+  const compTrend = mkTrend(deltaOf(
+    avgList(loggedCompliance.filter(c => c.date >= trendCutoff).map(c => c.compliance_score)),
+    avgList(loggedCompliance.filter(c => c.date < trendCutoff).map(c => c.compliance_score)),
+  ), 0, (m) => `%${m}`);
+  const waterTrend = mkTrend(deltaOf(
+    avgList(waterDays.filter(m => m.date >= trendCutoff).map(m => m.water_liters)),
+    avgList(waterDays.filter(m => m.date < trendCutoff).map(m => m.water_liters)),
+  ), 1, (m) => `${m} L`);
+  const sleepTrend = mkTrend(deltaOf(
+    avgList(sleepDays.filter(m => m.date >= trendCutoff).map(m => (m.sleep_hours ?? 0))),
+    avgList(sleepDays.filter(m => m.date < trendCutoff).map(m => (m.sleep_hours ?? 0))),
+  ), 1, (m) => `${m} sa`);
+  const stepsTrend = mkTrend(deltaOf(
+    avgList(stepsDays.filter(m => m.date >= trendCutoff).map(m => (m.steps ?? 0))),
+    avgList(stepsDays.filter(m => m.date < trendCutoff).map(m => (m.steps ?? 0))),
+  ), 0, (m) => `${m} adım`);
 
   return (
     <ScrollView
@@ -338,36 +416,81 @@ export default function ProgressScreen() {
       {/* FIX (audit UI-TAB-05): match the shared tab-title pattern (FONT.xl2/700, insets.top+8, accessibilityRole="header") used by profile.tsx + HeroSection. */}
       <Text accessibilityRole="header" style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
 
+      {/* FIX (ux-ideas #11): current streak — the strongest habit/return motivator, previously
+          buried in the all-time report only. Big and at-a-glance at the top of Raporlar. */}
+      {streak > 0 && (
+        <View style={{
+          flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+          backgroundColor: colors.card, borderRadius: RADIUS.md,
+          borderWidth: 0.5, borderColor: colors.border,
+          borderLeftWidth: 3, borderLeftColor: colors.warning,
+          padding: SPACING.lg, marginBottom: SPACING.md,
+        }}>
+          <View style={{ width: 44, height: 44, borderRadius: RADIUS.md, backgroundColor: colors.warning + '18', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="flame" size={24} color={colors.warning} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontSize: FONT.xl, fontWeight: '800' }}>{streak} günlük seri</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>Aralıksız kayıt tuttuğun gün — bugün de ekle, seriyi büyüt.</Text>
+          </View>
+        </View>
+      )}
+
       {/* Summary — FIX (ux-pass raporlar #2): '2 uyum' told the user nothing. compliance_score
           is a 0-100 percent (ai-report clamps it, monthly shows %X) → show it as %X and make
           every tile's period explicit (son 28 gün penceresi). */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.md, gap: SPACING.sm }}>
+      {/* FIX (ux-round4 #21): flexWrap so a 5th (adım) tile wraps to a second row. Each tile keeps
+          flexBasis 20% + flexGrow, so the 4-tile case (no step data) still fills one row exactly as
+          before — the layout only changes when the steps tile is present. */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: SPACING.md, gap: SPACING.sm }}>
         {/* FIX (ux-pass5): kilo değeri de virgül ondalık — aynı tile'daki delta rozeti virgüle
             çevrildi, '74.5' + '+1,5' karışımı olmasın. */}
         <SummaryBox icon="scale-outline" iconColor={colors.pink} value={latestW ? `${latestW}`.replace('.', ',') : '-'} label="kg" period="son tartı" delta={wChange} />
-        <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={avgComp != null ? `%${avgComp}` : '-'} label="uyum" period="28 gün ort." />
-        <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater ?? '-'} label="L/gün" period="28 gün ort." />
-        <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep ?? '-'} label="sa/gün" period="28 gün ort." />
+        <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={avgComp != null ? `%${avgComp}` : '-'} label="uyum" period="28 gün ort." trend={compTrend} />
+        <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater ?? '-'} label="L/gün" period="28 gün ort." trend={waterTrend} />
+        <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep ?? '-'} label="sa/gün" period="28 gün ort." trend={sleepTrend} />
+        {/* FIX (ux-round4 #21): surfaced only when the user actually logs steps. */}
+        {avgSteps != null && (
+          <SummaryBox icon="footsteps-outline" iconColor={colors.primary} value={avgSteps} label="adım/gün" period="28 gün ort." trend={stepsTrend} />
+        )}
       </View>
 
-      {/* Weight Chart */}
+      {/* Weight Chart — FIX (ux-ideas #12): overlay a flat target-weight reference line so the
+          chart answers "am I getting closer?" not just "what did I weigh?". */}
       {weights.length >= 2 ? (
         <Card title="Kilo Trendi">
           <View
             accessible
             accessibilityRole="image"
-            accessibilityLabel={`Kilo trendi grafiği. ${weights.length} kayıt. İlk ${firstW} kilogramdan son ${latestW} kilograma.`}
+            accessibilityLabel={`Kilo trendi grafiği. ${weights.length} kayıt. İlk ${firstW} kilogramdan son ${latestW} kilograma.${targetW != null ? ` Hedef ${targetW} kilogram.` : ''}`}
           >
             <LineChart
               data={{
                 // FIX (audit ui-progress-charts): labels must be SAME length as data so
                 // chart-kit aligns each tick to its data index (was filtered → left-clustered).
                 labels: labelsFor(weights.map(w => w.date)),
-                datasets: [{ data: weights.map(w => w.weight_kg as number) }],
+                datasets: [
+                  { data: weights.map(w => w.weight_kg as number) },
+                  ...(targetW != null ? [{
+                    data: weights.map(() => targetW),
+                    color: (o = 1) => `rgba(29, 158, 117, ${o * 0.55})`, // teal target reference
+                    withDots: false,
+                    strokeWidth: 1.5,
+                  }] : []),
+                ],
               }}
-              width={chartWidth} height={180} chartConfig={weightChartConfig} bezier style={{ borderRadius: RADIUS.md }}
+              width={chartWidth} height={180} chartConfig={weightChartConfig}
+              // Flat reference line would get a phantom bezier area fill; kill fills when it's shown.
+              withShadow={targetW == null}
+              bezier style={{ borderRadius: RADIUS.md }}
             />
           </View>
+          {targetW != null && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs }}>
+              <View style={{ width: 14, height: 2, backgroundColor: colors.primary, borderRadius: 1 }} />
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Hedef: {String(targetW).replace('.', ',')} kg</Text>
+            </View>
+          )}
         </Card>
       ) : (
         <Card title="Kilo Trendi">
@@ -379,6 +502,15 @@ export default function ProgressScreen() {
             <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>En az 2 tartı kaydı gerekli</Text>
           </View>
         </Card>
+      )}
+
+      {/* Goal progress rozet (ux-ideas #12) — kalan mesafe + tempo + tahmini bitiş.
+          FIX (ux-readiness): require a target weight (a targetless gain goal has no distance → the
+          %-bar/"N kg kaldı" card would be meaningless/contradictory). */}
+      {goalProgress && isWeightGoal && activeGoal!.target_weight_kg != null && (
+        <View style={{ marginBottom: SPACING.md }}>
+          <GoalProgressCard progress={goalProgress} goalType={activeGoal!.goal_type} onPress={() => router.push('/settings/goals')} />
+        </View>
       )}
 
       {/* Compliance Chart — FIX (ux-pass raporlar #3): only LOGGED days are plotted (the wall of
@@ -398,6 +530,11 @@ export default function ProgressScreen() {
                 labels: labelsFor(loggedCompliance.map(c => c.date)),
                 datasets: [
                   { data: loggedCompliance.map(c => c.compliance_score) },
+                  // FIX (ux-round4 #10): flat "good" benchmark at 70 — the same threshold the app
+                  // already treats as good (green tiles/weekly/monthly/calendar) — so a run of ~%58
+                  // reads as below-par at a glance. Mirrors the weight chart's target overlay;
+                  // withShadow={false} below already suppresses the phantom area fill.
+                  { data: loggedCompliance.map(() => 70), color: (o = 1) => `rgba(48, 209, 88, ${o * 0.5})`, withDots: false, strokeWidth: 1.5 },
                   // Invisible 0/100 anchor dataset: pins chart-kit's auto-scale to the full
                   // percent range (the lib has no explicit yMin/yMax API).
                   { data: [0, 100], withDots: false, strokeWidth: 0, color: () => 'transparent' },
@@ -416,6 +553,11 @@ export default function ProgressScreen() {
               bezier style={{ borderRadius: RADIUS.md }}
             />
           </View>
+          {/* FIX (ux-round4 #10): legend for the benchmark line. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs, alignSelf: 'flex-start' }}>
+            <View style={{ width: 16, height: 2, backgroundColor: 'rgba(48, 209, 88, 0.7)', borderRadius: 1 }} />
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>İyi: %70+</Text>
+          </View>
         </Card>
       ) : (
         <Card title="Uyum">
@@ -432,14 +574,20 @@ export default function ProgressScreen() {
       {/* Best/Worst — FIX (ux-pass raporlar #4): a day with NO logs used to get branded 'En Kötü 0'.
           Only logged days compete; with fewer than 2 logged days the card hides entirely. */}
       {loggedCompliance.length >= 2 && (
-        <Card title="En İyi / En Kötü">
+        // FIX (ux-round3 #4): non-judgmental framing — 'En Kötü' + red stamps a low day with shame
+        // (the plateau card was already reframed for exactly this). Neutral 'Zorlu gün' + amber +
+        // a normalizing note, consistent with the app's stated tone principle.
+        <Card title="En iyi & en zorlu günün">
           {(() => {
             const sorted = [...loggedCompliance].sort((a, b) => b.compliance_score - a.compliance_score);
             const best = sorted[0]; const worst = sorted[sorted.length - 1];
             return (
               <>
-                <DayRow label="En İyi" date={best.date} score={best.compliance_score} color={colors.success} />
-                <DayRow label="En Kötü" date={worst.date} score={worst.compliance_score} color={colors.error} />
+                <DayRow label="En iyi" date={best.date} score={best.compliance_score} color={colors.success} />
+                <DayRow label="Zorlu gün" date={worst.date} score={worst.compliance_score} color={colors.warning} />
+                <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>
+                  Herkesin zorlandığı günler olur — önemli olan devam etmek.
+                </Text>
               </>
             );
           })()}
@@ -455,12 +603,16 @@ export default function ProgressScreen() {
 
       {/* Plateau Warning + D4: Strategy Cards */}
       {plateauMsg && (
-        <Card style={{ borderColor: colors.warning, borderWidth: 2, borderRadius: RADIUS.md }}>
+        // FIX (ux-ideas #26): a plateau is the moment users most often quit — alarm-red 2px
+        // border + warning triangle + "Plateau Tespiti" amplifies guilt. Reframe as an expected,
+        // workable phase ("Vücudun uyum sağlıyor") with a calm accent + neutral icon; the
+        // strategy cards below are unchanged.
+        <Card style={{ borderColor: colors.border, borderWidth: 0.5, borderLeftWidth: 3, borderLeftColor: colors.primary, borderRadius: RADIUS.md }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.sm }}>
-            <View style={{ width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: colors.warningLight, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="warning" size={20} color={colors.warning} />
+            <View style={{ width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
+              <Ionicons name="pulse-outline" size={20} color={colors.primary} />
             </View>
-            <Text style={{ color: colors.warning, fontSize: FONT.md, fontWeight: '700', flex: 1 }}>Plateau Tespiti</Text>
+            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', flex: 1 }}>Vücudun uyum sağlıyor</Text>
           </View>
           <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{plateauMsg}</Text>
 
@@ -538,9 +690,10 @@ export default function ProgressScreen() {
         </Card>
       )}
 
-      {/* Maintenance Mode + D6: Mini-Cut UI */}
+      {/* Maintenance Mode + D6: Mini-Cut UI. FIX (ux-polish): softened to the hairline + left-accent
+          language the neighbouring plateau card uses (was a loud 2px full ring). */}
       {maintenanceMsg && (
-        <Card style={{ borderColor: colors.success, borderWidth: 2, borderRadius: RADIUS.md }}>
+        <Card style={{ borderColor: colors.border, borderWidth: 0.5, borderLeftWidth: 3, borderLeftColor: colors.success, borderRadius: RADIUS.md }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.sm }}>
             <View style={{ width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: colors.successLight, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="shield-checkmark" size={20} color={colors.success} />
@@ -649,16 +802,29 @@ function ReportLink({ label, icon, onPress, colors, last }: { label: string; ico
   );
 }
 
-function SummaryBox({ icon, iconColor, value, label, period, delta }: { icon: keyof typeof Ionicons.glyphMap; iconColor?: string; value: string; label: string; period?: string; delta?: number | null }) {
+function SummaryBox({ icon, iconColor, value, label, period, delta, trend }: { icon: keyof typeof Ionicons.glyphMap; iconColor?: string; value: string; label: string; period?: string; delta?: number | null; trend?: SummaryTrend }) {
   const { colors, isDark } = useTheme();
   const tint = iconColor || colors.primary;
+  // FIX (ux-round3 #18): collapse the tile into one screen-reader node with the trend spoken in
+  // WORDS (not color/arrow alone — WCAG 1.4.1), so it isn't read as disconnected fragments.
+  const a11yLabel = `${label}${period ? `, ${period}` : ''}: ${value}`
+    + (trend ? `, geçen döneme göre ${trend.dir === 'up' ? 'arttı' : trend.dir === 'down' ? 'azaldı' : 'değişmedi'}` : '')
+    + (delta != null ? `, değişim ${delta > 0 ? '+' : ''}${delta.toFixed(1).replace('.', ',')}` : '');
   return (
-    <View style={{
+    <View
+      accessible
+      accessibilityLabel={a11yLabel}
+      style={{
       backgroundColor: isDark ? colors.card : tint + '08',
       borderRadius: RADIUS.md,
       padding: SPACING.sm + 2,
       alignItems: 'center',
-      flex: 1,
+      // FIX (ux-round4 #21): flexBasis 20% + grow so 4 tiles fill one row (unchanged) and a 5th
+      // wraps under a flexWrap parent, instead of the old flex:1 that forced everything onto one row.
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: '20%',
+      minWidth: 64,
       minHeight: 95,
       justifyContent: 'center',
       borderWidth: 0.5, borderColor: colors.border,
@@ -679,6 +845,13 @@ function SummaryBox({ icon, iconColor, value, label, period, delta }: { icon: ke
           card — below AA-small. Use the lighter `errorText` tone (>=4.5:1). success passes as-is. */}
       {/* FIX (ux-pass5): TR virgül ondalık — kilo farkı rozeti '+1.5' değil '+1,5' okusun. */}
       {delta != null && <Text style={{ fontSize: FONT.xs, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.errorText }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1).replace('.', ',')}</Text>}
+      {/* FIX (ux-ideas #12): period trend (up is an improvement for these metrics → green). */}
+      {trend && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 1 }}>
+          {trend.dir !== 'flat' && <Ionicons name={trend.dir === 'up' ? 'arrow-up' : 'arrow-down'} size={9} color={trend.positive ? colors.success : colors.warning} />}
+          <Text style={{ fontSize: 10, fontWeight: '700', color: trend.dir === 'flat' ? colors.textMuted : (trend.positive ? colors.success : colors.warning) }}>{trend.value}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -687,7 +860,8 @@ function DayRow({ label, date, score, color }: { label: string; date: string; sc
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.xs, gap: SPACING.md }}>
-      <Text style={{ fontSize: FONT.sm, fontWeight: '600', width: 50, color }}>{label}</Text>
+      {/* FIX (ux-round3 #4 adversarial-review): widen + single-line so 'Zorlu gün' doesn't wrap. */}
+      <Text numberOfLines={1} style={{ fontSize: FONT.sm, fontWeight: '600', width: 68, color }}>{label}</Text>
       <Text style={{ color: colors.text, fontSize: FONT.md, flex: 1 }}>{new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}</Text>
       {/* FIX (ux-pass raporlar #2): bare '0'/'85' okundu — uyum her yerde yüzde, burada da öyle. */}
       <Text style={{ fontSize: FONT.lg, fontWeight: '700', color }}>%{score}</Text>

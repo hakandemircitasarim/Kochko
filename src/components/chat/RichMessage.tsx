@@ -129,10 +129,14 @@ export function SimulationCard({ foodName, calories, remaining, weeklyImpact }: 
           <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>kcal</Text>
         </View>
         <View style={{ alignItems: 'center' }}>
-          <Text style={{ color: remaining >= 0 ? colors.primary : colors.error, fontSize: FONT.lg, fontWeight: '700' }}>
-            {remaining >= 0 ? remaining : `${Math.abs(remaining)} fazla`}
+          {/* FIX (ux-ideas #5): over-budget no longer paints alarm-red. For an anxious
+              eater, red 'error' framing punishes every overshoot. Amber 'warning' conveys
+              the same info without the error/shame signal; the label flips to 'üzeri'
+              so 'kalan' doesn't sit contradictorily above a negative value. */}
+          <Text style={{ color: remaining >= 0 ? colors.primary : colors.warning, fontSize: FONT.lg, fontWeight: '700' }}>
+            {remaining >= 0 ? remaining : Math.abs(remaining)}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>kalan</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{remaining >= 0 ? 'kalan' : 'üzeri'}</Text>
         </View>
       </View>
       <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.sm }}>{weeklyImpact}</Text>
@@ -292,7 +296,9 @@ export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: 
   if (!(total > 0)) return null;
   const pct = total > 0 ? Math.min(1, consumed / total) : 0;
   const remaining = total - consumed;
-  const color = pct > 0.9 ? colors.error : pct > 0.7 ? colors.warning : colors.primary;
+  // FIX (ux-ideas #5): never alarm-red. Amber once the budget is nearly/fully used —
+  // a heads-up, not an 'error'. Weekly banking means a near-full bar is normal, not a failure.
+  const color = pct > 0.9 ? colors.warning : colors.primary;
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 0.5, borderColor: colors.border }}>
       {/* ux-pass2: gap + tr-TR thousands — this rendered as the run-together

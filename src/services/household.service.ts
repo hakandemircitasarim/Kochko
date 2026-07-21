@@ -196,21 +196,27 @@ export async function getUserHousehold(userId: string): Promise<Household | null
   // limit(1): legacy data could hold multiple memberships (pre-043 there was
   // no per-user unique index) and maybeSingle() errors → null on multi-row,
   // which made the screen show "Aile Oluştur" to an existing member.
-  const { data: memberships } = await supabase
+  // FIX (ux-round4 #20): surface query errors instead of swallowing them. supabase-js RESOLVES
+  // with {data:null,error} on RLS/network failures — returning null there made an EXISTING member
+  // see the "Aile Oluştur/Katıl" empty state, and creating a 2nd household hits the unique index.
+  // Throwing lets the screen show a retry, and keeps null meaning UNAMBIGUOUSLY "no household".
+  const { data: memberships, error: mErr } = await supabase
     .from('household_members')
     .select('household_id')
     .eq('user_id', userId)
     .limit(1);
+  if (mErr) throw mErr;
   const membership = memberships?.[0];
 
   if (!membership?.household_id) return null;
 
-  const { data } = await supabase
+  const { data, error: hErr } = await supabase
     .from('households')
     .select('*')
     .eq('id', membership.household_id)
     .maybeSingle();
 
+  if (hErr) throw hErr;
   if (!data) return null;
 
   return {

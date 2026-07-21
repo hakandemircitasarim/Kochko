@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
+import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 
 // The "day boundary" is the local hour at which a new day starts for streaks,
 // the daily calorie budget and IF windows. Late-night logs before this hour count
@@ -20,6 +21,17 @@ export default function DayBoundaryScreen() {
   const { profile, update } = useProfileStore();
   const [selected, setSelected] = useState<number>(((profile?.day_boundary_hour as number) ?? 4));
   const [saving, setSaving] = useState(false);
+  // FIX (ux-audit device-fix): sync ONCE if the profile loads after mount, so the default (4) can't
+  // fire a false unsaved prompt or clobber the real saved hour on Kaydet.
+  const hydratedRef = useRef(profile?.day_boundary_hour != null);
+  useEffect(() => {
+    if (!hydratedRef.current && profile?.day_boundary_hour != null) {
+      hydratedRef.current = true;
+      setSelected(profile.day_boundary_hour as number);
+    }
+  }, [profile?.day_boundary_hour]);
+  // FIX (ux-round3 #8): confirm before discarding an unsaved day-boundary change.
+  useUnsavedGuard(selected !== ((profile?.day_boundary_hour as number) ?? 4));
 
   const handleSave = async () => {
     if (!user?.id) return;

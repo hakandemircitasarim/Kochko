@@ -158,7 +158,20 @@ export default function PeriodicStateScreen() {
               {transition.transitionMessage_tr}
             </Text>
           )}
-          <Button title="Dönemi Sonlandır" variant="ghost" onPress={handleClear} style={{ marginTop: SPACING.sm }} />
+          {/* FIX (ux-round3 #14): ending the period rewrites the calorie band + plan — a one-tap,
+              unconfirmed destructive action. Confirm first (mirrors food-preferences' delete). */}
+          <Button
+            title="Dönemi Sonlandır"
+            variant="ghost"
+            onPress={() => {
+              haptics.tap();
+              Alert.alert('Dönemi sonlandır', 'Aktif dönemsel durumun kaldırılacak ve koçun normale dönüş planı hazırlayacak. Devam edilsin mi?', [
+                { text: 'Vazgeç', style: 'cancel' },
+                { text: 'Sonlandır', style: 'destructive', onPress: handleClear },
+              ]);
+            }}
+            style={{ marginTop: SPACING.sm }}
+          />
         </Card>
       )}
 

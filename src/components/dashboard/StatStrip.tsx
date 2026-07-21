@@ -18,6 +18,8 @@ interface Props {
   // FIX (ux-pass2 #4d): bugün tartı yoksa '-' yerine son bilinen profil kilosu (soluk).
   lastKnownWeightKg?: number | null;
   onAddWater: () => void;
+  // FIX (ux-ideas #9): uzun basış → miktar seçici (250/500/750 ml) + geri al.
+  onWaterLongPress?: () => void;
   // FIX (ux-pass2 #4a): Kilo kartı Tartı Kaydı modalını açar (ölü modal canlandı).
   onWeightPress?: () => void;
 }
@@ -30,6 +32,7 @@ interface StatCardProps {
   sublabel?: string;
   progress?: number;
   onPress?: () => void;
+  onLongPress?: () => void;
   a11yHint?: string;
   // FIX (ux-pass2 #8b): görünür eylem rozeti (ör. '+250 ml') — dokunma eylemi
   // eskiden yalnız ekran okuyucuya görünürdü.
@@ -40,7 +43,7 @@ interface StatCardProps {
   a11yLabel?: string;
 }
 
-function StatCard({ icon, value, label, color, sublabel, progress, onPress, a11yHint, actionChip, valueMuted, a11yLabel }: StatCardProps) {
+function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLongPress, a11yHint, actionChip, valueMuted, a11yLabel }: StatCardProps) {
   const { colors } = useTheme();
   const Wrapper = onPress ? TouchableOpacity : View;
   const a11yProps = onPress
@@ -50,6 +53,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, a11y
   return (
     <Wrapper
       {...(onPress ? { onPress, activeOpacity: 0.7 } : {})}
+      {...(onPress && onLongPress ? { onLongPress } : {})}
       {...a11yProps}
       style={{
         flex: 1,
@@ -98,7 +102,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, a11y
 
 // FIX (audit: ölü prop) sleepHours/weightKg artık imzada destructure edilip
 // 2x2 grid'de render ediliyor (eskiden tanımlı ama hiç gösterilmiyordu).
-export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, lastKnownWeightKg, onAddWater, onWeightPress }: Props) {
+export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, lastKnownWeightKg, onAddWater, onWaterLongPress, onWeightPress }: Props) {
   const waterPct = waterTarget > 0 ? waterLiters / waterTarget : 0;
   const noWeighInToday = weightKg == null && lastKnownWeightKg != null;
 
@@ -109,21 +113,27 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
           icon="water"
           // FIX (ux-pass5): TR ondalık — toFixed her zaman '.' basar; koç/servis yüzeyleri
           // (plateau, goals, widget) ',' kullanıyor. Aynı ekranda '1.5L' / chat'te '1,5L' olmaz.
-          value={waterTarget > 0 ? `${waterLiters.toFixed(1).replace('.', ',')} / ${waterTarget.toFixed(1).replace('.', ',')}L` : `${waterLiters.toFixed(1).replace('.', ',')}L`}
+          value={waterTarget > 0 ? `${waterLiters.toFixed(1).replace('.', ',')} / ${waterTarget.toFixed(1).replace('.', ',')} L` : `${waterLiters.toFixed(1).replace('.', ',')} L`}
           label="Su"
           color={METRIC_COLORS.water}
           progress={waterTarget > 0 ? waterPct : undefined}
           onPress={onAddWater}
-          a11yHint="Su eklemek için dokun"
+          onLongPress={onWaterLongPress}
+          a11yHint="Su eklemek için dokun, farklı miktar için basılı tut"
           actionChip={`+${Math.round(WATER_INCREMENT * 1000)} ml`}
         />
         <StatCard
           icon="footsteps"
-          // FIX (final sweep): expo-sensors Pedometer is iOS-only — on Android the tile
-          // showed '-' forever. Be honest: 'Yakında' (muted) until a step source exists.
-          value={Platform.OS === 'android' ? 'Yakında' : steps ? steps.toLocaleString('tr-TR') : '-'}
-          valueMuted={Platform.OS === 'android'}
-          a11yLabel={Platform.OS === 'android' ? 'Adım sayımı yakında' : undefined}
+          // FIX (final sweep): expo-sensors Pedometer is iOS-only. FIX (ux-audit major): the old
+          // code hardcoded 'Yakında' on Android even when the user DID have step data (manually
+          // logged / synced), so the cell was permanently dead on the platform we ship APKs for.
+          // Show the real value whenever there is one (any platform); only fall back to the honest
+          // muted 'Yakında' when Android genuinely has no step source yet.
+          value={steps && steps > 0
+            ? steps.toLocaleString('tr-TR')
+            : Platform.OS === 'android' ? 'Yakında' : '-'}
+          valueMuted={(!steps || steps <= 0) && Platform.OS === 'android'}
+          a11yLabel={(!steps || steps <= 0) && Platform.OS === 'android' ? 'Adım sayımı yakında' : undefined}
           label="Adım"
           color={METRIC_COLORS.steps}
         />

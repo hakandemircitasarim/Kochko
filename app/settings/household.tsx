@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuthStore } from '@/stores/auth.store';
@@ -7,6 +8,7 @@ import { isoDateMondayOfWeek } from '@/services/plan.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 import {
@@ -26,6 +28,9 @@ export default function HouseholdScreen() {
   const userId = useAuthStore(s => s.user?.id);
 
   const [loading, setLoading] = useState(true);
+  // FIX (ux-round4 #20): a failed load used to fall through to household=null → the "Aile Oluştur"
+  // empty state, misleading an existing member. Track the failure and show a retry instead.
+  const [loadError, setLoadError] = useState(false);
   const [household, setHousehold] = useState<Household | null>(null);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [shoppingList, setShoppingList] = useState<ShoppingListItem[]>([]);
@@ -44,6 +49,7 @@ export default function HouseholdScreen() {
   const loadData = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
+    setLoadError(false);
     try {
       const h = await getUserHousehold(userId);
       setHousehold(h);
@@ -62,6 +68,7 @@ export default function HouseholdScreen() {
       }
     } catch (e) {
       console.error('Household load error', e);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -145,9 +152,16 @@ export default function HouseholdScreen() {
   };
 
   if (loading) {
+    // FIX (ux-polish): content-shaped skeleton (like the sibling settings screens) instead of a bare
+    // centered spinner that jumps to a full page of cards.
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={2} /></View>;
+  }
+
+  // FIX (ux-round4 #20): a real load failure gets a retry — not a misleading "create a family" form.
+  if (loadError) {
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator color={COLORS.primary} />
+      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <LoadErrorState title="Aile bilgisi yüklenemedi" onRetry={loadData} />
       </View>
     );
   }

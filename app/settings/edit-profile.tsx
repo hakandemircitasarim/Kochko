@@ -337,7 +337,10 @@ export default function EditProfileScreen() {
           <Input label="Uyluk Çevresi (cm)" value={thigh} onChangeText={setThigh} keyboardType="decimal-pad" placeholder="55" hint="20–120 cm" error={thighErr} />
         </Card>
 
-        <Button title="Kaydet" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.md }} />
+        {/* FIX (ux-round3 #17): visually disable Save on invalid input (hasErrors already computed)
+            instead of the 'bright button → tap → error Alert' anti-pattern. Inline field errors say
+            what's wrong; handleSave keeps its guard as defense. */}
+        <Button title="Kaydet" onPress={handleSave} loading={saving} disabled={hasErrors} size="lg" style={{ marginTop: SPACING.md }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

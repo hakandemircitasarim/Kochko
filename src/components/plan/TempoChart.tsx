@@ -94,6 +94,12 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
           {startWeight.toFixed(1).replace('.', ',')} kg → {targetWeight.toFixed(1).replace('.', ',')} kg
         </Text>
       </View>
+      {/* FIX (ux-round3 #3): collapse the chart SVG into one accessible image with a spoken summary. */}
+      <View
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={`Kilo tempo grafiği: ${startWeight.toFixed(1).replace('.', ',')} kilodan ${targetWeight.toFixed(1).replace('.', ',')} kiloya hedef.${etaWeeks !== null && etaWeeks > 0 ? ` Tempo devam ederse yaklaşık ${etaWeeks} hafta sonra ulaşılır.` : ''}`}
+      >
       <LineChart
         data={{
           labels: labels.map((l, i) => (i % labelStep === 0 ? l : '')),
@@ -123,6 +129,7 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
         withInnerLines={false}
         withOuterLines={false}
       />
+      </View>
       {etaWeeks !== null && etaWeeks > 0 && (
         <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: SPACING.xs, textAlign: 'center' }}>
           Tempo devam ederse ~{etaWeeks} hafta sonra hedefe ulaşırsın.

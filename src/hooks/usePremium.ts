@@ -52,7 +52,13 @@ export function usePremium() {
         : 'Bu özellik Premium abonelik gerektirir.',
       [
         { text: 'İptal', style: 'cancel' },
-        { text: "Premium'a Geç", onPress: () => router.push('/settings/premium' as never) },
+        // FIX (ux-ideas #3): carry the feature name to the paywall so it can lead with
+        // exactly the capability the user reached for, instead of a generic 22-item wall.
+        { text: "Premium'a Geç", onPress: () => router.push(
+          featureName
+            ? { pathname: '/settings/premium', params: { feature: featureName } }
+            : ('/settings/premium' as never)
+        ) },
       ]
     );
   };

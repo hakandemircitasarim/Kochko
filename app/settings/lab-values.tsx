@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { addLabValue, COMMON_LAB_PARAMS, type LabValue } from '@/services/health.service';
@@ -148,8 +149,9 @@ export default function LabValuesScreen() {
 
       {/* FIX (audit UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi. */}
       {loading && Object.keys(grouped).length === 0 && (
-        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={{ gap: SPACING.md, paddingTop: SPACING.md }}>
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={2} />
         </View>
       )}
 

@@ -18,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, CARD_SHADOW, COLORS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
-import { genderLabelTR, activityLevelLabelTR, mealTypeLabelTR, goalInfinitiveLabelTR } from '@/lib/labels';
+import { genderLabelTR, activityLevelLabelTR, mealTypeLabelTR, goalInfinitiveLabelTR, coachToneLabelTR } from '@/lib/labels';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 
@@ -256,9 +256,6 @@ export default function CoachMemoryScreen() {
   const dietLabels: Record<string, string> = {
     standard: 'Standart', low_carb: 'Düşük karb', keto: 'Keto', high_protein: 'Yüksek protein',
   };
-  const toneLabels: Record<string, string> = {
-    strict: 'Sıkı', balanced: 'Dengeli', gentle: 'Nazik',
-  };
 
   const profileRows: { label: string; value: string }[] = [];
   if (profile?.display_name) profileRows.push({ label: 'İsim', value: String(profile.display_name) });
@@ -272,7 +269,7 @@ export default function CoachMemoryScreen() {
   if (activeGoal?.weekly_rate) profileRows.push({ label: 'Haftalık tempo', value: `${activeGoal.weekly_rate} kg/hafta` });
   if (profile?.activity_level) profileRows.push({ label: 'Aktivite', value: activityLevelLabelTR(profile.activity_level as string) });
   if (profile?.diet_mode) profileRows.push({ label: 'Beslenme', value: dietLabels[profile.diet_mode as string] ?? String(profile.diet_mode) });
-  if (profile?.coach_tone) profileRows.push({ label: 'Koç tonu', value: toneLabels[profile.coach_tone as string] ?? String(profile.coach_tone) });
+  if (profile?.coach_tone) profileRows.push({ label: 'Koç tonu', value: coachToneLabelTR(profile.coach_tone as string) });
   if (profile?.tdee_calculated) profileRows.push({ label: 'Günlük kalori (TDEE)', value: `${profile.tdee_calculated} kcal` });
   if (profile?.water_target_liters) profileRows.push({ label: 'Su hedefi', value: `${profile.water_target_liters} L` });
   if (profile?.home_timezone) profileRows.push({ label: 'Zaman dilimi', value: String(profile.home_timezone) });

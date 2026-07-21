@@ -7,7 +7,7 @@
  *   - app/plan/diet.tsx + workout.tsx draft view (inline review body)
  */
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
@@ -79,7 +79,7 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
             <TouchableOpacity
               // Keep at least one day expanded: re-tapping the open day is a no-op
               // so the user can't collapse into a blank screen with nothing to re-open.
-              onPress={() => { setExpandedDay(dayIdx); viewedRef.current.add(dayIdx); checkAllViewed(); }}
+              onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(dayIdx); viewedRef.current.add(dayIdx); checkAllViewed(); }}
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel={`${label}, ${isOpen ? 'açık' : 'aç'}`}
@@ -99,16 +99,24 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
               </Text>
               {isDiet ? (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-                  {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals) */}
-                  {Math.round((day as DietPlanData['days'][number]).total_kcal)} kcal
+                  {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
+                      ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal". */}
+                  {Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal
+                  {/* FIX (ux-round4 #7): show protein alongside kcal in the collapsed row. */}
+                  {(day as DietPlanData['days'][number]).total_protein
+                    ? ` · ${Math.round((day as DietPlanData['days'][number]).total_protein)}g P`
+                    : ''}
                 </Text>
-              ) : (
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-                  {(day as WorkoutPlanData['days'][number]).rest_day
-                    ? 'Dinlenme'
-                    : `${(day as WorkoutPlanData['days'][number]).exercises?.length ?? 0} egzersiz`}
-                </Text>
-              )}
+              ) : (() => {
+                // FIX (ux-round3 #10/#11): surface the workout's focus (Push/Pull/Legs) and estimated
+                // duration in the header — both are AI-authored but were never rendered, so the
+                // review surface showed only "5 egzersiz" (says nothing about what/how long).
+                const wd = day as WorkoutPlanData['days'][number];
+                if (wd.rest_day) return <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Dinlenme</Text>;
+                const n = wd.exercises?.length ?? 0;
+                const parts = [wd.focus, `${n} egzersiz`, wd.estimated_duration_min ? `~${wd.estimated_duration_min} dk` : null].filter(Boolean);
+                return <Text style={{ color: colors.textMuted, fontSize: FONT.xs }} numberOfLines={1}>{parts.join(' · ')}</Text>;
+              })()}
               <Ionicons
                 name={isOpen ? 'chevron-up' : 'chevron-down'}
                 size={16}
@@ -118,6 +126,14 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
 
             {isOpen ? (
               <View style={{ marginTop: SPACING.sm }}>
+                {/* FIX (ux-round3 #9): the AI-authored day note (e.g. "yüksek karbonhidrat günü",
+                    "form odaklı hafif gün") was silently dropped — it carries WHY the day looks the
+                    way it does. Surface it at the top of the open body. */}
+                {day.notes ? (
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontStyle: 'italic', marginBottom: SPACING.sm }}>
+                    {day.notes}
+                  </Text>
+                ) : null}
                 {isDiet ? (
                   ((day as DietPlanData['days'][number]).meals ?? []).length === 0 ? (
                     <Text
@@ -132,10 +148,12 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
                       Bu gün için öğün yok.
                     </Text>
                   ) : (
-                    ((day as DietPlanData['days'][number]).meals ?? []).map(meal => {
-                      // FIX (audit UI-PLN-06): scope meal key by array position so
-                      // duplicate day_index values can't share expand-state.
-                      const key = `${dayIdx}-${meal.meal_type}`;
+                    ((day as DietPlanData['days'][number]).meals ?? []).map((meal, mi) => {
+                      // FIX (audit UI-PLN-06 + ux-round4 review): scope meal key by ARRAY POSITION
+                      // (dayIdx-mi), not meal_type — a day with two 'snack' (ara öğün) meals shared
+                      // one '${dayIdx}-snack' key, so expanding one expanded BOTH. Mirrors the twin
+                      // fix in PlanActiveView.tsx.
+                      const key = `${dayIdx}-${mi}`;
                       const isHl = !!highlightedCells?.find(
                         c => c.dayIndex === day.day_index && c.mealType === meal.meal_type,
                       );

@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getActiveChallenges, getCompletedChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
@@ -22,6 +24,10 @@ export default function ChallengesScreen() {
   const [showSystem, setShowSystem] = useState(false);
   const [showCustom, setShowCustom] = useState(false);
   const [loading, setLoading] = useState(true);
+  // FIX (ux-round4 #28): the initial load had no error handling — a rejected fetch was an unhandled
+  // promise rejection AND collapsed to the "Aktif challenge yok" empty state, hiding a premium
+  // user's real challenges. Track the failure and offer a retry.
+  const [loadError, setLoadError] = useState(false);
 
   // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
   // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
@@ -37,17 +43,42 @@ export default function ChallengesScreen() {
   const [customType, setCustomType] = useState<'water' | 'protein' | 'steps' | 'sleep' | 'custom'>('custom');
   const [customThreshold, setCustomThreshold] = useState('');
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, []);
+  useEffect(() => { load().catch(() => setLoadError(true)).finally(() => setLoading(false)); }, []);
   const load = () => Promise.all([
     getActiveChallenges().then(setActive),
     getCompletedChallenges().then(setCompleted),
   ]);
+  const reload = () => {
+    setLoadError(false);
+    setLoading(true);
+    load().catch(() => setLoadError(true)).finally(() => setLoading(false));
+  };
+  // In-place refresh after a mutation: refetch the lists WITHOUT the full-screen skeleton flash
+  // (reload() toggles loading), but still surface a fetch failure via the retry screen.
+  const refreshLists = () => { load().catch(() => setLoadError(true)); };
+  // FIX (ux-round4 #28 review): pause/resume/bırak used fire-and-forget (mutation; load()) — the
+  // reload raced the un-awaited write (stale status → button looked dead) and a failed mutation
+  // gave no feedback + an unhandled rejection. Await both, and surface failures.
+  const runAction = async (fn: () => Promise<void>) => {
+    // FIX (ux-round4 batch-2 review): separate the mutation from the reload. Only a real MUTATION
+    // failure surfaces "işlem tamamlanamadı"; a post-success reload failure is handled by reload()
+    // itself (→ loadError/retry screen), so a persisted pause isn't reported as failed.
+    try {
+      await fn();
+    } catch {
+      Alert.alert('Hata', 'İşlem tamamlanamadı. Lütfen tekrar dene.');
+      return;
+    }
+    refreshLists();
+  };
 
   const handleStart = async (c: typeof SYSTEM_CHALLENGES[0]) => {
     try {
       await startChallenge(c.title, null, c.target);
       setShowSystem(false);
-      load();
+      // FIX (ux-round4 batch-2 review): refreshLists() (self-handling) not bare load() — getters now
+      // throw (FIX-A), so an un-awaited load() could reject unhandled after a successful start.
+      refreshLists();
     } catch (e) {
       // FIX (audit raw-error): fixed Turkish copy for the user; raw error to the console only.
       console.warn('startChallenge failed', e);
@@ -81,7 +112,8 @@ export default function ChallengesScreen() {
       }, 'custom');
       setShowCustom(false);
       setCustomTitle(''); setCustomDays('14'); setCustomThreshold(''); setCustomType('custom');
-      load();
+      // FIX (ux-round4 batch-2 review): refreshLists() (self-handling), not bare load() — see handleStart.
+      refreshLists();
     } catch (e) {
       // FIX (audit raw-error): fixed Turkish copy for the user; raw error to the console only.
       console.warn('startChallenge (custom) failed', e);
@@ -95,7 +127,13 @@ export default function ChallengesScreen() {
   }
 
   if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+    // FIX (ux-ideas #28): skeleton loader instead of a bare centered spinner (see achievements).
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={4} /></View>;
+  }
+
+  // FIX (ux-round4 #28): distinguish a real load failure from "no challenges" + offer retry.
+  if (loadError) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><LoadErrorState title="Challenge'lar yüklenemedi" onRetry={reload} /></View>;
   }
 
   return (
@@ -124,12 +162,12 @@ export default function ChallengesScreen() {
               {c.progress.filter(p => p.met).length} / {c.target.duration_days} gün tamamlandı
             </Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-              {c.status === 'active' && <Button title="Duraklat" variant="outline" size="sm" onPress={() => { pauseChallenge(c.id); load(); }} />}
-              {c.status === 'paused' && <Button title="Devam Et" variant="primary" size="sm" onPress={() => { resumeChallenge(c.id); load(); }} />}
+              {c.status === 'active' && <Button title="Duraklat" variant="outline" size="sm" onPress={() => runAction(() => pauseChallenge(c.id))} />}
+              {c.status === 'paused' && <Button title="Devam Et" variant="primary" size="sm" onPress={() => runAction(() => resumeChallenge(c.id))} />}
               <Button title="Bırak" variant="ghost" size="sm" onPress={() => {
                 Alert.alert('Bırak', 'Challenge\'ı bırakmak istediğine emin misin?', [
                   { text: 'İptal' },
-                  { text: 'Bırak', style: 'destructive', onPress: () => { abandonChallenge(c.id); load(); } },
+                  { text: 'Bırak', style: 'destructive', onPress: () => runAction(() => abandonChallenge(c.id)) },
                 ]);
               }} />
             </View>

@@ -31,6 +31,13 @@ interface MonthlyAIReport {
   next_month_focus?: string;
 }
 
+// FIX (ux-round3 #1): TR labels for the deviation reasons (mirrors daily.tsx) — used to render the
+// previously-invisible deviation_distribution the edge function already computes.
+const DEVIATION_LABELS: Record<string, string> = {
+  stres: 'Stres', aclik: 'Açlık', disarida_yemek: 'Dışarıda yemek',
+  plansiz_atistirma: 'Plansız atıştırma', sosyal: 'Sosyal ortam', alkol: 'Alkol',
+};
+
 export default function MonthlyReportScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
@@ -44,6 +51,8 @@ export default function MonthlyReportScreen() {
   const [generating, setGenerating] = useState(false);
   const [weightData, setWeightData] = useState<{ label: string; value: number }[]>([]);
   const [dailyAvgCompliance, setDailyAvgCompliance] = useState<number>(0);
+  // FIX (ux-round3 #5): previous month's average compliance for the headline trend (weekly parity).
+  const [prevMonthCompliance, setPrevMonthCompliance] = useState<number | null>(null);
   // FIX (ux-pass5): remember a successful load so a later refresh failure keeps the shown data
   // instead of swapping it for the full-screen error state.
   const loadedRef = useRef(false);
@@ -68,6 +77,12 @@ export default function MonthlyReportScreen() {
     const monthStart = `${_y}-${_mm}-01`;
     const monthEnd = `${_y}-${_mm}-${String(new Date(_y, _m + 1, 0).getDate()).padStart(2, '0')}`;
     const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
+    // FIX (ux-round3 #5): previous-month bounds (calendar strings, same convention as above).
+    const _pm = _m - 1 < 0 ? 11 : _m - 1;
+    const _py = _m - 1 < 0 ? _y - 1 : _y;
+    const _pmm = String(_pm + 1).padStart(2, '0');
+    const prevMonthStart = `${_py}-${_pmm}-01`;
+    const prevMonthEnd = `${_py}-${_pmm}-${String(new Date(_py, _pm + 1, 0).getDate()).padStart(2, '0')}`;
 
     Promise.all([
       supabase.from('weekly_reports').select('*').eq('user_id', user.id)
@@ -81,7 +96,10 @@ export default function MonthlyReportScreen() {
       // no weekly_reports yet, so weekly-only avg shows 0 despite compliant days (#R2-15).
       supabase.from('daily_reports').select('compliance_score').eq('user_id', user.id)
         .gte('date', monthStart).lte('date', monthEnd),
-    ]).then(([reportsRes, goalRes, monthlyRes, metricsRes, dailyRes]) => {
+      // FIX (ux-round3 #5): previous month's daily compliance (best-effort — NOT in the failure gate).
+      supabase.from('daily_reports').select('compliance_score').eq('user_id', user.id)
+        .gte('date', prevMonthStart).lte('date', prevMonthEnd),
+    ]).then(([reportsRes, goalRes, monthlyRes, metricsRes, dailyRes, prevDailyRes]) => {
       // FIX (ux-pass5): supabase-js never rejects — network failures resolve as { data: null, error }
       // on each result, so the Wave3 .catch below never fired and an offline open rendered a confident
       // all-zero month (uyum %0 + paid "Rapor Oluştur" over the cached row). Check every result's
@@ -100,6 +118,10 @@ export default function MonthlyReportScreen() {
         .map(d => d.compliance_score).filter((s): s is number => typeof s === 'number');
       setDailyAvgCompliance(dailyScores.length > 0
         ? Math.round(dailyScores.reduce((a, b) => a + b, 0) / dailyScores.length) : 0);
+      // FIX (ux-round3 #5): previous month's average for the headline trend (best-effort).
+      const prevScores = ((prevDailyRes.data ?? []) as { compliance_score: number | null }[])
+        .map(d => d.compliance_score).filter((s): s is number => typeof s === 'number');
+      setPrevMonthCompliance(prevScores.length > 0 ? Math.round(prevScores.reduce((a, b) => a + b, 0) / prevScores.length) : null);
       setWeeklyReports((reportsRes.data ?? []) as Record<string, unknown>[]);
       setProfile((goalRes.data as { target_weight_kg: number | null }[] | null)?.[0] ?? null);
       if (monthlyRes.data) {
@@ -132,7 +154,7 @@ export default function MonthlyReportScreen() {
       haptics.success();
     } catch (err) {
       haptics.error();
-      Alert.alert('Bir sorun oldu', 'Rapor oluşturulamadı, lütfen tekrar dene.');
+      Alert.alert('Koç şu an meşgul', 'Raporun oluşturulamadı, birazdan tekrar dene.');
     } finally {
       setGenerating(false);
     }
@@ -179,6 +201,13 @@ export default function MonthlyReportScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
 
+      {/* FIX (ux-polish): period header so monthly anchors the reader like daily ("Salı, 14 Temmuz")
+          and weekly ("Hafta: …"). review fix: derive it from the SAME day-boundary-aware effective
+          month the query uses (raw new Date() could name a different month pre-boundary on the 1st). */}
+      <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
+        {new Date(`${getEffectiveDate(new Date(), dayBoundaryHour).slice(0, 7)}-01T00:00:00`).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
+      </Text>
+
       {/* Overall Compliance */}
       <Card title="Ortalama Uyum">
         {/* FIX (ux-pass5, emulator): ComplianceScore (başka kümenin dosyası) ringde çıplak sayı basıyordu;
@@ -186,6 +215,16 @@ export default function MonthlyReportScreen() {
         <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
           <CircularProgress progress={complianceScore / 100} value={`%${complianceScore}`} size={120} strokeWidth={8} color={complianceColor} a11yLabel="Ortalama uyum" />
           <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, marginTop: SPACING.sm }}>Uyum Puanı</Text>
+          {/* FIX (ux-round3 #5): trend vs last month (weekly parity) so '%62' gains direction. */}
+          {prevMonthCompliance != null && (() => {
+            const d = complianceScore - prevMonthCompliance;
+            if (d === 0) return <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>geçen ayla aynı</Text>;
+            return (
+              <Text style={{ color: d > 0 ? COLORS.success : COLORS.warning, fontSize: FONT.sm, fontWeight: '700', marginTop: SPACING.xs }}>
+                geçen aya göre {d > 0 ? '+' : '−'}{Math.abs(d)}
+              </Text>
+            );
+          })()}
         </View>
       </Card>
 
@@ -242,7 +281,7 @@ export default function MonthlyReportScreen() {
           />
           {generating && (
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
-              Koçun ayını analiz ediyor, bu birkaç saniye sürebilir...
+              Koç ayını analiz ediyor, bu birkaç saniye sürebilir…
             </Text>
           )}
         </Card>
@@ -284,6 +323,32 @@ export default function MonthlyReportScreen() {
             </Card>
           )}
 
+          {/* FIX (ux-round3 #1): Sapma Dağılımı — render the deviation_distribution the edge already
+              computes (was defined on the type but never shown, leaving the monthly view poorer than
+              weekly). Sorted most→least frequent, each a labelled bar. */}
+          {aiReport.deviation_distribution
+            && Object.entries(aiReport.deviation_distribution).some(([k, v]) => k !== 'yok' && v > 0) && (
+            <Card title="Sapma Dağılımı">
+              {(() => {
+                const entries = Object.entries(aiReport.deviation_distribution!)
+                  .filter(([k, v]) => k !== 'yok' && v > 0)
+                  .sort((a, b) => b[1] - a[1]);
+                const max = Math.max(...entries.map(([, v]) => v));
+                return entries.map(([k, v]) => (
+                  <View key={k} style={{ marginBottom: SPACING.sm }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
+                      <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>{DEVIATION_LABELS[k] ?? k}</Text>
+                      <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>{v} gün</Text>
+                    </View>
+                    <View style={{ height: 6, borderRadius: 3, backgroundColor: COLORS.border, overflow: 'hidden' }}>
+                      <View style={{ width: `${max > 0 ? Math.round((v / max) * 100) : 0}%`, height: '100%', borderRadius: 3, backgroundColor: COLORS.warning }} />
+                    </View>
+                  </View>
+                ));
+              })()}
+            </Card>
+          )}
+
           {/* Behavioral Patterns */}
           {Array.isArray(aiReport.behavioral_patterns) && aiReport.behavioral_patterns.length > 0 && (
             <Card title="Davranış Kalıpları">
@@ -314,7 +379,7 @@ export default function MonthlyReportScreen() {
           />
           {generating && (
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
-              Koçun ayını analiz ediyor, bu birkaç saniye sürebilir...
+              Koç ayını analiz ediyor, bu birkaç saniye sürebilir…
             </Text>
           )}
         </>

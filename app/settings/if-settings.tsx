@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, KeyboardAvoidingView } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { a11ySwitch } from '@/lib/accessibility'; // FIX (audit UI-DS-03): getContrastColor moved into shared <Toggle/>
 import { PERIODIC_STATE_CONFIG, type PeriodicState } from '@/services/periodic.service';
+import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 
 const IF_WINDOWS = [
   { label: '16:8', eating: '8 saat yeme, 16 saat oruç', start: '12:00', end: '20:00' },
@@ -31,6 +32,33 @@ export default function IFSettingsScreen() {
   const [selected, setSelected] = useState(profile?.if_window ?? '16:8');
   const [eatingStart, setEatingStart] = useState(String(profile?.if_eating_start ?? '12:00'));
   const [eatingEnd, setEatingEnd] = useState(String(profile?.if_eating_end ?? '20:00'));
+
+  // FIX (ux-audit device-fix): if the profile store isn't loaded at mount, all four fields seed
+  // their defaults (16:8 / 12:00 / 20:00 / off); sync ONCE when the profile arrives so we don't fire
+  // a false unsaved-changes prompt or clobber the real saved IF settings on Kaydet.
+  const hydratedRef = useRef(!!profile);
+  useEffect(() => {
+    if (!hydratedRef.current && profile != null) {
+      hydratedRef.current = true;
+      setActive(profile.if_active ?? false);
+      setSelected(profile.if_window ?? '16:8');
+      setEatingStart(String(profile.if_eating_start ?? '12:00'));
+      setEatingEnd(String(profile.if_eating_end ?? '20:00'));
+    }
+  }, [profile]);
+
+  // FIX (ux-round3 #8): confirm before discarding unsaved IF changes. The window/time
+  // fields only count as dirty while IF is active — mirroring handleSave, which nulls them
+  // out when inactive — so turning IF off and saving correctly clears the guard.
+  const initActive = profile?.if_active ?? false;
+  useUnsavedGuard(
+    active !== initActive ||
+      (active && (
+        selected !== (profile?.if_window ?? '16:8') ||
+        eatingStart !== String(profile?.if_eating_start ?? '12:00') ||
+        eatingEnd !== String(profile?.if_eating_end ?? '20:00')
+      )),
+  );
 
   const handleSave = async () => {
     if (!user?.id) return;

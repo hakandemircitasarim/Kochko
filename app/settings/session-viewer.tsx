@@ -5,6 +5,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, FlatList, ActivityIndicator } from 'react-native';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
@@ -75,11 +76,8 @@ export default function SessionViewerScreen() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
+    // FIX (ux-ideas #28): skeleton loader instead of a bare centered spinner (see achievements).
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={4} /></View>;
   }
 
   // (refactor: shared LoadErrorState)

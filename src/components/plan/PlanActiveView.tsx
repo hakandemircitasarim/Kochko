@@ -3,14 +3,16 @@
  * open a revision chat overlay, see history, and surface the drift banner
  * when the user's profile has materially changed since approval.
  */
-import { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
+import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { getEffectiveDate } from '@/lib/day-boundary';
+import { supabase } from '@/lib/supabase';
 import { MealCard } from './MealCard';
 import { ExerciseCard } from './ExerciseCard';
 import {
@@ -20,10 +22,14 @@ import {
   planWeeksAgo,
   logPlannedMeal,
   undoPlannedMealLog,
+  logPlannedExercise,
+  undoPlannedExerciseLog,
   type PlanRow,
   type DietPlanData,
+  type DietDay,
   type DietMeal,
   type WorkoutPlanData,
+  type WorkoutExercise,
 } from '@/services/plan.service';
 import type { Profile } from '@/types/database';
 
@@ -134,15 +140,42 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
   // plan has a slot for it, and the list never lands fully collapsed.
   const [expandedDay, setExpandedDay] = useState(0);
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
+  // FIX (ux-round4 #11): the coach's rationale (plan_data.reasoning) was stored on approval but
+  // never shown again — surface it as a collapsed "Bu plan neden böyle?" note.
+  const [showReasoning, setShowReasoning] = useState(false);
+
+  // FIX (ux-round4 #3): give the plan a yardstick. Diet → daily kcal/protein target + week average;
+  // workout → training/rest day counts + weekly minutes. All from plan_data already in memory.
+  const planSummary = useMemo(() => {
+    if (isDiet) {
+      const t = (data as DietPlanData).targets;
+      const dd = days as DietDay[];
+      const withKcal = dd.filter(d => (d.total_kcal ?? 0) > 0);
+      const avgKcal = withKcal.length
+        ? Math.round(withKcal.reduce((s, d) => s + d.total_kcal, 0) / withKcal.length)
+        : null;
+      return { kind: 'diet' as const, targetKcal: t?.kcal ?? null, targetProtein: t?.protein ?? null, avgKcal };
+    }
+    const wd = days as WorkoutPlanData['days'];
+    const training = wd.filter(d => !d.rest_day && (d.exercises?.length ?? 0) > 0).length;
+    const rest = wd.filter(d => d.rest_day).length;
+    const weeklyMin = wd.reduce((s, d) => s + (d.estimated_duration_min ?? 0), 0);
+    return { kind: 'workout' as const, training, rest, weeklyMin };
+  }, [data, days, isDiet]);
 
   // ── 'Bunu yedim' (fix-pass 07-12, item 9): one-tap deterministic plan→diary. ──
+  // FIX (ux-ideas #18): the "done" state used to be local-only and reset on nav-away (and could
+  // double-log). It's now hydrated from today's actual logs (effect below) so it survives
+  // leaving/returning the tab. Immediate undo lives in the "Geri al" alert; a reload-marked log
+  // is undoable from the dashboard timeline.
   const [mealLogState, setMealLogState] = useState<Record<string, 'saving' | 'done'>>({});
+  const dayBoundaryHour = (profile?.day_boundary_hour as number) ?? 4;
+
   const handleLogMeal = async (key: string, meal: DietMeal) => {
     if (mealLogState[key]) return;
     setMealLogState(s => ({ ...s, [key]: 'saving' }));
     // Review fix (ux-pass2): honor the user's configured day boundary like every
     // other logging surface — the bare default split diaries at custom boundaries.
-    const dayBoundaryHour = (profile?.day_boundary_hour as number) ?? 4;
     const { mealLogId, error } = await logPlannedMeal(meal, getEffectiveDate(new Date(), dayBoundaryHour));
     if (error || !mealLogId) {
       haptics.error();
@@ -161,16 +194,128 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         text: 'Geri al',
         onPress: async () => {
           await undoPlannedMealLog(mealLogId);
-          setMealLogState(s => {
-            const next = { ...s };
-            delete next[key];
-            return next;
-          });
+          setMealLogState(s => { const next = { ...s }; delete next[key]; return next; });
         },
       },
       { text: 'Tamam' },
     ]);
   };
+
+  // ── 'Bunu yaptım' (ux-ideas #19): one-tap plan→workout diary, mirrors handleLogMeal. ──
+  const [exLogState, setExLogState] = useState<Record<string, 'saving' | 'done'>>({});
+  const handleLogExercise = async (key: string, exercise: WorkoutExercise) => {
+    if (exLogState[key]) return;
+    setExLogState(s => ({ ...s, [key]: 'saving' }));
+    const { workoutLogId, error } = await logPlannedExercise(exercise, getEffectiveDate(new Date(), dayBoundaryHour));
+    if (error || !workoutLogId) {
+      haptics.error();
+      setExLogState(s => { const next = { ...s }; delete next[key]; return next; });
+      Alert.alert('Eklenemedi', 'Egzersiz günlüğe eklenemedi. Bağlantını kontrol edip tekrar dene.');
+      return;
+    }
+    haptics.success();
+    setExLogState(s => ({ ...s, [key]: 'done' }));
+    Alert.alert('Günlüğe eklendi', `"${exercise.name}" bugünkü antrenmanına eklendi.`, [
+      {
+        text: 'Geri al',
+        onPress: async () => {
+          await undoPlannedExerciseLog(workoutLogId);
+          setExLogState(s => { const next = { ...s }; delete next[key]; return next; });
+        },
+      },
+      { text: 'Tamam' },
+    ]);
+  };
+
+  // FIX (ux-ideas #18/#19): hydrate "done" state from today's actual logs so it survives
+  // leaving and returning to the tab (and prevents accidental double-logging). Match the
+  // '[Plan] {name}' tag the two log helpers write. Today is pinned to array position 0,
+  // so keys are '0-{mealIndex}' / 'ex-0-{i}' to match the render below.
+  useEffect(() => {
+    if (todayDayIndex < 0) return;
+    let cancelled = false;
+    (async () => {
+      const dateStr = getEffectiveDate(new Date(), dayBoundaryHour);
+      const todayDay = days.find(d => d.day_index === todayDayIndex);
+      if (!todayDay) return;
+      if (isDiet) {
+        const meals = (todayDay as DietDay).meals ?? [];
+        const { data } = await supabase.from('meal_logs')
+          .select('id, raw_input').eq('logged_for_date', dateStr).eq('is_deleted', false)
+          .like('raw_input', '[Plan] %');
+        if (cancelled || !data) return;
+        const byRaw = new Map<string, string>();
+        for (const r of data as { id: string; raw_input: string }[]) byRaw.set(r.raw_input, r.id);
+        const st: Record<string, 'done'> = {};
+        meals.forEach((m, mi) => { const id = byRaw.get(`[Plan] ${m.name}`); if (id) { st[`0-${mi}`] = 'done'; } });
+        setMealLogState(s => ({ ...st, ...s }));
+      } else {
+        const exercises = (todayDay as WorkoutPlanData['days'][number]).exercises ?? [];
+        const { data } = await supabase.from('workout_logs')
+          .select('id, raw_input').eq('logged_for_date', dateStr)
+          .like('raw_input', '[Plan] %');
+        if (cancelled || !data) return;
+        const rawSet = new Map<string, string>();
+        for (const r of data as { id: string; raw_input: string }[]) rawSet.set(r.raw_input, r.id);
+        const st: Record<string, 'done'> = {};
+        exercises.forEach((ex, i) => {
+          const loadText = ex.weight_kg ? `${ex.sets}×${ex.reps} · ${ex.weight_kg} kg` : `${ex.sets}×${ex.reps}`;
+          if (rawSet.has(`[Plan] ${ex.name} — ${loadText}`)) { st[`ex-0-${i}`] = 'done'; }
+        });
+        setExLogState(s => ({ ...st, ...s }));
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan.id, todayDayIndex, isDiet]);
+
+  // FIX (ux-ideas #18/#19): today's completion counts for the header badge.
+  const todayCompletion = useMemo(() => {
+    if (todayDayIndex < 0) return null;
+    const todayDay = days.find(d => d.day_index === todayDayIndex);
+    if (!todayDay) return null;
+    if (isDiet) {
+      const meals = (todayDay as DietDay).meals ?? [];
+      if (meals.length === 0) return null;
+      const done = meals.filter((_, mi) => mealLogState[`0-${mi}`] === 'done').length;
+      return { done, total: meals.length, unit: 'öğün' };
+    }
+    const exs = (todayDay as WorkoutPlanData['days'][number]).exercises ?? [];
+    if ((todayDay as WorkoutPlanData['days'][number]).rest_day || exs.length === 0) return null;
+    const done = exs.filter((_, i) => exLogState[`ex-0-${i}`] === 'done').length;
+    return { done, total: exs.length, unit: 'egzersiz' };
+  }, [days, todayDayIndex, isDiet, mealLogState, exLogState]);
+
+  // FIX (ux-ideas #9): "şimdi sırada" — the next meal by clock time (or today's workout summary),
+  // pulled into a single highlighted card right under the header so "ne yiyeyim/yapayım şimdi?"
+  // is answered at a glance, without opening the accordion. Uses meal.time (already present).
+  const nowNext = useMemo(() => {
+    if (todayDayIndex < 0) return null;
+    const todayDay = days.find(d => d.day_index === todayDayIndex);
+    if (!todayDay) return null;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const toMin = (t?: string): number | null => {
+      if (!t) return null;
+      const [h, m] = t.split(':').map(Number);
+      return Number.isFinite(h) ? h * 60 + (Number.isFinite(m) ? m : 0) : null;
+    };
+    if (isDiet) {
+      const meals = (todayDay as DietDay).meals ?? [];
+      const timed = meals
+        .map((meal, mi) => ({ meal, mi, min: toMin(meal.time) }))
+        .filter((x): x is { meal: DietMeal; mi: number; min: number } => x.min != null)
+        .sort((a, b) => a.min - b.min);
+      const pick = timed.find(x => x.min >= nowMin);
+      if (!pick) return null; // all of today's timed meals are past → nothing "next"
+      return { kind: 'meal' as const, meal: pick.meal, mi: pick.mi, done: mealLogState[`0-${pick.mi}`] === 'done' };
+    }
+    const wday = todayDay as WorkoutPlanData['days'][number];
+    if (wday.rest_day) return { kind: 'rest' as const };
+    const exs = wday.exercises ?? [];
+    if (exs.length === 0) return null;
+    return { kind: 'workout' as const, count: exs.length, doneCount: exs.filter((_, i) => exLogState[`ex-0-${i}`] === 'done').length };
+  }, [days, todayDayIndex, isDiet, mealLogState, exLogState]);
 
   // FIX (fix-pass 07-12, item 1): weekly plan whose week is over = STALE.
   const stale = isPlanStale(plan.week_start);
@@ -208,6 +353,39 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             </Text>
           </View>
         </View>
+        {/* FIX (ux-round4 #3): daily target / week overview — the yardstick the per-day numbers lacked. */}
+        {planSummary.kind === 'diet' && planSummary.targetKcal ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: SPACING.sm }}>
+            <Ionicons name="flag-outline" size={13} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+              Günlük hedef: ~{Math.round(planSummary.targetKcal)} kcal
+              {planSummary.targetProtein ? ` · ${Math.round(planSummary.targetProtein)}g protein` : ''}
+              {planSummary.avgKcal ? ` · hafta ort. ${planSummary.avgKcal} kcal` : ''}
+            </Text>
+          </View>
+        ) : null}
+        {planSummary.kind === 'workout' && planSummary.training > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: SPACING.sm }}>
+            <Ionicons name="calendar-outline" size={13} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+              {planSummary.training} antrenman · {planSummary.rest} dinlenme
+              {planSummary.weeklyMin > 0 ? ` · ~${planSummary.weeklyMin} dk/hafta` : ''}
+            </Text>
+          </View>
+        ) : null}
+        {/* FIX (ux-ideas #18/#19): today's completion at a glance */}
+        {todayCompletion && (
+          <View style={{
+            flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm,
+            alignSelf: 'flex-start', backgroundColor: colors.primary + '18',
+            borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 4,
+          }}>
+            <Ionicons name="checkmark-done-outline" size={13} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700' }}>
+              Bugün {todayCompletion.done}/{todayCompletion.total} {todayCompletion.unit}
+            </Text>
+          </View>
+        )}
         <View style={{ flexDirection: 'row', gap: SPACING.xs, marginTop: SPACING.sm }}>
           <TouchableOpacity
             onPress={onStartRevision}
@@ -255,6 +433,77 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* FIX (ux-round4 #11): the coach's rationale, kept available after approval (collapsed). */}
+      {data.reasoning ? (
+        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: SPACING.md }}>
+          <TouchableOpacity
+            onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setShowReasoning(v => !v); }}
+            accessibilityRole="button"
+            accessibilityLabel="Bu plan neden böyle"
+            accessibilityState={{ expanded: showReasoning }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: SPACING.sm }}
+          >
+            <Ionicons name="bulb-outline" size={14} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', flex: 1 }}>Bu plan neden böyle?</Text>
+            <Ionicons name={showReasoning ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
+          </TouchableOpacity>
+          {showReasoning ? (
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, lineHeight: 18, paddingBottom: SPACING.md }}>
+              {data.reasoning}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* FIX (ux-ideas #9): "şimdi sırada" highlight — answers "ne şimdi?" without scrolling. */}
+      {nowNext && (
+        <View style={{
+          backgroundColor: colors.primary + '12', borderRadius: RADIUS.lg,
+          borderWidth: 1, borderColor: colors.primary + '40', padding: SPACING.md,
+          flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+        }}>
+          <Ionicons
+            name={nowNext.kind === 'meal' ? 'restaurant' : nowNext.kind === 'rest' ? 'bed-outline' : 'barbell'}
+            size={18} color={colors.primary}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.3 }}>ŞİMDİ SIRADA</Text>
+            {nowNext.kind === 'meal' && (
+              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }} numberOfLines={1}>
+                {MEAL_TYPE_LABELS_TR[nowNext.meal.meal_type]}{nowNext.meal.time ? ` · ${nowNext.meal.time}` : ''} — {nowNext.meal.name}
+              </Text>
+            )}
+            {nowNext.kind === 'workout' && (
+              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }}>
+                Bugünkü antrenman · {nowNext.count} egzersiz{nowNext.doneCount > 0 ? ` · ${nowNext.doneCount} bitti` : ''}
+              </Text>
+            )}
+            {nowNext.kind === 'rest' && (
+              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }}>Bugün dinlenme günü</Text>
+            )}
+          </View>
+          {nowNext.kind === 'meal' && (
+            nowNext.done ? (
+              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+            ) : (
+              <TouchableOpacity
+                onPress={() => handleLogMeal(`0-${nowNext.mi}`, nowNext.meal)}
+                disabled={mealLogState[`0-${nowNext.mi}`] === 'saving'}
+                accessibilityRole="button"
+                accessibilityLabel={`${nowNext.meal.name}, bunu yedim, günlüğe ekle`}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7 }}
+              >
+                {mealLogState[`0-${nowNext.mi}`] === 'saving'
+                  ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} style={{ transform: [{ scale: 0.7 }] }} />
+                  : <Ionicons name="add-circle-outline" size={14} color={getContrastColor(colors.primary)} />}
+                <Text style={{ color: getContrastColor(colors.primary), fontSize: 11, fontWeight: '700' }}>Bunu yedim</Text>
+              </TouchableOpacity>
+            )
+          )}
+        </View>
+      )}
 
       {/* FIX (fix-pass 07-12, item 1): stale-plan banner. A "weekly" plan lived 4 weeks
           live because nothing rolls it over — surface it and offer a fresh draft via the
@@ -391,7 +640,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         return (
           <View key={`${day.day_index}-${dayIdx}`}>
             <TouchableOpacity
-              onPress={() => setExpandedDay(isOpen ? -1 : dayIdx)}
+              onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(isOpen ? -1 : dayIdx); }}
               activeOpacity={0.8}
               // FIX (ux-pass5): same a11y treatment as the visually identical draft accordion
               // (PlanDayAccordion) — role + label + expanded state for the daily-use plan.
@@ -415,8 +664,14 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               </Text>
               {isDiet ? (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
-                  {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals) */}
-                  {Math.round((day as DietPlanData['days'][number]).total_kcal)} kcal
+                  {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
+                      ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal". */}
+                  {Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal
+                  {/* FIX (ux-round4 #7): protein is the macro the coaching model revolves around —
+                      show it in the collapsed row instead of hiding it behind an expand. */}
+                  {(day as DietPlanData['days'][number]).total_protein
+                    ? ` · ${Math.round((day as DietPlanData['days'][number]).total_protein)}g P`
+                    : ''}
                 </Text>
               ) : (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
@@ -434,10 +689,11 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             {isOpen ? (
               <View style={{ marginTop: SPACING.sm }}>
                 {isDiet ? (
-                  ((day as DietPlanData['days'][number]).meals ?? []).map(meal => {
-                    // FIX (audit UI-PLN-06): scope meal key by array position so
-                    // duplicate day_index values can't share expand-state.
-                    const key = `${dayIdx}-${meal.meal_type}`;
+                  ((day as DietPlanData['days'][number]).meals ?? []).map((meal, mi) => {
+                    // FIX (audit UI-PLN-06 + ux-review): scope meal key by array position, NOT
+                    // meal_type — a day with two 'snack' (ara öğün) meals would collide on
+                    // '0-snack', so logging one marked BOTH done and over-counted the badge.
+                    const key = `${dayIdx}-${mi}`;
                     return (
                       <MealCard
                         key={key}
@@ -463,9 +719,18 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                     Dinlenme günü.
                   </Text>
                 ) : (
-                  ((day as WorkoutPlanData['days'][number]).exercises ?? []).map((ex, i) => (
-                    <ExerciseCard key={i} exercise={ex} />
-                  ))
+                  ((day as WorkoutPlanData['days'][number]).exercises ?? []).map((ex, i) => {
+                    const exKey = `ex-${dayIdx}-${i}`;
+                    return (
+                      <ExerciseCard
+                        key={i}
+                        exercise={ex}
+                        // 'Bunu yaptım' only on the ACTIVE plan's TODAY (ux-ideas #19).
+                        onLogPress={isToday ? () => handleLogExercise(exKey, ex) : undefined}
+                        logStatus={exLogState[exKey]}
+                      />
+                    );
+                  })
                 )}
               </View>
             ) : null}

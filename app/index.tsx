@@ -5,7 +5,6 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
-import { LoadErrorState } from '@/components/ui/LoadErrorState';
 
 export default function Index() {
   const { session, initialized, signOut } = useAuthStore();
@@ -13,10 +12,24 @@ export default function Index() {
   // FIX (audit DB-PRV-05): true while the user is canceling a pending deletion, so the
   // reactivation spinner shows instead of the confirmation screen re-appearing mid-write.
   const [reactivating, setReactivating] = useState(false);
+  // FIX (ux-audit device-fix): if the profiles row is momentarily unreadable and the fetch resolves
+  // with { data: null, error: null } (no fetchError), the gate below would spin FOREVER with no
+  // retry or sign-out. After a grace period, surface a retry + sign-out escape instead.
+  const [spinTimedOut, setSpinTimedOut] = useState(false);
 
   useEffect(() => {
     if (session?.user?.id) fetchProfile(session.user.id);
   }, [session?.user?.id, fetchProfile]);
+
+  useEffect(() => {
+    if (profile || fetchError || !session) { setSpinTimedOut(false); return; }
+    // review fix: spinTimedOut MUST be a dep — otherwise "Tekrar dene" (which resets it to false)
+    // wouldn't re-run this effect on a repeated silent {data:null,error:null} fetch, dropping the
+    // user back to a permanent spinner. Guard against re-arming once we've already timed out.
+    if (spinTimedOut) return;
+    const t = setTimeout(() => setSpinTimedOut(true), 12000);
+    return () => clearTimeout(t);
+  }, [profile, fetchError, session, spinTimedOut]);
 
   if (!initialized) {
     return (
@@ -38,17 +51,26 @@ export default function Index() {
   // screen. Spin until the profile is present (mig 044 guarantees a row exists, so
   // a successful fetch always returns one).
   if (!profile) {
-    // If the fetch FAILED (transient/network) there's no prior profile to fall back
-    // on at cold start — offer a retry instead of spinning forever (#R7-2).
-    // (refactor: shared LoadErrorState)
-    if (fetchError) {
+    // If the fetch FAILED (transient/network) OR the row stayed unreadable past the grace period
+    // ({data:null,error:null}), there's no prior profile to fall back on at cold start — offer a
+    // retry AND a sign-out escape instead of spinning forever (#R7-2 + ux-audit device-fix).
+    if (fetchError || spinTimedOut) {
       return (
-        <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-          <LoadErrorState
-            title="Profilin yüklenemedi"
-            subtitle="İnternet bağlantını kontrol et."
-            onRetry={() => { if (session?.user?.id) fetchProfile(session.user.id); }}
-          />
+        <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl, gap: SPACING.md }}>
+          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>Profilin yüklenemedi</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.md }}>
+            {fetchError ? 'İnternet bağlantını kontrol et.' : 'Beklenenden uzun sürdü. Tekrar dene ya da çıkış yapıp yeniden gir.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => { setSpinTimedOut(false); if (session?.user?.id) fetchProfile(session.user.id); }}
+            accessibilityRole="button" accessibilityLabel="Tekrar dene"
+            style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { signOut(); }} accessibilityRole="button" accessibilityLabel="Çıkış yap" style={{ paddingVertical: SPACING.sm, minHeight: 44, justifyContent: 'center' }}>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Çıkış yap</Text>
+          </TouchableOpacity>
         </View>
       );
     }

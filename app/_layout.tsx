@@ -1,6 +1,8 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useColorScheme } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { Stack, router, useSegments } from 'expo-router';
+import { routeForNotificationType } from '@/services/notifications.service';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuthenticatedAppInit, useAppStateSync } from '@/services/app-init.service';
@@ -9,6 +11,7 @@ import { safeGetString, safeSetString } from '@/lib/safe-storage';
 import { ThemeContext, DARK_COLORS, LIGHT_COLORS, type ThemeMode } from '@/lib/theme';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { OfflineBanner } from '@/components/common/OfflineBanner';
+import { ToastHost } from '@/components/ui/Toast';
 import { initSentry } from '@/lib/sentry';
 
 const THEME_KEY = '@kochko_theme_mode';
@@ -32,6 +35,29 @@ export default function RootLayout() {
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
 
   useEffect(() => { initialize(); }, [initialize]);
+
+  // FIX (ux-ideas #14): route a tapped notification to the relevant screen. Handles both
+  // a tap while running and a cold start launched by the notification (useLastNotificationResponse
+  // returns the launching response). Deduped by identifier so a re-render never re-routes;
+  // gated on an active session so an unauthenticated user isn't pushed past the login guard.
+  const lastNotifResponse = Notifications.useLastNotificationResponse();
+  const handledNotifKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (!authInitialized || !lastNotifResponse) return;
+    const req = lastNotifResponse.notification.request;
+    // FIX (ux-review): dedup per DELIVERY, not per scheduled identifier — repeating local
+    // reminders (weekly/daily triggers) reuse the same identifier across deliveries, so an
+    // identifier-only guard would swallow every tap after the first while the process lives.
+    // The delivery date differs per firing; a pure re-render keeps the same date+id.
+    const key = `${req.identifier}:${lastNotifResponse.notification.date ?? ''}`;
+    if (handledNotifKey.current === key) return;
+    handledNotifKey.current = key;
+    const data = req.content.data as { type?: string } | undefined;
+    const route = routeForNotificationType(data?.type);
+    if (route && useAuthStore.getState().session) {
+      router.push(route as never);
+    }
+  }, [lastNotifResponse, authInitialized]);
 
   // FIX (ux-pass2, W#46): drain the offline chat queue on app START. The reconnect
   // listener only fires on a live offline→online transition — a message queued
@@ -119,6 +145,9 @@ export default function RootLayout() {
         <Stack.Screen name="reports" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
       </Stack>
+      {/* FIX (ux-ideas #15): one shared, theme-aware toast host for the whole app — any screen
+          or service can call showToast(...) for a consistent bottom-anchored confirmation. */}
+      <ToastHost />
     </ThemeContext.Provider>
     </ErrorBoundary>
   );

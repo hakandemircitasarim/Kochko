@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -208,11 +209,21 @@ export default function RecipesScreen() {
 
       {/* FIX (audit UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi. */}
       {loading ? (
-        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={{ gap: SPACING.md, paddingTop: SPACING.md }}>
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={2} />
         </View>
       ) : recipes.length === 0 ? (
-        <Card><Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henüz kayıtlı tarif yok. Koçundan tarif iste ve "Kaydet" de.</Text></Card>
+        <Card>
+          {/* FIX (ux-polish): iconed empty state to match the app's empty-state pattern. */}
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="book-outline" size={26} color={COLORS.primary} />
+            </View>
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz kayıtlı tarifin yok</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Koçundan tarif iste ve "Kaydet" de.</Text>
+          </View>
+        </Card>
       ) : (
         recipes.map(r => (
           <TouchableOpacity key={r.id}

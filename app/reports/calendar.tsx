@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { router } from 'expo-router';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useProfileStore } from '@/stores/profile.store';
@@ -6,7 +7,7 @@ import { getEffectiveDate } from '@/lib/day-boundary';
 import { getMonthSummaries, type DaySummary } from '@/services/calendar.service';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 import { getContrastColor } from '@/lib/accessibility';
 
 const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -153,6 +154,29 @@ export default function CalendarScreen() {
       </View>
       )}
 
+      {/* FIX (ux-round3 #2): month-at-a-glance strip from the already-loaded day summaries (logged
+          days, average compliance, workouts) so the user doesn't count cells. Live per month. */}
+      {!loading && !loadError && days.some(d => d.hasData) && (() => {
+        const logged = days.filter(d => d.hasData);
+        const scored = logged.filter(d => d.compliance_score !== null);
+        const avg = scored.length ? Math.round(scored.reduce((s, d) => s + (d.compliance_score ?? 0), 0) / scored.length) : null;
+        const workouts = days.filter(d => d.workout_done).length;
+        return (
+          <View style={{ flexDirection: 'row', marginTop: SPACING.md, backgroundColor: COLORS.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: COLORS.border, paddingVertical: SPACING.md }}>
+            {[
+              { value: `${logged.length}`, label: 'loglanan gün', color: COLORS.text },
+              { value: avg != null ? `%${avg}` : '-', label: 'ort. uyum', color: avg != null ? getScoreColor(avg) : COLORS.text },
+              { value: `${workouts}`, label: 'antrenman', color: COLORS.text },
+            ].map((s) => (
+              <View key={s.label} style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ color: s.color, fontSize: FONT.xl, fontWeight: '800' }}>{s.value}</Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
+        );
+      })()}
+
       {/* Color legend (only meaningful next to a rendered grid) */}
       {!loading && !loadError && (
       <View
@@ -209,6 +233,20 @@ export default function CalendarScreen() {
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Antrenman</Text>
                 <Text style={{ color: selected.workout_done ? COLORS.success : COLORS.textMuted, fontSize: FONT.md }}>{selected.workout_done ? 'Yapıldı' : 'Yapılmadı'}</Text>
               </View>
+              {/* FIX (ux-audit major): the tap used to dead-end at this 5-row summary; give it a path
+                  to that day's full gün-sonu report (narrative, tomorrow_action, deviation reason).
+                  ux-readiness: only when a report actually exists (compliance_score!=null) — a
+                  meal/weight-only day has no daily_reports row and the link would soft-dead-end. */}
+              {selected.compliance_score !== null && (
+                <TouchableOpacity
+                  onPress={() => router.push(`/reports/daily?date=${selected.date}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Bu günün gün sonu raporunu gör"
+                  style={{ marginTop: SPACING.sm, paddingVertical: SPACING.sm, alignSelf: 'flex-start' }}
+                >
+                  <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>Gün sonu raporunu gör →</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </Card>

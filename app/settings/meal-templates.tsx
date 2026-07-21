@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createTemplate, deleteTemplate, useTemplate, type MealTemplate } from '@/services/templates.service';
 import { supabase } from '@/lib/supabase';
@@ -114,8 +116,9 @@ export default function MealTemplatesScreen() {
 
       {/* FIX (audit UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi. */}
       {loading ? (
-        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={{ gap: SPACING.md, paddingTop: SPACING.md }}>
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={2} />
         </View>
       ) : loadError ? (
         /* FIX (audit empty-vs-error): fetch hatası 'şablon yok' değil, hata+tekrar dene (shared LoadErrorState). */
@@ -124,9 +127,14 @@ export default function MealTemplatesScreen() {
         </Card>
       ) : templates.length === 0 && !showAdd ? (
         <Card style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
-            Henüz şablon yok. Sık yediğin öğünleri kaydet veya koçuna "bunu şablona ekle" de.
-          </Text>
+          {/* FIX (ux-polish): iconed empty state to match the app's empty-state pattern. */}
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="bookmark-outline" size={26} color={COLORS.primary} />
+            </View>
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz şablonun yok</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Sık yediğin öğünleri kaydet veya koçuna "bunu şablona ekle" de.</Text>
+          </View>
         </Card>
       ) : (
         templates.map(t => (

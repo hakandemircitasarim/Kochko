@@ -7,7 +7,7 @@
  * negotiation history and past meal/workout ideas.
  */
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth.store';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import {
   getHistory,
   dayLabelTR,
@@ -132,9 +133,10 @@ export default function PlanHistoryScreen() {
       </View>
 
       {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
+        // FIX (ux-round4 #29): shared skeleton instead of a lone centered spinner — matches the
+        // sibling list screens (achievements, session-viewer, challenges) and avoids the
+        // centered-spinner → top-anchored-list layout jump.
+        <SkeletonScreen cards={4} topGap={SPACING.md} />
       ) : loadError ? (
         // FIX (fix-pass 07-12, item 8c): network failure gets its own state + retry —
         // mirrors the diet/workout screens' error branch. (refactor: shared LoadErrorState)

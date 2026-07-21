@@ -11,6 +11,8 @@ import { calculateWaterTarget } from '@/lib/tdee';
 // doğrudan supabase'e gidip patlıyordu; artık yapısal kuyruğa düşüp reconnect'te
 // setupAutoSync ile işlenir.
 import { enqueue, isOnline } from '@/services/offline-queue.service';
+import { safeGetJSON, safeSetJSON } from '@/lib/safe-storage';
+import type { LifeEvent } from '@/components/dashboard/LifeEventCard';
 import type { Goal } from '@/types/database';
 
 interface MealEntry {
@@ -58,6 +60,11 @@ interface TodayState {
   fatTarget: number | null;
   goalProgress: GoalProgress | null;
   activeGoal: Goal | null;
+  // FIX (ux-ideas #6): nearest upcoming active life_event → dashboard countdown card.
+  nextLifeEvent: LifeEvent | null;
+  // FIX (ux-ideas #27): true once a cached snapshot (or a live fetch) has painted,
+  // so the dashboard can skip the cold-load skeleton for returning users.
+  hydrated: boolean;
   loading: boolean;
   // FIX (ux-pass2 #7/#10): query failures used to render a fake zeroed day; now they set
   // fetchError and KEEP the previous state. lastFetchedAt (ms) gates silent focus refetches.
@@ -65,12 +72,49 @@ interface TodayState {
   lastFetchedAt: number | null;
 
   fetchToday: (userId: string, dayBoundaryHour?: number) => Promise<void>;
+  hydrateFromCache: (userId: string, dayBoundaryHour?: number) => Promise<boolean>;
   addWater: (userId: string, amount: number, dayBoundaryHour?: number) => Promise<void>;
   deleteMeal: (mealId: string) => Promise<void>;
   deleteWorkout: (workoutId: string) => Promise<void>;
 }
 
 const todayStr = (dayBoundaryHour: number = 4) => getEffectiveDate(new Date(), dayBoundaryHour);
+
+// FIX (ux-ideas #27): write-through cache — the dashboard's scalar snapshot (totals,
+// targets, water, weight, budgets, goal, next event) is persisted per-user and re-
+// hydrated instantly on open, so a returning user sees real last-known numbers
+// immediately instead of a skeleton→network wait. Mirrors chat.service's cache.
+// USER-SCOPED key so an account switch never paints A's numbers onto B's screen.
+const DASH_CACHE_KEY = '@kochko_dash_cache_v1';
+type DashSnapshot = {
+  date: string;
+  weightKg: number | null;
+  waterLiters: number;
+  waterTarget: number;
+  sleepHours: number | null;
+  steps: number | null;
+  totalCalories: number;
+  totalProtein: number;
+  totalCarbs: number;
+  totalFat: number;
+  focusMessage: string | null;
+  weeklyBudgetRemaining: number | null;
+  weeklyBudgetTotal: number | null;
+  weeklyBudgetConsumed: number | null;
+  calorieTargetMin: number | null;
+  calorieTargetMax: number | null;
+  proteinTarget: number | null;
+  carbsTarget: number | null;
+  fatTarget: number | null;
+  goalProgress: GoalProgress | null;
+  activeGoal: Goal | null;
+  nextLifeEvent: LifeEvent | null;
+};
+
+function writeDashCache(userId: string, snap: DashSnapshot): void {
+  // best-effort, fire-and-forget
+  void safeSetJSON(`${DASH_CACHE_KEY}:${userId}`, snap);
+}
 
 // FIX (ux-pass2 #8a): rapid su tapları için yazım zinciri — her halka store'daki EN GÜNCEL
 // toplamı yazar; N hızlı artış yarışan upsert'ler yerine sıralı yazımlara dönüşür.
@@ -102,6 +146,8 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
   fatTarget: null,
   goalProgress: null,
   activeGoal: null,
+  nextLifeEvent: null,
+  hydrated: false,
   loading: false,
   fetchError: false,
   lastFetchedAt: null,
@@ -111,7 +157,7 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
     const date = todayStr(dayBoundaryHour);
 
     try {
-    const [mealsRes, workoutsRes, metricsRes, planRes, goalRes, profileRes] = await Promise.all([
+    const [mealsRes, workoutsRes, metricsRes, planRes, goalRes, profileRes, lifeEventRes] = await Promise.all([
       supabase.from('meal_logs').select('id, raw_input, meal_type, logged_at')
         .eq('user_id', userId).eq('logged_for_date', date).eq('is_deleted', false).order('logged_at'),
       supabase.from('workout_logs').select('id, raw_input, duration_min, workout_type, logged_at')
@@ -124,10 +170,16 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         .eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1).maybeSingle(),
       supabase.from('profiles').select('weight_kg, water_target_liters, weekly_calorie_budget')
         .eq('id', userId).maybeSingle(),
+      // FIX (ux-ideas #6): nearest upcoming active life event → dashboard countdown.
+      supabase.from('life_events').select('id, title, event_type, event_date')
+        .eq('user_id', userId).eq('is_active', true).gte('event_date', date)
+        .order('event_date', { ascending: true }).limit(1).maybeSingle(),
     ]);
 
     // FIX (ux-pass2 #7): any failed query used to fall through as `data ?? []` / null and the
     // dashboard rendered a convincing fake zeroed day. Flag the failure and keep prior state.
+    // (life_events excluded — it's a best-effort enhancement; a failure there must not blank
+    //  the whole day.)
     const failed = [mealsRes, workoutsRes, metricsRes, planRes, goalRes, profileRes].find(r => r.error);
     if (failed?.error) {
       console.warn('fetchToday query failed:', failed.error.message);
@@ -237,6 +289,8 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
       return raw;
     })();
 
+    const nextLifeEvent = (lifeEventRes.error ? null : (lifeEventRes.data as LifeEvent | null)) ?? null;
+
     set({
       meals,
       workouts: (workoutsRes.data ?? []) as WorkoutEntry[],
@@ -272,9 +326,27 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
         if (!curWeight || !startWeight) return null;
         return calculateGoalProgress(goal, curWeight, startWeight);
       })(),
+      nextLifeEvent,
+      hydrated: true,
       loading: false,
       fetchError: false,
       lastFetchedAt: Date.now(),
+    });
+
+    // FIX (ux-ideas #27): persist the freshly-set scalar snapshot for instant repaint
+    // on the next open. Read back from state so the cache can never diverge from what
+    // was just rendered.
+    const s = get();
+    writeDashCache(userId, {
+      date,
+      weightKg: s.weightKg, waterLiters: s.waterLiters, waterTarget: s.waterTarget,
+      sleepHours: s.sleepHours, steps: s.steps,
+      totalCalories: s.totalCalories, totalProtein: s.totalProtein, totalCarbs: s.totalCarbs, totalFat: s.totalFat,
+      focusMessage: s.focusMessage,
+      weeklyBudgetRemaining: s.weeklyBudgetRemaining, weeklyBudgetTotal: s.weeklyBudgetTotal, weeklyBudgetConsumed: s.weeklyBudgetConsumed,
+      calorieTargetMin: s.calorieTargetMin, calorieTargetMax: s.calorieTargetMax,
+      proteinTarget: s.proteinTarget, carbsTarget: s.carbsTarget, fatTarget: s.fatTarget,
+      goalProgress: s.goalProgress, activeGoal: s.activeGoal, nextLifeEvent: s.nextLifeEvent,
     });
     } catch (err) {
       // FIX (ux-pass2 #7): network/unexpected failure — keep previous state, surface the flag.
@@ -283,11 +355,46 @@ export const useDashboardStore = create<TodayState>((set, get) => ({
     }
   },
 
+  hydrateFromCache: async (userId, dayBoundaryHour = 4) => {
+    // Only paint from cache before any live data has landed this session.
+    if (get().lastFetchedAt != null) return false;
+    const snap = await safeGetJSON<DashSnapshot>(`${DASH_CACHE_KEY}:${userId}`);
+    // Ignore a snapshot from a previous day, and re-check the race after the await.
+    if (!snap || snap.date !== todayStr(dayBoundaryHour) || get().lastFetchedAt != null) return false;
+    set({
+      weightKg: snap.weightKg,
+      waterLiters: snap.waterLiters,
+      waterTarget: snap.waterTarget,
+      sleepHours: snap.sleepHours,
+      steps: snap.steps,
+      totalCalories: snap.totalCalories,
+      totalProtein: snap.totalProtein,
+      totalCarbs: snap.totalCarbs,
+      totalFat: snap.totalFat,
+      focusMessage: snap.focusMessage,
+      weeklyBudgetRemaining: snap.weeklyBudgetRemaining,
+      weeklyBudgetTotal: snap.weeklyBudgetTotal,
+      weeklyBudgetConsumed: snap.weeklyBudgetConsumed,
+      calorieTargetMin: snap.calorieTargetMin,
+      calorieTargetMax: snap.calorieTargetMax,
+      proteinTarget: snap.proteinTarget,
+      carbsTarget: snap.carbsTarget,
+      fatTarget: snap.fatTarget,
+      goalProgress: snap.goalProgress,
+      activeGoal: snap.activeGoal,
+      nextLifeEvent: snap.nextLifeEvent,
+      hydrated: true,
+    });
+    return true;
+  },
+
   addWater: async (userId, amount, dayBoundaryHour = 4) => {
     const date = todayStr(dayBoundaryHour);
     // FIX (ux-pass2 #8a): optimistik — UI ağı beklemeden anında artar; hata olursa
     // yalnız BU tapın artışı geri alınır (eşzamanlı taplar kendi paylarını geri alır).
-    const newTotal = Math.round((get().waterLiters + amount) * 100) / 100;
+    // FIX (ux-ideas #9): clamp at 0 so an "undo" (negative amount) can never drive
+    // the displayed total below zero.
+    const newTotal = Math.max(0, Math.round((get().waterLiters + amount) * 100) / 100);
     set({ waterLiters: newTotal });
 
     // FIX (audit UX-OFF-03) çevrimdışıyken doğrudan upsert reddedilir ve artış

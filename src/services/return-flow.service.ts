@@ -29,16 +29,32 @@ export interface ReturnStatus {
  * Detect return level based on days since last activity.
  */
 export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
-  const { data: lastMessage } = await supabase
-    .from('chat_messages')
-    .select('created_at')
-    .eq('user_id', userId)
-    .eq('role', 'user')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single();
+  // FIX (ux-audit major): a "return" must be measured against ALL activity, not just chat. A user
+  // who logs meals/weight/water daily via the log screen (keeping their streak flame alive) but
+  // doesn't converse was wrongly told "8 gündür görüşmüyorduk" beside a live streak — a self-
+  // contradiction. Use the MOST RECENT of chat, meal logs (the streak's own source), daily metrics
+  // and workout logs.
+  const [chatRes, mealRes, metricRes, workoutRes] = await Promise.all([
+    supabase.from('chat_messages').select('created_at').eq('user_id', userId).eq('role', 'user').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('meal_logs').select('logged_for_date').eq('user_id', userId).eq('is_deleted', false).order('logged_for_date', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('daily_metrics').select('date').eq('user_id', userId).order('date', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('workout_logs').select('logged_for_date').eq('user_id', userId).order('logged_for_date', { ascending: false }).limit(1).maybeSingle(),
+  ]);
 
-  if (!lastMessage) {
+  // Normalize each source to epoch ms; date-only columns → local midnight of that day.
+  const toTs = (v: string | null | undefined, dateOnly: boolean): number | null => {
+    if (!v) return null;
+    const t = new Date(dateOnly ? `${v}T00:00:00` : v).getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+  const candidates = [
+    toTs(chatRes.data?.created_at as string | undefined, false),
+    toTs(mealRes.data?.logged_for_date as string | undefined, true),
+    toTs(metricRes.data?.date as string | undefined, true),
+    toTs(workoutRes.data?.logged_for_date as string | undefined, true),
+  ].filter((t): t is number => t != null);
+
+  if (candidates.length === 0) {
     return {
       level: 'active',
       daysSinceLastActivity: 0,
@@ -49,14 +65,15 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
     };
   }
 
-  const lastDate = new Date(lastMessage.created_at as string);
-  const daysSince = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+  const lastTs = Math.max(...candidates);
+  const lastActivityIso = new Date(lastTs).toISOString();
+  const daysSince = Math.max(0, Math.floor((Date.now() - lastTs) / 86400000));
 
   if (daysSince <= 2) {
     return {
       level: 'active',
       daysSinceLastActivity: daysSince,
-      lastActivityDate: lastMessage.created_at as string,
+      lastActivityDate: lastActivityIso,
       welcomeMessage: '',
       planLightening: 0,
       needsReOnboarding: false,
@@ -67,7 +84,7 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
     return {
       level: 'short_break',
       daysSinceLastActivity: daysSince,
-      lastActivityDate: lastMessage.created_at as string,
+      lastActivityDate: lastActivityIso,
       welcomeMessage: 'Hoş geldin! Seni özledim. Nereden devam edelim?',
       planLightening: 0,
       needsReOnboarding: false,
@@ -78,7 +95,7 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
     return {
       level: 'medium_break',
       daysSinceLastActivity: daysSince,
-      lastActivityDate: lastMessage.created_at as string,
+      lastActivityDate: lastActivityIso,
       welcomeMessage: `${daysSince} gündür görüşmüyorduk. Hoş geldin! İlk 3 gün hafif bir planla başlayalım, yavaş yavaş eski ritme döneriz.`,
       planLightening: 20,
       needsReOnboarding: false,
@@ -89,7 +106,7 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
     return {
       level: 'long_break',
       daysSinceLastActivity: daysSince,
-      lastActivityDate: lastMessage.created_at as string,
+      lastActivityDate: lastActivityIso,
       welcomeMessage: `Uzun bir aradan sonra tekrar buradasın — harika! Hedeflerini ve durumunu güncelleyelim, sonra sana yeni bir plan yaparım.`,
       planLightening: 30,
       needsReOnboarding: false,
@@ -100,7 +117,7 @@ export async function detectReturnLevel(userId: string): Promise<ReturnStatus> {
   return {
     level: 'very_long_break',
     daysSinceLastActivity: daysSince,
-    lastActivityDate: lastMessage.created_at as string,
+    lastActivityDate: lastActivityIso,
     welcomeMessage: 'Tekrar hoş geldin! Çok şey değişmiş olabilir. Seni yeniden tanıyalım — kilo, hedef ve yaşam tarzın güncellenmiş olabilir.',
     planLightening: 30,
     needsReOnboarding: true,

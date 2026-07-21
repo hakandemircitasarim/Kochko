@@ -53,8 +53,18 @@ export async function invokePlanChat(params: {
   if (params.userApproved) body.user_approved = true;
   if (params.draftId) body.draft_id = params.draftId;
   try {
-    const { data, error } = await supabase.functions.invoke('ai-chat', { body });
-    if (error) return { data: null, error: await mapInvokeError(error) };
+    // FIX (ux-readiness): plan generation is the slowest turn in the app; without a client timeout a
+    // hung socket left the composer stuck on "Koç düşünüyor" until the OS fetch settled (a minute+).
+    // Mirror invokeChat's Promise.race hard cap so a hang fails to a friendly, retryable error.
+    let timedOut = false;
+    const result = await Promise.race([
+      supabase.functions.invoke('ai-chat', { body }),
+      new Promise<{ data: unknown; error: { message: string } }>((resolve) =>
+        setTimeout(() => { timedOut = true; resolve({ data: null, error: { message: 'REQUEST_TIMEOUT' } }); }, REQUEST_TIMEOUT_MS),
+      ),
+    ]);
+    const { data, error } = result as { data: unknown; error: { message: string } | null };
+    if (error) return { data: null, error: timedOut ? FRIENDLY_AI_ERROR : await mapInvokeError(error) };
     return { data: data as ChatResponse, error: null };
   } catch (e) {
     return { data: null, error: FRIENDLY_AI_ERROR };
@@ -118,6 +128,13 @@ async function handleAuthFailure(): Promise<void> {
 // We must never surface that raw string to a Turkish user — map every failure to
 // a friendly message, and read the real status for retry decisions.
 const FRIENDLY_AI_ERROR = 'Kochko şu an yanıt veremiyor. Birazdan tekrar dene.';
+
+// FIX (ux-audit blocker #1): a still-generating (busy) turn is NOT a failure. When the busy
+// interims are exhausted the turn keeps running server-side and the reply will land shortly.
+// This exact string is the signal the client uses to poll for the reply instead of showing a
+// FAILED bubble + Retry (whose fresh idempotency key would double-generate a plan). Imported by
+// ChatThreadScreen — do NOT edit the copy without updating the consumer.
+export const PENDING_REPLY_MESSAGE = 'Yanıtın hazırlanması uzun sürdü — birkaç saniye içinde sohbete düşecek.';
 
 function extractStatus(error: unknown): number | null {
   const ctx = (error as { context?: unknown } | null)?.context;
@@ -225,7 +242,7 @@ async function invokeChat(
           attempt--;
           continue;
         }
-        return { data: null, error: 'Yanıtın hazırlanması uzun sürdü — birkaç saniye içinde sohbete düşecek.' };
+        return { data: null, error: PENDING_REPLY_MESSAGE };
       }
       return { data: resp as ChatResponse, error: null };
     }

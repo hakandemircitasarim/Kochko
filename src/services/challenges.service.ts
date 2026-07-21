@@ -26,11 +26,15 @@ export const SYSTEM_CHALLENGES = [
 ];
 
 export async function getActiveChallenges(): Promise<Challenge[]> {
-  const { data } = await supabase
+  // FIX (ux-round4 #28 review): surface the error instead of swallowing it. supabase-js RESOLVES
+  // with {data:null,error} on RLS/network/5xx failures — returning [] there made the screen's
+  // load-error/retry path unreachable and showed a premium user's real challenges as "gone".
+  const { data, error } = await supabase
     .from('challenges')
     .select('*')
     .in('status', ['active', 'paused'])
     .order('started_at');
+  if (error) throw error;
   return (data ?? []) as Challenge[];
 }
 
@@ -38,11 +42,13 @@ export async function getActiveChallenges(): Promise<Challenge[]> {
 // filters to active/paused), so a finished challenge silently vanished from the only
 // UI that lists them. Expose history so the screen can show a "Tamamlanan" section.
 export async function getCompletedChallenges(): Promise<Challenge[]> {
-  const { data } = await supabase
+  // FIX (ux-round4 #28 review): surface the error (see getActiveChallenges).
+  const { data, error } = await supabase
     .from('challenges')
     .select('*')
     .in('status', ['completed', 'abandoned'])
     .order('started_at', { ascending: false });
+  if (error) throw error;
   return (data ?? []) as Challenge[];
 }
 

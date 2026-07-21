@@ -195,6 +195,29 @@ export function AlternativeComparisonModal({
   const { colors } = useTheme();
   const isDiet = planA.plan_type === 'diet';
 
+  // FIX (ux-round3 #6): the two cards show absolute numbers side by side but not the DIFFERENCE —
+  // the user does "1900 vs 1750" arithmetic in their head. Compute a single B-vs-A delta line.
+  const deltaLine = (() => {
+    if (isDiet) {
+      const avg = (p: DietPlanData) => {
+        const days = Array.isArray(p?.days) ? p.days : [];
+        const active = days.filter(d => (d.meals?.length ?? 0) > 0).length;
+        return Math.round(days.reduce((s, d) => s + (d.total_kcal ?? 0), 0) / Math.max(1, active));
+      };
+      const dk = avg(planB as DietPlanData) - avg(planA as DietPlanData);
+      const dp = ((planB as DietPlanData).targets?.protein ?? 0) - ((planA as DietPlanData).targets?.protein ?? 0);
+      if (dk === 0 && dp === 0) return null;
+      return [dk !== 0 ? `${dk > 0 ? '+' : ''}${dk} kcal/gün` : null, dp !== 0 ? `${dp > 0 ? '+' : ''}${dp}g protein` : null].filter(Boolean).join(' · ');
+    }
+    const act = (p: WorkoutPlanData) => (Array.isArray(p?.days) ? p.days : []).filter(d => !d.rest_day);
+    const aA = act(planA as WorkoutPlanData), aB = act(planB as WorkoutPlanData);
+    const tot = (a: WorkoutPlanData['days']) => a.reduce((s, d) => s + (d.exercises?.length ?? 0), 0);
+    const da = aB.length - aA.length;
+    const dt = tot(aB) - tot(aA);
+    if (da === 0 && dt === 0) return null;
+    return [da !== 0 ? `${da > 0 ? '+' : ''}${da} aktif gün` : null, dt !== 0 ? `${dt > 0 ? '+' : ''}${dt} egzersiz` : null].filter(Boolean).join(' · ');
+  })();
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -258,6 +281,14 @@ export function AlternativeComparisonModal({
               </>
             )}
           </View>
+
+          {/* FIX (ux-round3 #6): the concrete B-vs-A difference so the choice is one glance, not mental math. */}
+          {deltaLine ? (
+            <View style={{ marginTop: SPACING.md, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 6 }}>
+              <Ionicons name="swap-horizontal" size={13} color={colors.textSecondary} />
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>Plan B, A'ya göre: {deltaLine}</Text>
+            </View>
+          ) : null}
 
           {onRequestMore ? (
             // FIX (ux-pass5): the 10-30s LLM call had ZERO in-flight indication inside this

@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
-import { initializeNotifications, savePushToken, scheduleNotificationsOnStartup } from '@/services/notifications.service';
+import { setupNotificationsIfGranted, savePushToken, scheduleNotificationsOnStartup } from '@/services/notifications.service';
 import { checkAndRunBackup } from '@/services/auto-backup.service';
 import { registerSession, reregisterSession, heartbeatSession, isSessionStillValid } from '@/services/realtime-sync.service';
 import { getWidgetData, serializeForNativeWidget } from '@/services/widget.service';
@@ -26,7 +26,9 @@ function buildDeviceInfo(): string {
 
 async function initNotificationsAndSession(userId: string) {
   try {
-    const token = await initializeNotifications();
+    // FIX (ux-ideas #16): no cold OS prompt at launch — only pick up a token if permission was
+    // already granted. New users are asked (with the value explained) after onboarding instead.
+    const token = await setupNotificationsIfGranted();
     if (token) savePushToken(userId, token);
     await scheduleNotificationsOnStartup(userId).catch(() => {});
     await registerSession(buildDeviceInfo(), token ?? null);

@@ -14,7 +14,7 @@ import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, ScrollView,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Animated,
-  NativeSyntheticEvent, NativeScrollEvent, BackHandler, Modal,
+  NativeSyntheticEvent, NativeScrollEvent, BackHandler, Modal, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +26,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import {
   sendMessageToSession, sendPhotoToSession, loadSessionMessages, loadOlderSessionMessages,
   queueMessageOffline, processOfflineQueue, getOfflineQueueSize, getCachedThread,
-  getTaskOpenerFiredAt, markTaskOpenerFired, stripMachineMarkers,
+  getTaskOpenerFiredAt, markTaskOpenerFired, stripMachineMarkers, PENDING_REPLY_MESSAGE,
   type ChatMessage,
 } from '@/services/chat.service';
 import { getTaskByKey, getTaskByModeHint, getIncompleteTasks, getTasksWithStatus, type OnboardingTask } from '@/services/onboarding-tasks.service';
@@ -39,6 +39,7 @@ import { speak, stopSpeaking } from '@/services/tts.service';
 import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
+import { SkeletonBlock } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import {
   MacroSummary, MacroRing, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
@@ -66,6 +67,12 @@ const PLAN_REJECT_REASONS: { label: string; instruction: string }[] = [
   { label: 'Çok karb', instruction: 'Karbonhidrat fazla geldi, biraz azalt' },
   { label: 'Tamamen değiştir', instruction: 'Planı tamamen farklı bir yaklaşımla yeniden üret' },
 ];
+
+// FIX (ux-ideas #8): persistent one-tap quick replies shown above the composer once a
+// conversation is underway and the box is empty — so continuing never means staring at a
+// blank composer ("şimdi ne desem?"). These SEND immediately (handleQuickSelect), unlike the
+// first-run StarterSuggestions which only prefill the composer.
+const QUICK_REPLIES = ['Bugün ne yesem?', 'Bugünkü planım', 'Nasıl gidiyorum?', 'Bugün ne yapmalıyım?'];
 
 // Simulation data parsed from AI responses
 interface SimulationData {
@@ -216,6 +223,94 @@ function splitBoldSegments(text: string): Array<{ text: string; bold: boolean }>
   return parts.length === 0 ? [{ text, bold: false }] : parts;
 }
 
+// FIX (ux-ideas #27): coach replies are often multi-item (meal lists, step-by-step plans). The
+// old single-Text render ran '- madde' and '1.' lines together as a wall of text. This renders
+// line-based structure — '-/•/*' and '1./1)' become indented list rows, blank lines become
+// paragraph gaps — while **bold** still applies inline. Only used when the text actually has
+// structure (hasRichStructure), so short replies keep the original single-Text path.
+function hasRichStructure(text: string): boolean {
+  return /(^|\n)\s*([-•*]|\d+[.)])\s+/.test(text) || /\n\s*\n/.test(text);
+}
+// FIX (ux-round4 #23): truncate a long reply for the collapsed "Devamını oku" state so a wall
+// doesn't fill the viewport and bury the composer. Clamps by BOTH line count (a 13-short-line list
+// is long even under the char cap — review fix) and char count, at a sentence/word boundary.
+function clampText(text: string, maxChars: number, maxLines: number): string {
+  let t = text;
+  const lines = t.split('\n');
+  if (lines.length > maxLines) t = lines.slice(0, maxLines).join('\n');
+  if (t.length > maxChars) {
+    const slice = t.slice(0, maxChars);
+    const brk = Math.max(slice.lastIndexOf('\n'), slice.lastIndexOf('. '), slice.lastIndexOf(' '));
+    t = brk > maxChars * 0.6 ? slice.slice(0, brk) : slice;
+  }
+  if (t.length >= text.length) return text; // nothing actually trimmed
+  // review fix: if the cut left a dangling opening '**' (odd count), drop it so the collapsed
+  // preview doesn't leak a literal marker (splitBoldSegments only matches balanced pairs).
+  if (((t.match(/\*\*/g) || []).length) % 2 === 1) t = t.slice(0, t.lastIndexOf('**'));
+  return t.trimEnd() + '…';
+}
+function MessageRichText({ content, color, onLongPress }: { content: string; color: string; onLongPress: () => void }) {
+  const lines = content.split('\n');
+  return (
+    <View>
+      {lines.map((line, idx) => {
+        const listMatch = line.match(/^\s*([-•*]|\d+[.)])\s+(.*)$/);
+        if (listMatch) {
+          const isNum = /^\d/.test(listMatch[1]);
+          const marker = isNum ? `${listMatch[1].replace(/[.)]/, '')}.` : '•';
+          return (
+            <View key={idx} style={{ flexDirection: 'row', gap: 6, marginTop: idx === 0 ? 0 : 3, paddingLeft: 2 }}>
+              <Text style={{ color, fontSize: 14, lineHeight: 21, fontWeight: isNum ? '700' : '400' }}>{marker}</Text>
+              <Text selectable onLongPress={onLongPress} style={{ color, fontSize: 14, lineHeight: 21, flex: 1 }}>
+                {splitBoldSegments(listMatch[2]).map((seg, i) => (
+                  <Text key={i} style={seg.bold ? { fontWeight: '700' } : undefined}>{seg.text}</Text>
+                ))}
+              </Text>
+            </View>
+          );
+        }
+        if (line.trim() === '') return <View key={idx} style={{ height: 6 }} />;
+        return (
+          <Text key={idx} selectable onLongPress={onLongPress} style={{ color, fontSize: 14, lineHeight: 21, marginTop: idx === 0 ? 0 : 2 }}>
+            {splitBoldSegments(line).map((seg, i) => (
+              <Text key={i} style={seg.bold ? { fontWeight: '700' } : undefined}>{seg.text}</Text>
+            ))}
+          </Text>
+        );
+      })}
+    </View>
+  );
+}
+
+// FIX (ux-ideas #24): the server-authored crisis (detectCrisis) and medical-emergency
+// (detectEmergency) replies both instruct "HEMEN 112'yi ara". Detect that exact directive so the
+// highest-risk moment renders as a distinct, unmissable card with a one-tap dialable 112 — rather
+// than a life-saving number buried in an ordinary chat bubble that reads like any other.
+function isEmergencyMessage(text: string): boolean {
+  return /112['’]?yi ara/i.test(text) || /hemen\s*112/i.test(text);
+}
+function CrisisBlock({ text }: { text: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ backgroundColor: colors.errorLight, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: colors.error, padding: SPACING.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+        <Ionicons name="alert-circle" size={20} color={colors.error} />
+        <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '800', letterSpacing: 0.3 }}>ACİL DESTEK</Text>
+      </View>
+      <Text selectable style={{ color: colors.text, fontSize: 14, lineHeight: 21 }}>{text}</Text>
+      <TouchableOpacity
+        onPress={() => { haptics.tap(); Linking.openURL('tel:112').catch(() => {}); }}
+        accessibilityRole="button"
+        accessibilityLabel="Hemen 112'yi ara"
+        style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, minHeight: 48, borderRadius: RADIUS.md, backgroundColor: colors.error }}
+      >
+        <Ionicons name="call" size={18} color={getContrastColor(colors.error)} />
+        <Text style={{ color: getContrastColor(colors.error), fontSize: FONT.md, fontWeight: '800' }}>Hemen 112'yi Ara</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // Defensive sanitizer — belt-and-suspenders for any structured XML block that somehow
 // slipped through server-side stripping. Never render these in the user-facing bubble.
 function sanitizeAssistantText(text: string): string {
@@ -299,17 +394,23 @@ function parseRecipeData(content: string): { cleanContent: string; data: RecipeD
 // Map the active task mode / photo send to an intentional typing-indicator label,
 // so a multi-second wait reads as purposeful work rather than a dead spinner.
 function typingLabelFor(taskMode: string | undefined, isPhoto: boolean): string {
-  if (isPhoto) return 'Fotoğrafı inceliyorum';
+  return typingStagesFor(taskMode, isPhoto)[0];
+}
+
+// FIX (ux-ideas #7): a 30-60s plan/photo turn showed ONE static label — a frozen spinner.
+// These ordered stages rotate as the wait grows so it reads as purposeful, progressing work.
+function typingStagesFor(taskMode: string | undefined, isPhoto: boolean): string[] {
+  if (isPhoto) return ['Fotoğrafı açıyorum', 'Yemeği tanıyorum', 'Kalorileri hesaplıyorum'];
   switch (taskMode) {
     case 'plan':
     case 'plan_suggestion':
     case 'plan_diet':
     case 'plan_workout':
-      return 'Planını hazırlıyorum';
+      return ['Planını hazırlıyorum', 'Öğünleri dengeliyorum', 'Son rötuşları yapıyorum'];
     case 'recipe':
-      return 'Tarifini yazıyorum';
+      return ['Tarifini yazıyorum', 'Malzemeleri ölçüyorum', 'Adımları sıralıyorum'];
     default:
-      return 'Kochko yazıyor';
+      return ['Kochko yazıyor', 'Düşünüyorum'];
   }
 }
 
@@ -342,11 +443,14 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // Hosted inside the (tabs)/chat route — params land on the TAB route. Normalize '' to
   // undefined: task exit clears params via router.setParams({taskModeHint: ''}) and every
   // truthiness check below must read that as "no task".
-  const rawParams = useLocalSearchParams<{ prefill?: string; taskModeHint?: string; openCamera?: string; taskNonce?: string }>();
+  const rawParams = useLocalSearchParams<{ prefill?: string; taskModeHint?: string; openCamera?: string; taskNonce?: string; onbWelcome?: string }>();
   const prefill = rawParams.prefill || undefined;
   const taskModeHint = rawParams.taskModeHint || undefined;
   const openCamera = rawParams.openCamera || undefined;
   const taskNonce = rawParams.taskNonce || undefined;
+  // FIX (ux-ideas #19): deterministic onboarding welcome passed from the form (numbers in
+  // scope there). Rendered as the instant first bubble so first-value never waits on the LLM.
+  const onbWelcome = rawParams.onbWelcome || undefined;
   // one task-opener fire per navigation (see the load effect)
   const taskInitKeyRef = useRef<string | null>(null);
   // Embedded in the tab shell: "back" leaves the conversation for the dashboard TAB —
@@ -365,6 +469,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   const refreshDashboard = useDashboardStore(s => s.fetchToday);
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [input, setInput] = useState('');
+  // FIX (ux-round4 #24): full-height compose modal for long drafts (the inline box caps at ~5 lines
+  // with internal scroll). Shares the same `input` state, so opening/closing loses nothing.
+  const [composeExpanded, setComposeExpanded] = useState(false);
   // #S1 (one-thread): the onboarding task rail moved here from the retired session-list screen —
   // tasks now open as topics INSIDE this same conversation instead of spawning session islands.
   const [railTasks, setRailTasks] = useState<OnboardingTask[]>([]);
@@ -384,6 +491,16 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // anahtarları TaskCompletionCard'a inilir ve orada filtre olarak kullanılır.
   // useMemo: MessageBubble memo'lu — her render'da taze dizi kimliği memoyu kırardı.
   const incompleteKeys = useMemo(() => railTasks.map(t => t.key), [railTasks]);
+  // FIX (ux-ideas #8): hide the quick-reply strip when the last turn already demands a specific
+  // response — a user message still awaiting a reply, a failed bubble, a just-entered topic
+  // opener, or an assistant turn offering inline choices (quick-select / plan confirm / verify).
+  const suppressQuickReplies = useMemo(() => {
+    const last = messages.length ? messages[messages.length - 1] : null;
+    if (!last) return true;
+    return last.role === 'user' || !!last.failed || !!last.topicMarker
+      || !!(last.quickSelectOptions && last.quickSelectOptions.length)
+      || !!last.hasPlanSuggestion || !!last.hasLowConfidenceVerification;
+  }, [messages]);
   const openTaskTopic = useCallback((task: OnboardingTask) => {
     // taskNonce: same task re-tapped must re-fire the topic opener (identical params wouldn't).
     // Embedded in the tab: swap params in place — no route replace, no remount, no reload.
@@ -416,11 +533,21 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // FIX (kullanıcı bulgusu: "klavye düzeni çok kalabalık"): kamera + barkod + geçmiş
   // tarih tek "+" düğmesinin arkasında — açılınca composer ÜSTÜNDE kompakt çip sırası.
   const [showAttachTray, setShowAttachTray] = useState(false);
+  // FIX (ux-round2 #8): in-thread search — the one continuous thread grows for weeks and "geçen
+  // hafta koç ne demişti" had no answer but endless scrolling. A live client-side FILTER over the
+  // loaded window (safer than scrollToIndex on an inverted list); honestly scoped to loaded msgs.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [prefillApplied, setPrefillApplied] = useState(false);
   const [sending, setSending] = useState(false);
   // Intentional, context-aware label under the typing dots so long LLM waits read
   // as purposeful ("Planını hazırlıyorum…") instead of a blank spinner.
   const [typingLabel, setTypingLabel] = useState<string | undefined>(undefined);
+  // FIX (ux-ideas #7): rotating typing stages + a cancel affordance after a long wait.
+  const [typingStages, setTypingStages] = useState<string[]>([]);
+  const [typingStageIdx, setTypingStageIdx] = useState(0);
+  const [showTypingCancel, setShowTypingCancel] = useState(false);
+  const cancelledSendRef = useRef(false);
   const [loading, setLoading] = useState(true);
   // FIX (audit UX-CHT-06): upward pagination state. hasMoreOlder is set when the initial
   // load returns a full page (PAGE_SIZE), implying older history exists beyond the window.
@@ -430,6 +557,8 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // keeps the load-older button visible with a retry label instead of latching it away.
   const [olderLoadFailed, setOlderLoadFailed] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
+  // FIX (ux-round2 #15): tap a sent/preview photo to view it full-screen (verify the meal shot).
+  const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
   const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -465,6 +594,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // the "jump to latest" FAB visibility.
   const nearBottomRef = useRef(true);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  // FIX (ux-round4 #1): when a reply lands while the user is scrolled up, the non-force
+  // scrollToBottom early-returns and the reply appends off-screen — the plain chevron FAB gave no
+  // signal that new content (vs just older history) is below. Flag it so the FAB says "Yeni yanıt".
+  const [hasNewBelow, setHasNewBelow] = useState(false);
   const handleListScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     // INVERTED list (ux-pass2): offset 0 IS the live end — the newest message. The old
     // non-inverted list + scrollToEnd was the root of every scroll bug the emulator pass
@@ -474,6 +607,8 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     const isNear = distanceFromLiveEnd < 120;
     nearBottomRef.current = isNear;
     setShowScrollToBottom(prev => (prev === !isNear ? prev : !isNear));
+    // Reaching the live end consumes the "new reply" signal.
+    if (isNear) setHasNewBelow(false);
   }, []);
 
   const isOnboarding = profile && !profile.onboarding_completed;
@@ -606,7 +741,6 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // pending-reply poll).
   const [reloadNonce, setReloadNonce] = useState(0);
   const hydratedFromCacheRef = useRef(false);
-  const replyPollCountRef = useRef(0);
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;
@@ -664,7 +798,20 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         // this the coach appears to spontaneously switch subjects.
         const topicTitle = getTaskByModeHint(taskModeHint!)?.title ?? null;
         const withMarker: UIMessage[] = data.map(toUIMessage);
-        if (topicTitle) {
+        // FIX (ux-ideas #19): render the deterministic onboarding welcome as the instant first
+        // bubble (data is empty for a brand-new user), so first-value doesn't wait on — or break
+        // with — the live LLM opener that follows. Takes the place of the topic pill for this case.
+        if (onbWelcome && taskModeHint === 'onboarding_goal') {
+          withMarker.push({
+            id: `onb-welcome-${taskNonce ?? Date.now()}`, role: 'assistant',
+            content: onbWelcome, created_at: new Date().toISOString(),
+          } as UIMessage);
+          // FIX (ux-ideas #19, adversarial-review): params MERGE + persist on the tab route, so
+          // without clearing it here the personalized onboarding receipt would re-fire as the
+          // first bubble of a LATER, unrelated topic opener. Gate to onboarding_goal AND
+          // consume-and-clear so it fires exactly once, for the onboarding entry only.
+          router.setParams({ onbWelcome: '' });
+        } else if (topicTitle) {
           withMarker.push({
             id: `topic-${taskNonce ?? Date.now()}`, role: 'assistant', content: '',
             topicMarker: topicTitle, created_at: new Date().toISOString(),
@@ -723,24 +870,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           if (newest && newest.role === 'user'
               && Date.now() - new Date(newest.created_at).getTime() < 120_000) {
             setTypingLabel(undefined);
-            setSending(true);
-            replyPollCountRef.current = 0;
-            const poll = async () => {
-              if (cancelled) { setSending(false); return; }
-              replyPollCountRef.current += 1;
-              const fresh = await loadSessionMessages(sessionId);
-              if (cancelled) { setSending(false); return; }
-              const freshNewest = fresh && fresh.length > 0 ? fresh[fresh.length - 1] : null;
-              if (freshNewest && freshNewest.role === 'assistant') {
-                setMessages(fresh!.map(toUIMessage));
-                setSending(false);
-              } else if (replyPollCountRef.current < 4) {
-                setTimeout(poll, 5000);
-              } else {
-                setSending(false);
-              }
-            };
-            setTimeout(poll, 5000);
+            // FIX (ux-audit blocker #4): poll up to ~2min (was a hard 20s give-up) via the shared
+            // poller, so a 30-60s+ plan/photo turn's reply actually lands instead of the typing
+            // indicator vanishing and leaving the user's message looking ignored.
+            startReplyPoll({ mode: 'replace', silent: false });
           }
 
           // FIX (audit UX-CHT-07): the old "Uzun zamandır konuşmadık…" proactive greeting
@@ -850,10 +983,15 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // (always follow their own action); otherwise only follow when they were already
   // reading near the live end — so we never yank them mid-scroll. Inverted list:
   // the live end is offset 0, which needs no row measurement — it always lands.
-  const scrollToBottom = useCallback((force = false) => {
-    if (!force && !nearBottomRef.current) return;
+  const scrollToBottom = useCallback((force = false, newContent = false) => {
+    // FIX (ux-round4 #1): a non-force call that can't scroll (user is reading older messages) means
+    // content appended below — surface it on the FAB instead of silently landing off-screen. Only a
+    // real assistant REPLY sets the "Yeni yanıt" pill (newContent); a failed send appends no reply
+    // (review fix), so those callers pass newContent=false and the FAB stays a plain chevron.
+    if (!force && !nearBottomRef.current) { if (newContent) setHasNewBelow(true); return; }
     nearBottomRef.current = true;
     setShowScrollToBottom(false);
+    setHasNewBelow(false);
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
@@ -887,11 +1025,121 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // FIX (ux-pass2, W#48): synchronous in-flight ref — `sending` flips true only after
   // an async AsyncStorage read below, so a fast double-tap fired TWO full sends
   // (duplicate bubbles, duplicate meal logs). The ref closes that window.
+  // FIX (ux-ideas #7): advance the typing label through its stages as the wait grows, and
+  // reveal a Cancel affordance after ~40s so a very long turn is escapable.
+  useEffect(() => {
+    if (!sending) { setTypingStageIdx(0); setShowTypingCancel(false); return; }
+    const rot = setInterval(() => {
+      setTypingStageIdx(i => Math.min(i + 1, Math.max(0, typingStages.length - 1)));
+    }, 9000);
+    const cancelT = setTimeout(() => setShowTypingCancel(true), 40000);
+    return () => { clearInterval(rot); clearTimeout(cancelT); };
+  }, [sending, typingStages.length]);
+
+  // FIX (ux-audit blockers #1/#2/#4): concurrency + slow-turn plumbing.
+  // sessionIdRef tracks the live session so a running poll self-cancels when the session changes.
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
+  // Generation token: only the CURRENT send turn may mutate turn UI state. Cancel and every new
+  // send bump it, so a superseded (cancelled) in-flight request can't reset the composer lock,
+  // clobber the typing indicator, or overwrite a newer turn's state.
+  const sendGenRef = useRef(0);
   const sendInFlightRef = useRef(false);
+  // Which generation currently owns the reply poll (-1 = none). Per-generation (not a plain
+  // boolean) so a NEWER turn's poll can start while an older one is still winding down, and the
+  // older poll retires itself the moment the generation bumps (review fix for the poll-clobber bugs).
+  const activePollGenRef = useRef(-1);
+
+  // Poll the server for a slow turn's reply (plan gen / photo, 30-90s) and surface it when ready —
+  // instead of a FAILED bubble, a frozen composer, or a 20s give-up. mode 'replace' repaints the
+  // page (reopen / still-waiting — no optimistic state to lose); 'merge' only appends new assistant
+  // rows (background after Cancel, where the user may already be typing). silent keeps typing off.
+  const startReplyPoll = useCallback((opts?: { mode?: 'replace' | 'merge'; silent?: boolean }) => {
+    const pollGen = sendGenRef.current;
+    // review fix: gen-aware guard — don't double-poll the SAME turn, but a NEWER turn's poll (its
+    // gen differs) can always start; the older poll retires on its next tick when the gen bumps.
+    if (activePollGenRef.current === pollGen) return;
+    activePollGenRef.current = pollGen;
+    const mode = opts?.mode ?? 'replace';
+    const silent = opts?.silent ?? false;
+    const pollSession = sessionIdRef.current;
+    if (!silent) setSending(true);
+    let count = 0;
+    const MAX = 24; // 24 × 5s ≈ 120s — covers 60s+ plan turns
+    // review fix: one gen-aware cleanup on EVERY exit (reply found, exhausted, session change, or
+    // superseded by Cancel / a newer send). Release the typing indicator ONLY if no newer turn has
+    // taken over `sending` (gen unchanged) — otherwise that newer owner manages it; and relinquish
+    // the active-poll slot only if it is still ours. This closes the stuck-`sending` + clobber bugs.
+    const finish = () => {
+      if (activePollGenRef.current === pollGen) activePollGenRef.current = -1;
+      if (!silent && sendGenRef.current === pollGen) setSending(false);
+    };
+    const tick = async () => {
+      // retire if this turn was cancelled/superseded (gen bumped) or the session changed.
+      if (sendGenRef.current !== pollGen || sessionIdRef.current !== pollSession) { finish(); return; }
+      count += 1;
+      const fresh = await loadSessionMessages(pollSession);
+      if (sendGenRef.current !== pollGen || sessionIdRef.current !== pollSession) { finish(); return; }
+      const rows = fresh ?? [];
+      const newest = rows.length > 0 ? rows[rows.length - 1] : null;
+      if (newest && newest.role === 'assistant') {
+        if (mode === 'replace') {
+          setMessages(rows.map(toUIMessage));
+        } else {
+          // merge: append only assistant rows we don't already have, so an optimistic bubble
+          // from a NEW send the user started after Cancel isn't clobbered.
+          setMessages(prev => {
+            const have = new Set(prev.map(m => m.id));
+            const add = rows.filter(r => r.role === 'assistant' && !have.has(r.id)).map(toUIMessage);
+            return add.length ? [...prev, ...add] : prev;
+          });
+        }
+        finish();
+        return;
+      }
+      if (count < MAX) setTimeout(tick, 5000);
+      else {
+        // FIX (ux-readiness): don't SILENTLY give up at ~120s — the typing indicator would just
+        // vanish, reading as "the coach ignored me". Surface an informational note (NOT an auto-retry:
+        // the turn was accepted server-side, so re-sending would risk a double-generation). Only for
+        // the visible-wait cases; a user-cancelled background poll stays silent.
+        if (!silent) {
+          setMessages(prev => (prev.length && prev[prev.length - 1].id.startsWith('delay-')) ? prev : [
+            ...prev,
+            { id: `delay-${Date.now()}`, role: 'assistant', content: 'Yanıtın beklenenden uzun sürüyor. Sohbeti kapatıp yeniden açtığında düşecektir; düşmezse mesajını tekrar yazabilirsin.', created_at: new Date().toISOString() },
+          ]);
+        }
+        finish();
+      }
+    };
+    setTimeout(tick, 5000);
+  }, []);
+
+  // Cancel a long wait (blocker #2): free the composer IMMEDIATELY (was: silently locked for up to
+  // 60s) and retire this turn via the generation token, so the still-in-flight request can't reset
+  // the lock or the typing state. The turn keeps generating server-side — a silent background poll
+  // delivers its reply when ready (no data loss), without blocking the now-free composer.
+  const handleCancelTyping = () => {
+    haptics.tap();
+    cancelledSendRef.current = true;
+    sendGenRef.current += 1;
+    sendInFlightRef.current = false;
+    setSending(false);
+    setTypingLabel(undefined);
+    setTypingStages([]);
+    setShowTypingCancel(false);
+    // review fix: use 'replace' (not 'merge'). The poller is generation-aware and retires the moment
+    // a new send bumps the gen, so it only ever delivers while idle — a full replace then reconciles
+    // to server truth (no client-id-vs-UUID duplicate bubble the merge de-dup could leave), and can't
+    // clobber a new send because the poll would have already retired.
+    startReplyPoll({ mode: 'replace', silent: true });
+  };
   const handleSend = async (retryFrom?: UIMessage) => {
     if (sendInFlightRef.current || sending) return;
     if (rateLimitedUntil && Date.now() < rateLimitedUntil) return;
     sendInFlightRef.current = true;
+    sendGenRef.current += 1;
+    const myGen = sendGenRef.current;
     try {
     if (!isOnline) {
       // FIX (audit UX-OFF-01): the advertised offline-queue resilience (Spec 11) was dead
@@ -989,6 +1237,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     }
 
     setTypingLabel(typingLabelFor(effectiveTaskMode, !!img));
+    setTypingStages(typingStagesFor(effectiveTaskMode, !!img)); // ux-ideas #7: rotating stages
+    setTypingStageIdx(0);
+    cancelledSendRef.current = false;
     setSending(true);
     scrollToBottom(true); // user's own send — always follow
 
@@ -1003,6 +1254,21 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       : await sendMessageToSession(sessionId, text, effectiveTaskMode, backdate ?? undefined);
     // Clear backdate after use so subsequent messages are today
     if (backdate && !retryFrom) setBackdateDate(null);
+
+    // FIX (ux-audit blocker #2): if this turn was cancelled/retired while in flight (generation
+    // token bumped by Cancel or a newer send), do NOT touch the composer, typing, or the active
+    // turn's messages. The reply (if any) is server-persisted and delivered by the background poll
+    // started on Cancel — so nothing is lost.
+    if (sendGenRef.current !== myGen) return;
+    // FIX (ux-audit blocker #1): a busy-exhausted "still preparing" response is NOT a failure —
+    // keep the typing indicator and poll for the reply instead of flipping to a FAILED bubble whose
+    // Retry (a fresh idempotency key) would double-generate a plan.
+    if (!data && error === PENDING_REPLY_MESSAGE) {
+      startReplyPoll({ mode: 'replace', silent: false });
+      return;
+    }
+    const wasCancelled = cancelledSendRef.current;
+    cancelledSendRef.current = false;
 
     if (data) {
       // FIX (audit UX-CHT-05/UX-PRM-05): reconcile the local quota mirror with the server's
@@ -1129,16 +1395,45 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     }
 
     setSending(false);
-    scrollToBottom();
+    // review fix: only signal a new reply on success (data present) — a failed send appends none.
+    if (!wasCancelled) scrollToBottom(false, !!data);
     } finally {
-      sendInFlightRef.current = false;
+      // Only release the composer lock if THIS turn is still the current one — a turn retired by
+      // Cancel (or superseded by a newer send) must not free a lock the active turn now owns.
+      if (sendGenRef.current === myGen) sendInFlightRef.current = false;
     }
   };
+
+  // FIX (ux-readiness): handleSend is re-created every render (it closes over input/photo/etc.), so
+  // passing it directly as onRetry defeated MessageBubble's memo — every keystroke re-rendered every
+  // bubble (rich cards/receipts/rings), the exact typing jank the memo was added to prevent. Route
+  // retries through a STABLE wrapper backed by a ref so the bubble's onRetry identity never churns.
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+  const stableRetry = useCallback((m: UIMessage) => { handleSendRef.current(m); }, []);
 
   // Quick suggestion handler
   const handleSuggestion = (text: string) => {
     setInput(text);
   };
+
+  // FIX (ux-round2 #16 — adversarial-review): editing a SENT message must not silently discard a
+  // non-empty in-progress draft. Read the live input via a ref so this stays a stable callback
+  // (passing a fresh closure to the memoized MessageBubble would re-render every bubble per
+  // keystroke). Confirm before overwriting a real draft.
+  const inputRef = useRef('');
+  inputRef.current = input;
+  const handleEditUserMessage = useCallback((text: string) => {
+    const draft = inputRef.current.trim();
+    if (draft && draft !== text) {
+      Alert.alert('Taslağın silinecek', 'Yazmakta olduğun mesaj silinip bu mesaj düzenlenmek üzere kutuya konacak. Devam edilsin mi?', [
+        { text: 'Vazgeç', style: 'cancel' },
+        { text: 'Devam', onPress: () => setInput(text) },
+      ]);
+    } else {
+      setInput(text);
+    }
+  }, []);
 
   const handleCopyConversation = async () => {
     haptics.tap();
@@ -1169,11 +1464,21 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     // FIX (audit UX-CHT-04): in-flight guard. Without this, double-tapping a quick-select
     // chip / Onayla / Doğru-Yanlış fired two concurrent sendMessageToSession calls →
     // duplicate AI turns and duplicate side effects (double log / double delete).
-    if (sending) return;
+    // FIX (ux-ideas #8, adversarial-review): use the SAME synchronous sendInFlightRef as
+    // handleSend — `sending` (React state) lags the tap, so with the always-visible 4-chip
+    // quick-reply strip two rapid taps could both pass a `sending`-only guard and fire
+    // concurrent sends. The ref is read+set synchronously (second tap bails immediately) and
+    // shared with handleSend, so chip and composer sends are now mutually exclusive too.
+    if (sendInFlightRef.current || sending) return;
+    sendInFlightRef.current = true;
+    sendGenRef.current += 1;
+    const myGen = sendGenRef.current;
     haptics.tap(); // chip tap — light tactile confirm
     const bubbleText = displayLabel ?? option;
     // Auto-send after a short delay
     setTimeout(async () => {
+      let handedToPoll = false;
+      try {
       const userMsg: UIMessage = {
         id: `u-${Date.now()}`, role: 'user', content: bubbleText, created_at: new Date().toISOString(),
       };
@@ -1182,6 +1487,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       setSending(true);
       scrollToBottom(true); // user's own tap — always follow
       const { data, error } = await sendMessageToSession(sessionId, option);
+      // blocker #2: cancelled/retired mid-flight → don't touch the active turn (reply lands via poll).
+      if (sendGenRef.current !== myGen) return;
+      // blocker #1: busy = still preparing, not failed → poll instead of a fake failure + Retry.
+      if (!data && error === PENDING_REPLY_MESSAGE) { handedToPoll = true; startReplyPoll({ mode: 'replace', silent: false }); return; }
       if (data) {
         // FIX (audit UX-CHT-05): chip sends consume the server-side quota too — reconcile.
         syncRemainingFromServer(isPremium, data.remaining).then(setRemainingMsgs);
@@ -1212,8 +1521,16 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           ? { ...m, failed: true, errorMessage: error ?? 'Bağlantı hatası.', retryPayload: { text: option, photoUri: null } }
           : m));
       }
-      setSending(false);
-      scrollToBottom();
+      // review fix: only flag "Yeni yanıt" when a reply was actually appended (data present).
+      scrollToBottom(false, !!data);
+      } finally {
+        // Only the CURRENT turn clears state — a turn retired by Cancel/newer send must not (blocker #2);
+        // and when we handed off to the reply poll, leave the typing indicator to it.
+        if (sendGenRef.current === myGen) {
+          if (!handedToPoll) setSending(false);
+          sendInFlightRef.current = false;
+        }
+      }
     }, 0);
     // sessionId in deps (review fix): the tab can self-heal to a different session id
     // without remounting — a stale closure kept sending chip taps to the old session.
@@ -1347,11 +1664,20 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // user bubble, show typing, append the AI reply, refresh the dashboard when the
   // delete commits, and surface a failure if the request errors or no action lands.
   const handleUndo = useCallback((undo: { type: string; messageId: string; expiresAt: number }) => {
-    if (sending) return;
+    // review fix: participate in the SYNCHRONOUS composer lock like handleSend/handleQuickSelect
+    // (guard on sendInFlightRef, not just the lagging `sending` state) and release it in a
+    // gen-guarded finally — otherwise a Geri Al tap during a free-user send's pre-setSending
+    // AsyncStorage window could bump the gen without owning the lock and strand it forever.
+    if (sendInFlightRef.current || sending) return;
+    sendInFlightRef.current = true;
+    sendGenRef.current += 1;
+    const myGen = sendGenRef.current;
     haptics.tap();
     const undoText = `Son ${undo.type === 'meal_log' ? 'öğün' : undo.type === 'workout_log' ? 'antrenman' : 'supplement'} kaydını geri al`;
     setUndoAction(null);
     setTimeout(async () => {
+      let handedToPoll = false;
+      try {
       const userMsg: UIMessage = {
         id: `u-${Date.now()}`,
         role: 'user',
@@ -1364,6 +1690,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       scrollToBottom(true);
 
       const { data, error } = await sendMessageToSession(sessionId, undoText);
+      // blocker #2: cancelled/retired mid-flight → don't clobber the active turn.
+      if (sendGenRef.current !== myGen) return;
+      // blocker #1: busy = still preparing, not failed → poll for the reply.
+      if (!data && error === PENDING_REPLY_MESSAGE) { handedToPoll = true; startReplyPoll({ mode: 'replace', silent: false }); return; }
       if (data) {
         // FIX (audit UX-CHT-05): the undo turn reaches the server and counts — reconcile.
         syncRemainingFromServer(isPremium, data.remaining).then(setRemainingMsgs);
@@ -1395,8 +1725,16 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           ? { ...m, failed: true, errorMessage: error ?? 'Geri alma başarısız. Tekrar dene.', retryPayload: { text: undoText, photoUri: null } }
           : m));
       }
-      setSending(false);
-      scrollToBottom();
+      // review fix: only flag "Yeni yanıt" when the undo reply was actually appended (data present).
+      scrollToBottom(false, !!data);
+      } finally {
+        // Only the CURRENT turn clears state; a turn retired by Cancel/newer send must not (and when
+        // we handed off to the poll, leave the typing indicator to it).
+        if (sendGenRef.current === myGen) {
+          if (!handedToPoll) setSending(false);
+          sendInFlightRef.current = false;
+        }
+      }
     }, 0);
   }, [sending, sessionId, scrollToBottom, user?.id, refreshDashboard, isPremium]);
 
@@ -1451,11 +1789,45 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // INVERTED list data: newest row first. Reversing AFTER separator insertion keeps each
   // date pill visually above its day (the inverted render flips the order back).
   const invertedRows = useMemo(() => [...messageRows].reverse(), [messageRows]);
+  // FIX (ux-round4 #8): id of the newest user message whose send is in flight — only that bubble
+  // shows the "Gönderiliyor" clock (older user bubbles are already delivered). Queued-offline
+  // bubbles (id 'q-') carry their own 'Kuyrukta' glyph regardless of this.
+  const lastPendingUserId = useMemo(() => {
+    if (!sending) return null;
+    const last = messages[messages.length - 1];
+    // FIX (ux-round4 #8 review): only an OPTIMISTIC just-sent bubble (client id 'u-…') is truly
+    // in-flight. A server-loaded, already-persisted user row (real id) whose REPLY is still being
+    // polled must NOT show "Gönderiliyor" — the message already reached the server. (Known minor
+    // gap: retrying a non-last failed message shows no clock — low-value to track the retry id.)
+    return last && last.role === 'user' && !last.failed && last.id.startsWith('u-') ? last.id : null;
+  }, [messages, sending]);
+  // FIX (ux-round2 #8): when searching, show only matching message rows (drop separators).
+  const displayRows = useMemo(() => {
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR');
+    if (!q) return invertedRows;
+    return invertedRows.filter(r => r.kind === 'message' && ((r.msg as UIMessage).content ?? '').toLocaleLowerCase('tr-TR').includes(q));
+  }, [invertedRows, searchQuery]);
 
   if (loading) {
+    // FIX (ux-ideas #8): content-shaped skeleton (alternating chat bubbles) instead of a
+    // bare centered spinner, so the flagship surface reads as "loading a conversation".
+    const skeletonBubbles: { align: 'flex-start' | 'flex-end'; w: `${number}%`; h: number }[] = [
+      { align: 'flex-start', w: '72%', h: 54 },
+      { align: 'flex-end', w: '55%', h: 38 },
+      { align: 'flex-start', w: '80%', h: 72 },
+      { align: 'flex-end', w: '48%', h: 38 },
+      { align: 'flex-start', w: '66%', h: 54 },
+    ];
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View
+        accessibilityLabel="Sohbet yükleniyor"
+        style={{ flex: 1, backgroundColor: colors.background, paddingHorizontal: SPACING.xl, paddingTop: Math.max(insets.top, 12) + 56, gap: SPACING.lg }}
+      >
+        {skeletonBubbles.map((b, i) => (
+          <View key={i} style={{ alignSelf: b.align, maxWidth: '85%' }}>
+            <SkeletonBlock width={b.w} height={b.h} radius={16} />
+          </View>
+        ))}
       </View>
     );
   }
@@ -1561,7 +1933,53 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         >
           <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
+        {/* FIX (ux-ideas #23): AI-first koçlukta en büyük güven sorusu "beni hatırlıyor mu?".
+            Koçun kalıcı hatırladıklarını (hedef, alerji/sakatlık, sevilmeyen yemekler, persona)
+            tam da sohbet ederken tek dokunuşla görünür/düzeltilebilir kıl — kanonik
+            'Kochko Seni Nasıl Tanıyor' ekranına köprü. */}
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); router.push('/settings/coach-memory' as never); }}
+          style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight }}
+          accessibilityRole="button"
+          accessibilityLabel="Kochko seni nasıl tanıyor"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="sparkles-outline" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {/* FIX (ux-round2 #8): in-thread search toggle. */}
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); setSearchOpen(v => { if (v) setSearchQuery(''); return !v; }); }}
+          style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: searchOpen ? colors.primary + '22' : colors.surfaceLight }}
+          accessibilityRole="button"
+          accessibilityLabel={searchOpen ? 'Aramayı kapat' : 'Sohbette ara'}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="search" size={18} color={searchOpen ? colors.primary : colors.textSecondary} />
+        </TouchableOpacity>
       </View>
+
+      {/* FIX (ux-round2 #8): search bar — live filter over loaded messages. */}
+      {searchOpen && (
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, paddingHorizontal: SPACING.md }}>
+            <Ionicons name="search" size={15} color={colors.textMuted} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Yüklü mesajlarda ara"
+              placeholderTextColor={colors.textMuted}
+              autoFocus
+              style={{ flex: 1, color: colors.text, fontSize: FONT.sm, paddingVertical: SPACING.sm }}
+              accessibilityLabel="Sohbette ara"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Temizle">
+                <Ionicons name="close-circle" size={15} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* FIX (audit: çift offline banner) — inline <OfflineBanner/> kaldırıldı;
           global common/OfflineBanner (app/_layout.tsx) bu ekranı zaten kapsıyor. */}
@@ -1588,17 +2006,17 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             // older pages appends off-screen with NO scroll jump (kills W#70), and the
             // keyboard opening keeps the newest turn visible (kills W#13).
             inverted
-            data={invertedRows}
+            data={displayRows}
             keyExtractor={item => item.kind === 'separator' ? `sep-${item.key}` : (item.msg as UIMessage).id}
             renderItem={({ item }) => {
               if (item.kind === 'separator') return <DateSeparator label={item.label} />;
               const m = item.msg as UIMessage;
               if (m.topicMarker) return <TopicMarker label={m.topicMarker} />;
-              return <MessageBubble message={m} incompleteKeys={incompleteKeys} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={handleSend} sending={sending} />;
+              return <MessageBubble message={m} incompleteKeys={incompleteKeys} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={stableRetry} onEditUser={handleEditUserMessage} onOpenPhoto={setFullscreenPhoto} sending={sending} isLastPending={m.id === lastPendingUserId} />;
             }}
             // Inverted list: ListFooter renders at the VISUAL TOP — that's where the
             // "load older" control belongs (FIX audit UX-CHT-06).
-            ListFooterComponent={hasMoreOlder ? (
+            ListFooterComponent={!searchQuery.trim() && hasMoreOlder ? (
               <TouchableOpacity
                 onPress={handleLoadOlder}
                 disabled={loadingOlder}
@@ -1622,7 +2040,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             ) : null}
             // Inverted list: ListHeader renders at the VISUAL BOTTOM — starter suggestions
             // sit under the lone first message (FIX audit UX-CHT-03).
-            ListHeaderComponent={!taskModeHint && messageRows.filter(r => r.kind === 'message').length === 1
+            ListHeaderComponent={!taskModeHint && !searchQuery.trim() && messageRows.filter(r => r.kind === 'message').length === 1
               ? <View style={{ marginTop: SPACING.lg }}><StarterSuggestions isOnboarding={!!isOnboarding} onSuggestion={handleSuggestion} /></View>
               : null}
             contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
@@ -1633,37 +2051,64 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             // Android has no interactive mode, keep on-drag there.
             keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
           />
-          {/* Jump-to-latest FAB — appears only when scrolled away from the live end */}
+          {/* FIX (ux-round2 #8): no-match note as an overlay (an inverted-list ListEmptyComponent
+              would render upside-down). */}
+          {searchQuery.trim().length > 0 && displayRows.length === 0 && (
+            <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', paddingTop: SPACING.xxl }}>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Yüklü mesajlarda sonuç yok</Text>
+            </View>
+          )}
+
+          {/* Jump-to-latest FAB — appears only when scrolled away from the live end. FIX (ux-round4
+              #1): widens into a labeled "Yeni yanıt" pill when a reply landed below while scrolled
+              up, so "new content" is visually distinct from "just older history below". */}
           {showScrollToBottom && (
             <TouchableOpacity
               onPress={() => scrollToBottom(true)}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel="En sona git"
+              accessibilityLabel={hasNewBelow ? 'Yeni yanıt geldi, en sona git' : 'En sona git'}
               style={{
                 position: 'absolute',
                 right: SPACING.xl,
                 bottom: SPACING.md,
-                width: 44,
+                width: hasNewBelow ? undefined : 44,
                 height: 44,
+                paddingHorizontal: hasNewBelow ? SPACING.md : 0,
                 borderRadius: RADIUS.full,
                 backgroundColor: colors.primary,
+                flexDirection: 'row',
+                gap: hasNewBelow ? 6 : 0,
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderWidth: 0.5,
                 borderColor: colors.border,
               }}
             >
+              {hasNewBelow && (
+                <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', fontSize: FONT.sm, fontWeight: '700' }}>Yeni yanıt</Text>
+              )}
               <Ionicons name="chevron-down" size={22} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
             </TouchableOpacity>
           )}
         </View>
       )}
 
-      {/* Typing indicator */}
+      {/* Typing indicator — ux-ideas #7: rotating stage label + cancel after a long wait */}
       {sending && (
-        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
-          <TypingIndicator label={typingLabel} />
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+          <TypingIndicator label={typingStages[typingStageIdx] ?? typingLabel} />
+          {showTypingCancel && (
+            <TouchableOpacity
+              onPress={handleCancelTyping}
+              accessibilityRole="button"
+              accessibilityLabel="Beklemeyi iptal et"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ paddingVertical: 4, paddingHorizontal: SPACING.sm }}
+            >
+              <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '600' }}>İptal</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -1699,7 +2144,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           borderTopColor: colors.border,
           backgroundColor: colors.surface,
         }}>
-          <Image source={{ uri: photo }} style={{ width: 60, height: 60, borderRadius: RADIUS.md }} />
+          <TouchableOpacity onPress={() => setFullscreenPhoto(photo)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Fotoğrafı büyüt">
+            <Image source={{ uri: photo }} style={{ width: 60, height: 60, borderRadius: RADIUS.md }} />
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setPhoto(null)}
             accessibilityRole="button"
@@ -1838,6 +2285,34 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         </View>
       )}
 
+      {/* FIX (ux-ideas #8): quick-reply strip — one tap continues the conversation instead of a
+          blank composer. Shown only when the box is empty, nothing is generating, the keyboard
+          is down, there are no onboarding rail tasks (rail owns that slot), a conversation is
+          underway (≥2 msgs), and the last turn isn't already awaiting an inline choice/reply. */}
+      {!taskModeHint && !keyboardVisible && !sending && input.trim() === ''
+        && railTasks.length === 0 && messages.length >= 2 && !suppressQuickReplies && (
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.xs }} keyboardShouldPersistTaps="handled">
+            {QUICK_REPLIES.map((q) => (
+              <TouchableOpacity
+                key={q}
+                onPress={() => handleQuickSelect(q)}
+                accessibilityRole="button"
+                accessibilityLabel={q}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  backgroundColor: colors.surfaceLight, borderWidth: 0.5, borderColor: colors.border,
+                  borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7,
+                }}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={13} color={colors.primary} />
+                <Text style={{ color: colors.text, fontSize: FONT.xs, fontWeight: '600' }}>{q}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Input bar — bottom inset is consumed by the tab bar below (embedded-in-tab),
           so only the small gap is needed here. */}
       <View style={{
@@ -1853,6 +2328,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.sm }}>
             {([
               { key: 'photo', icon: 'camera-outline', label: 'Fotoğraf', onPress: takePhoto },
+              // FIX (ux-ideas #3): pickImage (galeri seçici) tanımlıydı ama hiçbir yerden
+              // çağrılmıyordu (ulaşılamaz kod). Kullanıcı artık geçmişte çektiği bir tabağı,
+              // market etiketini veya menü fotoğrafını da koça gönderebilir — yalnız anlık kamera değil.
+              { key: 'gallery', icon: 'image-outline', label: 'Galeriden seç', onPress: pickImage },
               { key: 'barcode', icon: 'barcode-outline', label: 'Barkod', onPress: openBarcodeScanner },
               { key: 'backdate', icon: 'calendar-outline', label: 'Geçmiş tarih', onPress: handleBackdateButton },
             ] as const).map((chip) => {
@@ -1923,10 +2402,21 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               (çip sırası yukarıda); satırda birincil eylemler (mikrofon + gönder) kaldı.
               İşleyiciler/izin akışları birebir aynı — yalnızca yerleşim değişti. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
+            {/* FIX (ux-round4 #24): expand-to-full-screen appears once the draft outgrows the box. */}
+            {input.length > 200 && (
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setComposeExpanded(true); }}
+                accessibilityRole="button"
+                accessibilityLabel="Tam ekran yaz"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated, justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name="expand-outline" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => { haptics.tap(); setShowAttachTray(v => !v); }}
               accessibilityRole="button"
-              accessibilityLabel={showAttachTray ? 'Ek seçenekleri gizle' : 'Ek seçenekleri göster: fotoğraf, barkod, geçmiş tarih'}
+              accessibilityLabel={showAttachTray ? 'Ek seçenekleri gizle' : 'Ek seçenekleri göster: fotoğraf, galeriden seç, barkod, geçmiş tarih'}
               accessibilityState={{ expanded: showAttachTray }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
@@ -1970,6 +2460,68 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           </View>
         </View>
       </View>
+
+      {/* FIX (ux-round4 #24): full-height compose modal for long drafts — shares `input` state so
+          nothing is lost opening/closing; Send routes through the normal handleSend path. */}
+      <Modal visible={composeExpanded} animationType="slide" onRequestClose={() => setComposeExpanded(false)}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={{ flex: 1, paddingTop: insets.top + SPACING.sm, paddingHorizontal: SPACING.md, paddingBottom: insets.bottom + SPACING.md }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACING.sm }}>
+              <TouchableOpacity onPress={() => setComposeExpanded(false)} accessibilityRole="button" accessibilityLabel="Kapat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </TouchableOpacity>
+              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Mesajını yaz</Text>
+              <Text style={{ color: input.length >= 2000 ? colors.error : colors.textMuted, fontSize: FONT.xs, minWidth: 56, textAlign: 'right' }}>{input.length}/2000</Text>
+            </View>
+            <TextInput
+              style={{ flex: 1, color: colors.text, fontSize: 15, lineHeight: 22, textAlignVertical: 'top', paddingTop: SPACING.sm }}
+              value={input}
+              onChangeText={setInput}
+              multiline
+              maxLength={2000}
+              autoFocus
+              placeholder="Mesajını yaz..."
+              placeholderTextColor={colors.textMuted}
+              accessibilityLabel="Mesajını yaz, tam ekran"
+            />
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); setComposeExpanded(false); void handleSend(); }}
+              disabled={sendDisabled}
+              accessibilityRole="button"
+              accessibilityLabel="Mesaj gönder"
+              accessibilityState={{ disabled: sendDisabled }}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: SPACING.md, marginTop: SPACING.sm, opacity: sendDisabled ? 0.4 : 1 }}
+            >
+              <Ionicons name="arrow-up" size={16} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
+              <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', fontSize: FONT.sm, fontWeight: '700' }}>Gönder</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* FIX (ux-round2 #15): full-screen photo viewer — tap a sent/preview meal photo to verify it. */}
+      <Modal visible={!!fullscreenPhoto} transparent animationType="fade" onRequestClose={() => setFullscreenPhoto(null)}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setFullscreenPhoto(null)}
+          accessibilityRole="button"
+          accessibilityLabel="Fotoğrafı kapat"
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' }}
+        >
+          {fullscreenPhoto && (
+            <Image source={{ uri: fullscreenPhoto }} accessibilityLabel="Fotoğraf" style={{ width: '92%', height: '80%', resizeMode: 'contain' }} />
+          )}
+          <TouchableOpacity
+            onPress={() => setFullscreenPhoto(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Kapat"
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            style={{ position: 'absolute', top: insets.top + 16, right: SPACING.xl, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* FIX (kullanıcı bulgusu: "toplam kartları görmeliyiz — hangileri bitti hangileri
           bitmedi"): Konular genel bakış modalı. Ayarlar'daki silme-onayı modalının
@@ -2213,7 +2765,7 @@ function MessageBubbleFrame({ isUser, animate = true, children }: { isUser: bool
 // props change. With the now-stable (useMemo/useCallback) props from the parent,
 // unrelated re-renders (keyboard, per-second rate-limit countdown, dashboard totals)
 // no longer re-render every visible bubble.
-const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, sending }: {
+const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, onEditUser, onOpenPhoto, sending, isLastPending }: {
   message: UIMessage;
   // FIX (kullanıcı bulgusu): tamamlanma kartının öneri filtresi — henüz EKSİK konu
   // anahtarları (parent'ın railTasks'i). Tamamlanmış bir konu asla önerilmez.
@@ -2233,13 +2785,23 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
   onTTSToggle: (msgId: string, text: string) => void;
   speakingMsgId: string | null;
   onRetry: (message: UIMessage) => void;
+  // FIX (ux-round2 #16): long-press a SENT user message → put its text back in the composer to
+  // edit and re-ask (a mis-typed quantity no longer means retyping the whole thing).
+  onEditUser: (text: string) => void;
+  // FIX (ux-round2 #15): open a bubble photo full-screen.
+  onOpenPhoto: (uri: string) => void;
   // FIX (audit UX-CHT-04): when a send is in flight, disable inline action chips so a
   // double-tap can't fire a second concurrent send (duplicate AI turn / side effect).
   sending: boolean;
+  // FIX (ux-round4 #8): this bubble is the newest user message and its send is in flight — shows a
+  // "Gönderiliyor" glyph. Computed in the parent so only the last pending bubble is clocked.
+  isLastPending?: boolean;
 }) {
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
   const [showReasoning, setShowReasoning] = useState(false);
+  // FIX (ux-round4 #23): collapse a very long assistant reply behind "Devamını oku".
+  const [showFullText, setShowFullText] = useState(false);
   // Inline plan-reject reason picker (replaces the old native Alert action sheet).
   // Tapping "Değiştir" reveals the reason chips below the bubble; picking a chip
   // fires the same handleQuickSelect refine flow; "İptal" just hides them (no-op,
@@ -2282,38 +2844,66 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             optimistic message (localPhotoUri); persisted/loaded messages have no
             URI and fall back to the placeholder text below. */}
         {isUser && message.localPhotoUri && (
-          <Image
-            source={{ uri: message.localPhotoUri }}
-            accessibilityLabel="Gönderilen fotoğraf"
-            style={{ width: 180, height: 180, borderRadius: RADIUS.md, marginBottom: SPACING.xs }}
-          />
+          <TouchableOpacity onPress={() => onOpenPhoto(message.localPhotoUri!)} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel="Fotoğrafı tam ekran aç">
+            <Image
+              source={{ uri: message.localPhotoUri }}
+              accessibilityLabel="Gönderilen fotoğraf"
+              style={{ width: 180, height: 180, borderRadius: RADIUS.md, marginBottom: SPACING.xs }}
+            />
+          </TouchableOpacity>
         )}
 
         {/* Message content (strip leaked XML, support **bold** inline formatting).
             FIX (audit UI-CHT-05): hide the bare '[Foto gönderildi]' placeholder when
             the photo thumbnail is already shown — keep any real caption text. */}
-        {!(isUser && message.localPhotoUri && message.content === '[Foto gönderildi]') && (
-        <Text
-          selectable
-          onLongPress={() => {
-            // No clipboard module in this repo; surface the native share sheet
-            // so user can copy/forward through the OS UI.
-            haptics.tap();
-            Share.share({ message: sanitizeAssistantText(message.content) }).catch(() => {});
-          }}
-          style={{
-            color: isUser ? getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff' : colors.text,
-            fontSize: 14,
-            lineHeight: 21,
-          }}
-        >
-          {splitBoldSegments(sanitizeAssistantText(message.content)).map((seg, i) => (
-            <Text key={i} style={seg.bold ? { fontWeight: '700' } : undefined}>
-              {seg.text}
-            </Text>
-          ))}
-        </Text>
-        )}
+        {!(isUser && message.localPhotoUri && message.content === '[Foto gönderildi]') && (() => {
+          const clean = sanitizeAssistantText(message.content);
+          const txtColor = isUser ? (getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff') : colors.text;
+          // No clipboard module in this repo; long-press surfaces the native share sheet.
+          const shareText = () => { haptics.tap(); Share.share({ message: clean }).catch(() => {}); };
+          // FIX (ux-round2 #16): a SENT user message long-press offers "Düzenle" (→ composer) too.
+          const longPress = isUser
+            ? () => {
+                haptics.tap();
+                Alert.alert('Bu mesaj', undefined, [
+                  { text: 'Düzenle', onPress: () => onEditUser(clean) },
+                  { text: 'Paylaş', onPress: () => { Share.share({ message: clean }).catch(() => {}); } },
+                  { text: 'İptal', style: 'cancel' },
+                ]);
+              }
+            : shareText;
+          // FIX (ux-ideas #24): crisis/emergency replies → distinct card with one-tap 112.
+          if (!isUser && isEmergencyMessage(clean)) return <CrisisBlock text={clean} />;
+          // FIX (ux-round4 #23): a long assistant wall (>600 chars or >12 lines) collapses behind
+          // a "Devamını oku" toggle so it doesn't push the receipt/actions/composer below the fold.
+          const isLong = !isUser && (clean.length > 600 || clean.split('\n').length > 12);
+          const shown = (isLong && !showFullText) ? clampText(clean, 480, 10) : clean;
+          // FIX (ux-ideas #27): multi-item replies → indented lists/paragraphs; else original path.
+          const body = hasRichStructure(shown)
+            ? <MessageRichText content={shown} color={txtColor} onLongPress={longPress} />
+            : (
+              <Text selectable onLongPress={longPress} style={{ color: txtColor, fontSize: 14, lineHeight: 21 }}>
+                {splitBoldSegments(shown).map((seg, i) => (
+                  <Text key={i} style={seg.bold ? { fontWeight: '700' } : undefined}>{seg.text}</Text>
+                ))}
+              </Text>
+            );
+          if (!isLong) return body;
+          return (
+            <>
+              {body}
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setShowFullText(v => !v); }}
+                accessibilityRole="button"
+                accessibilityLabel={showFullText ? 'Daha az göster' : 'Devamını oku'}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ marginTop: 4, alignSelf: 'flex-start' }}
+              >
+                <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700' }}>{showFullText ? 'Daha az göster' : 'Devamını oku'}</Text>
+              </TouchableOpacity>
+            </>
+          );
+        })()}
 
         {/* Navigate-to chip — AI hints the user to a plan screen (Phase 5) */}
         {!isUser && message.navigateTo && (
@@ -2359,6 +2949,23 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             ))}
           </View>
         )}
+
+        {/* FIX (ux-ideas #20): receipt line — show EXACTLY what the coach logged
+            (item breakdown + kcal from the action feedback) so the user can catch a
+            silent mis-parse, instead of a bare "Öğün kaydedildi" badge + day-total ring. */}
+        {!isUser && (() => {
+          const receipt = message.actions?.find(a => (a.type === 'meal_log' || a.type === 'workout_log') && a.feedback)?.feedback;
+          return receipt ? (
+            <View style={{
+              flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm,
+              backgroundColor: colors.surfaceLight, borderRadius: RADIUS.sm,
+              paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+            }}>
+              <Ionicons name="receipt-outline" size={14} color={colors.carbs} style={{ marginTop: 1 }} />
+              <Text style={{ color: colors.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>{receipt}</Text>
+            </View>
+          ) : null;
+        })()}
 
         {/* Spec 3.3: surface the parser's uncertainty on non-high-confidence meal
             logs so the user knows to double-check the estimate. */}
@@ -2449,6 +3056,18 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
               />
             </TouchableOpacity>
           )}
+          {/* FIX (ux-round4 #8): per-message delivery status for user bubbles — queued-offline and
+              in-flight sends looked identical to delivered ones on slow/offline networks. */}
+          {isUser && !message.failed && (message.id.startsWith('q-') || isLastPending) && (() => {
+            const queued = message.id.startsWith('q-');
+            const fg = getContrastColor(colors.primary) === 'black' ? 'rgba(13,13,18,0.6)' : 'rgba(255,255,255,0.6)';
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                <Ionicons name={queued ? 'cloud-offline-outline' : 'time-outline'} size={11} color={fg} />
+                <Text style={{ color: fg, fontSize: 11 }}>{queued ? 'Kuyrukta' : 'Gönderiliyor'}</Text>
+              </View>
+            );
+          })()}
           <Text style={{ color: isUser ? (getContrastColor(colors.primary) === 'black' ? 'rgba(13,13,18,0.6)' : 'rgba(255,255,255,0.6)') : colors.textSecondary, fontSize: 11, alignSelf: 'flex-end' }}>
             {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
           </Text>

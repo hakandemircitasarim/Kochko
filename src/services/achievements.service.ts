@@ -67,6 +67,17 @@ export async function calculateStreak(userId: string, dayBoundaryHour: number = 
   return streak;
 }
 
+// FIX (ux-ideas #16): the motivation loop only rewarded the PAST — "how close am I to
+// the next badge?" existed nowhere. Streak milestones fire at fixed tiers, so the next
+// one is simply the smallest tier above the current streak (earned tiers are always
+// below it). Pure + DB-free so any screen can show a "Sıradaki" progress meter.
+const STREAK_TIERS = [7, 30, 100] as const;
+export function nextStreakMilestone(streak: number): { target: number; label: string; progress: number; remaining: number } | null {
+  const target = STREAK_TIERS.find(t => streak < t);
+  if (target == null) return null;
+  return { target, label: `${target} gün seri`, progress: Math.min(1, streak / target), remaining: target - streak };
+}
+
 /**
  * Check and create milestone achievements.
  * Called after weight log or streak update.

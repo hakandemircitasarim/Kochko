@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
@@ -74,7 +75,8 @@ export default function FoodPreferencesScreen() {
   };
 
   if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+    // FIX (ux-ideas #28): skeleton loader instead of a bare centered spinner (see achievements).
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={4} /></View>;
   }
 
   // FIX (audit empty-vs-error): tam-ekran hata+tekrar dene (shared LoadErrorState).

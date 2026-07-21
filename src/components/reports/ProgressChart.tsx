@@ -21,9 +21,9 @@ interface Props {
 }
 
 function formatShortDate(label: string): string {
-  // Expects YYYY-MM-DD or similar; returns DD/MM
-  const parts = label.split('-');
-  if (parts.length >= 3) return `${parts[2]}/${parts[1]}`;
+  // FIX (ux-polish): TR short form "11 Tem" to match progress.tsx's axis (was "11/07").
+  const d = new Date(label.length <= 10 ? `${label}T00:00:00` : label);
+  if (!isNaN(d.getTime())) return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
   return label;
 }
 
@@ -72,6 +72,9 @@ export function ProgressChart({ data, color = COLORS.primary, unit = '', height 
         </Text>
       </View>
 
+      {/* FIX (ux-round3 #3): collapse the chart SVG into ONE accessible image node with a spoken
+          summary — a screen reader otherwise wanders the raw SVG as noise. */}
+      <View accessible accessibilityRole="image" accessibilityLabel={`Grafik: en düşük ${min.toFixed(1).replace('.', ',')}${unit}, son ${last.toFixed(1).replace('.', ',')}${unit}, en yüksek ${max.toFixed(1).replace('.', ',')}${unit}`}>
       <LineChart
         data={{
           labels,
@@ -98,6 +101,7 @@ export function ProgressChart({ data, color = COLORS.primary, unit = '', height 
         withOuterLines={false}
         withShadow={false}
       />
+      </View>
     </View>
   );
 }

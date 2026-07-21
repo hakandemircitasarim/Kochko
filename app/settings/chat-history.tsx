@@ -6,7 +6,8 @@
  * - Selective/bulk delete
  */
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -301,8 +302,11 @@ export default function ChatHistoryScreen() {
       {/* FIX (audit empty-vs-error): loading and fetch-error render their own states — the
           'Henüz sohbet geçmişi yok' copy only appears when the fetch genuinely returned 0 rows. */}
       {loading ? (
-        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        // FIX (ux-polish): session-shaped skeletons instead of a bare spinner that jumps to a list.
+        <View style={{ gap: SPACING.md, paddingTop: SPACING.md }}>
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={2} />
+          <SkeletonCard lines={2} />
         </View>
       ) : loadError ? (
         <Card>

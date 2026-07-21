@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -74,9 +75,14 @@ export default function StrengthScreen() {
         <SkeletonCard lines={4} />
       ) : validExercises.length === 0 ? (
         <Card>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
-            Henüz güç antrenman kaydı yok. Koçuna "squat 3x8 80kg yaptım" gibi yazarak kayıt girebilirsin.
-          </Text>
+          {/* FIX (ux-polish): iconed empty state to match the app's empty-state pattern. */}
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="barbell-outline" size={26} color={COLORS.primary} />
+            </View>
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz güç kaydın yok</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Koçuna "squat 3x8 80kg yaptım" gibi yazarak kayıt girebilirsin.</Text>
+          </View>
         </Card>
       ) : (
         validExercises.map(ex => {

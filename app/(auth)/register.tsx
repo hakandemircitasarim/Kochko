@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert, Linking } from 'react-native';
+import { useState, useRef } from 'react';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert, Linking, TextInput } from 'react-native';
 import { Link, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -58,6 +58,10 @@ function validateBirthYear(raw: string): { year: number | null; error: string | 
 
 export default function RegisterScreen() {
   const insets = useSafeAreaInsets();
+  // FIX (ux-round3 #7): keyboard "İleri" walks the sign-up fields in order instead of dismissing.
+  const birthYearRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -179,12 +183,14 @@ export default function RegisterScreen() {
           </>
         )}
 
-        {/* Divider */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
-          <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
-          <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
-        </View>
+        {/* Divider — FIX (ux-readiness): only when a social button renders above it (Android has none). */}
+        {(GOOGLE_LOGIN_ENABLED || Platform.OS === 'ios') && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
+          </View>
+        )}
 
         <Input
           label="E-posta"
@@ -197,17 +203,29 @@ export default function RegisterScreen() {
           textContentType="emailAddress"
           returnKeyType="next"
           blurOnSubmit={false}
+          onSubmitEditing={() => birthYearRef.current?.focus()}
         />
         <Input
+          ref={birthYearRef}
           label="Doğum Yılı"
           placeholder="1990"
           value={birthYear}
-          onChangeText={setBirthYear}
+          // FIX (ux-round3 #7 adversarial-review): Android/iOS numeric keyboards render no "next"
+          // action key, so onSubmitEditing can never fire from this field — the focus chain would
+          // stall here. A birth year is exactly 4 digits, so auto-advance to the password field once
+          // the 4th digit is entered (the reliable trigger a numeric keyboard actually allows).
+          onChangeText={(t) => {
+            setBirthYear(t);
+            if (t.length === 4) passwordRef.current?.focus();
+          }}
           keyboardType="numeric"
+          maxLength={4}
           returnKeyType="next"
           blurOnSubmit={false}
+          onSubmitEditing={() => passwordRef.current?.focus()}
         />
         <Input
+          ref={passwordRef}
           label="Şifre"
           placeholder="En az 6 karakter"
           value={password}
@@ -217,8 +235,10 @@ export default function RegisterScreen() {
           textContentType="newPassword"
           returnKeyType="next"
           blurOnSubmit={false}
+          onSubmitEditing={() => confirmRef.current?.focus()}
         />
         <Input
+          ref={confirmRef}
           label="Şifre Tekrar"
           placeholder="Tekrar gir"
           value={confirmPassword}

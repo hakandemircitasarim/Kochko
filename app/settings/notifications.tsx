@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Alert, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, KeyboardAvoidingView, Alert, Linking, AppState } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getNotificationPrefs, updateNotificationPrefs, requestNotificationPermissionIfNeeded, getNotificationPermissionStatus, type NotificationPreferences } from '@/services/notifications.service';
 import { useAuthStore } from '@/stores/auth.store';
@@ -26,12 +27,42 @@ const TYPE_LABELS: Record<string, string> = {
   reengagement: 'Geri dönüş daveti',
 };
 
+// FIX (ux-round3 #15): one-line "ne yapar" for each type — opaque names ("Taahhüt takibi", "Geri
+// dönüş daveti") made users toggle blindly and lose useful nudges.
+const TYPE_DESCRIPTIONS: Record<string, string> = {
+  morning_plan: 'Sabah günün planını özetler.',
+  meal_reminder: 'Öğün saatlerinde hatırlatır.',
+  workout_reminder: 'Antrenman günlerinde hatırlatır.',
+  water_reminder: 'Gün içinde su içmeyi hatırlatır.',
+  night_risk: 'Geç saatte atıştırma riskin arttığında uyarır.',
+  daily_report: 'Gün sonunda günün değerlendirmesini gönderir.',
+  weekly_report: 'Haftalık raporun hazır olunca bildirir.',
+  weight_reminder: 'Haftalık tartı zamanını hatırlatır.',
+  commitment_followup: 'Verdiğin sözleri takip eder.',
+  achievement: 'Yeni bir başarı/rozet kazanınca kutlar.',
+  challenge: 'Aktif challenge ilerlemeni hatırlatır.',
+  reengagement: 'Bir süre uzak kalınca nazikçe geri çağırır.',
+};
+
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const userId = useAuthStore(s => s.user?.id);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
+  // FIX (ux-round4 #5): if the OS permission is revoked LATER (in phone settings, after prefs
+  // were saved enabled), the screen kept showing "Açık" while nothing was ever delivered. Read
+  // the live OS status on mount so we can warn that notifications are silently dead.
+  const [permStatus, setPermStatus] = useState<string | null>(null);
 
   useEffect(() => { if (userId) getNotificationPrefs(userId).then(setPrefs); }, [userId]);
+  // FIX (ux-round4 #5 + review): re-check the OS status whenever the app returns to the foreground,
+  // not just on mount — otherwise the "izin kapalı" banner stays up after the user grants permission
+  // in system settings and comes back (the screen isn't unmounted, so a mount-only read goes stale).
+  useEffect(() => {
+    const check = () => { getNotificationPermissionStatus().then(setPermStatus).catch(() => {}); };
+    check();
+    const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
+    return () => sub.remove();
+  }, []);
 
   if (!prefs) return null;
 
@@ -109,6 +140,26 @@ export default function NotificationsScreen() {
         Koçunun sana ne zaman, ne sıklıkta mesaj göndereceğini ayarla.
       </Text>
 
+      {/* FIX (ux-round4 #5): OS permission revoked while in-app notifications are still "on" —
+          nothing gets delivered and nothing signalled it. Surface it with a one-tap route to settings. */}
+      {prefs.enabled && permStatus && permStatus !== 'granted' && (
+        <TouchableOpacity
+          onPress={() => Linking.openSettings().catch(() => {})}
+          accessibilityRole="button"
+          accessibilityLabel="Bildirim izni kapalı. Telefon ayarlarını açmak için dokun."
+          style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.warningLight, borderWidth: 1, borderColor: COLORS.warning, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.lg }}
+        >
+          <Ionicons name="notifications-off-outline" size={20} color={COLORS.warning} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '700' }}>Bildirim izni kapalı</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 2, lineHeight: 18 }}>
+              Telefon ayarlarından izin kapalı olduğu için hiçbir bildirim gönderilemiyor. Açmak için dokun.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      )}
+
       {/* Main toggle */}
       <TouchableOpacity onPress={toggleMain} {...a11ySwitch(`Bildirimler ${prefs.enabled ? 'Açık' : 'Kapalı'}`, prefs.enabled)} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg, minHeight: 44 }}>
         {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns the switch role + press). */}
@@ -150,10 +201,19 @@ export default function NotificationsScreen() {
             {Object.entries(TYPE_LABELS).map(([key, label]) => {
               const isOn = prefs.types[key as keyof typeof prefs.types];
               return (
+              // FIX (ux-round3 #15 adversarial-review): fold the description into the switch's a11y
+              // label so screen-reader users hear it too (the visible Text is otherwise suppressed
+              // by the parent's explicit accessibilityLabel).
               <TouchableOpacity key={key} onPress={() => toggleType(key)}
-                {...a11ySwitch(label, !!isOn)}
-                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 44, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{label}</Text>
+                {...a11ySwitch(TYPE_DESCRIPTIONS[key] ? `${label}. ${TYPE_DESCRIPTIONS[key]}` : label, !!isOn)}
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.md, minHeight: 44, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{label}</Text>
+                  {/* FIX (ux-round3 #15): describe what the type actually does. */}
+                  {TYPE_DESCRIPTIONS[key] ? (
+                    <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{TYPE_DESCRIPTIONS[key]}</Text>
+                  ) : null}
+                </View>
                 {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns switch role + press). */}
                 <Toggle value={!!isOn} onToggle={() => toggleType(key)} />
               </TouchableOpacity>

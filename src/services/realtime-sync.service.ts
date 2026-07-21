@@ -140,6 +140,16 @@ export async function getActiveSessions(): Promise<{
 }
 
 /**
+ * FIX (ux-audit device-fix): the id of THIS device's session (persisted at registration). The
+ * settings list used to assume index 0 was the current device, but getActiveSessions orders by
+ * last_active_at — so a more-recently-active OTHER device would be mislabelled "Mevcut" and this
+ * device would show a "Kapat" that logs itself out. Compare against this id instead.
+ */
+export async function getCurrentSessionId(): Promise<string | null> {
+  return AsyncStorage.getItem(SESSION_ID_KEY);
+}
+
+/**
  * Terminate a specific session by deleting its record.
  */
 export async function terminateSession(sessionId: string): Promise<{ error: string | null }> {

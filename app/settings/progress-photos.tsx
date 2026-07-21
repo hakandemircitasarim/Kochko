@@ -3,8 +3,10 @@
  * Spec 3.1: İlerleme fotoğrafları - sadece kullanıcı cihazında/şifreli bulutta.
  * AI'a gönderilmez, üçüncü tarafla paylaşılmaz.
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, ScrollView, Image, TouchableOpacity, Alert, Dimensions, Modal } from 'react-native';
+import { SkeletonBlock } from '@/components/ui/Skeleton';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -47,6 +49,19 @@ export default function ProgressPhotosScreen() {
   const [loading, setLoading] = useState(true);
   const [selectedPose, setSelectedPose] = useState<string>('on');
   const [showComparison, setShowComparison] = useState(false);
+  // FIX (ux-round4 #17): a failed fetch used to collapse to photos=[] and show the confident
+  // "no photos yet" card. Track the failure so we can show a retry instead of a lie.
+  const [loadError, setLoadError] = useState(false);
+  // FIX (ux-round4 #16): on-device photo files can be purged (legacy cache URIs) or lost on
+  // reinstall — track which images fail to load so we render an explanatory placeholder (with the
+  // delete button intact) instead of a silent blank rectangle.
+  const [failedPhotoIds, setFailedPhotoIds] = useState<Set<string>>(new Set());
+  const markFailed = useCallback((id: string) => setFailedPhotoIds(prev => {
+    if (prev.has(id)) return prev;
+    const next = new Set(prev);
+    next.add(id);
+    return next;
+  }), []);
 
   // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
   // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
@@ -56,16 +71,24 @@ export default function ProgressPhotosScreen() {
     }
   }, [profileLoading, profile, isPremium, router]);
 
-  useEffect(() => {
+  const loadPhotos = useCallback(async () => {
     if (!user?.id) return;
-    supabase.from('progress_photos').select('*').eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) console.warn('progress_photos load failed', error);
-        setPhotos((data ?? []) as ProgressPhoto[]);
-        setLoading(false);
-      });
+    setLoading(true);
+    setLoadError(false);
+    const { data, error } = await supabase.from('progress_photos').select('*').eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    if (error) {
+      // FIX (ux-round4 #17): keep the empty-vs-error distinction — don't blank the list on failure.
+      console.warn('progress_photos load failed', error);
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
+    setPhotos((data ?? []) as ProgressPhoto[]);
+    setLoading(false);
   }, [user?.id]);
+
+  useEffect(() => { loadPhotos(); }, [loadPhotos]);
 
   const takePhoto = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -226,16 +249,30 @@ export default function ProgressPhotosScreen() {
           {comparisonPhotos && (
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               <View style={{ width: comparisonWidth }}>
-                {/* FIX (audit ui-a11y-images): anlamlı <Image> etiketi. */}
-                <Image source={{ uri: comparisonPhotos.earliest.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} {...a11yImage(`Başlangıç fotoğrafı, ${new Date(comparisonPhotos.earliest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`)} />
+                {/* FIX (ux-round4 #16 + audit ui-a11y-images): missing file → placeholder, not blank. */}
+                {failedPhotoIds.has(comparisonPhotos.earliest.id) ? (
+                  <View style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 8 }}>
+                    <Ionicons name="image-outline" size={26} color={COLORS.textMuted} />
+                    <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
+                  </View>
+                ) : (
+                  <Image source={{ uri: comparisonPhotos.earliest.storage_path }} onError={() => markFailed(comparisonPhotos.earliest.id)} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} {...a11yImage(`Başlangıç fotoğrafı, ${new Date(comparisonPhotos.earliest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`)} />
+                )}
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
                   {new Date(comparisonPhotos.earliest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </Text>
                 <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center' }}>Başlangıç</Text>
               </View>
               <View style={{ width: comparisonWidth }}>
-                {/* FIX (audit ui-a11y-images): anlamlı <Image> etiketi. */}
-                <Image source={{ uri: comparisonPhotos.latest.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} {...a11yImage(`Güncel fotoğraf, ${new Date(comparisonPhotos.latest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`)} />
+                {/* FIX (ux-round4 #16 + audit ui-a11y-images): missing file → placeholder, not blank. */}
+                {failedPhotoIds.has(comparisonPhotos.latest.id) ? (
+                  <View style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 8 }}>
+                    <Ionicons name="image-outline" size={26} color={COLORS.textMuted} />
+                    <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
+                  </View>
+                ) : (
+                  <Image source={{ uri: comparisonPhotos.latest.storage_path }} onError={() => markFailed(comparisonPhotos.latest.id)} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} {...a11yImage(`Güncel fotoğraf, ${new Date(comparisonPhotos.latest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`)} />
+                )}
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
                   {new Date(comparisonPhotos.latest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </Text>
@@ -249,41 +286,61 @@ export default function ProgressPhotosScreen() {
         </View>
       </Modal>
 
-      {/* Timeline */}
-      {Object.entries(grouped).map(([date, datePhotos]) => (
-        <View key={date} style={{ marginBottom: SPACING.lg }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.sm }}>
-            {new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
-            {datePhotos.map(photo => (
-              <TouchableOpacity key={photo.id} onLongPress={() => deletePhoto(photo.id)}
-                style={{ width: (screenWidth - SPACING.md * 2 - SPACING.sm * 2) / 3, borderRadius: 8, overflow: 'hidden' }}>
-                {/* FIX (audit ui-a11y-images): anlamlı <Image> etiketi. */}
-                <Image source={{ uri: photo.storage_path }} style={{ width: '100%', aspectRatio: 3 / 4 }} {...a11yImage(`${photo.pose_type} pozu`)} />
-                {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}
-                <TouchableOpacity
-                  onPress={() => deletePhoto(photo.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${photo.pose_type} pozu fotoğrafını sil`}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  style={{ position: 'absolute', top: 4, right: 4, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <Ionicons name="trash-outline" size={15} color="#fff" />
-                </TouchableOpacity>
-                <Text style={{ color: COLORS.textMuted, fontSize: 9, textAlign: 'center', marginTop: 2, textTransform: 'capitalize' }}>{photo.pose_type}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+      {/* Timeline — FIX (ux-round4 #16/#17): loading skeleton → retry-on-error → genuine-empty →
+          content, and every tile falls back to a "photo missing" placeholder when its file is gone. */}
+      {loading ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
+          {[0, 1, 2].map(i => {
+            const tile = (screenWidth - SPACING.md * 2 - SPACING.sm * 2) / 3;
+            return <SkeletonBlock key={i} width={tile} height={tile * 4 / 3} radius={8} />;
+          })}
         </View>
-      ))}
-
-      {photos.length === 0 && !loading && (
+      ) : loadError ? (
+        <Card>
+          <LoadErrorState embedded title="Fotoğraflar yüklenemedi" onRetry={loadPhotos} />
+        </Card>
+      ) : photos.length === 0 ? (
         <Card>
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>
             Henüz ilerleme fotoğrafı yok. Düzenli foto çekerek değişimini takip et.
           </Text>
         </Card>
+      ) : (
+        Object.entries(grouped).map(([date, datePhotos]) => (
+          <View key={date} style={{ marginBottom: SPACING.lg }}>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.sm }}>
+              {new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
+              {datePhotos.map(photo => (
+                <TouchableOpacity key={photo.id} onLongPress={() => deletePhoto(photo.id)}
+                  style={{ width: (screenWidth - SPACING.md * 2 - SPACING.sm * 2) / 3, borderRadius: 8, overflow: 'hidden' }}>
+                  {/* FIX (ux-round4 #16): missing on-device file → explanatory placeholder, not a blank tile. */}
+                  {failedPhotoIds.has(photo.id) ? (
+                    <View style={{ width: '100%', aspectRatio: 3 / 4, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 4 }}>
+                      <Ionicons name="image-outline" size={22} color={COLORS.textMuted} />
+                      <Text style={{ color: COLORS.textMuted, fontSize: 9, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
+                    </View>
+                  ) : (
+                    /* FIX (audit ui-a11y-images): anlamlı <Image> etiketi. */
+                    <Image source={{ uri: photo.storage_path }} onError={() => markFailed(photo.id)} style={{ width: '100%', aspectRatio: 3 / 4 }} {...a11yImage(`${photo.pose_type} pozu`)} />
+                  )}
+                  {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}
+                  <TouchableOpacity
+                    onPress={() => deletePhoto(photo.id)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${photo.pose_type} pozu fotoğrafını sil`}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ position: 'absolute', top: 4, right: 4, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Ionicons name="trash-outline" size={15} color="#fff" />
+                  </TouchableOpacity>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 9, textAlign: 'center', marginTop: 2, textTransform: 'capitalize' }}>{photo.pose_type}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ))
       )}
 
       <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Sil butonuna dokun veya uzun bas</Text>

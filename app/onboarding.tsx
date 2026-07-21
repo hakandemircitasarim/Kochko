@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, Dimensions, KeyboardAvoidingView } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 import { detectTimezone } from '@/lib/timezone';
 import { startTrialIfEligible } from '@/services/subscription.service';
+import { requestNotificationPermissionIfNeeded, savePushToken, scheduleNotificationsOnStartup } from '@/services/notifications.service';
 import { loadOnboardingDraft, saveOnboardingDraft, clearOnboardingDraft, type OnboardingDraft } from '@/services/onboarding-draft.service';
 import type { GoalType, ActivityLevel, Gender, Goal } from '@/types/database';
 import { GENDER_LABELS_TR, ACTIVITY_LEVEL_LABELS_TR, GOAL_LABELS_INFINITIVE_TR, toOptions } from '@/lib/labels';
@@ -122,6 +123,7 @@ export default function OnboardingScreen() {
         totalSlides={SLIDES.length}
         onNext={() => setStep(s => s + 1)}
         onSkip={() => setStep(SLIDES.length)}
+        onBack={() => setStep(s => Math.max(0, s - 1))}
       />
     )
     : <QuickForm initialDraft={initialDraft} isReOnboarding={isReOnboarding} />;
@@ -159,12 +161,14 @@ function WelcomeSlide({
   totalSlides,
   onNext,
   onSkip,
+  onBack,
 }: {
   slide: typeof SLIDES[0];
   stepIndex: number;
   totalSlides: number;
   onNext: () => void;
   onSkip: () => void;
+  onBack?: () => void;
 }) {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
@@ -203,6 +207,11 @@ function WelcomeSlide({
 
       <View style={{ width: '100%', gap: SPACING.sm }}>
         <Button title="İleri" onPress={() => { haptics.tap(); onNext(); }} size="lg" />
+        {/* FIX (ux-round4 #31): slides were forward-only (dots inert, swipe-back disabled). Add an
+            explicit, discoverable "Geri" on slides 2-3 so a too-fast İleri tap is recoverable. */}
+        {stepIndex > 0 && onBack ? (
+          <Button title="Geri" onPress={() => { haptics.tap(); onBack(); }} variant="ghost" size="sm" />
+        ) : null}
         <Button title="Atla" onPress={() => { haptics.tap(); onSkip(); }} variant="ghost" size="sm" />
       </View>
     </View>
@@ -305,6 +314,60 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
   // FIX (audit onboarding-birthyear): doğum yılı eksikse zorunlu alana dahil et.
   const isValid = heightCm && weightKg && gender && goalType && activity && (!needsTargetWeight || targetWeightKg) && (!needsBirthYear || birthYear);
 
+  // FIX (ux-round4 #30): positive completion momentum — how many required fields are filled.
+  const requiredFilled = [
+    !!heightCm, !!weightKg, !!gender, !!goalType, !!activity,
+    ...(needsTargetWeight ? [!!targetWeightKg] : []),
+    ...(needsBirthYear ? [!!birthYear] : []),
+  ];
+  const filledCount = requiredFilled.filter(Boolean).length;
+  const totalCount = requiredFilled.length;
+
+  // FIX (ux-round4 #4): inline range errors for boy/kilo (comma-aware for kilo) instead of a
+  // full-screen Alert only at submit — matches the target-weight inline treatment (#19).
+  const heightNum = parseInt(heightCm);
+  const heightError = heightCm.trim() && (!Number.isFinite(heightNum) || heightNum < 100 || heightNum > 230) ? '100–230 cm arası olmalı' : undefined;
+  const weightNum = parseFloat(weightKg.replace(',', '.'));
+  const weightError = weightKg.trim() && (!Number.isFinite(weightNum) || weightNum < 30 || weightNum > 300) ? '30–300 kg arası olmalı' : undefined;
+
+  // FIX (ux-round4 #22): first-value preview — once the form is valid, show the calorie range +
+  // goal ETA the SAME helpers (calculateBMR/TDEE/Targets) will produce on submit, so "Başlayalım!"
+  // isn't a blind commit. Purely presentational; nothing is written until the user submits.
+  const planPreview = useMemo(() => {
+    if (!isValid || isReOnboarding) return null;
+    const w = parseFloat(weightKg.replace(',', '.'));
+    const h = parseInt(heightCm);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || heightError || weightError) return null;
+    // FIX (ux-round4 #22 review): mirror the submit-time guards so the preview never advertises a
+    // plan submit will reject. (1) target-direction (same as the inline dirError + handleComplete),
+    // (2) birth-year validity for OAuth users typing an under-18/out-of-range year.
+    const tw = targetWeightKg ? parseFloat(targetWeightKg.replace(',', '.')) : w;
+    if (needsTargetWeight && Number.isFinite(tw)) {
+      if (goalType === 'lose_weight' && tw >= w) return null;
+      if (goalType === 'gain_muscle' && tw <= w) return null;
+    }
+    if (needsBirthYear && validateBirthYear(birthYear).error) return null;
+    const by = needsBirthYear ? parseInt(birthYear) : (knownBirthYear ?? NaN);
+    const age = Number.isFinite(by) && by >= MIN_BIRTH_YEAR && by <= nowYear ? Math.max(18, nowYear - by) : 30;
+    try {
+      const bmr = calculateBMR(w, h, age, gender as Gender);
+      const tdee = calculateTDEE(bmr, activity as ActivityLevel);
+      const targets = calculateTargets({
+        tdee, goalType: goalType as GoalType, restrictionMode: 'sustainable',
+        weeksSinceStart: 0, complianceAvg: 0, weightKg: w, gender: gender as Gender,
+        macroPct: { protein: 30, carb: 40, fat: 30 },
+        targetWeightKg: (needsTargetWeight && tw !== w) ? tw : null,
+        targetWeeks: 12,
+      });
+      const kcalMin = Math.min(targets.restDay.min, targets.trainingDay.min);
+      const kcalMax = Math.max(targets.restDay.max, targets.trainingDay.max);
+      if (!Number.isFinite(kcalMin) || !Number.isFinite(kcalMax)) return null;
+      return { kcalMin, kcalMax, w, tw, showGoal: needsTargetWeight && tw !== w };
+    } catch {
+      return null;
+    }
+  }, [isValid, isReOnboarding, weightKg, heightCm, birthYear, gender, activity, goalType, targetWeightKg, needsTargetWeight, needsBirthYear, knownBirthYear, nowYear, heightError, weightError]);
+
   // First missing field, so the disabled button can say *what* is blocking instead of just greying out.
   // FIX (audit copy): fiil alana göre — yazılan alanlar için 'gir', chip alanları için 'seç'
   // ('boyunu seç' denmez, boy yazılır).
@@ -338,7 +401,10 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
     // sütunları çok geniş ve istemci-tarafı clamp yoktu; doğum yılındaki 18+
     // koruma kalıbını aynalayarak makul sınırlarla reddet.
     const heightVal = parseInt(heightCm);
-    const weightVal = parseFloat(weightKg);
+    // FIX (ux-round4 #19 review): parse comma-aware (Turkish decimal-pad emits '70,5'). The inline
+    // direction hint already does .replace(',','.'); the submit path must match or the two disagree
+    // (inline says OK, submit rejects) AND a comma value would be truncated ('70,9'→70) into the DB.
+    const weightVal = parseFloat(weightKg.replace(',', '.'));
     if (!Number.isFinite(heightVal) || heightVal < 100 || heightVal > 230) {
       haptics.error();
       Alert.alert('Geçersiz boy', 'Lütfen 100-230 cm arasında geçerli bir boy gir.');
@@ -350,7 +416,7 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
       return;
     }
     if (needsTargetWeight) {
-      const targetVal = parseFloat(targetWeightKg);
+      const targetVal = parseFloat(targetWeightKg.replace(',', '.'));
       if (!Number.isFinite(targetVal) || targetVal < 30 || targetVal > 300) {
         haptics.error();
         Alert.alert('Geçersiz hedef kilo', 'Lütfen 30-300 kg arasında geçerli bir hedef kilo gir.');
@@ -398,8 +464,9 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
 
     try {
       // 1. Goal write
-      const w = parseFloat(weightKg);
-      const targetWeight = targetWeightKg ? parseFloat(targetWeightKg) : w;
+      // FIX (ux-round4 #19 review): comma-aware parse so a '70,5' isn't stored as 70.
+      const w = parseFloat(weightKg.replace(',', '.'));
+      const targetWeight = targetWeightKg ? parseFloat(targetWeightKg.replace(',', '.')) : w;
       // Derive the weekly rate from the entered target + 12-week horizon instead of a flat
       // 0.5 (which contradicted the target weight and made GoalProgress show a wrong tempo).
       // Clamp to the 1.0 kg/wk safety guardrail.
@@ -499,6 +566,35 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
 
       // 5. Celebrate the milestone, then navigate to chat.
       haptics.success();
+
+      // FIX (ux-ideas #16): permission priming — explain the value BEFORE the OS prompt. Cold
+      // prompts (the old app-launch behavior) crater accept rates and a denial permanently kills
+      // the whole proactive-coaching / re-engagement layer. New users only; not re-onboarding.
+      if (!isReOnboarding) {
+        await new Promise<void>((resolve) => {
+          Alert.alert(
+            'Koçun sana ulaşsın mı?',
+            'Gece atıştırmadan önce, ivmen düşünce veya hedefe yaklaşınca Kochko doğru anda sana yazsın ister misin? İstediğin an ayarlardan kapatabilirsin.',
+            [
+              { text: 'Şimdi değil', style: 'cancel', onPress: () => resolve() },
+              {
+                text: 'Evet, izin ver',
+                onPress: () => {
+                  (async () => {
+                    try {
+                      const token = await requestNotificationPermissionIfNeeded();
+                      if (token) { await savePushToken(user.id, token); await scheduleNotificationsOnStartup(user.id); }
+                    } catch { /* best-effort */ }
+                    resolve();
+                  })();
+                },
+              },
+            ],
+            { cancelable: false },
+          );
+        });
+      }
+
       if (trial.started) {
         Alert.alert('Premium deneme', '7 günlük Premium denemen başladı — tüm özellikler açık.');
       }
@@ -507,9 +603,21 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
       // dünyasında chat ekranının isOnboarding karşılaması ölü koddu). Kanonik görev
       // parametreleriyle git (bkz. app/chat/[sessionId].tsx görev açıcısı: taskModeHint+taskNonce)
       // → Koç [SYSTEM_INIT] ile İLK sözü alır ve az önce girilen hedefi konuşarak sohbeti açar.
+      // FIX (ux-ideas #19): time-to-value'yu 30sn+ canlı LLM açıcısına bağlama. Az önce
+      // hesaplanan sayılardan (hedef + kalori) DETERMİNİSTİK bir karşılama kur ve chat'e
+      // parametreyle geçir — chat bunu anında ilk balon olarak basar (LLM kesilse bile ilk
+      // deneyim boş/hata değil, kişisel bir makbuz olur). Warm LLM açıcısı ardından gelir.
+      const firstName = (profile?.display_name as string | undefined)?.trim().split(' ')[0];
+      const namePart = firstName ? ` ${firstName}` : '';
+      const fmtKg = (n: number) => (Math.round(n * 10) / 10).toString().replace('.', ',');
+      const midKcal = Math.round((targets.trainingDay.min + targets.trainingDay.max) / 2);
+      const goalPart = (needsTargetWeight && targetWeight !== w)
+        ? `Hedefin ${fmtKg(w)} → ${fmtKg(targetWeight)} kg. `
+        : '';
+      const onbWelcome = `Merhaba${namePart}! ${goalPart}Antrenman günlerinde ~${midKcal} kcal ile başlıyoruz — sayıları birlikte ince ayar yaparız. Hazırsan seni biraz daha tanıyayım.`;
       router.replace({
         pathname: '/(tabs)/chat',
-        params: { taskModeHint: 'onboarding_goal', taskNonce: String(Date.now()) },
+        params: { taskModeHint: 'onboarding_goal', taskNonce: String(Date.now()), onbWelcome },
       });
     } catch {
       haptics.error();
@@ -532,21 +640,21 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
         {/* Son adım pill — the slide dots are gone here, so signal the form is finite.
             FIX (audit re-onboarding): güncelleme modunda "Son adım" pill'i anlamsız — gizle. */}
         {!isReOnboarding && (
-          <View style={{
-            alignSelf: 'flex-start',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: SPACING.xs,
-            paddingVertical: 4,
-            paddingHorizontal: SPACING.sm,
-            borderRadius: RADIUS.pill,
-            backgroundColor: COLORS.primary + '20',
-            marginBottom: SPACING.sm,
-          }}>
-            <Ionicons name="flag" size={12} color={COLORS.primary} />
-            <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: COLORS.primary }}>
-              Son adım
-            </Text>
+          // FIX (ux-round4 #30): pair the "Son adım" pill with a live "X/N hazır" meter + fill bar
+          // so the form signals momentum toward a finish line, not just what's still missing.
+          <View style={{ alignSelf: 'stretch', marginBottom: SPACING.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.pill, backgroundColor: COLORS.primary + '20' }}>
+                <Ionicons name="flag" size={12} color={COLORS.primary} />
+                <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: COLORS.primary }}>Son adım</Text>
+              </View>
+              <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: filledCount === totalCount ? COLORS.primary : COLORS.textSecondary }}>
+                {filledCount}/{totalCount} hazır
+              </Text>
+            </View>
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: COLORS.border, overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${Math.round((filledCount / totalCount) * 100)}%`, backgroundColor: COLORS.primary, borderRadius: 2 }} />
+            </View>
           </View>
         )}
         {/* FIX (audit re-onboarding): mevcut kullanıcıya yeni-kullanıcı kopyası ("Seni
@@ -565,8 +673,8 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
 
         {/* Physical */}
         <View style={{ marginBottom: SPACING.md }}>
-          <Input label="Boy (cm)" value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" placeholder="175" />
-          <Input label="Kilo (kg)" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="80" />
+          <Input label="Boy (cm)" value={heightCm} onChangeText={setHeightCm} keyboardType="numeric" placeholder="175" error={heightError} />
+          <Input label="Kilo (kg)" value={weightKg} onChangeText={setWeightKg} keyboardType="decimal-pad" placeholder="80" error={weightError} />
           {/* FIX (audit onboarding-birthyear): yaş yalnızca OAuth/metadata'sız kullanıcılarda sorulur. */}
           {needsBirthYear && (
             <Input label="Doğum Yılı" value={birthYear} onChangeText={setBirthYear} keyboardType="number-pad" placeholder="1995" />
@@ -582,17 +690,34 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
         <ChipSelect label="Hedefin Ne?" options={GOAL_OPTIONS} selected={goalType} onChange={v => { if (v === goalType) return; setGoalType(v as GoalType); setTargetWeightKg(''); }} />
 
         {/* Target Weight — shown only for lose_weight / gain_muscle */}
-        {needsTargetWeight && (
-          <View style={{ marginBottom: SPACING.md }}>
-            <Input
-              label="Hedef Kilo (kg)"
-              value={targetWeightKg}
-              onChangeText={setTargetWeightKg}
-              keyboardType="decimal-pad"
-              placeholder={goalType === 'lose_weight' ? '70' : '85'}
-            />
-          </View>
-        )}
+        {/* FIX (ux-round4 #19 + #4): anchor the target to the current weight with a hint, and catch
+            the wrong-direction case inline (red) BEFORE submit — the old flow only rejected it at
+            "Başlayalım!" with a full-screen Alert. The submit-time Alert stays as a safety net. */}
+        {needsTargetWeight && (() => {
+          const cur = parseFloat(weightKg.replace(',', '.'));
+          const tgt = parseFloat(targetWeightKg.replace(',', '.'));
+          const hasCur = Number.isFinite(cur);
+          const dirHint = goalType === 'lose_weight' ? 'daha düşük bir hedef gir' : 'daha yüksek bir hedef gir';
+          const hint = hasCur ? `Mevcut kilon ${weightKg} kg — ${dirHint}` : undefined;
+          const dirError = (hasCur && Number.isFinite(tgt))
+            ? (goalType === 'lose_weight' && tgt >= cur ? 'Hedef, mevcut kilonun altında olmalı'
+              : goalType === 'gain_muscle' && tgt <= cur ? 'Hedef, mevcut kilonun üstünde olmalı'
+              : undefined)
+            : undefined;
+          return (
+            <View style={{ marginBottom: SPACING.md }}>
+              <Input
+                label="Hedef Kilo (kg)"
+                value={targetWeightKg}
+                onChangeText={setTargetWeightKg}
+                keyboardType="decimal-pad"
+                placeholder={goalType === 'lose_weight' ? '70' : '85'}
+                hint={hint}
+                error={dirError}
+              />
+            </View>
+          );
+        })()}
 
         {/* Activity */}
         <ChipSelect label="Aktivite Seviyesi" options={ACTIVITY_OPTIONS} selected={activity} onChange={v => setActivity(v as ActivityLevel)} />
@@ -612,6 +737,27 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
           <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginBottom: SPACING.xs }}>
             Devam etmek için {missingLabel}.
           </Text>
+        )}
+
+        {/* FIX (ux-round4 #22): first-value preview above the commit button. */}
+        {planPreview && (
+          <View style={{ backgroundColor: COLORS.primary + '12', borderWidth: 1, borderColor: COLORS.primary + '33', borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.md }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <Ionicons name="sparkles" size={13} color={COLORS.primary} />
+              <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: COLORS.primary, letterSpacing: 0.3 }}>TAHMİNİ BAŞLANGIÇ PLANIN</Text>
+            </View>
+            <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: COLORS.text }}>
+              ~{planPreview.kcalMin}–{planPreview.kcalMax} kcal/gün
+            </Text>
+            {planPreview.showGoal && (
+              <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: 2 }}>
+                {String(planPreview.w).replace('.', ',')} → {String(planPreview.tw).replace('.', ',')} kg · ~12 hafta
+              </Text>
+            )}
+            <Text style={{ fontSize: FONT.xs, color: COLORS.textMuted, marginTop: 4 }}>
+              Koç bunları seninle konuşarak inceltecek.
+            </Text>
+          </View>
         )}
 
         <Button

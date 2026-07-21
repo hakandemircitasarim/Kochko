@@ -4,12 +4,18 @@
  * green glow when the meal just changed in a new snapshot).
  */
 import { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, Animated, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { type DietMeal } from '@/services/plan.service';
+
+// FIX (ux-round2 #13): enable LayoutAnimation on Android (iOS is on by default) so the meal
+// accordion expand/collapse eases instead of snapping — a core daily surface tapped many times.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface Props {
   meal: DietMeal;
@@ -72,54 +78,93 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
       {/* Header */}
       {/* FIX (ux-pass5): expandable header announced as a button with expanded state
           (matches PlanDayAccordion) — was a text blob to TalkBack, hiding the actions inside. */}
-      <TouchableOpacity
-        onPress={onToggle}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={`${MEAL_TYPE_LABELS_TR[meal.meal_type]}, ${meal.name}, ${Math.round(meal.total_kcal)} kalori, ${expanded ? 'açık' : 'aç'}`}
-        accessibilityState={{ expanded }}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
-      >
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: color + '18',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
+      {/* FIX (ux-ideas #2): the 'Bunu yedim' one-tap log now also lives on the COLLAPSED
+          header (compact + button), so the day's most-repeated action no longer requires
+          expanding each meal first. The full labelled chip still renders in the expanded body.
+          Split into a toggle + a sibling button (not nested) so the log tap and the expand tap
+          never contend for the same touch responder. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+        <TouchableOpacity
+          onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); onToggle(); }}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`${MEAL_TYPE_LABELS_TR[meal.meal_type]}, ${meal.name}, ${Math.round(meal.total_kcal)} kalori, ${expanded ? 'açık' : 'aç'}`}
+          accessibilityState={{ expanded }}
+          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
         >
-          <Ionicons name={MEAL_ICONS[meal.meal_type] as any} size={18} color={color} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>
-              {MEAL_TYPE_LABELS_TR[meal.meal_type]}
-            </Text>
-            {meal.time ? (
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>· {meal.time}</Text>
-            ) : null}
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: color + '18',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name={MEAL_ICONS[meal.meal_type] as any} size={18} color={color} />
           </View>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }} numberOfLines={expanded ? 0 : 1}>
-            {meal.name}
-          </Text>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          {/* FIX (audit UI-PLN-02): round raw LLM-authored macros so decimals (487.3, 32.5) don't leak into the UI */}
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
-            {Math.round(meal.total_kcal)} kcal
-          </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
-            P{Math.round(meal.total_protein)} · K{Math.round(meal.total_carbs)} · Y{Math.round(meal.total_fat)}
-          </Text>
-        </View>
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={16}
-          color={colors.textMuted}
-        />
-      </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>
+                {MEAL_TYPE_LABELS_TR[meal.meal_type]}
+              </Text>
+              {meal.time ? (
+                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>· {meal.time}</Text>
+              ) : null}
+            </View>
+            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }} numberOfLines={expanded ? 0 : 1}>
+              {meal.name}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            {/* FIX (audit UI-PLN-02): round raw LLM-authored macros so decimals (487.3, 32.5) don't leak into the UI */}
+            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
+              {Math.round(meal.total_kcal)} kcal
+            </Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+              P{Math.round(meal.total_protein)} · K{Math.round(meal.total_carbs)} · Y{Math.round(meal.total_fat)}
+            </Text>
+          </View>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+
+        {/* Compact one-tap log — only on the active plan's TODAY (onLogPress present) and while
+            collapsed; expanding reveals the full labelled chip below. Icon-only to fit the dense
+            header, with a full-intent a11y label. Reflects saving / done state at a glance. */}
+        {onLogPress && !expanded ? (
+          <TouchableOpacity
+            onPress={onLogPress}
+            disabled={!!logStatus}
+            accessibilityRole="button"
+            accessibilityLabel={logStatus === 'done' ? `${meal.name} günlüğe eklendi` : logStatus === 'saving' ? 'Ekleniyor' : `${meal.name}, bunu yedim, günlüğe ekle`}
+            accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: logStatus === 'done' ? colors.successLight : colors.primary + '18',
+            }}
+          >
+            {logStatus === 'saving' ? (
+              <ActivityIndicator size="small" color={colors.primary} style={{ transform: [{ scale: 0.7 }] }} />
+            ) : (
+              <Ionicons
+                name={logStatus === 'done' ? 'checkmark-circle' : 'add-circle-outline'}
+                size={18}
+                color={logStatus === 'done' ? colors.success : colors.primary}
+              />
+            )}
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       {/* Expanded: items + notes + edit */}
       {expanded && (

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAchievements, type Achievement } from '@/services/achievements.service';
 import { shareMilestone } from '@/services/sharing.service';
@@ -35,7 +36,9 @@ export default function AchievementsScreen() {
   useEffect(() => { getAchievements().then(setItems).finally(() => setLoading(false)); }, []);
 
   if (loading) {
-    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}><ActivityIndicator size="large" color={COLORS.primary} /></View>;
+    // FIX (ux-ideas #28): skeleton loader instead of a bare centered spinner — no "frozen" feel,
+    // no layout jump when content lands, and visual parity with dashboard/reports/coach-memory.
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={4} /></View>;
   }
 
   return (
@@ -49,13 +52,15 @@ export default function AchievementsScreen() {
               <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '800' }}>★</Text>
             </View>
             <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz başarımın yok</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Kilo, antrenman ve seri kayıtların biriktikçe burada rozetlerin görünecek. Kayıt girmeye devam et!</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Kilo, antrenman ve seri kayıtların biriktikçe başarımların burada görünecek. Kayıt girmeye devam et!</Text>
           </View>
         </Card>
       ) : (
         items.map(a => (
           <View key={a.id} style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+            {/* FIX (ux-polish): decorative placeholder glyph — hide from screen readers so TalkBack
+                doesn't read the raw characters before each title (the title already names it). */}
+            <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
               <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '800' }}>{TYPE_ICONS[a.achievement_type] ?? '+'}</Text>
             </View>
             <View style={{ flex: 1 }}>

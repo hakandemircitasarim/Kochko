@@ -61,6 +61,17 @@ export const ACTIVITY_LEVEL_LABELS_TR: Record<ActivityLevel, string> = {
   very_active: 'Çok Aktif',
 };
 
+/** Koç iletişim tonu — kanonik kısa TR etiketleri (canonical enum: strict|balanced|gentle).
+ *  Seçim ekranı (coach-tone) bilinçli olarak daha zengin kart başlıkları kullanır
+ *  ("Yumuşak Destekleyici" vb.); bu kısa değerler "mevcut ton" gösterimleri içindir
+ *  (profil satırı, koç-hafıza). Eskiden profile.tsx'in haritasında 'gentle' anahtarı
+ *  yoktu (çiğ İngilizce sızıyordu) ve koç-hafıza 'Nazik' diyordu — tek kaynak burası. */
+export const COACH_TONE_LABELS_TR: Record<string, string> = {
+  strict: 'Sıkı',
+  balanced: 'Dengeli',
+  gentle: 'Yumuşak',
+};
+
 /** {value,label} seçenek dizisi türet — onboarding/edit-profile ChipSelect'leri
  *  aynı sırayla aynı seçenekleri sunsun diye tek noktadan. */
 export const toOptions = <K extends string>(map: Record<K, string>): { value: K; label: string }[] =>
@@ -98,3 +109,6 @@ export const genderLabelTR = (key: string | null | undefined): string =>
 
 export const activityLevelLabelTR = (key: string | null | undefined): string =>
   lookup(ACTIVITY_LEVEL_LABELS_TR, key);
+
+export const coachToneLabelTR = (key: string | null | undefined): string =>
+  lookup(COACH_TONE_LABELS_TR, key);

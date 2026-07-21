@@ -3,10 +3,13 @@
  * Spec 8.7: Sağlık profesyoneli rapor exportu
  * PDF/CSV format, selected date range, professional-facing format.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
+import { useProfileStore } from '@/stores/profile.store';
+import { usePremium } from '@/hooks/usePremium';
 import { supabase } from '@/lib/supabase';
 import { exportPDF } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
@@ -18,10 +21,22 @@ import { genderLabelTR } from '@/lib/labels';
 
 export default function HealthExportScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const user = useAuthStore(s => s.user);
+  // FIX (ux-readiness): premium screen reachable from the always-visible Profil → "Verilerimi dışa
+  // aktar" row (bypasses the settings-menu gate). Guard in-screen like the sibling premium screens.
+  const { isPremium } = usePremium();
+  const profileLoading = useProfileStore(s => s.loading);
+  const profile = useProfileStore(s => s.profile);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium, router]);
 
   const applyQuickRange = (months: number) => {
     haptics.tap();
@@ -133,6 +148,11 @@ export default function HealthExportScreen() {
       setExporting(false);
     }
   };
+
+  // FIX (ux-readiness): blank while the redirect effect runs, so a free user never sees the content.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>

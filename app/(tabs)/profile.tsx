@@ -2,16 +2,16 @@
  * Profil Sekmesi — flat dark design
  * Avatar, fiziksel bilgiler, hedefler, ayarlar, veri & gizlilik
  */
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useCallback, type ReactNode } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { usePremium } from '@/hooks/usePremium';
 import { loadInsights } from '@/services/chat.service';
-import { calculateStreak } from '@/services/achievements.service';
+import { calculateStreak, nextStreakMilestone } from '@/services/achievements.service';
 // FIX (audit raw-enum): map periodic_state enum ('busy_work'...) to Turkish labels.
 import { PERIODIC_LABELS, type PeriodicState } from '@/services/periodic.service';
 import { supabase } from '@/lib/supabase';
@@ -21,14 +21,15 @@ import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service'
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
-import { goalLabelTR } from '@/lib/labels';
+import { goalLabelTR, coachToneLabelTR } from '@/lib/labels';
+import { calculateProfileCompletion, CATEGORY_LABELS } from '@/lib/profile-completion';
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
   const { profile, fetch: fetchProfile } = useProfileStore();
-  const { isPremium, requirePremium } = usePremium();
+  const { isPremium, isInTrial, trialDaysLeft, requirePremium } = usePremium();
   const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
   const [streak, setStreak] = useState(0);
   const [goal, setGoal] = useState<{ goal_type: string; target_weight_kg: number | null } | null>(null);
@@ -39,7 +40,11 @@ export default function ProfileScreen() {
   // never a confident 'Yok' before the data actually arrived — safety-critical row).
   const [allergens, setAllergens] = useState<string[] | null>(null);
 
-  useEffect(() => {
+  // FIX (ux-audit major): refetch on every tab focus, not just once per user id. The goal,
+  // allergens, streak and coach-summary shown here are edited on OTHER settings screens — with a
+  // mount-only effect a just-saved goal still read "Hedef belirle" on return, looking like the save
+  // had failed. useFocusEffect re-pulls fresh data each time the Profil tab regains focus.
+  useFocusEffect(useCallback(() => {
     if (!user?.id) return;
     let cancelled = false;
     fetchProfile(user.id);
@@ -68,8 +73,9 @@ export default function ProfileScreen() {
         setAllergens(names);
       });
     return () => { cancelled = true; };
-  }, [user?.id]);
+  }, [user?.id]));
 
+  const nextBadge = nextStreakMilestone(streak);
   const displayName = (profile?.display_name as string) || user?.email?.split('@')[0] || 'Kullanıcı';
   // FIX (ux-pass5): toUpperCase i→I bozuyordu ('irem'→'IR'); tr-TR ile i→İ ('İR').
   const initials = displayName.slice(0, 2).toLocaleUpperCase('tr-TR');
@@ -84,29 +90,71 @@ export default function ProfileScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 8, paddingBottom: 120 + insets.bottom }}>
       {/* FIX (audit: tab başlık tutarlılığı) — Profil sekmesinde de diğer
           sekmelerle aynı başlık deseni (FONT.xl2/700, insets.top+8) */}
-      <Text
-        accessibilityRole="header"
-        style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text, marginBottom: SPACING.lg }}
-      >
-        Profil
-      </Text>
+      {/* FIX (ux-round2 #17): profile is where users instinctively look for a setting — give the
+          header a search entry that opens the settings screen with its search box focused. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
+        <Text accessibilityRole="header" style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text }}>
+          Profil
+        </Text>
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); router.push('/settings?focusSearch=1' as never); }}
+          accessibilityRole="button"
+          accessibilityLabel="Ayarlarda ara"
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Ionicons name="search" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
 
       {/* 5.1 User card */}
       <View style={{ alignItems: 'center', marginBottom: SPACING.xxl, marginTop: Platform.OS === 'web' ? 16 : 20 }}>
-        <View style={{
-          width: 64, height: 64, borderRadius: 32,
-          backgroundColor: colors.primary + '20',
-          alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
-        }}>
-          <Text style={{ color: colors.primary, fontSize: 22, fontWeight: '700' }}>{initials}</Text>
-        </View>
-        <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{displayName}</Text>
+        {/* FIX (ux-round4 #14): avatar+name were inert despite the universal "tap to edit profile"
+            expectation; make them a real button. Also surface the signed-in email — never shown on
+            this tab before — so "am I on the right account?" is answerable at a glance. */}
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); router.push('/settings/edit-profile'); }}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Profili düzenle"
+          style={{ alignItems: 'center' }}
+        >
+          <View style={{
+            width: 64, height: 64, borderRadius: 32,
+            backgroundColor: colors.primary + '20',
+            alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
+          }}>
+            <Text style={{ color: colors.primary, fontSize: 22, fontWeight: '700' }}>{initials}</Text>
+          </View>
+          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{displayName}</Text>
+        </TouchableOpacity>
+        {user?.email && (
+          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2, opacity: 0.7 }} numberOfLines={1}>{user.email}</Text>
+        )}
         {memberDays != null && (
           <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
             {memberDays === 0 ? "Bugün Kochko'ya katıldın" : `${memberDays} gündür Kochko'da`}
           </Text>
         )}
         {streak > 0 && <View style={{ marginTop: SPACING.sm }}><StreakBadge days={streak} /></View>}
+        {/* FIX (ux-ideas #4): trial users saw no countdown anywhere they naturally look —
+            surface the remaining days + a soft "Kalıcı yap" on the profile card. */}
+        {isInTrial && (
+          <TouchableOpacity
+            onPress={() => { haptics.tap(); router.push('/settings/premium'); }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Deneme ${trialDaysLeft} gün sonra bitiyor. Premium'a geçmek için dokun`}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.sm,
+              backgroundColor: colors.warning + '18', borderRadius: RADIUS.pill,
+              paddingHorizontal: SPACING.md, paddingVertical: 4,
+            }}
+          >
+            <Ionicons name="time-outline" size={13} color={colors.warning} />
+            <Text style={{ color: colors.warning, fontSize: 12, fontWeight: '700' }}>Deneme • {trialDaysLeft} gün kaldı</Text>
+            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700', marginLeft: 4 }}>Kalıcı yap</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* 5.2 Physical info — 3 column grid.
@@ -114,10 +162,63 @@ export default function ProfileScreen() {
           relabeled 'Amaç' so the two boxes are distinct.
           FIX (audit false-Yok): on goal fetch error render '—' instead of a confident '-'. */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xxl }}>
-        <InfoBox label="Mevcut" value={profile?.weight_kg ? `${profile.weight_kg}` : '-'} unit="kg" colors={colors} />
-        <InfoBox label="Hedef" value={goalLoadError ? '—' : goal?.target_weight_kg ? `${goal.target_weight_kg}` : '-'} unit="kg" colors={colors} />
+        {/* FIX (ux-polish): TR comma decimals to match every other weight surface (was "72.5 kg"). */}
+        <InfoBox label="Mevcut" value={profile?.weight_kg ? String(profile.weight_kg).replace('.', ',') : '-'} unit="kg" colors={colors} />
+        <InfoBox label="Hedef" value={goalLoadError ? '—' : goal?.target_weight_kg ? String(goal.target_weight_kg).replace('.', ',') : '-'} unit="kg" colors={colors} />
         <InfoBox label="Amaç" value={goalLoadError ? '—' : goal ? goalLabelTR(goal.goal_type) : '-'} unit="" colors={colors} small />
       </View>
+
+      {/* FIX (ux-ideas #14): profile-completion nudge lives where edits actually happen. The
+          donut was dashboard-only; here a gentle bar + the lowest-filled category + a one-tap
+          route collects the data the coach needs for a good plan, without nagging. */}
+      {profile && (() => {
+        const comp = calculateProfileCompletion(profile as Record<string, unknown>);
+        if (comp.percentage >= 100) return null;
+        return (
+          <TouchableOpacity
+            onPress={() => { haptics.tap(); router.push('/settings/edit-profile'); }}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={`Profilin yüzde ${comp.percentage} tamamlandı.${comp.lowestCategory ? ` Sıradaki: ${CATEGORY_LABELS[comp.lowestCategory]}.` : ''} Düzenlemek için dokun`}
+            style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.xxl }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                <Ionicons name="person-circle-outline" size={16} color={colors.primary} />
+                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Profilin %{comp.percentage} tam</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </View>
+            <View style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${comp.percentage}%`, backgroundColor: colors.primary, borderRadius: 4 }} />
+            </View>
+            {comp.lowestCategory && (
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm }}>
+                Sıradaki: {CATEGORY_LABELS[comp.lowestCategory]} ekle — koçun daha isabetli plan yapsın.
+              </Text>
+            )}
+          </TouchableOpacity>
+        );
+      })()}
+
+      {/* FIX (ux-ideas #16): "Sıradaki rozet" — a concrete target to chase, with progress. */}
+      {nextBadge && (
+        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.xxl }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+              <Ionicons name="ribbon-outline" size={16} color={colors.warning} />
+              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Sıradaki rozet</Text>
+            </View>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{streak}/{nextBadge.target}</Text>
+          </View>
+          <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: SPACING.sm }}>
+            {nextBadge.label} · {nextBadge.remaining} gün kaldı
+          </Text>
+          <View style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}>
+            <View style={{ height: '100%', width: `${Math.round(nextBadge.progress * 100)}%`, backgroundColor: colors.warning, borderRadius: 4 }} />
+          </View>
+        </View>
+      )}
 
       {/* 5.4 Goals section */}
       <SectionTitle label="Hedefler" colors={colors} />
@@ -135,7 +236,7 @@ export default function ProfileScreen() {
       <SectionTitle label="Ayarlar" colors={colors} />
       <MenuGroup colors={colors}>
         <MenuRow icon="notifications-outline" color={colors.carbs} label="Bildirim tercihleri" onPress={() => router.push('/settings/notifications')} colors={colors} />
-        <MenuRow icon="chatbubble-outline" color={colors.primary} label="Koç iletişim tonu" value={{ balanced: 'Dengeli', strict: 'Sıkı', friendly: 'Arkadaşça', motivating: 'Motive edici' }[(profile?.coach_tone as string) ?? 'balanced'] ?? (profile?.coach_tone as string) ?? 'Dengeli'} onPress={() => router.push('/settings/coach-tone')} colors={colors} />
+        <MenuRow icon="chatbubble-outline" color={colors.primary} label="Koç iletişim tonu" value={coachToneLabelTR((profile?.coach_tone as string) ?? 'balanced')} onPress={() => router.push('/settings/coach-tone')} colors={colors} />
         <MenuRow icon="timer-outline" color={colors.purple} label="IF penceresi" value={profile?.if_eating_start ? `${profile.if_eating_start}-${profile.if_eating_end}` : 'Kapalı'} onPress={() => router.push('/settings/if-settings')} colors={colors} />
         <MenuRow icon="time-outline" color={colors.textSecondary} label="Gün dönümü" value={`${(profile?.day_boundary_hour as number) ?? 4}:00`} onPress={() => router.push('/settings/day-boundary')} colors={colors} />
         {/* FIX (audit false-Yok, safety): fetch error ⇒ 'Yüklenemedi', never a confident 'Yok'. */}
@@ -143,6 +244,10 @@ export default function ProfileScreen() {
         {/* FIX (audit raw-enum): 'busy_work' vb. ham enum yerine Türkçe etiket.
             FIX (audit premium-parity): settings/index ile aynı premium rozet + kapı. */}
         <MenuRow icon="calendar-outline" color={colors.pink} label="Dönemsel durum" value={profile?.periodic_state ? PERIODIC_LABELS[profile.periodic_state as PeriodicState] ?? String(profile.periodic_state) : 'Normal'} premium={!isPremium} onPress={isPremium ? () => router.push('/settings/periodic-state') : () => requirePremium(() => router.push('/settings/periodic-state'), 'Dönemsel Durum')} colors={colors} />
+        {/* FIX (ux-ideas #16): rozet/challenge vitrini — Ayarlar derinine gömülü kalmasın,
+            profilden tek dokunuşla erişilsin. */}
+        <MenuRow icon="ribbon-outline" color={colors.warning} label="Başarımlar" onPress={() => router.push('/settings/achievements')} colors={colors} />
+        <MenuRow icon="trophy-outline" color={colors.warning} label="Challenge'lar" premium={!isPremium} onPress={isPremium ? () => router.push('/settings/challenges') : () => requirePremium(() => router.push('/settings/challenges'), "Challenge'lar")} colors={colors} />
         {/* FIX (audit: keşfedilemez IA) — Premium ve Hesap Güvenliği birinci-sınıf
             satırlar; 'Tüm ayarlar' Veri&gizlilik yerine semantik olarak doğru
             Ayarlar bölümünde, scroll gerektirmeden bulunabilir. */}

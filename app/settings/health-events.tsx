@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getHealthEvents, addHealthEvent, type HealthEvent } from '@/services/health.service';
@@ -101,8 +102,9 @@ export default function HealthEventsScreen() {
 
       {/* FIX (ux-pass5 UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi (lab-values kalıbı). */}
       {loading && events.length === 0 && (
-        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={{ gap: SPACING.md, paddingTop: SPACING.md }}>
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={2} />
         </View>
       )}
 

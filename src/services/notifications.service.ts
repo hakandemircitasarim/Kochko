@@ -139,6 +139,26 @@ export async function initializeNotifications(): Promise<string | null> {
   return requestNotificationPermissionIfNeeded();
 }
 
+/**
+ * FIX (ux-ideas #16): app-launch setup WITHOUT a cold OS permission prompt. Sets up the
+ * notification handler + Android channel and returns the push token ONLY if permission was
+ * already granted — it never triggers the system dialog. The actual request is deferred to a
+ * primed moment (post-onboarding, value explained first): a cold prompt craters accept rates,
+ * and once denied the whole proactive-coaching / re-engagement layer is dead permanently.
+ */
+export async function setupNotificationsIfGranted(): Promise<string | null> {
+  setupNotificationHandler();
+  await setupAndroidChannel();
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== 'granted') return null;
+  try {
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId: EAS_PROJECT_ID });
+    return tokenData.data;
+  } catch {
+    return null;
+  }
+}
+
 export async function savePushToken(userId: string, token: string): Promise<void> {
   await supabase.from('profiles').update({
     push_token: token,
@@ -503,4 +523,52 @@ function isTimeInQuietWindow(hour: number, minute: number, quietStart: string, q
     return cur >= startMinutes || cur < endMinutes;
   }
   return cur >= startMinutes && cur < endMinutes;
+}
+
+/**
+ * FIX (ux-ideas #14): map a notification's data.type to an in-app route so tapping a
+ * push lands the user on the relevant screen instead of a cold dashboard. Returns null
+ * for types with no better destination than "just open the app". Consumed by the
+ * response listener in app/_layout.tsx.
+ */
+export function routeForNotificationType(type: string | undefined): string | null {
+  switch (type) {
+    case 'weekly_report':
+    case 'weekly':
+      return '/reports/weekly';
+    case 'daily':
+      return '/reports/daily';
+    case 'weight_reminder':
+    case 'workout_reminder':
+    case 'snack_hour_nudge':
+    case 'meal_gap':
+    case 'no_meals':
+    case 'night_eating_risk':
+      return '/log';
+    case 'trial_reminder':
+      return '/settings/premium';
+    case 'challenge':
+    case 'challenge_completed':
+      return '/settings/challenges';
+    case 'goal_reached':
+    case 'reinforcement_milestone':
+      return '/settings/achievements';
+    // Conversational / coaching pushes → the coach thread.
+    case 'reengagement':
+    case 'motivation_dip':
+    case 'weekend_drift':
+    case 'bundled':
+    case 'habit_introduce':
+    case 'habit_stack':
+    case 'deload_suggestion':
+    case 'progressive_overload':
+    case 'mini_cut_suggestion':
+    case 'maintain':
+    case 'mvd_reset':
+    case 'periodic_end':
+    case 'alcohol_next_day':
+      return '/(tabs)/chat';
+    default:
+      return null;
+  }
 }

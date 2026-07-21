@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -62,8 +63,9 @@ export default function VenuesScreen() {
 
       {/* FIX (audit UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi. */}
       {loading ? (
-        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={{ gap: SPACING.md, paddingTop: SPACING.md }}>
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={2} />
         </View>
       ) : loadError ? (
         /* FIX (audit empty-vs-error): fetch hatası 'mekan yok' değil, hata+tekrar dene (shared LoadErrorState). */
@@ -71,7 +73,16 @@ export default function VenuesScreen() {
           <LoadErrorState embedded title="Mekanlar yüklenemedi" onRetry={loadVenues} />
         </Card>
       ) : venues.length === 0 ? (
-        <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>Henüz kayıtlı mekan yok. Koçuna "Simit Sarayı'nda yedim" gibi yazdığında mekan otomatik öğrenilir.</Text></Card>
+        <Card>
+          {/* FIX (ux-polish): iconed empty state to match achievements/health-events/lab-values. */}
+          <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="storefront-outline" size={26} color={COLORS.primary} />
+            </View>
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz kayıtlı mekan yok</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Koçuna "Simit Sarayı'nda yedim" gibi yazdığında mekan otomatik öğrenilir.</Text>
+          </View>
+        </Card>
       ) : (
         venues.map(v => (
           <TouchableOpacity key={v.id} onLongPress={() => handleDelete(v.id)}>

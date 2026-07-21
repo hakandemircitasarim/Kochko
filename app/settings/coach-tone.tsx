@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 
 type Tone = 'strict' | 'balanced' | 'gentle';
 
@@ -36,6 +37,19 @@ export default function CoachToneScreen() {
   const user = useAuthStore(s => s.user);
   const { profile, update } = useProfileStore();
   const [selected, setSelected] = useState<Tone>((profile?.coach_tone as Tone) ?? 'balanced');
+  // FIX (ux-audit device-fix): if the profile store isn't populated yet at mount, `selected` seeds
+  // the 'balanced' default; when the profile later loads, sync ONCE so we don't (a) fire a spurious
+  // unsaved-changes prompt and (b) let Kaydet clobber the real saved tone with the default.
+  const hydratedRef = useRef(!!profile?.coach_tone);
+  useEffect(() => {
+    if (!hydratedRef.current && profile?.coach_tone) {
+      hydratedRef.current = true;
+      setSelected(profile.coach_tone as Tone);
+    }
+  }, [profile?.coach_tone]);
+  // FIX (ux-round3 #8): warn before discarding an unsaved tone change. `update` writes the
+  // store baseline, so after a successful save/reset `dirty` is false and back is not blocked.
+  useUnsavedGuard(selected !== ((profile?.coach_tone as Tone) ?? 'balanced'));
 
   const handleSave = async () => {
     if (!user?.id) return;
@@ -46,9 +60,13 @@ export default function CoachToneScreen() {
   };
 
   const handleReset = () => {
-    Alert.alert('Sıfırla', 'AI\'ın öğrendiği ton tercihi sıfırlanacak, başlangıç tonuna dönülecek.', [
-      { text: 'İptal' },
-      { text: 'Sıfırla', onPress: async () => {
+    // FIX (ux-round4 #15): the old copy claimed this wiped "AI'ın öğrendiği ton tercihi",
+    // but it only sets coach_tone='balanced'. The learned preference lives in
+    // ai_summary.learned_tone_preference (shown in Koç Hafızası) and is untouched — so the
+    // copy is now honest about what actually happens and points to where the learned tone is.
+    Alert.alert('Tonu sıfırla', 'Ton tercihin "Dengeli"ye dönecek. (Koçun zamanla öğrendiği tonu ayrıca Koç Hafızası\'ndan temizleyebilirsin.)', [
+      { text: 'Vazgeç', style: 'cancel' },
+      { text: 'Sıfırla', style: 'destructive', onPress: async () => {
         if (user?.id) await update(user.id, { coach_tone: 'balanced' } as never);
         setSelected('balanced');
       }},

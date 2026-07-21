@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert, TouchableOpacity, Linking } from 'react-native';
+import { useState, useRef } from 'react';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert, TouchableOpacity, Linking, TextInput } from 'react-native';
 import { Link, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -41,6 +41,8 @@ function localizeAuthError(message?: string | null): string {
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
+  // FIX (ux-round3 #7): keyboard "İleri" jumps e-posta → şifre instead of dismissing.
+  const passwordRef = useRef<TextInput>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { signIn, signInWithGoogle, signInWithApple, resetPassword, loading } = useAuthStore();
@@ -109,9 +111,25 @@ export default function LoginScreen() {
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
+        <View style={{ alignItems: 'center', marginBottom: SPACING.xl }}>
           <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary, letterSpacing: 2 }}>Kochko</Text>
           <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
+        </View>
+
+        {/* FIX (ux-audit major): a cold-start user landed on a bare returning-user login form with no
+            idea what the app does before being asked to commit an account. A concise pre-auth value
+            proposition (what you get) sits above the sign-in so the choice is informed. */}
+        <View style={{ alignSelf: 'stretch', gap: SPACING.sm, marginBottom: SPACING.xl }}>
+          {[
+            'Yapay zekâ koçunla konuşarak beslen ve antrenman yap',
+            'Öğününü yaz ya da fotoğrafla — kalorin otomatik işlensin',
+            'Hedefine özel diyet ve antrenman planı',
+          ].map((t, i) => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm }}>
+              <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '800', lineHeight: 20 }}>•</Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20, flex: 1 }}>{t}</Text>
+            </View>
+          ))}
         </View>
 
         {/* FIX (audit UX-ONB-01/HIGH): social sign-in CREATES an account on first use, so the
@@ -153,12 +171,15 @@ export default function LoginScreen() {
           </>
         )}
 
-        {/* Divider */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
-          <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
-          <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
-        </View>
+        {/* Divider — FIX (ux-readiness): only render when a social button is actually shown above it.
+            On Android (no Google/Apple) the "veya" hung over the lone email form like a broken button. */}
+        {(GOOGLE_LOGIN_ENABLED || Platform.OS === 'ios') && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
+            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
+          </View>
+        )}
 
         <Input
           label="E-posta"
@@ -170,8 +191,11 @@ export default function LoginScreen() {
           textContentType="emailAddress"
           autoComplete="email"
           returnKeyType="next"
+          blurOnSubmit={false}
+          onSubmitEditing={() => passwordRef.current?.focus()}
         />
         <Input
+          ref={passwordRef}
           label="Şifre"
           placeholder="Şifreniz"
           value={password}

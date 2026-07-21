@@ -440,3 +440,39 @@ export async function undoPlannedMealLog(mealLogId: string): Promise<{ error: st
     .eq('id', mealLogId);
   return { error: error?.message ?? null };
 }
+
+/**
+ * FIX (ux-ideas #19): one-tap "Bunu yaptım" for a planned exercise — the workout
+ * counterpart of logPlannedMeal. Writes a strength workout_logs row tagged '[Plan] '
+ * so it (a) shows on the dashboard timeline and (b) can be matched back on reload to
+ * keep the "done" state. Mirrors the workout_logs shape ai-chat uses.
+ */
+export async function logPlannedExercise(
+  exercise: WorkoutExercise,
+  loggedForDate: string,
+): Promise<{ workoutLogId: string | null; error: string | null }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { workoutLogId: null, error: 'Oturum bulunamadı.' };
+  const loadText = exercise.weight_kg
+    ? `${exercise.sets}×${exercise.reps} · ${exercise.weight_kg} kg`
+    : `${exercise.sets}×${exercise.reps}`;
+  const rpeOk = typeof exercise.rpe === 'number' && exercise.rpe >= 1 && exercise.rpe <= 10;
+  const { data, error } = await supabase.from('workout_logs').insert({
+    user_id: user.id,
+    raw_input: `[Plan] ${exercise.name} — ${loadText}`,
+    workout_type: 'strength',
+    duration_min: 0,
+    logged_for_date: loggedForDate,
+    synced: true,
+    ...(rpeOk ? { rpe: exercise.rpe } : {}),
+  }).select('id').maybeSingle();
+  if (error || !data) return { workoutLogId: null, error: error?.message ?? 'Kaydedilemedi' };
+  return { workoutLogId: data.id as string, error: null };
+}
+
+/** Undo for logPlannedExercise — hard delete (workout_logs isn't soft-delete-filtered
+ *  on read anywhere), matching the dashboard's deleteWorkout. */
+export async function undoPlannedExerciseLog(workoutLogId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('workout_logs').delete().eq('id', workoutLogId);
+  return { error: error?.message ?? null };
+}

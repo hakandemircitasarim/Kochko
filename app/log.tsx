@@ -2,18 +2,22 @@
  * Quick Log Modal — opened from center FAB
  * All data entry starts here: text, photo, barcode, voice, water, weight, sleep, workout
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Modal, Animated, KeyboardAvoidingView, Platform } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { sendMessage, queueMessageOffline, type ChatResponse } from '@/services/chat.service';
+import { getTemplates, useTemplate as applyTemplate, type MealTemplate } from '@/services/templates.service';
+import { insertMealLogWithItems, type MealLogItemInput } from '@/services/meal-log.service';
+import { showToast } from '@/components/ui/Toast';
 import { lookupBarcode, calculateServing, type BarcodeResult } from '@/services/barcode.service';
 import { updateCurrentWeight } from '@/services/weight.service';
 import { isOnline } from '@/services/offline-queue.service';
 import { startRecording, stopRecording, transcribeAudio } from '@/services/voice.service';
 import { useAuthStore } from '@/stores/auth.store';
+import { usePremium } from '@/hooks/usePremium';
 import { useProfileStore } from '@/stores/profile.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
 import { supabase } from '@/lib/supabase';
@@ -49,14 +53,39 @@ function hasPersistedAction(data: ChatResponse | null): boolean {
   return !!data?.actions?.some(a => PERSIST_ACTION_TYPES.has(a.type) && !!a.feedback);
 }
 
+// FIX (ux-ideas #2): the coach already returns a human summary of exactly what it
+// persisted (actions[].feedback, e.g. "Kahvaltı eklendi · 2 yumurta, peynir · 320
+// kcal"). We were only checking it EXISTS; now we show it, so the user sees what/how
+// many calories were logged (and can catch a silent mis-parse) before being bounced
+// back to the dashboard.
+function persistedFeedback(data: ChatResponse | null): string | null {
+  const fbs = (data?.actions ?? [])
+    .filter(a => PERSIST_ACTION_TYPES.has(a.type) && !!a.feedback)
+    .map(a => (a.feedback ?? '').trim())
+    .filter(Boolean);
+  if (fbs.length === 0) return null;
+  return Array.from(new Set(fbs)).join(' · ').slice(0, 160);
+}
+
+// FIX (ux-ideas #21): a "Son öğünler" chip re-logs a recent meal straight from the user's real
+// meal_logs (no AI round-trip) — the everyday "dünküyle aynı" action. Values are reused verbatim
+// from the stored rows (input_method + per-item data_source already passed DB constraints).
+type RecentItemRow = { food_name: string; portion_text: string | null; portion_grams: number | null; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; data_source: string | null };
+type RecentMealRow = { id: string; raw_input: string; meal_type: string; input_method: string | null; logged_for_date: string; meal_log_items: RecentItemRow[] | null };
+type RecentMeal = { id: string; rawInput: string; mealType: string; inputMethod: string; dayLabel: string; kcal: number; items: MealLogItemInput[] };
+
 export default function QuickLogScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
+  const { isPremium } = usePremium();
   const profile = useProfileStore(s => s.profile);
-  const { fetchToday, addWater, waterLiters } = useDashboardStore();
+  const { fetchToday, addWater, waterLiters, weightKg } = useDashboardStore();
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
   const waterTarget = (profile?.water_target_liters ?? 2.5) as number;
+  // FIX (ux-ideas #13): the last known weight (today's logged value, else the profile value) —
+  // used to prefill the input, drive the +/- steppers, and show a live change hint.
+  const lastKnownWeight = weightKg ?? (profile?.weight_kg != null ? Number(profile.weight_kg) : null);
 
   const [screen, setScreen] = useState<Screen>('main');
   const [text, setText] = useState('');
@@ -68,11 +97,76 @@ export default function QuickLogScreen() {
   // FIX (ux-pass5): the Su (+0.25L) tile awaits a full network upsert before its toast, but
   // `busy` only covered navigates:true tiles — on a slow connection the tap looked dead and
   // a re-tap was silently swallowed by submittingRef. This flag drives the tile's spinner.
-  const [waterPending, setWaterPending] = useState(false);
+  // FIX (ux-round2 #3 — adversarial-review): track WHICH amount is in flight, not a shared boolean,
+  // so a tap on one SU chip doesn't spin all three. null = idle.
+  const [waterPendingLiters, setWaterPendingLiters] = useState<number | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // #ux-regression: a returning/interrupted navigation must not leave the grid permanently
   // disabled (navigatingIndex stuck). Reset whenever the modal regains focus.
   useFocusEffect(useCallback(() => { setNavigatingIndex(null); }, []));
+
+  // FIX (ux-ideas #17): load the user's most-used meal templates for the one-tap
+  // chip strip (sorted by use_count in the service). Cap at 6 for the horizontal row.
+  useFocusEffect(useCallback(() => {
+    let cancelled = false;
+    getTemplates().then(t => { if (!cancelled) setTemplates(t.slice(0, 6)); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []));
+
+  // FIX (ux-ideas #21): load the last ~week of real meals, dedup by text, keep the 6 most recent
+  // that carry items — the source for the one-tap repeat chips.
+  useFocusEffect(useCallback(() => {
+    if (!user?.id) return;
+    const uid = user.id;
+    let cancelled = false;
+    (async () => {
+      const fromDate = getEffectiveDate(new Date(Date.now() - 7 * 86400000), dayBoundaryHour);
+      const todayStr = getEffectiveDate(new Date(), dayBoundaryHour);
+      const yestStr = getEffectiveDate(new Date(Date.now() - 86400000), dayBoundaryHour);
+      const { data } = await supabase.from('meal_logs')
+        .select('id, raw_input, meal_type, input_method, logged_for_date, logged_at, meal_log_items(food_name, portion_text, portion_grams, calories, protein_g, carbs_g, fat_g, data_source)')
+        .eq('user_id', uid).eq('is_deleted', false)
+        .gte('logged_for_date', fromDate)
+        .order('logged_at', { ascending: false }).limit(25);
+      if (cancelled || !data) return;
+      const seen = new Set<string>();
+      const out: RecentMeal[] = [];
+      for (const row of data as RecentMealRow[]) {
+        const rawItems = row.meal_log_items ?? [];
+        if (rawItems.length === 0) continue;
+        const key = (row.raw_input ?? '').trim().toLocaleLowerCase('tr-TR');
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        const kcal = rawItems.reduce((s, it) => s + (it.calories ?? 0), 0);
+        const dayLabel = row.logged_for_date === todayStr ? 'Bugün'
+          : row.logged_for_date === yestStr ? 'Dün'
+          : new Date(`${row.logged_for_date}T12:00:00`).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+        out.push({
+          id: row.id, rawInput: row.raw_input, mealType: row.meal_type,
+          inputMethod: row.input_method ?? 'text', dayLabel, kcal: Math.round(kcal),
+          items: rawItems.map((it) => ({
+            name: it.food_name, portionText: it.portion_text ?? '1 porsiyon',
+            grams: it.portion_grams ?? null, kcal: it.calories ?? 0,
+            protein: it.protein_g ?? 0, carbs: it.carbs_g ?? 0, fat: it.fat_g ?? 0,
+            dataSource: it.data_source ?? 'ai_estimate',
+          })),
+        });
+        if (out.length >= 6) break;
+      }
+      if (!cancelled) setRecentMeals(out);
+    })().catch(() => {});
+    return () => { cancelled = true; };
+  }, [user?.id, dayBoundaryHour]));
+
+  // FIX (ux-round2 #9): the FAB long-press deep-links here with ?to=weight|sleep|recovery to jump
+  // straight to a sub-screen (one tap instead of open-then-pick a tile).
+  const { to } = useLocalSearchParams<{ to?: string }>();
+  useEffect(() => {
+    if (to === 'weight') { setWeightInput(lastKnownWeight != null ? String(lastKnownWeight) : ''); setScreen('weight'); }
+    else if (to === 'sleep') setScreen('sleep');
+    else if (to === 'recovery') setScreen('recovery');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [to]);
 
   // Barcode state
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -105,15 +199,24 @@ export default function QuickLogScreen() {
   const [soreness, setSoreness] = useState<number | null>(null);
   const [recoveryScore, setRecoveryScore] = useState<number | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  // FIX (ux-ideas #2): second toast line — what was actually saved.
+  const [successDetail, setSuccessDetail] = useState<string | null>(null);
+  // FIX (ux-ideas #17): one-tap "frequent meals" chips (direct write, no AI round-trip).
+  const [templates, setTemplates] = useState<MealTemplate[]>([]);
+  const [templatePendingId, setTemplatePendingId] = useState<string | null>(null);
+  // FIX (ux-ideas #21): recent real meals for the one-tap "Son öğünler" repeat strip.
+  const [recentMeals, setRecentMeals] = useState<RecentMeal[]>([]);
+  const [recentPendingId, setRecentPendingId] = useState<string | null>(null);
   // Single shared mutex — prevents two handlers firing at once (e.g. double-tap
   // the FAB, or tapping Save + Water before the first finishes).
   const submittingRef = useRef(false);
   // Scale-spring for the success checkmark (matches the chat SavedBadge reward language).
   const successScale = useRef(new Animated.Value(0.6)).current;
 
-  const showSuccessAndClose = (msg: string) => {
+  const showSuccessAndClose = (msg: string, detail?: string | null) => {
     haptics.success();
     setSuccessMsg(msg);
+    setSuccessDetail(detail ?? null);
     successScale.setValue(0.6);
     Animated.spring(successScale, {
       toValue: 1,
@@ -124,6 +227,71 @@ export default function QuickLogScreen() {
     // #ux-regression: keep the timer id so a tap on the toast can cancel it — otherwise the
     // tap's router.back() runs immediately AND the orphaned timer fires a SECOND back ~1.2s later.
     closeTimer.current = setTimeout(() => { setSuccessMsg(null); router.back(); }, 1200);
+  };
+
+  // FIX (ux-ideas #17): one-tap template → direct meal_log write (applyTemplate,
+  // no AI turn). The toast confirms exactly what landed, then the dashboard refreshes.
+  const logTemplate = async (t: MealTemplate) => {
+    if (!user?.id || submittingRef.current) return;
+    submittingRef.current = true;
+    setTemplatePendingId(t.id);
+    try {
+      const { error } = await applyTemplate(t.id);
+      if (error) { haptics.error(); Alert.alert('Kaydedilemedi', error); return; }
+      showSuccessAndClose('Kaydın eklendi!', `${t.name} · ${t.total_calories} kcal`);
+      fetchToday(user.id, dayBoundaryHour).catch(() => {});
+    } catch {
+      haptics.error();
+      Alert.alert('Hata', 'Kaydedilemedi. Tekrar dene.');
+    } finally {
+      submittingRef.current = false;
+      setTemplatePendingId(null);
+    }
+  };
+
+  // FIX (ux-ideas #21): one-tap repeat of a recent meal → direct meal_log write with today's
+  // date (no AI turn). Reuses the stored items verbatim.
+  const logRecentMeal = async (m: RecentMeal) => {
+    if (!user?.id || submittingRef.current) return;
+    submittingRef.current = true;
+    setRecentPendingId(m.id);
+    try {
+      const { mealLogId, error } = await insertMealLogWithItems({
+        userId: user.id,
+        rawInput: m.rawInput,
+        mealType: m.mealType,
+        inputMethod: m.inputMethod,
+        loggedForDate: getEffectiveDate(new Date(), dayBoundaryHour),
+        items: m.items,
+      });
+      if (error || !mealLogId) { haptics.error(); Alert.alert('Kaydedilemedi', error ?? 'Tekrar dene.'); return; }
+      // FIX (ux-round2 #11): the repeat path has the mealLogId locally (insertMealLogWithItems),
+      // so give it a real one-tap "Geri al" via the global toast, then return to the dashboard —
+      // partially closing the deferred #10 (undo) for the deterministic (non-AI) log paths.
+      haptics.success();
+      fetchToday(user.id, dayBoundaryHour).catch(() => {});
+      showToast(`${m.rawInput.slice(0, 30)} eklendi · ${m.kcal} kcal`, {
+        actionLabel: 'Geri al',
+        onAction: () => { void undoMealLog(mealLogId); },
+      });
+      router.back();
+    } catch {
+      haptics.error();
+      Alert.alert('Hata', 'Kaydedilemedi. Tekrar dene.');
+    } finally {
+      submittingRef.current = false;
+      setRecentPendingId(null);
+    }
+  };
+
+  // FIX (ux-round2 #11): undo a just-repeated meal — soft-delete (the same is_deleted flag the
+  // dashboard/timeline already filter on) and refresh.
+  const undoMealLog = async (mealLogId: string) => {
+    try {
+      await supabase.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', mealLogId);
+      haptics.tap();
+      if (user?.id) fetchToday(user.id, dayBoundaryHour).catch(() => {});
+    } catch { /* best-effort */ }
   };
 
   const handleLog = async () => {
@@ -160,7 +328,7 @@ export default function QuickLogScreen() {
       // FIX (audit UX-FBK-06 + yavaş success): toast, gönderim onaylanır onaylanmaz gelir;
       // fetchToday await edilmeden arka planda tazeler.
       else {
-        showSuccessAndClose('Kaydın eklendi!');
+        showSuccessAndClose('Kaydın eklendi!', persistedFeedback(data));
         fetchToday(user.id, dayBoundaryHour).catch(() => {});
       }
     } catch (err) {
@@ -288,9 +456,24 @@ export default function QuickLogScreen() {
       }
       resetBarcodeState();
       setScreen('main'); // success toast main render dalında yaşar
-      showSuccessAndClose('Kaydın eklendi!');
+      showSuccessAndClose('Kaydın eklendi!', persistedFeedback(data));
       if (user?.id) fetchToday(user.id, dayBoundaryHour).catch(() => {});
     } finally { submittingRef.current = false; setBarcodeLoading(false); }
+  };
+
+  // FIX (ux-audit major): gate voice BEFORE the user invests effort. The old flow let a free user
+  // grant mic permission, speak their whole meal, sit through "Ses tanınıyor...", then hit a 403
+  // and lose the transcription — an invest-then-wall. Now the paywall is shown up front (both at
+  // the "Sesli giriş" tile and here as a safety net) so nothing is wasted.
+  const promptVoicePremium = () => {
+    Alert.alert(
+      'Premium özellik',
+      'Sesli giriş Premium bir özellik. Yazarak, fotoğrafla veya barkodla ücretsiz kayıt yapabilirsin.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        { text: "Premium'a bak", onPress: () => router.push('/settings/premium') },
+      ],
+    );
   };
 
   const handleVoiceToggle = async () => {
@@ -316,37 +499,53 @@ export default function QuickLogScreen() {
       }
       setTranscribing(false);
     } else {
+      if (!isPremium) { promptVoicePremium(); return; }
       const ok = await startRecording();
       if (ok) setIsRecording(true);
       else Alert.alert('İzin gerekli', 'Mikrofon izni ver.');
     }
   };
 
-  const handleWaterAdd = () => {
+  // FIX (ux-round2 #3): water is the most-repeated log; the single fixed +0.25L tile made 0.5/1L
+  // slow (open→tap→close ×N). Parameterize the amount so quick chips can add any size in one tap
+  // (the store already accepts arbitrary increments).
+  const handleWaterAddAmount = (liters: number) => {
     if (!user?.id || submittingRef.current) return;
-    const newTotal = waterLiters + WATER_INCREMENT;
+    const uid = user.id;
+    const newTotal = waterLiters + liters;
     const warning = checkSuspiciousInput('water', newTotal);
     const doAdd = async () => {
       submittingRef.current = true;
-      setWaterPending(true); // FIX (ux-pass5): tile shows a spinner while the upsert is in flight
+      setWaterPendingLiters(liters); // spinner confined to the tapped chip
       try {
-        await addWater(user.id, WATER_INCREMENT, dayBoundaryHour);
-        showSuccessAndClose('Su eklendi!');
+        await addWater(uid, liters, dayBoundaryHour);
+        showSuccessAndClose('Su eklendi!', `${Math.round(liters * 1000)} ml`);
       } catch {
         Alert.alert('Hata', 'Su eklenemedi. Tekrar dene.');
       } finally {
         submittingRef.current = false;
-        setWaterPending(false);
+        setWaterPendingLiters(null);
       }
     };
     if (warning) {
-      Alert.alert('Doğrulama', warning, [
+      Alert.alert('Emin misin?', warning, [
         { text: 'İptal', style: 'cancel' },
         { text: 'Evet', onPress: () => { void doAdd(); } },
       ]);
     } else {
       void doAdd();
     }
+  };
+
+  // FIX (ux-ideas #13): +/- 0.1 kg steppers — weight usually moves in tenths, so tapping beats
+  // retyping the whole number. Clamps to the same 20-300 kg guard as save.
+  const stepWeight = (d: number) => {
+    const base = parseFloat(weightInput.replace(',', '.'));
+    const cur = Number.isFinite(base) ? base : (lastKnownWeight ?? 70);
+    const next = Math.round((cur + d) * 10) / 10;
+    if (next < 20 || next > 300) return;
+    haptics.tap();
+    setWeightInput(String(next));
   };
 
   const handleWeightSave = async () => {
@@ -363,7 +562,18 @@ export default function QuickLogScreen() {
       // daily_metrics satırını hem profiles.weight_kg'yi günceller. Eskiden yalnız
       // daily_metrics yazılıyordu; canlıda Profil 80 gösterirken dashboard 79.5 gösterdi.
       await updateCurrentWeight(user.id, w, dayBoundaryHour);
-      showSuccessAndClose('Kilo kaydedildi!');
+      // FIX (ux-ideas #13): confirm the CHANGE, not just "saved" — every weigh-in becomes a
+      // visible progress checkpoint (and a fat-fingered number is easier to catch).
+      const nf = (n: number) => String(n).replace('.', ',');
+      const wDelta = lastKnownWeight != null ? Math.round((w - lastKnownWeight) * 10) / 10 : null;
+      const wDetail = (wDelta != null && wDelta !== 0)
+        ? `${nf(w)} kg · son tartından ${wDelta > 0 ? '+' : '−'}${nf(Math.abs(wDelta))} kg`
+        : `${nf(w)} kg kaydedildi`;
+      // FIX (adversarial-review): the success toast render branch sits AFTER the weight/sleep/recovery
+      // sub-screen guards, so without returning to 'main' the toast (and the #13 delta) never showed —
+      // the user just got an abrupt router.back(). Return to main first (barcode flow's pattern).
+      setScreen('main');
+      showSuccessAndClose('Tartı kaydedildi!', wDetail);
       // Toast'ı bekletme — store tazelemeleri arka planda.
       fetchToday(user.id, dayBoundaryHour).catch(() => {});
       void useProfileStore.getState().fetch(user.id);
@@ -390,6 +600,7 @@ export default function QuickLogScreen() {
       const { error } = await supabase.from('daily_metrics').upsert(payload, { onConflict: 'user_id,date' });
       if (error) throw error;
       await fetchToday(user.id, dayBoundaryHour);
+      setScreen('main'); // FIX (adversarial-review): reach the success-toast render branch (see weight save).
       showSuccessAndClose('Toparlanma kaydedildi!');
     } catch {
       Alert.alert('Hata', 'Toparlanma kaydedilemedi. Tekrar dene.');
@@ -424,6 +635,7 @@ export default function QuickLogScreen() {
       );
       if (error) throw error;
       await fetchToday(user.id, dayBoundaryHour);
+      setScreen('main'); // FIX (adversarial-review): reach the success-toast render branch (see weight save).
       showSuccessAndClose('Uyku kaydedildi!');
     } catch {
       Alert.alert('Hata', 'Uyku kaydedilemedi. Tekrar dene.');
@@ -506,7 +718,15 @@ export default function QuickLogScreen() {
                 <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs, marginBottom: SPACING.md }}>
                   Ne kadar yedin?
                 </Text>
-                {showCustomGrams ? (
+                {showCustomGrams ? (() => {
+                  // FIX (ux-round4 #6): live kcal/macro preview as grams are typed (catches a 10x
+                  // fat-finger like 1000g vs 100g) + disable Kaydet on empty/out-of-range so the
+                  // NaN → "Geçersiz gramaj" tap-then-bounce dead-end is unreachable.
+                  const g = parseFloat(customGrams.replace(',', '.'));
+                  const gValid = Number.isFinite(g) && g >= 1 && g <= 5000;
+                  const preview = gValid ? calculateServing(pendingProduct.result, g) : null;
+                  return (
+                  <View>
                   <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
                     <TextInput
                       value={customGrams}
@@ -520,13 +740,22 @@ export default function QuickLogScreen() {
                       style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.sm, color: '#fff', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: FONT.md }}
                     />
                     <TouchableOpacity
-                      onPress={() => { haptics.tap(); void sendBarcodeLog(parseFloat(customGrams.replace(',', '.'))); }}
+                      onPress={() => { if (!gValid) return; haptics.tap(); void sendBarcodeLog(g); }}
+                      disabled={!gValid}
                       accessibilityRole="button" accessibilityLabel="Gramı kaydet"
-                      style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.xl, justifyContent: 'center' }}>
+                      accessibilityState={{ disabled: !gValid }}
+                      style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.xl, justifyContent: 'center', opacity: gValid ? 1 : 0.5 }}>
                       <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Kaydet</Text>
                     </TouchableOpacity>
                   </View>
-                ) : (
+                  {preview ? (
+                    <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+                      ≈ {Math.round(preview.calories)} kcal · {Math.round(preview.protein_g)}g P · {Math.round(preview.carbs_g)}g K · {Math.round(preview.fat_g)}g Y
+                    </Text>
+                  ) : null}
+                  </View>
+                  );
+                })() : (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center' }}>
                     {pendingProduct.result.serving_size_g && pendingProduct.result.serving_size_g > 0 ? (
                       <TouchableOpacity
@@ -623,6 +852,11 @@ export default function QuickLogScreen() {
 
   // ====== WEIGHT SCREEN ======
   if (screen === 'weight') {
+    // FIX (ux-round4 #12): pre-emptive validity — disable Kaydet + show a range hint before the
+    // post-tap "Geçersiz kilo" Alert bounce. handleWeightSave's Alert stays as a safety net.
+    const wParsed = parseFloat(weightInput.replace(',', '.'));
+    const weightValid = Number.isFinite(wParsed) && wParsed >= 20 && wParsed <= 300;
+    const weightOutOfRange = weightInput.trim() !== '' && !weightValid;
     return (
       // FIX (audit UI-LAY-03): pin content to the top (flex-start + paddingTop) instead of vertical
       // centering. The autoFocused decimal-pad keyboard opens immediately and, in this modal, its top
@@ -640,27 +874,65 @@ export default function QuickLogScreen() {
           <Ionicons name="scale" size={24} color={colors.pink} />
         </View>
         <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Tartı Kaydı</Text>
-        <TextInput
-          style={{
-            backgroundColor: colors.card, borderRadius: RADIUS.md,
-            paddingHorizontal: SPACING.xl, paddingVertical: SPACING.lg,
-            color: colors.text, fontSize: FONT.hero, fontWeight: '700',
-            textAlign: 'center', width: '70%', borderWidth: 0.5, borderColor: colors.border,
-          }}
-          // FIX (audit: yanıltıcı 73.5 sabiti): placeholder kullanıcının bilinen son kilosu —
-          // profil boşsa placeholder gösterme, uydurma bir sayı telkin etme.
-          placeholder={profile?.weight_kg ? String(profile.weight_kg) : undefined}
-          placeholderTextColor={colors.textMuted}
-          value={weightInput} onChangeText={setWeightInput}
-          keyboardType="decimal-pad" autoFocus
-          accessibilityLabel="Kilo (kg)"
-        />
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.xs, marginBottom: SPACING.xxl }}>kg</Text>
+        {/* FIX (ux-ideas #13): +/- steppers flank the input; the input is prefilled with the last
+            known weight (set on open) so most weigh-ins are a one-tap tweak, not a full retype. */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, width: '85%' }}>
+          <TouchableOpacity
+            onPress={() => stepWeight(-0.1)}
+            accessibilityRole="button" accessibilityLabel="0,1 kilogram azalt"
+            style={{ width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: colors.border }}>
+            <Ionicons name="remove" size={22} color={colors.text} />
+          </TouchableOpacity>
+          <TextInput
+            style={{
+              flex: 1,
+              backgroundColor: colors.card, borderRadius: RADIUS.md,
+              paddingHorizontal: SPACING.md, paddingVertical: SPACING.lg,
+              color: colors.text, fontSize: FONT.hero, fontWeight: '700',
+              textAlign: 'center', borderWidth: 0.5, borderColor: colors.border,
+            }}
+            // FIX (audit: yanıltıcı 73.5 sabiti): placeholder kullanıcının bilinen son kilosu —
+            // profil boşsa placeholder gösterme, uydurma bir sayı telkin etme.
+            placeholder={lastKnownWeight != null ? String(lastKnownWeight) : undefined}
+            placeholderTextColor={colors.textMuted}
+            value={weightInput} onChangeText={setWeightInput}
+            keyboardType="decimal-pad" autoFocus
+            // FIX (ux-round4 #18): highlight the prefilled value on focus so a fresh weigh-in
+            // overtypes it in one keystroke instead of backspacing; #12: cap length at 5 chars.
+            selectTextOnFocus
+            maxLength={5}
+            accessibilityLabel="Kilo (kg)"
+          />
+          <TouchableOpacity
+            onPress={() => stepWeight(0.1)}
+            accessibilityRole="button" accessibilityLabel="0,1 kilogram artır"
+            style={{ width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: colors.border }}>
+            <Ionicons name="add" size={22} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+        {/* FIX (ux-ideas #13): live change vs last weigh-in — validates the entry and turns the
+            moment into a visible progress step. Falls back to the plain "kg" unit when unchanged. */}
+        {(() => {
+          // FIX (ux-round4 #12): a present-but-out-of-range value gets a soft inline hint here
+          // (this same line otherwise shows the delta / plain "kg").
+          if (weightOutOfRange) {
+            return <Text style={{ color: colors.error, fontSize: FONT.xs, marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>Geçerli aralık: 20–300 kg</Text>;
+          }
+          const cur = parseFloat(weightInput.replace(',', '.'));
+          const d = (Number.isFinite(cur) && lastKnownWeight != null) ? Math.round((cur - lastKnownWeight) * 10) / 10 : null;
+          if (d == null || d === 0) return <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>kg</Text>;
+          return (
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>
+              son tartından {d > 0 ? '+' : '−'}{String(Math.abs(d)).replace('.', ',')} kg
+            </Text>
+          );
+        })()}
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
             <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleWeightSave} disabled={loading} accessibilityRole="button" accessibilityLabel="Kaydet" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: loading ? 0.5 : 1 }}>
+          {/* FIX (ux-round4 #12): disable Kaydet until the value is in range (Alert stays as a net). */}
+          <TouchableOpacity onPress={handleWeightSave} disabled={loading || !weightValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !weightValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !weightValid) ? 0.5 : 1 }}>
             <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
@@ -697,11 +969,32 @@ export default function QuickLogScreen() {
             <DateTimeField mode="time" value={wakeTime} onChange={setWakeTime} placeholder="07:00" />
           </View>
         </View>
+        {/* FIX (ux-round4 #13): live duration preview so a swapped/mistyped time is caught before
+            saving (mirrors handleSleepSave's math incl. the overnight wrap). Warning tint when
+            the result is implausibly short/long. */}
+        {(() => {
+          if (!sleepTime || !wakeTime) return null;
+          const [sh, sm] = sleepTime.split(':').map(Number);
+          const [wh, wm] = wakeTime.split(':').map(Number);
+          if (![sh, sm, wh, wm].every(v => Number.isFinite(v))) return null;
+          let sleepMin = sh * 60 + sm;
+          let wakeMin = wh * 60 + wm;
+          if (wakeMin <= sleepMin) wakeMin += 24 * 60;
+          const hours = Math.round(((wakeMin - sleepMin) / 60) * 10) / 10;
+          const odd = hours < 4 || hours > 12;
+          return (
+            <Text style={{ color: odd ? colors.warning : colors.textSecondary, fontSize: FONT.md, fontWeight: '600', marginBottom: SPACING.xl }}>
+              {String(hours).replace('.', ',')} saat uyku
+            </Text>
+          );
+        })()}
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
             <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleSleepSave} disabled={loading} accessibilityRole="button" accessibilityLabel="Kaydet" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: loading ? 0.5 : 1 }}>
+          {/* FIX (ux-round4 #13 review): disable Kaydet until BOTH times are picked — the pickers
+              start empty, so the enabled button was a silent no-op (handleSleepSave early-returns). */}
+          <TouchableOpacity onPress={handleSleepSave} disabled={loading || !sleepTime || !wakeTime} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !sleepTime || !wakeTime }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !sleepTime || !wakeTime) ? 0.5 : 1 }}>
             <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
@@ -729,7 +1022,9 @@ export default function QuickLogScreen() {
         <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Kas ağrısı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xl }}>
           {SORENESS_LEVELS.map(s => (
-            <TouchableOpacity key={s.value} onPress={() => { haptics.tap(); setSoreness(s.value); }}
+            // FIX (ux-round4 #27): tap-again to deselect — a mis-tapped dimension can return to
+            // unanswered without cancelling the whole sheet (Save-disabled guard covers both-null).
+            <TouchableOpacity key={s.value} onPress={() => { haptics.tap(); setSoreness(prev => prev === s.value ? null : s.value); }}
               accessibilityRole="button"
               accessibilityLabel={`Kas ağrısı: ${s.label}`}
               accessibilityState={{ selected: soreness === s.value }}
@@ -746,7 +1041,8 @@ export default function QuickLogScreen() {
         <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Genel toparlanma (1 kötü — 5 harika)</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xxl }}>
           {[1, 2, 3, 4, 5].map(r => (
-            <TouchableOpacity key={r} onPress={() => { haptics.tap(); setRecoveryScore(r); }}
+            // FIX (ux-round4 #27): tap-again to deselect (same as the soreness pills above).
+            <TouchableOpacity key={r} onPress={() => { haptics.tap(); setRecoveryScore(prev => prev === r ? null : r); }}
               accessibilityRole="button"
               accessibilityLabel={`Toparlanma puanı: ${r}`}
               accessibilityState={{ selected: recoveryScore === r }}
@@ -792,6 +1088,11 @@ export default function QuickLogScreen() {
             <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
           </Animated.View>
           <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md }}>{successMsg}</Text>
+          {successDetail ? (
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center' }} numberOfLines={2}>
+              {successDetail}
+            </Text>
+          ) : null}
         </View>
       </TouchableOpacity>
     );
@@ -830,7 +1131,7 @@ export default function QuickLogScreen() {
           } },
           { icon: 'camera-outline' as const, title: 'Fotoğraf çek', desc: 'Tabağını fotoğrafla, AI tanısın', color: colors.protein, navigates: true, onPress: handlePhoto },
           { icon: 'barcode-outline' as const, title: 'Barkod okut', desc: 'Paketli ürünü tara', color: colors.carbs, navigates: false, onPress: () => setScreen('barcode') },
-          { icon: 'mic-outline' as const, title: 'Sesli giriş', desc: 'Konuşarak kayıt gir', color: colors.pink, navigates: false, onPress: () => setScreen('voice') },
+          { icon: 'mic-outline' as const, title: 'Sesle gir', desc: 'Konuşarak kayıt gir', color: colors.pink, navigates: false, onPress: () => setScreen('voice') },
         ].map((method, i) => {
           const busy = navigatingIndex === i;
           return (
@@ -843,6 +1144,9 @@ export default function QuickLogScreen() {
             accessibilityState={{ busy }}
             onPress={() => {
               haptics.tap();
+              // FIX (ux-audit major): gate voice at the ENTRY so a free user never records a whole
+              // meal only to hit a 403 afterwards.
+              if (method.icon === 'mic-outline' && !isPremium) { promptVoicePremium(); return; }
               if (method.navigates) setNavigatingIndex(i);
               method.onPress();
             }}
@@ -859,13 +1163,115 @@ export default function QuickLogScreen() {
               <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }}>{method.title}</Text>
               <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{method.desc}</Text>
             </View>
-            {busy
+            {/* FIX (ux-audit major): lock badge so the paywall is visible BEFORE tapping. */}
+            {method.icon === 'mic-outline' && !isPremium
+              ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.primary + '18', borderRadius: RADIUS.pill, paddingHorizontal: SPACING.sm, paddingVertical: 2 }}>
+                  <Ionicons name="lock-closed" size={11} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600' }}>Premium</Text>
+                </View>
+              )
+              : busy
               ? <ActivityIndicator size="small" color={colors.textMuted} />
               : <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />}
           </TouchableOpacity>
           );
         })}
       </View>
+
+      {/* FIX (ux-ideas #17): "Sık yediklerin" — one-tap template chips write straight
+          to meal_logs (no AI turn), the fastest path for the highest-frequency action. */}
+      {templates.length > 0 && (
+        <>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+            SIK YEDİKLERİN
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ gap: SPACING.sm, paddingBottom: 2 }}
+            style={{ marginBottom: SPACING.xxl }}
+          >
+            {templates.map((t) => {
+              const busy = templatePendingId === t.id;
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  onPress={() => { haptics.tap(); void logTemplate(t); }}
+                  disabled={submittingRef.current}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${t.name}, ${t.total_calories} kalori ekle`}
+                  accessibilityState={{ busy }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+                    backgroundColor: colors.card, borderRadius: RADIUS.pill,
+                    borderWidth: 0.5, borderColor: colors.border,
+                    paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg,
+                  }}
+                >
+                  {busy
+                    ? <ActivityIndicator size="small" color={colors.primary} />
+                    : <Ionicons name="add-circle" size={16} color={colors.primary} />}
+                  <View>
+                    <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }} numberOfLines={1}>{t.name}</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{t.total_calories} kcal</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </>
+      )}
+
+      {/* FIX (ux-ideas #21): "Son öğünler" — re-log a recent real meal in one tap (no AI turn).
+          Complements "Sık yediklerin" (manual templates) with the user's ACTUAL history, so a
+          repeat doesn't require having built a template first. */}
+      {recentMeals.length > 0 && (
+        <>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+            SON ÖĞÜNLER
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ gap: SPACING.sm, paddingBottom: 2 }}
+            style={{ marginBottom: SPACING.xxl }}
+          >
+            {recentMeals.map((m) => {
+              const busy = recentPendingId === m.id;
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => { haptics.tap(); void logRecentMeal(m); }}
+                  disabled={submittingRef.current}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${m.dayLabel} · ${m.rawInput}, ${m.kcal} kalori, tekrar ekle`}
+                  accessibilityState={{ busy }}
+                  style={{
+                    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+                    maxWidth: 240,
+                    backgroundColor: colors.card, borderRadius: RADIUS.pill,
+                    borderWidth: 0.5, borderColor: colors.border,
+                    paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg,
+                  }}
+                >
+                  {busy
+                    ? <ActivityIndicator size="small" color={colors.primary} />
+                    : <Ionicons name="repeat" size={16} color={colors.primary} />}
+                  <View style={{ flexShrink: 1 }}>
+                    <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }} numberOfLines={1}>{m.rawInput}</Text>
+                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{m.dayLabel} · {m.kcal} kcal</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </>
+      )}
 
       {/* Quick text input */}
       {/* FIX (audit TR-i18n): textTransform:'uppercase' locale bilmez — 'Diğer' → 'DIĞER'
@@ -896,6 +1302,31 @@ export default function QuickLogScreen() {
         ) : null}
       </View>
 
+      {/* FIX (ux-round2 #3): quick water amounts — one tap for a glass / half / full litre,
+          instead of opening the +0.25L tile four times. */}
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+        SU
+      </Text>
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xxl }}>
+        {([{ liters: WATER_INCREMENT, label: '1 bardak' }, { liters: 0.5, label: '0,5 L' }, { liters: 1, label: '1 L' }] as const).map((o) => {
+          const busy = waterPendingLiters === o.liters;
+          return (
+          <TouchableOpacity
+            key={o.label}
+            onPress={() => { haptics.tap(); handleWaterAddAmount(o.liters); }}
+            disabled={submittingRef.current || waterPendingLiters !== null}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`${o.label} su ekle`}
+            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.md, backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border, opacity: (submittingRef.current || waterPendingLiters !== null) ? 0.6 : 1 }}
+          >
+            {busy ? <ActivityIndicator size="small" color={colors.protein} /> : <Ionicons name="water" size={16} color={colors.protein} />}
+            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{o.label}</Text>
+          </TouchableOpacity>
+          );
+        })}
+      </View>
+
       {/* Other entries — 2x2 grid */}
       <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
         DİĞER KAYITLAR
@@ -903,17 +1334,15 @@ export default function QuickLogScreen() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
         {[
           { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, navigates: true, pending: false, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
-          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, pending: false, onPress: () => setScreen('weight') },
+          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, pending: false, onPress: () => { setWeightInput(lastKnownWeight != null ? String(lastKnownWeight) : ''); setScreen('weight'); } },
           { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, navigates: false, pending: false, onPress: () => setScreen('sleep') },
-          // FIX (ux-pass5): pending drives the same busy spinner as navigates-tiles for the awaited upsert
-          { icon: 'water-outline' as const, label: 'Su (+0.25L)', color: colors.protein, navigates: false, pending: waterPending, onPress: handleWaterAdd },
           { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, navigates: false, pending: false, onPress: () => setScreen('recovery') },
         ].map((action, i) => {
           const busy = navigatingIndex === 100 + i || action.pending;
           return (
           <TouchableOpacity key={i}
             activeOpacity={0.7}
-            disabled={navigatingIndex !== null || waterPending}
+            disabled={navigatingIndex !== null || waterPendingLiters !== null}
             accessibilityRole="button"
             accessibilityLabel={action.label}
             accessibilityState={{ busy }}
@@ -922,7 +1351,7 @@ export default function QuickLogScreen() {
               if (action.navigates) setNavigatingIndex(100 + i);
               action.onPress();
             }}
-            style={{ width: '48%', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm, opacity: (navigatingIndex !== null || waterPending) && !busy ? 0.5 : 1 }}>
+            style={{ width: '48%', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm, opacity: (navigatingIndex !== null || waterPendingLiters !== null) && !busy ? 0.5 : 1 }}>
             {busy
               ? <ActivityIndicator size="small" color={action.color} />
               : <Ionicons name={action.icon} size={24} color={action.color} />}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,6 +7,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
+import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ComplianceScore } from '@/components/reports/ComplianceScore';
@@ -52,14 +54,25 @@ export default function DailyReportScreen() {
   // raporu for a day that hasn't experientially started (and would generate a zero-data report
   // for the wrong date). Use the same effective-day anchor as the diary/dashboard.
   const dayBoundaryHour = useProfileStore(s => (s.profile?.day_boundary_hour as number) ?? 4);
+  const profile = useProfileStore(s => s.profile);
   const today = getEffectiveDate(new Date(), dayBoundaryHour);
+  // FIX (ux-audit major): the Gün Sonu report + the Takvim's per-day tap now reach a SPECIFIC
+  // day's rich report (narrative / tomorrow_action / deviation reason) — before, this screen was
+  // hardwired to today, so every past day's most valuable AI output evaporated overnight.
+  const params = useLocalSearchParams<{ date?: string }>();
+  const reportDate = (typeof params.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(params.date)) ? params.date : today;
+  const isToday = reportDate === today;
+  // FIX (ux-round2 #6): the report showed bare actuals ('1850 kcal') with no target, so a green/red
+  // tick had no "how close was I" context. Derive the current targets (the row doesn't store them —
+  // an approximation if the band changed since, but the met-boolean stays authoritative).
+  const targets = deriveNutritionTargets(profile, { calorieMin: null, calorieMax: null, proteinG: null, carbsG: null, fatG: null });
 
   const loadReport = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
     setError(false);
     try {
-      const { data, error: loadError } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single();
+      const { data, error: loadError } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', reportDate).single();
       // FIX (ux-pass5): supabase-js never rejects — failures resolve as { data: null, error }, so the
       // catch below never fired and an offline open showed "Rapor henüz oluşturulmamış." over an
       // existing report. PGRST116 (.single() with 0 rows) is the legit "rapor yok" case, not a failure.
@@ -70,7 +83,7 @@ export default function DailyReportScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, today]);
+  }, [user?.id, reportDate]);
 
   useEffect(() => { loadReport(); }, [loadReport]);
 
@@ -81,9 +94,9 @@ export default function DailyReportScreen() {
     // are only written to the row). Re-read the persisted row so the UI shows real
     // numbers instead of "undefined".
     try {
-      const { error: invokeError } = await supabase.functions.invoke('ai-report', { body: { report_type: 'daily', date: today, force: true } });
+      const { error: invokeError } = await supabase.functions.invoke('ai-report', { body: { report_type: 'daily', date: reportDate, force: true } });
       if (invokeError) throw invokeError;
-      const { data } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', today).single();
+      const { data } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', reportDate).single();
       if (data) {
         setReport(data as DailyReport);
         haptics.success();
@@ -95,7 +108,7 @@ export default function DailyReportScreen() {
       }
     } catch {
       haptics.error();
-      Alert.alert('Rapor oluşturulamadı', 'Koç şu an yanıt veremiyor, birazdan tekrar dene.');
+      Alert.alert('Koç şu an meşgul', 'Raporun oluşturulamadı, birazdan tekrar dene.');
     } finally {
       setGenerating(false);
     }
@@ -116,15 +129,23 @@ export default function DailyReportScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
-        {new Date(today).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+        {new Date(`${reportDate}T00:00:00`).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
       </Text>
 
       {!report ? (
         <Card>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
-          <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
-          {generating && (
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm, textAlign: 'center' }}>Koç günü değerlendiriyor, bu birkaç saniye sürebilir…</Text>
+          {/* FIX (ux-audit major): a past day with no report is not something you retro-generate —
+              show it plainly. Only today offers "Rapor Oluştur". */}
+          {isToday ? (
+            <>
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
+              <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
+              {generating && (
+                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm, textAlign: 'center' }}>Koç gününü analiz ediyor, bu birkaç saniye sürebilir…</Text>
+              )}
+            </>
+          ) : (
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Bu güne ait bir gün sonu raporu yok.</Text>
           )}
         </Card>
       ) : (
@@ -136,8 +157,11 @@ export default function DailyReportScreen() {
 
           {/* Checklist */}
           <Card title="Hedef Kontrolü">
-            <CheckItem label="Kalori" met={report.calorie_target_met} detail={`${report.calorie_actual} kcal`} />
-            <CheckItem label="Protein" met={report.protein_target_met} detail={`${report.protein_actual}g`} />
+            <CheckItem label="Kalori" met={report.calorie_target_met} detail={targets.calorieTargetMax > 0 ? `${report.calorie_actual} / ${targets.calorieTargetMin}-${targets.calorieTargetMax} kcal` : `${report.calorie_actual} kcal`} />
+            {/* FIX (adversarial-review): proteinG ALWAYS falls back to 120 (deriveNutritionTargets),
+                so `proteinG > 0` never hides it — a fabricated '/ 120 g' could contradict the
+                authoritative met-tick. Only show the target when the user has real protein data. */}
+            <CheckItem label="Protein" met={report.protein_target_met} detail={(profile?.protein_per_kg && profile?.weight_kg) ? `${report.protein_actual} / ${targets.proteinG} g` : `${report.protein_actual}g`} />
             <CheckItem label="Antrenman" met={report.workout_completed} />
             <CheckItem label="Su" met={report.water_target_met ?? false} />
           </Card>

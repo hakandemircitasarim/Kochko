@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
+import { CircularProgress } from '@/components/ui/CircularProgress';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
@@ -44,6 +46,8 @@ export default function WeeklyReportScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [report, setReport] = useState<WeeklyReport | null>(null);
+  // FIX (ux-round2 #14): previous week's compliance for the headline trend.
+  const [prevCompliance, setPrevCompliance] = useState<number | null>(null);
   const [alcohol, setAlcohol] = useState<AlcoholWeeklyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -54,15 +58,19 @@ export default function WeeklyReportScreen() {
     setLoading(true);
     setError(false);
     try {
-      const { data, error: loadError } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
-      // FIX (ux-pass5): supabase-js never rejects — failures resolve as { data: null, error }, so the
-      // catch below never fired and a network drop rendered "Henüz haftalık rapor yok." over existing
-      // reports. PGRST116 (.single() with 0 rows) is the legit "rapor yok" case, not a failure.
-      if (loadError && loadError.code !== 'PGRST116') {
+      // FIX (ux-round2 #14): fetch the last 2 weeks (was limit(1).single()) so the headline can show
+      // the change vs the previous week. supabase-js never rejects — a real error resolves as
+      // { error }; 0 rows is simply the empty state (no PGRST116 without .single()).
+      const { data, error: loadError } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(2);
+      if (loadError) {
         setError(true);
-      } else if (data) {
-        setReport(data as WeeklyReport);
-        await loadAlcoholData(user.id, (data as WeeklyReport).week_start);
+      } else {
+        const rows = (data ?? []) as WeeklyReport[];
+        if (rows.length > 0) {
+          setReport(rows[0]);
+          setPrevCompliance(rows.length > 1 ? rows[1].avg_compliance : null);
+          await loadAlcoholData(user.id, rows[0].week_start);
+        }
       }
     } catch {
       // Network/auth failure must not strand the user on an infinite spinner — show a
@@ -132,7 +140,7 @@ export default function WeeklyReportScreen() {
       haptics.error();
       // AI-dependent surface: the coach (LLM) can be temporarily unavailable — make it
       // clear it's not the user's fault and that retrying later is the right move.
-      Alert.alert('Koç şu an meşgul', 'Raporun oluşturulamadı. Lütfen birkaç dakika sonra tekrar dene.');
+      Alert.alert('Koç şu an meşgul', 'Raporun oluşturulamadı, birazdan tekrar dene.');
     } finally {
       setGenerating(false);
     }
@@ -158,21 +166,43 @@ export default function WeeklyReportScreen() {
 
       {!report ? (
         <Card>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Henüz haftalık rapor yok.</Text>
-          <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
-          {generating && (
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.md }}>
-              Koç haftanı analiz ediyor, bu birkaç saniye sürebilir...
-            </Text>
-          )}
+          {/* FIX (ux-polish): iconed empty state with a visual anchor (was a flat left-aligned sentence). */}
+          <View style={{ alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.md }}>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="document-text-outline" size={26} color={COLORS.primary} />
+            </View>
+            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz haftalık rapor yok</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.sm }}>Haftanı özetleyeyim — birkaç saniye sürer.</Text>
+            <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
+            {generating && (
+              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.md }}>
+                Koç haftanı analiz ediyor, bu birkaç saniye sürebilir…
+              </Text>
+            )}
+          </View>
         </Card>
       ) : (
         <>
           {/* Compliance */}
           <Card>
             <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-              <Text style={{ fontSize: 56, fontWeight: '800', color: compColor }}>{report.avg_compliance}</Text>
-              <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary }}>Ortalama Uyum</Text>
+              {/* FIX (ux-round2 #14): '%' unit (was a bare '68') + trend vs last week.
+                  ux-polish: the compliance ring (same as daily/monthly) instead of a flat number,
+                  so all three reports open with the shared hero treatment. */}
+              <CircularProgress progress={report.avg_compliance / 100} value={`%${report.avg_compliance}`} size={120} strokeWidth={8} color={compColor} a11yLabel="Ortalama uyum" />
+              <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginTop: SPACING.sm }}>Ortalama Uyum</Text>
+              {prevCompliance != null && (() => {
+                const d = report.avg_compliance - prevCompliance;
+                if (d === 0) return <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>geçen haftayla aynı</Text>;
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.xs }}>
+                    <Ionicons name={d > 0 ? 'arrow-up' : 'arrow-down'} size={13} color={d > 0 ? COLORS.success : COLORS.warning} />
+                    <Text style={{ color: d > 0 ? COLORS.success : COLORS.warning, fontSize: FONT.sm, fontWeight: '700' }}>
+                      geçen haftaya göre {d > 0 ? '+' : '−'}{Math.abs(d)}
+                    </Text>
+                  </View>
+                );
+              })()}
               {report.weekly_budget_compliance != null && (
                 <Text style={{ color: report.weekly_budget_compliance ? COLORS.success : COLORS.warning, fontSize: FONT.sm, marginTop: SPACING.xs }}>
                   Haftalık bütçe: {report.weekly_budget_compliance ? 'Tutturuldu' : 'Aşıldı'}
@@ -184,6 +214,20 @@ export default function WeeklyReportScreen() {
           {/* Weight Trend */}
           {report.weight_trend.length > 0 && (
             <Card title="Kilo Trendi">
+              {/* FIX (ux-round4 #9): net-for-the-week headline so "did I actually lose weight?" is
+                  answered without eyeballing and summing 7 per-day deltas. Neutral color on purpose —
+                  down isn't universally "good" (gain-muscle users want up). */}
+              {report.weight_trend.length >= 2 && (() => {
+                const net = report.weight_trend[report.weight_trend.length - 1].kg - report.weight_trend[0].kg;
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm, marginBottom: SPACING.sm, paddingBottom: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
+                    <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Bu hafta net:</Text>
+                    <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>
+                      {net > 0 ? '+' : ''}{net.toFixed(1).replace('.', ',')} kg
+                    </Text>
+                  </View>
+                );
+              })()}
               {report.weight_trend.map((w, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.xs, gap: SPACING.md }}>
                   <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, width: 60 }}>
@@ -288,7 +332,7 @@ export default function WeeklyReportScreen() {
           <Button title="Yeniden Oluştur" variant="outline" onPress={handleGenerate} loading={generating} />
           {generating && (
             <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.md }}>
-              Koç haftanı analiz ediyor, bu birkaç saniye sürebilir...
+              Koç haftanı analiz ediyor, bu birkaç saniye sürebilir…
             </Text>
           )}
         </>

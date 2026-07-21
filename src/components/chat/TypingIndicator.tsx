@@ -63,9 +63,12 @@ interface Props {
 export function TypingIndicator({ label = 'Kochko yazıyor' }: Props) {
   const { colors } = useTheme();
   return (
+    // FIX (ux-polish): announce once on appear (polite live region) with a STABLE label so the
+    // rotating stage text doesn't re-announce on every flip.
     <View
       accessibilityRole="text"
-      accessibilityLabel={`${label}, bir mesaj hazırlıyor`}
+      accessibilityLiveRegion="polite"
+      accessibilityLabel="Kochko yanıt hazırlıyor"
       style={{
         backgroundColor: colors.card,
         borderRadius: 16,

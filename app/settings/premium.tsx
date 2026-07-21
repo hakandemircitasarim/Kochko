@@ -1,5 +1,5 @@
 import { View, Text, ScrollView, Alert } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
@@ -46,8 +46,19 @@ const PREMIUM = [
   'Çok fazlı hedefler',
 ];
 
+// FIX (ux-ideas #3): loose TR match so a gated feature name ("Güç Progresyon") lights
+// up its row in the PREMIUM list even when the label wording differs slightly.
+const normTr = (s: string) => s.toLocaleLowerCase('tr-TR').trim();
+function matchesFeature(rowText: string, feature?: string): boolean {
+  if (!feature) return false;
+  const a = normTr(rowText);
+  const b = normTr(feature);
+  return a.includes(b) || b.includes(a);
+}
+
 export default function PremiumScreen() {
   const insets = useSafeAreaInsets();
+  const { feature } = useLocalSearchParams<{ feature?: string }>();
   const user = useAuthStore(s => s.user);
   const { profile, update, fetch: fetchProfile } = useProfileStore();
   const { isActive, isInTrial, trialDaysLeft, isExpired } = usePremium();
@@ -157,7 +168,7 @@ export default function PremiumScreen() {
   // Active Premium
   if (isActive && !isInTrial) {
     const expiresDate = (profile as Record<string, unknown>)?.premium_expires_at
-      ? new Date((profile as Record<string, unknown>).premium_expires_at as string).toLocaleDateString('tr-TR')
+      ? new Date((profile as Record<string, unknown>).premium_expires_at as string).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
       : null;
 
     // FIX (audit UI-SET-03): native Stack header already owns the top safe-area inset; the old
@@ -236,6 +247,20 @@ export default function PremiumScreen() {
   // Expired or never subscribed
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+      {/* FIX (ux-ideas #3): context hero — lead with the exact feature the user tapped. */}
+      {feature ? (
+        <View style={{ backgroundColor: COLORS.primary + '18', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderLeftWidth: 3, borderLeftColor: COLORS.primary }}>
+          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.5 }}>
+            {'AÇMAK İSTEDİN'}
+          </Text>
+          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', marginTop: 2 }}>{feature}</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>
+            {/* FIX (ux-review): only promise "aşağıda işaretledik" when a PREMIUM row actually
+                matches — several gated labels don't substring-match the list wording. */}
+            {PREMIUM.some(f => matchesFeature(f, feature)) ? 'Bu özellik Premium ile açılır — aşağıda işaretledik.' : 'Bu özellik Premium ile açılır.'}
+          </Text>
+        </View>
+      ) : null}
       {/* FIX (audit duplicate-title): Native header (title "Premium'a Geç") renders the title; in-body H1 removed as redundant. */}
       {isExpired && (
         <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.sm, marginTop: SPACING.sm }}>
@@ -253,7 +278,7 @@ export default function PremiumScreen() {
       </Card>
 
       <Card title="Premium" style={{ borderColor: COLORS.primary, borderWidth: 2 }}>
-        {PREMIUM.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.primary} />)}
+        {PREMIUM.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.primary} highlighted={matchesFeature(f, feature)} />)}
       </Card>
 
       {/* FIX (audit UX-PRM-08): while the native IAP path (RevenueCat) is unwired, showing live
@@ -308,11 +333,14 @@ export default function PremiumScreen() {
   );
 }
 
-function FeatureRow({ text, color }: { text: string; color: string }) {
+function FeatureRow({ text, color, highlighted }: { text: string; color: string; highlighted?: boolean }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 3 }}>
-      <Text style={{ color, fontSize: FONT.md, fontWeight: '700', width: 20 }}>+</Text>
-      <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1 }}>{text}</Text>
+    <View style={{
+      flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 3,
+      ...(highlighted ? { backgroundColor: COLORS.primary + '18', borderRadius: 6, paddingHorizontal: 6, marginHorizontal: -6 } : null),
+    }}>
+      <Text style={{ color, fontSize: FONT.md, fontWeight: '700', width: 20 }}>{highlighted ? '★' : '+'}</Text>
+      <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1, fontWeight: highlighted ? '700' : '400' }}>{text}</Text>
     </View>
   );
 }

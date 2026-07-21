@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useProfileStore } from '@/stores/profile.store';
+import { usePremium } from '@/hooks/usePremium';
 import { getCurrentWeeklyPlan, generateWeeklyPlan, toggleShoppingItem, type WeeklyPlan } from '@/services/weekly-plan.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -13,11 +16,24 @@ const CATEGORY_LABELS: Record<string, string> = { protein: 'Protein', vegetable:
 
 export default function WeeklyMenuScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  // FIX (ux-readiness): this premium screen lacked its own guard — a free user reaching it via deep
+  // link / chat navigate / trial-expiry-while-open stayed inside and could trigger an AI generation.
+  // Mirror the sibling premium screens (meal-prep-plan etc.): redirect to the paywall once resolved.
+  const { isPremium } = usePremium();
+  const profileLoading = useProfileStore(s => s.loading);
+  const profile = useProfileStore(s => s.profile);
   const [plan, setPlan] = useState<WeeklyPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<'menu' | 'shopping'>('menu');
+
+  useEffect(() => {
+    if (!profileLoading && profile !== null && !isPremium) {
+      router.replace('/settings/premium');
+    }
+  }, [profileLoading, profile, isPremium, router]);
 
   useEffect(() => {
     getCurrentWeeklyPlan()
@@ -52,6 +68,11 @@ export default function WeeklyMenuScreen() {
       return { ...prev, shopping_list: list };
     });
   };
+
+  // FIX (ux-readiness): blank while the redirect effect runs, so a free user never sees the content.
+  if (!isPremium && profile !== null && !profileLoading) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>

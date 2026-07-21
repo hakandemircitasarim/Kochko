@@ -38,7 +38,9 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
 
   if (submitted) {
     return (
-      <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
+      // FIX (ux-round3 #19): the confirmation replaces the buttons (focus was on a now-unmounted
+      // node), so a screen reader never announces it. Mark it a polite live region.
+      <Text accessible accessibilityLiveRegion="polite" style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
         {submitted === 'helpful' ? 'Teşekkürler!' : 'Not edildi, gelecekte daha iyi olacak.'}
       </Text>
     );
@@ -89,7 +91,7 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
         </TouchableOpacity>
       </View>
       {failed && (
-        <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
+        <Text accessible accessibilityLiveRegion="polite" style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
           Kaydedilemedi, tekrar dene.
         </Text>
       )}

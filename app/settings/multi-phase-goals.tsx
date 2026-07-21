@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -140,8 +141,9 @@ export default function MultiPhaseGoalsScreen() {
 
       {/* FIX (audit UI-STA-03): ilk fetch sürerken boş ekran yerine yükleniyor göstergesi. */}
       {loading && (
-        <View style={{ paddingVertical: SPACING.xl, alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={{ gap: SPACING.md, paddingTop: SPACING.md }}>
+          <SkeletonCard lines={3} />
+          <SkeletonCard lines={2} />
         </View>
       )}
 

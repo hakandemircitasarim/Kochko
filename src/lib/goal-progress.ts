@@ -33,7 +33,11 @@ export function calculateGoalProgress(
 ): GoalProgress {
   const isLossGoal = goal.goal_type === 'lose_weight';
   const isGainGoal = goal.goal_type === 'gain_weight' || goal.goal_type === 'gain_muscle';
-  const targetWeight = goal.target_weight_kg ?? currentWeight;
+  // FIX (ux-readiness): fall back to startWeight (NOT currentWeight) when no scale target is set
+  // (e.g. a gain_muscle goal saved without a target kilo) — else targetWeight==currentWeight makes
+  // kgRemaining=0 and isGoalReached fires a false "Hedefine ulaştın! 🎉" on a brand-new goal.
+  const hasTarget = goal.target_weight_kg != null;
+  const targetWeight = goal.target_weight_kg ?? startWeight;
 
   // Calculate total change needed and achieved
   const totalChangeNeeded = Math.abs(startWeight - targetWeight);
@@ -53,9 +57,9 @@ export function calculateGoalProgress(
       ? targetWeight - currentWeight
       : 0);
 
-  const percentComplete = totalChangeNeeded > 0 && movingRight
-    ? Math.min(100, Math.round((actualChange / totalChangeNeeded) * 100))
-    : totalChangeNeeded > 0 ? 0 : 100; // 0% if moving wrong direction
+  const percentComplete = totalChangeNeeded > 0
+    ? (movingRight ? Math.min(100, Math.round((actualChange / totalChangeNeeded) * 100)) : 0)
+    : hasTarget ? 100 : 0; // no distance: at-target(100) only if a target exists, else undefined(0)
 
   // Time calculations
   const createdAt = new Date(goal.created_at);
@@ -72,8 +76,14 @@ export function calculateGoalProgress(
   // Pace status. Wrong-direction → 'stalled' regardless of how new the goal is: tempoRatio
   // is built from the UNSIGNED actualChange, so without this a week-1 user who GAINED on a
   // lose_weight goal read as 'on_track'/'ahead' (green check) next to a correct 0% bar.
+  // FIX (ux-readiness): a brand-new goal with no weigh-in yet has currentWeight==startWeight, so
+  // movingRight is false (strict <) and every day-1 lose_weight user saw a red "Duraklama" north-star.
+  // Distinguish "no movement yet on a fresh goal" from a genuine plateau.
+  const noChangeYet = actualChange < 0.1;
   let paceStatus: PaceStatus;
-  if (!movingRight) {
+  if (noChangeYet && weeksElapsed <= 1) {
+    paceStatus = 'on_track';
+  } else if (!movingRight) {
     paceStatus = 'stalled';
   } else if (tempoRatio >= 0.85) {
     paceStatus = tempoRatio >= 1.3 ? 'ahead' : 'on_track';
@@ -91,8 +101,9 @@ export function calculateGoalProgress(
     estimatedCompletionDate = completionDate.toISOString().split('T')[0];
   }
 
-  // Goal reached check
-  const isGoalReached = kgRemaining <= GOAL_REACHED_THRESHOLD_KG;
+  // Goal reached check — only when a real target exists AND there was a real distance to cover
+  // (guards the false "reached" for a no-target gain goal, where kgRemaining is trivially 0).
+  const isGoalReached = hasTarget && totalChangeNeeded > GOAL_REACHED_THRESHOLD_KG && kgRemaining <= GOAL_REACHED_THRESHOLD_KG;
 
   return {
     kgLost: Math.round(kgLost * 10) / 10,

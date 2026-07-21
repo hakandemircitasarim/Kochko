@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useStreak } from '@/hooks/useStreak';
@@ -11,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
 
 export default function AllTimeReportScreen() {
   const insets = useSafeAreaInsets();
@@ -26,12 +27,12 @@ export default function AllTimeReportScreen() {
     totalWorkouts: number;
     longestStreak: number;
     avgCompliance: number;
-    daysActive: number;
+    activeDays: number;
     achievements: number;
   }>({
     startWeight: null, currentWeight: null, totalMeals: 0,
     totalWorkouts: 0, longestStreak: 0, avgCompliance: 0,
-    daysActive: 0, achievements: 0,
+    activeDays: 0, achievements: 0,
   });
   // FIX (ux-pass5): remember a successful load — loadStats re-runs when the streak hook resolves,
   // and a refresh failure must not swap already-shown stats for the full-screen error state.
@@ -86,8 +87,9 @@ export default function AllTimeReportScreen() {
       // Ensure current streak is also considered
       if (streak > longestStreak) longestStreak = streak;
 
-      const createdAt = profile?.created_at ? new Date(profile.created_at) : new Date();
-      const daysActive = Math.floor((Date.now() - createdAt.getTime()) / 86400000);
+      // FIX (ux-round3 #16): "Aktif Gün" used to be tenure (days since signup) — a 60-day-idle user
+      // saw "60", rewarding inactivity. Count REAL active days: distinct dates with any compliance.
+      const activeDays = new Set(reports.filter(r => r.compliance_score > 0).map(r => r.date)).size;
 
       setStats({
         startWeight: firstWeightRes.data?.weight_kg ?? null,
@@ -96,7 +98,7 @@ export default function AllTimeReportScreen() {
         totalWorkouts: workoutsRes.count ?? 0,
         longestStreak,
         avgCompliance: avgComp,
-        daysActive,
+        activeDays,
         achievements: achievementsRes.count ?? 0,
       });
       loadedRef.current = true; // FIX (ux-pass5)
@@ -150,12 +152,13 @@ export default function AllTimeReportScreen() {
 
       {/* Key Stats Grid */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md }}>
-        <StatCard label="Aktif Gün" value={`${stats.daysActive}`} />
-        <StatCard label="Toplam Öğün" value={`${stats.totalMeals}`} />
-        <StatCard label="Toplam Antrenman" value={`${stats.totalWorkouts}`} />
-        <StatCard label="Streak" value={`${stats.longestStreak}`} />
-        <StatCard label="Ort. Uyum" value={`%${stats.avgCompliance}`} />
-        <StatCard label="Başarımlar" value={`${stats.achievements}`} />
+        <StatCard label="Aktif Gün" value={`${stats.activeDays}`} icon="calendar-outline" />
+        {/* FIX (ux-polish): TR thousands separators for large lifetime totals (was bare "1240"). */}
+        <StatCard label="Toplam Öğün" value={stats.totalMeals.toLocaleString('tr-TR')} icon="restaurant-outline" />
+        <StatCard label="Toplam Antrenman" value={stats.totalWorkouts.toLocaleString('tr-TR')} icon="barbell-outline" />
+        <StatCard label="Streak" value={`${stats.longestStreak}`} icon="flame-outline" />
+        <StatCard label="Ort. Uyum" value={`%${stats.avgCompliance}`} icon="checkmark-circle-outline" />
+        <StatCard label="Başarımlar" value={`${stats.achievements}`} icon="ribbon-outline" />
       </View>
 
       {/* Milestones */}
@@ -182,9 +185,16 @@ export default function AllTimeReportScreen() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, icon }: { label: string; value: string; icon?: keyof typeof Ionicons.glyphMap }) {
+  // FIX (ux-polish): align to the progress-tab SummaryBox — hairline (0.5) + RADIUS.md + a tinted
+  // icon badge (was a 1px-border, iconless tile that read ~2× thicker than every other card).
   return (
-    <View style={{ width: '47%', backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, alignItems: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+    <View style={{ width: '47%', backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center', borderWidth: 0.5, borderColor: COLORS.border }}>
+      {icon && (
+        <View style={{ width: 32, height: 32, borderRadius: RADIUS.sm, backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xs }}>
+          <Ionicons name={icon} size={16} color={COLORS.primary} />
+        </View>
+      )}
       <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '700' }}>{value}</Text>
       <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{label}</Text>
     </View>
@@ -194,7 +204,8 @@ function StatCard({ label, value }: { label: string; value: string }) {
 function MilestoneRow({ text, done }: { text: string; done: boolean }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm }}>
-      <Text style={{ fontSize: FONT.md, marginRight: SPACING.sm }}>{done ? '✓' : '○'}</Text>
+      {/* FIX (ux-polish): Ionicons to match the daily report's checklist (was bare ✓/○ text glyphs). */}
+      <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={done ? COLORS.success : COLORS.textMuted} style={{ marginRight: SPACING.sm }} />
       <Text style={{ color: done ? COLORS.success : COLORS.textMuted, fontSize: FONT.md }}>{text}</Text>
     </View>
   );

@@ -2,12 +2,12 @@
  * Account Security Settings
  * Spec 1.2-1.4: Session management, password change, account linking, email change.
  */
-import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, Platform, KeyboardAvoidingView } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, Alert, Platform, KeyboardAvoidingView, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
-import { getActiveSessions, terminateSession } from '@/services/realtime-sync.service';
+import { getActiveSessions, terminateSession, getCurrentSessionId } from '@/services/realtime-sync.service';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
@@ -20,6 +20,8 @@ export default function AccountSecurityScreen() {
   const user = useAuthStore(s => s.user);
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  // FIX (ux-round3 #7): "İleri" from Yeni Şifre jumps to the confirm field.
+  const confirmPwRef = useRef<TextInput>(null);
   const [loading, setLoading] = useState(false);
 
   // Email change
@@ -29,6 +31,9 @@ export default function AccountSecurityScreen() {
   // Active sessions
   const [sessions, setSessions] = useState<{ sessionId: string; deviceInfo: string; lastActiveAt: string }[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  // FIX (ux-audit device-fix): the id of THIS device's session, to label "Mevcut" correctly
+  // instead of assuming the most-recently-active (index 0) row is the current device.
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   const providers = user?.app_metadata?.providers as string[] ?? [];
   const identities = user?.identities ?? [];
@@ -40,8 +45,9 @@ export default function AccountSecurityScreen() {
   const loadSessions = async () => {
     setSessionsLoading(true);
     try {
-      const data = await getActiveSessions();
+      const [data, currentId] = await Promise.all([getActiveSessions(), getCurrentSessionId()]);
       setSessions(data);
+      setCurrentSessionId(currentId);
     } catch {
       // silently ignore
     } finally {
@@ -223,8 +229,8 @@ export default function AccountSecurityScreen() {
       {/* Password Change (Spec 1.4) */}
       <SectionHeader title="Şifre Değiştir" />
       <Card>
-        <Input label="Yeni Şifre" placeholder="En az 6 karakter" value={newPassword} onChangeText={setNewPassword} secureToggle />
-        <Input label="Yeni Şifre Tekrar" placeholder="Tekrar gir" value={confirmNewPassword} onChangeText={setConfirmNewPassword} secureToggle />
+        <Input label="Yeni Şifre" placeholder="En az 6 karakter" value={newPassword} onChangeText={setNewPassword} secureToggle returnKeyType="next" blurOnSubmit={false} onSubmitEditing={() => confirmPwRef.current?.focus()} />
+        <Input ref={confirmPwRef} label="Yeni Şifre Tekrar" placeholder="Tekrar gir" value={confirmNewPassword} onChangeText={setConfirmNewPassword} secureToggle returnKeyType="go" onSubmitEditing={handleChangePassword} />
         <Button title="Şifreyi Değiştir" onPress={handleChangePassword} loading={loading} />
       </Card>
 
@@ -275,22 +281,28 @@ export default function AccountSecurityScreen() {
         ) : sessions.length === 0 ? (
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Aktif oturum bulunamadı.</Text>
         ) : (
-          sessions.map((session, index) => (
+          sessions.map((session, index) => {
+            // FIX (ux-audit device-fix): identify the current device by its real session id, not by
+            // list position — the wrong device was labelled "Mevcut" (and had its "Kapat" hidden)
+            // whenever another device was more recently active. Fallback to index 0 only if the
+            // local id is somehow unavailable.
+            const isCurrent = currentSessionId ? session.sessionId === currentSessionId : index === 0;
+            return (
             <View key={session.sessionId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: index < sessions.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{session.deviceInfo}</Text>
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
-                  Son aktif: {new Date(session.lastActiveAt).toLocaleString('tr-TR')}
+                  Son aktif: {new Date(session.lastActiveAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
-              {index !== 0 && (
+              {isCurrent ? (
+                <Text style={{ color: COLORS.success, fontSize: FONT.xs, marginLeft: SPACING.sm }}>Mevcut</Text>
+              ) : (
                 <Button title="Kapat" variant="ghost" size="sm" onPress={() => handleTerminateSession(session.sessionId)} />
               )}
-              {index === 0 && (
-                <Text style={{ color: COLORS.success, fontSize: FONT.xs, marginLeft: SPACING.sm }}>Mevcut</Text>
-              )}
             </View>
-          ))
+            );
+          })
         )}
       </Card>
     </ScrollView>

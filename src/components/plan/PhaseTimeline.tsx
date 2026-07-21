@@ -50,8 +50,13 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
         Hedef Fazları
       </Text>
 
-      {/* Timeline bar */}
-      <View style={{
+      {/* Timeline bar — FIX (ux-polish): decorative; hidden from screen readers so phase names aren't
+          read twice (bar + labels) and color-only active/completed state isn't announced here. The
+          labels below carry the accessible names + spoken state. */}
+      <View
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+        style={{
         flexDirection: 'row',
         height: 32,
         borderRadius: 8,
@@ -106,6 +111,9 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
                 numberOfLines={1}
                 ellipsizeMode="tail"
                 maxFontSizeMultiplier={MAX_FONT_SCALE}
+                // FIX (ux-polish): speak the phase's state (active/completed) — the bar conveyed it by
+                // color only, which a screen reader couldn't announce.
+                accessibilityLabel={`${phase.label ? goalShortLabelTR(phase.label) : `${phase.targetWeeks} hafta`}${phase.isActive ? ', şu anki faz' : phase.isCompleted ? ', tamamlandı' : ''}`}
                 style={{
                   color: phase.isActive ? COLORS.text : COLORS.textMuted,
                   fontSize: 10,

@@ -118,6 +118,7 @@ export function PlanChatComposer({
   const handleSend = () => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    haptics.tap(); // FIX (ux-polish): every other send path taps; empty sends stay silent (after guard).
     onSend(trimmed);
     setText('');
     Keyboard.dismiss();

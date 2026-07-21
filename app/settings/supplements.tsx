@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, TextInput } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { logSupplement, type SupplementLog } from '@/services/supplements.service';
 import { supabase } from '@/lib/supabase';
@@ -31,6 +32,8 @@ export default function SupplementsScreen() {
   const [loadError, setLoadError] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customAmount, setCustomAmount] = useState('');
+  // FIX (ux-round3 #7): "İleri" from the name field jumps to the amount field.
+  const amountRef = useRef<TextInput>(null);
 
   const loadLogs = useCallback(async () => {
     setLoading(true);
@@ -66,6 +69,23 @@ export default function SupplementsScreen() {
     loadLogs();
   };
 
+  // FIX (ux-round3 #13): the quick-add chips are one-tap writes with no way to undo — a mis-tap
+  // creates a permanent log (and calorie-bearing supps pollute the day's calorie tracking). Add a
+  // confirmed delete per row (mirrors food-preferences' pattern).
+  const handleDelete = (l: SupplementLog) => {
+    Alert.alert('Kaydı sil', `"${l.supplement_name}" kaydını silmek istediğine emin misin?`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      {
+        text: 'Sil', style: 'destructive', onPress: async () => {
+          const { error } = await supabase.from('supplement_logs').delete().eq('id', l.id);
+          if (error) { haptics.error(); Alert.alert('Silinemedi', 'Kayıt silinemedi, lütfen tekrar dene.'); return; }
+          haptics.success();
+          loadLogs();
+        },
+      },
+    ]);
+  };
+
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
@@ -88,8 +108,8 @@ export default function SupplementsScreen() {
       {/* Custom */}
       <Card title="Özel Ekle">
         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-          <View style={{ flex: 2 }}><Input placeholder="Supplement adı" value={customName} onChangeText={setCustomName} returnKeyType="next" /></View>
-          <View style={{ flex: 1 }}><Input placeholder="Miktar" value={customAmount} onChangeText={setCustomAmount} returnKeyType="done" onSubmitEditing={handleCustomAdd} /></View>
+          <View style={{ flex: 2 }}><Input placeholder="Supplement adı" value={customName} onChangeText={setCustomName} returnKeyType="next" blurOnSubmit={false} onSubmitEditing={() => amountRef.current?.focus()} /></View>
+          <View style={{ flex: 1 }}><Input ref={amountRef} placeholder="Miktar" value={customAmount} onChangeText={setCustomAmount} returnKeyType="done" onSubmitEditing={handleCustomAdd} /></View>
         </View>
         <Button title="Ekle" size="md" onPress={handleCustomAdd} />
       </Card>
@@ -109,10 +129,13 @@ export default function SupplementsScreen() {
         ) : (
           logs.map(l => (
             <View key={l.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-              <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{l.supplement_name}</Text>
-              <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+              <Text style={{ color: COLORS.text, fontSize: FONT.md, flex: 1 }}>{l.supplement_name}</Text>
+              <View style={{ flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' }}>
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{l.amount}</Text>
                 {l.calories > 0 && <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>{l.calories} kcal</Text>}
+                <TouchableOpacity onPress={() => handleDelete(l)} accessibilityRole="button" accessibilityLabel={`${l.supplement_name} kaydını sil`} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
               </View>
             </View>
           ))
