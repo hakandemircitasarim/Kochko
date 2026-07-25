@@ -4,8 +4,10 @@ Son commit: **`29f0db7`** (branch `claude/KOCHKO`) — tüm-sistem denetim backl
 AI davranış spec'i (16/18). Detaylı döküm: [`AI_DAVRANIS_PLANI_2026-07-24.md`](AI_DAVRANIS_PLANI_2026-07-24.md).
 
 > **Durum:** kod yazıldı ve `deno check` + 52 test + `tsc` + arch-guards ile doğrulandı.
-> **HENÜZ YAPILMADI:** migration'lar uygulanmadı, edge fonksiyonlar deploy edilmedi,
-> emülatörde/telefonda sürülmedi. Aşağıdaki 4 adım tam olarak bunlar.
+> **✅ Migration 094/095/096 CANLIYA UYGULANDI** (2026-07-24, Management API ile) ve
+> `supabase_migrations.schema_migrations`'a kaydedildi → `supabase db push` "up to date" der.
+> **HENÜZ YAPILMADI:** edge fonksiyonlar deploy edilmedi, emülatörde/telefonda sürülmedi.
+> Yani **Adım 3'ü atla**, doğrudan Adım 4 (deploy) ve Adım 5-6 (çalıştır + test) ile devam et.
 
 ---
 
@@ -55,7 +57,28 @@ npm run ci
 
 `52 passed` + 6 × `Check` + `arch-guards: all invariants hold` görmelisin.
 
-## 3) Migration'ları uygula (İLK BU — sıra önemli)
+## 3) ~~Migration'ları uygula~~ — ✅ ZATEN YAPILDI (2026-07-24)
+
+Bu adım **tamamlandı**, tekrar çalıştırmana gerek yok. Canlı doğrulama sonuçları:
+
+| Kontrol | Önce | Sonra |
+|---|---|---|
+| `project_daily_plans` RPC `weekly_budget_* ` tipi | **smallint** (bug canlıydı) | `integer` ✓ |
+| `profiles.activity_level` default | `'sedentary'::text` | `NULL` ✓ |
+| `profiles.sleep_problems` + `meal_times` | yok | 2 kolon ✓ |
+| `goals.reason` / `lab_values.notes` | yok | 1 + 1 ✓ |
+| migration geçmişi | 093 | 094 · 095 · 096 ✓ |
+
+**Fonksiyonel kanıt** (asıl bug'ın öldüğü): `jsonb_to_recordset` ile `33000` değeri
+`integer` tipiyle sorunsuz parse ediliyor; aynı değer `smallint` ile hâlâ
+`22003 value "33000" is out of range` veriyor — yani haftanın planını silen hata
+gerçekten vardı ve gerçekten kapandı.
+
+`supabase db push` çalıştırırsan "up to date" demeli (geçmişe kaydedildi). Aşağıdaki
+orijinal talimatlar sadece referans / yeni bir ortam kurarsan diye duruyor.
+
+<details>
+<summary>Orijinal migration talimatları (referans)</summary>
 
 3 yeni migration var ve **kod bunlara ihtiyaç duyuyor**:
 `094` (plan kaybını bitiren smallint→integer RPC), `095` (activity_level default'u kaldırır),
@@ -87,6 +110,11 @@ where (table_name='profiles'   and column_name in ('sleep_problems','meal_times'
 > **Neden sıra önemli:** kod `sleep_problems` / `notes` gibi kolonlara yazıyor. Migration'dan
 > ÖNCE deploy edersen 42703 alırsın — kod bunu yakalayıp geri düşecek şekilde korumalı
 > (veri kaybı olmaz) ama o alanlar sessizce kaydedilmez. Migration'ı önce uygula.
+
+</details>
+
+> **Not:** şema artık koddan İLERİDE değil, kod şemadan ileride — yani deploy'u güvenle
+> yapabilirsin, 42703 riski kalmadı.
 
 ## 4) Edge fonksiyonları deploy et
 
