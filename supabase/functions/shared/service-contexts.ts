@@ -8,6 +8,7 @@ import { getEffectiveDateForUser } from './day-boundary.ts';
 import { foodMatchKey, extractInjuredBodyParts, findInjuryConflictsInText, ALLERGEN_FOODS, DIETARY_FORBIDDEN } from './guardrails.ts';
 import { getActiveConstraints } from './constraints.ts';
 import { getSafetyState } from './safety-state.ts';
+import { normalizeHabitEntry, deriveHabitStats, readyForNextHabit, type HabitEntry } from './habits.ts';
 import { getRelationshipPhase, relationshipGuidance } from './relationship-state.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
@@ -39,14 +40,22 @@ async function resolveEffectiveToday(
  */
 export async function getHabitsContext(userId: string): Promise<{
   prompt: string;
-  activeHabits: { name: string; status: string; streak: number; weekly_compliance?: number }[];
+  activeHabits: { name: string; key: string; status: string; streak: number; weekly_compliance?: number }[];
 }> {
   try {
     const { data } = await supabaseAdmin
       .from('ai_summary').select('habit_progress').eq('user_id', userId).maybeSingle();
     if (!data?.habit_progress) return { prompt: '', activeHabits: [] };
 
-    const habits = data.habit_progress as { name?: string; habit?: string; status: string; streak: number; weekly_compliance?: number; completion_log?: string[] }[];
+    // AI-behaviour #14: normalise identity (three writer generations used key/name/habit) and DERIVE
+    // streak + weekly_compliance from completion_log instead of trusting the stored fields —
+    // weekly_compliance had NO writer anywhere (so the next-habit gate could never fire) and streak
+    // was monotonic (`streak+1` only), so a 12-day streak survived a three-week absence.
+    const today = new Date().toISOString().slice(0, 10);
+    const habits = ((data.habit_progress as unknown[]) ?? [])
+      .map(normalizeHabitEntry)
+      .filter((h): h is HabitEntry => h !== null)
+      .map((h) => ({ ...h, stats: deriveHabitStats(h.completion_log, today) }));
     const active = habits.filter(h => h.status === 'active');
     const mastered = habits.filter(h => h.status === 'mastered');
 
@@ -54,19 +63,28 @@ export async function getHabitsContext(userId: string): Promise<{
 
     const parts: string[] = ['## ALISKANLIK DURUMU'];
     if (active.length > 0) {
-      parts.push(`Aktif: ${active.map(h => `"${h.name ?? h.habit}" (${h.streak} gun seri${h.weekly_compliance != null ? `, %${h.weekly_compliance} uyum` : ''})`).join(', ')}`);
+      parts.push(`Aktif: ${active.map(h => `"${h.name}" (${h.stats.streak} gun seri, %${h.stats.weekly_compliance} son-7-gun)`).join(', ')}`);
+      // A broken streak must be named warmly and restarted TODAY — not announced as if intact.
+      const brokenOnes = active.filter(h => h.stats.broken);
+      if (brokenOnes.length > 0) {
+        parts.push(`SERI KIRILDI: ${brokenOnes.map(h => `"${h.name}" (son: ${h.stats.lastDone ?? '?'})`).join(', ')} — SUCLAMA YOK. Kisa ve sicak sekilde adini koy ("bir sey kirildi, sen kirilmadin") ve BUGUN tek bir kez yapmaya davet et.`);
+      }
     }
     if (mastered.length > 0) {
-      parts.push(`Oturtulmus: ${mastered.map(h => h.name ?? h.habit).join(', ')}`);
+      parts.push(`Oturtulmus: ${mastered.map(h => h.name).join(', ')}`);
     }
-    const almostMastered = active.find(h => h.streak >= 12 && h.streak < 14);
+    const almostMastered = active.find(h => h.stats.streak >= 12 && h.stats.streak < 14);
     if (almostMastered) {
-      parts.push(`"${almostMastered.name ?? almostMastered.habit}" 2 gun sonra oturtulmus sayilacak!`);
+      parts.push(`"${almostMastered.name}" 2 gun sonra oturtulmus sayilacak!`);
+    }
+    const ready = active.find(h => readyForNextHabit(h.stats));
+    if (ready) {
+      parts.push(`"${ready.name}" HAK EDILDI (${ready.stats.streak} gun, %${ready.stats.weekly_compliance}) — istersen siradaki aliskanligi bunun USTUNE ekleyerek oner (yerine degil).`);
     }
 
     return {
       prompt: parts.join('\n'),
-      activeHabits: active.map(h => ({ name: h.name ?? h.habit ?? '', status: h.status, streak: h.streak, weekly_compliance: h.weekly_compliance })),
+      activeHabits: active.map(h => ({ name: h.name, key: h.key, status: h.status, streak: h.stats.streak, weekly_compliance: h.stats.weekly_compliance })),
     };
   } catch {
     return { prompt: '', activeHabits: [] };
@@ -78,29 +96,31 @@ export async function getHabitsContext(userId: string): Promise<{
  */
 export function checkHabitFromChat(
   message: string,
-  activeHabits: { name: string }[]
-): { habitName: string; increment: boolean } | null {
+  activeHabits: { name: string; key?: string }[]
+): { habitName: string; habitKey: string; increment: boolean } | null {
   const lower = message.toLocaleLowerCase('tr');
 
+  // FIX (adversarial HIGH — completion_log was ALWAYS empty): this matched ASCII substrings
+  // ('ogun', 'tarti') against the habit LABEL, but the canonical labels carry diacritics, so
+  // 'günlük öğün kaydı'.includes('ogun') === false and 'tartı kaydı'.includes('tarti') === false.
+  // Habit #1 (which every user gets) and the weigh-in habit could therefore NEVER register a
+  // completion — which meant deriveHabitStats always returned streak 0 / %0, the coach asserted
+  // "SERİ KIRILDI" to compliant users, and readyForNextHabit could never open. Match on the
+  // canonical KEY instead of fuzzy label text.
+  const CUES: Record<string, RegExp> = {
+    daily_meal_log: /yedim|içtim|ictim|kahvalt|öğün|ogun|atıştır|atistir|kaydet/i,
+    water_tracking: /su\s*(içtim|ictim)|bardak|litre|ml|su\s*bardağı/i,
+    weight_tracking: /tartıld|tartild|tartıya|tartiya|\d+\s*k(g|ilo)/i,
+    protein_target: /protein|tavuk|yumurta|yoğurt|yogurt|et|balık|balik/i,
+    sleep_tracking: /uyku|uyudum|yattım|yattim|kalktım|kalktim/i,
+    workout_routine: /antrenman|egzersiz|spor|koştum|kostum|yürüdüm|yurudum|salon|bisiklet|yüzdüm|yuzdum/i,
+  };
+
   for (const habit of activeHabits) {
-    const habitLower = habit.name.toLocaleLowerCase('tr');
-    if (habitLower.includes('ogun') && /yedim|ictim|kahvalt|ogun|kaydet/i.test(lower)) {
-      return { habitName: habit.name, increment: true };
-    }
-    if (habitLower.includes('su') && /su.*(ictim|içtim)|bardak.*su|litre/i.test(lower)) {
-      return { habitName: habit.name, increment: true };
-    }
-    if (habitLower.includes('tarti') && /kilo|tartil|tart[ıi]/i.test(lower)) {
-      return { habitName: habit.name, increment: true };
-    }
-    if (habitLower.includes('protein') && /protein|tavuk|yumurta|yogurt/i.test(lower)) {
-      return { habitName: habit.name, increment: true };
-    }
-    if (habitLower.includes('uyku') && /uyku|uyudum|yattim/i.test(lower)) {
-      return { habitName: habit.name, increment: true };
-    }
-    if (habitLower.includes('antrenman') && /antrenman|egzersiz|spor|kosu/i.test(lower)) {
-      return { habitName: habit.name, increment: true };
+    const key = habit.key ?? '';
+    const cue = CUES[key];
+    if (cue && cue.test(lower)) {
+      return { habitName: habit.name, habitKey: key, increment: true };
     }
   }
   return null;
@@ -664,10 +684,38 @@ export async function getAdaptiveDifficultyContext(userId: string): Promise<stri
       .from('daily_reports').select('date, compliance_score')
       .eq('user_id', userId).gte('date', threeWeeksAgo).order('date');
 
-    if (!reports || reports.length < 10) return '';
+    // AI-behaviour #12: the ≥10-report bar itself excluded the users who need this most — a
+    // low-adherence user GENERATES fewer reports. The chronic branch below runs on a lower bar (≥6).
+    if (!reports || reports.length < 6) return '';
 
     const week1 = (reports as { date: string; compliance_score: number }[]).filter(r => r.date >= twoWeeksAgo && r.date < oneWeekAgo);
     const week2 = (reports as { date: string; compliance_score: number }[]).filter(r => r.date >= oneWeekAgo);
+
+    // CHRONIC CAPACITY MISMATCH (checked FIRST, on the lower sample bar): a user at 45%/48%/44% for
+    // three weeks never CRASHED (no good week to fall from) and never excelled, so both branches
+    // below missed them and they got '' forever — the app's silent-failure mode for the person most
+    // likely to quit. Chronic low adherence means the PLAN is too big, not that the user is lazy.
+    {
+      const all = (reports as { date: string; compliance_score: number }[]).filter(r => typeof r.compliance_score === 'number');
+      // FIX (adversarial): required real density on BOTH halves — the chronic branch ran before the
+      // week-density guard and treated an EMPTY week as "no good week", so a one-week-old user with 6
+      // sparse days was told their plan is too big.
+      if (all.length >= 6 && week1.length >= 3 && week2.length >= 3) {
+        const avgAll = all.reduce((s, r) => s + r.compliance_score, 0) / all.length;
+        const noGoodWeek = (week1.reduce((s, r) => s + r.compliance_score, 0) / week1.length) < 65
+          && (week2.reduce((s, r) => s + r.compliance_score, 0) / week2.length) < 65;
+        if (avgAll < 65 && noGoodWeek) {
+          return `## KAPASITE UYUMSUZLUGU (plan bu kisi icin FAZLA BUYUK — %${Math.round(avgAll)} kronik uyum)
+Bu bir motivasyon sorunu DEGIL, olcek sorunu. Yaklasim:
+- SUCLAMA ve "daha cok caba" ISTEME. "Cok ustune gitmisim" diyerek sorumlulugu SEN al.
+- Takip edilen sey SAYISINI azalt (ornek: sadece ogun kaydi kalsin, su/uyku/adim beklemeyi birak).
+- Alışkanlık sayisini BIRE indir.
+- Kalori araligini GENISLET, tempoyu YAVASLAT.
+- Bunu ONAY isteyerek yap: "Hedefleri kucultmemi ister misin?"
+- AYNI turda kalori sikma veya yeni hedef EKLEME.`;
+        }
+      }
+    }
 
     if (week1.length < 4 || week2.length < 4) return '';
 
@@ -960,17 +1008,28 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
  */
 export async function getSituationalSnapshot(userId: string, effectiveToday?: string): Promise<string> {
   try {
-    const [profRes, goalRes, metricsRes, reportsRes, sumRes, eventRes, planRes] = await Promise.all([
+    const [profRes, goalRes, metricsRes, reportsRes, sumRes, eventRes, planRes, nudgeRes, openerRes] = await Promise.all([
       supabaseAdmin.from('profiles').select('weight_kg, calorie_range_rest_min, calorie_range_rest_max, onboarding_completed').eq('id', userId).maybeSingle(),
       supabaseAdmin.from('goals').select('goal_type, start_weight_kg, target_weight_kg, target_weeks, created_at, phase_label').eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1),
       supabaseAdmin.from('daily_metrics').select('date, weight_kg, sleep_hours, water_liters').eq('user_id', userId).order('date', { ascending: false }).limit(21),
-      supabaseAdmin.from('daily_reports').select('date, calorie_actual, compliance_score').eq('user_id', userId).order('date', { ascending: false }).limit(14),
+      supabaseAdmin.from('daily_reports').select('date, calorie_actual, compliance_score').eq('user_id', userId).order('date', { ascending: false }).limit(22),
       supabaseAdmin.from('ai_summary').select('behavioral_patterns').eq('user_id', userId).maybeSingle(),
       // #organism: the nearest upcoming motivating life event → carried on EVERY turn as a countdown.
       supabaseAdmin.from('life_events').select('title, event_type, event_date').eq('user_id', userId).eq('is_active', true).gte('event_date', (effectiveToday ?? new Date().toISOString().split('T')[0])).order('event_date', { ascending: true }).limit(1),
       // #arch S1: the CHAT coach was structurally plan-blind — it never read daily_plans, so it
       // couldn't reference today's actual plan when the user asks "bugün ne yesem?". Load it here.
       supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, focus_message, plan_type').eq('user_id', userId).eq('date', (effectiveToday ?? new Date().toISOString().split('T')[0])).order('version', { ascending: false }).limit(1).maybeSingle(),
+      // AI-behaviour #5 (ONE coach, ONE memory): ai-proactive pushes 20+ user-visible nudges into
+      // coaching_messages, and the CHAT coach never read them — so it would push an offer, the user
+      // would tap "Evet", and the coach had no idea which offer existed. Its own words are now part
+      // of who it is on the next turn.
+      supabaseAdmin.from('coaching_messages').select('content, trigger_type, read, created_at')
+        .eq('user_id', userId).gte('created_at', new Date(Date.now() - 48 * 3600 * 1000).toISOString())
+        .order('created_at', { ascending: false }).limit(4),
+      // AI-behaviour #5b: the coach repeated the same openers because nothing tracked its own
+      // phrasing (register turns see only 3 messages of history, so it cannot notice).
+      supabaseAdmin.from('chat_messages').select('content').eq('user_id', userId).eq('role', 'assistant')
+        .order('created_at', { ascending: false }).limit(6),
     ]);
     const p = profRes.data;
     if (!p || !p.onboarding_completed) return '';
@@ -1091,6 +1150,76 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
       }
     }
 
+    // ── AI-behaviour #11: KAZANIMLAR. The snapshot was almost entirely deficits (journey %, "ARTIYOR ⚠",
+    // "hedefin ÜSTÜNDE", "SON KAYIT 2 GÜN ÖNCE", struggle patterns) while three prompt sections DEMAND
+    // specific celebration — so the coach either flattered generically or stayed silent. Compute real,
+    // verifiable wins from rows ALREADY fetched above (zero new queries). Absence suppresses praise.
+    try {
+      const mAsc = [...((metricsRes.data ?? []) as { date: string; weight_kg: number | null; sleep_hours: number | null; water_liters: number | null }[])].reverse();
+      const rAsc = [...((reportsRes.data ?? []) as { date: string; calorie_actual: number | null; compliance_score: number | null }[])].reverse();
+      const wins: string[] = [];
+      // (a) Current consecutive logged-day run vs the best previous run in the window.
+      const loggedDates = new Set(rAsc.filter(r => (r.calorie_actual ?? 0) > 0).map(r => r.date));
+      const dayMs = 86400000;
+      // Start at YESTERDAY when today has no report yet (the nightly job may not have run) — else an
+      // open morning read as a zero-day streak and the block emitted "KAZANIM YOK" for a compliant user.
+      const todayIso = new Date(todayMs).toISOString().split('T')[0];
+      const startI = loggedDates.has(todayIso) ? 0 : 1;
+      let run = 0;
+      for (let i = startI; i < 21; i++) {
+        const d = new Date(todayMs - i * dayMs).toISOString().split('T')[0];
+        if (loggedDates.has(d)) run++; else break;
+      }
+      if (run >= 3) {
+        let best = 0, cur = 0;
+        for (let i = run + 1; i < 21; i++) {
+          const d = new Date(todayMs - i * dayMs).toISOString().split('T')[0];
+          if (loggedDates.has(d)) { cur++; best = Math.max(best, cur); } else cur = 0;
+        }
+        wins.push(run > best ? `${run} gün üst üste kayıt — bu, son 3 haftadaki en uzun serin` : `${run} gün üst üste kayıt girdin`);
+      }
+      // (b) A high-compliance day after a weak stretch.
+      const lastScore = rAsc.length ? rAsc[rAsc.length - 1].compliance_score : null;
+      if (typeof lastScore === 'number' && lastScore >= 80) {
+        const prior = rAsc.slice(0, -1).filter(r => typeof r.compliance_score === 'number');
+        if (prior.length >= 3 && prior.slice(-5).every(r => (r.compliance_score ?? 0) < 80)) {
+          wins.push(`dün uyumun %${Math.round(lastScore)} — son günlerin en iyisi`);
+        }
+      }
+      // (c) 7-day vs prior-7-day improvement in sleep / water.
+      const avg = (arr: (number | null)[]) => { const v = arr.filter((x): x is number => typeof x === 'number' && x > 0); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+      const last7 = mAsc.slice(-7), prev7 = mAsc.slice(-14, -7);
+      const sN = avg(last7.map(m => m.sleep_hours)), sP = avg(prev7.map(m => m.sleep_hours));
+      if (sN != null && sP != null && sN - sP >= 0.5) wins.push(`uyku ortalaman ${sP.toFixed(1)}s → ${sN.toFixed(1)}s`);
+      const wN = avg(last7.map(m => m.water_liters)), wP = avg(prev7.map(m => m.water_liters));
+      if (wN != null && wP != null && wN - wP >= 0.4) wins.push(`su ortalaman ${wP.toFixed(1)}L → ${wN.toFixed(1)}L`);
+      if (wins.length > 0) {
+        lines.push(`KAZANIMLAR (en fazla BİRİNİ kullan; düzeltmeyle AYNI cümlede kullanma): ${wins.slice(0, 2).join(' | ')}`);
+      } else {
+        lines.push('KAZANIM YOK: bu turda kutlama UYDURMA, genel iltifat etme.');
+      }
+    } catch { /* wins are decorative — never break the snapshot */ }
+
+    // ── AI-behaviour #5: the coach's OWN recent words (push nudges + chat openers).
+    try {
+      const nudges = (nudgeRes.data ?? []) as { content: string; trigger_type: string | null; read: boolean | null; created_at: string }[];
+      if (nudges.length > 0) {
+        const OFFER = /(habit|aliskanlik|alışkanlık|offer|teklif|plateau|strategy|deload|maintenance)/i;
+        const rows = nudges.map((n) => {
+          const isOffer = n.trigger_type ? OFFER.test(n.trigger_type) : false;
+          const flag = isOffer && n.read !== true ? ' ⚠ AÇIK TEKLİF (cevaplanmadı)' : n.read === true ? ' [okundu]' : ' [okunmadı]';
+          return `- "${(n.content ?? '').slice(0, 110)}"${flag}`;
+        });
+        lines.push(`SANA GÖNDERDİĞİM MESAJLAR (48s — bunlar SENİN kendi sözlerin; TEKRAR ETME, üstüne konuş. Açık teklif varsa kullanıcı "evet/olur" derse O TEKLİFİ uygula):\n${rows.join('\n')}`);
+      }
+      const openers = ((openerRes.data ?? []) as { content: string }[])
+        .map(m => (m.content ?? '').replace(/<[^>]*>/g, '').trim().split(/\s+/).slice(0, 8).join(' '))
+        .filter(s => s.length > 12);
+      if (openers.length >= 2) {
+        lines.push(`SON AÇILIŞLARIN (AYNI kalıpla açma): ${openers.slice(0, 4).map(o => `"${o}…"`).join(' / ')}`);
+      }
+    } catch { /* non-critical */ }
+
     if (lines.length === 0) return '';
     return `## DURUM ÖZETİ (bu kişiyi ŞU AN böyle tanıyorsun — cevabını buna göre, duruma özel ver; genel geçme)\n${lines.join('\n')}`;
   } catch {
@@ -1102,8 +1231,106 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
 // AGGREGATOR: Get all service contexts at once
 // ─────────────────────────────────────────────
 
+/**
+ * AI-behaviour #13 — "SENİN MUTFAĞIN". The app stores what this person actually eats and cooks and
+ * the coach could not see it: meal_templates had ZERO edge readers, saved_recipes was read only when
+ * taskMode==='recipe' AND the message said elimde/dolapta/evde (so "bu akşam ne yesem?" never saw the
+ * user's own recipe library), and no most-eaten aggregate existed anywhere. So suggestions were
+ * generic ("dengeli bir tabak") when the answer was in their own history, in their own words.
+ */
+export async function getFoodRepertoireContext(userId: string): Promise<string> {
+  try {
+    const since = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    const [logsRes, tplRes, recipeRes] = await Promise.all([
+      supabaseAdmin.from('meal_logs').select('id, meal_type').eq('user_id', userId).eq('is_deleted', false).gte('logged_for_date', since).order('logged_for_date', { ascending: false }).limit(200),
+      supabaseAdmin.from('meal_templates').select('name').eq('user_id', userId).limit(8),
+      supabaseAdmin.from('saved_recipes').select('title, total_calories').eq('user_id', userId).limit(8),
+    ]);
+    const logs = (logsRes.data ?? []) as { id: string; meal_type: string | null }[];
+    const parts: string[] = [];
+    if (logs.length > 0) {
+      const { data: items } = await supabaseAdmin
+        .from('meal_log_items').select('food_name, meal_log_id')
+        .in('meal_log_id', logs.slice(0, 120).map(l => l.id)).limit(800);
+      const typeOf = new Map(logs.map(l => [l.id, l.meal_type ?? 'other']));
+      const counts = new Map<string, { n: number; types: Set<string> }>();
+      for (const it of (items ?? []) as { food_name: string | null; meal_log_id: string }[]) {
+        const name = (it.food_name ?? '').trim().toLocaleLowerCase('tr');
+        if (name.length < 2) continue;
+        const e = counts.get(name) ?? { n: 0, types: new Set<string>() };
+        e.n++; e.types.add(typeOf.get(it.meal_log_id) ?? 'other');
+        counts.set(name, e);
+      }
+      const top = [...counts.entries()].filter(([, v]) => v.n >= 2).sort((a, b) => b[1].n - a[1].n).slice(0, 12);
+      if (top.length > 0) parts.push(`En sık yedikleri (30 gün): ${top.map(([n, v]) => `${n} (${v.n}×)`).join(', ')}`);
+    }
+    const tpl = ((tplRes.data ?? []) as { name: string | null }[]).map(t => t.name).filter(Boolean);
+    if (tpl.length > 0) parts.push(`Kendi kaydettiği öğünler: ${tpl.join(', ')}`);
+    const rec = ((recipeRes.data ?? []) as { title: string | null; total_calories: number | null }[])
+      .filter(r => r.title).map(r => `${r.title}${r.total_calories ? ` (${r.total_calories} kcal)` : ''}`);
+    if (rec.length > 0) parts.push(`Tarif kütüphanesi: ${rec.join(', ')}`);
+    if (parts.length === 0) return '';
+    return `## SENİN MUTFAĞIN (yemek önerisini ÖNCE buradan kur — kullanıcının KENDİ kelimeleriyle. Buradan bir şey öneremiyorsan o zaman genel öner.)\n${parts.join('\n')}`;
+  } catch { return ''; }
+}
+
+/**
+ * AI-behaviour #9 — DID MY ADVICE ACTUALLY WORK?
+ *
+ * The app collects three outcome signals and the coach was shown NONE of them:
+ *  (a) `ai_feedback` (helpful / not_for_me) is written by the client's thumbs buttons and read by ZERO
+ *      edge functions (verified) — while the system prompt instructs the model to "learn from
+ *      feedback", a signal it was never given. So a rejected suggestion came back identically.
+ *  (b) `repair_history` records every correction, but it re-entered context only as a de-personalised
+ *      aggregate needing 2+ corrections of the SAME food — so the FIRST correction, the moment trust
+ *      is actually at stake, produced nothing and no rule covered owning the mistake.
+ *
+ * Owning a specific miss ONCE is the strongest trust move a coach has, and both trails already exist.
+ */
+export async function getAdviceOutcomeContext(userId: string): Promise<string> {
+  try {
+    const since48h = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
+    const [fbRes, repairRes] = await Promise.all([
+      supabaseAdmin.from('ai_feedback').select('feedback, context_id, created_at')
+        .eq('user_id', userId).eq('feedback', 'not_for_me')
+        .order('created_at', { ascending: false }).limit(3),
+      supabaseAdmin.from('repair_history').select('repair_type, original_text, corrected_text, food_name, created_at')
+        .eq('user_id', userId).gte('created_at', since48h)
+        .order('created_at', { ascending: false }).limit(1),
+    ]);
+    const parts: string[] = [];
+
+    const rejected = (fbRes.data ?? []) as { context_id: string | null; created_at: string }[];
+    if (rejected.length > 0) {
+      const ids = rejected.map(r => r.context_id).filter((v): v is string => !!v);
+      let texts: string[] = [];
+      if (ids.length > 0) {
+        const { data: msgs } = await supabaseAdmin.from('chat_messages').select('id, content').in('id', ids);
+        const byId = new Map(((msgs ?? []) as { id: string; content: string }[]).map(m => [m.id, m.content]));
+        texts = ids.map(id => byId.get(id)).filter((v): v is string => !!v)
+          .map(t => t.replace(/<[^>]*>/g, '').trim().slice(0, 120));
+      }
+      if (texts.length > 0) {
+        parts.push(`## ISE YARAMAYAN ONERILERIM (kullanici "bana uygun degil" dedi — AYNISINI TEKRARLAMA, yaklasimi DEGISTIR)\n${texts.map(t => `- "${t}…"`).join('\n')}`);
+      } else {
+        parts.push(`## GERI BILDIRIM: son ${rejected.length} onerim "bana uygun degil" olarak isaretlendi. Ayni kalibi tekrarlamak yerine yaklasimini degistir; gerekiyorsa NE istedigini sor.`);
+      }
+    }
+
+    const rep = ((repairRes.data ?? []) as { repair_type: string | null; original_text: string | null; corrected_text: string | null; food_name: string | null }[])[0];
+    if (rep) {
+      const what = rep.food_name ? `"${rep.food_name}"` : 'bir kaydi';
+      parts.push(`## SON DUZELTMEN (48s icinde): ${what} icin duzeltme yaptin${rep.corrected_text ? ` → "${String(rep.corrected_text).slice(0, 80)}"` : ''}.\nBu turda BIR KEZ, tek cumleyle kendi hatani SAHIPLEN ve bundan sonra onun degerini kullandigini soyle. Ozur dizisi YAPMA, tekrar etme.`);
+    }
+
+    return parts.join('\n\n');
+  } catch { return ''; }
+}
+
 export interface ServiceContexts {
   habits: { prompt: string; activeHabits: { name: string }[] };
+  foodRepertoire: string;
+  adviceOutcome: string;
   progressiveDisclosure: string;
   recovery: string;
   returnFlow: string;
@@ -1129,7 +1356,7 @@ export async function getAllServiceContexts(
   options?: { message?: string; clientTimezone?: string; effectiveToday?: string }
 ): Promise<ServiceContexts> {
   // Always fetch these (lightweight)
-  const [habits, progressiveDisclosure, caffeineSleep, adaptiveDifficulty, predictiveRisk, travel, conflicts] = await Promise.all([
+  const [habits, progressiveDisclosure, caffeineSleep, adaptiveDifficulty, predictiveRisk, travel, conflicts, foodRepertoire, adviceOutcome] = await Promise.all([
     getHabitsContext(userId),
     getProgressiveDisclosureContext(userId),
     getCaffeineSleepContext(userId),
@@ -1137,6 +1364,8 @@ export async function getAllServiceContexts(
     getPredictiveRiskContext(userId),
     getTravelContext(userId, options?.clientTimezone),
     getConflictContext(userId, options?.message),
+    getFoodRepertoireContext(userId), // AI-behaviour #13 — always on: suggestions come from THEIR food
+    getAdviceOutcomeContext(userId),  // AI-behaviour #9 — always on: did my last advice land?
   ]);
 
   // Mode-specific contexts (only fetch when relevant)
@@ -1161,6 +1390,8 @@ export async function getAllServiceContexts(
 
   return {
     habits: { prompt: habits.prompt, activeHabits: habits.activeHabits },
+    foodRepertoire,
+    adviceOutcome,
     progressiveDisclosure,
     recovery,
     returnFlow,

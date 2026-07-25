@@ -279,6 +279,35 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
     const missing = [!p.height_cm && 'boy', !p.weight_kg && 'kilo', !p.birth_year && 'yas', !p.gender && 'cinsiyet', goals.length === 0 && 'hedef'].filter(Boolean);
     if (missing.length > 0) parts.push(`EKSIK BILGILER: ${missing.join(', ')}`);
   }
+  // Remaining profile TOPICS so "profilimi doldurmaya devam edelim" gets the ACTUAL next topic
+  // instead of a blank "hangi alanda?" (audit: general-chat awareness gap). Runs regardless of
+  // onboarding_completed since the topic cards outlive the 5-field quick onboarding.
+  {
+    const { data: sum } = await supabaseAdmin.from('ai_summary').select('onboarding_tasks_completed').eq('user_id', userId).maybeSingle();
+    const done = new Set((sum?.onboarding_tasks_completed as string[] | null) ?? []);
+    // FIX (audit MEDIUM): onboarding_tasks_completed is written ONLY on a coach-validated close, so a
+    // topic completed via DATA (a goal row, a profile field) reads as "pending" and the coach nags
+    // about done topics. Fold in the same real-data signals the gates use, from p/goals already in hand.
+    if (goals.length > 0) done.add('set_goal');
+    if (p.occupation || p.work_start || p.activity_level) done.add('daily_routine'); // mig 095: activity_level no longer defaults
+    if (p.eating_out_frequency || p.fastfood_frequency || p.snacking_habit) done.add('eating_habits');
+    if (p.kitchen_equipment || p.meal_prep_time || (p.cooking_skill && p.cooking_skill !== 'basic') || (p.budget_level && p.budget_level !== 'medium')) done.add('kitchen_logistics');
+    if (p.training_experience || p.exercise_history || p.preferred_exercises || p.available_training_times) done.add('exercise_history');
+    if (p.sleep_time || p.sleep_quality) done.add('sleep_patterns');
+    if (p.stress_level || p.motivation_source || p.stress_sources || p.biggest_challenge) done.add('stress_motivation');
+    if (p.household_cooking || p.household_diet_challenge) done.add('home_environment');
+    if (p.previous_diets) done.add('weight_history');
+    const ALL_TOPICS: [string, string][] = [
+      ['set_goal', 'Hedef belirleme'], ['daily_routine', 'Günlük rutin'], ['eating_habits', 'Beslenme alışkanlıkları'],
+      ['allergies', 'Alerji ve hassasiyetler'], ['kitchen_logistics', 'Mutfak imkanları'], ['exercise_history', 'Spor geçmişi'],
+      ['health_history', 'Sağlık geçmişi'], ['weight_history', 'Kilo geçmişi'], ['lab_values', 'Kan tahlilleri'],
+      ['sleep_patterns', 'Uyku düzeni'], ['stress_motivation', 'Stres ve motivasyon'], ['home_environment', 'Ev ve çevre'],
+    ];
+    const pending = ALL_TOPICS.filter(([k]) => !done.has(k)).map(([, t]) => t);
+    if (pending.length > 0) {
+      parts.push(`KALAN PROFIL KONULARI (kullanici "profilimi doldur / devam edelim" derse "hangi alan?" DIYE SORMA — SIRADAKI konuyu sen oner ve baslat): ${pending.slice(0, 6).join(', ')}`);
+    }
+  }
 
   return parts.join('\n').trim();
 }
@@ -445,9 +474,13 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
 
   // Habits
   if (isFull || focuses.includes('habits')) {
-    const habits = s.habit_progress as { habit: string; status: string; streak: number }[] | null;
+    const habits = s.habit_progress as { habit?: string; name?: string; key?: string; status: string; streak: number }[] | null;
     if (habits && habits.length > 0) {
-      parts.push(`## ALISKANLIKLAR\n${habits.map(h => `- ${h.habit}: ${h.status} (${h.streak} gun)`).join('\n')}`);
+      // FIX (adversarial): this printed the STORED monotonic streak — which habits.ts documents as a
+      // lie (it survived multi-week absences) — while the derived "## ALISKANLIK DURUMU" block in the
+      // SAME system prompt showed the real one, so the coach congratulated a dead streak at random.
+      // Names + status only here; the derived block owns every number.
+      parts.push(`## ALISKANLIKLAR\n${habits.map(h => `- ${h.habit ?? h.name ?? h.key}: ${h.status}`).join('\n')}`);
     }
   }
 
@@ -692,6 +725,15 @@ function formatLayer3(
       }
     }
     // 'reference' detail → only today shown above
+
+    // AI-behaviour #7: the app already writes "yarin icin tek en etkili aksiyon" into
+    // daily_reports.tomorrow_action every night, SELECTs it into Layer 3 and then never renders it —
+    // so the coach was blind to its own prescription the next morning and could never close the loop.
+    // Surface the most recent real one at ANY detail level.
+    const lastAction = [...reports].reverse().find(r => typeof r.tomorrow_action === 'string' && r.tomorrow_action.trim() && r.tomorrow_action.trim() !== '-');
+    if (lastAction) {
+      parts.push(`\n## DUNKU AKSIYON (senin verdigin tek adim — bugun BUNU sor/takip et, yenisini vermeden once)\n${lastAction.date.slice(5)}: ${lastAction.tomorrow_action.trim()}`);
+    }
   }
 
   // Weight trend

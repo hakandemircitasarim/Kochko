@@ -19,13 +19,21 @@ export interface Constraint {
   note?: string;
 }
 
-/** Upsert an active constraint (idempotent on user_id+kind+subject). */
-export async function syncConstraint(userId: string, c: Constraint): Promise<void> {
+/**
+ * Upsert an active constraint (idempotent on user_id+kind+subject).
+ *
+ * Returns TRUE only when the row was actually written. FIX (audit C5 — the most safety-relevant
+ * silent failure in the app): this used to `await` the upsert WITHOUT destructuring `{ error }`.
+ * supabase-js does NOT throw on a database error — it resolves with an error object — so the
+ * try/catch here caught nothing and a failed write of an ALLERGEN or INJURY produced no log at
+ * all, while the coach happily replied "not aldım". Callers can now surface an honest failure.
+ */
+export async function syncConstraint(userId: string, c: Constraint): Promise<boolean> {
   // Hard cap: the UNIQUE(user_id,kind,subject) btree can't index an unbounded free-text subject
   // (tuple-size limit → the upsert would throw and be swallowed, silently dropping a medical fact).
   // 80 chars is plenty for a canonical token / short phrase.
   const subject = (c.subject ?? '').trim().toLocaleLowerCase('tr').slice(0, 80);
-  if (!subject) return;
+  if (!subject) return false;
   // #arch step 1 (epistemics): stamp confidence + confirmed_at from provenance. What the user
   // states/confirms is trusted and marked confirmed now; imported/inferred beliefs are lower
   // confidence and NOT confirmed until the user affirms them. Confidence NEVER gates safety — the
@@ -34,7 +42,7 @@ export async function syncConstraint(userId: string, c: Constraint): Promise<voi
   const source = c.source ?? 'user_stated';
   const confirmed = source === 'user_stated' || source === 'confirmed';
   try {
-    await supabaseAdmin.from('user_constraints').upsert({
+    const { error } = await supabaseAdmin.from('user_constraints').upsert({
       user_id: userId, kind: c.kind, subject,
       severity: c.severity ?? null,
       body_parts: c.body_parts ?? [],
@@ -46,7 +54,17 @@ export async function syncConstraint(userId: string, c: Constraint): Promise<voi
       stated_at: now,
       updated_at: now,
     }, { onConflict: 'user_id,kind,subject' });
-  } catch (e) { console.warn('[constraints] sync failed', c.kind, subject, (e as Error).message); }
+    if (error) {
+      // A FAILED write here means a medical constraint (allergen/injury/condition) is NOT in the
+      // safety spine while the coach believes it is. Loud by design.
+      console.error('[constraints] sync FAILED (safety fact not persisted)', c.kind, subject, error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('[constraints] sync threw (safety fact not persisted)', c.kind, subject, (e as Error).message);
+    return false;
+  }
 }
 
 /** Mark a constraint the user has just affirmed as confirmed (confidence 1.0, confirmed_at now). */

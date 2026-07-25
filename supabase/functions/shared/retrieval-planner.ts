@@ -393,7 +393,10 @@ export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
       // Day-to-day conversational logging. Needs profile for TDEE context, recent meals
       // and workouts (7 days) for pattern continuity, and layer2 patterns to recognize
       // habits. Layer4 full so the chat thread stays coherent.
-      return makePlan('focused', ['nutrition', 'training'], 'minimal', ['patterns', 'preferences'], 7, ['meals', 'workouts', 'metrics'], 'full', 15);
+      // AI-behaviour #7: 'commitments' + 'reports' added — the coach could not see its own open
+      // commitments or yesterday's prescribed action on the app's HIGHEST-frequency mode, so it could
+      // never follow up on what it asked for. The due/upcoming formatter already exists downstream.
+      return makePlan('focused', ['nutrition', 'training'], 'minimal', ['patterns', 'preferences'], 7, ['meals', 'workouts', 'metrics', 'reports', 'commitments'], 'full', 15);
     case 'periodic':
       return makePlan('full', ['health', 'nutrition', 'training', 'demographics'], 'full', ['patterns', 'persona', 'preferences', 'strength', 'habits'], 7, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 10);
     default:

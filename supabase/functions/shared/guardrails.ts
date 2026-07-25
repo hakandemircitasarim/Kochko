@@ -182,6 +182,149 @@ export function checkAllergens(
 }
 
 /**
+ * Decline/avoidance cues that mark an allergen mention as "addressed" — the coach is telling
+ * the user to AVOID the food ("... yerine", "önermiyorum", "kaçın"), not recommending it.
+ * Shared with the output-side scan so the "warn vs recommend" call has one definition.
+ */
+export const ALLERGEN_DECLINE_RE =
+  /(önermiyor|onermiyor|öneremem|oneremem|kaçın|kacin|içermez|icermez|yerine|uygun değil|uygun degil|uzak dur|tüketme|tuketme|çıkar|cikar|eklemedim|kullanmad|hariç|haric|kullanma)/;
+
+export type AllergenSeverity = 'mild' | 'moderate' | 'severe';
+
+export interface AllergenReplyScan {
+  /** true = an allergen food appears in the reply and is NOT addressed by a decline phrase. */
+  violated: boolean;
+  /** Allergen display-names present & un-addressed in the reply (worst-first is not guaranteed). */
+  matched: string[];
+  /** Worst severity among the matched allergens; null when none carried a severity. */
+  worstSeverity: AllergenSeverity | null;
+}
+
+/**
+ * Output-side allergen enforcement (Spec 12.4). Scans an AI reply against the user's allergens
+ * and decides whether an unsafe food is being RECOMMENDED (violation) vs merely mentioned next
+ * to a decline phrase ("... yerine badem", "fıstık önermiyorum" — addressed). Pure &
+ * deterministic so it is unit-testable and can gate a HARD BLOCK with no LLM in the loop.
+ *
+ * "Addressed" is fail-safe: an allergen counts as addressed ONLY if EVERY occurrence of EVERY
+ * present token sits within 50 chars of a decline phrase — a single un-hedged mention re-arms
+ * the violation (mirrors the historical AI/HIGH first-occurrence false-negative fix).
+ */
+export function scanReplyForAllergens(
+  reply: string,
+  allergens: { name: string; severity?: AllergenSeverity | null }[],
+): AllergenReplyScan {
+  const active = allergens.filter(a => a.name && a.name.trim());
+  if (active.length === 0) return { violated: false, matched: [], worstSeverity: null };
+
+  const lowerReply = reply.toLocaleLowerCase('tr');
+
+  // Presence is decided PER-allergen with the SAME inflection-aware matcher as checkAllergens
+  // (category→member expansion, Turkish suffix stripping, consonant softening). A plain
+  // substring scan would miss inflected forms like "fındığı"/"sütlü" and could mis-route a
+  // SEVERE hit to the warn path — the exact hole this function exists to close.
+  const present = active.filter(a => !checkAllergens(reply, [a.name]).passed);
+  if (present.length === 0) return { violated: false, matched: [], worstSeverity: null };
+
+  // "Addressed" = the coach is telling the user to AVOID the food, not recommending it. It holds
+  // ONLY if the allergen's occurrences can be localised in the text AND every one sits within 50
+  // chars of a decline phrase. Fail-safe on both ends: a mention we cannot localise (inflected-
+  // only, so no literal token match) is NOT treated as addressed, and a single un-hedged
+  // occurrence re-arms the violation (mirrors the AI/HIGH first-occurrence false-negative fix).
+  const isAddressed = (name: string): boolean => {
+    const aName = name.toLocaleLowerCase('tr');
+    const tokens = [aName, ...(ALLERGEN_FOODS[aName] ?? [])].filter(t => t.length >= 3);
+    let anyFound = false;
+    for (const t of tokens) {
+      let i = lowerReply.indexOf(t);
+      while (i >= 0) {
+        anyFound = true;
+        if (!ALLERGEN_DECLINE_RE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50))) return false;
+        i = lowerReply.indexOf(t, i + t.length);
+      }
+    }
+    return anyFound; // addressed only if occurrences were actually found and ALL were hedged
+  };
+
+  const matchedAllergens = present.filter(a => !isAddressed(a.name));
+  if (matchedAllergens.length === 0) return { violated: false, matched: [], worstSeverity: null };
+
+  const rank: Record<AllergenSeverity, number> = { mild: 1, moderate: 2, severe: 3 };
+  let worst: AllergenSeverity | null = null;
+  for (const a of matchedAllergens) {
+    const s = a.severity ?? null;
+    if (s && (worst === null || rank[s] > rank[worst])) worst = s;
+  }
+  return { violated: true, matched: matchedAllergens.map(a => a.name), worstSeverity: worst };
+}
+
+/**
+ * Deterministic SAFE reply shown INSTEAD of an AI message that recommends a severe/anaphylaxis
+ * allergen food. The unsafe suggestion never reaches the user — this is the hard-enforcement
+ * path Spec 12.4 requires ("MUST be code-enforced"), not a warning appended below the danger.
+ */
+export function buildAllergenBlockMessage(names: string[]): string {
+  const list = names.length > 0 ? names.join(', ') : 'alerjen';
+  return `Az önce hazırladığım öneride profilinde kayıtlı **${list}** alerjine uygun olmayan bir besin vardı — güvenliğin için o öneriyi göstermiyorum. İstersen sana ${list} içermeyen güvenli bir alternatif hazırlayayım; "olur" demen yeterli.`;
+}
+
+/**
+ * User wants to CLOSE / SKIP the current onboarding profile topic. Two cases the field-by-field
+ * collector otherwise fails to honour (the reported "konu bir türlü kapanmıyor"):
+ *   1. Explicit skip / move-on / "that's enough" / "I don't know" / "close this".
+ *   2. "There is no fixed pattern" — a COMPLETE answer for a soft topic (sleep, routine); the
+ *      collector wrongly treats the absent specific (e.g. a bedtime) as a gap and re-drills the
+ *      SAME question in reworded form ("hangi saatlerde yatmayı tercih edersin").
+ * Deterministic backstop so a task closes on the user's terms even if the LLM keeps asking. The
+ * caller MUST gate critical tasks (introduce_yourself/set_goal) so core setup can't be skipped.
+ */
+export function detectTaskSkipIntent(userMessage: string): boolean {
+  const t = (userMessage ?? '').toLocaleLowerCase('tr').trim();
+  if (!t) return false;
+  // A message carrying concrete data (a number/time/duration — "9 12", "23:00", "7 saat",
+  // "3 öğün") is an ANSWER to capture, NEVER a skip. This single guard kills the biggest
+  // false-positive class: a substantive reply that merely contains a skip-ish word.
+  if (/\d/.test(t)) return false;
+  // Explicit close / move-on / don't-know — WORD-ANCHORED so a skip word buried inside a real
+  // answer cannot fire (e.g. "iştahım kapanmıyor" must NOT read as "close the topic").
+  const EXPLICIT = /(^|[\s,.!?:;])(bilmiyorum|bilemem|bilmem|hi[cç]bir fikrim yok|ge[cç]elim|ge[cç]sek|ge[cç] bunu|bu konuyu ge[cç]|ba[sş]ka (bir )?konu(ya|da)?|yeter|bu kadar( yeter)?|kapatal[iı]m|kapatabilir|kapat art[iı]k|kapans[iı]n|bo[sş] ?ver)([\s,.!?:;]|$)/;
+  if (EXPLICIT.test(t)) return true;
+  // The reported frustration phrasing: "(bu) konu bir türlü kapanmayacak mı / kapanmıyor mu".
+  if (/konu(su|yu|muz)?\s*(bir t[uü]rl[uü]\s*)?kapanm(ayacak|[ıi]yor)\s*m[ıi]/.test(t)) return true;
+  // "No fixed pattern" as the GIST of a SHORT message — a complete answer for a soft topic
+  // (sleep/routine). Length-gated so it fires only when the message is essentially just that,
+  // not a subordinate clause inside a longer substantive reply.
+  if (t.length <= 42 && /(d[uü]zen(im)?\s*yok|belli bir d[uü]zen|d[uü]zensiz|sabit de[gğ]il|net bir\s*(şey|sey)\s*yok)/.test(t)) return true;
+  return false;
+}
+
+/**
+ * Normalise a loosely-written clock time to a strict "HH:MM" a Postgres TIME column accepts, or
+ * null when it can't. Accepts bare hours ("9"→"09:00", "21"→"21:00") and "H:MM"/"H.MM" forms.
+ * The profile write path uses this to GUARD sleep_time/wake_time/work_start/work_end: a value it
+ * can't normalise is DROPPED (not written) so a malformed TIME literal can never 22P02-crash the
+ * batched profiles.update() and take every co-submitted field (quality, occupation…) down with it.
+ */
+export function normalizeClockTime(raw: string | number | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const hm = s.match(/^(\d{1,2})\s*[:.]\s*(\d{1,2})$/);
+  if (hm) {
+    const h = parseInt(hm[1], 10), mi = parseInt(hm[2], 10);
+    if (h <= 23 && mi <= 59) return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+    return null;
+  }
+  const hOnly = s.match(/^(\d{1,2})$/);
+  if (hOnly) {
+    const h = parseInt(hOnly[1], 10);
+    if (h <= 23) return `${String(h).padStart(2, '0')}:00`;
+    return null;
+  }
+  return null;
+}
+
+/**
  * Detect allergens DECLARED by the user in a free-text chat message (#R1-H1/H8).
  * Scans the WHOLE message against the ALLERGEN_FOODS vocabulary (category names +
  * member foods) so multi-word/category allergens ("deniz ürünleri", "süt ürünleri")

@@ -142,8 +142,34 @@ export async function buildMemoryMirror(userId: string): Promise<string> {
   // ── Seni tanıdıkça öğrendiklerim ──
   const learned: string[] = [];
   const bp = summary.behavioral_patterns;
-  if (Array.isArray(bp)) { for (const x of bp.slice(0, 4)) if (typeof x === 'string') learned.push(x); }
-  else if (typeof bp === 'string' && bp.trim()) learned.push(bp.trim());
+  // FIX (audit HIGH — glass-box showed an EMPTY learned layer): behavioral_patterns are stored as
+  // OBJECTS ({pattern|description|note|observation}) everywhere else (see buildKnowledgeSummary
+  // below, which handles them), but this renderer kept only typeof==='string' entries — so the
+  // headline "beni nasıl tanıyorsun?" feature looked like the coach had learned nothing.
+  if (Array.isArray(bp)) {
+    // FIX (adversarial): rendering objects un-hid RETRACTED beliefs — patterns carry a status
+    // ('active' | 'candidate' | 'resolved', set at ai-chat 6048/6074/6177 incl. resolved_reason
+    // 'user_correction'), and every other reader filters on it (context-builders ~398). Reading a
+    // belief the user just corrected back to them as current is the worst failure on the very
+    // surface that promises "correct me and I update". Filter FIRST, then take 4 — slicing before
+    // filtering also let the OLDEST entries win on an append-ordered array.
+    const candidates = (bp as unknown[])
+      .map((x) => {
+        if (typeof x === 'string') return x.trim() ? { txt: x.trim(), status: undefined as string | undefined } : null;
+        if (!x || typeof x !== 'object') return null;
+        const o = x as Record<string, unknown>;
+        const txt = [o.description, o.pattern, o.note, o.observation, o.text]
+          .find((v) => typeof v === 'string' && (v as string).trim()) as string | undefined;
+        if (!txt) return null;
+        return { txt: txt.trim(), status: typeof o.status === 'string' ? o.status : undefined };
+      })
+      .filter((e): e is { txt: string; status: string | undefined } => e !== null)
+      // Keep entries with no status (back-compat) but drop the explicitly retired ones.
+      .filter((e) => e.status !== 'resolved' && e.status !== 'stale')
+      // Prefer confirmed patterns over unverified candidates.
+      .sort((a, b) => (a.status === 'candidate' ? 1 : 0) - (b.status === 'candidate' ? 1 : 0));
+    for (const e of candidates.slice(0, 4)) learned.push(e.txt);
+  } else if (typeof bp === 'string' && bp.trim()) learned.push(bp.trim());
   const habits = summary.habit_progress;
   if (Array.isArray(habits)) {
     const active = (habits as Array<{ name?: string; habit?: string; status?: string; streak?: number }>).filter(h => h.status === 'active');

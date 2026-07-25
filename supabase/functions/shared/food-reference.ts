@@ -216,17 +216,61 @@ const SIZE_MULT: Record<string, number> = { 'küçük': 0.7, 'kucuk': 0.7, 'orta
  * tabak/avuç/porsiyon) scaled by a leading count + size word. Falls back to the food's default
  * portion when the unit is unrecognised.
  */
-export function parsePortionToGrams(portionText: string, food: FoodEntry): number {
+/**
+ * AI-behaviour #6 — PERSONAL PORTION CALIBRATION.
+ *
+ * ai_summary.portion_calibration stores what the user has TAUGHT us ("benim tabağım 200 gram"), the
+ * prompt promises "o porsiyon degerini AYNEN kullan, tartismasiz", and the Layer-2 block ships it as
+ * "PORSIYON HAFIZASI (KESIN)". But grounding never received it: computeItemNutrition had no user
+ * parameter, so the generic household table won (tabak = portionG×1.6) and OVERRODE the model — a
+ * user who corrected the same plate five times still got 350 g logged. Their number wins now.
+ */
+export type UserPortions = Record<string, { grams?: number; confirmed?: boolean; count?: number } | number>;
+
+/**
+ * FIX (adversarial): this searched the PORTION text ("1 tabak") for the calibration keys, but the only
+ * writer keys the map by FOOD NAME (ai-chat: `raw[pu.food.toLowerCase()] = {grams,count,confirmed}`),
+ * so "1 tabak" never contained "pilav" and the calibration could never fire — the generic table still
+ * won and the user who taught "200 gram" still got 350 g logged. Match on the FOOD name, and honour
+ * the writer's own confidence rule (confirmed becomes true at count>=3, per Spec 5.23) instead of
+ * acting on a single unverified observation.
+ */
+function calibratedGrams(foodName: string, userPortions?: UserPortions): number | null {
+  if (!userPortions || !foodName) return null;
+  const norm = normalizeName(foodName);
+  if (!norm) return null;
+  let best: { grams: number; len: number } | null = null;
+  for (const [rawKey, rawVal] of Object.entries(userPortions)) {
+    const key = normalizeName(rawKey);
+    // >=3 chars: a 2-char key ("et") substring-matches unrelated names ("etli", "paket").
+    if (key.length < 3) continue;
+    if (!(norm.includes(key) || key.includes(norm))) continue;
+    const grams = typeof rawVal === 'number' ? rawVal : Number(rawVal?.grams);
+    if (!Number.isFinite(grams) || grams <= 0 || grams > 5000) continue;
+    // Only a CONFIRMED (or 3+ times observed) calibration may override the reference table.
+    const confirmed = typeof rawVal === 'number' ? false : (rawVal?.confirmed === true || Number(rawVal?.count) >= 3);
+    if (!confirmed) continue;
+    if (!best || key.length > best.len) best = { grams, len: key.length };
+  }
+  return best ? best.grams : null;
+}
+
+export function parsePortionToGrams(portionText: string, food: FoodEntry, userPortions?: UserPortions, foodName?: string): number {
   const norm = normalizeName(portionText);
   const count = parseCount(norm);
   let sizeMult = 1;
   for (const [w, m] of Object.entries(SIZE_MULT)) if (norm.includes(w)) sizeMult = m;
 
-  // Explicit weight
+  // Explicit weight — the user gave grams outright, nothing beats that.
   const kg = norm.match(/(\d+[.,]?\d*)\s*(kg|kilo)/);
   if (kg) return parseFloat(kg[1].replace(',', '.')) * 1000;
   const g = norm.match(/(\d+[.,]?\d*)\s*(gram|gr|g)\b/);
   if (g) return parseFloat(g[1].replace(',', '.'));
+
+  // PERSONAL calibration next — above the household table, below an explicit gram figure. count and
+  // sizeMult still apply, so "yarım tabak" scales the user's own plate rather than the generic one.
+  const cal = calibratedGrams(foodName ?? food.key, userPortions);
+  if (cal != null) return count * cal * sizeMult;
 
   // Explicit volume (liquids)
   const density = food.densityGperMl ?? 1.0;
@@ -252,7 +296,10 @@ export function parsePortionToGrams(portionText: string, food: FoodEntry): numbe
   // Solid household units
   if (has('dilim')) return count * (food.sliceG ?? 30) * sizeMult;
   if (has('adet') || has('tane')) return count * (food.pieceG ?? food.portionG ?? 100) * sizeMult;
-  if (has('kase') || has('kâse')) return count * 250;
+  // FIX (audit HIGH — 972-kcal oatmeal): a "kase" is ONE serving of the food, so respect the food's
+  // own portionG basis (yulaf's dry 40g basis, süzme yoğurt's 150g) instead of a flat 250g that
+  // ignored it — 250g dry yulaf grounded to ~972 kcal and OVERRODE the model's correct ~150.
+  if (has('kase') || has('kâse')) return count * (food.portionG ?? 250) * sizeMult;
   if (has('tabak')) return count * (food.portionG ? food.portionG * 1.6 : 350);
   if (has('avuç') || has('avuc')) return count * 30;
   if (has('porsiyon')) return count * (food.portionG ?? 200) * sizeMult;
@@ -276,10 +323,10 @@ export interface ComputedNutrition {
  * Deterministic per-item nutrition from canonical data. Returns null when the food can't be
  * resolved (caller keeps the model estimate). kcal = grams/100 × per100g — computed in code.
  */
-export function computeItemNutrition(name: string, portionText: string): ComputedNutrition | null {
+export function computeItemNutrition(name: string, portionText: string, userPortions?: UserPortions): ComputedNutrition | null {
   const food = resolveFood(name);
   if (!food) return null;
-  const grams = Math.max(0, parsePortionToGrams(portionText || '', food));
+  const grams = Math.max(0, parsePortionToGrams(portionText || '', food, userPortions, name));
   if (grams <= 0) return null;
   const factor = grams / 100;
   const r = (v: number, d = 0) => Math.round(v * factor * (d ? 10 : 1)) / (d ? 10 : 1);

@@ -11,7 +11,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
-import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep, updateLayer2 } from '../shared/memory.ts';
+import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep, updateLayer2, detectDayOfWeekDrift, detectDerailFoods } from '../shared/memory.ts';
 import { composeGeneralSummary } from '../shared/memory-mirror.ts';
 import { denyIfNotCron } from '../shared/cron-auth.ts';
 
@@ -217,6 +217,13 @@ serve(async (req: Request) => {
       if (tier === 3) {
         await Promise.all([
           detectSnackingHours(userId).catch((e: Error) => console.error(`[Extractor] snacking ${userId}:`, e.message)),
+          // AI-behaviour #16 (moved ABOVE the new-messages gate — these are DATA analyzers; below it
+          // they never ran for log-heavy / chat-light users, the exact staleness bug the other
+          // chat-independent tier-3 analyzers were hoisted here to fix).
+          ...(tier === 3 ? [
+            detectDayOfWeekDrift(userId).catch((e: Error) => console.error(`[Extractor] weekday drift ${userId}:`, e.message)),
+            detectDerailFoods(userId).catch((e: Error) => console.error(`[Extractor] derail foods ${userId}:`, e.message)),
+          ] : []),
           calibrateActivityMultiplier(userId).catch((e: Error) => console.error(`[Extractor] activity ${userId}:`, e.message)),
           analyzeLateMealSleep(userId).catch((e: Error) => console.error(`[Extractor] latemeal ${userId}:`, e.message)),
           refreshCorrectionMemory(userId).catch((e: Error) => console.error(`[Extractor] correction ${userId}:`, e.message)),
@@ -393,6 +400,7 @@ serve(async (req: Request) => {
           console.error(`[Extractor] Tone inference failed for ${userId}:`, err.message)
         );
       }
+
     }
 
     return new Response(JSON.stringify({

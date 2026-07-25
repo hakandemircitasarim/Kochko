@@ -1,0 +1,23 @@
+-- 095: profiles.activity_level — DROP the 'sedentary' DEFAULT.
+--
+-- WHY (audit HIGH, whole-system 2026-07-23):
+-- `activity_level TEXT ... DEFAULT 'sedentary'` (mig 001:40) meant EVERY profile carried a truthy
+-- 'sedentary' from signup. Consequences, all silent:
+--   1. tdeeFrom()'s intended `?? 'moderate'` (×1.55) fallback was DEAD CODE — a chat-onboarded user
+--      who never volunteered their activity level was computed at ×1.2 and under-fuelled by
+--      hundreds of kcal/day (~30%) on the app's core-vision path. Every generated plan inherited it.
+--   2. Completion gates that OR on `!activity_level` could never fail (dead gate terms).
+--   3. Nothing could distinguish "the user told us they are sedentary" from "nobody ever asked".
+--
+-- After this, a fresh profile has activity_level NULL until it is actually captured, so the code
+-- fallback is live, the gates are meaningful, and a genuine 'sedentary' answer is a real signal.
+--
+-- NOT backfilled on purpose: existing rows holding 'sedentary' cannot be distinguished between
+-- "answered" and "default", and nulling them would silently re-open completed onboarding cards
+-- and change live targets under users. New profiles get the correct behaviour; existing users are
+-- corrected the moment they state their activity level (the extractor now catches "gün boyu
+-- ayaktayım" etc.).
+--
+-- DOWN: ALTER TABLE profiles ALTER COLUMN activity_level SET DEFAULT 'sedentary';
+
+ALTER TABLE profiles ALTER COLUMN activity_level DROP DEFAULT;

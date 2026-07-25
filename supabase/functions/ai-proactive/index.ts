@@ -20,6 +20,7 @@ import { projectDailyPlanRows, type ProjectionProfile } from '../shared/plan-pro
 import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
 import { deficitAllowed } from '../shared/safety-state.ts';
+import { HABIT_CATALOG, normalizeHabitEntry, deriveHabitStats, readyForNextHabit } from '../shared/habits.ts';
 
 /**
  * Start of the user's LOCAL calendar day expressed as a UTC ISO instant — for windowing a
@@ -72,6 +73,10 @@ serve(async (req: Request) => {
     const today = now.toISOString().split('T')[0];
     const dayOfWeek = now.getDay(); // 0=Sunday, 1=Monday
     let totalSent = 0;
+    // FIX (adversarial): 13 trigger sites `totalSent++` unconditionally even when the gate SUPPRESSED
+    // the write, so the cron reported nudges it never stored. The helper keeps the honest tallies;
+    // reset per request (module scope survives warm invocations).
+    nudgeStats.inserted = 0; nudgeStats.suppressed = 0;
 
     // ── #journey-CRITICAL: daily_plans ROLL-FORWARD + calorie RE-CUT ──────────────
     // Plan approval projects ONLY the approval week; nothing re-projected it, so from
@@ -128,7 +133,7 @@ serve(async (req: Request) => {
               // #journey HIGH: size the deficit to the user's remaining kg / remaining weeks (capped
               // to a safe rate) so the re-cut converges on their chosen DATE. Falls back to the factor.
               const weeksElapsed = g?.created_at ? Math.max(0, Math.floor((Date.now() - Date.parse(g.created_at as string)) / (7 * 86400000))) : 0;
-              const target = resolveTargetCalories({ tdee, goalType: gType, fixedFactor: factor, currentWeight: curW, targetWeight: g?.target_weight_kg as number | null, targetWeeks: g?.target_weeks as number | null, weeksElapsed });
+              const target = resolveTargetCalories({ tdee, goalType: gType, fixedFactor: factor, currentWeight: curW, targetWeight: g?.target_weight_kg as number | null, targetWeeks: g?.target_weeks as number | null, weeksElapsed, gender: prof.gender as string | null });
               const band = computeCalorieBand({ targetCalories: target, gender: prof.gender as string | null });
               const tMin = band.trainingMin, tMax = band.trainingMax, rrMin = band.restMin, rrMax = band.restMax, budget = band.weeklyBudget;
               await supabaseAdmin.from('profiles').update({ tdee_calculated: tdee, tdee_last_weight: curW, tdee_last_date: today, calorie_range_training_min: tMin, calorie_range_training_max: tMax, calorie_range_rest_min: rrMin, calorie_range_rest_max: rrMax, weekly_calorie_budget: budget, updated_at: new Date().toISOString() }).eq('id', uid);
@@ -163,6 +168,17 @@ serve(async (req: Request) => {
               calorie_range_rest_max: rMax ?? null,
             } as ProjectionProfile,
             weekConsumed,
+            // FIX (adversarial HIGH): this writer owns daily_plans from day 8 of every plan onward and
+            // passed NEITHER guard — so a workout-only user got the 1000-kcal placeholder (925/1075 +
+            // 0 g protein) back every week, and a sub-floor LLM target reached the table unclamped.
+            fallbackCalorieTarget: (() => {
+              const lo = Number(rMin), hi = Number(rMax);
+              if (Number.isFinite(lo) && Number.isFinite(hi) && lo > 0 && hi > 0) return Math.round((lo + hi) / 2);
+              const tMin = Number(prof?.calorie_range_training_min), tMax = Number(prof?.calorie_range_training_max);
+              if (Number.isFinite(tMin) && Number.isFinite(tMax) && tMin > 0 && tMax > 0) return Math.round((tMin + tMax) / 2);
+              return null;
+            })(),
+            calorieFloor: getCalorieFloor(prof?.gender as string | null),
           });
           const writeRows = rows.filter((r) => r.date >= userToday && r.date <= weekEnd).map((r) => ({ ...r, user_id: uid, version: 1 }));
           if (writeRows.length) {
@@ -270,7 +286,7 @@ serve(async (req: Request) => {
           .gte('created_at', dayStart.toISOString());
         if ((alreadySent ?? 0) > 0) continue;
 
-        await supabaseAdmin.from('coaching_messages').insert({
+        await insertCoachingMessage({
           user_id: profile.id,
           trigger_type: 'snack_hour_nudge',
           priority: 'low',
@@ -320,7 +336,7 @@ serve(async (req: Request) => {
         const recentPerDay = (last7 ?? 0) / 7;
         if (recentPerDay >= baselinePerDay * 0.5) continue; // still healthy
 
-        await supabaseAdmin.from('coaching_messages').insert({
+        await insertCoachingMessage({
           user_id: profile.id,
           trigger_type: 'motivation_dip',
           priority: 'low',
@@ -389,7 +405,7 @@ serve(async (req: Request) => {
           const alcoholYesterday = yesterday ? (yesterday.alcohol_calories ?? 0) >= 50 : false;
           if (!alcoholYesterday) continue;
 
-          await supabaseAdmin.from('coaching_messages').insert({
+          await insertCoachingMessage({
             user_id: profile.id,
             trigger_type: 'alcohol_next_day',
             priority: 'low',
@@ -446,7 +462,7 @@ serve(async (req: Request) => {
           const remaining = Math.max(0, weeklyBudget - consumed);
           const daysLeft = 7 - 3; // Thu, Fri, Sat, Sun
           const perDay = Math.round(remaining / daysLeft);
-          await supabaseAdmin.from('coaching_messages').insert({
+          await insertCoachingMessage({
             user_id: profile.id,
             trigger_type: 'weekly_budget_70',
             priority: 'medium',
@@ -488,7 +504,9 @@ serve(async (req: Request) => {
           const weekendScores: number[] = [];
           for (const r of reports as { date: string; compliance_score: number }[]) {
             const dow = new Date(r.date).getDay();
-            if (dow === 0 || dow === 5 || dow === 6) weekendScores.push(r.compliance_score);
+            // FIX (AI-behaviour #16): Friday (5) was bucketed as WEEKEND, which both diluted the
+            // weekend signal and made weekday-specific drift ("her cuma/pazartesi") unreachable.
+            if (dow === 0 || dow === 6) weekendScores.push(r.compliance_score);
             else weekdayScores.push(r.compliance_score);
           }
           if (weekendScores.length < 4 || weekdayScores.length < 8) continue;
@@ -498,7 +516,7 @@ serve(async (req: Request) => {
           const gap = avgWeekday - avgWeekend;
           if (gap < 15) continue;
 
-          await supabaseAdmin.from('coaching_messages').insert({
+          await insertCoachingMessage({
             user_id: profile.id,
             trigger_type: 'weekend_drift',
             priority: 'medium',
@@ -561,12 +579,16 @@ serve(async (req: Request) => {
           message = 'Bir ay oldu. Bugün sadece bir su veya bir kayıt. O kadar. Nereden devam edelim?';
         }
 
-        await supabaseAdmin.from('coaching_messages').insert({
+        // FIX (adversarial): the gate's result was discarded, so a SUPPRESSED nudge still fired a
+        // push and still incremented totalSent — reintroducing the phantom-push bug the main loop
+        // explicitly guards against ("never push a message that was not stored").
+        const reIns = await insertCoachingMessage({
           user_id: profile.id,
           trigger_type: `reengagement_${tier}`,
           priority: tier === 'long' ? 'medium' : 'low',
           content: message,
         });
+        if (!reIns.ok) continue;
 
         // Push notification (folded in from the former parallel re-engagement loop)
         // FIX (final sweep): push titles are user-visible — aksansız → proper Turkish.
@@ -662,7 +684,7 @@ serve(async (req: Request) => {
           // FIX (final sweep): raw enum leaked to the user ("busy_work donemin bitti") — use the
           // shared TR label map + proper Turkish copy.
           const endLabel = PERIODIC_STATE_LABELS[profile.periodic_state] ?? profile.periodic_state;
-          await supabaseAdmin.from('coaching_messages').insert({
+          await insertCoachingMessage({
             user_id: profile.id,
             trigger_type: 'periodic_end',
             priority: 'medium',
@@ -696,7 +718,7 @@ serve(async (req: Request) => {
             ? 'Sonraki 3 günde hafif antrenmanla geri başlayıp, kalori hedefine yavaş yaklaşalım.'
             : 'Sonraki 3 günde normal rutine kademeli dönüş planlayalım.';
 
-          await supabaseAdmin.from('coaching_messages').insert({
+          await insertCoachingMessage({
             user_id: profile.id,
             trigger_type: 'periodic_transition_3d',
             priority: 'medium',
@@ -711,15 +733,9 @@ serve(async (req: Request) => {
     // Sequence of habits in order of difficulty. We introduce the first one once
     // the user has been active for ≥3 days (enough to start tracking). Subsequent
     // habits are stacked when prior habit hits ≥80% compliance for 2 weeks.
-    const HABIT_SEQUENCE = [
-      // FIX (emülatör bulgusu): etiketler/çapalar kullanıcıya nudge içinde görünür — aksansızdı.
-      { key: 'daily_meal_log', label: 'Günlük öğün kaydı', anchor: null },
-      { key: 'water_tracking', label: 'Su takibi', anchor: 'Her öğün kaydından sonra su ekle' },
-      { key: 'weight_tracking', label: 'Tartı kaydı (haftada 3x)', anchor: 'Sabah kalktığında tartıl' },
-      { key: 'protein_target', label: 'Protein hedefi', anchor: 'Her öğünde proteini kontrol et' },
-      { key: 'sleep_tracking', label: 'Uyku kaydı', anchor: 'Sabah kalktığında uyku gir' },
-      { key: 'workout_routine', label: 'Antrenman rutini (haftada 3x)', anchor: 'Antrenman günü sabah plan kontrolü' },
-    ];
+    // AI-behaviour #14: ONE catalog, shared with the chat coach (shared/habits.ts). This array used
+    // to live here only, which is how cron and chat ended up with two habit vocabularies.
+    const HABIT_SEQUENCE = HABIT_CATALOG;
     for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string }[]) {
       const localH = getUserLocalHour(profile);
       if (localH < 8 || localH > 10) continue;
@@ -737,9 +753,13 @@ serve(async (req: Request) => {
 
         const { data: summary } = await supabaseAdmin
           .from('ai_summary').select('habit_progress').eq('user_id', profile.id).maybeSingle();
-        type HabitEntry = { key?: string; name?: string; status: string; streak: number; completion_log?: string[] };
-        const habits = ((summary?.habit_progress as HabitEntry[] | null) ?? []);
-        const activeHabitKeys = new Set(habits.filter(h => h.status === 'active' || h.status === 'mastered').map(h => h.key ?? h.name));
+        // FIX (AI-behaviour #14, identity split): `h.key ?? h.name` was UNDEFINED for chat-created
+        // habits (the chat writer used the field `habit`), so the set became {undefined}, no key ever
+        // matched, and the cron re-offered "Günlük öğün kaydı" every single morning. Normalise first.
+        const habits = ((summary?.habit_progress as unknown[] | null) ?? [])
+          .map(normalizeHabitEntry)
+          .filter((h): h is NonNullable<typeof h> => h !== null);
+        const activeHabitKeys = new Set(habits.filter(h => h.status === 'active' || h.status === 'mastered').map(h => h.key));
 
         // Find next habit in sequence that isn't active yet
         const nextHabit = HABIT_SEQUENCE.find(h => !activeHabitKeys.has(h.key));
@@ -754,7 +774,7 @@ serve(async (req: Request) => {
             .gte('logged_for_date', threeDaysAgo);
           if ((recentLogs ?? 0) < 3) continue;
 
-          await supabaseAdmin.from('coaching_messages').insert({
+          await insertCoachingMessage({
             user_id: profile.id,
             trigger_type: 'habit_introduce',
             priority: 'medium',
@@ -778,7 +798,7 @@ serve(async (req: Request) => {
 
         if (compliance < 80) continue;
 
-        await supabaseAdmin.from('coaching_messages').insert({
+        await insertCoachingMessage({
           user_id: profile.id,
           trigger_type: 'habit_stack',
           priority: 'medium',
@@ -822,7 +842,7 @@ serve(async (req: Request) => {
           .gte('created_at', dayAgo);
         if ((alreadySent ?? 0) > 0) continue;
 
-        await supabaseAdmin.from('coaching_messages').insert({
+        await insertCoachingMessage({
           user_id: profile.id,
           trigger_type: 'mvd_reset',
           priority: 'low',
@@ -866,7 +886,7 @@ serve(async (req: Request) => {
           ? `${daysSince} gündür tartıya çıkmadın — tempo için bir kez olsun girsek mi?`
           : `${daysSince} gündür tartı kaydı yok. İki dakikada tartılıp giriş yapar mısın?`;
 
-        await supabaseAdmin.from('coaching_messages').insert({
+        await insertCoachingMessage({
           user_id: profile.id,
           trigger_type: 'weight_reminder',
           priority: daysSince >= 14 ? 'medium' : 'low',
@@ -907,7 +927,7 @@ serve(async (req: Request) => {
             .gte('created_at', weekAgo);
           if ((alreadySent ?? 0) > 0) continue;
 
-          await supabaseAdmin.from('coaching_messages').insert({
+          await insertCoachingMessage({
             user_id: profile.id,
             trigger_type: 'deload_suggestion',
             priority: 'medium',
@@ -966,7 +986,7 @@ serve(async (req: Request) => {
             const sameWeight = sessionList[0].weight === sessionList[1].weight;
             if (bothSuccess && sameWeight) {
               const nextWeight = sessionList[0].weight + 2.5;
-              await supabaseAdmin.from('coaching_messages').insert({
+              await insertCoachingMessage({
                 user_id: profile.id,
                 trigger_type: 'progressive_overload',
                 priority: 'medium',
@@ -1050,7 +1070,9 @@ serve(async (req: Request) => {
           const lastMean = ws.slice(-k).reduce((s, w) => s + w, 0) / k;
           const netLoss = firstMean - lastMean;
           const spanDays = Math.round((Date.parse(pr[pr.length - 1].date) - Date.parse(pr[0].date)) / 86400000);
-          if (spanDays >= 12 && netLoss < 0.3) {
+          // FIX (audit #8 — wrong-direction): |netLoss| so a user who is GAINING (netLoss negative)
+          // isn't mislabeled "plateau/durgun" — that's the off-track tempo signal's job, not plateau.
+          if (spanDays >= 12 && Math.abs(netLoss) < 0.3) {
             const weeks = Math.max(1, Math.round(spanDays / 7));
             plateauInfo = ws.length >= 5
               ? `TETIK: PLATEAU - ${weeks} haftadir ${avg.toFixed(1)}kg civarinda durgun (net degisim ${netLoss.toFixed(1)}kg)`
@@ -1188,6 +1210,18 @@ serve(async (req: Request) => {
                     });
                   }
                   maintenanceInfo += ` | BAKIM MODU OTOMATIK AKTIF (kalori bakima cikarildi ${mb.dailyTargetMin}-${mb.dailyTargetMax}, hedef=maintain, goal_reached yazildi)`;
+                  // FIX (adversarial HIGH — silent irreversible mutation): this block rewrites
+                  // maintenance_mode, ALL FOUR calorie_range_* columns, the weekly budget, today's
+                  // daily_plans targets and goal_type. The user's ONLY notice was the LLM message
+                  // inserted later — which the nudge gate can suppress (prefs/cap), leaving a ~500
+                  // kcal target change completely silent. Write an unconditional RECEIPT (exempt from
+                  // the gate by RECEIPT_TRIGGERS) so the change can never happen without a notice.
+                  await insertCoachingMessage({
+                    user_id: profile.id,
+                    trigger_type: 'maintenance_auto_started',
+                    priority: 'high',
+                    content: `Hedef kilona ulaştın — bugünden itibaren bakım moduna geçtim. Günlük kalori aralığın ${mb.dailyTargetMin}-${mb.dailyTargetMax} kcal olarak güncellendi. Devam etmek istemezsen söyle, geri alalım.`,
+                  });
                 }
               } catch (e) { console.error('[auto-maintenance] failed', (e as Error).message); }
             }
@@ -1211,7 +1245,7 @@ serve(async (req: Request) => {
                   (w: { weight_kg: number }) => (w.weight_kg as number) > targetKg + 1.5
                 );
                 if (allExceeded) {
-                  await supabaseAdmin.from('coaching_messages').insert({
+                  await insertCoachingMessage({
                     user_id: profile.id,
                     // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
                     content: 'MİNİ CUT ÖNERİSİ: Hedef kilonun 1.5kg üstündesin. 2-4 haftalık mini cut dönemi önerilir.',
@@ -1230,12 +1264,24 @@ serve(async (req: Request) => {
             const weeksElapsed = Math.max(1, Math.round((Date.now() - new Date(activeGoal.created_at as string).getTime()) / (7*24*60*60*1000)));
             const expectedChange = (activeGoal.weekly_rate as number) * weeksElapsed;
             const goalStartWeight = (activeGoal.start_weight_kg as number) ?? (latestWeight.weight_kg as number);
-            const actualChange = Math.abs((latestWeight.weight_kg as number) - goalStartWeight);
-            const tempoRatio = expectedChange > 0 ? actualChange / expectedChange : 1;
-            if (tempoRatio < 0.5) {
-              goalTempoInfo = `TETIK: YAVAS TEMPO - hedef haftada ${activeGoal.weekly_rate}kg ama gercek tempo cok yavas (oran: ${tempoRatio.toFixed(2)})`;
-            } else if (tempoRatio > 1.5) {
-              goalTempoInfo = `TETIK: HIZLI KAYIP - haftada ${(actualChange / weeksElapsed).toFixed(2)}kg, guvenli olmayabilir`;
+            // FIX (audit #8 HIGH — backwards tempo): SIGNED progress in the goal's intended direction.
+            // Math.abs made a lose-weight user who GAINED 3kg read as "HIZLI KAYIP" (fast loss). Now a
+            // negative signedChange = moving the WRONG way → a gentle off-track nudge, not "too fast".
+            const dir = activeGoal.goal_type === 'lose_weight' ? 1
+              : (activeGoal.goal_type === 'gain_weight' || activeGoal.goal_type === 'gain_muscle') ? -1 : 0;
+            const signedChange = dir === 1 ? goalStartWeight - (latestWeight.weight_kg as number)
+              : dir === -1 ? (latestWeight.weight_kg as number) - goalStartWeight : 0;
+            if (dir !== 0 && expectedChange > 0) {
+              if (signedChange < -0.3) {
+                goalTempoInfo = `TETIK: TERS YONDE - hedef ${dir === 1 ? 'kilo verme' : 'kilo alma'} ama ${Math.abs(signedChange).toFixed(1)}kg ters yonde gitti; yargilamadan, nazikce toparlanmaya yonlendir`;
+              } else {
+                const tempoRatio = signedChange / expectedChange;
+                if (tempoRatio < 0.5) {
+                  goalTempoInfo = `TETIK: YAVAS TEMPO - hedef haftada ${activeGoal.weekly_rate}kg ama gercek tempo yavas (oran: ${tempoRatio.toFixed(2)})`;
+                } else if (tempoRatio > 1.5) {
+                  goalTempoInfo = `TETIK: HIZLI ${dir === 1 ? 'KAYIP' : 'ALIM'} - haftada ${(signedChange / weeksElapsed).toFixed(2)}kg, guvenli olmayabilir`;
+                }
+              }
             }
           }
         }
@@ -1275,7 +1321,7 @@ serve(async (req: Request) => {
                 .eq('trigger_type', 'reinforcement_milestone')
                 .gte('created_at', oneWeekAgo);
               if ((alreadySent ?? 0) === 0) {
-                await supabaseAdmin.from('coaching_messages').insert({
+                await insertCoachingMessage({
                   user_id: profile.id,
                   content: reinforcementMsg,
                   trigger_type: 'reinforcement_milestone',
@@ -1420,11 +1466,22 @@ ${await (async () => {
     }
   }
   // Habit check (Spec 5.35)
-  const habits = (summaryRes.data as Record<string, unknown>)?.habit_progress as { habit: string; status: string; streak: number; weekly_compliance?: number }[] | null;
-  if (habits && habits.length > 0) {
-    const activeHabit = habits.find(h => h.status === 'active');
-    if (activeHabit && activeHabit.streak >= 14 && (activeHabit.weekly_compliance ?? 0) >= 80) {
-      triggers.push(`TETIK: ALISKANLIK ILERLEME - "${activeHabit.habit}" ${activeHabit.streak} gundur suruyor (%80+), sonraki aliskanlik onerisi yap`);
+  // FIX (AI-behaviour #14): this gate read `weekly_compliance`, a field NOTHING in the repo ever
+  // wrote — so it could never fire and every user stayed pinned to habit #1 forever. Derive the stats
+  // from completion_log (shared/habits.ts) so the ladder can finally advance, and normalise identity
+  // because three writer generations used key / name / habit interchangeably.
+  const rawHabits = (summaryRes.data as Record<string, unknown>)?.habit_progress as unknown[] | null;
+  if (rawHabits && rawHabits.length > 0) {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const normalized = rawHabits.map(normalizeHabitEntry).filter((h): h is NonNullable<typeof h> => h !== null);
+    const activeHabit = normalized.find(h => h.status === 'active');
+    if (activeHabit) {
+      const st = deriveHabitStats(activeHabit.completion_log, todayIso);
+      if (readyForNextHabit(st)) {
+        triggers.push(`TETIK: ALISKANLIK ILERLEME - "${activeHabit.name}" ${st.streak} gundur suruyor (%${st.weekly_compliance}), siradaki aliskanligi BUNUN USTUNE ekleyerek oner`);
+      } else if (st.broken) {
+        triggers.push(`TETIK: ALISKANLIK SERISI KIRILDI - "${activeHabit.name}" son ${st.lastDone ?? '?'} tarihinde yapildi. SUCLAMA YOK; bugun TEK bir kez yapmaya davet et.`);
+      }
     }
   }
   // #arch (audit day-boundary): daily_metrics/daily_reports.date are keyed on the user's EFFECTIVE
@@ -1607,14 +1664,16 @@ ${sentTodayContext}`;
         // message that was never stored. Clamp to the allowed set and skip side-effects on failure.
         const priority = (['low', 'medium', 'high'] as const).includes(result.priority as never)
           ? (result.priority as string) : 'medium';
-        const { data: inserted, error: insertErr } = await supabaseAdmin.from('coaching_messages').insert({
+        const inserted = await insertCoachingMessage({
           user_id: profile.id, content: clean,
           trigger_type: result.trigger ?? 'proactive',
           priority, read: false,
           push_sent: false,
-        }).select('id').maybeSingle();
-        if (insertErr || !inserted) {
-          console.error('[proactive] coaching_message insert failed — skipping push & commitment follow-up', insertErr?.message);
+        });
+        if (!inserted.ok || !inserted.id) {
+          // Suppressed by prefs/cap, or the insert failed — either way skip the push and the
+          // commitment follow-up so we never push a message that was not stored.
+          console.warn('[proactive] coaching_message not stored (prefs/cap or error) — skipping push & follow-up');
           continue;
         }
 
@@ -1722,7 +1781,12 @@ ${sentTodayContext}`;
       }
     }
 
-    return respond({ processed: profiles.length, sent: totalSent });
+    return respond({
+      processed: profiles.length,
+      sent: nudgeStats.inserted,          // actually stored
+      suppressed: nudgeStats.suppressed,  // blocked by prefs/cap
+      attempted: totalSent,               // trigger sites that fired
+    });
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);
   }
@@ -1824,7 +1888,7 @@ async function evaluateChallenges(dateStr: string) {
           title: `Challenge tamamlandı: ${ch.title}`,
           description: `${durationDays} günlük hedefe ulaştın!`,
         });
-        await supabaseAdmin.from('coaching_messages').insert({
+        await insertCoachingMessage({
           user_id: ch.user_id,
           trigger_type: 'challenge_completed',
           priority: 'high',
@@ -1930,7 +1994,7 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
     ? 'TETIK: ZORLUK AYARLANDI - arttirildi'
     : 'TETIK: ZORLUK AYARLANDI - azaltildi';
 
-  await supabaseAdmin.from('coaching_messages').insert({
+  await insertCoachingMessage({
     user_id: userId,
     content: adjustment === 'increase'
       ? 'Citayi yukseltiyorum! Son 2 haftada harika bir uyum gosterdin. Kalori araligini biraz daraltip protein hedefini artiriyorum.'
@@ -2107,10 +2171,138 @@ async function sendPushNotification(
       }),
     });
 
-    return response.ok;
+    // FIX (audit HIGH — dead tokens counted as delivered forever): Expo returns HTTP 200 with a
+    // PER-TICKET status, so `response.ok` reported success even when the ticket said
+    // DeviceNotRegistered (app uninstalled / token rotated). Those rows were then marked
+    // push_sent=true, which both corrupted the daily-cap accounting and kept us pushing at a dead
+    // device indefinitely. Parse the ticket: only 'ok' counts, and purge a permanently-dead token.
+    if (!response.ok) return false;
+    let ticket: { status?: string; details?: { error?: string } } | null = null;
+    try {
+      const body = await response.json();
+      ticket = Array.isArray(body?.data) ? body.data[0] : (body?.data ?? null);
+    } catch { return false; } // unreadable body → don't claim delivery
+    if (ticket?.status === 'ok') return true;
+    const err = ticket?.details?.error;
+    // FIX (adversarial): InvalidCredentials is a PROJECT-level Expo error (our FCM/APNs key is wrong
+    // or expired) returned identically for EVERY recipient — purging on it would null push_token for
+    // every user the cron touched. It is an ops alert, not a per-user fact. Only DeviceNotRegistered
+    // means this device is gone. The compare-and-set on push_token also prevents nulling a token that
+    // was refreshed by the app between our send and this write.
+    if (err === 'DeviceNotRegistered') {
+      await supabaseAdmin.from('profiles').update({ push_token: null })
+        .eq('id', userId).eq('push_token', profile.push_token)
+        .then(() => console.warn('[push] purged dead token', { userId }), () => {});
+    } else if (err === 'InvalidCredentials') {
+      console.error('[push] EXPO CREDENTIALS INVALID — project-level, tokens NOT purged. Rotate FCM/APNs key.', { status: ticket?.status });
+    } else {
+      console.warn('[push] ticket not ok', { userId, status: ticket?.status, err });
+    }
+    return false;
   } catch {
     return false;
   }
+}
+
+/**
+ * THE single gate for every in-app nudge write (audit #7 HIGH).
+ *
+ * ~20 specialised trigger paths used to `insert()` into coaching_messages DIRECTLY, so they
+ * bypassed BOTH the user's notification preferences (a user who switched notifications OFF still
+ * accumulated in-app nudges — there was no in-app opt-out anywhere) AND any daily cap (the
+ * advertised "max 2-3 nudge/gün" contract was fiction; each path only de-duped against itself,
+ * so deload + overload + habit + weight + weekend + snack could all land on the same day).
+ *
+ * Every write now goes through here: master switch → per-type toggle → local-day in-app cap.
+ * `priority: 'high'` bypasses the CAP (not the switches) so a genuinely important coaching message
+ * is never silently dropped behind six low-value nudges.
+ *
+ * Returns the inserted row id so callers can flip push_sent after a delivered push.
+ */
+/**
+ * trigger_type → the notification-preference key the USER actually sees in Ayarlar > Bildirimler.
+ *
+ * FIX (adversarial): the per-type opt-out was DEAD for 18 of 19 call sites because it compared the
+ * raw internal `trigger_type` against `prefs.types`, which is a different, client-fixed vocabulary
+ * (DEFAULT_PREFS in src/services/notifications.service.ts:51-63). Only 'weight_reminder' happened to
+ * collide. sendPushNotification proves the intended contract is a TRANSLATION, not the raw enum.
+ * Unmapped triggers are intentionally left UN-gated (fail open) so a newly-added trigger is never
+ * silently muted by a missing entry.
+ */
+const TRIGGER_TO_PREF: Record<string, string> = {
+  snack_hour_nudge: 'night_risk',
+  night_eating_risk: 'night_risk',
+  motivation_dip: 'reengagement',
+  alcohol_next_day: 'daily_report',
+  weekly_budget_70: 'weekly_report',
+  weekend_drift: 'weekly_report',
+  reengagement: 'reengagement',
+  reengagement_soft: 'reengagement',
+  reengagement_medium: 'reengagement',
+  reengagement_hard: 'reengagement',
+  periodic_end: 'morning_plan',
+  periodic_transition_3d: 'morning_plan',
+  habit_introduce: 'morning_plan',
+  habit_stack: 'morning_plan',
+  mvd_reset: 'morning_plan',
+  weight_reminder: 'weight_reminder',
+  deload_suggestion: 'workout_reminder',
+  progressive_overload: 'workout_reminder',
+  mini_cut_suggestion: 'morning_plan',
+  reinforcement_milestone: 'achievement',
+  challenge_completed: 'challenge',
+  commitment_followup: 'commitment_followup',
+};
+
+/** Coaching nudges the daily cap governs. System RECEIPTS (a target changed, a recalc happened) are
+ *  NOT nudges — they must neither consume the coaching budget nor be blocked by it. */
+const RECEIPT_TRIGGERS = new Set([
+  'caffeine_water_bump', 'tdee_recalculated', 'activity_level_recalibrated',
+  'maintenance_auto_started', 'plan_projected',
+]);
+
+/** Honest per-request nudge tallies (reset at the top of the handler). */
+const nudgeStats = { inserted: 0, suppressed: 0 };
+
+async function insertCoachingMessage(payload: Record<string, unknown>): Promise<{ ok: boolean; id: string | null }> {
+  const userId = payload.user_id as string | undefined;
+  if (!userId) return { ok: false, id: null };
+  const type = (payload.trigger_type as string | undefined) ?? null;
+  // System receipts are exempt from BOTH the switches and the cap: telling the user their calorie
+  // target changed is not a nudge, and silently withholding it is worse than an extra card.
+  const isReceipt = type ? RECEIPT_TRIGGERS.has(type) : false;
+  try {
+    if (!isReceipt) {
+      const { data: prof } = await supabaseAdmin
+        .from('profiles').select('notification_prefs, home_timezone, active_timezone').eq('id', userId).maybeSingle();
+      const prefs = (prof?.notification_prefs as Record<string, unknown>) ?? {};
+      // In-app cards have their own switch; `enabled` governs PUSH (sendPushNotification already
+      // checks it). Only an explicit inAppEnabled:false silences the in-app coaching surface.
+      if (prefs.inAppEnabled === false) { nudgeStats.suppressed++; return { ok: false, id: null }; }
+      const types = prefs.types as Record<string, unknown> | undefined;
+      const prefKey = type ? (TRIGGER_TO_PREF[type] ?? null) : null; // unmapped → un-gated (fail open)
+      if (prefKey && types && types[prefKey] === false) { nudgeStats.suppressed++; return { ok: false, id: null }; }
+      if (payload.priority !== 'high') {
+        const tz = (prof?.active_timezone ?? prof?.home_timezone) as string | null;
+        const cap = Number(prefs.inAppDailyLimit ?? prefs.dailyLimit ?? 5);
+        // Scope the cap to NUDGES — receipts must not consume the coaching budget.
+        const { data: todayRows } = await supabaseAdmin
+          .from('coaching_messages').select('trigger_type')
+          .eq('user_id', userId).gte('created_at', localDayStartIso(tz, new Date())).limit(50);
+        const nudgeCount = (todayRows ?? []).filter(
+          (r: { trigger_type: string | null }) => !(r.trigger_type && RECEIPT_TRIGGERS.has(r.trigger_type))).length;
+        if (Number.isFinite(cap) && cap > 0 && nudgeCount >= cap) { nudgeStats.suppressed++; return { ok: false, id: null }; }
+      }
+    }
+  } catch (e) {
+    // Prefs unreadable (transient) → fail OPEN and log. These are in-app cards, not phone buzzes;
+    // silently dropping ALL coaching on a transient read error is the worse failure.
+    console.warn('[nudge] prefs/cap check failed, inserting anyway:', (e as Error).message);
+  }
+  const { data, error } = await supabaseAdmin.from('coaching_messages').insert(payload).select('id').maybeSingle();
+  if (error) { console.error('[nudge] insert failed', type, error.message); return { ok: false, id: null }; }
+  nudgeStats.inserted++;
+  return { ok: true, id: (data?.id as string | undefined) ?? null };
 }
 
 function respond(data: unknown, status = 200) {

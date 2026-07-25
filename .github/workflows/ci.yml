@@ -1,0 +1,38 @@
+name: CI
+
+# The first automated safety net for KOCHKO. Runs on every push/PR so the highest-stakes
+# code — crisis/ED/allergen guardrails, the edge functions tsc never type-checked, and the
+# architecture invariants — can no longer silently rot between manual audit rounds.
+on:
+  push:
+    branches: [claude/KOCHKO, main]
+  pull_request:
+
+jobs:
+  client:
+    name: Client (tsc + arch-guards)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Type-check client (tsc --noEmit)
+        run: npm run lint
+      - name: Architecture invariants (G1-G5)
+        run: npm run arch-guards
+
+  edge:
+    name: Edge (deno check + guardrail tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check edge functions (tsc excludes supabase/functions — this is the only net)
+        run: npm run check:edge
+      - name: Safety-critical guardrail unit tests
+        run: npm run test:edge

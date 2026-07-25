@@ -170,9 +170,11 @@ async function generateDailyReport(userId: string, date?: string, force = false)
   // NO budget data fed. Compute from the canonical weekly_calorie_budget + this
   // week's actual intake (week-to-date including today).
   let weeklyBudgetStatus: string | null = null;
+  let waterTargetLiters: number | null = null;
   {
-    const { data: budgetProfile } = await supabaseAdmin.from('profiles').select('weekly_calorie_budget').eq('id', userId).maybeSingle();
+    const { data: budgetProfile } = await supabaseAdmin.from('profiles').select('weekly_calorie_budget, water_target_liters').eq('id', userId).maybeSingle();
     const weeklyBudget = budgetProfile?.weekly_calorie_budget as number | null;
+    waterTargetLiters = (budgetProfile?.water_target_liters as number | null) ?? null;
     if (weeklyBudget && weeklyBudget > 0) {
       const rd = new Date(reportDate + 'T00:00:00Z');
       const dow = rd.getUTCDay();
@@ -191,7 +193,59 @@ async function generateDailyReport(userId: string, date?: string, force = false)
     }
   }
 
+  // FIX (audit HIGH — uyum% was an LLM GUESS): compute the compliance score DETERMINISTICALLY in
+  // code from the same weights, so identical data always yields the identical score (the LLM was
+  // non-deterministic on re-run and disagreed with the Dashboard/Progress figures). The score is
+  // ALSO fed to the model so its prose matches the number, and it OVERRIDES the model field below.
+  const detCompliance = (() => {
+    const calMin = Number(plan?.calorie_target_min) || 0;
+    const calMax = Number(plan?.calorie_target_max) || 0;
+    const proTarget = Number(plan?.protein_target_g) || 0;
+    // Prefer the DAY'S plan target (what the dashboard shows) over the profile default.
+    const waterTarget = Number(plan?.water_target_liters) > 0 ? Number(plan!.water_target_liters)
+      : Number(waterTargetLiters) > 0 ? Number(waterTargetLiters) : 2.5;
+    const frac = (v: number) => Math.max(0, Math.min(1, v));
+    const hasMetrics = !!metrics;
+    // Calorie: full credit inside the band; outside, credit decays with relative distance.
+    let calCredit = 0;
+    if (calMin > 0 && calMax > 0) {
+      if (totalCal >= calMin && totalCal <= calMax) calCredit = 1;
+      else {
+        const ref = totalCal < calMin ? calMin : calMax;
+        calCredit = frac(1 - Math.abs(totalCal - ref) / Math.max(1, ref * 0.5)); // 50% off band → 0
+      }
+    } else if (totalCal > 0) calCredit = 0.5; // no plan band → neutral partial credit
+    const proCredit = proTarget > 0 ? frac(totalPro / proTarget) : (totalPro > 0 ? 0.5 : 0);
+    const workoutCredit = workouts.length > 0 ? 1 : 0;
+    const waterCredit = frac((Number(metrics?.water_liters) || 0) / waterTarget);
+    const sleepH = Number(metrics?.sleep_hours);
+    const sleepCredit = Number.isFinite(sleepH) && sleepH > 0 ? frac(sleepH / 7) : 0;
+    const moodS = Number(metrics?.mood_score);
+    const moodCredit = Number.isFinite(moodS) && moodS > 0 ? frac(moodS / 5) : 0;
+    // FIX (adversarial): components with NO DATA were scored 0 while their weight stayed in the
+    // denominator, so a user who logged food but never entered sleep/water/mood was deterministically
+    // pushed toward a near-zero uyum score. Renormalise over the components that actually have data;
+    // a component only counts when its input exists.
+    let raw = 0, totalW = 0;
+    const add = (w: number, credit: number, present: boolean) => { if (w > 0 && present) { raw += w * credit; totalW += w; } };
+    add(weights.calorie, calCredit, calMin > 0 || totalCal > 0);
+    add(weights.protein, proCredit, proTarget > 0 || totalPro > 0);
+    add(weights.workout, workoutCredit, true); // "no workout logged" IS the datum
+    add(weights.water, waterCredit, hasMetrics && Number(metrics?.water_liters) > 0);
+    add(weights.sleep, sleepCredit, hasMetrics && Number(metrics?.sleep_hours) > 0);
+    add(weights.mood, moodCredit, hasMetrics && Number(metrics?.mood_score) > 0);
+    const score = Math.max(0, Math.min(100, Math.round(totalW > 0 ? (raw / totalW) * 100 : 0)));
+    return {
+      score,
+      calorie_target_met: calCredit === 1,
+      protein_target_met: proTarget > 0 && totalPro >= proTarget,
+      workout_completed: workoutCredit === 1,
+      water_target_met: waterCredit >= 1,
+    };
+  })();
+
   const prompt = `Tarih: ${reportDate}
+UYUM PUANI (KOD TARAFINDAN HESAPLANDI — BU SAYIYI AYNEN KULLAN, KENDIN HESAPLAMA): ${detCompliance.score}
 AGIRLIKLAR: Kalori=%${weights.calorie} Protein=%${weights.protein} Antrenman=%${weights.workout} Su=%${weights.water} Uyku=%${weights.sleep} Mood=%${weights.mood} (Hedef: ${goalType})
 Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g
 Gerceklesen: Kalori ${totalCal} kcal | Protein ${Math.round(totalPro)}g | Karb ${Math.round(totalCarb)}g | Yag ${Math.round(totalFat)}g | Alkol ${totalAlcCal} kcal
@@ -224,10 +278,14 @@ ${(() => {
 
   // Clamp compliance (coerce to a finite number first so a missing/NaN value
   // can never reach the NOT NULL column)
-  const rawCompliance = Number(report.compliance_score);
-  report.compliance_score = Number.isFinite(rawCompliance)
-    ? Math.max(0, Math.min(100, Math.round(rawCompliance)))
-    : 0;
+  // FIX (audit HIGH — non-deterministic uyum%): the DETERMINISTIC score wins. The model's own
+  // number is discarded (it varied on identical data and contradicted Dashboard/Progress). The
+  // target-met booleans are facts too — pin them to the computed values, not the model's opinion.
+  report.compliance_score = detCompliance.score;
+  report.calorie_target_met = detCompliance.calorie_target_met;
+  report.protein_target_met = detCompliance.protein_target_met;
+  report.workout_completed = detCompliance.workout_completed;
+  report.water_target_met = detCompliance.water_target_met;
 
   // steps_actual is an integer column written straight from the model — coerce so a
   // non-numeric/absurd value can't 22P02/22003 the whole report upsert (#R5-8).
@@ -241,16 +299,13 @@ ${(() => {
   // Compute the target-met booleans DETERMINISTICALLY from the actuals we already summed —
   // the LLM was deciding these and could contradict the very numbers shown beside the
   // checkmark (e.g. green "Kalori met" next to 2400 kcal over an 1800-2000 target).
-  const calorieTargetMet = (plan?.calorie_target_min != null && plan?.calorie_target_max != null)
-    ? (totalCal >= plan.calorie_target_min && totalCal <= plan.calorie_target_max)
-    : (report.calorie_target_met ?? false);
-  const proteinTargetMet = (plan?.protein_target_g != null)
-    ? (Math.round(totalPro) >= plan.protein_target_g)
-    : (report.protein_target_met ?? false);
-  const workoutCompleted = workouts.length > 0;
-  const waterTargetMet = (plan?.water_target_liters != null)
-    ? ((metrics?.water_liters ?? 0) >= plan.water_target_liters)
-    : (report.water_target_met ?? false);
+  // FIX (adversarial): this block recomputed the four booleans with a SECOND formula and the upsert
+  // wrote THOSE — so the deterministic values assigned above were inert, and two formulas could
+  // disagree. ONE formula, ONE writer: detCompliance (already applied to `report.*`) is the owner.
+  const calorieTargetMet = detCompliance.calorie_target_met;
+  const proteinTargetMet = detCompliance.protein_target_met;
+  const workoutCompleted = detCompliance.workout_completed;
+  const waterTargetMet = detCompliance.water_target_met;
 
   // FIX (audit AI-PRO-01): calorie/protein/carbs/fat/alcohol_calories are SMALLINT
   // columns (max 32767). A single mis-parsed meal item (e.g. scaled to '10000g')

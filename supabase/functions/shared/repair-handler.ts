@@ -412,7 +412,10 @@ export async function getToneContext(userId: string): Promise<string> {
     const toneInstructions: Record<string, string> = {
       empathetic: 'Empatik ve destekleyici ol. Basarisizliklari normalize et. "Olur boyle seyler" tonu.',
       data_driven: 'Veri ve rakamlarla konus. Grafikler ve yuzdelikler kullan. Duygusal dil minimize.',
-      motivational: 'Motive edici ve enerjik ol. Basarilari kutla. "Harika gidiyorsun!" tonu.',
+      // FIX (AI-behaviour #4): the old exemplar literally prescribed a banned cliché ("Harika
+      // gidiyorsun!"), teaching the exact filler voice the SES section forbids. Motivation must be
+      // SPECIFIC — name the thing that went well, don't cheer generically.
+      motivational: 'Motive edici ol ama SPESIFIK ol: neyin iyi gittigini ADIYLA soyle ("uc gun ust uste kayit girdin"). Genel tezahurat ("harika gidiyorsun", "bravo") YASAK.',
       strict: 'Net ve dogrudan ol. Gereksiz ovgu yapma. Hedeflere odaklan.',
       balanced: 'Dengeli bir ton kullan: hem destekleyici hem net, asiriya kacma.',
     };
@@ -512,7 +515,7 @@ export async function buildKnowledgeSummary(userId: string): Promise<string> {
   if (habits && habits.length > 0) {
     parts.push(`\n**Aliskanlik takibi:**`);
     for (const h of habits) {
-      parts.push(`- ${h.habit}: ${h.status} (${h.streak} gun seri)`);
+      parts.push(`- ${h.habit}: ${h.status}`); // adversarial: stored streak is stale — derived block owns the number
     }
   }
 

@@ -9,7 +9,10 @@
     "web": "expo start --web",
     "lint": "tsc --noEmit",
     "arch-guards": "node scripts/arch-guards.mjs",
-    "contract-tests": "node scripts/contract-tests.mjs"
+    "contract-tests": "node scripts/contract-tests.mjs",
+    "test:edge": "deno test supabase/functions/shared/",
+    "check:edge": "deno check supabase/functions/ai-chat/index.ts supabase/functions/ai-plan/index.ts supabase/functions/ai-proactive/index.ts supabase/functions/ai-extractor/index.ts supabase/functions/ai-report/index.ts supabase/functions/cleanup-scheduled/index.ts",
+    "ci": "npm run lint && npm run arch-guards && npm run check:edge && npm run test:edge"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

@@ -117,6 +117,18 @@ export interface ProjectDailyPlanOpts {
   weekStart: string; // Monday of the plan week, 'YYYY-MM-DD'
   profile: ProjectionProfile;
   weekConsumed: number;
+  /**
+   * FIX (audit #11): target to use when the diet snapshot carries NO calorie target at all
+   * (e.g. a WORKOUT-ONLY approval by a user with no diet plan). Previously such rows silently got
+   * the KCAL_FLOOR=1000 placeholder + 0g protein — a fabricated target the user never agreed to.
+   */
+  fallbackCalorieTarget?: number | null;
+  /**
+   * Clinical calorie floor (getCalorieFloor(gender)). daily_plans is the SINGLE writer the whole
+   * app reads, so clamping here keeps a sub-floor LLM plan from ever reaching the dashboard —
+   * the guardrail previously existed only in the dormant ai-plan path.
+   */
+  calorieFloor?: number | null;
 }
 
 /** Row shape inserted into public.daily_plans. `version` is set by the caller. */
@@ -290,11 +302,23 @@ export function projectDailyPlanRows(opts: ProjectDailyPlanOpts): DailyPlanInser
     // targets.protein. Fall back to the day total, then the absolute floor.
     let caloriePoint = num(targets.kcal, NaN);
     if (!Number.isFinite(caloriePoint) || caloriePoint <= 0) caloriePoint = num(dietDay?.total_kcal, NaN);
-    if (!Number.isFinite(caloriePoint) || caloriePoint <= 0) caloriePoint = KCAL_FLOOR;
+    // FIX (audit #11): prefer the caller's clinically-derived fallback (maintenance TDEE / existing
+    // target) over the 1000-kcal placeholder, so a workout-only approval can't fabricate a starvation
+    // target. KCAL_FLOOR stays as the last resort when the caller supplied nothing.
+    if (!Number.isFinite(caloriePoint) || caloriePoint <= 0) {
+      const fb = num(opts.fallbackCalorieTarget, NaN);
+      caloriePoint = Number.isFinite(fb) && fb > 0 ? fb : KCAL_FLOOR;
+    }
     caloriePoint = Math.round(caloriePoint);
     let calMin = caloriePoint - CAL_WINDOW;
     let calMax = caloriePoint + CAL_WINDOW;
     if (calMin < 1) calMin = 1;
+    // Clinical floor clamp — daily_plans is the single source every reader trusts. FIX (adversarial):
+    // clamping the MIDPOINT still shipped a sub-floor calorie_target_min (floor 1200 → min 1125), and
+    // ai-report then scored that sub-floor day as perfectly compliant. Clamp the BAND EDGE, like
+    // targets.ts computeCalorieBand does with trainingMin/restMin.
+    const clinicalFloor = Math.round(num(opts.calorieFloor, 0));
+    if (clinicalFloor > 0 && calMin < clinicalFloor) calMin = clinicalFloor;
     if (calMax < calMin) calMax = calMin;
 
     // --- macro targets (protein NOT NULL; never null) ---
@@ -371,6 +395,9 @@ export function projectDailyPlanRows(opts: ProjectDailyPlanOpts): DailyPlanInser
       ? ri(profile.weekly_calorie_budget, caloriePoint * 7)
       : (canonicalBudget > 0 ? canonicalBudget : caloriePoint * 7);
     const weeklyRemaining = Math.max(0, weeklyTotal - weeklyConsumed);
+    // Defence-in-depth with mig 094 (integer columns): clamp to a sane non-negative range so a
+    // garbage value can never overflow even the widened column or show an absurd budget.
+    const clampBudget = (n: number) => Math.max(0, Math.min(200000, Math.round(num(n, 0))));
 
     rows.push({
       date,
@@ -385,9 +412,9 @@ export function projectDailyPlanRows(opts: ProjectDailyPlanOpts): DailyPlanInser
       meal_suggestions: mealSuggestions,
       snack_strategy: null,
       workout_plan: workoutPlan,
-      weekly_budget_total: weeklyTotal,
-      weekly_budget_consumed: weeklyConsumed,
-      weekly_budget_remaining: weeklyRemaining,
+      weekly_budget_total: clampBudget(weeklyTotal),
+      weekly_budget_consumed: clampBudget(weeklyConsumed),
+      weekly_budget_remaining: clampBudget(weeklyRemaining),
       status: 'approved',
     });
   }

@@ -26,6 +26,12 @@ export function timelineDeficitKcal(opts: {
   const isLose = goalType === 'lose_weight';
   const isGain = goalType === 'gain_weight' || goalType === 'gain_muscle';
   if (!isLose && !isGain) return null; // maintain/health/conditioning have no deficit
+  // FIX (adversarial): a target that CONTRADICTS the goal direction (lose_weight with a target ABOVE
+  // current weight — a mis-captured number, which the parser nets make possible) produced a deficit
+  // sized by |difference|, i.e. a large cut in the wrong direction. Fall back to the flat factor so
+  // the coach can re-ask instead of silently acting on a nonsensical timeline.
+  if (isLose && targetWeight >= currentWeight) return null;
+  if (isGain && targetWeight <= currentWeight) return null;
 
   const remainingKg = Math.abs(currentWeight - targetWeight);
   const remainingWeeks = Math.max(1, targetWeeks - Math.max(0, weeksElapsed));
@@ -101,8 +107,16 @@ export function resolveTargetCalories(opts: {
   targetWeight: number | null | undefined;
   targetWeeks: number | null | undefined;
   weeksElapsed: number;
+  /** Gender for the clinical floor. Omit only where the caller clamps downstream. */
+  gender?: string | null;
 }): number {
   const tl = timelineDeficitKcal(opts);
-  if (tl != null) return Math.round(opts.tdee + tl);
-  return Math.round(opts.tdee * opts.fixedFactor);
+  const raw = tl != null ? Math.round(opts.tdee + tl) : Math.round(opts.tdee * opts.fixedFactor);
+  // FIX (adversarial HIGH): the timeline model is capped by RATE, not by an absolute floor — an
+  // ambitious date (e.g. 10 kg in 8 weeks on a small frame) yields ~1100 kcal/day of deficit and this
+  // returned targets as low as ~390 kcal. computeCalorieBand's own clamp then COLLAPSED the band to
+  // the floor instead of centring on it. Clamp the TARGET here so every consumer inherits a clinically
+  // safe number and the band is shaped around it, not squashed against it.
+  const floor = getCalorieFloor(opts.gender);
+  return Math.max(floor, raw);
 }

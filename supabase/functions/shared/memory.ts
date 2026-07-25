@@ -12,6 +12,7 @@
 
 import { supabaseAdmin } from './supabase-admin.ts';
 import { getLocalParts } from './day-boundary.ts';
+import { foodMatchKey } from './guardrails.ts'; // AI-behaviour #16: same TR-inflection key the rest of the app uses
 
 /**
  * User's effective IANA timezone (active travel tz → home tz → null=UTC).
@@ -70,6 +71,139 @@ export async function updateLayer2(
  * Safer than updateLayer2({ behavioral_patterns: [...] }) for concurrent writes.
  * Caps at 20 most recent entries.
  */
+/**
+ * AI-behaviour #16 — SELF-DISCOVERED CORRELATIONS.
+ *
+ * Every cross-time join in the app was hand-written for one specific pair (caffeine→sleep,
+ * late-meal→sleep, Friday-alcohol→Saturday-dip), and `behavioral_patterns` — the "BİLİNEN KALIPLAR"
+ * the coach recites — was populated ONLY by the LLM declaring things the user had already said out
+ * loud. So the coach could never surface a join the user cannot see themselves, which is the entire
+ * promised difference from a logging app.
+ *
+ * These two analyzers are pure data. They write ONE pattern line each through the existing
+ * appendBehavioralPatterns, so they light up in BOTH the chat snapshot and the nudge context with no
+ * new plumbing.
+ */
+
+/**
+ * Replace any prior DERIVED pattern of the same `type` before appending a new one.
+ * FIX (adversarial): ai_summary_append_patterns is a blind concat capped to the LAST 20 entries, and
+ * these analyzers run weekly — so an unchanged insight was re-appended every week, and after a few
+ * months the derived lines would EVICT the user-stated patterns the coach actually needs.
+ */
+async function replaceDerivedPattern(userId: string, type: string, entry: Record<string, unknown>): Promise<void> {
+  try {
+    const { data } = await supabaseAdmin.from('ai_summary').select('behavioral_patterns').eq('user_id', userId).maybeSingle();
+    const existing = Array.isArray(data?.behavioral_patterns) ? (data!.behavioral_patterns as Record<string, unknown>[]) : [];
+    const kept = existing.filter((p) => !(p && p.source === 'derived' && p.type === type));
+    const prior = existing.find((p) => p && p.source === 'derived' && p.type === type);
+    const times = Number(prior?.times_observed);
+    const merged = { ...entry, times_observed: Number.isFinite(times) ? times + 1 : 1 };
+    await updateLayer2(userId, { behavioral_patterns: [...kept, merged].slice(-20) });
+  } catch (e) {
+    console.error('[replaceDerivedPattern]', type, (e as Error).message);
+  }
+}
+
+const TR_DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
+/** "Pazartesi akşamları 4 haftadır kayıt yok." — one weekday consistently below the rest. */
+export async function detectDayOfWeekDrift(userId: string): Promise<void> {
+  try {
+    const since = new Date(Date.now() - 56 * 86400000).toISOString().slice(0, 10);
+    const { data } = await supabaseAdmin.from('daily_reports')
+      .select('date, compliance_score').eq('user_id', userId).gte('date', since);
+    const rows = (data ?? []) as { date: string; compliance_score: number | null }[];
+    if (rows.length < 14) return;
+    const buckets: number[][] = Array.from({ length: 7 }, () => []);
+    for (const r of rows) {
+      const s = Number(r.compliance_score);
+      if (!Number.isFinite(s)) continue;
+      const d = new Date(`${r.date}T12:00:00Z`).getUTCDay();
+      buckets[d].push(s);
+    }
+    const means = buckets.map(b => (b.length ? b.reduce((a, c) => a + c, 0) / b.length : null));
+    let worstIdx = -1, worstVal = Infinity;
+    for (let i = 0; i < 7; i++) {
+      if (means[i] == null || buckets[i].length < 3) continue;
+      if (means[i]! < worstVal) { worstVal = means[i]!; worstIdx = i; }
+    }
+    if (worstIdx < 0) return;
+    const others = means.map((m, i) => (i === worstIdx ? null : m)).filter((m): m is number => m != null);
+    if (others.length < 3) return;
+    const otherMean = others.reduce((a, c) => a + c, 0) / others.length;
+    if (otherMean - worstVal < 15) return; // not a real, actionable gap
+    await replaceDerivedPattern(userId, 'weekday_drift', {
+      type: 'weekday_drift',
+      // FIX (adversarial): every reader in the repo reads `description` — writing `pattern` rendered
+      // "- [weekday_drift] undefined -> undefined" into the KALIPLAR prompt block and showed a blank
+      // row in Koç Hafızası whose delete filter could never match it.
+      description: `${TR_DAYS[worstIdx]} günleri uyum belirgin düşük (ort. %${Math.round(worstVal)} — diğer günler %${Math.round(otherMean)})`,
+      intervention: `${TR_DAYS[worstIdx]} için önceden tek bir küçük plan kur`,
+      status: 'active',
+      confidence: 0.8,
+      source: 'derived',
+      last_occurred: new Date().toISOString().slice(0, 10),
+      times_observed: 1,
+      detected_at: new Date().toISOString(),
+    });
+  } catch (e) { console.error('[detectDayOfWeekDrift]', (e as Error).message); }
+}
+
+/** "Pizza yediğin 5 günün 5'inde hedefi aştın." — a specific food that reliably derails the day. */
+export async function detectDerailFoods(userId: string): Promise<void> {
+  try {
+    const since = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+    const [logsRes, reportsRes] = await Promise.all([
+      supabaseAdmin.from('meal_logs').select('id, logged_for_date').eq('user_id', userId).eq('is_deleted', false).gte('logged_for_date', since).order('logged_for_date', { ascending: false }).limit(400),
+      supabaseAdmin.from('daily_reports').select('date, calorie_actual').eq('user_id', userId).gte('date', since),
+    ]);
+    const logs = (logsRes.data ?? []) as { id: string; logged_for_date: string }[];
+    const reports = (reportsRes.data ?? []) as { date: string; calorie_actual: number | null }[];
+    if (logs.length < 20 || reports.length < 10) return;
+    // The day's own target band comes from daily_plans; use the median actual as a cheap baseline so
+    // this needs no extra join — a "derail" is a day well above this person's own norm.
+    const actuals = reports.map(r => Number(r.calorie_actual)).filter(n => Number.isFinite(n) && n > 0).sort((a, b) => a - b);
+    if (actuals.length < 10) return;
+    const median = actuals[Math.floor(actuals.length / 2)];
+    const overBy = median * 1.2;
+    const overDays = new Set(reports.filter(r => Number(r.calorie_actual) > overBy).map(r => r.date));
+    if (overDays.size < 3) return;
+
+    const { data: items } = await supabaseAdmin.from('meal_log_items')
+      .select('food_name, meal_log_id').in('meal_log_id', logs.slice(0, 200).map(l => l.id)).limit(1200);
+    const dateOf = new Map(logs.map(l => [l.id, l.logged_for_date]));
+    const perFood = new Map<string, { days: Set<string>; over: Set<string> }>();
+    for (const it of (items ?? []) as { food_name: string | null; meal_log_id: string }[]) {
+      const key = foodMatchKey(it.food_name ?? '');
+      if (key.length < 3) continue;
+      const day = dateOf.get(it.meal_log_id);
+      if (!day) continue;
+      const e = perFood.get(key) ?? { days: new Set<string>(), over: new Set<string>() };
+      e.days.add(day);
+      if (overDays.has(day)) e.over.add(day);
+      perFood.set(key, e);
+    }
+    for (const [food, e] of perFood) {
+      if (e.days.size < 4) continue;
+      const ratio = e.over.size / e.days.size;
+      if (ratio < 0.7) continue;
+      await replaceDerivedPattern(userId, 'derail_food', {
+        type: 'derail_food',
+        description: `"${food}" yediği ${e.days.size} günün ${e.over.size}'inde günlük kalorisi kendi ortalamasının %20+ üstüne çıkıyor`,
+        intervention: `"${food}" olan günlerde yanındakini (içecek/ekmek/sos) küçült`,
+        status: 'active',
+        confidence: 0.75,
+        source: 'derived',
+        last_occurred: new Date().toISOString().slice(0, 10),
+        times_observed: 1,
+        detected_at: new Date().toISOString(),
+      });
+      break; // one insight per run — this is a conversation opener, not a report
+    }
+  } catch (e) { console.error('[detectDerailFoods]', (e as Error).message); }
+}
+
 export async function appendBehavioralPatterns(
   userId: string,
   newPatterns: Record<string, unknown>[]
