@@ -23,6 +23,21 @@ export interface EnvelopeAction {
   confidence?: 'high' | 'medium' | 'low';
 }
 
+/**
+ * B2a: TYPED receipt for one executed action — the structure behind the prose feedback line.
+ * `ok` comes from the WRITE SITE (explicit meta at failure pushes), never inferred from text;
+ * `rows_affected` is filled where the writer does a real `.select('id')` (B2b sites).
+ * The client's first consumer: badge a FAILED write as a failure instead of green-stamping
+ * "Tartı kaydedildi" over an upsert that returned an error.
+ */
+export interface ActionReceipt {
+  action_type: string;
+  ok: boolean;
+  rows_affected: number | null;
+  user_line: string | null;
+  failure_class: string | null;
+}
+
 /** The <simulation> block, structured. The client must read THIS, not re-parse the text. */
 export interface EnvelopeSimulation {
   foodName: string;
@@ -58,4 +73,6 @@ export interface TurnEnvelope {
   remaining?: number;
   /** Persisted chat_messages row id of the assistant reply (feedback votes key to it). */
   assistant_message_id?: string | null;
+  /** B2a: typed per-action receipts (parallel truth to actions[].feedback prose). */
+  receipts?: ActionReceipt[] | null;
 }

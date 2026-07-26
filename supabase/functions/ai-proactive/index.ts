@@ -19,6 +19,7 @@ import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary
 import { projectDailyPlanRows, type ProjectionProfile } from '../shared/plan-projection.ts';
 import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { applyTargetAdjust } from '../shared/target-engine.ts';
+import { VOICE_RULES } from '../shared/voice.ts';
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
 import { deficitAllowed } from '../shared/safety-state.ts';
 import { HABIT_CATALOG, normalizeHabitEntry, deriveHabitStats, readyForNextHabit } from '../shared/habits.ts';
@@ -43,9 +44,14 @@ function localDayStartIso(tz: string | null | undefined, now: Date): string {
   }
 }
 
+// F4/B4-ses (TUTARLILIK-11): same voice as the chat coach — this cron used to be a second
+// personality ("Harika gidiyorsun!" while chat bans it as a cliché).
 const NUDGE_PROMPT = `Sen Kochko kocusun. Kullanicinin durumunu degerlendir.
 SADECE gercekten gerekli oldugunda mesaj uret. Spam YAPMA.
-Samimi, kisa (1-2 cumle), operasyonel ol. Emoji yok.
+Samimi, kisa (1-2 cumle), operasyonel ol.
+
+${VOICE_RULES}
+
 Yanitini yalnizca JSON olarak ver:
 Gerekli degilse: {"send": false}
 Gerekli ise: {"send": true, "message": "mesaj", "trigger": "neden", "priority": "low|medium|high"}`;
@@ -816,7 +822,7 @@ serve(async (req: Request) => {
           trigger_type: 'habit_stack',
           priority: 'medium',
           // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
-          content: `"${latestActive.name ?? latestActive.key}" alışkanlığını %${Math.round(compliance)} uyumla 2 haftadır tutturuyorsun — harika! Sıra "${nextHabit.label}" alışkanlığına geldi. ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Eklemek ister misin?`,
+          content: `"${latestActive.name ?? latestActive.key}" alışkanlığını %${Math.round(compliance)} uyumla 2 haftadır tutturuyorsun. Sıra "${nextHabit.label}" alışkanlığına geldi. ${nextHabit.anchor ? nextHabit.anchor + '. ' : ''}Eklemek ister misin?`,
         });
         totalSent++;
       } catch { /* non-critical */ }
@@ -1339,7 +1345,7 @@ serve(async (req: Request) => {
               } else if (weeksSinceGoalReached >= 12) {
                 reinforcementMsg = '3 aydır bakım modunda başarılısın. Alışkanlıklarının gücünün kanıtı bu.';
               } else {
-                reinforcementMsg = '1 aydır hedef kilonda kalmaya devam ediyorsun. Harika gidiyorsun!';
+                reinforcementMsg = '1 aydır hedef kilonun bandında kalıyorsun — bakım dönemin oturdu demektir.';
               }
               // Only send once per milestone (check not already sent this week)
               const oneWeekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
@@ -1950,7 +1956,7 @@ async function evaluateChallenges(dateStr: string) {
           user_id: ch.user_id,
           trigger_type: 'challenge_completed',
           priority: 'high',
-          content: `🏆 "${ch.title}" challenge'ını tamamladın — ${durationDays} günün ${metDays}'inde hedefi tutturdun. Tebrikler!`,
+          content: `"${ch.title}" challenge'ını tamamladın — ${durationDays} günün ${metDays}'inde hedefi tutturdun. Tebrikler!`,
           read: false,
           push_sent: false,
         });
@@ -2060,8 +2066,8 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
   await insertCoachingMessage({
     user_id: userId,
     content: adjustment === 'increase'
-      ? 'Citayi yukseltiyorum! Son 2 haftada harika bir uyum gosterdin. Kalori araligini biraz daraltip protein hedefini artiriyorum.'
-      : 'Eski seviyeye donuyoruz, rahat ol. Bu hafta hedefler biraz esnek olacak, tekrar ritim yakala.',
+      ? 'Çıtayı yükseltiyorum: son 2 haftada uyumun %85 üzeri. Kalori aralığını biraz daraltıp protein hedefini artırıyorum.'
+      : 'Eski seviyeye dönüyoruz, rahat ol. Bu hafta hedefler biraz esnek olacak — tekrar ritim yakala.',
     trigger_type: triggerMsg,
     priority: 'medium',
     read: false,

@@ -16,6 +16,8 @@ import { updateLayer2 } from '../shared/memory.ts';
 import { appendCoachingNote } from '../shared/coaching-notes.ts';
 import { gateUserText, loadUserSafety } from '../shared/output-gate.ts';
 
+import { VOICE_RULES } from '../shared/voice.ts';
+
 // Goal-type-based compliance weights (Spec 8.1 deepening)
 function getComplianceWeights(goalType: string): Record<string, number> {
   switch (goalType) {
@@ -54,7 +56,10 @@ JSON formatinda:
   "deviation_reason": "stres|aclik|disarida_yemek|plansiz_atistirma|sosyal|alkol|yok",
   "tomorrow_action": "yarin icin tek en etkili aksiyon",
   "full_report": "2-3 cumle degerlendirme"
-}`;
+}
+
+Kullaniciya gorunen her metin alani (yorumlar, tomorrow_action, ozet) su ses kurallarina uyar:
+${VOICE_RULES}`;
 
 const MONTHLY_REPORT_SYSTEM = `Kullanicinin aylik performansini degerlendir. Son 4 haftanin verilerini analiz et.
 
@@ -69,7 +74,10 @@ JSON formatinda:
   "top_achievement": "ayin en buyuk basarisi",
   "deviation_distribution": {"stres": sayi, "aclik": sayi, "disarida_yemek": sayi, "plansiz_atistirma": sayi, "sosyal": sayi, "alkol": sayi, "yok": sayi},
   "next_month_focus": "gelecek ay odak noktasi 2-3 cumle"
-}`;
+}
+
+Kullaniciya gorunen her metin alani (yorumlar, tomorrow_action, ozet) su ses kurallarina uyar:
+${VOICE_RULES}`;
 
 const WEEKLY_REPORT_SYSTEM = `Kullanicinin haftalik performansini degerlendir.
 
@@ -84,7 +92,10 @@ JSON formatinda:
   "ai_learning_note": "bu hafta seni daha iyi tanidim notu veya null",
   "next_week_strategy": "gelecek hafta stratejisi 2-3 cumle",
   "plan_revision": {"calorie_adj": sayi_veya_null, "protein_adj": sayi_veya_null, "workout_change": "text_veya_null"}
-}`;
+}
+
+Kullaniciya gorunen her metin alani (yorumlar, tomorrow_action, ozet) su ses kurallarina uyar:
+${VOICE_RULES}`;
 
 serve(async (req: Request) => {
   try {

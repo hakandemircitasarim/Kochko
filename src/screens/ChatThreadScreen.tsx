@@ -100,6 +100,9 @@ interface RecipeData {
 // Extended message type for UI state
 interface UIMessage extends ChatMessage {
   actions?: { type: string; feedback: string | null; confidence?: 'high' | 'medium' | 'low' }[];
+  // B2a: typed per-action receipts from the envelope — lets the badge row tell a FAILED write
+  // from a successful one instead of green-stamping every executed action.
+  receipts?: import('@contracts/turn-envelope').ActionReceipt[] | null;
   showFeedback?: boolean;
   simulationData?: SimulationData | null;
   recipeData?: RecipeData | null;
@@ -1362,6 +1365,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         task_mode: data.task_mode,
         created_at: new Date().toISOString(),
         actions: data.actions,
+        receipts: data.receipts ?? null,
         showFeedback,
         simulationData,
         recipeData,
@@ -1538,7 +1542,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         const hasLowConf = hasLowConfidenceVerificationIndicator(content);
         setMessages(prev => [...prev, {
           id: `a-${Date.now()}`, role: 'assistant', content, task_mode: data.task_mode,
-          created_at: new Date().toISOString(), actions: data.actions, showFeedback: false,
+          created_at: new Date().toISOString(), actions: data.actions, receipts: data.receipts ?? null, showFeedback: false,
           simulationData: simParsed.data, recipeData: recipeParsed.data,
           quickSelectOptions: qsParsed.options, hasPlanSuggestion: hasPlan,
           hasLowConfidenceVerification: hasLowConf,
@@ -1749,6 +1753,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           task_mode: data.task_mode,
           created_at: new Date().toISOString(),
           actions: data.actions,
+          receipts: data.receipts ?? null,
           showFeedback: false,
         };
         setMessages(prev => [...prev, reply]);
@@ -2853,21 +2858,34 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
   // matching the old Alert's cancel).
   const [showRejectReasons, setShowRejectReasons] = useState(false);
 
-  // Detect which silent actions this message triggered (for visual badges)
+  // Detect which silent actions this message triggered (for visual badges).
+  // B2a: the TYPED receipt decides success vs failure — before this, a weight upsert that
+  // errored still green-stamped "Tartı kaydedildi" over the user's data that never landed.
   const allActions = [...(message.actions ?? []), ...(message.actions_executed ?? [])];
   const savedBadges: { icon: string; label: string; color: string }[] = [];
   const seen = new Set<string>();
+  const failedTypes = new Set((message.receipts ?? []).filter(r => !r.ok).map(r => r.action_type));
+  const BADGE_DEFS: Record<string, { icon: string; done: string; failed: string; color: string }> = {
+    profile_update: { icon: 'person-circle-outline', done: 'Profil güncellendi', failed: 'Profil güncellenemedi', color: colors.success },
+    meal_log: { icon: 'restaurant-outline', done: 'Öğün kaydedildi', failed: 'Öğün kaydedilemedi', color: colors.carbs },
+    weight_log: { icon: 'scale-outline', done: 'Tartı kaydedildi', failed: 'Tartı kaydedilemedi', color: colors.pink },
+    water_log: { icon: 'water-outline', done: 'Su kaydedildi', failed: 'Su kaydedilemedi', color: colors.protein },
+    sleep_log: { icon: 'moon-outline', done: 'Uyku kaydedildi', failed: 'Uyku kaydedilemedi', color: colors.purple },
+    workout_log: { icon: 'fitness-outline', done: 'Antrenman kaydedildi', failed: 'Antrenman kaydedilemedi', color: colors.success },
+    supplement_log: { icon: 'medical-outline', done: 'Takviye kaydedildi', failed: 'Takviye kaydedilemedi', color: colors.primary },
+    goal_suggestion: { icon: 'flag-outline', done: 'Hedef eklendi', failed: 'Hedef eklenemedi', color: colors.warning },
+  };
   for (const a of allActions) {
     if (seen.has(a.type)) continue;
     seen.add(a.type);
-    if (a.type === 'profile_update') savedBadges.push({ icon: 'person-circle-outline', label: 'Profil güncellendi', color: colors.success });
-    else if (a.type === 'meal_log') savedBadges.push({ icon: 'restaurant-outline', label: 'Öğün kaydedildi', color: colors.carbs });
-    else if (a.type === 'weight_log') savedBadges.push({ icon: 'scale-outline', label: 'Tartı kaydedildi', color: colors.pink });
-    else if (a.type === 'water_log') savedBadges.push({ icon: 'water-outline', label: 'Su kaydedildi', color: colors.protein });
-    else if (a.type === 'sleep_log') savedBadges.push({ icon: 'moon-outline', label: 'Uyku kaydedildi', color: colors.purple });
-    else if (a.type === 'workout_log') savedBadges.push({ icon: 'fitness-outline', label: 'Antrenman kaydedildi', color: colors.success });
-    else if (a.type === 'supplement_log') savedBadges.push({ icon: 'medical-outline', label: 'Takviye kaydedildi', color: colors.primary });
-    else if (a.type === 'goal_suggestion') savedBadges.push({ icon: 'flag-outline', label: 'Hedef eklendi', color: colors.warning });
+    const def = BADGE_DEFS[a.type];
+    if (!def) continue;
+    const failed = failedTypes.has(a.type);
+    savedBadges.push({
+      icon: failed ? 'alert-circle-outline' : def.icon,
+      label: failed ? def.failed : def.done,
+      color: failed ? colors.error : def.color,
+    });
   }
 
   return (

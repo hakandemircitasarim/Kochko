@@ -15,6 +15,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
+// B2a: the typed action receipt — ONE definition, read by both runtimes (contracts/ discipline).
+import type { ActionReceipt } from '../shared/contracts/turn-envelope.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, scanReplyForAllergens, buildAllergenBlockMessage, type AllergenSeverity, detectTaskSkipIntent, normalizeClockTime, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
@@ -290,7 +292,8 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
             // No tz here on purpose: this crisis-path salvage runs BEFORE the profile/timezone is
             // resolved, and it only writes safety constraints — nothing time-of-day dependent.
             const salvageOutcome = await executeActions(userId, salvaged as never, null, new Date().toISOString().split('T')[0], 'ai_chat', undefined);
-            const salvageFailed = salvageOutcome.filter((f) => typeof f === 'string' && /basarisiz|başarısız/i.test(f));
+            // B2a: judge by the TYPED receipt, not by grepping the prose line.
+            const salvageFailed = salvageOutcome.receipts.filter((r) => !r.ok);
             if (salvageFailed.length > 0) console.error('[safety_path_salvage] SOME WRITES FAILED', { failed: salvageFailed });
           }
         } catch (e) { console.warn('[safety_path_salvage] failed:', (e as Error).message); }
@@ -2138,8 +2141,9 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
             });
           if (factActions.length > 0) {
             const capSalvage = await executeActions(userId, factActions as typeof actions, profile?.gender, effectiveToday, 'ai_chat', idempotency_key as string | undefined, userTz)
-              .catch((e): (string | null)[] => { console.warn('[plan-cap] fact salvage failed:', (e as Error).message); return []; });
-            const capFailed = capSalvage.filter((f) => typeof f === 'string' && /basarisiz|başarısız/i.test(f));
+              .catch((e): ActionExecResult => { console.warn('[plan-cap] fact salvage failed:', (e as Error).message); return { feedback: [], receipts: [] }; });
+            // B2a: judge by the TYPED receipt, not by grepping the prose line.
+            const capFailed = capSalvage.receipts.filter((r) => !r.ok);
             if (capFailed.length > 0) console.error('[plan-cap] fact salvage: SOME WRITES FAILED', { failed: capFailed });
           }
           return await commitAndRespond({
@@ -2703,7 +2707,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     }
 
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
-    const actionFeedback = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz);
+    const { feedback: actionFeedback, receipts: actionReceipts } = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz);
 
     // #S2 RECEIPTS: verify that captured identity facts REALLY landed in the canonical store and
     // persist per-field receipts to ai_turn_log. This is what makes the "anladım, 25 yaşındasın"
@@ -3218,6 +3222,10 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
     const responseData = {
       message: assistantMessage,
       actions: outActions,
+      // B2a: typed per-action receipts — the structure behind the prose chips. The client's badge
+      // row keys on action_type and finally knows a FAILED write from a successful one instead of
+      // green-stamping every executed action.
+      receipts: actionReceipts.length > 0 ? actionReceipts : null,
       // #ux-fix (per-message feedback linkage): the persisted assistant chat_messages row id.
       // Additive — clients that don't read it are unaffected; the feedback buttons use it so
       // votes link to the real message row instead of a client-minted id.
@@ -4486,6 +4494,12 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
  */
 const DUP_SKIP = '__dup_skip__';
 
+/** B2a: executeActions returns the legacy positional feedback AND the typed receipts together. */
+interface ActionExecResult {
+  feedback: (string | null)[];
+  receipts: ActionReceipt[];
+}
+
 async function executeActions(
   userId: string,
   actions: Record<string, unknown>[],
@@ -4497,10 +4511,28 @@ async function executeActions(
   // times, the afternoon-caffeine warning) was computed from the UTC edge clock and was therefore
   // wrong by the user's offset for every user outside UTC.
   tzForActions?: string | null,
-): Promise<(string | null)[]> {
-  if (!actions || !Array.isArray(actions) || actions.length === 0) return [];
+): Promise<ActionExecResult> {
+  if (!actions || !Array.isArray(actions) || actions.length === 0) return { feedback: [], receipts: [] };
   const today = targetDate ?? new Date().toISOString().split('T')[0];
   const feedback: (string | null)[] = [];
+  // B2a (plan v2): TYPED receipts riding next to the legacy positional feedback strings. Every
+  // push goes through pushFb — same 1:1 action↔entry invariant, but the envelope now carries
+  // {action_type, ok, failure_class} STRUCTURE instead of only prose the client can't reason
+  // about. Failure sites pass meta explicitly (ok is never inferred from text — G6 discipline);
+  // B2b's .select('id') writers can upgrade rows_affected site by site.
+  const actionReceipts: ActionReceipt[] = [];
+  let curType = 'unknown';
+  const pushFb = (line: string | null, meta?: { ok?: boolean; rowsAffected?: number | null; failureClass?: string | null }) => {
+    feedback.push(line);
+    if (line === DUP_SKIP) return; // the action is dropped with its chip — no receipt for a non-event
+    actionReceipts.push({
+      action_type: curType,
+      ok: meta?.ok ?? true,
+      rows_affected: meta?.rowsAffected ?? null,
+      user_line: line,
+      failure_class: meta?.failureClass ?? null,
+    });
+  };
 
   // Get existing water for today. waterTotal is a MUTABLE running total: every metric
   // upsert (weight/sleep/mood/water) re-writes water_liters because upsert REPLACES the
@@ -4540,12 +4572,13 @@ async function executeActions(
       .select('idempotency_key');
     if (!claimed || claimed.length === 0) {
       console.warn('[request_journal] side-effects already applied — skipping action loop', { key: idempotencyKey });
-      return feedback; // actions already applied by a prior attempt
+      return { feedback, receipts: actionReceipts }; // actions already applied by a prior attempt
     }
   }
 
   for (const action of actions) {
     try {
+      curType = String((action as { type?: unknown }).type ?? 'unknown');
       // Spec 3.1: natural-language backdating ("dün akşam pizza yedim" →
       // days_ago:1 in the action JSON). Clamped to 7 days back, never future.
       const rawDaysAgo = Number((action as Record<string, unknown>).days_ago);
@@ -4625,7 +4658,7 @@ async function executeActions(
               .gte('logged_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
               .limit(1);
             if (recentDupe && recentDupe.length > 0) {
-              feedback.push(DUP_SKIP); // already saved — drop the ACTION too, or the client badges a phantom save
+              pushFb(DUP_SKIP); // already saved — drop the ACTION too, or the client badges a phantom save
               break;
             }
           }
@@ -4652,7 +4685,7 @@ async function executeActions(
                 const filtered = items.filter(i => !existingNames.has((i.name ?? '').toLocaleLowerCase('tr').trim()));
                 if (filtered.length < items.length) {
                   // A restate was detected (≥1 item already logged recently).
-                  if (filtered.length === 0) { feedback.push(DUP_SKIP); break; } // nothing new — full restate, drop the action
+                  if (filtered.length === 0) { pushFb(DUP_SKIP); break; } // nothing new — full restate, drop the action
                   mealItems = filtered; // insert only the genuinely-new items
                 }
               }
@@ -4672,7 +4705,7 @@ async function executeActions(
           // through to 'Ogun kaydedildi', which would lie to the user about a saved meal.
           if (logErr || !log) {
             if (logErr) console.error('[meal_logs] insert failed:', logErr.message);
-            feedback.push('Kayit basarisiz: ogun');  // one entry for this action
+            pushFb('Kayit basarisiz: ogun', { ok: false, failureClass: 'write_failed' });  // one entry for this action
             break;
           }
 
@@ -4747,7 +4780,7 @@ async function executeActions(
               // surface an honest failure chip instead of falling through to 'Ogun kaydedildi'.
               console.error('[meal_log_items] insert failed — rolling back parent:', itemsErr.message);
               await supabaseAdmin.from('meal_logs').delete().eq('id', log.id).then(() => {}, () => {});
-              feedback.push('Kayit basarisiz: ogun');
+              pushFb('Kayit basarisiz: ogun', { ok: false, failureClass: 'write_failed' });
               break;
             }
             // FIX (audit MEDIUM — receipt = DB): stash the EXACT persisted total (grounding × cooking
@@ -4798,7 +4831,7 @@ async function executeActions(
             mealFeedback.push('Ogun kaydedildi');
           }
           // Single entry per action: join allergen + caffeine + low-conf + the itemized receipt.
-          feedback.push(mealFeedback.join('\n'));
+          pushFb(mealFeedback.join('\n'));
           break;
         }
         case 'workout_log': {
@@ -4845,7 +4878,7 @@ async function executeActions(
           // chip) on a real write — never claim "Antrenman kaydedildi" on failure.
           if (wlogErr || !wlogRow) {
             console.error('[workout_logs] insert failed:', wlogErr?.message);
-            feedback.push('Antrenmanı kaydedemedim, tekrar dener misin?');
+            pushFb('Antrenmanı kaydedemedim, tekrar dener misin?', { ok: false, failureClass: 'write_failed' });
             break;
           }
 
@@ -4961,14 +4994,14 @@ async function executeActions(
             // FIX (audit HIGH — bump message lied with no plan): only PROMISE the "+X kcal hareket
             // alani" when a daily_plan actually got bumped. Free/no-plan users were told room opened
             // while their budget was untouched.
-            feedback.push(bumped
+            pushFb(bumped
               ? `Antrenman kaydedildi (~${caloriesBurned} kcal yakim). Bugun icin +${bump} kcal hareket alani acildi.${workoutPrNote ? ` ${workoutPrNote}` : ''}`
               : `Antrenman kaydedildi (~${caloriesBurned} kcal yakim).${workoutPrNote ? ` ${workoutPrNote}` : ''}`);
           } else if (caloriesBurned >= 150) {
             // Backdated: real burn, but no budget change and NO claim that room opened.
-            feedback.push(`Antrenman kaydedildi (~${caloriesBurned} kcal yakim, ${actionDate}).${workoutPrNote ? ` ${workoutPrNote}` : ''}`);
+            pushFb(`Antrenman kaydedildi (~${caloriesBurned} kcal yakim, ${actionDate}).${workoutPrNote ? ` ${workoutPrNote}` : ''}`);
           } else {
-            feedback.push(`Antrenman kaydedildi${workoutPrNote ? `. ${workoutPrNote}` : ''}`);
+            pushFb(`Antrenman kaydedildi${workoutPrNote ? `. ${workoutPrNote}` : ''}`);
           }
           break;
         }
@@ -4981,7 +5014,7 @@ async function executeActions(
               { user_id: userId, date: actionDate, weight_kg: w, water_liters: await waterFor(actionDate), synced: true },
               { onConflict: 'user_id,date' }
             );
-            if (weightErr) { console.error('[weight_log] upsert failed:', weightErr.message); feedback.push('Tarti kaydi basarisiz'); break; }
+            if (weightErr) { console.error('[weight_log] upsert failed:', weightErr.message); pushFb('Tarti kaydi basarisiz', { ok: false, failureClass: 'write_failed' }); break; }
             // weight_history is the canonical measurement store (export + trend source)
             // but was never written by any code path before (#R1-M2). Record each weigh-in.
             await supabaseAdmin.from('weight_history').upsert({ user_id: userId, weight_kg: w, recorded_at: actionDate }, { onConflict: 'user_id,recorded_at' });
@@ -5008,14 +5041,14 @@ async function executeActions(
               .gte('logged_for_date', new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0])
               .limit(1);
             if (recentCreatine && recentCreatine.length > 0) {
-              feedback.push('Tarti kaydedildi (kreatin kullaniyorsun — olasi su tutulumunu goz onunde bulundur)');
+              pushFb('Tarti kaydedildi (kreatin kullaniyorsun — olasi su tutulumunu goz onunde bulundur)');
             } else {
-              feedback.push('Tarti kaydedildi');
+              pushFb('Tarti kaydedildi');
             }
           } else {
             // Out-of-range value (parse error) — push a placeholder so feedback[]
             // stays positionally aligned with actions[] (#R2-6).
-            feedback.push(null);
+            pushFb(null);
           }
           break;
         }
@@ -5033,11 +5066,11 @@ async function executeActions(
               // Revert the in-memory running total (bumped BEFORE the upsert) so a later same-turn
               // metric upsert doesn't silently persist the water we just told the user FAILED.
               setWaterFor(actionDate, next - l);
-              console.error('[water_log] upsert failed:', waterErr.message); feedback.push('Su kaydi basarisiz'); break;
+              console.error('[water_log] upsert failed:', waterErr.message); pushFb('Su kaydi basarisiz', { ok: false, failureClass: 'write_failed' }); break;
             }
-            feedback.push(`Su +${l}L`);
+            pushFb(`Su +${l}L`);
           } else {
-            feedback.push(null); // alignment (#R2-6)
+            pushFb(null); // alignment (#R2-6)
           }
           break;
         }
@@ -5056,10 +5089,10 @@ async function executeActions(
               { user_id: userId, date: actionDate, sleep_hours: h, sleep_quality: sleepQuality, water_liters: await waterFor(actionDate), synced: true },
               { onConflict: 'user_id,date' }
             );
-            if (sleepErr) { console.error('[sleep_log] upsert failed:', sleepErr.message); feedback.push('Uyku kaydi basarisiz'); }
-            else feedback.push('Uyku kaydedildi');
+            if (sleepErr) { console.error('[sleep_log] upsert failed:', sleepErr.message); pushFb('Uyku kaydi basarisiz', { ok: false, failureClass: 'write_failed' }); }
+            else pushFb('Uyku kaydedildi');
           } else {
-            feedback.push(null); // alignment (#R2-6)
+            pushFb(null); // alignment (#R2-6)
           }
           break;
         }
@@ -5068,13 +5101,13 @@ async function executeActions(
           // (users say "8/10") doesn't 23514-reject the whole upsert silently.
           const s = Number(action.score);
           const moodScore = Number.isFinite(s) ? Math.min(5, Math.max(1, Math.round(s))) : null;
-          if (moodScore === null) { feedback.push(null); break; } // alignment (#R2-6)
+          if (moodScore === null) { pushFb(null); break; } // alignment (#R2-6)
           const { error: moodErr } = await supabaseAdmin.from('daily_metrics').upsert(
             { user_id: userId, date: actionDate, mood_score: moodScore, mood_note: action.note as string, water_liters: await waterFor(actionDate), synced: true },
             { onConflict: 'user_id,date' }
           );
-          if (moodErr) { console.error('[mood_log] upsert failed:', moodErr.message); feedback.push(null); break; }
-          feedback.push('Ruh hali kaydedildi');
+          if (moodErr) { console.error('[mood_log] upsert failed:', moodErr.message); pushFb(null); break; }
+          pushFb('Ruh hali kaydedildi');
           break;
         }
         case 'step_log': {
@@ -5082,25 +5115,25 @@ async function executeActions(
           // (INT, mig 002:84). Was never written from chat; the coach faked success.
           const s = Number(action.steps);
           const stepCount = Number.isFinite(s) ? Math.round(s) : 0;
-          if (stepCount < 100 || stepCount > 100000) { feedback.push(null); break; } // implausible → alignment
+          if (stepCount < 100 || stepCount > 100000) { pushFb(null); break; } // implausible → alignment
           const { error: stepErr } = await supabaseAdmin.from('daily_metrics').upsert(
             { user_id: userId, date: actionDate, steps: stepCount, steps_source: 'manual', water_liters: await waterFor(actionDate), synced: true },
             { onConflict: 'user_id,date' }
           );
-          if (stepErr) { console.error('[step_log] upsert failed:', stepErr.message); feedback.push('Adim kaydi basarisiz'); break; }
-          feedback.push(`${stepCount} adim kaydedildi`);
+          if (stepErr) { console.error('[step_log] upsert failed:', stepErr.message); pushFb('Adim kaydi basarisiz', { ok: false, failureClass: 'write_failed' }); break; }
+          pushFb(`${stepCount} adim kaydedildi`);
           break;
         }
         case 'supplement_log': {
           // supplement_name is NOT NULL — guard the model omitting it, capture the
           // error, and never claim success on failure (#R2-5).
           const suppName = (action.name as string | undefined)?.trim();
-          if (!suppName) { feedback.push(null); break; }
+          if (!suppName) { pushFb(null); break; }
           const { error: suppErr } = await supabaseAdmin.from('supplement_logs').insert({
             user_id: userId, supplement_name: suppName,
             amount: action.amount as string, logged_for_date: actionDate,
           });
-          if (suppErr) { console.error('[supplement_logs] insert failed:', suppErr.message); feedback.push('Supplement kaydedilemedi'); break; }
+          if (suppErr) { console.error('[supplement_logs] insert failed:', suppErr.message); pushFb('Supplement kaydedilemedi'); break; }
           // #memory: maintain a DISTINCT supplement-routine note so the coach knows the stack.
           // ai_summary.supplement_notes was a read-into-prompt-but-never-written dead column; this
           // gives it a cheap, deterministic writer (append the name only if not already present).
@@ -5112,21 +5145,21 @@ async function executeActions(
               await supabaseAdmin.rpc('ai_summary_merge', { p_user_id: userId, p_patch: { supplement_notes: merged } });
             }
           } catch (e) { console.warn('[supplement_notes] note update skipped:', (e as Error).message); }
-          feedback.push('Supplement kaydedildi');
+          pushFb('Supplement kaydedildi');
           break;
         }
         case 'commitment': {
           // commitment is NOT NULL — guard + capture error, don't fake success (#R2-5).
           const commitText = (action.text as string | undefined)?.trim();
-          if (!commitText) { feedback.push(null); break; }
+          if (!commitText) { pushFb(null); break; }
           const followUp = new Date();
           followUp.setDate(followUp.getDate() + ((action.follow_up_days as number) ?? 1));
           const { error: commitErr } = await supabaseAdmin.from('user_commitments').insert({
             user_id: userId, commitment: commitText,
             follow_up_at: followUp.toISOString(), status: 'pending',
           });
-          if (commitErr) { console.error('[user_commitments] insert failed:', commitErr.message); feedback.push(null); break; }
-          feedback.push('Taahhut kaydedildi');
+          if (commitErr) { console.error('[user_commitments] insert failed:', commitErr.message); pushFb(null); break; }
+          pushFb('Taahhut kaydedildi');
           break;
         }
         case 'profile_update': {
@@ -5460,7 +5493,7 @@ async function executeActions(
           }
           // Exactly one feedback entry for this profile_update action (null = no chip,
           // but keeps feedback[] positionally aligned with actions[]).
-          feedback.push(pfMessages.length > 0 ? pfMessages.join('\n') : null);
+          pushFb(pfMessages.length > 0 ? pfMessages.join('\n') : null);
           break;
         }
         // NOTE: strength logging is handled by the `workout_log` action (it parses
@@ -5490,7 +5523,7 @@ async function executeActions(
               await confirmConstraint(userId, ccKind as ConstraintKind, ccSubject);
             }
           }
-          feedback.push(null);
+          pushFb(null);
           break;
         }
         case 'food_preference': {
@@ -5500,7 +5533,7 @@ async function executeActions(
           const VALID_PREFS = new Set(['love', 'like', 'can_cook', 'dislike', 'never']);
           const VALID_SEV = new Set(['mild', 'moderate', 'severe']);
           const foodName = (action.food_name as string ?? '').trim();
-          if (!foodName) { feedback.push(null); break; }
+          if (!foodName) { pushFb(null); break; }
           // #memory RETRACTION: clear:true DELETEs every matching food_preferences row (allergen
           // OR dislike) — the retraction path the coach promises. Match by foodMatchKey so "süt
           // alerjim geçti" clears a row stored as "laktoz"/"sut"/"sütü". Also prune disliked_foods.
@@ -5531,7 +5564,7 @@ async function executeActions(
               note: `kullanıcı geri aldı ("geçti/kalmadı") — ${toDrop.length} kayıt temizlendi`,
             });
             console.warn('[food_preference] cleared', { food: foodName, dropped: toDrop.length });
-            feedback.push(toDrop.length > 0 || kept.length !== df.length ? 'Kayıt temizlendi' : null);
+            pushFb(toDrop.length > 0 || kept.length !== df.length ? 'Kayıt temizlendi' : null);
             break;
           }
           const rawPref = action.preference as string ?? (action.is_allergen ? 'never' : 'dislike');
@@ -5555,7 +5588,7 @@ async function executeActions(
             .upsert(fpRow, { onConflict: 'user_id,food_name' });
           if (fpErr) {
             console.error('[food_preference] upsert failed:', fpErr.message);
-            feedback.push(null);
+            pushFb(null);
           } else {
             // #memory (Spec 5.12): a POSITIVE preference is a REVERSAL — clear any stale
             // non-allergen dislike/never rows for the SAME food so the contradiction engine
@@ -5596,7 +5629,7 @@ async function executeActions(
               const rep = await repairPlansAfterBeliefChange(userId, { beliefKey, subject: foodName });
               if (rep.stale) planNote = ` Bu arada, aktif planında ${(rep.violations ?? []).join(', ')} vardı — istersen planı buna göre yenileyeyim.`;
             }
-            feedback.push((action.is_allergen === true ? 'Alerjen kaydedildi' : 'Yemek tercihi kaydedildi') + planNote);
+            pushFb((action.is_allergen === true ? 'Alerjen kaydedildi' : 'Yemek tercihi kaydedildi') + planNote);
           }
           break;
         }
@@ -5605,7 +5638,7 @@ async function executeActions(
           // health_events AND (the durable/safety ones) to the canonical typed spine
           // user_constraints — deduped ON WRITE and recalled every turn, not stored append-only.
           const desc = (action.description as string ?? '').trim();
-          if (!desc) { feedback.push(null); break; }
+          if (!desc) { pushFb(null); break; }
           const VALID_EVENTS = new Set(['surgery', 'injury', 'illness', 'condition', 'medication', 'other']);
           let ev = VALID_EVENTS.has(action.event_type as string) ? (action.event_type as string) : 'other';
           // Categorization guard (real bug: a past-workout narrative — "300 antrenman günü, paten...
@@ -5648,27 +5681,27 @@ async function executeActions(
           } else if (ev === 'injury' && action.is_ongoing !== false) {
             await syncInjuryFromText(userId, desc, 'injury');
           }
-          feedback.push('Sağlık bilgisi kaydedildi');
+          pushFb('Sağlık bilgisi kaydedildi');
           break;
         }
         case 'life_event': {
           // #organism: persist a dated motivating event so the coach remembers it across sessions.
           const leTitle = (action.title as string ?? '').trim();
           const leDate = action.event_date as string;
-          if (!leTitle || !leDate || !/^\d{4}-\d{2}-\d{2}$/.test(leDate)) { feedback.push(null); break; }
+          if (!leTitle || !leDate || !/^\d{4}-\d{2}-\d{2}$/.test(leDate)) { pushFb(null); break; }
           const leType = (action.event_type as string) ?? 'other';
           // Dedup: same type within ±10 days already stored → skip (avoids re-logging on re-mention).
           const { data: existingLE } = await supabaseAdmin.from('life_events')
             .select('event_date').eq('user_id', userId).eq('is_active', true).eq('event_type', leType);
           const near = (existingLE ?? []).some((e: { event_date: string }) =>
             Math.abs(Date.parse(`${e.event_date}T00:00:00Z`) - Date.parse(`${leDate}T00:00:00Z`)) < 10 * 86400000);
-          if (near) { feedback.push(null); break; }
+          if (near) { pushFb(null); break; }
           const { error: leErr } = await supabaseAdmin.from('life_events').insert({
             user_id: userId, title: leTitle.slice(0, 80), event_type: leType,
             event_date: leDate, note: (action.note as string ?? '').slice(0, 200),
           });
-          if (leErr) { console.error('[life_event] insert failed:', leErr.message); feedback.push(null); }
-          else feedback.push(`Aklımda: ${leTitle} (${leDate}) — o güne çalışırız 💪`);
+          if (leErr) { console.error('[life_event] insert failed:', leErr.message); pushFb(null); }
+          else pushFb(`Aklımda: ${leTitle} (${leDate}) — o güne çalışırız.`);
           break;
         }
         case 'health_event_resolve': {
@@ -5676,7 +5709,7 @@ async function executeActions(
           // is_ongoing=false so filterExercisesByInjury / the injury guardrail / plan-gen stop
           // treating it as active. Match by body part (the same extractor the injury net uses).
           const healedParts = new Set((action.body_parts as string[] | undefined) ?? []);
-          if (healedParts.size === 0) { feedback.push(null); break; }
+          if (healedParts.size === 0) { pushFb(null); break; }
           const { data: ongoing } = await supabaseAdmin
             .from('health_events').select('id, description')
             .eq('user_id', userId).eq('is_ongoing', true);
@@ -5700,7 +5733,7 @@ async function executeActions(
             });
           }
           console.warn('[health_event_resolve] resolved', { parts: [...healedParts], resolved });
-          feedback.push(resolved > 0 ? 'Geçmiş olsun, kaydını güncelledim' : null);
+          pushFb(resolved > 0 ? 'Geçmiş olsun, kaydını güncelledim' : null);
           break;
         }
         case 'lab_value': {
@@ -5757,7 +5790,7 @@ async function executeActions(
               };
             })
             .filter((r): r is NonNullable<typeof r> => r !== null);
-          if (rows.length === 0) { feedback.push(null); break; }
+          if (rows.length === 0) { pushFb(null); break; }
           let { error: labErr } = await supabaseAdmin.from('lab_values').insert(rows);
           // DEPLOY-ORDER SAFETY (42703): `notes` arrives with mig 096. If the function ships before
           // the migration, retry without it rather than losing every lab value the user just gave.
@@ -5766,8 +5799,8 @@ async function executeActions(
             const stripped = rows.map(({ notes: _notes, ...rest }) => rest);
             ({ error: labErr } = await supabaseAdmin.from('lab_values').insert(stripped));
           }
-          if (labErr) { console.error('[lab_value] insert failed:', labErr.message); feedback.push('Lab degerleri kaydedilemedi'); break; }
-          feedback.push(`${rows.length} lab değeri kaydedildi`);
+          if (labErr) { console.error('[lab_value] insert failed:', labErr.message); pushFb('Lab degerleri kaydedilemedi'); break; }
+          pushFb(`${rows.length} lab değeri kaydedildi`);
           break;
         }
         case 'save_recipe': {
@@ -5788,8 +5821,8 @@ async function executeActions(
             prep_time_min: recipe.prep_time_min as number ?? 0,
             servings: recipe.servings as number ?? 1,
           });
-          if (recipeErr) { console.error('[saved_recipes] insert failed:', recipeErr.message); feedback.push('Tarif kaydedilemedi'); break; }
-          feedback.push('Tarif kaydedildi');
+          if (recipeErr) { console.error('[saved_recipes] insert failed:', recipeErr.message); pushFb('Tarif kaydedilemedi'); break; }
+          pushFb('Tarif kaydedildi');
           break;
         }
         // EYLEM-10 (C6 decision, verified twice): 'undo_last' had ZERO emitters anywhere — no
@@ -5811,7 +5844,7 @@ async function executeActions(
             follow_up_at: mvdFollowUp.toISOString(),
             status: 'pending',
           });
-          feedback.push('MVD modu aktif — bugun sadece basit hedefler');
+          pushFb('MVD modu aktif — bugun sadece basit hedefler');
           break;
         }
         case 'recovery_plan': {
@@ -5847,7 +5880,7 @@ async function executeActions(
             // amber/red ED user — that IS the restriction pattern the gate must prevent. Reassure.
             if (!(await deficitAllowed(userId)).allowed) {
               console.warn('[recovery_plan] compensatory deficit blocked by SafetyState');
-              feedback.push('Bir günlük fazla, tüm emeğini silmez — telafi için kendini kısıtlamana hiç gerek yok. Yarın sakince, dengeli beslenmeye devam edelim; her şey yolunda.');
+              pushFb('Bir günlük fazla, tüm emeğini silmez — telafi için kendini kısıtlamana hiç gerek yok. Yarın sakince, dengeli beslenmeye devam edelim; her şey yolunda.');
               break;
             }
             // Distribute over next 2 days (spec says 2-3, 2 keeps per-day dip reasonable)
@@ -5871,9 +5904,9 @@ async function executeActions(
                 }).eq('id', futurePlan.id);
               }
             }
-            feedback.push(`Kurtarma plani olusturuldu. ~${excessKcal} kcal fazlayi sonraki 2 gune dagittim (gunluk -${perDayDip} kcal).`);
+            pushFb(`Kurtarma plani olusturuldu. ~${excessKcal} kcal fazlayi sonraki 2 gune dagittim (gunluk -${perDayDip} kcal).`);
           } else {
-            feedback.push('Kurtarma plani olusturuldu');
+            pushFb('Kurtarma plani olusturuldu');
           }
           break;
         }
@@ -5913,7 +5946,7 @@ async function executeActions(
             learned_items: mergedItems,
             visit_count: newVisitCount,
           }, { onConflict: 'user_id,venue_name' });
-          feedback.push('Mekan kaydedildi');
+          pushFb('Mekan kaydedildi');
           break;
         }
         case 'periodic_state_update': {
@@ -5930,7 +5963,7 @@ async function executeActions(
           // in the column (consumers silently no-op on unknown states).
           const VALID_STATES = new Set(['ramadan', 'holiday', 'illness', 'busy_work', 'exam', 'pregnancy', 'breastfeeding', 'injury', 'travel', 'custom']);
           if (!CLEARING && !VALID_STATES.has(rawState as string)) {
-            feedback.push(`Donemsel durum taninmadi: ${rawState}`);
+            pushFb(`Donemsel durum taninmadi: ${rawState}`);
             break;
           }
           const newState = CLEARING ? '' : (rawState as string);
@@ -6022,7 +6055,7 @@ async function executeActions(
             { onConflict: 'user_id' }
           );
           stateMessages.push(CLEARING ? 'Donemsel durum kapatildi — normale donuldu' : `Donemsel durum: ${newState}`);
-          feedback.push(stateMessages.join('\n'));
+          pushFb(stateMessages.join('\n'));
           break;
         }
         case 'plateau_strategy_apply': {
@@ -6034,7 +6067,7 @@ async function executeActions(
           // amber/red ED user — the other strategies (refeed/maintenance_break/calorie_cycle) are safe.
           if (strategyId === 'tdee_recalc' && !(await deficitAllowed(userId)).allowed) {
             console.warn('[plateau_strategy_apply] tdee_recalc blocked by SafetyState');
-            feedback.push('Plato için kaloriyi daha da kısmak yerine bir refeed ya da bakım molası şu an daha güvenli — daha fazla kesim önermiyorum. İstersen bir uzman diyetisyenle de görüşebilirsin.');
+            pushFb('Plato için kaloriyi daha da kısmak yerine bir refeed ya da bakım molası şu an daha güvenli — daha fazla kesim önermiyorum. İstersen bir uzman diyetisyenle de görüşebilirsin.');
             break;
           }
           const { data: pProfile } = await supabaseAdmin
@@ -6067,7 +6100,7 @@ async function executeActions(
               instructions = 'Antrenman programi degisir: farkli split, farkli rep araliklari.';
               break;
             default:
-              feedback.push(`Bilinmeyen plateau stratejisi: ${strategyId}`);
+              pushFb(`Bilinmeyen plateau stratejisi: ${strategyId}`);
               break;
           }
 
@@ -6095,7 +6128,7 @@ async function executeActions(
           // the user joined. Irreversible, silent, and worst for the longest-tenured users.
           await appendCoachingNote(userId, 'plateau', `Plateau stratejisi: ${strategyId}. ${instructions}`, today);
 
-          feedback.push(`Plateau stratejisi uygulandi: ${strategyId}. ${instructions}`);
+          pushFb(`Plateau stratejisi uygulandi: ${strategyId}. ${instructions}`);
           break;
         }
         case 'maintenance_start': {
@@ -6132,7 +6165,7 @@ async function executeActions(
           await appendCoachingNote(userId, 'maintenance',
             `Bakim modu basladi. Kalori bakim seviyesine cikarildi (~${Math.round((mb.dailyTargetMin + mb.dailyTargetMax) / 2)} kcal, TDEE ${tdee}). Tolerans ±1.5kg.`, today);
 
-          feedback.push(`Bakim modu aktif — kalori hedefin bakim seviyesine yukseltildi (${mb.dailyTargetMin}-${mb.dailyTargetMax} kcal). Artik kesimde degilsin, tolerans bandi ±1.5kg.`);
+          pushFb(`Bakim modu aktif — kalori hedefin bakim seviyesine yukseltildi (${mb.dailyTargetMin}-${mb.dailyTargetMax} kcal). Artik kesimde degilsin, tolerans bandi ±1.5kg.`);
           break;
         }
         case 'mini_cut_start': {
@@ -6143,7 +6176,7 @@ async function executeActions(
           const edCap = await deficitAllowed(userId);
           if (!edCap.allowed) {
             console.warn('[mini_cut_start] blocked by SafetyState', edCap);
-            feedback.push('Şu an agresif bir kalori kesimi başlatmak yerine kaloriyi bakım seviyesinde tutalım — sağlığın her şeyden önce gelir. İstersen bir uzman diyetisyen ya da doktorla da görüşmeni öneririm.');
+            pushFb('Şu an agresif bir kalori kesimi başlatmak yerine kaloriyi bakım seviyesinde tutalım — sağlığın her şeyden önce gelir. İstersen bir uzman diyetisyen ya da doktorla da görüşmeni öneririm.');
             break;
           }
           // Spec 6.3: Maintenance band aşıldı — 2-4 haftalık mini cut
@@ -6169,7 +6202,7 @@ async function executeActions(
             },
           });
 
-          feedback.push(`Mini cut basladi: ${weeks} hafta, kalori hedefi ${cutMin}-${cutMax} kcal.`);
+          pushFb(`Mini cut basladi: ${weeks} hafta, kalori hedefi ${cutMin}-${cutMax} kcal.`);
           break;
         }
         case 'goal_suggestion': {
@@ -6189,17 +6222,17 @@ async function executeActions(
           if (rawType === 'water' || rawType === 'steps' || rawType === 'sleep') {
             if (rawType === 'water' && targetVal && targetVal >= 1.5 && targetVal <= 6) {
               await supabaseAdmin.from('profiles').update({ water_target_liters: targetVal }).eq('id', userId);
-              feedback.push(`Su hedefi guncellendi: ${targetVal}L/gun.`);
+              pushFb(`Su hedefi guncellendi: ${targetVal}L/gun.`);
             } else if (rawType === 'steps' && targetVal && targetVal >= 3000 && targetVal <= 30000) {
               await supabaseAdmin.from('profiles').update({ step_target: Math.round(targetVal) }).eq('id', userId);
-              feedback.push(`Adim hedefi guncellendi: ${Math.round(targetVal)}/gun.`);
+              pushFb(`Adim hedefi guncellendi: ${Math.round(targetVal)}/gun.`);
             } else {
               // #S4: route through processLayer2Updates which maps the singular `coaching_note`
               // alias to the PLURAL `coaching_notes` column the ai_summary_merge RPC reads and
               // APPENDS (a dated line). Calling updateLayer2 directly with `coaching_note` was a
               // no-op (the RPC ignores the singular key) so the note was silently dropped.
               await processLayer2Updates(userId, { coaching_note: `Hedef onerisi kabul edildi: ${rawType}${targetVal ? ` ${targetVal}` : ''}` }).then(() => {}, () => {});
-              feedback.push('Hedef not edildi.');
+              pushFb('Hedef not edildi.');
             }
             break;
           }
@@ -6207,7 +6240,7 @@ async function executeActions(
           const gType = GOAL_TYPE_MAP[rawType];
           if (!gType) {
             // Unmapped free-text type: don't pass through to the CHECK-constrained column.
-            feedback.push(`Hedef tipi taninmadi: ${rawType}`);
+            pushFb(`Hedef tipi taninmadi: ${rawType}`);
             break;
           }
           const hasWeightTarget = gType === 'gain_muscle' || gType === 'lose_weight' || gType === 'gain_weight';
@@ -6238,23 +6271,23 @@ async function executeActions(
           });
           if (gsErr) {
             console.error('[goal_suggestion] insert failed:', gsErr.message);
-            feedback.push('Hedef kaydedilemedi, tekrar dene.');
+            pushFb('Hedef kaydedilemedi, tekrar dene.', { ok: false, failureClass: 'write_failed' });
             break;
           }
 
-          feedback.push(`Hedef olusturuldu: ${gType}${targetVal ? ` → ${targetVal}` : ''} (${targetWeeks} hafta).`);
+          pushFb(`Hedef olusturuldu: ${gType}${targetVal ? ` → ${targetVal}` : ''} (${targetWeeks} hafta).`);
           break;
         }
         default:
-          feedback.push(null);
+          pushFb(null);
       }
     } catch (err) {
       console.error(`Action failed [${action.type}]:`, (err as Error).message);
-      feedback.push(`Kayit basarisiz: ${action.type}`);
+      pushFb(`Kayit basarisiz: ${action.type}`, { ok: false, failureClass: 'exception' });
     }
   }
 
-  return feedback;
+  return { feedback, receipts: actionReceipts };
 }
 
 /**

@@ -10,7 +10,7 @@
     "lint": "tsc --noEmit",
     "arch-guards": "node scripts/arch-guards.mjs",
     "contract-tests": "node scripts/contract-tests.mjs",
-    "test:edge": "deno test --config supabase/functions/deno.json --allow-env supabase/functions/",
+    "test:edge": "deno test --config supabase/functions/deno.json --allow-env --allow-read supabase/functions/",
     "check:edge": "deno check --config supabase/functions/deno.json supabase/functions/ai-chat/index.ts supabase/functions/ai-plan/index.ts supabase/functions/ai-proactive/index.ts supabase/functions/ai-extractor/index.ts supabase/functions/ai-report/index.ts supabase/functions/cleanup-scheduled/index.ts",
     "ci": "npm run lint && npm run arch-guards && npm run seam-check && npm run check:edge && npm run test:edge",
     "seam-check": "node scripts/seam-check.mjs",

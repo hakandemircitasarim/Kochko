@@ -34,6 +34,8 @@ import { getPeriodicCalorieAdjustment, isIFCompatible, buildPeriodicPlanContext,
 import { isActivePremium } from '../shared/premium.ts';
 import { appendCoachingNote } from '../shared/coaching-notes.ts';
 
+import { VOICE_RULES } from '../shared/voice.ts';
+
 // FIX (audit AI-PLN-02): master switch for the DORMANT daily-plan generator. Daily plans are now
 // produced by the chat plan flow → shared/plan-projection.ts (the single source of truth for
 // daily_plans), so this edge function's daily branch must NOT run — a row written here lands in
@@ -86,7 +88,10 @@ JSON formati:
   },
   "weekly_budget_consumed": sayi,
   "weekly_budget_remaining": sayi
-}`;
+}
+
+Kullaniciya gorunen her metin (ogun/egzersiz notlari, aciklamalar) su ses kurallarina uyar:
+${VOICE_RULES}`;
 
 const WEEKLY_PLAN_SYSTEM = `Sen Kochko haftalik plan yapicisisin. Kullanicinin profiline, hedefine ve gecmis verilerine gore 7 gunluk beslenme menusu ve alisveris listesi olustur.
 
@@ -119,7 +124,10 @@ JSON formati:
       "items": [{"name": "malzeme adi", "amount": "miktar"}]
     }
   ]
-}`;
+}
+
+Kullaniciya gorunen her metin (ogun/egzersiz notlari, aciklamalar) su ses kurallarina uyar:
+${VOICE_RULES}`;
 
 serve(async (req: Request) => {
   try {
