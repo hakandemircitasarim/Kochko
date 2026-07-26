@@ -10,6 +10,8 @@ import { getActiveConstraints } from './constraints.ts';
 import { getSafetyState } from './safety-state.ts';
 import { normalizeHabitEntry, deriveHabitStats, readyForNextHabit, type HabitEntry } from './habits.ts';
 import { getRelationshipPhase, relationshipGuidance } from './relationship-state.ts';
+import { rolloutMode } from './rollout.ts';
+import { activePatterns } from './patterns.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
 // (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
@@ -47,6 +49,32 @@ export async function getHabitsContext(userId: string): Promise<{
       .from('ai_summary').select('habit_progress').eq('user_id', userId).maybeSingle();
     if (!data?.habit_progress) return { prompt: '', activeHabits: [] };
 
+    // F3/C4 — COMPLETION COMES FROM BEHAVIOUR, NOT FROM CHAT. completion_log was only ever
+    // appended by the chat-side habit net, so a user who logged every meal from the Log screen or
+    // the barcode scanner for 30 days was told "Günlük öğün kaydı: 0 gün seri" and the ladder
+    // never advanced past rung one. The ground truth for "did the habit happen today" already
+    // sits in meal_logs / daily_metrics / workout_logs — derive it there, per habit key, and
+    // UNION it with whatever chat recorded. Derived at read time; nothing is backfilled into
+    // completion_log (models and crons must not fabricate history).
+    const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const [mealDays, metricRows, workoutDays] = await Promise.all([
+      supabaseAdmin.from('meal_logs').select('logged_for_date')
+        .eq('user_id', userId).gte('logged_for_date', since).neq('is_deleted', true),
+      supabaseAdmin.from('daily_metrics').select('date, water_liters, weight_kg, sleep_hours')
+        .eq('user_id', userId).gte('date', since),
+      supabaseAdmin.from('workout_logs').select('logged_for_date')
+        .eq('user_id', userId).gte('logged_for_date', since),
+    ]);
+    const dayset = (rows: { [k: string]: unknown }[] | null, col: string, pred?: (r: Record<string, unknown>) => boolean) =>
+      new Set((rows ?? []).filter((r) => !pred || pred(r as Record<string, unknown>)).map((r) => String((r as Record<string, unknown>)[col])));
+    const BEHAVIOUR_DAYS: Record<string, Set<string>> = {
+      daily_meal_log: dayset(mealDays.data, 'logged_for_date'),
+      water_tracking: dayset(metricRows.data, 'date', (r) => Number(r.water_liters ?? 0) > 0),
+      weight_tracking: dayset(metricRows.data, 'date', (r) => r.weight_kg != null),
+      sleep_tracking: dayset(metricRows.data, 'date', (r) => r.sleep_hours != null),
+      workout_routine: dayset(workoutDays.data, 'logged_for_date'),
+    };
+
     // AI-behaviour #14: normalise identity (three writer generations used key/name/habit) and DERIVE
     // streak + weekly_compliance from completion_log instead of trusting the stored fields —
     // weekly_compliance had NO writer anywhere (so the next-habit gate could never fire) and streak
@@ -55,7 +83,13 @@ export async function getHabitsContext(userId: string): Promise<{
     const habits = ((data.habit_progress as unknown[]) ?? [])
       .map(normalizeHabitEntry)
       .filter((h): h is HabitEntry => h !== null)
-      .map((h) => ({ ...h, stats: deriveHabitStats(h.completion_log, today) }));
+      .map((h) => {
+        const behaviour = BEHAVIOUR_DAYS[h.key];
+        const merged = behaviour
+          ? [...new Set([...(h.completion_log ?? []), ...behaviour])].sort()
+          : h.completion_log;
+        return { ...h, stats: deriveHabitStats(merged, today) };
+      });
     const active = habits.filter(h => h.status === 'active');
     const mastered = habits.filter(h => h.status === 'mastered');
 
@@ -480,11 +514,20 @@ export async function getPredictiveRiskContext(userId: string): Promise<{
     ]);
 
     const reports = (reportsRes.data ?? []) as { date: string; compliance_score: number; calorie_actual: number; deviation_reason: string | null }[];
+    // F2/A6 — these gates used ROW COUNT as a proxy for "N days of history". That proxy only held
+    // while the cron wrote a row for every user every day, including days with no data at all.
+    // Now that empty days produce no row (they were 94% of them), row count means "days WITH data"
+    // and index arithmetic like `slice(i, i+7)` no longer means "a week". Judge the window by the
+    // CALENDAR instead, and bucket by date rather than by position.
+    const dayIndexOf = (d: string): number => Math.floor(Date.parse(`${d}T00:00:00Z`) / 86400000);
+    const spanDays = reports.length > 0
+      ? dayIndexOf(reports[reports.length - 1].date) - dayIndexOf(reports[0].date) + 1
+      : 0;
     const factors: string[] = [];
     const alerts: string[] = [];
 
     // Weekend risk
-    if (reports.length >= 14) {
+    if (spanDays >= 14) {
       const weekdayScores = reports.filter(r => { const d = new Date(r.date).getDay(); return d !== 0 && d !== 6; }).map(r => r.compliance_score);
       const weekendScores = reports.filter(r => { const d = new Date(r.date).getDay(); return d === 0 || d === 6; }).map(r => r.compliance_score);
       if (weekendScores.length >= 4 && weekdayScores.length >= 8) {
@@ -506,10 +549,12 @@ export async function getPredictiveRiskContext(userId: string): Promise<{
     }
 
     // Calorie creep
-    if (reports.length >= 14) {
-      const half = Math.floor(reports.length / 2);
-      const firstHalf = reports.slice(0, half).filter(r => r.calorie_actual > 0);
-      const secondHalf = reports.slice(half).filter(r => r.calorie_actual > 0);
+    if (spanDays >= 14) {
+      // Split at the calendar midpoint of the window — a row-index split put "the first half" at a
+      // different date for every user depending on how often they logged.
+      const midDay = dayIndexOf(reports[0].date) + Math.floor(spanDays / 2);
+      const firstHalf = reports.filter(r => dayIndexOf(r.date) < midDay && r.calorie_actual > 0);
+      const secondHalf = reports.filter(r => dayIndexOf(r.date) >= midDay && r.calorie_actual > 0);
       if (firstHalf.length >= 5 && secondHalf.length >= 5) {
         const avg1 = firstHalf.reduce((s, r) => s + r.calorie_actual, 0) / firstHalf.length;
         const avg2 = secondHalf.reduce((s, r) => s + r.calorie_actual, 0) / secondHalf.length;
@@ -533,12 +578,21 @@ export async function getPredictiveRiskContext(userId: string): Promise<{
     }
 
     // Compliance fatigue (3+ weeks declining)
-    if (reports.length >= 21) {
-      const weeks: number[][] = [];
-      for (let i = 0; i < reports.length; i += 7) {
-        const slice = reports.slice(i, Math.min(i + 7, reports.length));
-        if (slice.length >= 3) weeks.push(slice.map(r => r.compliance_score));
+    if (spanDays >= 21) {
+      // Bucket by the row's actual week offset from the window start. `i += 7` over rows treated
+      // "7 rows" as "a week", so a user who logs 4 days a week had his "weeks" silently span 12
+      // calendar days and the decline test compared incomparable periods.
+      const start = dayIndexOf(reports[0].date);
+      const byWeek = new Map<number, number[]>();
+      for (const r of reports) {
+        if (typeof r.compliance_score !== 'number') continue;
+        const w = Math.floor((dayIndexOf(r.date) - start) / 7);
+        const arr = byWeek.get(w) ?? [];
+        arr.push(r.compliance_score);
+        byWeek.set(w, arr);
       }
+      const weeks: number[][] = [...byWeek.entries()].sort((a, b) => a[0] - b[0])
+        .map(([, v]) => v).filter(v => v.length >= 3);
       if (weeks.length >= 3) {
         const avgs = weeks.map(w => w.reduce((s, v) => s + v, 0) / w.length);
         let declines = 0;
@@ -1136,7 +1190,8 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
     }
 
     // Top learned patterns (the coach's memory of their struggles)
-    const patterns = (sumRes.data?.behavioral_patterns as { description?: string }[] | null) ?? [];
+    // F2/A12: resolved/stale patterns must not steer the always-on snapshot.
+    const patterns = activePatterns(sumRes.data?.behavioral_patterns as { description?: string; status?: unknown }[] | null);
     const pat = patterns.map(p => p?.description).filter(Boolean).slice(0, 3);
     if (pat.length > 0) lines.push(`BİLİNEN KALIPLAR: ${pat.join(' · ')}`);
 
@@ -1377,8 +1432,13 @@ export async function getAllServiceContexts(
   if (taskMode === 'recovery') {
     recovery = await getRecoveryContext(userId, options?.effectiveToday);
   }
-  // Return flow is detected earlier in index.ts — but we provide richer context
-  if (taskMode === 'coaching' || taskMode === 'onboarding') {
+  // Return flow is detected earlier in index.ts — but we provide richer context.
+  // F1/B1a: the two-mode whitelist meant a user coming back after 45 days whose first message was
+  // "bugun 2 yumurta yedim" (mode=register) got NO return-flow coaching at all — the welcome-back
+  // path was gated on the shape of one sentence. getReturnFlowContext already returns '' when the
+  // user is not actually returning, so the mode gate was never the thing keeping it quiet.
+  if (taskMode === 'coaching' || taskMode === 'onboarding'
+      || rolloutMode('b1a_return_flow', userId) === 'on') {
     returnFlow = await getReturnFlowContext(userId);
   }
   if (taskMode === 'eating_out') {

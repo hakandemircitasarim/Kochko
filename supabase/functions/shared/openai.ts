@@ -52,6 +52,13 @@ export const TEMPERATURE: Record<string, number> = {
   eating_out: 0.4,  // variety + accuracy
   plateau: 0.4,     // strategic
   recovery: 0.4,    // empathetic + calculation
+  // F1/B1a: these three can only ever be produced by a client hint or the plan promotion, so the
+  // map never had them — and the moment temperature reads the CANONICAL mode, their absence turns
+  // into a silent `?? 0.5` for the app's most structure-sensitive turns.
+  plan_diet: 0.4,     // structured JSON snapshot — same as 'plan'
+  plan_workout: 0.4,  // structured JSON snapshot — same as 'plan'
+  daily_log: 0.5,     // conversational logging — same as 'coaching'
+  onboarding: 0.4,    // fact collection: consistent, not creative
 };
 
 interface ChatMessage {

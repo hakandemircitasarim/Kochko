@@ -32,6 +32,7 @@ import { checkAllergens, validateCalories, sanitizeText, checkWeightVelocity, va
 import { validatePlanOutput } from '../shared/output-validator.ts';
 import { getPeriodicCalorieAdjustment, isIFCompatible, buildPeriodicPlanContext, getSeasonalContext } from '../shared/periodic-config.ts';
 import { isActivePremium } from '../shared/premium.ts';
+import { appendCoachingNote } from '../shared/coaching-notes.ts';
 
 // FIX (audit AI-PLN-02): master switch for the DORMANT daily-plan generator. Daily plans are now
 // produced by the chat plan flow → shared/plan-projection.ts (the single source of truth for
@@ -384,13 +385,10 @@ serve(async (req: Request) => {
       rejectionLine = `\nONCEKI PLAN REDDEDILDI. Sebep: ${body.rejection_context}. Yeni plan buna gore farkli olmali.`;
       // Persist rejection learning to Layer 2 (coaching_note)
       const dateStr = new Date().toISOString().split('T')[0];
-      const { data: existingSummary } = await supabaseAdmin
-        .from('ai_summary').select('coaching_notes').eq('user_id', userId).maybeSingle();
-      const existingNotes = (existingSummary?.coaching_notes as string) ?? '';
-      const rejectionNote = `[${dateStr}] Plan reddedildi: ${body.rejection_context}`;
-      updateLayer2(userId, {
-        coaching_notes: existingNotes ? `${existingNotes}\n${rejectionNote}` : rejectionNote,
-      }).catch((err: Error) => console.error('[ai-plan] Layer2 rejection write failed:', err.message));
+        // F2/A11: one owner for the dated log — three functions had drifted into three
+        // different date formats and none of them trimmed.
+        appendCoachingNote(userId, 'plan', `Plan reddedildi: ${body.rejection_context}`, dateStr)
+          .catch((err: Error) => console.error('[ai-plan] coaching note append failed:', err.message));
     }
 
     // Persona + learned context from AI summary (Faz 5a deepening)
@@ -761,14 +759,32 @@ serve(async (req: Request) => {
       plan._if_overridden = true;
     }
 
-    // Guardrail: allergen check on meal suggestions
+    // Guardrail: allergen check on meal suggestions.
+    // F3/C7 (EPİGÜV-10): the filter used to drop violating options SILENTLY — the user saw a
+    // half-empty meal slot with no word of explanation, which reads as a broken generator rather
+    // than a safety decision. The DECISION is now visible: removed options are named (by allergen,
+    // not by recipe — no point advertising the unsafe dish) in the plan's focus_message.
     const meals = plan.meal_suggestions as { options: { name: string; description: string }[] }[];
     if (meals && allergens.length > 0) {
+      const removedFor = new Set<string>();
+      let removedCount = 0;
       for (const meal of meals) {
         meal.options = meal.options.filter(opt => {
           const check = checkAllergens(`${opt.name} ${opt.description}`, allergens);
+          if (!check.passed) {
+            removedCount++;
+            for (const v of check.violations) removedFor.add(v);
+          }
           return check.passed;
         });
+      }
+      if (removedCount > 0) {
+        const names = [...removedFor].join(', ');
+        const note = `Not: ${removedCount} öneriyi, kayıtlı ${names} alerjine uygun olmadığı için çıkardım — güvenliğin için.`;
+        plan.focus_message = typeof plan.focus_message === 'string' && plan.focus_message.trim()
+          ? `${plan.focus_message} ${note}`
+          : note;
+        console.warn('[ai-plan] allergen filter removed options', { removedCount, allergens: [...removedFor] });
       }
     }
 

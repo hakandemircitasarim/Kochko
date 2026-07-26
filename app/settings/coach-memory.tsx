@@ -21,6 +21,7 @@ import { haptics } from '@/lib/haptics';
 import { genderLabelTR, activityLevelLabelTR, mealTypeLabelTR, goalInfinitiveLabelTR, coachToneLabelTR } from '@/lib/labels';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { trace } from '@/lib/uiTrace';
 
 type SummaryData = NonNullable<Awaited<ReturnType<typeof getAISummaryForReview>>>;
 
@@ -97,7 +98,7 @@ export default function CoachMemoryScreen() {
     }
   };
 
-  useEffect(() => { loadData(); }, [user?.id]);
+  useEffect(() => { trace('memory_mirror_opened'); loadData(); }, [user?.id]);
 
   const handleDeleteNote = (field: string, note: string) => {
     Alert.alert(

@@ -10,9 +10,12 @@
     "lint": "tsc --noEmit",
     "arch-guards": "node scripts/arch-guards.mjs",
     "contract-tests": "node scripts/contract-tests.mjs",
-    "test:edge": "deno test supabase/functions/shared/",
-    "check:edge": "deno check supabase/functions/ai-chat/index.ts supabase/functions/ai-plan/index.ts supabase/functions/ai-proactive/index.ts supabase/functions/ai-extractor/index.ts supabase/functions/ai-report/index.ts supabase/functions/cleanup-scheduled/index.ts",
-    "ci": "npm run lint && npm run arch-guards && npm run check:edge && npm run test:edge"
+    "test:edge": "deno test --config supabase/functions/deno.json --allow-env supabase/functions/",
+    "check:edge": "deno check --config supabase/functions/deno.json supabase/functions/ai-chat/index.ts supabase/functions/ai-plan/index.ts supabase/functions/ai-proactive/index.ts supabase/functions/ai-extractor/index.ts supabase/functions/ai-report/index.ts supabase/functions/cleanup-scheduled/index.ts",
+    "ci": "npm run lint && npm run arch-guards && npm run seam-check && npm run check:edge && npm run test:edge",
+    "seam-check": "node scripts/seam-check.mjs",
+    "verify:live": "node scripts/contract-tests.mjs",
+    "scenarios": "node scripts/scenarios.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

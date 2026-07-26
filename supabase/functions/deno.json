@@ -1,0 +1,7 @@
+{
+  "//": "Edge runtime config. It exists so `deno check` resolves its OWN settings instead of walking up to the client's tsconfig.json — which, once that file stopped excluding supabase/functions wholesale (F0 · B0, to expose shared/contracts to both typecheckers), started applying client compilerOptions (baseUrl/paths) to Deno and failed the edge typecheck. Two runtimes, two configs, one shared TYPE directory: that is the whole boundary.",
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["deno.window", "esnext"]
+  }
+}

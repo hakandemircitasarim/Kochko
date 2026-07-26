@@ -13,6 +13,7 @@ import type {
   RetrievalPlan, Layer1Focus, Layer2Focus, Layer3DataType,
   ContextMeta, DataConfidence,
 } from './retrieval-planner.ts';
+import { isActivePattern } from './patterns.ts';
 
 // (estimateTokens is declared once below, near LAYER4_TOKEN_BUDGET, to avoid a duplicate.)
 
@@ -110,7 +111,8 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
   parts.push(`## ZAMAN\n${dayName}, ${hour}:${minute} | ${effectiveDate}`);
 
   // Demographics — always include at minimum
-  const demoLine = `Cinsiyet: ${p.gender ?? '?'} | Yas: ${age ?? '?'} | Boy: ${p.height_cm ?? '?'}cm | Kilo: ${p.weight_kg ?? '?'}kg`;
+  const wAge = await weightAgeSuffix(userId);
+  const demoLine = `Cinsiyet: ${p.gender ?? '?'} | Yas: ${age ?? '?'} | Boy: ${p.height_cm ?? '?'}cm | Kilo: ${p.weight_kg ?? '?'}kg${wAge}`;
   parts.push(`## PROFIL\n${isOnboarding ? '*** ONBOARDING MODU ***\n' : ''}${demoLine}`);
 
   // Durable safety facts from the canonical spine — ALWAYS present (not gated on layer1Focus),
@@ -341,20 +343,69 @@ async function buildLayer1Minimal(userId: string): Promise<string> {
  * 'health'. Reads the canonical typed spine (user_constraints), which is deduped on write, so the
  * coach never forgets e.g. a gastric surgery on a "ne yiyeyim?" turn. Empty string when none.
  */
+/**
+ * F4/D3 (lite) — the AGE of the weight. Layer-1 presented a possibly-months-old weigh-in as "the
+ * user's weight", the coach asserted it confidently ("şu an 79.5 kilosun") and computed goal
+ * distance from it. Ageing NEVER relaxes enforcement (that rule lives in §8); it only changes how
+ * the number may be SPOKEN: stale → say the age and ask, don't assert.
+ */
+async function weightAgeSuffix(userId: string): Promise<string> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('daily_metrics').select('date').eq('user_id', userId)
+      .not('weight_kg', 'is', null).order('date', { ascending: false }).limit(1);
+    const last = data?.[0]?.date as string | undefined;
+    if (!last) return ' (tartı kaydı yok — profil beyanı)';
+    const days = Math.floor((Date.now() - Date.parse(`${last}T00:00:00Z`)) / 86400000);
+    if (days <= 14) return '';
+    if (days <= 30) return ` (son tartı ${days} gün önce)`;
+    return ` (son tartı ${days} gün önce — güncel olmayabilir; İDDİA ETME, uygun bir anda tartılmayı öner)`;
+  } catch { return ''; }
+}
+
 async function buildPersistentHealthBlock(userId: string): Promise<string> {
   const { data } = await supabaseAdmin
     .from('user_constraints')
-    .select('kind, subject, note, severity')
+    .select('kind, subject, note, severity, source, confirmed_at, stated_at, created_at')
     .eq('user_id', userId).eq('active', true)
     .in('kind', ['surgery', 'condition', 'injury', 'allergen', 'intolerance']);
-  const rows = (data ?? []) as Array<{ kind: string; subject: string; note: string | null; severity: string | null }>;
+  const rows = (data ?? []) as Array<{
+    kind: string; subject: string; note: string | null; severity: string | null;
+    source: string | null; confirmed_at: string | null; stated_at: string | null; created_at: string | null;
+  }>;
   if (!rows.length) return '';
   const LABEL: Record<string, string> = {
     surgery: 'Ameliyat', condition: 'Kronik durum', injury: 'Sakatlik', allergen: 'Alerji', intolerance: 'Intolerans',
   };
+  // D3 (plan v2, HAFIZA-05/07 + TUTARLILIK-08): provenance + ageing SHAPE THE SPEECH ONLY.
+  // Enforcement is untouched — guardrails read getActiveConstraints() and act on every active row
+  // regardless of source or age. Two speech rules:
+  //   1. inferred/imported + never confirmed → the coach must not present it as established fact.
+  //      (User confirming lifts the tag via the existing constraint_confirm → confirmConstraint path.)
+  //   2. injury/condition silent for 60+ days → ONE natural reconfirm question, because a healed
+  //      knee otherwise haunts every workout plan forever ("neden bana hep kolay hareket veriyor").
+  //      Allergen/surgery/intolerance NEVER age — a fıstık allergy does not expire by silence.
+  const dayMs = 86400000;
+  const ageDays = (r: { confirmed_at: string | null; stated_at: string | null; created_at: string | null }) => {
+    const anchor = r.confirmed_at ?? r.stated_at ?? r.created_at;
+    if (!anchor) return 0;
+    const t = Date.parse(anchor);
+    return Number.isFinite(t) ? Math.floor((Date.now() - t) / dayMs) : 0;
+  };
+  const isUnconfirmed = (r: { source: string | null; confirmed_at: string | null }) =>
+    !r.confirmed_at && (r.source === 'inferred' || r.source === 'imported');
   const lines = rows.map((r) =>
-    `- ${LABEL[r.kind] ?? r.kind}: ${((r.note || r.subject) ?? '').slice(0, 100)}${r.severity ? ` (${r.severity})` : ''}`);
-  return `## KALICI SAGLIK (her zaman dikkate al, unutma)\n${lines.join('\n')}`;
+    `- ${LABEL[r.kind] ?? r.kind}: ${((r.note || r.subject) ?? '').slice(0, 100)}${r.severity ? ` (${r.severity})` : ''}${isUnconfirmed(r) ? ' [ÇIKARIM — doğrulanmadı]' : ''}`);
+  const notes: string[] = [];
+  if (rows.some(isUnconfirmed)) {
+    notes.push('[ÇIKARIM] etiketli kayıtları kesin gerçek gibi SUNMA ("biliyorum ki..." deme); uygun bir anda tek doğal soruyla doğrula. Doğrulanana kadar güvenlik açısından yine de geçerli say.');
+  }
+  const stale = rows.filter((r) => (r.kind === 'injury' || r.kind === 'condition') && ageDays(r) > 60);
+  if (stale.length) {
+    const names = stale.slice(0, 3).map((r) => (r.note || r.subject).slice(0, 40)).join('; ');
+    notes.push(`Şu kayıt(lar) 60+ gündür güncellenmedi: ${names}. Uygun bir anda TEK doğal soruyla hâlâ geçerli mi diye sor (her turda değil, bir kez). Cevap gelene kadar geçerli say. Alerji ve ameliyat asla eskimez — onları sorgulama.`);
+  }
+  return `## KALICI SAGLIK (her zaman dikkate al, unutma)\n${lines.join('\n')}${notes.length ? '\n' + notes.map((n) => `(${n})`).join('\n') : ''}`;
 }
 
 // ─── Layer 2: Scoped AI Summary ───
@@ -393,10 +444,7 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
 
       // Take top patterns that fit — exclude resolved AND stale (60+ days silent; Spec 5.7)
       const topPatterns = scored
-        .filter(p => {
-          const st = p.status as string;
-          return st !== 'resolved' && st !== 'stale';
-        })
+        .filter(isActivePattern)   // F2/A12: one owner for 'still actionable', shared by all 4 readers
         .slice(0, 10);
       if (topPatterns.length > 0) {
         parts.push(`## KALIPLAR\n${topPatterns.map(p => `- [${p.type}] ${p.description} -> ${p.intervention}${p.times_observed ? ` (${p.times_observed}x)` : ''}`).join('\n')}`);
@@ -604,9 +652,12 @@ async function buildLayer3Scoped(userId: string, plan: RetrievalPlan, effectiveT
       .order('date');
   }
   if (scope.includes('commitments')) {
+    // F3/C2 (+ALGI-08): 'followed_up' means "the cron ASKED", not "it is over" — filtering it out
+    // made every commitment the morning nudge touched vanish from the coach's sight before the
+    // user ever answered. Open = not yet RESOLVED; the outcome column is what closes it now.
     queries.commitments = supabaseAdmin.from('user_commitments')
-      .select('commitment, follow_up_at, status')
-      .eq('user_id', userId).eq('status', 'pending')
+      .select('id, commitment, follow_up_at, status')
+      .eq('user_id', userId).in('status', ['pending', 'followed_up']).is('resolved_at', null)
       .order('follow_up_at').limit(5);
   }
   if (scope.includes('labAlerts')) {
@@ -862,20 +913,29 @@ function refineContextMeta(initial: ContextMeta, layer1: string, layer3: string)
   const missing: string[] = [];
   if (layer1.includes('Profil henuz')) missing.push('profile');
   if (layer3.includes('KAYIT YOK')) missing.push('today_meals');
-  meta.missingDataTypes = missing;
-
-  // Estimate confidence from available data
-  if (missing.length === 0 && layer3.length > 200) {
-    meta.confidenceLevel = 'high';
-  } else if (missing.length > 1 || layer3.length < 50) {
-    meta.confidenceLevel = 'low';
-  } else {
-    meta.confidenceLevel = 'medium';
-  }
 
   // Count days with data (rough estimate from layer3 content)
   const dateMatches = layer3.match(/\d{2}-\d{2}/g);
   meta.daysWithCompleteData = dateMatches ? new Set(dateMatches).size : 0;
+
+  // D5 (plan v2, DÜRÜSTLÜK-04): confidence from EVIDENCE, not from layer3 char LENGTH.
+  // The old proxy called any 200+ char blob 'high' — a profile full of '?' placeholders plus one
+  // logged meal cleared the bar, and the coach spoke with full certainty over unknowns.
+  // Real signals instead:
+  //   · distinct DAYS actually present in layer3 (dates render as MM-DD),
+  //   · unknown profile fields — layer1 renders every missing value as a literal '?' in value
+  //     position (': ?', '?-?' bands, '(?g)'), never in prose, so counting those IS the field count.
+  const unknownFields = (layer1.match(/: \?|-\?|\(\?/g) ?? []).length;
+  if (unknownFields >= 3 && !missing.includes('profile')) missing.push('profile_fields');
+  meta.missingDataTypes = missing;
+
+  if (missing.length === 0 && meta.daysWithCompleteData >= 3) {
+    meta.confidenceLevel = 'high';
+  } else if (missing.length > 1 || meta.daysWithCompleteData === 0 || unknownFields >= 5) {
+    meta.confidenceLevel = 'low';
+  } else {
+    meta.confidenceLevel = 'medium';
+  }
 
   return meta;
 }

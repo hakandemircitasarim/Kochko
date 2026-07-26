@@ -13,6 +13,8 @@ import { writeTurnLog } from '../shared/turn-log.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { sanitizeText } from '../shared/guardrails.ts';
 import { updateLayer2 } from '../shared/memory.ts';
+import { appendCoachingNote } from '../shared/coaching-notes.ts';
+import { gateUserText, loadUserSafety } from '../shared/output-gate.ts';
 
 // Goal-type-based compliance weights (Spec 8.1 deepening)
 function getComplianceWeights(goalType: string): Record<string, number> {
@@ -266,8 +268,21 @@ ${(() => {
 })()}`;
 
   let rc: UsageReceipt | null = null;
+  // F3/A9 (TUTARLILIK-01): this was the least-informed LLM call in the system writing the most
+  // AUTHORITATIVE next-step: tomorrow_action renders in chat as "## DUNKU AKSIYON (senin verdigin
+  // tek adim)" — the safety-aware coach's OWN prescription — yet this prompt carried no allergen
+  // and no injury. A seafood-allergic user got "yarın ızgara somon dene" from the night report and
+  // the coach followed it up next morning as its own idea.
+  const reportSafety = await loadUserSafety(userId);
+  const constraintNote = (reportSafety.allergens.length || reportSafety.injuredParts.length)
+    ? `
+KISITLAR (tomorrow_action ve yorumlarda ASLA ihlal etme): ${[
+        reportSafety.allergens.length ? `alerji: ${reportSafety.allergens.map((a) => a.name).join(', ')}` : '',
+        reportSafety.injuredParts.length ? `sakatlık: ${reportSafety.injuredParts.join(', ')} (bu bölgeyi zorlayan hareket önerme)` : '',
+      ].filter(Boolean).join(' | ')}`
+    : '';
   const report = await chatCompletion<Record<string, unknown>>(
-    [{ role: 'system', content: DAILY_REPORT_SYSTEM }, { role: 'user', content: prompt }],
+    [{ role: 'system', content: DAILY_REPORT_SYSTEM }, { role: 'user', content: prompt + constraintNote }],
     { temperature: TEMPERATURE.analyst, maxTokens: 1500, jsonMode: true, onReceipt: (r) => { rc = r; } }
   );
   writeTurnLog(userId, 'ai-report', 'report_daily', rc).then(() => {}, () => {});
@@ -275,6 +290,15 @@ ${(() => {
   // Sanitize
   if (typeof report.full_report === 'string') report.full_report = sanitizeText(report.full_report).clean;
   if (typeof report.tomorrow_action === 'string') report.tomorrow_action = sanitizeText(report.tomorrow_action).clean;
+  // F3/A9 + B4('report' surface): belt over the braces — if the model violated anyway, the line is
+  // HELD (report surface has no conversation to argue in; '-' renders as "no action" downstream).
+  if (typeof report.tomorrow_action === 'string' && report.tomorrow_action !== '-') {
+    const v = gateUserText(report.tomorrow_action, reportSafety, 'report');
+    if (!v.ok) {
+      console.warn('[ai-report] tomorrow_action held by output gate', { flags: v.flags, matched: v.matched.slice(0, 3) });
+      report.tomorrow_action = '-';
+    }
+  }
 
   // Clamp compliance (coerce to a finite number first so a missing/NaN value
   // can never reach the NOT NULL column)
@@ -450,13 +474,10 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
   // Sync weekly learning to Layer 2 (ai_summary) for long-term memory
   if (report.ai_learning_note) {
     const dateStr = new Date().toISOString().split('T')[0];
-    const { data: existingSummary } = await supabaseAdmin
-      .from('ai_summary').select('coaching_notes').eq('user_id', userId).maybeSingle();
-    const existingNotes = (existingSummary?.coaching_notes as string) ?? '';
-    const weeklyNote = `[${dateStr} haftalık] ${report.ai_learning_note}`;
-    updateLayer2(userId, {
-      coaching_notes: existingNotes ? `${existingNotes}\n${weeklyNote}` : weeklyNote,
-    }).catch((err: Error) => console.error('[ai-report] Layer2 weekly learning write failed:', err.message));
+      // F2/A11: one owner for the dated log — three functions had drifted into three
+      // different date formats and none of them trimmed.
+      appendCoachingNote(userId, 'report', String(report.ai_learning_note), dateStr)
+        .catch((err: Error) => console.error('[ai-report] coaching note append failed:', err.message));
   }
 
   // Return the DETERMINISTIC values (not the LLM's guesses) so the API response matches

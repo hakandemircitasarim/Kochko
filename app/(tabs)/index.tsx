@@ -44,6 +44,7 @@ import { SkeletonBlock } from '@/components/ui/Skeleton';
 import { showToast } from '@/components/ui/Toast';
 import { usePremium } from '@/hooks/usePremium';
 import { checkAndScheduleTrialReminder, routeForNotificationType } from '@/services/notifications.service';
+import { trace } from '@/lib/uiTrace';
 
 // FIX (ux-pass2 #2): "Uzun süredir yemek yememişsin" nudge'ı, kullanıcı 18:12'de öğün
 // logladıktan sonra da 332 kcal gösteren halkanın altında asılı kalıyordu. Deterministik
@@ -1148,13 +1149,22 @@ export default function TodayScreen() {
                 router.push(route as never);
               }}
               onAccept={(msg) => {
-                // FIX (ux-ideas #17): accept an offer nudge in one tap — mark read, then open the
-                // coach with the user's OWN affirmation prefilled (never the coach's text) so the
-                // acceptance lands visibly in the thread and the coach runs the flow.
+                // FIX (ux-ideas #17) + F3/C5: accept an offer in one tap — and CARRY THE OFFER'S
+                // IDENTITY. The old anonymous "Evet, önerini uygulayalım." reached a coach who had
+                // no idea which offer existed ("Neyi uygulayalım?"), and nothing ever recorded the
+                // acceptance. The prefill now NAMES the offer (a truncated quote of the nudge) and
+                // accepted_nudge_id rides along so the server stamps accepted_at deterministically
+                // — acceptance no longer depends on the LLM understanding the reference.
                 haptics.tap();
                 markMessageRead(msg.id);
                 setCoachingMessages(prev => prev.filter(m => m.id !== msg.id));
-                router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Evet, önerini uygulayalım.', taskNonce: String(Date.now()) } });
+                const offerRef = (msg.content ?? '').replace(/\s+/g, ' ').slice(0, 80);
+                trace('nudge_accept_sent');
+                router.push({ pathname: '/(tabs)/chat', params: {
+                  prefill: `Evet, şu önerini uygulayalım: "${offerRef}"`,
+                  acceptedNudgeId: msg.id,
+                  taskNonce: String(Date.now()),
+                } });
               }}
             />
           </View>

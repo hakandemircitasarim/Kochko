@@ -2,6 +2,8 @@ import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
+import { edgeHeaders } from '@/lib/edgeHeaders';
+import { drainMarkers } from '@/lib/uiTrace';
 
 export interface ChatMessage {
   id: string;
@@ -18,22 +20,15 @@ export interface TaskCompletion {
   next_suggestions: string[];
 }
 
-export interface ChatResponse {
-  message: string;
-  actions: { type: string; feedback: string | null; confidence?: 'high' | 'medium' | 'low' }[];
-  task_mode: string;
-  task_completion?: TaskCompletion | null;
-  plan_snapshot?: Record<string, unknown> | null;
-  plan_reasoning?: string | null;
-  plan_persist_error?: string | null;
-  plan_approved?: { id: string } | null;
-  navigate_to?: string | null;
-  rate_limited?: boolean;
-  remaining?: number;
-  // Persisted chat_messages row id of the assistant reply — lets the client key
-  // feedback votes to a real UUID instead of a client-minted id (ux-pass2, W#75).
-  assistant_message_id?: string | null;
-}
+// F1/B3: the envelope TYPE now lives in the cross-runtime contract, read by BOTH the edge
+// function and this client. The hand-written copy that used to sit here is exactly how
+// plan_snapshot shipped for three releases without a reader and simulation was re-parsed from
+// message text while arriving as a structured field. A field added to the contract without a
+// consumer here turns the seam-check envelope checker red.
+export type { TurnEnvelope as ChatResponse } from '@contracts/turn-envelope';
+import type { TurnEnvelope } from '@contracts/turn-envelope';
+// The re-export above does not bind the name locally — this alias does.
+type ChatResponse = TurnEnvelope;
 
 // Plan chat invocation — used by plan/diet.tsx and plan/workout.tsx screens.
 export async function invokePlanChat(params: {
@@ -50,6 +45,9 @@ export async function invokePlanChat(params: {
     plan_type: params.planType,
   };
   try { body.client_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { /* tz unavailable */ }
+  // F0/A0: hand over any UI breadcrumbs collected since the last send (drained, so they are
+  // reported exactly once) — the edge stamps them into ai_turn_log.ui_markers.
+  { const m = drainMarkers(); if (m.length) body.ui_markers = m; }
   if (params.userApproved) body.user_approved = true;
   if (params.draftId) body.draft_id = params.draftId;
   try {
@@ -58,7 +56,7 @@ export async function invokePlanChat(params: {
     // Mirror invokeChat's Promise.race hard cap so a hang fails to a friendly, retryable error.
     let timedOut = false;
     const result = await Promise.race([
-      supabase.functions.invoke('ai-chat', { body }),
+      supabase.functions.invoke('ai-chat', { body, headers: edgeHeaders() }),
       new Promise<{ data: unknown; error: { message: string } }>((resolve) =>
         setTimeout(() => { timedOut = true; resolve({ data: null, error: { message: 'REQUEST_TIMEOUT' } }); }, REQUEST_TIMEOUT_MS),
       ),
@@ -207,6 +205,18 @@ async function invokeChat(
     try { key = (globalThis.crypto as { randomUUID?: () => string } | undefined)?.randomUUID?.() ?? ''; } catch { /* no crypto */ }
     body.idempotency_key = key || `idem-${Date.now()}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
   }
+  // F0/A0: every chat send is the courier for the UI breadcrumbs collected since the last one.
+  // Drained here (the single funnel for message/photo/quick sends) so a marker is reported exactly
+  // once, and BEFORE the retry loop so a retry does not resend an already-stamped list.
+  if (body.ui_markers === undefined) {
+    const m = drainMarkers();
+    if (m.length) body.ui_markers = m;
+  }
+  // F3/C5: attach the accepted offer's id exactly once.
+  if (pendingAcceptedNudgeId && body.accepted_nudge_id === undefined) {
+    body.accepted_nudge_id = pendingAcceptedNudgeId;
+    pendingAcceptedNudgeId = null;
+  }
   let lastFriendly = 'Bağlantı hatası. Lütfen tekrar dene.';
   let serverRetries = 0; // 5xx/AI-down attempts already spent (cap at 1 extra)
   let busyRetries = 0;   // request-journal 'busy' interims absorbed (cap 3 ≈ +15s)
@@ -218,7 +228,7 @@ async function invokeChat(
     // be queued past the retry loop below.
     let timedOut = false;
     const result = await Promise.race([
-      supabase.functions.invoke('ai-chat', { body }),
+      supabase.functions.invoke('ai-chat', { body, headers: edgeHeaders() }),
       new Promise<{ data: unknown; error: { message: string } }>((resolve) =>
         setTimeout(() => {
           timedOut = true;
@@ -672,6 +682,34 @@ export async function sendMessageToSession(
   const body: Record<string, unknown> = { message: text, session_id: sessionId };
   if (targetDate) body.target_date = targetDate;
   if (taskModeHint) body.task_mode_hint = taskModeHint;
+  return invokeChat(body);
+}
+
+/**
+ * F3/C1 — the identified approve. "Onayla" used to go out as PLAIN TEXT: no task_mode_hint, no
+ * user_approved, no draft id — so the server's planTurn was false and the approval block never
+ * ran. The user approved an invisible plan into the void (the audit's one CRITICAL finding).
+ * This carries the full identity so the server-side gates (allergen/injury re-scan, free-tier
+ * quota, ED gate) run on the EXACT draft the user was looking at.
+ */
+// F3/C5 — the accepted offer's identity, handed to the NEXT send exactly once (the same drain
+// idiom as ui_markers). Navigation params cannot reach invokeChat directly; this can.
+let pendingAcceptedNudgeId: string | null = null;
+export function setPendingAcceptedNudge(id: string): void { pendingAcceptedNudgeId = id; }
+
+export async function approvePlanInChat(
+  sessionId: string,
+  planType: 'diet' | 'workout',
+  draftId: string | null,
+): Promise<{ data: ChatResponse | null; error: string | null }> {
+  const body: Record<string, unknown> = {
+    message: 'Evet, bu planı onayla',
+    session_id: sessionId,
+    task_mode_hint: planType === 'workout' ? 'plan_workout' : 'plan_diet',
+    plan_type: planType,
+    user_approved: true,
+  };
+  if (draftId) body.draft_id = draftId;
   return invokeChat(body);
 }
 

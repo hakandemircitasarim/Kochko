@@ -22,6 +22,12 @@ import { computeItemNutrition } from '../shared/food-reference.ts';
 import { isMemoryMirrorIntent, buildMemoryMirror, composeGeneralSummary } from '../shared/memory-mirror.ts';
 import { writeTurnLog, writeFactReceipts, type FactReceipt } from '../shared/turn-log.ts';
 import { logBelief } from '../shared/belief-log.ts';
+import { ACTIVE_ROLLOUT_STEPS, rolloutMode, rolloutStamp } from '../shared/rollout.ts';
+import { sanitizeUiMarkers } from '../shared/ui-markers.ts';
+import { resolveTurnMode, isOnboardingHint, isPlanMode, wantsToDropIntent, classifyPlanIntent } from './turn.ts';
+import { failureLine, guardVerdictOf, type GuardFlag, type TurnFailureClass } from '../shared/turn-failures.ts';
+import { appendCoachingNote } from '../shared/coaching-notes.ts';
+import { applyTargetAdjust } from '../shared/target-engine.ts';
 import { repairPlansAfterBeliefChange } from '../shared/repair-propagation.ts';
 import { recordEDSignal, deficitAllowed } from '../shared/safety-state.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
@@ -44,7 +50,7 @@ import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrM
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
 import { extractLifeEvent } from '../shared/life-events.ts';
 import { syncConstraint, confirmConstraint, deactivateConstraints, syncInjuryFromText, resolveInjuryConstraints, getActiveConstraints, type ConstraintKind } from '../shared/constraints.ts';
-import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
+import { getEffectiveDateForUser, shiftDateString, getLocalParts, getLocalHour } from '../shared/day-boundary.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
 
 const corsHeaders = {
@@ -99,7 +105,70 @@ serve(async (req: Request) => {
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
 
-    const { message, image_base64, target_date: target_date_raw, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id, idempotency_key } = body;
+    const { message, image_base64, target_date: target_date_raw, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id, idempotency_key, ui_markers: ui_markers_raw, accepted_nudge_id } = body;
+
+    // F3/C5 — the accepted OFFER, stamped and made visible. The old flow marked the nudge READ at
+    // the moment of acceptance (extinguishing the open-offer flag as it was being answered) and
+    // sent an anonymous "Evet, önerini uygulayalım." to a coach with no idea which offer existed.
+    // The stamp is deterministic (never depends on the LLM); the context block below makes the
+    // coach actually KNOW what was accepted this turn.
+    let acceptedOfferCtx = '';
+    if (typeof accepted_nudge_id === 'string' && accepted_nudge_id) {
+      try {
+        const { data: nudgeRow } = await supabaseAdmin
+          .from('coaching_messages').select('id, content, trigger_type')
+          .eq('id', accepted_nudge_id).eq('user_id', userId).maybeSingle();
+        if (nudgeRow) {
+          await supabaseAdmin.from('coaching_messages')
+            .update({ accepted_at: new Date().toISOString() }).eq('id', nudgeRow.id);
+          acceptedOfferCtx = `## KABUL EDİLEN TEKLİF (bu turda)
+Kullanıcı az önce senin şu önerini KABUL etti: "${String(nudgeRow.content).slice(0, 200)}"
+Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et); yeni bir teklif ekleme, "neyi uygulayalım?" diye SORMA.`;
+          console.log('[nudge_accept] stamped', { trigger: nudgeRow.trigger_type });
+        }
+      } catch (e) {
+        console.warn('[nudge_accept] stamp failed:', (e as Error).message);
+      }
+    }
+
+    // F3/C2 — CLOSE THE COMMITMENT LOOP (placed EARLY, deliberately). The first placement sat in
+    // a region a crude brace-scan called top-level but execution provably never reached (early
+    // probe logged, late probe silent, same request). Rather than excavate that structural trap
+    // under deadline, the net runs here: it needs only the message and the user id, and closing
+    // the ledger BEFORE the LLM turn is semantically correct anyway (the model then SEES the
+    // closed state when the context is built).
+    // 'completed'/'abandoned' had ZERO writers: the user said "yaptım" and nothing could store
+    // it, so the same commitment resurfaced forever. The LLM never writes outcomes; this does.
+    try {
+      if (typeof message === 'string') {
+        const mLow0 = message.toLocaleLowerCase('tr');
+        const saysKept0 = /(yapt[ıi]m|hallettim|tamamlad[ıi]m|oldu bitti|s[öo]z verdi[gğ]im gibi)/.test(mLow0);
+        const saysMissed0 = /(yapamad[ıi]m|olmad[ıi]|halledemedim|unuttum|f[ıi]rsat olmad[ıi]|yeti[şs]emedim)/.test(mLow0);
+        if (saysKept0 || saysMissed0) {
+          const { data: dueRows0, error: dueErr0 } = await supabaseAdmin
+            .from('user_commitments').select('id, commitment')
+            .eq('user_id', userId).is('resolved_at', null)
+            .lte('follow_up_at', new Date().toISOString())
+            .order('follow_up_at', { ascending: true }).limit(1);
+          if (dueErr0) console.error('[commitment_close] due query failed:', dueErr0.message);
+          const due0 = dueRows0?.[0] as { id: string; commitment: string } | undefined;
+          if (due0) {
+            const outcome0 = saysKept0 ? 'kept' : 'missed';
+            const { error: closeErr0 } = await supabaseAdmin.from('user_commitments')
+              .update({ resolved_at: new Date().toISOString(), outcome: outcome0, status: saysKept0 ? 'completed' : 'abandoned' })
+              .eq('id', due0.id).is('resolved_at', null);
+            if (closeErr0) console.error('[commitment_close] update failed:', closeErr0.message);
+            else console.log('[commitment_close] closed', { outcome: outcome0 });
+          }
+        }
+      }
+    } catch (e) {
+      // Closing the ledger must never break the turn.
+      console.warn('[commitment_close] skipped:', (e as Error).message);
+    }
+    // F0/A0: client breadcrumbs ride in on the next turn and are stamped into the ledger, so a
+    // drive can be judged by SQL instead of by memory. Unknown tokens are dropped in sanitize.
+    const uiMarkers = sanitizeUiMarkers(ui_markers_raw);
 
     // Voice (Whisper STT) and photo (gpt-4o vision) are declared Premium features
     // (premium-gate.ts photo_logging/voice_input) but were never enforced anywhere —
@@ -163,6 +232,10 @@ serve(async (req: Request) => {
     // referral (Spec 12.5/5.6). It previously hit a dead comment and was dropped. We hoist
     // it so coaching continues (soft tone) but the referral is appended to the final reply.
     let edMediumReferral: string | null = null;
+    // F1/B5 — guard decisions are RECORDED WHERE THEY ARE MADE. The old verdict was reverse-engineered
+    // by regexing the final reply, so a severe-allergen HARD BLOCK (which REPLACES that reply) was
+    // logged as 'clean' — the hardest safety event in the app, recorded as if nothing happened.
+    const guardFlags: GuardFlag[] = [];
     if (message) {
       // FIX (audit AI-ORC-04): persistence MUST NOT gate an acute-safety reply.
       // storeMessages throws SESSION_NOT_FOUND (fail-closed on a deleted/stale
@@ -214,7 +287,11 @@ serve(async (req: Request) => {
           }
           if (salvaged.length > 0) {
             console.warn('[safety_path_salvage] persisting facts from safety-return turn', { types: salvaged.map(s => s.type) });
-            await executeActions(userId, salvaged as never, null, new Date().toISOString().split('T')[0], 'ai_chat', undefined);
+            // No tz here on purpose: this crisis-path salvage runs BEFORE the profile/timezone is
+            // resolved, and it only writes safety constraints — nothing time-of-day dependent.
+            const salvageOutcome = await executeActions(userId, salvaged as never, null, new Date().toISOString().split('T')[0], 'ai_chat', undefined);
+            const salvageFailed = salvageOutcome.filter((f) => typeof f === 'string' && /basarisiz|başarısız/i.test(f));
+            if (salvageFailed.length > 0) console.error('[safety_path_salvage] SOME WRITES FAILED', { failed: salvageFailed });
           }
         } catch (e) { console.warn('[safety_path_salvage] failed:', (e as Error).message); }
       };
@@ -426,13 +503,42 @@ serve(async (req: Request) => {
 
     // Detect task mode (Spec 5.2)
     const taskMode = detectTaskMode(message ?? '', isOnboarding);
-    // Phase 2/3/5 plan-negotiation modes (plan_diet/plan_workout/daily_log) are driven by the
-    // client's explicit task_mode_hint — detectTaskMode can never produce them. Prefer the hint
-    // so the <plan_snapshot> contract inside getModeInstructions actually reaches the model.
-    const HINT_MODES = ['plan_diet', 'plan_workout', 'daily_log'];
-    let effectiveMode: TaskMode = (typeof task_mode_hint === 'string' && HINT_MODES.includes(task_mode_hint))
-      ? (task_mode_hint as TaskMode)
-      : taskMode;
+
+    // F1/B1a — ONE canonical mode. `taskMode` is now the RAW diagnostic value; `effectiveMode` is
+    // the canonical one every consumer must read. Two behaviour-changing precedence rules ride
+    // behind the A00 rollout gate so they can be shadowed, allow-listed, then opened:
+    //   b1a_onboarding_hint — a task card's own identity outranks a regex over its prefill (ALGI-01)
+    //   b1a_active_intent   — an open plan negotiation outlives one keyword-less message
+    const gateOnbHint = rolloutMode('b1a_onboarding_hint', userId);
+    const gateIntent = rolloutMode('b1a_active_intent', userId);
+    let activeIntent: { kind?: string; plan_type?: string } | null = null;
+    // The session row this turn's intent belongs to — captured HERE so the writer below does not
+    // need a second lookup (and cannot drift onto a different session than the reader used).
+    let intentSessionId: string | null = null;
+    if (gateIntent !== 'off') {
+      const q = supabaseAdmin.from('chat_sessions').select('id, active_intent');
+      const { data: sRow } = await (session_id
+        ? q.eq('id', session_id as string).maybeSingle()
+        : q.eq('user_id', userId).eq('is_active', true).maybeSingle());
+      activeIntent = (sRow?.active_intent as { kind?: string; plan_type?: string } | null) ?? null;
+      intentSessionId = (sRow?.id as string | undefined) ?? null;
+    }
+    const resolution = resolveTurnMode({
+      rawMode: taskMode,
+      taskModeHint: task_mode_hint,
+      activeIntent,
+      isOnboarding,
+      onboardingHintEnabled: gateOnbHint === 'on',
+      activeIntentEnabled: gateIntent === 'on',
+    });
+    if (gateOnbHint === 'shadow' && isOnboardingHint(task_mode_hint) && taskMode !== 'onboarding') {
+      console.log('[shadow][b1a_onboarding_hint] would switch mode', { from: taskMode, to: 'onboarding', hint: task_mode_hint });
+    }
+    if (gateIntent === 'shadow' && activeIntent?.kind === 'plan') {
+      console.log('[shadow][b1a_active_intent] would keep the plan negotiation open', { from: taskMode, intent: activeIntent });
+    }
+    let modeSource: string = resolution.source;
+    let effectiveMode: TaskMode = resolution.mode;
 
     // AI-behaviour #18 — MODE PROMOTION: an AI-first coaching product answered its own headline
     // request ("bana haftalık diyet listesi çıkar") with "go to another screen" — task-modes.ts
@@ -458,6 +564,7 @@ serve(async (req: Request) => {
         if (ready) {
           const isWorkout = /(antrenman|spor|egzersiz|hareket)/.test(mPlan) && !/(diyet|beslenme|yemek|men[uü])/.test(mPlan);
           effectiveMode = (isWorkout ? 'plan_workout' : 'plan_diet') as TaskMode;
+          modeSource = 'promotion';
           console.log('[mode_promotion] plan request in chat → promoting mode', { from: taskMode, to: effectiveMode });
         } else {
           console.log('[mode_promotion] plan requested but preconditions missing — staying in chat to ask');
@@ -474,6 +581,28 @@ serve(async (req: Request) => {
     // hint-driven one (persistence + safety re-scan + approval + free-tier quota all unchanged).
     const planTurn = effectiveMode === 'plan_diet' || effectiveMode === 'plan_workout';
     const planKind: 'diet' | 'workout' = effectiveMode === 'plan_workout' ? 'workout' : 'diet';
+
+    // F1/B1a — WRITE the open piece of work. Without a writer, `active_intent` would be a column
+    // nothing sets and the resolver's first rule would be dead on arrival: the exact
+    // "reader with no writer" shape this stage exists to end. Opening is idempotent; the user
+    // asking to drop it ("boş ver", "vazgeç", "başka konu") clears it in the same turn.
+    if (gateIntent !== 'off' && intentSessionId) {
+      const drop = wantsToDropIntent(message);
+      if (drop && activeIntent) {
+        if (gateIntent === 'on') {
+          await supabaseAdmin.from('chat_sessions').update({ active_intent: null })
+            .eq('id', intentSessionId).then(() => {}, () => {});
+        }
+        console.log('[active_intent] drop requested', { gate: gateIntent });
+      } else if (planTurn && isPlanMode(effectiveMode) && !drop) {
+        const next = { kind: 'plan', plan_type: planKind, opened_at: new Date().toISOString() };
+        if (gateIntent === 'on') {
+          await supabaseAdmin.from('chat_sessions').update({ active_intent: next })
+            .eq('id', intentSessionId).then(() => {}, () => {});
+        }
+        console.log('[active_intent] open', { gate: gateIntent, plan_type: planKind });
+      }
+    }
 
     // Analyze message for subtype + risk + retrieval needs (Retrieval Planner v2)
     // FIX (audit AI-HIGH): use effectiveMode, not taskMode. detectTaskMode can never produce
@@ -637,7 +766,10 @@ serve(async (req: Request) => {
     // for EVERY turn regardless of task mode, so the coach never feels amnesiac on a thin
     // register/mood turn. Runs in parallel with the mode-scoped service contexts.
     const [serviceCtx, situationalSnapshot] = await Promise.all([
-      getAllServiceContexts(userId, taskMode, {
+      // F1/B1b: the CANONICAL mode, not the raw keyword guess. On a promoted plan turn the raw
+      // value is 'coaching'/'plan', which silently loaded the wrong service-context set for the
+      // turn actually being run. For every non-hint, non-promoted turn the two are identical.
+      getAllServiceContexts(userId, effectiveMode, {
         message: message ?? '',
         clientTimezone: client_timezone as string | undefined,
         // FIX (audit AI/HIGH day-boundary): pass the already-computed user-effective "today" so
@@ -803,6 +935,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       // #S4: a data contradiction detected this turn MUST be resolved in the reply — placed high
       // so it outranks routine coaching guidance.
       contradictionPrompt,
+      acceptedOfferCtx,
       confidenceNote,
       toneContext,
       personaPrompt,
@@ -883,7 +1016,10 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
 
     // Call OpenAI (Spec 5.27: temperature by mode, model router for tier selection)
     const modelSelection = selectModel(analysis, !!image_base64, effectiveMode);
-    const temperature = TEMPERATURE[taskMode] ?? 0.5;
+    // F1/B1b: temperature keyed by the canonical mode. The raw key made every promoted plan turn
+    // fall through to the 0.5 default — the app's most structure-sensitive turns ran HOTTER than
+    // the plan contract intended (plan_diet/plan_workout/daily_log/onboarding keys exist now).
+    const temperature = TEMPERATURE[effectiveMode] ?? 0.5;
 
     // #arch S2: STRUCTURED-ENVELOPE output. The model now returns {"reply":"...","actions":[...]}
     // so the ACTIONS are a reliable first-class field instead of a free-text <actions> tag the
@@ -920,7 +1056,11 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     }
 
     // Guardrail: sanitize medical language (Spec 12.3)
-    const { clean } = sanitizeText(assistantMessage);
+    const { clean, violatedRuleIds } = sanitizeText(assistantMessage);
+    // F4/E4: violations are now COUNTABLE — one log line per turn, grep/ingest-friendly. (The
+    // ai_turn_log column for this comes with the next migration wave; the log gives the signal
+    // today without schema churn.)
+    if (violatedRuleIds.length > 0) console.warn('[prompt_violation]', { rules: violatedRuleIds });
     assistantMessage = clean;
 
     // Fallback: if AI didn't produce actions but user gave profile info, extract manually
@@ -1041,6 +1181,11 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     if (message
       && (looksLikeMealReport(message) || clarificationMealContext)
       && !actions.some(a => a.type === 'meal_log')
+      // F-SIM7: "2 bardak su içmiştim" trips looksLikeMealReport via 'içmiştim'; the water_log has
+      // already handled it, and the fallback's "Bunu öğün olarak kaydedeyim mi?" question binds to
+      // NOTHING next turn (the un-built pending-intent infra). A drink that was logged as water
+      // is not a meal waiting to be confirmed.
+      && !actions.some(a => a.type === 'water_log')
       && effectiveMode !== 'simulation') {
       console.warn('[meal_safety_net] meal intent, no meal_log action — attempting forced extraction', { mode: effectiveMode, clarification: !!clarificationMealContext });
       const forcedAction = await forceMealLogAction(userId, clarificationMealContext ?? message, modelSelection.model);
@@ -1682,7 +1827,13 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // intro sentence with no plan) — or worse, a partial snapshot crashes the plan UI.
     // Retry ONCE with a JSON-only re-gen before giving up. (Same shape as the meal
     // forced-extraction net.) Skipped on the approval turn (client drives promotion).
-    if (!snapshotUsable(planSnapshot) && user_approved !== true && planTurn) {
+    // F2/A7 — an EXPLAIN turn is not a failed generation. Deciding that from "no snapshot in the
+    // reply" meant a question about the plan ("peki neden 1900 kalori?") triggered a second
+    // ~8000-token regen that either overwrote the draft the user was reading or replaced the
+    // answer with an error sentence. A draft already exists here, so the question can simply be
+    // answered.
+    const planIntent = classifyPlanIntent(message as string | null, !!activeIntent || planTurn, user_approved === true);
+    if (!snapshotUsable(planSnapshot) && user_approved !== true && planTurn && planIntent !== 'explain') {
       // ROOT-CAUSE FIX (ux-pass3, turn-log verified): the first pass and the OLD text-based
       // regen both produced only ~26 tokens — the model echoed the example intro sentence
       // ("Profiline bakarak 7 günlük menünü hazırladım — işte plan:") and STOPPED, emitting
@@ -1726,6 +1877,8 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     }
 
     let persistedPlan: Record<string, unknown> | null = null;
+    // F3/C1: the draft's ROW id — the identity the client's Onayla must carry back.
+    let persistedDraftId: string | null = null;
     let planPersistError: string | null = null;
     let projectionFailed = false; // audit #6: surface a silent daily_plans projection failure to the user
     if (planSnapshot && planTurn) {
@@ -1783,6 +1936,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
             if (violations.length > 0) {
               planPersistError = `allergen_violation: ${violations.slice(0, 3).join('; ')}`;
               console.warn('[plan_snapshot] still blocked by allergen guardrail after regen', { count: violations.length });
+              guardFlags.push('plan_allergen_regen');
             }
           }
         }
@@ -1880,7 +2034,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
             .update({ plan_data: nextSnapshot })
             .eq('id', existing.id);
           if (error) planPersistError = error.message;
-          else persistedPlan = nextSnapshot;
+          else { persistedPlan = nextSnapshot; persistedDraftId = existing.id as string; }
         } else {
           const { data: inserted, error } = await supabaseAdmin
             .from('weekly_plans')
@@ -1902,7 +2056,10 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
             .select('id, plan_data')
             .limit(1);
           if (error) planPersistError = error.message;
-          else persistedPlan = (inserted?.[0] as { plan_data: Record<string, unknown> })?.plan_data ?? null;
+          else {
+            persistedPlan = (inserted?.[0] as { plan_data: Record<string, unknown> })?.plan_data ?? null;
+            persistedDraftId = (inserted?.[0] as { id?: string } | undefined)?.id ?? null;
+          }
         }
       } else if (!planPersistError) {
         planPersistError = `plan_type mismatch: expected ${expectedType}, got ${planSnapshot.plan_type}`;
@@ -1916,10 +2073,19 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // "işte plan:" — a dead-end promising a plan that never arrived. Signal the failure so
     // the client shows a real error+retry instead of silently reverting to the active view,
     // and replace the misleading tail with an honest line.
-    if (!persistedPlan && !user_approved && planTurn) {
+    if (planIntent !== 'explain' && !persistedPlan && !user_approved && planTurn) {
       if (!planPersistError) planPersistError = 'generation_failed';
       console.error('[plan_snapshot] no plan persisted after regen', { planPersistError, firstPassTokens: (turnReceipt as UsageReceipt | null)?.completionTokens });
-      assistantMessage = 'Planı şu an oluşturamadım — bir sorun oldu. Birkaç saniye sonra "tekrar dene" ile yeniden başlatabilirsin.';
+      // F1/B5 — say WHY, and whether retrying is worth the user's time. The single generic
+      // sentence sent an allergy-blocked user into an endless "tekrar dene" loop: retrying can
+      // NEVER clear an allergen violation, and nothing told them that.
+      const failCls: TurnFailureClass =
+        planPersistError.startsWith('allergen_violation') ? 'allergen_violation'
+        : planPersistError.startsWith('injury_violation') ? 'injury_violation'
+        : planPersistError === 'free_quota_used' ? 'quota'
+        : planPersistError === 'generation_failed' ? 'generation_failed'
+        : 'persist_failed';
+      assistantMessage = failureLine(failCls);
     }
 
     // Authoritative approval path (MASTER_PLAN §4.4 rev2.1): when client signals
@@ -1927,6 +2093,26 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     let planApproved: { id: string } | null = null;
     if (user_approved === true && planTurn) {
       const expectedType = planKind;
+
+      // F3/C3 (safety slice, required BEFORE C1 ships): the approval path promotes LLM-authored
+      // targets into weekly_plans and from there into daily_plans — and nothing on that road ever
+      // consulted the durable ED state. A user whose trajectory locked the deficit gate could
+      // still approve an aggressive cut by tapping a button. Diet approvals now pass the same
+      // deficitAllowed gate as every other calorie-lowering action; a refusal is honest and keeps
+      // the draft (nothing is lost — the plan can be re-approved at maintenance level later).
+      if (expectedType === 'diet') {
+        const edGate = await deficitAllowed(userId);
+        if (!edGate.allowed) {
+          console.warn('[approve] blocked by SafetyState (ED gate)', edGate);
+          return await commitAndRespond({
+            message: 'Bu planı şu an onaylamıyorum: kalori kısıtlamasını artırmadan önce beslenmeyle ilişkini toparlamak daha önemli. Planın kaybolmadı — istersen bakım seviyesinde (kısıtlamasız) bir versiyon hazırlayayım, "bakım planı hazırla" demen yeterli.',
+            actions: [], task_mode: effectiveMode,
+            plan_snapshot: null, plan_reasoning: null,
+            plan_persist_error: 'ed_gate_blocked', plan_approved: null,
+            navigate_to: null, simulation: null, remaining: rateLimit.remaining,
+          });
+        }
+      }
 
       // SERVER-SIDE free-tier plan cap (mirror of premium-gate.ts canApprovePlan:
       // free = 1 diet + 1 workout lifetime). This check used to live ONLY in the
@@ -1951,8 +2137,10 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
               return clone;
             });
           if (factActions.length > 0) {
-            await executeActions(userId, factActions as typeof actions, profile?.gender, effectiveToday, 'ai_chat', idempotency_key as string | undefined)
-              .catch((e) => console.warn('[plan-cap] fact salvage failed:', (e as Error).message));
+            const capSalvage = await executeActions(userId, factActions as typeof actions, profile?.gender, effectiveToday, 'ai_chat', idempotency_key as string | undefined, userTz)
+              .catch((e): (string | null)[] => { console.warn('[plan-cap] fact salvage failed:', (e as Error).message); return []; });
+            const capFailed = capSalvage.filter((f) => typeof f === 'string' && /basarisiz|başarısız/i.test(f));
+            if (capFailed.length > 0) console.error('[plan-cap] fact salvage: SOME WRITES FAILED', { failed: capFailed });
           }
           return await commitAndRespond({
             message: 'Ücretsiz planda 1 diyet + 1 antrenman planı onaylayabiliyorsun. Yeni plan onaylamak ve sınırsız revizyon için Premium\'a geçebilirsin.',
@@ -2275,7 +2463,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // the daily_plans projection the dashboard reads failed → the user saw "planın hazır" + an empty
     // dashboard. Tell them honestly with a retry path instead of pretending it rendered.
     if (projectionFailed) {
-      assistantMessage = `${assistantMessage}\n\n(Not: planın onaylandı ama panele yansıtırken bir sorun oldu. Birkaç saniye sonra sayfayı yenile; hâlâ boşsa "planı tekrar oluştur" yaz, hemen düzelteyim.)`.trim();
+      assistantMessage = `${assistantMessage}\n\n(Not: planın onaylandı ama panele yansıtırken takıldım. Birkaç saniye sonra sayfayı yenile; hâlâ boşsa "planı tekrar oluştur" yaz, hemen düzelteyim.)`.trim();
     }
 
     // #ux-fix (confirm/reject marker reliability, live 07-11): the client is retiring its substring
@@ -2434,6 +2622,45 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       }
     }
 
+    // F-SIM2 (hafta simülasyonu): "3. kahvemi içtim" arrived as water_log — coffee inflated the
+    // water total by 0.7L and the caffeine tracker (which reads meal items) saw nothing. Water is
+    // water; caffeinated/alcoholic drinks are not.
+    if (message) {
+      const mL = message.toLocaleLowerCase('tr');
+      const mentionsWater = /su|litre|bardak su|su bardağ/i.test(mL);
+      const mentionsOtherDrink = /kahve|çay|cay|kola|bira|şarap|sarap|ayran|soda|latte|espresso/i.test(mL);
+      if (mentionsOtherDrink && !mentionsWater) {
+        const kept = actions.filter(a => (a as Record<string, unknown>).type !== 'water_log');
+        if (kept.length !== actions.length) {
+          console.warn('[water_net] dropped water_log — the drink was not water');
+          actions.length = 0; actions.push(...kept);
+        }
+      }
+
+      // F-SIM3: "9 bin adım attım, çok yürüdüm" produced THREE writes: step_log (correct) +
+      // an invented 30dk/300kcal cardio workout_log (double-counting the same activity, and past
+      // the ≥150 kcal refuel-bump threshold) + an UNREQUESTED profiles.step_target=10000. Steps
+      // are a workout only when the user gives a duration; a goal is set only when asked for.
+      const hasStepLog = actions.some(a => (a as Record<string, unknown>).type === 'step_log');
+      const hasDuration = /\d+\s*(dk|dakika|saat)/i.test(mL);
+      if (hasStepLog && !hasDuration) {
+        const kept = actions.filter(a => (a as Record<string, unknown>).type !== 'workout_log');
+        if (kept.length !== actions.length) {
+          console.warn('[step_net] dropped duration-less workout_log next to step_log (double count)');
+          actions.length = 0; actions.push(...kept);
+        }
+      }
+      if (!/hedef/i.test(mL)) {
+        for (const a of actions) {
+          const ar = a as Record<string, unknown>;
+          if (ar.type === 'profile_update' && ar.step_target !== undefined) {
+            console.warn('[step_net] stripped unrequested step_target', { value: ar.step_target });
+            delete ar.step_target;
+          }
+        }
+      }
+    }
+
     // #R3: a what-if / projection question ("günde 500 açık yaparsam kaç kilo veririm")
     // must NOT create or mutate a goal — the model probabilistically emits an unsolicited
     // goal_type. Strip goal-mutating actions when the message is clearly hypothetical
@@ -2476,7 +2703,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     }
 
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
-    const actionFeedback = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined);
+    const actionFeedback = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz);
 
     // #S2 RECEIPTS: verify that captured identity facts REALLY landed in the canonical store and
     // persist per-field receipts to ai_turn_log. This is what makes the "anladım, 25 yaşındasın"
@@ -2528,9 +2755,34 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // general_summary from those stores (never append). Fire-and-forget; the nightly extractor
     // pass covers any miss.
     if (factsDirty) {
-      composeGeneralSummary(userId)
-        .then((summaryText) => summaryText.trim() ? updateLayer2(userId, { general_summary: summaryText }) : undefined)
-        .catch((e) => console.warn('[derived-summary] recompose failed:', (e as Error).message));
+      // F3/C6: a fact-class action IS fresh user input — it lifts the KVKK tombstone before the
+      // regen, so a post-reset summary only ever rebuilds from what the user newly said.
+      (async () => {
+        await supabaseAdmin.from('ai_summary').update({ derived_suppressed_at: null }).eq('user_id', userId);
+        const summaryText = await composeGeneralSummary(userId);
+        if (summaryText.trim()) await updateLayer2(userId, { general_summary: summaryText });
+      })().catch((e: Error) => console.warn('[derived-summary] recompose failed:', e.message));
+    }
+
+    // F-SIM1 (hafta simülasyonu bulgusu): the coach asked yaş/boy/kilo and NEVER circled back to
+    // cinsiyet — 20+ turns with "Cinsiyet: ?" in its own context. gender gates
+    // checkOnboardingCompletion, so the user stays onboarding-locked forever and the product's
+    // headline request ("bana haftalık liste hazırla") is REFUSED by the onboarding contract.
+    // Deterministic, once per 24h, only when everything else core is already in.
+    if (isOnboarding && profile && !profile.gender
+      && profile.height_cm && profile.weight_kg && profile.birth_year
+      && !/cinsiyet|kad[ıi]n m[ıi]s[ıi]n|erkek mis[ıi]n/i.test(assistantMessage)) {
+      const { data: askedRecently } = await supabaseAdmin
+        .from('chat_messages').select('id').eq('user_id', userId).eq('role', 'assistant')
+        // The mirror reply legitimately CONTAINS the word 'cinsiyet' ("Cinsiyet: ?"), which
+        // muted this net for 24h on the very first probe. Cool down on the QUESTION form only.
+        .ilike('content', '%kadın mısın%')
+        .gte('created_at', new Date(Date.now() - 24 * 3600_000).toISOString()).limit(1);
+      if (!askedRecently?.length) {
+        assistantMessage = `${assistantMessage}
+
+Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bilmem gerekiyor — kadın mısın, erkek misin?`.trim();
+      }
     }
 
     // #S4 deterministic fallback: safety never depends on the model obeying the prompt. VALUE-
@@ -2674,12 +2926,18 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
             // HARD BLOCK (anaphylaxis risk): redact the whole reply AND the reasoning panel (which
             // carried the same rationale) — replace with a deterministic safe message. Warning-
             // below-the-danger is NOT enforcement; the unsafe food must never reach the user.
-            console.warn('[allergen_block] severe allergen recommended in reply — redacted', { matched: scan.matched });
+            console.warn('[allergen_block] severe allergen recommended in reply — redacted', { matched: scan.matched, contexts: scan.contexts });
+            guardFlags.push('allergen_blocked');
             assistantMessage = buildAllergenBlockMessage(scan.matched);
             planReasoning = '';
           } else {
-            const names = scan.matched.length > 0 ? scan.matched.join(', ') : 'alerjen';
-            assistantMessage += `\n\n⚠️ Dikkat: profilinde ${names} alerjisi kayıtlı — yukarıdaki öneri buna uygun olmayabilir. Sana uygun bir alternatif isteyebilirsin.`;
+            // F-SIM5: an empty match produced the dumb-sounding "profilinde alerjen alerjisi kayıtlı".
+            const warnTail = scan.matched.length > 0
+              ? `profilinde ${scan.matched.join(', ')} alerjisi kayıtlı`
+              : 'profilinde kayıtlı bir alerjenin var';
+            assistantMessage += `
+
+⚠️ Dikkat: ${warnTail} — yukarıdaki öneri buna uygun olmayabilir. Sana uygun bir alternatif isteyebilirsin.`;
           }
         }
       }
@@ -2710,6 +2968,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
             return true;
           });
           if (!addressed) {
+            guardFlags.push('injury_warned');
             assistantMessage += `\n\n⚠️ Not: kayıtlı sakatlığın nedeniyle ${conflicts.join(', ')} hareket(ler)i senin için riskli olabilir. İstersen sakatlık-dostu bir alternatif programlayalım.`;
           }
         }
@@ -2790,6 +3049,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // #live-L6: surface the medium-severity ED professional-support referral deterministically
     // (don't trust the LLM to include it). Skip if the reply already points to a professional.
     if (edMediumReferral && !/(diyetisyen|psikolog|profesyonel destek|uzman)/i.test(assistantMessage)) {
+      guardFlags.push('ed_referral');
       assistantMessage += '\n\n' + edMediumReferral;
     }
 
@@ -2800,7 +3060,13 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // user row. When null (photo-only / reservation-insert fallback) it inserts both rows as before.
     // #ux-fix (per-message feedback linkage): capture the persisted assistant row id — surfaced to
     // the client as `assistant_message_id` so feedback votes finally link to a REAL chat_messages row.
-    const assistantMessageId = await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, actions, session_id, reservedUserMessageId);
+    // Drop actions whose write was skipped as a duplicate (DUP_SKIP) BEFORE anything persists or
+    // returns them — chat_messages.actions_executed and the client badge both feed from this list.
+    const persistedPairs = actions
+      .map((a, i: number) => ({ a, fb: actionFeedback[i] ?? null }))
+      .filter((p) => p.fb !== DUP_SKIP);
+    const persistedActions = persistedPairs.map((p) => p.a);
+    const assistantMessageId = await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, persistedActions, session_id, reservedUserMessageId);
     // FIX (audit AI-MDL-05): the turn is now persisted (assistant reply appended to the reserved
     // row's conversation). Clear the handle so a throw in the post-store steps below does NOT
     // make the catch release an already-answered, legitimately-counted message.
@@ -2810,15 +3076,27 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // the served model / tokens / latency / fallback (from the openai.ts receipt) plus the code-side
     // guard verdict, so cost, silent model-downgrades, and safety-net firings are finally observable.
     try {
-      const guardVerdict = edMediumReferral ? 'ed_referral'
-        : /alerjin?\/intolerans|alerjisi kayıtlı|alerjin\/intoleransın/i.test(assistantMessage) ? 'allergen_warned'
-        : /sakatlığın nedeniyle|sakatlığın bu hareketi/i.test(assistantMessage) ? 'injury_warned'
-        : 'clean';
+      // F4/B7 pre-slice (MUHAKEME-10) — MEASURE the question budget before enforcing it. The
+      // one-question rule is broken by the app's own nets (contradiction ask, low-conf verify,
+      // allergen/injury conflicts) stacking on the model's own question. Enforcement without a
+      // baseline is how D2-class changes become unprovable; this counter is the baseline.
+      const questionCount = (assistantMessage.match(/\?/g) ?? []).length;
+      if (questionCount > 1) {
+        console.warn('[question_budget] exceeded', { count: questionCount, mode: effectiveMode });
+      }
+
+      // F1/B5: derived from the flags raised at the DECISION POINTS — never from the final text.
+      const guardVerdict = guardVerdictOf(guardFlags);
       const rc = turnReceipt as UsageReceipt | null;
       const { error: ledgerErr } = await supabaseAdmin.from('ai_turn_log').insert({
         user_id: userId,
         function_name: 'ai-chat',
+        // system_mode keeps its historical meaning (raw) so existing readers are untouched;
+        // `mode` is the canonical one and `mode_source` says which precedence rule won.
         system_mode: taskMode,
+        mode: effectiveMode,
+        raw_mode: taskMode,
+        mode_source: modeSource,
         model_requested: rc?.modelRequested ?? modelSelection.model,
         model_served: rc?.modelServed ?? modelSelection.model,
         prompt_tokens: rc?.promptTokens ?? 0,
@@ -2829,6 +3107,11 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
         fallback_reason: rc?.fallbackReason ?? null,
         attempts: rc?.attempts ?? 1,
         guard_verdict: guardVerdict,
+        // F0/A00: which rollout gates were non-'off' for THIS turn ('' when all are off). Without
+        // this, "did the new path run, for whom, in shadow or on?" is a question only function logs
+        // could answer — and they vanish. Now it is one SQL.
+        rollout_stamp: rolloutStamp(ACTIVE_ROLLOUT_STEPS, userId),
+        ui_markers: uiMarkers,
       });
       if (ledgerErr) console.error('[ai_turn_log] insert failed:', ledgerErr.message);
     } catch (e) { console.error('[ai_turn_log] write threw:', (e as Error).message); }
@@ -2897,10 +3180,11 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       checkOnboardingCompletion(userId).then(() => {}, (e) => console.error('[Onboarding] checkOnboardingCompletion failed:', (e as Error).message));
     }
 
-    const outActions = actions.map((a, i: number) => {
+    // persistedPairs computed above (before storeMessages) — same filtered view feeds the client.
+    const outActions = persistedPairs.map(({ a, fb }) => {
       const base: { type: string; feedback: string | null; confidence?: 'high' | 'medium' | 'low' } = {
         type: (a as { type: string }).type,
-        feedback: actionFeedback[i] ?? null,
+        feedback: fb,
       };
       // Surface meal-parse confidence so the client can render the
       // ConfidenceBadge (Spec 3.3). Same bucketing as executeActions: the
@@ -2927,7 +3211,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
     // plan that was never saved (#R6-2). The client also reads plan_persist_error.
     let finalNavigateTo = navigateTo;
     if (planPersistError && !persistedPlan) {
-      assistantMessage += '\n\n(Not: planı kaydederken bir sorun oldu, birazdan tekrar dener misin?)';
+      assistantMessage += `\n\n(Not: ${failureLine('persist_failed')})`;
       finalNavigateTo = null;
     }
 
@@ -2941,6 +3225,11 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       task_mode: taskMode,
       task_completion: validatedCompletion,
       plan_snapshot: persistedPlan,
+      // F3/C1: identity for the approve round-trip. Without these the client's "Onayla" was a
+      // PLAIN TEXT message — no user_approved, no hint — so planTurn=false and the approval block
+      // never ran: the user approved an invisible plan into the void (the one CRITICAL finding).
+      plan_draft_id: persistedDraftId,
+      plan_type: planTurn ? planKind : null,
       plan_reasoning: planReasoning,
       plan_persist_error: planPersistError,
       plan_approved: planApproved,
@@ -4187,6 +4476,16 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
   return assistantMessageId;
 }
 
+/**
+ * Sentinel feedback for an action whose WRITE was intentionally skipped (duplicate/restate).
+ * Distinct from null (= silent success): a skipped action must not reach the client or
+ * chat_messages.actions_executed, or the UI renders an "Öğün kaydedildi" badge for a write that
+ * never happened — caught live on the 2026-07-26 emulator drive ("tesekkurler kocum" turn carried
+ * a meal_log badge; meal_logs had one row). The full fix is the B2 ActionReceipt contract; this
+ * sentinel is its narrowest possible forerunner.
+ */
+const DUP_SKIP = '__dup_skip__';
+
 async function executeActions(
   userId: string,
   actions: Record<string, unknown>[],
@@ -4194,6 +4493,10 @@ async function executeActions(
   targetDate?: string,
   inputMethod: 'text' | 'photo' | 'barcode' | 'voice' | 'template' | 'ai_chat' = 'ai_chat',
   idempotencyKey?: string,
+  // F2/A10: the user's IANA zone. Everything time-of-day inside this function (learned meal
+  // times, the afternoon-caffeine warning) was computed from the UTC edge clock and was therefore
+  // wrong by the user's offset for every user outside UTC.
+  tzForActions?: string | null,
 ): Promise<(string | null)[]> {
   if (!actions || !Array.isArray(actions) || actions.length === 0) return [];
   const today = targetDate ?? new Date().toISOString().split('T')[0];
@@ -4322,7 +4625,7 @@ async function executeActions(
               .gte('logged_at', new Date(Date.now() - 10 * 60 * 1000).toISOString())
               .limit(1);
             if (recentDupe && recentDupe.length > 0) {
-              feedback.push(null); // already saved — no chip, no double row
+              feedback.push(DUP_SKIP); // already saved — drop the ACTION too, or the client badges a phantom save
               break;
             }
           }
@@ -4349,7 +4652,7 @@ async function executeActions(
                 const filtered = items.filter(i => !existingNames.has((i.name ?? '').toLocaleLowerCase('tr').trim()));
                 if (filtered.length < items.length) {
                   // A restate was detected (≥1 item already logged recently).
-                  if (filtered.length === 0) { feedback.push(null); break; } // nothing new — full restate
+                  if (filtered.length === 0) { feedback.push(DUP_SKIP); break; } // nothing new — full restate, drop the action
                   mealItems = filtered; // insert only the genuinely-new items
                 }
               }
@@ -4455,14 +4758,14 @@ async function executeActions(
           }
 
           // --- Auto Meal Time Learning (Spec 5.15) ---
-          learnMealTime(userId, mealType, action.logged_at as string | undefined).then(() => {}, () => {});
+          learnMealTime(userId, mealType, action.logged_at as string | undefined, tzForActions).then(() => {}, () => {});
 
           // --- Caffeine Integration (Spec 5.34) ---
           // Caffeine notices used to be pushed as separate feedback entries (and the case
           // broke early), so for a lone meal_log they landed on later actions' chips and
           // were dropped. Accumulate them into mealFeedback so they reach the user.
           if (mealItems?.length) {
-            const caffeineFeedback = await checkCaffeineIntake(userId, mealItems, today);
+            const caffeineFeedback = await checkCaffeineIntake(userId, mealItems, today, tzForActions);
             for (const cf of caffeineFeedback) mealFeedback.push(cf);
           }
 
@@ -4626,7 +4929,14 @@ async function executeActions(
           // Post-workout calorie target bump (Spec 7.5)
           // Bump today's remaining calorie allowance by ~50% of burned kcal,
           // so user has flexibility to refuel without overshooting.
-          if (caloriesBurned >= 150) {
+          // F2/A4 — a BACKDATED workout must not open room in TODAY's budget. The bump was written
+          // to `today` regardless of days_ago, and the receipt then said "bugün için +250 kcal
+          // hareket alanı açıldı" for a run the user did on Sunday. The user cannot see that their
+          // current target silently moved, so the error is invisible AND compounding.
+          // The refuel allowance belongs to the day the effort happened; for a past day the plan
+          // row is already closed, so we log it honestly and open nothing.
+          const bumpIsForToday = actionDate === today;
+          if (caloriesBurned >= 150 && bumpIsForToday) {
             const bump = Math.round(caloriesBurned * 0.5);
 
             // Reflect bump on today's daily_plan so dashboard "kalan kalori" updates
@@ -4634,7 +4944,7 @@ async function executeActions(
               .from('daily_plans')
               .select('id, calorie_target_min, calorie_target_max')
               .eq('user_id', userId)
-              .eq('date', today)
+              .eq('date', actionDate)
               .maybeSingle();
             let bumped = false;
             if (todayPlan) {
@@ -4654,6 +4964,9 @@ async function executeActions(
             feedback.push(bumped
               ? `Antrenman kaydedildi (~${caloriesBurned} kcal yakim). Bugun icin +${bump} kcal hareket alani acildi.${workoutPrNote ? ` ${workoutPrNote}` : ''}`
               : `Antrenman kaydedildi (~${caloriesBurned} kcal yakim).${workoutPrNote ? ` ${workoutPrNote}` : ''}`);
+          } else if (caloriesBurned >= 150) {
+            // Backdated: real burn, but no budget change and NO claim that room opened.
+            feedback.push(`Antrenman kaydedildi (~${caloriesBurned} kcal yakim, ${actionDate}).${workoutPrNote ? ` ${workoutPrNote}` : ''}`);
           } else {
             feedback.push(`Antrenman kaydedildi${workoutPrNote ? `. ${workoutPrNote}` : ''}`);
           }
@@ -5209,6 +5522,14 @@ async function executeActions(
             for (const ac of activeAllergens) {
               if (foodMatchKey(ac.subject) === clearKey) await deactivateConstraints(userId, 'allergen', { subject: ac.subject });
             }
+            // F3/C6 (retract half — HAFIZA-01): forgetting is an EVENT. The 'retract' operation
+            // had zero writers, so the belief timeline's "kaldırıldı" branch was dead code and a
+            // cleared allergen left no trace of what was believed before or when it was dropped.
+            await logBelief(userId, {
+              belief_key: 'food_preference', subject: foodName, operation: 'retract',
+              old_value: 'allergen/dislike kaydı', new_value: null,
+              note: `kullanıcı geri aldı ("geçti/kalmadı") — ${toDrop.length} kayıt temizlendi`,
+            });
             console.warn('[food_preference] cleared', { food: foodName, dropped: toDrop.length });
             feedback.push(toDrop.length > 0 || kept.length !== df.length ? 'Kayıt temizlendi' : null);
             break;
@@ -5370,6 +5691,14 @@ async function executeActions(
           }
           // #arch L1: also deactivate the typed injury constraints for the healed parts.
           await resolveInjuryConstraints(userId, [...healedParts]);
+          // F3/C6 (retract half): a healed injury is a retracted belief — timeline it.
+          if (resolved > 0) {
+            await logBelief(userId, {
+              belief_key: 'health_event', subject: [...healedParts].join(', '), operation: 'retract',
+              old_value: 'aktif sakatlık/rahatsızlık', new_value: 'iyileşti',
+              note: 'kullanıcı iyileştiğini bildirdi — kısıt kaldırıldı',
+            });
+          }
           console.warn('[health_event_resolve] resolved', { parts: [...healedParts], resolved });
           feedback.push(resolved > 0 ? 'Geçmiş olsun, kaydını güncelledim' : null);
           break;
@@ -5463,36 +5792,11 @@ async function executeActions(
           feedback.push('Tarif kaydedildi');
           break;
         }
-        case 'undo_last': {
-          // Spec 5.32: Undo last action - find and reverse most recent log
-          const undoType = action.undo_type as string ?? 'meal';
-          if (undoType === 'meal') {
-            const { data: lastMeal } = await supabaseAdmin.from('meal_logs')
-              .select('id').eq('user_id', userId).eq('is_deleted', false)
-              .order('logged_at', { ascending: false }).limit(1).maybeSingle();
-            if (lastMeal) {
-              await supabaseAdmin.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', lastMeal.id);
-              feedback.push('Son ogun kaydi silindi');
-            }
-          } else if (undoType === 'workout') {
-            const { data: lastWorkout } = await supabaseAdmin.from('workout_logs')
-              .select('id').eq('user_id', userId)
-              .order('logged_at', { ascending: false }).limit(1).maybeSingle();
-            if (lastWorkout) {
-              await supabaseAdmin.from('workout_logs').delete().eq('id', lastWorkout.id);
-              feedback.push('Son antrenman kaydi silindi');
-            }
-          } else if (undoType === 'supplement') {
-            const { data: lastSupp } = await supabaseAdmin.from('supplement_logs')
-              .select('id').eq('user_id', userId)
-              .order('logged_at', { ascending: false }).limit(1).maybeSingle();
-            if (lastSupp) {
-              await supabaseAdmin.from('supplement_logs').delete().eq('id', lastSupp.id);
-              feedback.push('Son supplement kaydi silindi');
-            }
-          }
-          break;
-        }
+        // EYLEM-10 (C6 decision, verified twice): 'undo_last' had ZERO emitters anywhere — no
+        // prompt taught it, no net injected it. Real undo runs through the repair-handler's
+        // phrase detection BEFORE the LLM. An unreachable delete-by-recency handler is not a
+        // feature; it is a trap waiting for the first accidental emitter. Removed, and the
+        // seam ledger entry closed with it.
         case 'mvd_activate': {
           // Spec 6.4: Suspend today's plan for Minimum Viable Day
           await supabaseAdmin.from('daily_plans')
@@ -5775,17 +6079,21 @@ async function executeActions(
           }).eq('user_id', userId).eq('date', today);
 
           // Update profile bands for next 2 weeks (refeed/training_change keep bands)
+          // F3/C3: engine call — gated (a plateau strategy can TIGHTEN), floored, ledgered,
+          // projected forward instead of today-only.
           if (strategyId === 'calorie_cycle' || strategyId === 'tdee_recalc' || strategyId === 'maintenance_break') {
-            await supabaseAdmin.from('profiles').update({
-              calorie_range_rest_min: newMin,
-              calorie_range_rest_max: newMax,
-            }).eq('id', userId);
+            await applyTargetAdjust({
+              userId, today, gender: gender ?? undefined,
+              band: { restMin: newMin, restMax: newMax },
+              source: 'plateau_strategy',
+              reason: `Plateau stratejisi (${strategyId}): bant ${newMin}-${newMax} kcal`,
+            });
           }
 
-          // Store as ai_summary coaching_note so follow-up context remembers
-          await updateLayer2(userId, {
-            coaching_notes: `[${today}] Plateau stratejisi: ${strategyId}. ${instructions}`,
-          }).then(() => {}, () => {});
+          // F2/A11: APPEND, never replace. updateLayer2 routes to the ai_summary_merge RPC, which
+          // COALESCEs — so this single line used to delete every dated observation collected since
+          // the user joined. Irreversible, silent, and worst for the longest-tenured users.
+          await appendCoachingNote(userId, 'plateau', `Plateau stratejisi: ${strategyId}. ${instructions}`, today);
 
           feedback.push(`Plateau stratejisi uygulandi: ${strategyId}. ${instructions}`);
           break;
@@ -5806,27 +6114,23 @@ async function executeActions(
           // general weight-loss user = eat at maintenance; no gradual ramp needed to stop harm.
           const mb = computeMaintenanceBand(tdee); // #arch step 10: single maintenance-band owner
 
-          await supabaseAdmin.from('profiles').update({
-            maintenance_mode: true,
-            maintenance_start_date: today,
-            periodic_state: 'maintenance',
-            periodic_state_start: today,
-            calorie_range_rest_min: mb.restMin,
-            calorie_range_rest_max: mb.restMax,
-            calorie_range_training_min: mb.trainingMin,
-            calorie_range_training_max: mb.trainingMax,
-            weekly_calorie_budget: mb.weeklyBudget,
-            updated_at: new Date().toISOString(),
-          }).eq('id', userId);
+          // F3/C3 — the ONE writer: floor + gate + ledger + FORWARD projection (EYLEM-02: the
+          // old `.eq('date', today)` meant the raise evaporated overnight while the plan week
+          // kept projecting the aggressive cut).
+          await applyTargetAdjust({
+            userId, today, gender: gender ?? undefined,
+            band: { restMin: mb.restMin, restMax: mb.restMax, trainingMin: mb.trainingMin, trainingMax: mb.trainingMax, weeklyBudget: mb.weeklyBudget },
+            source: 'maintenance_start',
+            reason: `Bakım modu: kalori bakım seviyesine (~TDEE ${tdee}) çıkarıldı`,
+            profileExtras: {
+              maintenance_mode: true, maintenance_start_date: today,
+              periodic_state: 'maintenance', periodic_state_start: today,
+            },
+          });
 
-          // Reflect on today's plan immediately (mirror mini_cut_start) so the dashboard shows it now.
-          await supabaseAdmin.from('daily_plans').update({
-            calorie_target_min: mb.dailyTargetMin, calorie_target_max: mb.dailyTargetMax,
-          }).eq('user_id', userId).eq('date', today);
-
-          await updateLayer2(userId, {
-            coaching_notes: `[${today}] Bakim modu basladi. Kalori bakim seviyesine cikarildi (~${Math.round((mb.dailyTargetMin + mb.dailyTargetMax) / 2)} kcal, TDEE ${tdee}). Tolerans ±1.5kg.`,
-          }).then(() => {}, () => {});
+          // F2/A11: same wipe, second call site.
+          await appendCoachingNote(userId, 'maintenance',
+            `Bakim modu basladi. Kalori bakim seviyesine cikarildi (~${Math.round((mb.dailyTargetMin + mb.dailyTargetMax) / 2)} kcal, TDEE ${tdee}). Tolerans ±1.5kg.`, today);
 
           feedback.push(`Bakim modu aktif — kalori hedefin bakim seviyesine yukseltildi (${mb.dailyTargetMin}-${mb.dailyTargetMax} kcal). Artik kesimde degilsin, tolerans bandi ±1.5kg.`);
           break;
@@ -5851,18 +6155,19 @@ async function executeActions(
           const cutMin = Math.round(curMax - 400);
           const cutMax = Math.round(curMax - 200);
 
-          await supabaseAdmin.from('profiles').update({
-            calorie_range_rest_min: cutMin,
-            calorie_range_rest_max: cutMax,
-            periodic_state: 'mini_cut',
-            periodic_state_start: today,
-            periodic_state_end: shiftDateString(today, weeks * 7),
-          }).eq('id', userId);
-
-          await supabaseAdmin.from('daily_plans').update({
-            calorie_target_min: cutMin,
-            calorie_target_max: cutMax,
-          }).eq('user_id', userId).eq('date', today);
+          // F3/C3: engine call — the cut projects onto the WHOLE remaining week and is floor-
+          // clamped + ledgered. (The explicit deficitAllowed check above stays: it produces the
+          // user-facing refusal copy; the engine's gate is the belt under it.)
+          await applyTargetAdjust({
+            userId, today, gender: gender ?? undefined,
+            band: { restMin: cutMin, restMax: cutMax },
+            source: 'mini_cut_start',
+            reason: `Mini cut: ${weeks} hafta, hedef ${cutMin}-${cutMax} kcal`,
+            profileExtras: {
+              periodic_state: 'mini_cut', periodic_state_start: today,
+              periodic_state_end: shiftDateString(today, weeks * 7),
+            },
+          });
 
           feedback.push(`Mini cut basladi: ${weeks} hafta, kalori hedefi ${cutMin}-${cutMax} kcal.`);
           break;
@@ -5956,11 +6261,15 @@ async function executeActions(
  * Spec 5.15: Auto Meal Time Learning
  * Every 7th meal_log for a given meal_type, calculate average time and update ai_summary.learned_meal_times.
  */
-async function learnMealTime(userId: string, mealType: string, loggedAt?: string) {
-  // Extract current hour:minute
+async function learnMealTime(userId: string, mealType: string, loggedAt?: string, tz?: string | null) {
+  // F2/A10 — the edge runtime is UTC, so getHours() returned UTC and every learned meal time was
+  // shifted by the user's offset (3 hours for Turkey). The coach then "knew" breakfast was at
+  // 05:00 and reasoned about eating windows from a number that was never true. Same class as the
+  // Layer-1 clock fix (AI-CTX-02); this call site was simply missed.
   const now = loggedAt ? new Date(loggedAt) : new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
+  const nowParts = getLocalParts(tz ?? null, now);
+  const currentHour = nowParts.hour;
+  const currentMinute = nowParts.minute;
 
   // Count how many logs of this meal_type exist
   const { count } = await supabaseAdmin
@@ -5988,8 +6297,8 @@ async function learnMealTime(userId: string, mealType: string, loggedAt?: string
   // Calculate average time in minutes from midnight
   let totalMinutes = 0;
   for (const log of recentLogs) {
-    const d = new Date(log.logged_at);
-    totalMinutes += d.getHours() * 60 + d.getMinutes();
+    const p = getLocalParts(tz ?? null, new Date(log.logged_at));
+    totalMinutes += p.hour * 60 + p.minute;
   }
   const avgMinutes = Math.round(totalMinutes / recentLogs.length);
   const avgHour = Math.floor(avgMinutes / 60).toString().padStart(2, '0');
@@ -6019,7 +6328,8 @@ async function learnMealTime(userId: string, mealType: string, loggedAt?: string
 async function checkCaffeineIntake(
   userId: string,
   items: { name: string; portion: string; calories: number; protein_g: number; carbs_g: number; fat_g: number }[],
-  today: string
+  today: string,
+  caffeineTz?: string | null,
 ): Promise<string[]> {
   const caffeineMap: { keywords: string[]; mg: number }[] = [
     { keywords: ['espresso'], mg: 63 },
@@ -6082,7 +6392,9 @@ async function checkCaffeineIntake(
   if (totalCaffeine > 400) {
     warnings.push(`Kafein uyarisi: gunluk limitin (400mg) asildi (toplam: ~${totalCaffeine}mg)`);
   }
-  const currentHour = new Date().getHours();
+  // F2/A10: user-local hour, not UTC — the "afternoon caffeine hurts your sleep" warning fired
+  // three hours late for a Turkish user (and never at all for some offsets).
+  const currentHour = getLocalHour(caffeineTz ?? null, new Date());
   if (currentHour >= 15) {
     warnings.push('Kafein uyarisi: ogleden sonra kafein uyku kaliteni dusurur');
   }
@@ -6529,24 +6841,29 @@ async function checkOnboardingCompletion(userId: string) {
     // NOTE: protein_target_g is NOT a profiles column (it lives on daily_plans);
     // protein intensity is captured by protein_per_kg. Macro split columns are
     // macro_protein_pct/macro_carb_pct/macro_fat_pct (001:77-79), not macro_pct_*.
-    const { error } = await supabaseAdmin.from('profiles').update({
-      onboarding_completed: true,
-      tdee_calculated: tdee,
-      tdee_last_weight: data.weight_kg,
-      tdee_last_date: new Date().toISOString().split('T')[0],
-      calorie_range_training_min: trainingMin,
-      calorie_range_training_max: safeTrainingMax,
-      calorie_range_rest_min: restMin,
-      calorie_range_rest_max: safeRestMax,
-      protein_per_kg: 1.8,
-      water_target_liters: waterTarget,
-      weekly_calorie_budget: weeklyBudget,
-      macro_protein_pct: 30,
-      macro_carb_pct: 40,
-      macro_fat_pct: 30,
-      updated_at: new Date().toISOString(),
-    }).eq('id', userId);
-    if (error) console.error('[Onboarding] completion update failed:', error.message);
+    // F3/C3 (target-engine): the FIRST band a user ever gets is set through the one writer —
+    // fresh profile means oldRestMin=null so the gate never fires, but the initial band is
+    // ledgered ('onboarding': who/what/why) instead of appearing from nowhere.
+    const obDate = new Date().toISOString().split('T')[0];
+    const obRes = await applyTargetAdjust({
+      userId, today: obDate,
+      gender: (data.gender as string | null) ?? null,
+      band: { restMin, restMax: safeRestMax, trainingMin, trainingMax: safeTrainingMax, weeklyBudget },
+      source: 'onboarding',
+      reason: `Onboarding tamamlandı: TDEE ${tdee} kcal, hedef ${obGoal ?? 'health'}`,
+      profileExtras: {
+        onboarding_completed: true,
+        tdee_calculated: tdee,
+        tdee_last_weight: data.weight_kg,
+        tdee_last_date: obDate,
+        protein_per_kg: 1.8,
+        water_target_liters: waterTarget,
+        macro_protein_pct: 30,
+        macro_carb_pct: 40,
+        macro_fat_pct: 30,
+      },
+    });
+    if (!obRes.ok) console.error('[Onboarding] completion update failed:', obRes.error);
   }
 }
 
@@ -6616,23 +6933,31 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
 
   // protein_target_g is not a profiles column (it lives on daily_plans); record
   // protein intent via protein_per_kg (proteinG above derives from this 1.8 factor).
+  const recalcDate = new Date().toISOString().split('T')[0];
   const profileUpdate: Record<string, unknown> = {
     tdee_calculated: tdee,
     tdee_last_weight: currentWeight,
-    tdee_last_date: new Date().toISOString().split('T')[0],
+    tdee_last_date: recalcDate,
     protein_per_kg: 1.8,
     water_target_liters: waterTarget,
     updated_at: new Date().toISOString(),
   };
   if (!inMaintenance) {
     // Only the non-maintenance path may rewrite the calorie ranges / weekly budget.
-    profileUpdate.calorie_range_training_min = trainingMin;
-    profileUpdate.calorie_range_training_max = safeTrainingMax;
-    profileUpdate.calorie_range_rest_min = restMin;
-    profileUpdate.calorie_range_rest_max = safeRestMax;
-    profileUpdate.weekly_calorie_budget = weeklyBudget;
+    // F3/C3 (target-engine): a weight-drop recalc LOWERS the band — the engine re-gates it for
+    // amber/red ED users (holding them at the old, higher band is the conservative right call),
+    // floors it, ledgers it, and projects it onto the remaining plan week.
+    await applyTargetAdjust({
+      userId, today: recalcDate,
+      gender: (profile.gender as string | null) ?? null,
+      band: { restMin, restMax: safeRestMax, trainingMin, trainingMax: safeTrainingMax, weeklyBudget },
+      source: 'tdee_recalc',
+      reason: `TDEE yeniden hesaplandı: ${tdee} kcal @ ${currentWeight.toFixed(1)}kg (hedef ${gType})`,
+      profileExtras: profileUpdate,
+    });
+  } else {
+    await supabaseAdmin.from('profiles').update(profileUpdate).eq('id', userId);
   }
-  await supabaseAdmin.from('profiles').update(profileUpdate).eq('id', userId);
 
   // #10: write the previously-dead Layer-2 tdee_notes signal (spec 5.1) so buildLayer2
   // surfaces a real value instead of an empty field.

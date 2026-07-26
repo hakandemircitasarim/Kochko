@@ -27,12 +27,22 @@ const MAX_WORKOUT_DURATION_MIN = 120;
 // "kullandığın [yasam tarzi notu]lar var mı?" — placeholder junk in the middle of a sentence.
 // A lifestyle coach must be able to SAY these words (asking about medications is core intake);
 // what it must never do is claim the role or prescribe — that's what these patterns target.
-const FORBIDDEN_PHRASES = [
-  'doktor olarak', 'hekim olarak', 'diyetisyen olarak',
-  't[iı]bbi tavsiye(m|yi)?\\s*(ver|sun)?', 't[iı]bbi olarak (öner|tavsiye)',
-  'ila[çc] (öner|yaz|ver)\\w*', 're[çc]ete (yaz|düzenle)\\w*',
-  'ilac[iı]n[iı]\\s*(b[iı]rak|kes|de[gğ]i[sş]tir)\\w*',
-  'te[sş]his koy\\w*', 'tan[iı] koy\\w*', 'tedavi (öner|uygula|başlat)\\w*',
+// F4/E4: every phrase carries an ID so violations become COUNTABLE. sanitizeText used to return
+// one boolean that every caller discarded — "önce ölçüm" was a principle with no instrument, and
+// no prompt change could ever prove its effect ("kural X'in ihlali %22'den %4'e düştü" was
+// unsayable). The ledger row now records WHICH rule fired.
+const FORBIDDEN_PHRASES: { id: string; pattern: string }[] = [
+  { id: 'role_doctor', pattern: 'doktor olarak' },
+  { id: 'role_clinician', pattern: 'hekim olarak' },
+  { id: 'role_dietitian', pattern: 'diyetisyen olarak' },
+  { id: 'medical_advice', pattern: 't[iı]bbi tavsiye(m|yi)?\s*(ver|sun)?' },
+  { id: 'medical_advice2', pattern: 't[iı]bbi olarak (öner|tavsiye)' },
+  { id: 'prescribe_drug', pattern: 'ila[çc] (öner|yaz|ver)\w*' },
+  { id: 'write_rx', pattern: 're[çc]ete (yaz|düzenle)\w*' },
+  { id: 'change_meds', pattern: 'ilac[iı]n[iı]\s*(b[iı]rak|kes|de[gğ]i[sş]tir)\w*' },
+  { id: 'diagnose', pattern: 'te[sş]his koy\w*' },
+  { id: 'diagnose2', pattern: 'tan[iı] koy\w*' },
+  { id: 'treat', pattern: 'tedavi (öner|uygula|başlat)\w*' },
 ];
 
 // Spec 12.4: Allergen filter - these MUST be code-enforced, not prompt-dependent
@@ -198,6 +208,9 @@ export interface AllergenReplyScan {
   matched: string[];
   /** Worst severity among the matched allergens; null when none carried a severity. */
   worstSeverity: AllergenSeverity | null;
+  /** ±40-char windows around the first un-hedged occurrence per matched allergen — for triage
+   * logs only (why did this block?), never for user-facing text. */
+  contexts?: string[];
 }
 
 /**
@@ -231,22 +244,53 @@ export function scanReplyForAllergens(
   // chars of a decline phrase. Fail-safe on both ends: a mention we cannot localise (inflected-
   // only, so no literal token match) is NOT treated as addressed, and a single un-hedged
   // occurrence re-arms the violation (mirrors the AI/HIGH first-occurrence false-negative fix).
-  const isAddressed = (name: string): boolean => {
+  // FIX (live false-positive, D3 probe): "Sağlık kayıtlarımda ne var?" → the coach LISTING the
+  // user's own record ("profilinde fıstık alerjisi var") was scanned as a food suggestion and
+  // hard-blocked. NAMING the allergy is not recommending the food — but ONLY the tight compound
+  // forms count, so the documented "(alerjin yoksa)" disclaimer hole stays closed:
+  //   · token immediately followed (≤8 suffix chars) by "alerji/intolerans/hassasiyet/duyarlılık"
+  //     ("fıstık alerjisi", "fıstığa karşı alerjin"), or
+  //   · an allergy word directly before with only :,-/space between ("Alerjiler: fıstık").
+  // "fıstık ezmesi dene (alerjin yoksa)" matches NEITHER (ezmesi/yoksa sit between) → still blocks.
+  const NAMING_AFTER_RE = /^[a-zçğıöşüâîû'’]{0,8}\s+(karşı\s+)?(alerj|intolerans|hassasiyet|duyarl)/;
+  const NAMING_BEFORE_RE = /(alerj[a-zçğıöşü]*|intolerans[a-zçğıöşü]*|hassasiyet[a-zçğıöşü]*)[\s:,–-]{1,3}$/;
+  const isAllergyNaming = (i: number, tokenLen: number): boolean =>
+    NAMING_AFTER_RE.test(lowerReply.slice(i + tokenLen, i + tokenLen + 30)) ||
+    NAMING_BEFORE_RE.test(lowerReply.slice(Math.max(0, i - 30), i));
+  // Returns null when ADDRESSED (every localisable occurrence hedged), else the ±40-char window
+  // of the first un-hedged occurrence (the triage answer to "why did this block?"). A presence hit
+  // we cannot localise (inflected-only) stays fail-safe: un-addressed, with a marker context.
+  const firstOffence = (name: string): string | null => {
     const aName = name.toLocaleLowerCase('tr');
-    const tokens = [aName, ...(ALLERGEN_FOODS[aName] ?? [])].filter(t => t.length >= 3);
+    const baseTokens = [aName, ...(ALLERGEN_FOODS[aName] ?? [])].filter(t => t.length >= 3);
+    // Localise INFLECTED occurrences too (final-consonant softening: fıstık→fıstığı, kebap→kebabı).
+    // Without these stems "fıstığa karşı alerjin olduğu için..." was findable by the presence
+    // matcher but NOT localisable here → fail-safe treated the coach's own SAFETY SENTENCE as an
+    // un-hedged recommendation and hard-blocked the reply (live false-positive, C6 probe).
+    const SOFTEN: Record<string, string> = { k: 'ğ', p: 'b', 'ç': 'c', t: 'd' };
+    const tokens = [...new Set(baseTokens.flatMap(t => {
+      const soft = SOFTEN[t[t.length - 1]];
+      return soft ? [t, t.slice(0, -1) + soft] : [t];
+    }))].filter(t => t.length >= 3);
     let anyFound = false;
     for (const t of tokens) {
       let i = lowerReply.indexOf(t);
       while (i >= 0) {
         anyFound = true;
-        if (!ALLERGEN_DECLINE_RE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50))) return false;
+        if (!ALLERGEN_DECLINE_RE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50))
+          && !isAllergyNaming(i, t.length)) {
+          return lowerReply.slice(Math.max(0, i - 40), i + t.length + 40);
+        }
         i = lowerReply.indexOf(t, i + t.length);
       }
     }
-    return anyFound; // addressed only if occurrences were actually found and ALL were hedged
+    return anyFound ? null : '<inflected-only match — not localisable>';
   };
 
-  const matchedAllergens = present.filter(a => !isAddressed(a.name));
+  const offences = present
+    .map(a => ({ a, ctx: firstOffence(a.name) }))
+    .filter((o): o is { a: typeof o.a; ctx: string } => o.ctx !== null);
+  const matchedAllergens = offences.map(o => o.a);
   if (matchedAllergens.length === 0) return { violated: false, matched: [], worstSeverity: null };
 
   const rank: Record<AllergenSeverity, number> = { mild: 1, moderate: 2, severe: 3 };
@@ -255,7 +299,7 @@ export function scanReplyForAllergens(
     const s = a.severity ?? null;
     if (s && (worst === null || rank[s] > rank[worst])) worst = s;
   }
-  return { violated: true, matched: matchedAllergens.map(a => a.name), worstSeverity: worst };
+  return { violated: true, matched: matchedAllergens.map(a => a.name), worstSeverity: worst, contexts: offences.map(o => o.ctx) };
 }
 
 /**
@@ -421,15 +465,17 @@ const ED_PATTERNS = [
 const ED_REFERRAL_MESSAGE =
   'Bu konuda profesyonel destek almanizi oneririz. Turkiye Yeme Bozukluklari Dernegi veya bir uzman diyetisyen/psikolog ile gorusmeniz faydali olacaktir.';
 
-export function sanitizeText(text: string): { clean: string; hadViolations: boolean; edReferral: boolean } {
+export function sanitizeText(text: string): { clean: string; hadViolations: boolean; edReferral: boolean; violatedRuleIds: string[] } {
   let clean = text;
   let hadViolations = false;
   let edReferral = false;
+  const violatedRuleIds: string[] = [];
 
-  for (const phrase of FORBIDDEN_PHRASES) {
-    const regex = new RegExp(phrase, 'gi');
+  for (const { id, pattern } of FORBIDDEN_PHRASES) {
+    const regex = new RegExp(pattern, 'gi');
     if (regex.test(clean)) {
       hadViolations = true;
+      violatedRuleIds.push(id);
       // Drop the offending construction — NEVER inject bracketed placeholder junk into a
       // user-visible sentence. Role-claims ("doktor olarak söylüyorum" → "söylüyorum") read fine
       // with the phrase removed; the referral note below carries the safety message coherently.
@@ -454,7 +500,7 @@ export function sanitizeText(text: string): { clean: string; hadViolations: bool
     clean = clean + '\n\n' + ED_REFERRAL_MESSAGE;
   }
 
-  return { clean, hadViolations, edReferral };
+  return { clean, hadViolations, edReferral, violatedRuleIds };
 }
 
 /**
@@ -621,6 +667,29 @@ export function detectCrisis(text: string): { isCrisis: boolean; message: string
 export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' | 'medium' | 'high'; message: string } {
   const lower = text.toLocaleLowerCase('tr');
 
+  // F2/A8 — NEGATION AWARENESS. Every pattern below is a substring match, so the user REFUSING the
+  // very thing we are watching for read as the thing itself: "kusmak istemiyorum", "aç kalmak
+  // istemiyorum", "laksatif kullanmam" all fired a professional-referral append. A false positive
+  // here is not harmless noise — a1 (the de-escalation fix) makes every wrong flag cost 14 real
+  // days of a locked, deficit-averse coach, and the user cannot see or clear that state.
+  // Scoped deliberately narrow: the refusal must sit within ~24 chars AFTER the trigger, so
+  // "kustum ama bir daha istemiyorum" (a real signal followed by a wish) still fires.
+  const NEGATED = /(istemiyorum|istemem|yapm[ıi]yorum|yapmam|kullanm[ıi]yorum|kullanmam|etmiyorum|etmem|de[gğ]ilim|hi[çc] olmad|asla)/;
+  // A refusal only cancels a trigger when it belongs to the SAME clause. Turkish contrast markers
+  // ("ama", "fakat", "ancak") and a comma end the clause: "kustum ama bir daha istemiyorum" is a
+  // real report followed by a wish, and must still fire.
+  const CLAUSE_BREAK = /(,|ama|fakat|ancak|yine de)/;
+  const isNegated = (idx: number): boolean => {
+    if (idx < 0) return false;
+    let win = lower.slice(idx, idx + 30);
+    const brk = win.search(CLAUSE_BREAK);
+    if (brk >= 0) win = win.slice(0, brk);
+    return NEGATED.test(win);
+  };
+  // Past-tense / ongoing EVIDENCE can never be negated by a later wish — "I did it, and I don't
+  // want to again" is still a disclosure that deserves support.
+  const EVIDENCE = new Set(['kustum', 'kusuyorum']);
+
   // High severity — active purging
   const highPatterns = [
     'kusma', 'kustum', 'kusuyorum', 'kusmak istiyorum',
@@ -628,7 +697,8 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
     'purging', 'binge and purge',
   ];
   for (const p of highPatterns) {
-    if (lower.includes(p)) {
+    const at = lower.indexOf(p);
+    if (at >= 0 && (EVIDENCE.has(p) || !isNegated(at + p.length))) {
       return {
         isRisk: true,
         severity: 'high',
@@ -651,7 +721,13 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
   const kcalMatch = lower.match(/(\d{2,4})\s*(kalori|kcal|kal\b|cal\b)/);
   if (kcalMatch && !DEFICIT_CTX.test(lower)) {
     const kcal = parseInt(kcalMatch[1], 10);
-    if (kcal > 0 && kcal < 1100 && EATING_CTX.test(lower)) {
+    // A PAST-TENSE report of what was eaten ("450 kalori yedim") is a log, not a plan — the risk
+    // pattern is an INTENT to eat that little. Without this, logging a light lunch triggered a
+    // professional-support referral, which is both wrong and corrosive to trust.
+    const REPORTED = /(yedim|yedik|i[çc]tim|ald[ıi]m|t[üu]kettim|yemi[şs]tim|kald[ıi]|olmu[şs])/;
+    const INTENT = /(istiyorum|isterim|yiyece[gğ]im|hedef|plan|niyet|ç[ıi]kaca[gğ][ıi]m|inece[gğ]im|yapaca[gğ][ıi]m)/;
+    const reportedOnly = REPORTED.test(lower) && !INTENT.test(lower);
+    if (kcal > 0 && kcal < 1100 && EATING_CTX.test(lower) && !reportedOnly) {
       return {
         isRisk: true,
         severity: 'medium',
@@ -692,7 +768,9 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
     'igrenc gorunuyorum', 'iğrenç görünüyorum',
   ];
   for (const p of mediumPatterns) {
-    if (lower.includes(p)) {
+    const at = lower.indexOf(p);
+    // Same negation rule as the high tier: "aç kalmak istemiyorum" is the opposite of the signal.
+    if (at >= 0 && !isNegated(at + p.length)) {
       return {
         isRisk: true,
         severity: 'medium',

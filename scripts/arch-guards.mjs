@@ -35,6 +35,103 @@ const violations = [];
 function fail(guard, file, line, msg) { violations.push({ guard, file: rel(file), line, msg }); }
 
 /**
+ * G10 (plan v2, F3 · C3) — calorie-band writes go through the target engine. Ten independent
+ * writers each re-implemented floor/safety/projection and each missed a different one; ALL
+ * DECIDERS are migrated (ai-chat ×5, ai-proactive ×5). The single remaining direct writer is
+ * ai-plan's 7-day phase-transition interpolator — a mechanical EXECUTOR of endpoints that were
+ * already gated+floored by the engine at decision time (ai-proactive phase advance); running each
+ * daily 1/7 step through the engine would add 7 noise ledger rows per transition and re-gate a
+ * decision that was already made.
+ */
+{
+  const G10_ALLOW = [
+    'shared/target-engine.ts',        // the owner
+    'ai-plan/index.ts',               // phase-transition interpolator — executor, endpoints engine-decided
+  ];
+  for (const f of FILES) {
+    const rf = rel(f);
+    if (G10_ALLOW.some((a) => rf.endsWith(a))) continue;
+    linesOf(read(f)).forEach((ln, i) => {
+      if (/calorie_range_rest_min:\s/.test(ln) && !/select|\/\/|null,?$/.test(ln)) {
+        fail('G10-target-engine-owner', f, i + 1, 'calorie band written outside target-engine — use applyTargetAdjust()');
+      }
+    });
+  }
+}
+
+/**
+ * G9 (plan v2, F1 · B2b)/**
+ * G9 (plan v2, F1 · B2b) — every executeActions call captures its outcome. A fire-and-forget call
+ * on a safety/salvage path meant a failed constraint write was invisible AND unreported — the
+ * "coach lies about saving" class at its most dangerous location.
+ */
+{
+  const chat = FILES.find((f) => f.endsWith('ai-chat/index.ts'));
+  if (chat) {
+    linesOf(read(chat)).forEach((ln, i) => {
+      if (/^\s*(await\s+)?executeActions\(/.test(ln) && !/=/.test(ln)) {
+        fail('G9-executeActions-captured', chat, i + 1, 'executeActions result discarded — capture and check for failure lines');
+      }
+    });
+  }
+}
+
+/**
+ * G8 (plan v2, F2 · A11)/**
+ * G8 (plan v2, F2 · A11) — coaching_notes is an APPEND-ONLY dated log. updateLayer2 routes to the
+ * ai_summary_merge RPC, which REPLACES the column, so a single fresh line there deletes months of
+ * observations. Only shared/coaching-notes.ts may write it.
+ */
+// Two sites are ALLOWLISTED, and the reason matters: both do a genuine read-modify-write with
+// their own trimming/dedup semantics (the extractor's 2000-char window, memory.ts's weekly-summary
+// replacement). They are appends, not the wipe this guard exists to prevent. Folding them into the
+// owner is a follow-up, not a bug fix — and declaring that here beats pretending they don't exist.
+const G8_ALLOW = ['ai-extractor/index.ts', 'shared/memory.ts'];
+for (const f of FILES) {
+  if (f.endsWith('coaching-notes.ts')) continue;
+  if (G8_ALLOW.some((a) => rel(f).endsWith(a))) continue;
+  const txt = read(f);
+  linesOf(txt).forEach((ln, i) => {
+    if (/coaching_notes\s*:/.test(ln) && !/select|\/\//.test(ln)) {
+      fail('G8-coaching-notes-owner', f, i + 1, 'coaching_notes written directly — use appendCoachingNote()');
+    }
+  });
+}
+
+/**
+ * G6 (plan v2, F1 · B5) — the turn's guard verdict must be RECORDED at the decision point, never
+ * reverse-engineered from the final reply. The old derivation regexed assistantMessage; a severe
+ * allergen HARD BLOCK replaces that text, so the app's gravest safety event was written to the
+ * ledger as 'clean' — an actively false audit record. Any regex over the reply that produces a
+ * verdict is that bug coming back.
+ */
+{
+  const chat = FILES.find((f) => f.endsWith('ai-chat/index.ts'));
+  if (chat) {
+    linesOf(read(chat)).forEach((ln, i) => {
+      if (/guardVerdict\s*=/.test(ln) && /test\(assistantMessage\)/.test(ln)) {
+        fail('G6-guard-verdict-source', chat, i + 1, 'guard_verdict inferred from the reply text — raise a GuardFlag at the decision point instead');
+      }
+    });
+  }
+}
+
+/**
+ * G7 (plan v2, F1 · B5) — no generic dead-end apology. "bir sorun oldu" told an allergy-blocked
+ * user to retry something that can never succeed. Failure copy comes from FAILURE_LINES, keyed by
+ * a TurnFailureClass, so every message says why AND whether retrying is worth their time.
+ */
+for (const f of FILES) {
+  if (f.endsWith('turn-failures.ts')) continue;   // the owner of the copy
+  if (/\.test\.ts$/.test(f)) continue;            // tests ASSERT the phrase is gone
+  linesOf(read(f)).forEach((ln, i) => {
+    if (/bir sorun oldu/i.test(ln)) {
+      fail('G7-no-generic-failure', f, i + 1, 'generic failure copy — use failureLine(<TurnFailureClass>)');
+    }
+  });
+}
+
+/**
  * G1 — ONE owner for the calorie floor. The male floor is 1500 (clinical-rules.getCalorieFloor);
  * the legacy 1400 must never reappear as an inline floor idiom (`? 1200 : 1400` / `: 1400`).
  */

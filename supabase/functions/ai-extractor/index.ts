@@ -214,7 +214,16 @@ serve(async (req: Request) => {
       // They used to sit AFTER the "no new messages → continue" gate and silently froze for anyone
       // who logged daily but rarely chatted (stale snacking-hour nudges, stale activity multiplier).
       // Only inferTonePreference genuinely needs new chat and stays gated below.
-      if (tier === 3) {
+      // F3/C6: the tombstone holds the DERIVED-PATTERN analyzers too — a reset user's "Pazartesi
+      // günleri uyum düşük" chip reappearing with times_observed+1 is the same broken promise as
+      // the summary coming back. One read, reused by the summary block below via this flag.
+      const { data: suppCheck } = await supabaseAdmin
+        .from('ai_summary').select('derived_suppressed_at').eq('user_id', userId).maybeSingle();
+      const derivedSuppressed = !!suppCheck?.derived_suppressed_at;
+      if (tier === 3 && derivedSuppressed) {
+        console.log(`[Extractor] tier-3 derived analyzers suppressed for ${userId}`);
+      }
+      if (tier === 3 && !derivedSuppressed) {
         await Promise.all([
           detectSnackingHours(userId).catch((e: Error) => console.error(`[Extractor] snacking ${userId}:`, e.message)),
           // AI-behaviour #16 (moved ABOVE the new-messages gate — these are DATA analyzers; below it
@@ -361,6 +370,15 @@ serve(async (req: Request) => {
       // snapshots). The model's _summary_update, when emitted, is preserved as a dated
       // coaching_notes line via the lock-disciplined merge (no raw upsert race).
       try {
+        // F3/C6 — HONOUR THE TOMBSTONE. This cron reprocessing OLD data is exactly the
+        // "irreversibly deleted memory came back overnight" experience HAFIZA-06 documented.
+        // Only NEW input through the coach (ai-chat's factsDirty path) lifts the stamp.
+        if (derivedSuppressed) {
+          console.log(`[Extractor] derived regen suppressed for ${userId} (KVKK reset)`);
+          // The checkpoint update below (step 7) still runs — suppression must not make the
+          // extractor reprocess the same messages forever.
+          throw { __suppressed: true };
+        }
         const summaryUpdate = nonNull._summary_update;
         if (typeof summaryUpdate === 'string' && summaryUpdate.trim().length > 10) {
           const dateTag = new Date().toISOString().split('T')[0];
@@ -379,7 +397,9 @@ serve(async (req: Request) => {
         const derived = await composeGeneralSummary(userId);
         if (derived.trim()) await updateLayer2(userId, { general_summary: derived });
       } catch (e) {
-        console.error(`[Extractor] derived-summary recompose failed for ${userId}:`, (e as Error).message);
+        if (!(e as { __suppressed?: boolean }).__suppressed) {
+          console.error(`[Extractor] derived-summary recompose failed for ${userId}:`, (e as Error).message);
+        }
       }
 
       // 7. Update checkpoint

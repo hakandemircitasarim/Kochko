@@ -6,6 +6,7 @@
  */
 import { Audio } from 'expo-av';
 import { supabase } from '@/lib/supabase';
+import { edgeHeaders } from '@/lib/edgeHeaders';
 
 let recording: Audio.Recording | null = null;
 
@@ -79,6 +80,7 @@ export async function transcribeAudio(audioUri: string): Promise<{ text: string 
     // Send to backend edge function for transcription
     const { data, error } = await supabase.functions.invoke('ai-chat', {
       body: { audio_base64: audioBase64, transcribe_only: true },
+      headers: edgeHeaders(),
     });
 
     if (error) {

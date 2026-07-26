@@ -23,6 +23,13 @@ jobs:
         run: npm run lint
       - name: Architecture invariants (G1-G5)
         run: npm run arch-guards
+      # Seam symmetry + ratchet: every writer has a reader and every reader has a writer, or the
+      # asymmetry is declared in scripts/seams.manifest.json with a finding id and an owner. The
+      # declared-debt count may shrink, never grow — so "declare it to go green" fails the ratchet.
+      # This is the mechanical answer to the repo's most common defect class (inert-wiring, 23% of
+      # the 2026-07-25 brain audit). See AI_BEYIN_2026-07-25.md §7 F0/B6'.
+      - name: Seam symmetry + debt ratchet
+        run: npm run seam-check
 
   edge:
     name: Edge (deno check + guardrail tests)

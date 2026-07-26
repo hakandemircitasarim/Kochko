@@ -342,7 +342,11 @@ export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
       layer3: { daysBack: 0, scope: [], detailLevel: 'reference' },
       layer4MaxMessages: 5,
       contextMeta: {
-        confidenceLevel: 'high',
+        // D5 (plan v2, DÜRÜSTLÜK-04): was hardcoded 'high' — the turn that loads the LEAST
+        // personal context claimed the MOST confidence in the app (the allergen-card misroute
+        // ran on exactly this plan). Zero layers ⇒ personalized claims must be hedged; textbook
+        // facts need no confidence note anyway. refineContextMeta re-derives from evidence.
+        confidenceLevel: 'medium',
         missingDataTypes: [],
         daysWithCompleteData: 0,
         isGreetingFastPath: false,

@@ -30,14 +30,35 @@ export async function getSafetyState(userId: string): Promise<SafetyState> {
   try {
     const st = await loadRaw(userId);
     if (st.ed_tier === 'none' || !st.ed_last_signal_at) return st;
-    const daysSince = (Date.now() - new Date(st.ed_last_signal_at).getTime()) / 86400000;
+    const lastSignalMs = new Date(st.ed_last_signal_at).getTime();
+    const daysSince = (Date.now() - lastSignalMs) / 86400000;
     const steps = Math.floor(daysSince / DEESCALATE_DAYS);
     if (steps <= 0) return st;
     const newRank = Math.max(0, RANK[st.ed_tier] - steps);
     if (newRank === RANK[st.ed_tier]) return st;
     const next = NAME[newRank];
-    await supabaseAdmin.from('user_safety_state').update({ ed_tier: next, updated_at: new Date().toISOString() }).eq('user_id', userId);
-    return { ...st, ed_tier: next };
+
+    // F2/A1 — CRITICAL. `steps` is computed from an ed_last_signal_at that this function never
+    // advanced, but it was applied to an ALREADY-lowered tier. getSafetyState runs on every turn
+    // (situational snapshot) and again from deficitAllowed at five more call sites, so on day 15 a
+    // 'red' user decayed red→amber→watch→none inside a single conversation and the 14-day
+    // protection evaporated — after which the coach could offer an aggressive cut again.
+    // The fix is to move the clock forward by EXACTLY the steps consumed (not to now(), which
+    // would also throw away the partial wait already served). A second read in the same turn then
+    // computes steps=0 and changes nothing.
+    const consumedMs = steps * DEESCALATE_DAYS * 86400000;
+    const advancedSignalAt = new Date(lastSignalMs + consumedMs).toISOString();
+    const { error } = await supabaseAdmin.from('user_safety_state')
+      .update({ ed_tier: next, ed_last_signal_at: advancedSignalAt, updated_at: new Date().toISOString() })
+      .eq('user_id', userId);
+    if (error) {
+      // A swallowed failure here means the clock never moves and EVERY later call de-escalates
+      // again — the exact bug, restored. Report the OLD tier so a failed write cannot lower the
+      // guard: safety degrades closed, never open.
+      console.error('[safety-state] de-escalation write failed — keeping the higher tier:', error.message);
+      return st;
+    }
+    return { ...st, ed_tier: next, ed_last_signal_at: advancedSignalAt };
   } catch { return { ed_tier: 'none', ed_signal_count: 0, ed_last_signal_at: null, ed_escalated_at: null }; }
 }
 

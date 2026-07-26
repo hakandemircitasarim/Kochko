@@ -115,6 +115,44 @@ Deno.test('scanReplyForAllergens: fail-safe — a 2nd un-hedged mention (>50 cha
   eq(r.worstSeverity, 'severe', 'still severe');
 });
 
+Deno.test('scanReplyForAllergens: NAMING the allergy is not recommending the food (live false-positive)', () => {
+  // "Sağlık kayıtlarımda ne var?" → the coach listing the user's own record was hard-blocked.
+  for (const reply of [
+    'Kayıtlarında fıstık alerjisi ve sol diz menisküs ameliyatı görüyorum.',
+    'Fıstığa karşı alerjin olduğu için menülerini ona göre kuruyorum.',
+    'Alerjiler: fıstık (şiddetli). Bunun dışında kronik bir durum görünmüyor.',
+  ]) {
+    const r = scanReplyForAllergens(reply, [{ name: 'fıstık', severity: 'severe' }]);
+    ok(!r.violated, `naming the allergy must not violate: "${reply}"`);
+  }
+});
+
+Deno.test('scanReplyForAllergens: INFLECTED naming ("fıstığa karşı alerjin") is localisable and not a violation', () => {
+  // The presence matcher finds softened forms; the localiser must too — else the fail-safe
+  // "not localisable" branch blocks the coach's own safety sentence (live false-positive).
+  const r = scanReplyForAllergens(
+    'Fıstığa karşı şiddetli alerjin olduğu için tatlı önerilerimde buna her zaman dikkat edeceğim.',
+    [{ name: 'fıstık', severity: 'severe' }],
+  );
+  ok(!r.violated, 'inflected allergy-naming must not violate');
+});
+
+Deno.test('scanReplyForAllergens: INFLECTED recommendation still BLOCKS after the stem fix', () => {
+  const r = scanReplyForAllergens('tatlı krizinde fıstığı yoğurda banıp yiyebilirsin', [{ name: 'fıstık', severity: 'severe' }]);
+  ok(r.violated, 'inflected peanut recommendation must violate');
+  eq(r.worstSeverity, 'severe', 'and stay severe');
+});
+
+Deno.test('scanReplyForAllergens: the "(alerjin yoksa)" disclaimer hole STAYS closed after the naming fix', () => {
+  // #live-L4 rule — a blanket allergy disclaimer near the food is NOT a decline. The naming
+  // exemption is deliberately tight (compound forms only) so these still BLOCK.
+  const r1 = scanReplyForAllergens('fıstık ezmesi dene, alerjin yoksa harika bir protein kaynağı', [{ name: 'fıstık', severity: 'severe' }]);
+  ok(r1.violated, 'disclaimer-next-to-recommendation must still violate');
+  const r2 = scanReplyForAllergens('Fıstık alerjin var ama az miktarda fıstık ezmesi sorun olmaz bence, dene.', [{ name: 'fıstık', severity: 'severe' }]);
+  ok(r2.violated, 'naming followed by an un-hedged recommendation must re-arm the violation');
+  eq(r2.worstSeverity, 'severe', 'still severe');
+});
+
 Deno.test('scanReplyForAllergens: worst severity wins across multiple matched allergens', () => {
   const r = scanReplyForAllergens('fıstık ezmesi ve bir bardak süt', [
     { name: 'fıstık', severity: 'moderate' },

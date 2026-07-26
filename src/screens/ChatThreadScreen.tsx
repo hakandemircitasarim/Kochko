@@ -17,6 +17,8 @@ import {
   NativeSyntheticEvent, NativeScrollEvent, BackHandler, Modal, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { PlanPreviewCard } from '@/components/plan/PlanPreviewCard';
+import type { PlanData } from '@/services/plan.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -28,6 +30,9 @@ import {
   queueMessageOffline, processOfflineQueue, getOfflineQueueSize, getCachedThread,
   getTaskOpenerFiredAt, markTaskOpenerFired, stripMachineMarkers, PENDING_REPLY_MESSAGE,
   type ChatMessage,
+  approvePlanInChat,
+  setPendingAcceptedNudge,
+  type ChatResponse,
 } from '@/services/chat.service';
 import { getTaskByKey, getTaskByModeHint, getIncompleteTasks, getTasksWithStatus, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { deriveNutritionTargets } from '@/lib/nutrition-targets';
@@ -53,6 +58,7 @@ import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 import { isActivePremium } from '@/lib/premium-gate';
+import { trace } from '@/lib/uiTrace';
 
 // Plan-rejection reasons (Spec 7.1 — multi-turn refine). Each entry is the short,
 // human-facing chip label + the fuller engineered instruction sent to the model.
@@ -99,6 +105,11 @@ interface UIMessage extends ChatMessage {
   recipeData?: RecipeData | null;
   quickSelectOptions?: string[] | null;
   hasPlanSuggestion?: boolean;
+  // F3/C1: the plan the user is being asked to approve — rendered as a real preview card, and the
+  // identity Onayla carries back. Without these the buttons sat under an INVISIBLE plan.
+  planSnapshot?: Record<string, unknown> | null;
+  planDraftId?: string | null;
+  planType?: 'diet' | 'workout' | null;
   hasLowConfidenceVerification?: boolean;
   personaDetected?: string | null;
   recipeSaved?: boolean;
@@ -443,8 +454,12 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // Hosted inside the (tabs)/chat route — params land on the TAB route. Normalize '' to
   // undefined: task exit clears params via router.setParams({taskModeHint: ''}) and every
   // truthiness check below must read that as "no task".
-  const rawParams = useLocalSearchParams<{ prefill?: string; taskModeHint?: string; openCamera?: string; taskNonce?: string; onbWelcome?: string }>();
+  const rawParams = useLocalSearchParams<{ prefill?: string; taskModeHint?: string; openCamera?: string; taskNonce?: string; onbWelcome?: string; acceptedNudgeId?: string }>();
   const prefill = rawParams.prefill || undefined;
+  // F3/C5: the accepted offer's identity — forwarded on the FIRST send so the server can stamp
+  // coaching_messages.accepted_at deterministically (acceptance must not depend on the LLM
+  // recognising a quoted reference).
+  const acceptedNudgeId = rawParams.acceptedNudgeId || undefined;
   const taskModeHint = rawParams.taskModeHint || undefined;
   const openCamera = rawParams.openCamera || undefined;
   const taskNonce = rawParams.taskNonce || undefined;
@@ -896,6 +911,11 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // wipe it from the route so the next deep link is a fresh param change.
   useEffect(() => {
     if (prefill && !taskModeHint && !prefillApplied && !loading) {
+      // F3/C5: park the offer identity for the send that follows this prefill.
+      if (acceptedNudgeId) {
+        setPendingAcceptedNudge(acceptedNudgeId);
+        router.setParams({ acceptedNudgeId: '' });
+      }
       setInput(prefill);
       setPrefillApplied(true);
       router.setParams({ prefill: '' });
@@ -1290,12 +1310,15 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         || data.task_mode === 'eating_out' || data.task_mode === 'plateau'
         || (data.task_mode === 'coaching' && (data.actions?.length ?? 0) > 0);
 
-      // Parse simulation data from AI response
+      // F1/B3 (SEAM-03): the server has ALWAYS returned `simulation` as a structured envelope
+      // field — this screen re-parsed the same data out of the message TEXT with a regex while
+      // the field fell on the floor. The field is now the source; the regex stays only as the
+      // fallback for legacy replies and for history reloads (where structure isn't persisted).
       let messageContent = data.message;
-      let simulationData: SimulationData | null = null;
+      let simulationData: SimulationData | null = (data.simulation as SimulationData | null) ?? null;
       const simParsed = parseSimulationData(messageContent);
-      messageContent = simParsed.cleanContent;
-      simulationData = simParsed.data;
+      messageContent = simParsed.cleanContent;      // strip the tag either way
+      if (!simulationData) simulationData = simParsed.data;
 
       // Parse recipe data from AI response
       let recipeData: RecipeData | null = null;
@@ -1316,6 +1339,11 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
 
       // Detect confirm/reject plan suggestion
       const hasPlanSuggestion = hasConfirmRejectIndicator(messageContent, data.task_mode);
+      // F3/C1: read the STRUCTURED plan fields off the envelope (SEAM-03's lesson: they were
+      // produced for three releases while this screen only stripped their text remnants).
+      const planSnapshot = (data.plan_snapshot as Record<string, unknown> | null) ?? null;
+      const planDraftId = (data.plan_draft_id as string | null) ?? null;
+      const planType = (data.plan_type === 'workout' ? 'workout' : data.plan_type === 'diet' ? 'diet' : null);
       messageContent = stripMachineMarkers(messageContent);
 
       // Detect low-confidence verification prompt (Spec 5.32, auto-appended by ai-chat)
@@ -1339,6 +1367,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         recipeData,
         quickSelectOptions,
         hasPlanSuggestion,
+        planSnapshot, planDraftId, planType,
         hasLowConfidenceVerification,
         personaDetected,
         taskCompletion: data.task_completion ?? null,
@@ -1460,7 +1489,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // `displayLabel` (when provided) is the short, human-facing bubble shown to the
   // user; `option` is the fuller engineered instruction actually sent to the model.
   // When omitted (genuine quick-select chips) the bubble matches the tapped chip.
-  const handleQuickSelect = useCallback((option: string, displayLabel?: string) => {
+  const handleQuickSelect = useCallback((option: string, displayLabel?: string,
+    // F3/C1: an alternate sender carrying the approve identity (hint + user_approved + draft_id).
+    // The default path stays byte-identical for every other chip.
+    sendOverride?: (sessionId: string, text: string) => Promise<{ data: ChatResponse | null; error: string | null }>) => {
     // FIX (audit UX-CHT-04): in-flight guard. Without this, double-tapping a quick-select
     // chip / Onayla / Doğru-Yanlış fired two concurrent sendMessageToSession calls →
     // duplicate AI turns and duplicate side effects (double log / double delete).
@@ -1486,7 +1518,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       setTypingLabel(undefined);
       setSending(true);
       scrollToBottom(true); // user's own tap — always follow
-      const { data, error } = await sendMessageToSession(sessionId, option);
+      const { data, error } = await (sendOverride ? sendOverride(sessionId, option) : sendMessageToSession(sessionId, option));
       // blocker #2: cancelled/retired mid-flight → don't touch the active turn (reply lands via poll).
       if (sendGenRef.current !== myGen) return;
       // blocker #1: busy = still preparing, not failed → poll instead of a fake failure + Retry.
@@ -1511,7 +1543,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           quickSelectOptions: qsParsed.options, hasPlanSuggestion: hasPlan,
           hasLowConfidenceVerification: hasLowConf,
         }]);
-        if (data.actions.some(a => a.feedback) && user?.id) { haptics.success(); refreshDashboard(user.id); }
+        if (data.actions.some((a: { feedback: string | null }) => a.feedback) && user?.id) { haptics.success(); refreshDashboard(user.id); }
       } else {
         // Mirror the main send path: flip the user's own bubble to a failed state
         // with a 'Yeniden dene' retry, instead of printing the error as a fake
@@ -1539,8 +1571,21 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // Confirm/Reject plan suggestion handlers. The user-facing bubble stays short and
   // natural while the model still receives the fuller engineered instruction.
   const handlePlanConfirm = useCallback(() => {
+    // F3/C1: find the plan the user is LOOKING AT and carry its identity. The old plain-text send
+    // reached the server with planTurn=false — the approval block never ran and the draft stayed
+    // a draft forever while the UI implied success.
+    const planMsg = [...messages].reverse().find((m) => m.hasPlanSuggestion && (m.planDraftId || m.planType));
+    if (planMsg?.planType) {
+      trace('plan_approve_sent');
+      const pt = planMsg.planType;
+      const draftId = planMsg.planDraftId ?? null;
+      handleQuickSelect('Evet, bu planı onayla', 'Planı onayla',
+        (sid) => approvePlanInChat(sid, pt, draftId));
+      return;
+    }
+    // Legacy fallback (message predates the identity fields): the old plain-text path.
     handleQuickSelect('Evet, bu planı onayla', 'Planı onayla');
-  }, [handleQuickSelect]);
+  }, [handleQuickSelect, messages]);
 
   // Plan rejection with chip-based reason selection (Spec 7.1 — multi-turn refine).
   // The reason picker is now inline tappable chips rendered in the bubble (see
@@ -2955,6 +3000,8 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             silent mis-parse, instead of a bare "Öğün kaydedildi" badge + day-total ring. */}
         {!isUser && (() => {
           const receipt = message.actions?.find(a => (a.type === 'meal_log' || a.type === 'workout_log') && a.feedback)?.feedback;
+          // F0/A0: a receipt REACHED the screen (not just 'the server returned one').
+          if (receipt) trace('receipts_rendered');
           return receipt ? (
             <View style={{
               flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm,
@@ -3010,6 +3057,19 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
         {!isUser && message.quickSelectOptions && message.quickSelectOptions.length > 0 && (
           <QuickSelectButtons options={message.quickSelectOptions} onSelect={onQuickSelect} disabled={sending} />
         )}
+
+        {/* F3/C1 — THE PLAN THE USER IS APPROVING. For three releases the server returned the
+            snapshot while this screen only stripped its text remnants: the user saw Onayla
+            buttons under an INVISIBLE plan (the audit's one CRITICAL finding). */}
+        {!isUser && message.hasPlanSuggestion && message.planSnapshot && (() => { trace('plan_preview_rendered'); return (
+          <View style={{ marginTop: SPACING.sm }}>
+            <PlanPreviewCard
+              plan={message.planSnapshot as unknown as PlanData}
+              planType={message.planType ?? 'diet'}
+              onPress={() => {}}
+            />
+          </View>
+        ); })()}
 
         {/* Confirm/Reject buttons for plan suggestion (D14). Reject now reveals
             inline reason chips (PlanRejectReasons) instead of a native Alert. */}
@@ -3118,7 +3178,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
       {!isUser && message.reasoning && (
         <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs }}>
           <TouchableOpacity
-            onPress={() => { haptics.tap(); setShowReasoning(v => !v); }}
+            onPress={() => { haptics.tap(); setShowReasoning(v => { if (!v) trace('reasoning_opened'); return !v; }); }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityState={{ expanded: showReasoning }}

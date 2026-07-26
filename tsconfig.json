@@ -6,6 +6,9 @@
     "paths": {
       "@/*": [
         "src/*"
+      ],
+      "@contracts/*": [
+        "supabase/functions/shared/contracts/*"
       ]
     }
   },
@@ -13,8 +16,11 @@
     "**/*.ts",
     "**/*.tsx"
   ],
+  "//exclude": "Edge code is Deno (remote URL imports, .ts extensions, Deno globals) and tsc cannot resolve it — `deno check` is its ONLY typecheck. But excluding the whole tree made a shared type between server and client physically impossible, which is why the response envelope has a hand-written second copy in chat.service.ts and drifted (plan v2, F0 · B0). The exclusion is therefore narrowed to everything EXCEPT shared/contracts/, which holds TYPE-ONLY declarations with zero imports so both runtimes can read it. seam-check enforces that purity.",
   "exclude": [
     "node_modules",
-    "supabase/functions"
+    "supabase/functions/ai-*",
+    "supabase/functions/cleanup-scheduled",
+    "supabase/functions/shared/*.ts"
   ]
 }

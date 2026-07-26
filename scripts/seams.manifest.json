@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "note": "Declared writer<->reader asymmetries at the seams. Every entry is a DEBT, not an exemption: it carries the finding it belongs to and the roadmap step that owns closing it (AI_BEYIN_2026-07-25.md §7). scripts/.seam-baseline.json ratchets the count — it may shrink, never grow. Adding an entry to make CI green fails the ratchet first.",
+  "known_gaps": []
+}

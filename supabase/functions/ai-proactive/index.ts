@@ -18,9 +18,12 @@ import { getPredictiveRiskContext, getAdaptiveDifficultyContext } from '../share
 import { getEffectiveDateForUser, shiftDateString } from '../shared/day-boundary.ts';
 import { projectDailyPlanRows, type ProjectionProfile } from '../shared/plan-projection.ts';
 import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
+import { applyTargetAdjust } from '../shared/target-engine.ts';
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
 import { deficitAllowed } from '../shared/safety-state.ts';
 import { HABIT_CATALOG, normalizeHabitEntry, deriveHabitStats, readyForNextHabit } from '../shared/habits.ts';
+import { activePatterns } from '../shared/patterns.ts';
+import { gateUserText, loadUserSafety, type UserSafetySnapshot } from '../shared/output-gate.ts';
 
 /**
  * Start of the user's LOCAL calendar day expressed as a UTC ISO instant — for windowing a
@@ -136,8 +139,18 @@ serve(async (req: Request) => {
               const target = resolveTargetCalories({ tdee, goalType: gType, fixedFactor: factor, currentWeight: curW, targetWeight: g?.target_weight_kg as number | null, targetWeeks: g?.target_weeks as number | null, weeksElapsed, gender: prof.gender as string | null });
               const band = computeCalorieBand({ targetCalories: target, gender: prof.gender as string | null });
               const tMin = band.trainingMin, tMax = band.trainingMax, rrMin = band.restMin, rrMax = band.restMax, budget = band.weeklyBudget;
-              await supabaseAdmin.from('profiles').update({ tdee_calculated: tdee, tdee_last_weight: curW, tdee_last_date: today, calorie_range_training_min: tMin, calorie_range_training_max: tMax, calorie_range_rest_min: rrMin, calorie_range_rest_max: rrMax, weekly_calorie_budget: budget, updated_at: new Date().toISOString() }).eq('id', uid);
-              rMin = rrMin; rMax = rrMax;
+              // F3/C3 (target-engine): this re-cut LOWERS the band with NO SafetyState check — the
+              // one writer that could still deficit-tighten an amber/red ED user from a cron. The
+              // engine gates it; on refusal the old band (and stale tdee stamps, so it retries and
+              // re-gates next week) stay put.
+              const adj = await applyTargetAdjust({
+                userId: uid, today: userToday,
+                band: { restMin: rrMin, restMax: rrMax, trainingMin: tMin, trainingMax: tMax, weeklyBudget: budget },
+                source: 'proactive_recalc',
+                reason: `Haftalık roll-forward: TDEE ${tdee} kcal @ ${curW}kg (hedef ${gType})`,
+                profileExtras: { tdee_calculated: tdee, tdee_last_weight: curW, tdee_last_date: today },
+              });
+              if (adj.ok && adj.allowed) { rMin = adj.newRestMin ?? rrMin; rMax = adj.newRestMax ?? rrMax; }
             }
           }
           const curTarget = (rMin && rMax) ? Math.round((rMin + rMax) / 2) : null;
@@ -1041,7 +1054,9 @@ serve(async (req: Request) => {
       const hoursSinceChat = lastChatRes.data?.created_at
         ? (now.getTime() - new Date(lastChatRes.data.created_at).getTime()) / 3600000 : 999;
       const dueCommitments = (commitmentsRes.data ?? []) as { commitment: string }[];
-      const patterns = (summaryRes.data?.behavioral_patterns as { type: string; description: string }[]) ?? [];
+      // F2/A12: the nudge context must not act on patterns the user already resolved.
+      const patterns = activePatterns<{ type: string; description: string; status?: unknown }>(
+        summaryRes.data?.behavioral_patterns as { type: string; description: string; status?: unknown }[] | null);
 
       // night_eating_habit is free text (e.g. "gece atistirma" / "yok" / "gece yemem").
       // Only flag risk when it describes ACTUAL night eating — exclude negative answers
@@ -1128,7 +1143,7 @@ serve(async (req: Request) => {
               if (swapped === true) try {
                 const { data: profileCalories } = await supabaseAdmin
                   .from('profiles')
-                  .select('calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, tdee_calculated')
+                  .select('calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, tdee_calculated, gender')
                   .eq('id', profile.id)
                   .maybeSingle();
                 if (profileCalories && profileCalories.tdee_calculated) {
@@ -1146,25 +1161,37 @@ serve(async (req: Request) => {
                   const oldRestMax = profileCalories.calorie_range_rest_max as number;
                   const oldTrainMin = profileCalories.calorie_range_training_min as number;
                   const oldTrainMax = profileCalories.calorie_range_training_max as number;
-                  // Target ranges for new phase (based on TDEE +/- delta)
-                  const newRestMin = tdee + nextCalOffset - 100;
-                  const newRestMax = tdee + nextCalOffset + 100;
-                  const newTrainMin = tdee + nextCalOffset + 100;
-                  const newTrainMax = tdee + nextCalOffset + 300;
-                  // Record transition window so ai-plan can interpolate day-by-day over 7 days
-                  await supabaseAdmin.from('profiles').update({
-                    phase_transition_start_date: today,
-                    phase_transition_from_rest_min: oldRestMin,
-                    phase_transition_from_rest_max: oldRestMax,
-                    phase_transition_to_rest_min: newRestMin,
-                    phase_transition_to_rest_max: newRestMax,
-                    // Day-1 step so today's plan already reflects 1/7 nudge
-                    calorie_range_rest_min: Math.round(oldRestMin + (newRestMin - oldRestMin) / 7),
-                    calorie_range_rest_max: Math.round(oldRestMax + (newRestMax - oldRestMax) / 7),
-                    calorie_range_training_min: Math.round(oldTrainMin + (newTrainMin - oldTrainMin) / 7),
-                    calorie_range_training_max: Math.round(oldTrainMax + (newTrainMax - oldTrainMax) / 7),
-                    updated_at: new Date().toISOString(),
-                  }).eq('id', profile.id);
+                  // Target ranges for new phase (based on TDEE +/- delta).
+                  // F3/C3: ENDPOINTS floor-clamped at the DECISION — the day-by-day interpolator in
+                  // ai-plan is a mechanical executor and inherits safety from here (an unclamped
+                  // `tdee - delta - 100` endpoint would march a small user under the clinical floor
+                  // one seventh at a time).
+                  const gFloor = getCalorieFloor((profileCalories.gender as string | null) ?? null);
+                  const newRestMin = Math.max(gFloor, tdee + nextCalOffset - 100);
+                  const newRestMax = Math.max(newRestMin + 50, tdee + nextCalOffset + 100);
+                  const newTrainMin = Math.max(gFloor, tdee + nextCalOffset + 100);
+                  const newTrainMax = Math.max(newTrainMin + 50, tdee + nextCalOffset + 300);
+                  // Record transition window (markers) + day-1 step through the ONE writer: gated
+                  // (a deficit-phase step re-checks SafetyState), ledgered, projected forward.
+                  await applyTargetAdjust({
+                    userId: profile.id, today,
+                    gender: (profileCalories.gender as string | null) ?? null,
+                    band: {
+                      restMin: Math.round(oldRestMin + (newRestMin - oldRestMin) / 7),
+                      restMax: Math.round(oldRestMax + (newRestMax - oldRestMax) / 7),
+                      trainingMin: Math.round(oldTrainMin + (newTrainMin - oldTrainMin) / 7),
+                      trainingMax: Math.round(oldTrainMax + (newTrainMax - oldTrainMax) / 7),
+                    },
+                    source: 'proactive_recalc',
+                    reason: `Faz geçişi (${nextGoal.goal_type}): 7 günlük kademeli geçiş, hedef ${newRestMin}-${newRestMax} kcal`,
+                    profileExtras: {
+                      phase_transition_start_date: today,
+                      phase_transition_from_rest_min: oldRestMin,
+                      phase_transition_from_rest_max: oldRestMax,
+                      phase_transition_to_rest_min: newRestMin,
+                      phase_transition_to_rest_max: newRestMax,
+                    },
+                  });
                 }
               } catch { /* transition calc non-critical */ }
             } else {
@@ -1182,18 +1209,20 @@ serve(async (req: Request) => {
                   // stayed on the cut and the goal-reacher kept under-eating. Set it here directly.
                   const tdee = (mProf?.tdee_calculated as number | null) ?? (((mProf?.calorie_range_rest_max as number | null) ?? 1800) + 500);
                   const mb = computeMaintenanceBand(tdee); // #arch step 10: single maintenance-band owner (was a copy of ai-chat maintenance_start)
-                  await supabaseAdmin.from('profiles').update({
-                    maintenance_mode: true, maintenance_start_date: today,
-                    periodic_state: 'maintenance', periodic_state_start: today,
-                    calorie_range_rest_min: mb.restMin, calorie_range_rest_max: mb.restMax,
-                    calorie_range_training_min: mb.trainingMin, calorie_range_training_max: mb.trainingMax,
-                    weekly_calorie_budget: mb.weeklyBudget,
-                    updated_at: new Date().toISOString(),
-                  }).eq('id', profile.id);
-                  // Push today's daily_plan to maintenance immediately.
-                  await supabaseAdmin.from('daily_plans').update({
-                    calorie_target_min: mb.dailyTargetMin, calorie_target_max: mb.dailyTargetMax,
-                  }).eq('user_id', profile.id).eq('date', today);
+                  // F3/C3 (target-engine): raise to maintenance through the ONE writer — atomic
+                  // flags+band, ledgered, and projected onto TODAY AND EVERY LATER plan day (the
+                  // old `.eq('date', today)` was the cron-path copy of EYLEM-02: the raise
+                  // evaporated tomorrow while the week kept the cut).
+                  await applyTargetAdjust({
+                    userId: profile.id, today,
+                    band: { restMin: mb.restMin, restMax: mb.restMax, trainingMin: mb.trainingMin, trainingMax: mb.trainingMax, weeklyBudget: mb.weeklyBudget },
+                    source: 'maintenance_start',
+                    reason: `Hedefe ulaşıldı — bakım modu otomatik başlatıldı (~TDEE ${tdee})`,
+                    profileExtras: {
+                      maintenance_mode: true, maintenance_start_date: today,
+                      periodic_state: 'maintenance', periodic_state_start: today,
+                    },
+                  });
                   // #journey HIGH: convert the active goal to 'maintain' so the NEXT ai-plan /
                   // chat plan stops instructing a deficit toward an already-reached target.
                   await supabaseAdmin.from('goals').update({ goal_type: 'maintain' })
@@ -1459,7 +1488,9 @@ ${await (async () => {
   // Weekend Risk (Spec 5.35) - Friday evening check
   const triggers: string[] = [];
   if (now.getDay() === 5 && hour >= 17 && hour <= 19) {
-    const bp = (summaryRes.data?.behavioral_patterns as { type: string; description: string }[]) ?? [];
+    // F2/A12: a resolved weekend pattern must stop firing the Friday-evening trigger.
+    const bp = activePatterns<{ type: string; description: string; status?: unknown }>(
+      summaryRes.data?.behavioral_patterns as { type: string; description: string; status?: unknown }[] | null);
     const weekendPattern = bp.find(p => p.type === 'weekend_deviation' || p.description?.toLowerCase().includes('hafta sonu'));
     if (weekendPattern) {
       triggers.push('TETIK: HAFTA SONU RISKI - gecmiste hafta sonlari sapma egilimi');
@@ -1726,7 +1757,34 @@ ${sentTodayContext}`;
           .from('daily_reports').select('id')
           .eq('user_id', profile.id).eq('date', reportDate).maybeSingle();
 
+        // F2/A6 — NO DATA IS NOT A BAD DAY. The night cron generated a report for every user for
+        // every day, including days they never opened the app: 398 of the last 60 days' 424 rows
+        // (94%) are zero-compliance rows for days with no meal and no workout. Those zeros are then
+        // averaged into weekly adherence and into the capacity-mismatch detector, so a user coming
+        // back from holiday is greeted with "%9 uyum" and an apology that the plan is too big for
+        // them. It was never too big; they were away.
+        //
+        // The gate lives HERE and not inside ai-report on purpose: the daily_reports row is this
+        // cron's ONLY idempotency marker (`if (!existingReport)`), and the cron runs hourly with a
+        // 3-hour window. Refusing to write the row inside ai-report would leave no marker and turn
+        // one wasted LLM call per empty day into three.
+        let hasDataForReport = true;
         if (!existingReport) {
+          const [{ count: mealCount }, { count: workoutCount }, { count: metricCount }] = await Promise.all([
+            supabaseAdmin.from('meal_logs').select('id', { count: 'exact', head: true })
+              .eq('user_id', profile.id).eq('logged_for_date', reportDate).neq('is_deleted', true),
+            supabaseAdmin.from('workout_logs').select('id', { count: 'exact', head: true })
+              .eq('user_id', profile.id).eq('logged_for_date', reportDate),
+            supabaseAdmin.from('daily_metrics').select('id', { count: 'exact', head: true })
+              .eq('user_id', profile.id).eq('date', reportDate),
+          ]);
+          hasDataForReport = (mealCount ?? 0) > 0 || (workoutCount ?? 0) > 0 || (metricCount ?? 0) > 0;
+          if (!hasDataForReport) {
+            console.log('[daily_report] skipped — no data for the day', { date: reportDate });
+          }
+        }
+
+        if (!existingReport && hasDataForReport) {
           // Trigger report generation by calling ai-report function internally
           try {
             const reportUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-report`;
@@ -1976,17 +2034,22 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
 
   // protein target is derived downstream from protein_per_kg * weight_kg
   // (protein_target_g is not a profiles column — it lives on daily_plans).
-  const { error: difficultyErr } = await supabaseAdmin.from('profiles').update({
-    calorie_range_training_min: newTMin,
-    calorie_range_training_max: newTMax,
-    calorie_range_rest_min: newRMin,
-    calorie_range_rest_max: newRMax,
-    protein_per_kg: newProteinPerKg,
-    updated_at: new Date().toISOString(),
-  }).eq('id', userId);
-  if (difficultyErr) {
-    console.error('adjustAdaptiveDifficulty profile update failed:', difficultyErr.message);
-    return; // don't tell the user their targets changed if the write failed
+  // F3/C3 (target-engine): the one writer — 'increase' (tighten) re-checks SafetyState inside,
+  // the band is ledgered, and the change reaches TODAY'S AND FUTURE plan rows instead of waiting
+  // for the next projection to happen to pick it up.
+  const adjRes = await applyTargetAdjust({
+    userId, today: now.toISOString().split('T')[0],
+    gender: (profile.gender as string | null) ?? null,
+    band: { restMin: newRMin, restMax: newRMax, trainingMin: newTMin, trainingMax: newTMax },
+    source: 'proactive_recalc',
+    reason: adjustment === 'increase'
+      ? `Uyum yüksek (2 hafta ≥%85) — zorluk artırıldı, bant daraltıldı (${newRMin}-${newRMax})`
+      : `Uyum düştü (1 hafta <%70) — bant esnetildi (${newRMin}-${newRMax})`,
+    profileExtras: { protein_per_kg: newProteinPerKg },
+  });
+  if (!adjRes.ok || !adjRes.allowed) {
+    if (!adjRes.ok) console.error('adjustAdaptiveDifficulty profile update failed:', adjRes.error);
+    return; // don't tell the user their targets changed if the write failed (or was refused)
   }
 
   // Send trigger as coaching message
@@ -2030,11 +2093,14 @@ async function adjustAdaptiveDifficulty(userId: string, now: Date) {
           const currentMin = rdProfile.calorie_range_rest_min as number;
           const newMin = Math.round(Math.min(tdee - 100, currentMin + 125));
           const newMax = Math.round(Math.min(tdee + 100, newMin + 200));
-          await supabaseAdmin.from('profiles').update({
-            calorie_range_rest_min: newMin,
-            calorie_range_rest_max: newMax,
-            updated_at: now.toISOString(),
-          }).eq('id', userId);
+          // F3/C3 (target-engine): the weekly +125 ramp is a RAISE (never gated) but was the last
+          // silent band mover — now each step is ledgered and lands on the plan week immediately.
+          await applyTargetAdjust({
+            userId, today: now.toISOString().split('T')[0],
+            band: { restMin: newMin, restMax: newMax },
+            source: 'proactive_recalc',
+            reason: `Reverse diet: hafta ${weeksSinceGoal + 1}/4 — bant +125 kcal (${newMin}-${newMax})`,
+          });
         }
       }
     }
@@ -2264,10 +2330,48 @@ const RECEIPT_TRIGGERS = new Set([
 /** Honest per-request nudge tallies (reset at the top of the handler). */
 const nudgeStats = { inserted: 0, suppressed: 0 };
 
+/**
+ * F2/A2 — per-invocation safety snapshot cache. The nudge cron walks the whole fleet in one
+ * invocation, so loading a user's allergens/injuries once and reusing it across that user's
+ * trigger sites keeps the gate to two indexed reads per user instead of two per message.
+ */
+const safetyCache = new Map<string, UserSafetySnapshot>();
+async function safetyFor(userId: string): Promise<UserSafetySnapshot> {
+  const hit = safetyCache.get(userId);
+  if (hit) return hit;
+  const snap = await loadUserSafety(userId);
+  safetyCache.set(userId, snap);
+  return snap;
+}
+
 async function insertCoachingMessage(payload: Record<string, unknown>): Promise<{ ok: boolean; id: string | null }> {
   const userId = payload.user_id as string | undefined;
   if (!userId) return { ok: false, id: null };
   const type = (payload.trigger_type as string | undefined) ?? null;
+
+  // F2/A2 — THE SAFETY GATE, at the one funnel every coaching message passes through.
+  // Until now ai-proactive imported exactly one thing from guardrails (sanitizeText), so a nudge
+  // could recommend a food this user is severely allergic to and it went straight to the lock
+  // screen: no conversation, no chance to object. A notification cannot be argued with, so a
+  // violation HOLDS the message entirely rather than appending a warning to it.
+  try {
+    const text = `${payload.title ?? ''} ${payload.content ?? ''}`.trim();
+    if (text) {
+      const verdict = gateUserText(text, await safetyFor(userId), 'push');
+      if (!verdict.ok) {
+        console.warn('[nudge_gate] held — constraint violation in outgoing message', {
+          trigger: type, flags: verdict.flags, matched: verdict.matched.slice(0, 3),
+        });
+        nudgeStats.suppressed++;
+        return { ok: false, id: null };
+      }
+    }
+  } catch (e) {
+    // A gate that throws must not silently pass unchecked text to a phone.
+    console.error('[nudge_gate] scan failed — holding the message:', (e as Error).message);
+    nudgeStats.suppressed++;
+    return { ok: false, id: null };
+  }
   // System receipts are exempt from BOTH the switches and the cap: telling the user their calorie
   // target changed is not a nudge, and silently withholding it is worse than an extra card.
   const isReceipt = type ? RECEIPT_TRIGGERS.has(type) : false;

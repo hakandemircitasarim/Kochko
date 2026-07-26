@@ -35,6 +35,13 @@ export function detectTaskMode(message: string, isOnboarding: boolean): TaskMode
   // Recovery mode - emotionally sensitive, must win over bare logging keywords (e.g. "cok yedim")
   if (/cok yedim|çok yedim|bozdum|sapti|saptı|her seyi yedim|her şeyi yedim|berbat/.test(lower)) return 'recovery';
 
+  // F4/D4 — DISTRESS IS NOT A MOOD LOG. "çok stresliyim, bunaldım" used to hit the mood line
+  // below and run as REGISTER: gpt-4o-mini, temperature 0.2, "tek cümle onay ver" — the app's
+  // coldest contract at the user's most fragile moment (MUHAKEME-04/ALGI-03). Distress cues route
+  // to coaching (rich context, warm contract); a plain mood REPORT ("keyfim yerinde", "moralim
+  // iyi") still logs below. The cue list is deliberately about STATES OF STRUGGLE, not feelings.
+  if (/bunald[ıi]m|t[üu]kendim|dayanam[ıi]yorum|bo[gğ]uluyorum|kayg[ıi]l[ıi]y[ıi]m|panik|a[gğ]lamak|a[gğ]l[ıi]yorum|kendimi (k[öo]t[üu]|bo[şs]|yaln[ıi]z) hissediyorum|hi[çc]bir [şs]ey (yapmak )?istemiyorum|cok stresliyim|çok stresliyim|stresliyim ve|moralim (cok )?bozuk|psikolojim bozuk/.test(lower)) return 'coaching';
+
   // Simulation mode - intent question, must win over bare logging keywords
   if (/yesem|yersem|icsem|içsem|olur mu|yer miyim|ice bilir|içe bilir|ne olur/.test(lower)) return 'simulation';
 
@@ -317,6 +324,14 @@ Mutfak ekipmani, sevilmeyen yemekler, ekipman gibi seyleri TEK TEK sayip sorma. 
 - Dogal sohbet akisinda bilgi topla: boy, kilo, yas, cinsiyet, ana hedef, aktivite duzeyi, beslenme aliskanliklari, uyku, stres.
 - Derinlesmeye calis: "Ne zamandir?", "Gun icinde ne zaman?", "Neden sence?" — tek bir konuyu acmaya odaklan.
 - Empati kur. "Enerjim dusuk" gibi duygu ifadelerini kucumseme.
+
+### SES (hafta-simülasyonu bulgusu — HER turda ihlal ediliyordu)
+Kullanicinin az once soyledigini ONA GERI OKUMA. Su kaliplar YASAK:
+  "... yediğini belirttin", "... olduğunu belirttin", "Teşekkürler! Şu an 29 yaşındasın,
+  165 cm boyundasın ve 68 kg'sın", "Anladım, X'i Y olarak güncelliyorum".
+Kullanici ne dedigini biliyor; sen SONRAKI adimi konus.
+  KÖTÜ: "Bugün tartıldığını ve 67.2 kg çıktığını belirttin. Bu, hedefin için önemli bir adım."
+  İYİ:  "67.2 — dünden 300 gram aşağı, tempo yerinde. Kahvaltıda ne vardı?"
 
 ### KESIN YASAKLAR (IHLAL ETME)
 - **PLAN YAPMAK YASAK.** Bu sohbet plan yeri DEGIL. "Sana haftalik bir plan olusturabilirim" ASLA deme. Plan olusturmak ayri bir ekranda yapilir.

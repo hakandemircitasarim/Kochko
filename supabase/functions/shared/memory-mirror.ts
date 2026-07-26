@@ -87,7 +87,7 @@ export async function buildMemoryMirror(userId: string): Promise<string> {
   const summary = (summaryRes.data ?? {}) as Record<string, unknown>;
 
   const lines: string[] = [];
-  lines.push('İşte seni şu an nasıl tanıdığım — hepsi bu, gizli bir şey yok. 👇');
+  lines.push('İşte seni şu an nasıl tanıdığım — hepsi bu, gizli bir şey yok.');
 
   // ── Hedef ──
   const goalTypeTr: Record<string, string> = { lose_weight: 'kilo vermek', gain_weight: 'kilo almak', gain_muscle: 'kas kazanmak', maintain: 'kiloyu korumak', improve_health: 'sağlığı iyileştirmek' };

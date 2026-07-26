@@ -10,6 +10,7 @@
  * used to crash the menu tab).
  */
 import { supabase } from '@/lib/supabase';
+import { edgeHeaders } from '@/lib/edgeHeaders';
 
 export interface WeeklyPlan {
   id: string;
@@ -190,7 +191,7 @@ export async function generateWeeklyPlan(modificationRequest?: string): Promise<
   // (plan-projection), NOT from here. Do not add a daily invocation to this service.
   const body: Record<string, unknown> = { type: 'weekly' };
   if (modificationRequest) body.modification_request = modificationRequest;
-  const { error } = await supabase.functions.invoke('ai-plan', { body });
+  const { error } = await supabase.functions.invoke('ai-plan', { body, headers: edgeHeaders() });
   // Never surface the raw supabase-js 'Edge Function returned a non-2xx status
   // code' to the user (e.g. on an OpenAI outage) — show a friendly Turkish msg.
   if (error) {

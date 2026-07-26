@@ -182,6 +182,11 @@ export async function resetAISummary(userId: string): Promise<void> {
     snacking_hours: [],
     seasonal_notes: null,
     tdee_notes: null,
+    // F3/C6 — THE TOMBSTONE. Without it this reset was theater: general_summary is a DERIVED
+    // view, and the nightly extractor regenerated it from the same canonical rows within a day.
+    // While this stamp is set, derived regeneration is HELD; the user speaking NEW facts to the
+    // coach lifts it (fresh input = fresh consent for a fresh summary). The cron never lifts it.
+    derived_suppressed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   } as never).eq('user_id', userId).select('user_id');
   if (error) throw new Error(error.message);
