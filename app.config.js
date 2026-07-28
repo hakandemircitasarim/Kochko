@@ -33,6 +33,10 @@ export default {
       },
       package: 'com.kochko.app',
       permissions: ['CAMERA', 'RECORD_AUDIO', 'ACTIVITY_RECOGNITION', 'POST_NOTIFICATIONS'],
+      // launch: expo-dev-client injects SYSTEM_ALERT_WINDOW; the shipped app never needs it and
+      // it triggers Play's sensitive-permission review. Blocked at prebuild (manifest also
+      // carries a tools:node="remove" for the current local android/).
+      blockedPermissions: ['android.permission.SYSTEM_ALERT_WINDOW'],
     },
     web: {
       favicon: './assets/favicon.png',

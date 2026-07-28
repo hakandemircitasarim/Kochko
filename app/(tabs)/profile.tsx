@@ -24,6 +24,7 @@ import { haptics } from '@/lib/haptics';
 import { goalLabelTR, coachToneLabelTR } from '@/lib/labels';
 import { calculateProfileCompletion, CATEGORY_LABELS } from '@/lib/profile-completion';
 
+import { FREE_LAUNCH } from '@/lib/premium-gate';
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -251,7 +252,8 @@ export default function ProfileScreen() {
         {/* FIX (audit: keşfedilemez IA) — Premium ve Hesap Güvenliği birinci-sınıf
             satırlar; 'Tüm ayarlar' Veri&gizlilik yerine semantik olarak doğru
             Ayarlar bölümünde, scroll gerektirmeden bulunabilir. */}
-        <MenuRow icon="star-outline" color={colors.warning} label="Premium" onPress={() => router.push('/settings/premium')} colors={colors} />
+        {/* FREE LAUNCH: paywall entry hidden while everything is free */}
+        {!FREE_LAUNCH && <MenuRow icon="star-outline" color={colors.warning} label="Premium" onPress={() => router.push('/settings/premium')} colors={colors} />}
         <MenuRow icon="shield-checkmark-outline" color={colors.primary} label="Hesap Güvenliği" onPress={() => router.push('/settings/account-security')} colors={colors} />
         <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tüm ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} last />
       </MenuGroup>

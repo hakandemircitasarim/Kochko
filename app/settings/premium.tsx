@@ -11,6 +11,7 @@ import { initiatePurchase, restorePurchases, startTrialIfEligible, PURCHASE_ENAB
 import { supabase } from '@/lib/supabase';
 import { haptics } from '@/lib/haptics';
 
+import { FREE_LAUNCH } from '@/lib/premium-gate';
 const FREE = [
   'Kayıt girişi (öğün, spor, su, tartı)',
   'Barkod okuma',
@@ -164,6 +165,23 @@ export default function PremiumScreen() {
       }},
     ]);
   };
+
+  // FREE LAUNCH: this whole screen is paywall UI. Entry points are hidden, but deep links /
+  // old scheduled notifications can still land here — show the honest launch card instead of
+  // a fake "Premium Aktif" status.
+  if (FREE_LAUNCH) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom, justifyContent: 'center' }}>
+        <Card>
+          <Text style={{ color: COLORS.success, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Lansman dönemi — her şey ücretsiz</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.sm }}>
+            KOCHKO'nun tüm özellikleri şu an herkese açık. Ücretli abonelik ileride açıldığında uygulama içinden duyurulacak.
+          </Text>
+          <Button title="Devam et" onPress={() => router.back()} style={{ marginTop: SPACING.lg }} />
+        </Card>
+      </ScrollView>
+    );
+  }
 
   // Active Premium
   if (isActive && !isInTrial) {

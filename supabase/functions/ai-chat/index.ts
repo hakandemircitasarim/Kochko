@@ -17,6 +17,7 @@ import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shar
 import type { UsageReceipt } from '../shared/openai.ts';
 // B2a: the typed action receipt — ONE definition, read by both runtimes (contracts/ discipline).
 import type { ActionReceipt } from '../shared/contracts/turn-envelope.ts';
+import { isActivePremium } from '../shared/premium.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, scanReplyForAllergens, buildAllergenBlockMessage, type AllergenSeverity, detectTaskSkipIntent, normalizeClockTime, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
@@ -180,9 +181,9 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
     const usesPremiumIO = !!image_base64 || (!!audio_base64 && !!body.transcribe_only);
     if (usesPremiumIO) {
       const { data: ioProfile } = await supabaseAdmin.from('profiles').select('premium, premium_expires_at').eq('id', userId).maybeSingle();
-      // #R2-M2: gate on ACTIVE premium (boolean AND not-expired), not the boolean alone —
-      // the daily cron has a 1-day grace so an expired user keeps premium=true ~2 days.
-      const ioActive = ioProfile?.premium === true && (!ioProfile.premium_expires_at || new Date(ioProfile.premium_expires_at as string) > new Date());
+      // #R2-M2 → free-launch: routed through the ONE owner (shared/premium.ts) instead of an
+      // inline duplicate, so the KOCHKO_FREE_LAUNCH kill-switch opens voice+photo from one point.
+      const ioActive = isActivePremium(ioProfile as { premium?: boolean | null; premium_expires_at?: string | null } | null);
       if (!ioActive) {
         if (audio_base64 && body.transcribe_only) {
           return respond({ error: 'Sesli giriş Premium özelliğidir.', code: 'PREMIUM_REQUIRED' }, 403);
@@ -2122,7 +2123,9 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       // client, so any direct edge call approved unlimited plans on a free account.
       const { data: gateProfile } = await supabaseAdmin
         .from('profiles').select('premium, premium_expires_at, plans_used_free').eq('id', userId).maybeSingle();
-      const gateActive = gateProfile?.premium === true && (!gateProfile.premium_expires_at || new Date(gateProfile.premium_expires_at as string) > new Date());
+      // free-launch: routed through the ONE owner so the KOCHKO_FREE_LAUNCH kill-switch skips
+      // BOTH the cap and the consume_free_plan_slot burn — free slots stay unspent for later.
+      const gateActive = isActivePremium(gateProfile as { premium?: boolean | null; premium_expires_at?: string | null } | null);
       if (!gateActive) {
         const used = (gateProfile?.plans_used_free as { diet?: number; workout?: number } | null) ?? {};
         if ((used[expectedType] ?? 0) >= 1) {

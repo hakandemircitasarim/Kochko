@@ -5,7 +5,7 @@
 import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useProfileStore } from '@/stores/profile.store';
-import { isActivePremium } from '@/lib/premium-gate';
+import { FREE_LAUNCH, isActivePremium } from '@/lib/premium-gate';
 
 export function usePremium() {
   const profile = useProfileStore(s => s.profile);
@@ -32,7 +32,10 @@ export function usePremium() {
   const premiumDaysLeft = premiumExpiresAt
     ? (new Date(premiumExpiresAt).getTime() - Date.now()) / 86400000
     : Infinity;
-  const isInTrial = isActive && premiumExpiresAt != null && trialUsed && premiumDaysLeft <= TRIAL_WINDOW_DAYS;
+  // FREE LAUNCH: everyone is premium and NOBODY is "in trial" — without this override, users
+  // who had started a trial (premium_expires_at set) would keep seeing "Denemen N gün sonra
+  // bitiyor" countdown banners while the app is free for all.
+  const isInTrial = !FREE_LAUNCH && isActive && premiumExpiresAt != null && trialUsed && premiumDaysLeft <= TRIAL_WINDOW_DAYS;
   const trialDaysLeft = isInTrial && premiumExpiresAt
     ? Math.max(0, Math.ceil((new Date(premiumExpiresAt).getTime() - Date.now()) / 86400000))
     : 0;

@@ -18,6 +18,7 @@ import { useTheme, type ThemeColors } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 
+import { FREE_LAUNCH } from '@/lib/premium-gate';
 type IconName = keyof typeof Ionicons.glyphMap;
 
 // FIX (ux-ideas #13): the 35-screen settings menu is data-modelled so a single search
@@ -147,6 +148,9 @@ export default function SettingsScreen() {
       { key: 'weekly-menu', icon: 'calendar-number-outline', iconColor: colors.primary, label: 'Haftalık Menü', route: '/settings/weekly-menu', premiumFeature: 'Haftalık Menü', aliases: ['menü', 'yemek listesi'] },
       { key: 'meal-prep', icon: 'cube-outline', iconColor: colors.primary, label: 'Meal Prep Planı', route: '/settings/meal-prep-plan', premiumFeature: 'Meal Prep Planı', aliases: ['hazırlık', 'prep'] },
       { key: 'progress-photos', icon: 'camera-outline', iconColor: colors.pink, label: 'İlerleme Fotoğrafları', route: '/settings/progress-photos', premiumFeature: 'İlerleme Fotoğrafları', aliases: ['foto', 'resim', 'progress'] },
+      // Launch inventory: wearable sync is a service skeleton (health-connect.service stubs) with
+      // ZERO visible surface — users couldn't even know it's planned. Visible "Yakında" row.
+      { key: 'health-sync', icon: 'watch-outline', iconColor: colors.protein, label: 'Sağlık Uygulamaları ve Saat', aliases: ['google fit', 'health connect', 'apple health', 'akıllı saat', 'wearable', 'senkron', 'adım'], action: () => Alert.alert('Yakında', 'Google Health Connect / Apple Health senkronizasyonu çok yakında: adım, uyku ve kilo verilerin otomatik aktarılacak. Şimdilik bunları koça yazarak kaydedebilirsin.') },
     ] },
     { title: 'Sosyal', rows: [
       { key: 'household', icon: 'people-outline', iconColor: colors.protein, label: 'Aile Planı', route: '/settings/household', aliases: ['aile', 'ev', 'household'] },
@@ -167,7 +171,7 @@ export default function SettingsScreen() {
       { key: 'chat-history', icon: 'time-outline', iconColor: colors.textSecondary, label: 'Sohbet Geçmişi', route: '/settings/chat-history', aliases: ['geçmiş', 'history'] },
     ] },
     { title: 'Güvenlik', rows: [
-      { key: 'account-security', icon: 'shield-checkmark-outline', iconColor: colors.success, label: 'Hesap Güvenliği', route: '/settings/account-security', aliases: ['şifre', 'parola', 'password', '2fa'] },
+      { key: 'account-security', icon: 'shield-checkmark-outline', iconColor: colors.success, label: 'Hesap Güvenliği', route: '/settings/account-security', aliases: ['şifre', 'parola', 'password'] },
     ] },
     { title: 'Şeffaflık', rows: [
       { key: 'debug', icon: 'sparkles-outline', iconColor: colors.purple, label: 'AI Şeffaflık', route: '/settings/debug-mode', aliases: ['debug', 'ai', 'şeffaf'] },
@@ -194,8 +198,9 @@ export default function SettingsScreen() {
           matching every other settings screen that dropped its duplicate in-body title. */}
 
       {/* Premium — FIX (ux-ideas #4): a trial user used to see a flat "Premium Aktif" with
-          no sense of the ticking clock. Surface the countdown + a soft "Kalıcı yap" CTA. */}
-      <Card>
+          no sense of the ticking clock. Surface the countdown + a soft "Kalıcı yap" CTA.
+          FREE LAUNCH: the whole card is premium UI — hidden while the app is free for all. */}
+      {!FREE_LAUNCH && <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, flexShrink: 1 }}>
             <Ionicons
@@ -213,7 +218,7 @@ export default function SettingsScreen() {
               ? <Button title="Premium" size="sm" onPress={() => { haptics.tap(); router.push('/settings/premium'); }} />
               : null}
         </View>
-      </Card>
+      </Card>}
 
       {/* FIX (ux-round2 #5): surface any un-synced offline writes with a manual retry. */}
       <SyncStatusCard />

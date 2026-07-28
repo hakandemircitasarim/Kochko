@@ -10,8 +10,9 @@ import { haptics } from '@/lib/haptics';
 
 // Hosted legal documents (KVKK aydınlatma / kullanım koşulları). Domain derives from the
 // app bundle id (com.kochko.app); see crossFileNote — these pages must be published before launch.
-const TERMS_URL = 'https://kochko.app/kullanim-kosullari';
-const PRIVACY_URL = 'https://kochko.app/gizlilik';
+// launch 2026-07-29: pages are LIVE on the public legal edge function (source: store/*.html)
+const TERMS_URL = 'https://ugoynltxwrkqjwrdxmzt.supabase.co/functions/v1/legal/kullanim-kosullari';
+const PRIVACY_URL = 'https://ugoynltxwrkqjwrdxmzt.supabase.co/functions/v1/legal/gizlilik';
 
 // FIX (kullanıcı bulgusu): Google provider yapılandırılana dek buton gizli — login.tsx'teki
 // aynı bayrak ve gerekçe (Supabase'te external_google_enabled=false, ölü buton bozuk sayfa açıyordu).

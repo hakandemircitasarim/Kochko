@@ -3,7 +3,7 @@
  * Flat design, no gradients
  */
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
@@ -134,6 +134,11 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
             : Platform.OS === 'android' ? 'Yakında' : '-'}
           valueMuted={(!steps || steps <= 0) && Platform.OS === 'android'}
           a11yLabel={(!steps || steps <= 0) && Platform.OS === 'android' ? 'Adım sayımı yakında' : undefined}
+          // Launch inventory: 'Yakında' used to be untappable — no way to learn WHAT is coming.
+          {...((!steps || steps <= 0) && Platform.OS === 'android' ? {
+            onPress: () => Alert.alert('Yakında', 'Adım sayımı Google Health Connect entegrasyonuyla çok yakında. Şimdilik adımlarını koça yazarak kaydedebilirsin.'),
+            a11yHint: 'Ayrıntı için dokun',
+          } : {})}
           label="Adım"
           color={METRIC_COLORS.steps}
         />

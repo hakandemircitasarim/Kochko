@@ -48,3 +48,7 @@ supabase/.branches/
 
 # Local test harness + live-DB credentials (service_role key, session tokens) - never commit
 TEMP/
+
+# Play upload keystore — ASLA commit etme (parola içerir / anahtar kaybolursa Play kimliği gider)
+android/keystore.properties
+android/app/kochko-upload.keystore

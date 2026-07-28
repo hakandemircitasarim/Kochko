@@ -21,6 +21,7 @@
     "node_modules",
     "supabase/functions/ai-*",
     "supabase/functions/cleanup-scheduled",
+    "supabase/functions/legal",
     "supabase/functions/shared/*.ts"
   ]
 }

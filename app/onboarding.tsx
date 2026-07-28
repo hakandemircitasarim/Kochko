@@ -19,6 +19,7 @@ import type { GoalType, ActivityLevel, Gender, Goal } from '@/types/database';
 import { GENDER_LABELS_TR, ACTIVITY_LEVEL_LABELS_TR, GOAL_LABELS_INFINITIVE_TR, toOptions } from '@/lib/labels';
 import { calculateBMR, calculateTDEE, calculateTargets } from '@/lib/tdee';
 
+import { FREE_LAUNCH } from '@/lib/premium-gate';
 const { width } = Dimensions.get('window');
 
 // FIX (audit UX-ONB-05): tek bir 18+ doğum yılı kuralı. Bu ekrandaki OAuth doğum-yılı
@@ -559,7 +560,9 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
       // FIX (audit trial-announce): deneme SESSİZCE başlıyordu — kullanıcının denemeden ilk
       // haberi korkutucu "Denemen X gün sonra bitiyor" banner'ı oluyordu. Başladıysa tek
       // satırla burada duyur.
-      const trial = await startTrialIfEligible(user.id).catch(() => ({ started: false }));
+      // FREE LAUNCH: no trials while everything is free — starting one would only stamp
+      // premium_expires_at and resurrect countdown UI after the free period ends.
+      const trial = FREE_LAUNCH ? { started: false } : await startTrialIfEligible(user.id).catch(() => ({ started: false }));
 
       // 4. Clear the resume draft — onboarding is done.
       await clearOnboardingDraft();

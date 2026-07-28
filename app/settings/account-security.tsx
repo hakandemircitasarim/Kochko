@@ -3,7 +3,7 @@
  * Spec 1.2-1.4: Session management, password change, account linking, email change.
  */
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Alert, Platform, KeyboardAvoidingView, TextInput } from 'react-native';
+import { View, Text, ScrollView, Alert, Platform, KeyboardAvoidingView, TextInput, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
@@ -15,6 +15,7 @@ import { SectionHeader } from '@/components/settings/SectionHeader';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 
+import { GOOGLE_LOGIN_ENABLED, APPLE_LOGIN_ENABLED } from '@/lib/auth-flags';
 export default function AccountSecurityScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
@@ -248,6 +249,7 @@ export default function AccountSecurityScreen() {
           canUnlink={providers.length > 1}
           onLink={handleLinkGoogle}
           onUnlink={() => handleUnlinkProvider('google')}
+          comingSoon={!GOOGLE_LOGIN_ENABLED}
         />
 
         {/* Apple (iOS only) */}
@@ -258,6 +260,7 @@ export default function AccountSecurityScreen() {
             canUnlink={providers.length > 1}
             onLink={handleLinkApple}
             onUnlink={() => handleUnlinkProvider('apple')}
+            comingSoon={!APPLE_LOGIN_ENABLED}
           />
         )}
 
@@ -318,12 +321,14 @@ function ProviderRow({
   canUnlink,
   onLink,
   onUnlink,
+  comingSoon,
 }: {
   name: string;
   linked: boolean;
   canUnlink: boolean;
   onLink: () => void;
   onUnlink: () => void;
+  comingSoon?: boolean;
 }) {
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
@@ -335,6 +340,18 @@ function ProviderRow({
             <Button title="Kaldır" variant="ghost" size="sm" onPress={onUnlink} />
           )}
         </View>
+      ) : comingSoon ? (
+        // Launch inventory: the provider is NOT configured in Supabase — this was a live dead
+        // button dropping users on a broken OAuth page. "Yakında" chip + explanation instead.
+        <TouchableOpacity
+          onPress={() => Alert.alert('Yakında', `${name} ile hesap bağlama çok yakında aktif olacak. Şimdilik e-posta girişin kullanılıyor.`)}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: true }}
+          accessibilityLabel={`${name} bağlama yakında`}
+          style={{ paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 8, backgroundColor: COLORS.border }}
+        >
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Yakında</Text>
+        </TouchableOpacity>
       ) : (
         <Button title="Bağla" variant="outline" size="sm" onPress={onLink} />
       )}

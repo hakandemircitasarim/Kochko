@@ -60,9 +60,18 @@ const FREE_TIER_FEATURES = new Set<FeatureKey>([
  * nightly expiry cron only flips subscriptions older than the 1-day grace — so every
  * gate MUST also honor premium_expires_at, not just the boolean.
  */
+/**
+ * FREE LAUNCH (owner decision, 2026-07-29): IAP is not wired yet, so v1 ships with every
+ * account treated as premium and all upsell/paywall UI hidden. Server mirror: shared/premium.ts
+ * honors the KOCHKO_FREE_LAUNCH env secret, so both gates open and close together — flip this
+ * to false (and unset the secret) in the release that ships real IAP.
+ */
+export const FREE_LAUNCH = true;
+
 export function isActivePremium(
   profile: { premium?: boolean | null; premium_expires_at?: string | null } | null | undefined,
 ): boolean {
+  if (FREE_LAUNCH) return true;
   if (!profile?.premium) return false;
   const exp = profile.premium_expires_at;
   return !exp || new Date(exp) > new Date();

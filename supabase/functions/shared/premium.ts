@@ -13,6 +13,10 @@
 export function isActivePremium(
   profile: { premium?: boolean | null; premium_expires_at?: string | null } | null | undefined,
 ): boolean {
+  // FREE LAUNCH (owner decision, 2026-07-29): IAP is not wired yet, so the app ships with
+  // everyone treated as premium. One env kill-switch — same idiom as the rollout gates, no
+  // redeploy needed to end the free period (set to 'off' / unset when IAP lands).
+  if ((Deno.env.get('KOCHKO_FREE_LAUNCH') ?? '').trim() === 'on') return true;
   if (!profile || profile.premium !== true) return false;
   const exp = profile.premium_expires_at;
   return !exp || new Date(exp) > new Date();
