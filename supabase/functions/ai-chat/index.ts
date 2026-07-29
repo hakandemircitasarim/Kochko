@@ -917,6 +917,32 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
 - Gorev/plan acilis turu olsa bile, aradan saatler/gunler gecmis olsa bile: dogrudan konuya gir, sohbet kaldigi yerden surer.`
       : '';
 
+    // ux-defect pass (papağan ağı, canlı 07-29): aynı konu-açıcı [SYSTEM_INIT] iki akşam üst
+    // üste BİREBİR aynı cümleyi üretti ("Bugün nasıl geçti? Su tüketiminde...") — layer4'te dünkü
+    // kopya dururken bile. Açıcı turlarında bir önceki açıcı yanıtını bulup açık yasakla.
+    let antiRepeatNote = '';
+    if (typeof message === 'string' && message.startsWith('[SYSTEM_INIT]')) {
+      try {
+        const { data: openerRows } = await supabaseAdmin.from('chat_messages')
+          .select('created_at').eq('user_id', userId).eq('role', 'user')
+          .like('content', '[SYSTEM_INIT]%')
+          .order('created_at', { ascending: false }).limit(2);
+        const prevOpenerAt = openerRows?.[1]?.created_at as string | undefined;
+        if (prevOpenerAt) {
+          const { data: prevReply } = await supabaseAdmin.from('chat_messages')
+            .select('content').eq('user_id', userId).eq('role', 'assistant')
+            .gt('created_at', prevOpenerAt)
+            .order('created_at', { ascending: true }).limit(1).maybeSingle();
+          const prev = (prevReply?.content as string | undefined)?.trim();
+          if (prev) {
+            antiRepeatNote = `## TEKRAR YASAGI (BU TURDA)
+Bir onceki konu acilisinda soyle demistin: "${prev.slice(0, 200)}"
+AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve taze bir acilis kur.`;
+          }
+        }
+      } catch { /* net her zaman opsiyonel — açılışı asla bloklamaz */ }
+    }
+
     const systemPrompt = [
       BASE_SYSTEM_PROMPT,
       // #arch step 9 (token budget): situational guidance blocks are included ONLY when their
@@ -928,6 +954,7 @@ Bu, devam eden TEK kesintisiz sohbetin ORTASIDIR (gecmis mesajlar yukarida). Bu 
       serviceCtx.returnFlow ? RETURN_FLOW_PROMPT : '',                              // return-flow tone — only when returning (~140 tok)
       // #ux-fix: continuity outranks every mode/opener instruction below — no mid-thread re-greeting.
       continuityNote,
+      antiRepeatNote,
       // Task card instructions come right after BASE so they are prominent — they override
       // default onboarding-mode ambition and keep the session narrowly scoped.
       taskCardCtx,
