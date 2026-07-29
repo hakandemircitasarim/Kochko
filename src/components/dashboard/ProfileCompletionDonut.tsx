@@ -118,7 +118,7 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
   // Until the 13-task progress lands, show a skeleton instead of flashing a
   // misleading 0% / red ring on every cold load.
   if (!taskProgress) {
-    return <SkeletonCard lines={2} />;
+    return <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}><SkeletonCard lines={2} /></View>;
   }
 
   // FIX (ux-pass2 #6c): profil %100 ise kart tamamen kaybolur — bitmiş bir işi
@@ -128,6 +128,7 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
   }
 
   return (
+    <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
     <TouchableOpacity
       onPress={() => {
         // FIX (ux-pass2 #6): CTA eskiden chat'i parametresiz açıyordu — kullanıcı görev
@@ -229,5 +230,6 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
         ) : null}
       </View>
     </TouchableOpacity>
+    </View>
   );
 }

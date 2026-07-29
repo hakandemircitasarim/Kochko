@@ -31,6 +31,8 @@ interface Props {
   workouts: WorkoutEntry[];
   onDeleteMeal: (id: string) => void | Promise<void>;
   onDeleteWorkout: (id: string) => void | Promise<void>;
+  /** ux-defect pass: yepyeni kullanıcıda hoş-geldin kartı aynı CTA'yı zaten veriyor — üçüncü tekrar gizlenir. */
+  hideEmptyCta?: boolean;
 }
 
 const MEAL_ICONS: Record<string, string> = {
@@ -61,7 +63,7 @@ const toMs = (iso?: string | null): number => {
   return Number.isFinite(t) ? t : 0;
 };
 
-export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkout }: Props) {
+export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkout, hideEmptyCta }: Props) {
   const { colors, isDark } = useTheme();
 
   // FIX (ux-pass2 #14): antrenmanlar öğünlerin arkasına körlemesine ekleniyordu —
@@ -133,7 +135,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
       </View>
 
       {/* Empty state — FIX (ux-pass2 #13): eylemsiz View'dı; artık sohbeti açan gerçek CTA. */}
-      {totalActivities === 0 && (
+      {totalActivities === 0 && !hideEmptyCta && (
         <TouchableOpacity
           onPress={() => router.push('/(tabs)/chat' as never)}
           activeOpacity={0.7}

@@ -22,6 +22,8 @@ interface Props {
   onWaterLongPress?: () => void;
   // FIX (ux-pass2 #4a): Kilo kartı Tartı Kaydı modalını açar (ölü modal canlandı).
   onWeightPress?: () => void;
+  /** ux-defect pass: Uyku hücresi griddeki tek ÖLÜ hücreydi — dokununca uyku kaydına gider. */
+  onSleepPress?: () => void;
 }
 
 interface StatCardProps {
@@ -102,7 +104,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
 
 // FIX (audit: ölü prop) sleepHours/weightKg artık imzada destructure edilip
 // 2x2 grid'de render ediliyor (eskiden tanımlı ama hiç gösterilmiyordu).
-export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, lastKnownWeightKg, onAddWater, onWaterLongPress, onWeightPress }: Props) {
+export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, lastKnownWeightKg, onAddWater, onWaterLongPress, onWeightPress, onSleepPress }: Props) {
   const waterPct = waterTarget > 0 ? waterLiters / waterTarget : 0;
   const noWeighInToday = weightKg == null && lastKnownWeightKg != null;
 
@@ -148,9 +150,14 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
           icon="moon"
           // FIX (audit UI-TAB-03) ham DB sayısını biçimlendir — diğer kartlarla tutarlı (DECIMAL(3,1) → 1 ondalık)
           // FIX (ux-pass5): TR ondalık virgül.
-          value={sleepHours != null ? `${Number(sleepHours).toFixed(1).replace('.', ',')} sa` : '-'}
+          // ux-defect pass: veri yokken çıplak '-' + dokunulamaz tek hücreydi (komşuların hepsi
+          // aksiyonlu). Boş durumda 'Ekle' daveti, her durumda uyku kaydına dokunuş.
+          value={sleepHours != null ? `${Number(sleepHours).toFixed(1).replace('.', ',')} sa` : 'Ekle'}
+          valueMuted={sleepHours == null}
           label="Uyku"
           color={METRIC_COLORS.sleep}
+          onPress={onSleepPress}
+          a11yHint="Uyku kaydı girmek için dokun"
         />
         <StatCard
           icon="scale"

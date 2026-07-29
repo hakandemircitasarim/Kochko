@@ -7,14 +7,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
+import { OFFER_TRIGGERS } from '@/services/coaching-messages.service';
 import type { CoachingMessage } from '@/services/coaching-messages.service';
 
 // FIX (ux-ideas #17): trigger types that are an accept/decline OFFER — these get inline
 // "Evet / Sonra" buttons so the user can act in one tap instead of open-chat-then-type-"evet".
-const SUGGESTION_TRIGGERS = new Set([
-  'deload_suggestion', 'habit_introduce', 'habit_stack', 'progressive_overload',
-  'mini_cut_suggestion', 'maintain',
-]);
+// ux-defect pass: the set now lives in coaching-messages.service (ONE owner — it also drives
+// the 48h offer shelf there); this alias keeps local call sites unchanged.
+const SUGGESTION_TRIGGERS = OFFER_TRIGGERS;
+
+// ux-defect pass: a yesterday-born message used to render a bare "10:07" that read as TODAY'S
+// 10:07 — the coach looked like it was speaking from a stale context. Day-aware stamp instead.
+function formatNudgeTime(createdAt: string): string {
+  const d = new Date(createdAt);
+  const hm = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  if (sameDay) return hm;
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.getFullYear() === yesterday.getFullYear() && d.getMonth() === yesterday.getMonth() && d.getDate() === yesterday.getDate();
+  if (isYesterday) return `Dün ${hm}`;
+  return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+}
 
 export function CoachingNudge({
   messages,
@@ -75,7 +89,7 @@ export function CoachingNudge({
                     {msg.content}
                   </Text>
                   <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
-                    {new Date(msg.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                    {formatNudgeTime(msg.created_at)}
                   </Text>
                 </View>
               </TouchableOpacity>

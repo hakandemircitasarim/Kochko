@@ -13,9 +13,7 @@ import { getMaintenanceStatus, shouldTriggerMiniCut, type MaintenanceStatus } fr
 import { getTimelineData } from '@/services/goals.service';
 import { getEngagementMetrics, type EngagementMetrics } from '@/services/analytics.service';
 import { calculateStreak } from '@/services/achievements.service';
-import { calculateGoalProgress, type GoalProgress } from '@/lib/goal-progress';
 import type { Goal } from '@/types/database';
-import { GoalProgressCard } from '@/components/dashboard/GoalProgressCard';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { Card } from '@/components/ui/Card';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
@@ -116,7 +114,6 @@ export default function ProgressScreen() {
   const [engagement, setEngagement] = useState<EngagementMetrics | null>(null);
   // FIX (ux-ideas #12): active goal + derived progress for the weight-chart target line + ETA rozet.
   const [activeGoal, setActiveGoal] = useState<Goal | null>(null);
-  const [goalProgress, setGoalProgress] = useState<GoalProgress | null>(null);
   // FIX (ux-ideas #11): current active streak, surfaced as the top card.
   const [streak, setStreak] = useState(0);
 
@@ -170,21 +167,11 @@ export default function ProgressScreen() {
       const compData = (c.data ?? []) as CompPt[];
       setCompliance(compData);
 
-      // FIX (ux-ideas #12): derive goal progress from the active goal + the loaded weigh-ins.
+      // ux-defect pass (A2): yerel goalProgress türetimi SİLİNDİ — dashboard.store'daki hesapla
+      // farklı kilo kaynağı kullanıp iki ekranda farklı sayı üretebiliyordu; HEDEF kartı artık
+      // yalnız dashboard'da (tek hesap, tek görünüm). activeGoal grafikteki hedef çizgisi için kalır.
       const goal = (goalRes.error ? null : (goalRes.data as Goal | null)) ?? null;
       setActiveGoal(goal);
-      if (goal) {
-        const weighIns = metricData.filter(x => x.weight_kg != null);
-        const prof = useProfileStore.getState().profile;
-        const curW = (weighIns.length ? weighIns[weighIns.length - 1].weight_kg : null) ?? (prof?.weight_kg as number | null) ?? null;
-        // FIX (ux-review): baseline mirrors dashboard.store (start_weight_kg ?? profile.weight_kg).
-        // Do NOT fall back to weighIns[0] — that's only the oldest weigh-in in the 28-day query
-        // window, which understates progress for older goals and diverges from the Dashboard card.
-        const startW = goal.start_weight_kg ?? (prof?.weight_kg as number | null) ?? null;
-        setGoalProgress(curW && startW ? calculateGoalProgress(goal, curW, startW) : null);
-      } else {
-        setGoalProgress(null);
-      }
 
       if (plateau.isInPlateau) {
         setPlateauMsg(plateau.message);
@@ -350,7 +337,6 @@ export default function ProgressScreen() {
   const weights = metrics.filter(m => m.weight_kg != null);
   // FIX (ux-ideas #12): target-weight reference for the chart overlay.
   const targetW = (activeGoal?.target_weight_kg != null && Number.isFinite(activeGoal.target_weight_kg)) ? activeGoal.target_weight_kg : null;
-  const isWeightGoal = !!activeGoal && (activeGoal.goal_type === 'lose_weight' || activeGoal.goal_type === 'gain_weight' || activeGoal.goal_type === 'gain_muscle');
   // FIX (ux-pass raporlar #5): '5/7' style D/M labels matched nothing else in the app —
   // use the same tr-TR short form as monthly.tsx ('5 Tem'). Note: react-native-chart-kit has
   // no true time axis — points are index-spaced, so uneven gaps (4 days vs 23 days) render
@@ -442,18 +428,36 @@ export default function ProgressScreen() {
       {/* FIX (ux-round4 #21): flexWrap so a 5th (adım) tile wraps to a second row. Each tile keeps
           flexBasis 20% + flexGrow, so the 4-tile case (no step data) still fills one row exactly as
           before — the layout only changes when the steps tile is present. */}
+      {/* ux-defect pass (D3): veri olmayan kutu ÇIZILMEZ (adım kutusuyla aynı kural) — ilk gün
+          kullanıcısı dört çıplak '-' yerine tek dürüst satır görür. */}
+      {(latestW || avgComp != null || avgWater != null || avgSleep != null || avgSteps != null) ? (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: SPACING.md, gap: SPACING.sm }}>
         {/* FIX (ux-pass5): kilo değeri de virgül ondalık — aynı tile'daki delta rozeti virgüle
             çevrildi, '74.5' + '+1,5' karışımı olmasın. */}
-        <SummaryBox icon="scale-outline" iconColor={colors.pink} value={latestW ? `${latestW}`.replace('.', ',') : '-'} label="kg" period="son tartı" delta={wChange} />
-        <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={avgComp != null ? `%${avgComp}` : '-'} label="uyum" period="28 gün ort." trend={compTrend} />
-        <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater ?? '-'} label="L/gün" period="28 gün ort." trend={waterTrend} />
-        <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep ?? '-'} label="sa/gün" period="28 gün ort." trend={sleepTrend} />
+        {latestW != null && (
+          <SummaryBox icon="scale-outline" iconColor={colors.pink} value={`${latestW}`.replace('.', ',')} label="kg" period="son tartı" delta={wChange} />
+        )}
+        {avgComp != null && (
+          <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={`%${avgComp}`} label="uyum" period="28 gün ort." trend={compTrend} />
+        )}
+        {avgWater != null && (
+          <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater} label="L/gün" period="28 gün ort." trend={waterTrend} />
+        )}
+        {avgSleep != null && (
+          <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep} label="sa/gün" period="28 gün ort." trend={sleepTrend} />
+        )}
         {/* FIX (ux-round4 #21): surfaced only when the user actually logs steps. */}
         {avgSteps != null && (
           <SummaryBox icon="footsteps-outline" iconColor={colors.primary} value={avgSteps} label="adım/gün" period="28 gün ort." trend={stepsTrend} />
         )}
       </View>
+      ) : (
+      <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.md }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>
+          Henüz veri yok — öğün, tartı ve uyku kaydettikçe ortalamaların burada birikecek.
+        </Text>
+      </View>
+      )}
 
       {/* Weight Chart — FIX (ux-ideas #12): overlay a flat target-weight reference line so the
           chart answers "am I getting closer?" not just "what did I weigh?". */}
@@ -504,14 +508,11 @@ export default function ProgressScreen() {
         </Card>
       )}
 
-      {/* Goal progress rozet (ux-ideas #12) — kalan mesafe + tempo + tahmini bitiş.
-          FIX (ux-readiness): require a target weight (a targetless gain goal has no distance → the
-          %-bar/"N kg kaldı" card would be meaningless/contradictory). */}
-      {goalProgress && isWeightGoal && activeGoal!.target_weight_kg != null && (
-        <View style={{ marginBottom: SPACING.md }}>
-          <GoalProgressCard progress={goalProgress} goalType={activeGoal!.goal_type} onPress={() => router.push('/settings/goals')} />
-        </View>
-      )}
+      {/* ux-defect pass (D2/A2): HEDEF kartı buradan KALDIRILDI — dashboard'daki birebir
+          kopyasıydı ve yerel goalProgress hesabı store'unkinden FARKLI kilo kaynağı kullanıp
+          iki ekranda farklı sayı gösterebiliyordu (split-brain). Raporlar'da hedef zaten üç
+          biçimde vardı: kg kutusu + grafikteki hedef çizgisi + bu kart. Kart tek sahibinde
+          (dashboard) yaşıyor; grafik hedef-çizgisi burada kalıyor. */}
 
       {/* Compliance Chart — FIX (ux-pass raporlar #3): only LOGGED days are plotted (the wall of
           fabricated zeros for untracked days is gone), and the y-axis is pinned to 0-100 with %
@@ -824,6 +825,9 @@ function SummaryBox({ icon, iconColor, value, label, period, delta, trend }: { i
       flexGrow: 1,
       flexShrink: 1,
       flexBasis: '20%',
+      // ux-defect pass (B-dev-adim-tile): 5. kutu (adım) alt satıra tek başına sarınca flexGrow
+      // onu TÜM satıra yayıyordu — dev, oransız bir kart. Yarım satırla sınırla.
+      maxWidth: '48%',
       minWidth: 64,
       minHeight: 95,
       justifyContent: 'center',

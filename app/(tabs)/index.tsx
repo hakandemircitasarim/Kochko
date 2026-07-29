@@ -3,7 +3,7 @@
  * Kalori halkasi, hizli istatistikler, haftalik butce, diyet/spor planlari
  */
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal, Animated } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal, Animated, AppState } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,7 +23,6 @@ import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 // FIX (ux-pass2 #4c): tek "güncel kilo" yazım yolu — daily_metrics + profiles birlikte.
-import { updateCurrentWeight } from '@/services/weight.service';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
@@ -38,6 +37,7 @@ import { detectReturnLevel, generateWelcomeBack, type ReturnStatus } from '@/ser
 import { nextStreakMilestone } from '@/services/achievements.service';
 import { syncStepsToDailyMetrics } from '@/services/health-connect.service';
 import { CoachingNudge } from '@/components/dashboard/CoachingNudge';
+import { isDismissed, markDismissed } from '@/lib/dismissals';
 // FIX (audit: üç offline banner) ui/OfflineBanner inline render kaldırıldı —
 // global common/OfflineBanner (app/_layout.tsx) tek kaynak.
 import { SkeletonBlock } from '@/components/ui/Skeleton';
@@ -114,15 +114,18 @@ export default function TodayScreen() {
   const { streak, newAchievement, checkForMilestones } = useStreak();
   // FIX (audit: deneme geri-sayımı dashboard) trial state'i dashboard'da yüzeye çıkar
   const { isInTrial, trialDaysLeft } = usePremium();
-  const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
+  const [trialBannerDismissed, setTrialBannerDismissed] = useState<boolean | null>(null);
   // FIX (ux-ideas #25): milestone celebration modal state (persists past the hook's 5s auto-clear).
   const [celebration, setCelebration] = useState<string | null>(null);
   // FIX (ux-ideas #26): "Haftan hazır" weekly recap entry-point.
   const [weeklyRecap, setWeeklyRecap] = useState<{ weekStart: string; avgCompliance: number | null; strategy: string | null } | null>(null);
   // FIX (ux-ideas #15): in-app streak-at-risk nudge (the evening push is a deeper, deploy-gated follow-up).
-  const [streakRiskDismissed, setStreakRiskDismissed] = useState(false);
+  // ux-defect pass 2026-07-29: dismissals are PERSISTED (day-scope) — useState alone resurrected
+  // every closed card on each app restart. null = hydrating; cards render only when === false so
+  // a dismissed card never flashes during load.
+  const [streakRiskDismissed, setStreakRiskDismissed] = useState<boolean | null>(null);
   // FIX (ux-round2 #2): non-guilt streak-recovery card dismissal.
-  const [streakResetDismissed, setStreakResetDismissed] = useState(false);
+  const [streakResetDismissed, setStreakResetDismissed] = useState<boolean | null>(null);
   // FIX (ux-round2 #10): enriched return message ("daha önce X/Y gün tutturmuştun") — activates
   // the previously-dead generateWelcomeBack. Falls back to the plain welcomeMessage.
   const [welcomeBackMsg, setWelcomeBackMsg] = useState<string | null>(null);
@@ -132,16 +135,12 @@ export default function TodayScreen() {
   const [returnResolved, setReturnResolved] = useState(false);
   // FIX (ux-round2 #2 — adversarial-review): dismiss the return banner WITHOUT nulling returnStatus,
   // so its non-active level keeps the R2 streak-recovery card excluded ('return banner owns that').
-  const [returnBannerDismissed, setReturnBannerDismissed] = useState(false);
+  const [returnBannerDismissed, setReturnBannerDismissed] = useState<boolean | null>(null);
   // Distinguishes "never fetched this session" from "fetched, genuinely empty day"
   // so the very first cold load can show skeletons instead of a zeroed scaffold
   // that reads like a real (and alarming) empty day.
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [showWeightInput, setShowWeightInput] = useState(false);
-  const [weightInput, setWeightInput] = useState('');
-  // FIX (ux-pass5): tartı yazımı sürerken Kaydet ölü görünüyor, yeniden dokunuşlar
-  // eşzamanlı duplike yazım tetikliyordu — in-flight durumu (log.tsx loading deseni).
-  const [weightSaving, setWeightSaving] = useState(false);
+  // ux-defect pass: bespoke tartı modalının state'leri silindi — tartı girişi tek sahipte (/log?to=weight).
   const [coachingMessages, setCoachingMessages] = useState<CoachingMessage[]>([]);
   const [returnStatus, setReturnStatus] = useState<ReturnStatus | null>(null);
   // FIX (ux-ideas #20): a genuinely brand-new user (never logged a meal OR workout) gets a
@@ -163,6 +162,39 @@ export default function TodayScreen() {
   useEffect(() => () => { if (waterUndoTimer.current) clearTimeout(waterUndoTimer.current); }, []);
 
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
+
+  // ux-defect pass (TIME-C1): pano yalnız navigasyon odaklanmasında tazeleniyordu — akşam
+  // arka plana atılan uygulama sabah AÇILINCA dünün panosunu (selamlama, bayat nudge, dünkü
+  // sayılar) gösteriyordu. Ön plana dönüşte tazele.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') refreshRef.current?.();
+    });
+    return () => sub.remove();
+  }, []);
+
+  // ux-defect pass: hydrate persisted dismissals once per user. Storage failure → treat as
+  // not-dismissed (cards show; worst case is the old behavior, never a stuck-hidden card).
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      const [risk, reset, ret, trial] = await Promise.all([
+        isDismissed(user.id, 'streak_risk', 'day', dayBoundaryHour),
+        isDismissed(user.id, 'streak_reset', 'day', dayBoundaryHour),
+        isDismissed(user.id, 'return_banner', 'day', dayBoundaryHour),
+        isDismissed(user.id, 'trial_countdown', 'day', dayBoundaryHour),
+      ]);
+      if (cancelled) return;
+      setStreakRiskDismissed(risk);
+      setStreakResetDismissed(reset);
+      setReturnBannerDismissed(ret);
+      setTrialBannerDismissed(trial);
+    })().catch(() => {
+      if (!cancelled) { setStreakRiskDismissed(false); setStreakResetDismissed(false); setReturnBannerDismissed(false); setTrialBannerDismissed(false); }
+    });
+    return () => { cancelled = true; };
+  }, [user?.id, dayBoundaryHour]);
   // Prefer dynamic water target from dashboard store (respects today's training
   // day + summer adjustment via calculateWaterTarget). Profile value is a static
   // user preference / fallback.
@@ -266,6 +298,7 @@ export default function TodayScreen() {
   // Previously a hasMounted ref skipped the first run to avoid a duplicate
   // fetch against a parallel useEffect — now only this effect fetches, so no
   // ref gymnastics are needed.
+  const refreshRef = useRef<(() => void) | null>(null);
   const refresh = useCallback((opts?: { force?: boolean }) => {
     if (!user?.id) return;
     // FIX (ux-pass2 #10): sekme değişiminde her focus yeniden fetch tetikliyordu; veri
@@ -278,6 +311,7 @@ export default function TodayScreen() {
     checkForMilestones();
     getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {});
   }, [user?.id, fetchToday, checkForMilestones, dayBoundaryHour]);
+  refreshRef.current = () => refresh();
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
@@ -330,6 +364,15 @@ export default function TodayScreen() {
     const hideIds = new Set([...staleTyped, ...staleLoose].map(m => m.id));
     setCoachingMessages(prev => prev.filter(m => !hideIds.has(m.id)));
   }, [totalCalories, meals, coachingMessages]);
+
+  // ── TEK BİLDİRİM YUVASI bayrakları (ux-defect pass): dismissable bildirimler tek yuvada,
+  // öncelik: streak-risk (bugün kritik) > streak-reset > haftalık özet > koç nudge'ı.
+  // Kapatmalar güne-kalıcı (src/lib/dismissals.ts); biri kapanınca sıradaki görünür.
+  const showStreakRisk = streak >= 3 && meals.length === 0 && new Date().getHours() >= 19 && streakRiskDismissed === false;
+  const showStreakReset = streak === 0 && isBrandNew === false && meals.length === 0 && workouts.length === 0
+    && returnResolved && (!returnStatus || returnStatus.level === 'active') && streakResetDismissed === false;
+  const showWeeklyRecap = !!weeklyRecap && !showStreakRisk && !showStreakReset;
+  const showCoachNudge = coachingMessages.length > 0 && !showStreakRisk && !showStreakReset && !showWeeklyRecap;
 
   // FIX (audit: üç offline banner) inline isOffline state kaldırıldı; offline
   // göstergesi global common/OfflineBanner'a bırakıldı. NetInfo dinleyici yalnız
@@ -455,41 +498,6 @@ export default function TodayScreen() {
     }
   };
 
-  // FIX (ux-pass2 #4a/#4b): modal artık Kilo kartından açılır ve son bilinen kiloyla
-  // önceden doldurulur (73.5 placeholder'ı yerine) — kullanıcı çoğu zaman tek haneyi düzeltir.
-  const openWeightModal = () => {
-    haptics.tap();
-    const known = weightKg ?? (profile?.weight_kg != null ? Number(profile.weight_kg) : null);
-    setWeightInput(known != null ? String(known) : '');
-    setShowWeightInput(true);
-  };
-
-  const handleWeightSave = async () => {
-    // FIX (ux-pass5): yazım sürerken ikinci tetikleme (buton veya klavye done) yutulur.
-    if (weightSaving) return;
-    const w = parseFloat(weightInput.replace(',', '.'));
-    if (!user?.id) return;
-    // FIX (ux-pass5): geçersiz girişte sessiz return Kaydet'i ölü buton gibi gösteriyordu —
-    // log.tsx tartı akışıyla aynı geribildirim (haptics.error + Geçersiz kilo alert'i).
-    if (!w || w < 20 || w > 300) { haptics.error(); return Alert.alert('Geçersiz kilo', '20–300 kg arası bir değer gir.'); }
-    setWeightSaving(true);
-    try {
-      // FIX (ux-pass2 #4c): canlı bug — Tartı yalnız daily_metrics'e yazınca Profil 80,
-      // dashboard 79.5 gösteriyordu. updateCurrentWeight iki tabloyu birlikte günceller.
-      await updateCurrentWeight(user.id, w, dayBoundaryHour);
-      haptics.success();
-      setShowWeightInput(false);
-      setWeightInput('');
-      refresh({ force: true });
-    } catch (err) {
-      console.warn('weight save failed:', err);
-      haptics.error();
-      Alert.alert('Hata', 'Tartı kaydedilemedi. Lütfen tekrar deneyin.');
-    } finally {
-      setWeightSaving(false);
-    }
-  };
-
   // Weekly budget — prefer the projection's STORED weighted total/consumed (4 training +
   // 3 rest days, rest 250 lower) over the old flat calorie_target_max*7, which overstated
   // both total and consumed by the train/rest gap. Fall back to the flat estimate only when
@@ -526,80 +534,6 @@ export default function TodayScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
-
-      {/* Weight Modal */}
-      <Modal visible={showWeightInput} transparent animationType="fade" onRequestClose={() => setShowWeightInput(false)}>
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}
-          activeOpacity={1} onPress={() => setShowWeightInput(false)}
-          // FIX (ux-pass5): backdrop dokunulabiliri accessible varsayılanıyla modalın
-          // input/butonlarını tek a11y düğümüne düzleştiriyordu — ekran okuyucu için
-          // kapsayıcı olmaktan çıkar, içerik ayrı ayrı odaklanır.
-          accessible={false}
-        >
-          <View
-            // FIX (ux-pass5): kart gövdesine (başlık, 'kg', padding) dokunuş backdrop'a
-            // kabarcıklanıp modalı sessizce kapatıyor, yazılan değer kayboluyordu — kart
-            // dokunuşu kendinde tutar (responder), yalnız kart DIŞI backdrop'u tetikler.
-            onStartShouldSetResponder={() => true}
-            style={{
-              backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl,
-              width: '80%', alignItems: 'center', borderWidth: 0.5, borderColor: colors.border,
-            }}>
-            <View style={{
-              width: 48, height: 48, borderRadius: RADIUS.sm,
-              backgroundColor: METRIC_COLORS.weight + '18',
-              alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
-            }}>
-              <Ionicons name="scale" size={24} color={METRIC_COLORS.weight} />
-            </View>
-            <Text
-              accessibilityRole="header"
-              style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.md }}
-            >
-              Tartı Kaydı
-            </Text>
-            <TextInput
-              style={{
-                backgroundColor: colors.inputBg, borderRadius: RADIUS.md,
-                paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md,
-                color: colors.text, fontSize: FONT.xxl, fontWeight: '700',
-                textAlign: 'center', width: '100%', borderWidth: 0.5, borderColor: colors.border,
-              }}
-              placeholder="73.5"
-              placeholderTextColor={colors.textMuted}
-              value={weightInput}
-              onChangeText={setWeightInput}
-              keyboardType="decimal-pad"
-              accessibilityLabel="Kilo (kg)"
-              returnKeyType="done"
-              onSubmitEditing={handleWeightSave}
-              autoFocus
-            />
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>kg</Text>
-            <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md, width: '100%' }}>
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); setShowWeightInput(false); }}
-                accessibilityRole="button"
-                accessibilityLabel="İptal"
-                style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
-              >
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleWeightSave}
-                // FIX (ux-pass5): yazım sürerken devre dışı + 'Kaydediliyor...' (log.tsx deseni).
-                disabled={weightSaving}
-                accessibilityRole="button"
-                accessibilityLabel="Tartıyı kaydet"
-                style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: weightSaving ? 0.5 : 1 }}
-              >
-                <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{weightSaving ? 'Kaydediliyor...' : 'Kaydet'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       {/* Water quick-amount menu (ux-ideas #9) — long-press the water tile */}
       <Modal visible={waterMenu} transparent animationType="fade" onRequestClose={() => setWaterMenu(false)}>
@@ -765,11 +699,13 @@ export default function TodayScreen() {
       )}
 
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
+        // ux-defect pass: tab bar absolute konumlu DEĞİL (kendi yüksekliğini tüketiyor) — eski
+        // 100px'lik pay panonun sonunda saf ölü boşluktu.
+        contentContainerStyle={{ paddingBottom: SPACING.xl }}
         refreshControl={<RefreshControl refreshing={isPullRefreshing} onRefresh={onPullRefresh} tintColor={colors.primary} />}
       >
         {/* Welcome back / re-onboarding banner (Spec 10.6) */}
-        {returnStatus && returnStatus.level !== 'active' && !returnBannerDismissed && (
+        {returnStatus && returnStatus.level !== 'active' && returnBannerDismissed === false && (
           <View style={{
             backgroundColor: colors.card, borderRadius: RADIUS.md,
             // FIX (audit UI-LAY-02) bu banner HeroSection'ın üstünde, ScrollView'ın
@@ -798,7 +734,7 @@ export default function TodayScreen() {
               </TouchableOpacity>
             )}
             <TouchableOpacity
-              onPress={() => { haptics.tap(); setReturnBannerDismissed(true); }}
+              onPress={() => { haptics.tap(); setReturnBannerDismissed(true); if (user?.id) markDismissed(user.id, 'return_banner', 'day', dayBoundaryHour); }}
               accessibilityRole="button"
               accessibilityLabel="Kapat"
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -811,7 +747,7 @@ export default function TodayScreen() {
 
         {/* FIX (audit: deneme geri-sayımı dashboard'da yüzeye çıkmıyor) — trial
             countdown banner, returnStatus kalıbını yeniden kullanır */}
-        {isInTrial && trialDaysLeft <= 3 && !trialBannerDismissed && (
+        {isInTrial && trialDaysLeft <= 3 && trialBannerDismissed === false && (
           <TouchableOpacity
             onPress={() => { haptics.tap(); router.push('/settings/premium'); }}
             activeOpacity={0.8}
@@ -824,7 +760,7 @@ export default function TodayScreen() {
               // FIX (audit UI-LAY-02) return banner yoksa bu banner ScrollView'ın
               // ilk çocuğu olabilir; üst inset'i kendi içinde uygular ki çentik
               // altına kaymasın (marginTop sadece return banner gizliyken devreye girer).
-              padding: SPACING.md, marginTop: (returnStatus && returnStatus.level !== 'active' && !returnBannerDismissed) ? 0 : insets.top, marginBottom: SPACING.md,
+              padding: SPACING.md, marginTop: (returnStatus && returnStatus.level !== 'active' && returnBannerDismissed === false) ? 0 : insets.top, marginBottom: SPACING.md,
               borderLeftWidth: 3, borderLeftColor: colors.warning,
             }}
           >
@@ -842,7 +778,7 @@ export default function TodayScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => { haptics.tap(); setTrialBannerDismissed(true); }}
+              onPress={() => { haptics.tap(); setTrialBannerDismissed(true); if (user?.id) markDismissed(user.id, 'trial_countdown', 'day', dayBoundaryHour); }}
               accessibilityRole="button"
               accessibilityLabel="Kapat"
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -969,11 +905,16 @@ export default function TodayScreen() {
           );
         })()}
 
+        {/* ── TEK BİLDİRİM YUVASI (ux-defect pass 2026-07-29) ─────────────────────────
+            Sahibin yaşadığı kusur: kapatılabilir kartlar sayfaya dağılmıştı (üstte banner,
+            HEDEF'İN ALTINDA ayrı bir nudge kartı) — üsttekini kapatınca "aynı kart aşağıda
+            hâlâ duruyor" hissi. Artık dismissable bildirimler TEK yuvada, öncelik sırasıyla,
+            AYNI ANDA YALNIZ BİR TANE gösterilir: risk (bugün kritik) > seri-sıfırlandı >
+            haftalık özet > koç nudge'ı. Biri kapanınca sıradaki görünür. */}
         {/* R2 (ux-round2): non-guilt streak recovery — a broken streak is the highest-churn moment;
             reframe the zero as a gentle restart. Distinct from the streak-at-risk nudge (needs an
             active run). Not for brand-new (isBrandNew) or lapsed (return banner owns that). */}
-        {streak === 0 && isBrandNew === false && meals.length === 0 && workouts.length === 0
-          && returnResolved && (!returnStatus || returnStatus.level === 'active') && !streakResetDismissed && (
+        {showStreakReset && (
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <TouchableOpacity
               onPress={() => { haptics.tap(); router.push('/log'); }}
@@ -993,7 +934,7 @@ export default function TodayScreen() {
                 <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>Serin sıfırlandı — sorun değil. Bugün tek kayıtla yeni seriyi başlat.</Text>
               </View>
               <TouchableOpacity
-                onPress={() => { haptics.tap(); setStreakResetDismissed(true); }}
+                onPress={() => { haptics.tap(); setStreakResetDismissed(true); if (user?.id) markDismissed(user.id, 'streak_reset', 'day', dayBoundaryHour); }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityRole="button" accessibilityLabel="Kapat"
               >
@@ -1005,7 +946,7 @@ export default function TodayScreen() {
 
         {/* 1.05 Streak-at-risk nudge (ux-ideas #15) — evening, an unbroken run, nothing logged
             yet today: one log saves it. */}
-        {streak >= 3 && meals.length === 0 && new Date().getHours() >= 19 && !streakRiskDismissed && (
+        {showStreakRisk && (
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <TouchableOpacity
               onPress={() => { haptics.tap(); router.push('/log'); }}
@@ -1025,7 +966,7 @@ export default function TodayScreen() {
                 <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>Bugün henüz kayıt yok — tek öğün yeter, seriyi koru.</Text>
               </View>
               <TouchableOpacity
-                onPress={() => { haptics.tap(); setStreakRiskDismissed(true); }}
+                onPress={() => { haptics.tap(); setStreakRiskDismissed(true); if (user?.id) markDismissed(user.id, 'streak_risk', 'day', dayBoundaryHour); }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityRole="button" accessibilityLabel="Kapat"
               >
@@ -1036,8 +977,8 @@ export default function TodayScreen() {
         )}
 
         {/* 1.1 Weekly recap entry-point (ux-ideas #26) — the auto-generated weekly report,
-            made discoverable + a return ritual. */}
-        {weeklyRecap && (
+            made discoverable + a return ritual. Yields to time-critical streak cards (one-slot rule). */}
+        {showWeeklyRecap && (
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <TouchableOpacity
               onPress={() => { haptics.tap(); router.push('/reports/weekly'); }}
@@ -1083,47 +1024,11 @@ export default function TodayScreen() {
           </View>
         )}
 
-        {/* 1.2 Goal north-star card (ux-ideas #10) — the user's actual motivation,
-            surfaced from goalProgress the store already computes. */}
-        {/* FIX (ux-readiness): require a target weight — a gain_muscle goal saved without one has no
-            distance to track, so the %-bar/"N kg kaldı" card is meaningless (and was contradictory). */}
-        {goalProgress && activeGoal && activeGoal.target_weight_kg != null
-          && (activeGoal.goal_type === 'lose_weight' || activeGoal.goal_type === 'gain_weight' || activeGoal.goal_type === 'gain_muscle') && (
-          <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
-            <GoalProgressCard
-              progress={goalProgress}
-              goalType={activeGoal.goal_type}
-              onPress={() => { haptics.tap(); router.push('/settings/goals'); }}
-            />
-          </View>
-        )}
-
-        {/* 1.3 Life-event countdown (ux-ideas #6) — the coach's most personal memory,
-            made visible. Tap → chat, prefilled about the event. */}
-        {nextLifeEvent && (
-          <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
-            <LifeEventCard
-              event={nextLifeEvent}
-              todayISO={getEffectiveDate(new Date(), dayBoundaryHour)}
-              onPress={() => {
-                haptics.tap();
-                router.push({
-                  pathname: '/(tabs)/chat',
-                  params: {
-                    prefill: `"${nextLifeEvent.title}" için planım nasıl gidiyor?`,
-                    taskNonce: String(Date.now()),
-                  },
-                });
-              }}
-            />
-          </View>
-        )}
-
         {/* 1.5 Coaching Nudges — ONLY the newest one. The emulator pass showed 3 stacked nudge
             cards ("sessizsin" + "tartıya çıkmadın" + "günaydın") on one open: notification spam
             that buries the dashboard. Older unread nudges surface one-at-a-time as each is
             dismissed. */}
-        {coachingMessages.length > 0 && (
+        {showCoachNudge && (
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <CoachingNudge
               messages={coachingMessages.slice(0, 1)}
@@ -1170,6 +1075,42 @@ export default function TodayScreen() {
           </View>
         )}
 
+        {/* 1.2 Goal north-star card (ux-ideas #10) — the user's actual motivation,
+            surfaced from goalProgress the store already computes. */}
+        {/* FIX (ux-readiness): require a target weight — a gain_muscle goal saved without one has no
+            distance to track, so the %-bar/"N kg kaldı" card is meaningless (and was contradictory). */}
+        {goalProgress && activeGoal && activeGoal.target_weight_kg != null
+          && (activeGoal.goal_type === 'lose_weight' || activeGoal.goal_type === 'gain_weight' || activeGoal.goal_type === 'gain_muscle') && (
+          <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+            <GoalProgressCard
+              progress={goalProgress}
+              goalType={activeGoal.goal_type}
+              onPress={() => { haptics.tap(); router.push('/settings/goals'); }}
+            />
+          </View>
+        )}
+
+        {/* 1.3 Life-event countdown (ux-ideas #6) — the coach's most personal memory,
+            made visible. Tap → chat, prefilled about the event. */}
+        {nextLifeEvent && (
+          <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
+            <LifeEventCard
+              event={nextLifeEvent}
+              todayISO={getEffectiveDate(new Date(), dayBoundaryHour)}
+              onPress={() => {
+                haptics.tap();
+                router.push({
+                  pathname: '/(tabs)/chat',
+                  params: {
+                    prefill: `"${nextLifeEvent.title}" için planım nasıl gidiyor?`,
+                    taskNonce: String(Date.now()),
+                  },
+                });
+              }}
+            />
+          </View>
+        )}
+
         {/* 2. Quick Stats: Su + Adım / Uyku + Kilo (2x2) */}
         <View style={{ marginTop: SPACING.md }}>
           <StatStrip
@@ -1181,12 +1122,16 @@ export default function TodayScreen() {
             lastKnownWeightKg={Number.isFinite(Number(profile?.weight_kg)) ? Number(profile?.weight_kg) : null}
             onAddWater={handleAddWater}
             onWaterLongPress={() => { haptics.tap(); setWaterMenu(true); }}
-            onWeightPress={openWeightModal}
+            // ux-defect pass: bespoke tartı modalı silindi — log.tsx'teki üstün akış tek sahip
+            // (stepper, ön-doğrulama, son-kilo prefill). Uyku hücresi de artık ölü değil.
+            onWeightPress={() => { haptics.tap(); router.push('/log?to=weight'); }}
+            onSleepPress={() => { haptics.tap(); router.push('/log?to=sleep'); }}
           />
         </View>
 
-        {/* 3. Weekly Budget Bar */}
-        {weeklyBudgetTotal > 0 && (
+        {/* 3. Weekly Budget Bar — ux-defect pass: ilk kayıttan önce '0 / 17.045' gibi dev ve
+            anlamsız sayılar basıyordu; hafta içinde tüketim başlayınca görünür. */}
+        {weeklyBudgetTotal > 0 && weeklyConsumed > 0 && (
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <View style={{
               backgroundColor: colors.card, borderRadius: RADIUS.md,
@@ -1202,13 +1147,13 @@ export default function TodayScreen() {
                     : `${weeklyRemaining.toLocaleString('tr-TR')} kaldı`}
                 </Text>
               </View>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: weeklyRemaining > 0 && daysLeftInWeek > 0 ? 2 : SPACING.sm }}>
-                {weeklyConsumed.toLocaleString('tr-TR')} / {weeklyBudgetTotal.toLocaleString('tr-TR')} kcal
-              </Text>
+              {/* ux-defect pass: '122 / 17.045 kcal' satırı düştü — dört sayılı kart sayı
+                  bombardımanıydı; oranı bar taşıyor (a11y etiketi tam değerleri korur),
+                  eylenebilir bilgi aşağıdaki günlük tempo satırı. */}
               {/* FIX (ux-round2 #7): actionable daily pace from the weekly remaining. */}
               {weeklyRemaining > 0 && daysLeftInWeek > 0 && (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
-                  Kalan {daysLeftInWeek} gün · ~{dailyPace.toLocaleString('tr-TR')} kcal/gün
+                  Kalan {daysLeftInWeek} gün · günde ~{dailyPace.toLocaleString('tr-TR')} kcal
                 </Text>
               )}
               <View
@@ -1242,13 +1187,16 @@ export default function TodayScreen() {
             workouts={workouts}
             onDeleteMeal={deleteMeal}
             onDeleteWorkout={deleteWorkout}
+            // ux-defect pass (B1): yepyeni kullanıcı aynı iki CTA'yı ÜÇ kartta görüyordu
+            // (hero satırı + hoş-geldin kartı + bu boş-durum) — hoş-geldin görünürken teki yeter.
+            hideEmptyCta={isBrandNew === true}
           />
         </View>
 
-        {/* Profile completion donut (Phase 4) — moved below the daily content; self-hides at 100%. */}
-        <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
-          <ProfileCompletionDonut profile={profile as Record<string, unknown> | null} />
-        </View>
+        {/* Profile completion donut (Phase 4) — self-hides at 100%. ux-defect pass: sarmalayıcı
+            View kaldırıldı — donut %100'de null dönerken marginTop'lu sarmalayıcı ekranın dibinde
+            ölü boşluk bırakıyordu; boşluklar artık komponentin kendi kökünde. */}
+        <ProfileCompletionDonut profile={profile as Record<string, unknown> | null} />
         </>
         )}
 
