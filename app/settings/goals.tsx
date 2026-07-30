@@ -1,3 +1,4 @@
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Alert, KeyboardAvoidingView, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
@@ -41,9 +42,13 @@ export default function GoalsScreen() {
   const [aggressiveWarning, setAggressiveWarning] = useState<string | null>(null);
   const [tempoData, setTempoData] = useState<{ points: { date: string; kg: number }[]; startWeight: number; goalStartDate: string } | null>(null);
 
+  // ux-sweep (GO-01): fetch'in yükleme/hata durumu yoktu — ağ hatasında ekran 'hedefin yok'
+  // varsayılan haliyle açılıp kullanıcıyı YENİ hedef yazmaya itiyordu (mevcut hedefin üstüne).
+  const [goalLoadError, setGoalLoadError] = useState(false);
   useEffect(() => {
     if (!user?.id) return;
-    getGoalPhases(user.id).then(async phases => {
+    setGoalLoadError(false);
+    getGoalPhases(user.id).catch(() => { setGoalLoadError(true); return [] as Awaited<ReturnType<typeof getGoalPhases>>; }).then(async phases => {
       setAllPhases(phases);
       const active = phases.find(p => p.is_active);
       if (active) {
@@ -254,6 +259,14 @@ export default function GoalsScreen() {
       setSaving(false);
     }
   };
+
+  if (goalLoadError) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md }}>
+        <Card><LoadErrorState embedded title="Hedef bilgisi yüklenemedi" onRetry={() => { setGoalLoadError(false); if (user?.id) getGoalPhases(user.id).then(p => setAllPhases(p)).catch(() => setGoalLoadError(true)); }} /></Card>
+      </ScrollView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">

@@ -26,12 +26,12 @@ export default function AllTimeReportScreen() {
     totalMeals: number;
     totalWorkouts: number;
     longestStreak: number;
-    avgCompliance: number;
+    avgCompliance: number | null;
     activeDays: number;
     achievements: number;
   }>({
     startWeight: null, currentWeight: null, totalMeals: 0,
-    totalWorkouts: 0, longestStreak: 0, avgCompliance: 0,
+    totalWorkouts: 0, longestStreak: 0, avgCompliance: null as number | null,
     activeDays: 0, achievements: 0,
   });
   // FIX (ux-pass5): remember a successful load — loadStats re-runs when the streak hook resolves,
@@ -63,8 +63,9 @@ export default function AllTimeReportScreen() {
       }
       const profile = profileRes.data;
       const reports = (reportsRes.data ?? []) as { compliance_score: number; date: string }[];
+      // ux-sweep: hiç rapor yokken 0 uydurma — null dürüstlüğü ('—' basılır).
       const avgComp = reports.length > 0
-        ? Math.round(reports.reduce((s, r) => s + r.compliance_score, 0) / reports.length) : 0;
+        ? Math.round(reports.reduce((s, r) => s + r.compliance_score, 0) / reports.length) : null;
 
       // Calculate longest streak from consecutive days with compliance_score > 0
       let longestStreak = 0;
@@ -157,7 +158,7 @@ export default function AllTimeReportScreen() {
         <StatCard label="Toplam Öğün" value={stats.totalMeals.toLocaleString('tr-TR')} icon="restaurant-outline" />
         <StatCard label="Toplam Antrenman" value={stats.totalWorkouts.toLocaleString('tr-TR')} icon="barbell-outline" />
         <StatCard label="Streak" value={`${stats.longestStreak}`} icon="flame-outline" />
-        <StatCard label="Ort. Uyum" value={`%${stats.avgCompliance}`} icon="checkmark-circle-outline" />
+        <StatCard label="Ort. Uyum" value={stats.avgCompliance != null ? `%${stats.avgCompliance}` : '—'} icon="checkmark-circle-outline" />
         <StatCard label="Başarımlar" value={`${stats.achievements}`} icon="ribbon-outline" />
       </View>
 

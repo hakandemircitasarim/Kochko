@@ -1,3 +1,4 @@
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,14 +39,18 @@ export default function StrengthScreen() {
     }
   }, [profileLoading, profile, isPremium, router]);
 
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     if (!user?.id) return;
     // FIX (audit strength-screen): .catch yoktu — ağ hatasında setLoading(false)
     // hiç çağrılmıyor ve loading hiç okunmadığından yanlış 'kayıt yok' boş-durumu
     // flaşlanıyordu. Hatada da loading'i kapat.
+    setLoadError(false);
     Promise.all(CORE_EXERCISES.map(e => getExerciseHistory(user.id, e)))
       .then(results => { setExercises(results); setLoading(false); })
-      .catch(() => setLoading(false));
+      // ux-sweep (ST-01): sessiz kapatma 'kayıt yok' yalanına düşürüyordu — dürüst hata + retry.
+      .catch(() => { setLoadError(true); setLoading(false); });
     // Load plateau detection for each exercise
     Promise.all(CORE_EXERCISES.map(async e => {
       const result = await detectPlateauByExercise(user.id, e);
@@ -55,13 +60,21 @@ export default function StrengthScreen() {
       for (const r of results) map[r.exercise] = r.result;
       setPlateaus(map);
     });
-  }, [user?.id]);
+  }, [user?.id, reloadKey]);
 
   const validExercises = exercises.filter((e): e is ExerciseHistory => e !== null);
 
   // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
   if (!isPremium && profile !== null && !profileLoading) {
     return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
+
+  if (loadError) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md }}>
+        <Card><LoadErrorState embedded title="Güç kayıtları yüklenemedi" onRetry={() => { setLoading(true); setReloadKey(k => k + 1); }} /></Card>
+      </ScrollView>
+    );
   }
 
   return (

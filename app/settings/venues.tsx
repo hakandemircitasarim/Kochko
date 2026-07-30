@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,9 +45,18 @@ export default function VenuesScreen() {
     // The chat screen will pick up the eating_out mode from the user's message
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteVenue(id);
-    setVenues(prev => prev.filter(v => v.id !== id));
+  const handleDelete = (id: string) => {
+    // ux-sweep (VN-01): çöp ikonu VE uzun basış onaysız + geri-alınmaz siliyordu — öğrenilmiş
+    // tüm makro tahminleriyle birlikte. recipes.tsx onay kalıbı + hata kontrolü.
+    const v = venues.find(x => x.id === id);
+    Alert.alert('Sil', `"${v?.venue_name ?? 'Mekan'}" ve öğrenilen menü tahminleri silinecek. Emin misin?`, [
+      { text: 'İptal', style: 'cancel' },
+      { text: 'Sil', style: 'destructive', onPress: async () => {
+        const { error } = await deleteVenue(id);
+        if (error) { Alert.alert('Hata', 'Silinemedi, tekrar dene.'); return; }
+        setVenues(prev => prev.filter(x => x.id !== id));
+      }},
+    ]);
   };
 
   return (

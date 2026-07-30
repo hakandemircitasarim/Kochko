@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Share } from 'react-native';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -215,12 +216,19 @@ export default function HouseholdScreen() {
             <View style={{ gap: SPACING.sm }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Davet Kodu</Text>
-                <View style={{ backgroundColor: COLORS.surfaceLight, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.sm }}>
-                  <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700', letterSpacing: 2 }}>{household.inviteCode}</Text>
-                </View>
+                {/* ux-sweep (HH-01): kod salt-görüntüydü — 'paylaş' vaadi eylemsizdi. Dokun→paylaş. */}
+                <TouchableOpacity
+                  onPress={() => { void Share.share({ message: `KOCHKO aile davet kodum: ${household.inviteCode}` }); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Davet kodu ${household.inviteCode}. Paylaşmak için dokun`}
+                  style={{ backgroundColor: COLORS.surfaceLight, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
+                >
+                  <Text selectable style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700', letterSpacing: 2 }}>{household.inviteCode}</Text>
+                  <Ionicons name="share-social-outline" size={16} color={COLORS.primary} />
+                </TouchableOpacity>
               </View>
               <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
-                Bu kodu paylaşarak aile üyelerini davet edebilirsin.
+                Koda dokunarak paylaşabilirsin — aile üyeleri bu kodla katılır.
               </Text>
             </View>
           </Card>

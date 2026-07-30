@@ -143,11 +143,25 @@ export async function deleteAISummaryNote(
     if (error) throw new Error(error.message);
     if (!upd || upd.length === 0) throw new Error('Not silinemedi (kayıt güncellenmedi).');
   } else if (Array.isArray(currentValue)) {
-    // Remove from array (patterns, habits, etc.)
-    const updated = (currentValue as { description: string }[]).filter(
-      item => !item.description?.includes(noteToDelete)
-    );
+    // ux-sweep (F1): 'description' tek alan varsayımı micro_nutrient_risks ({nutrient}) ve
+    // habit_progress ({habit}) öğelerinde filter'ı no-op yapıyordu — dizi AYNEN geri yazılıyor,
+    // coach-memory başarı sesi çalıp öğe yerinde kalıyordu. Alan-bazlı eşle + hiçbir şey
+    // silinmediyse THROW (çağırandaki 'Silinemedi' alert'i dürüstçe çalışsın).
+    const arr = currentValue as Array<Record<string, unknown> | string>;
+    const matchText = (item: Record<string, unknown> | string): string =>
+      typeof item === 'string' ? item : String(item.description ?? item.nutrient ?? item.habit ?? JSON.stringify(item));
+    const updated = arr.filter(item => !matchText(item).includes(noteToDelete));
+    if (updated.length === arr.length) throw new Error('Not silinemedi (eşleşen kayıt bulunamadı).');
     const { data: upd, error } = await supabase.from('ai_summary').update({ [field]: updated } as never).eq('user_id', userId).select('user_id');
+    if (error) throw new Error(error.message);
+    if (!upd || upd.length === 0) throw new Error('Not silinemedi (kayıt güncellenmedi).');
+  } else if (currentValue && typeof currentValue === 'object') {
+    // ux-sweep (F1): portion_calibration gibi OBJE alanlar hiçbir dala girmeden sessizce
+    // return ediyordu — anahtar düşürme dalı eklendi (coach-memory anahtarın kendisini yollar).
+    const obj = { ...(currentValue as Record<string, unknown>) };
+    if (!(noteToDelete in obj)) throw new Error('Not silinemedi (eşleşen kayıt bulunamadı).');
+    delete obj[noteToDelete];
+    const { data: upd, error } = await supabase.from('ai_summary').update({ [field]: obj } as never).eq('user_id', userId).select('user_id');
     if (error) throw new Error(error.message);
     if (!upd || upd.length === 0) throw new Error('Not silinemedi (kayıt güncellenmedi).');
   }

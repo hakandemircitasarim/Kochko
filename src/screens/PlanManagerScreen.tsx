@@ -379,12 +379,16 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
       setAltCandidate(data.plan_snapshot as unknown as PlanData);
       setShowAltModal(true);
     } else {
-      // FIX (fix-pass 07-12, item 8b): the invoke error was discarded — the tap did
-      // nothing visible. Surface it in-thread.
-      setMessages(prev => [
-        ...prev,
-        { id: 'err-' + Date.now(), role: 'assistant', content: error ?? 'Alternatif üretilemedi, tekrar dene.' },
-      ]);
+      // FIX (fix-pass 07-12, item 8b) + ux-sweep (PLN-05): chat listesi yalnız draft görünümünde
+      // ekranda — aktif görünümden tetiklenmişse baloncuk GÖRÜNMEZ. Görünüme göre kanal seç.
+      if (view !== 'draft') {
+        Alert.alert('Alternatif üretilemedi', error ?? 'Bağlantını kontrol edip tekrar dene.');
+      } else {
+        setMessages(prev => [
+          ...prev,
+          { id: 'err-' + Date.now(), role: 'assistant', content: error ?? 'Alternatif üretilemedi, tekrar dene.' },
+        ]);
+      }
     }
     await load();
   };
@@ -418,7 +422,11 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
   };
 
   const handleApprove = async () => {
-    if (!chatSessionId || !draft) return;
+    // ux-sweep (PLN-02): sid/draft yokluğunda SESSİZ return butonu ölü gösteriyordu.
+    if (!chatSessionId || !draft) {
+      Alert.alert('Bir sorun oluştu', 'Plan oturumu bulunamadı — ekranı kapatıp tekrar açmayı dene.');
+      return;
+    }
     const gate = canApprovePlan(planType);
     if (!gate.allowed) {
       setMessages(prev => [
@@ -522,6 +530,12 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
 
   const handleStartRevision = async () => {
     if (!user?.id || !active) return;
+    // ux-sweep (PLN-01): 5 await'lik ağ dizisi boyunca buton hiçbir meşguliyet göstermiyordu ve
+    // çifte dokunuş 23505'e düşüyordu — PlanActiveView zaten creatingRevision={sending} ile
+    // busy/disabled çiziyor, sadece bağlanmamıştı.
+    if (sending) return;
+    setSending(true);
+    try {
     // FIX (ux-audit major): warn a free user whose quota is used BEFORE they invest a whole
     // revision conversation, exactly like startDraftCreation does — otherwise they negotiate a
     // full revision and only hit the paywall at "Onayla ve kaydet" (invest-then-wall).
@@ -564,11 +578,10 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
       .select('id')
       .limit(1);
     if (error || !inserted?.[0]) {
-      // FIX (audit Wave3): never surface the raw error.message (English/SQL) — use a fixed Turkish line.
-      setMessages(prev => [
-        ...prev,
-        { id: 'err-' + Date.now(), role: 'assistant', content: 'Revizyon başlatılamadı, tekrar dene.' },
-      ]);
+      // ux-sweep (PLN-01): bu dalda view hâlâ 'active' — chat listesi EKRANDA YOK; baloncuğa
+      // yazılan hata görünmezdi (dosyanın kendi getDraft yorumu aynı tuzağı 30 satır yukarıda
+      // yakalamıştı). Alert kalıbıyla değiştirildi.
+      Alert.alert('Bağlantı sorunu', 'Revizyon başlatılamadı. Bağlantını kontrol edip tekrar dene.');
       return;
     }
     const sid = await createHeadlessSession({ title: cfg.sessionReviseTitle, topicTags: [cfg.topicTag] });
@@ -583,6 +596,9 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
       },
     ]);
     await load();
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleHistory = () => {

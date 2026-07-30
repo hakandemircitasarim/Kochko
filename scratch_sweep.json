@@ -1,0 +1,603 @@
+{
+ "confirmed": [
+  {
+   "id": "IDX-REACT-01",
+   "file": "app/index.tsx",
+   "line": 122,
+   "severity": "high",
+   "what": "\"Silmeyi iptal et\" butonu reactivateAccount(session.user.id) çağrısını await'siz ve .catch'siz ateşliyor; setReactivating(true) aynı anda onay ekranını kaldırdığı için kullanıcı yazma işlemi daha bitmeden /(tabs)'a Redirect ediliyor. profile.store.ts:61-74'teki reactivateAccount ve privacy.service.ts:51'deki cancelAccountDeletion hata durumunda THROW eder — bu rejection hiçbir yerde yakalanmıyor. Ayrıca index.tsx:12-14'teki yorum 'reactivation spinner gösterilir' diyor ama reactivating=true için hiçbir spinner JSX'i yok (kod doğrudan satır 143'e düşüyor).",
+   "user_experience": "Silme talebimi iptal ettim, uygulama beni içeri aldı, her şey yolunda sandım — o an internetim koptuğu için iptal aslında kaydedilmemiş ve 30 gün sonra hesabım tüm verilerimle kalıcı olarak silindi. Hiçbir uyarı görmedim.",
+   "fix": "onPress'i async yap: setReactivating(true); try { await reactivateAccount(session.user.id); } catch { setReactivating(false); haptics yok ama Alert.alert('Hata', 'Silme talebi iptal edilemedi. İnternetini kontrol edip tekrar dene.'); return; } — ve reactivating=true iken yorumun vadettiği ActivityIndicator ekranını (mevcut 'Profilin yükleniyor' bloğunun kopyası, accessibilityLabel='Hesap geri açılıyor') gerçekten render et; Redirect ancak await başarıyla dönünce çalışsın.",
+   "cluster": "auth-entry",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in code: app/index.tsx:119-123 fires reactivateAccount without await/.catch while setReactivating(true) removes the gate (line 99 condition !reactivating) and falls through to Redirect /(tabs) at line 147 mid-write. privacy.service.ts:51 throws on update error and profile.store.ts:64 awaits it, so a network failure becomes an unhandled rejection with no user feedback and deletion_requested_at left set — the 30-day cron would still hard-delete. The line 12-14 comment promises a reactivation spinner that has no corresponding JSX (reactivating=true renders nothing special). All claims accurate, severity=high justified.",
+    "fix_correct": true,
+    "fix_note": "Fix fits the file's patterns (existing ActivityIndicator blocks, Alert-based error handling elsewhere in app). Important detail it preserves: on success, reactivating must STAY true, because the local zustand profile still has deletion_requested_at set (profile.store only clears deleted_at locally, lines 71-73) — the proposed fix only resets reactivating in catch, so the Redirect path remains reachable. The spinner copy of the 'Profilin yükleniyor' block with accessibilityLabel='Hesap geri açılıyor' is the right shape."
+   }
+  },
+  {
+   "id": "PLN-01",
+   "file": "src/screens/PlanManagerScreen.tsx",
+   "line": 566,
+   "severity": "high",
+   "what": "handleStartRevision hicbir asamada `sending`i set etmiyor (creatingRevision hep false kaliyor) ve insert hatasi setMessages ile chat listesine yaziliyor — ama o anda view='active' oldugu icin chat listesi ekranda YOK. Ayni fonksiyonun 532-538. satirlarindaki yorum bu tuzagi getDraft icin fark edip Alert kullanmis; 5 satir asagidaki insert hatasi (566-572) hala gorunmez baloncuga gidiyor. Buton mesgul gorunmedigi icin 1-3 sn'lik cok-adimli ag dizisi sirasinda ikinci tiklama mumkun; migration 030'un partial-unique indexi ikinci INSERT'i 23505 ile dusurup hatayi yine gorunmez listeye yaziyor (ilk tiklama basarili olup draft acilinca bu sahte 'Revizyon baslatilamadi' baloncugu bir de ustune gorunur oluyor).",
+   "user_experience": "Aktif planimda 'Kochko ile konus'a basiyorum — saniyelerce hicbir sey olmuyor, donme isareti bile yok. Baglanti koptuysa buton tamamen olu: ne hata ne aciklama. Sabirsizlanip ikinci kez basarsam, revizyon acildiginda sohbetin icinde durduk yere 'Revizyon baslatilamadi, tekrar dene.' yaziyor.",
+   "fix": "handleStartRevision'in basina setSending(true), tum cikis yollarina (finally) setSending(false) ekle — PlanActiveView zaten creatingRevision={sending} ile busy/disabled gosteriyor. 566-572'deki insert-hata dalini setMessages yerine getDraft catch'indeki (538) kalipla degistir: Alert.alert('Baglanti sorunu', 'Revizyon baslatilamadi. Baglantini kontrol edip tekrar dene.').",
+   "cluster": "plan",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in source: handleStartRevision (PlanManagerScreen.tsx:523-586) never touches setSending, yet PlanActiveView already renders full busy/disabled UI from creatingRevision={sending} (PlanActiveView.tsx:392-406, 533-547) — so the button gives zero feedback during a 5-await network sequence. The insert-error branch (566-572) writes the error via setMessages and returns while view is still 'active', where the chat list is not rendered — invisible, exactly the trap the file's own comment at 532-533 identifies and fixes with an Alert for getDraft. No double-tap guard exists (the sending guard at line 368 belongs to another function), so a second tap triggers a 23505 on migration 030's partial-unique index, appending a phantom 'Revizyon başlatılamadı' bubble that surfaces once the first tap opens the draft chat. All three sub-claims are accurate, not exaggerated.",
+    "fix_correct": true,
+    "fix_note": "setSending(true) at entry + finally setSending(false) activates the existing creatingRevision busy/disabled wiring (which also blocks the double-tap), and swapping the setMessages error branch for the Alert pattern already used at line 538 follows the file's established convention for errors in the active view. No conflict with the draft-view uses of sending. Minor note: the finally-based reset also covers the early-return quota/getDraft paths, which is correct."
+   }
+  },
+  {
+   "id": "LOG-01-voice-mic-stuck",
+   "file": "C:/Users/demir/Desktop/KOCHKOAPP/app/log.tsx",
+   "line": 813,
+   "severity": "high",
+   "what": "Ses ekranındaki X (Kapat) butonu kayıt sürerken yalnızca setIsRecording(false)+setScreen('main') yapıyor; stopRecording() hiç çağrılmıyor. voice.service.ts modül-seviyesi `recording` nesnesi aktif kalıyor (voice.service.ts:11). Sonraki 'Sesle gir' denemesinde Audio.Recording.createAsync 'Only one Recording object...' ile fırlatıyor, startRecording false dönüyor ve log.tsx:505 yanlış teşhisle 'İzin gerekli — Mikrofon izni ver.' gösteriyor. Tek stopRecording çağrısı isRecording=true gerektiren durdurma dalında olduğundan kilit uygulama yeniden başlatılana dek çözülmüyor.",
+   "user_experience": "Ses kaydını başlattım, vazgeçip X ile çıktım — mikrofon arka planda AÇIK kaldı (Android'de yeşil mikrofon göstergesi yanmaya devam ediyor); bir daha 'Sesle gir'e bastığımda izin verili olduğu halde sürekli 'Mikrofon izni ver' diyor, uygulamayı kapatana kadar sesli giriş tamamen kilitli.",
+   "fix": "log.tsx:813 onPress'i şu yap: () => { if (isRecording) { void stopRecording(); } setIsRecording(false); setScreen('main'); } — stopRecording modüldeki recording'i unload edip null'luyor (voice.service.ts:43-50). Ek olarak log.tsx:505'teki mesajı 'Kayıt başlatılamadı — mikrofon iznini kontrol et.' yaparak yanlış teşhisi yumuşat.",
+   "cluster": "log",
+   "verdict": {
+    "real": true,
+    "reason": "Confirmed by reading the code. app/log.tsx:813 onPress is exactly `() => { setScreen('main'); setIsRecording(false); }` — no stopRecording(). voice.service.ts:11 holds the module-level `recording` object; the only path that unloads it is the isRecording=true branch of handleVoiceToggle (log.tsx:483) or stopAndTranscribe (unused by log.tsx). Grep confirms no unmount cleanup or other stopRecording call anywhere in log.tsx, so after X the expo-av Recording stays prepared and the mic stays live. On the next 'Sesle gir', startRecording (voice.service.ts:16-34) re-requests permission (granted), then Audio.Recording.createAsync throws expo-av's 'Only one Recording object can be prepared at a given time' — the bare catch swallows it and returns false, and log.tsx:504-505 maps every false to the misleading 'İzin gerekli — Mikrofon izni ver.' alert. Since the module `recording` is never nulled, every retry fails identically until app restart. Chain fully verified, severity 'high' is fair for a Premium feature that hard-locks with a wrong diagnosis while keeping the mic hot.",
+    "fix_correct": true,
+    "fix_note": "Fix fits the architecture: stopRecording() (voice.service.ts:39-52) unloads and nulls the module recording, resets allowsRecordingIOS, and nulls the ref even on error, so `if (isRecording) { void stopRecording(); }` in the X onPress fully releases the lock; fire-and-forget is safe since the URI is discarded intentionally. The log.tsx:505 message softening ('Kayıt başlatılamadı — mikrofon iznini kontrol et.') is a sensible companion since startRecording conflates permission-denied with any createAsync failure. Minor optional hardening not required by the finding: a useEffect unmount cleanup calling stopRecording would also cover leaving the screen via back gesture/navigation, which the X-button fix alone does not."
+   }
+  },
+  {
+   "id": "daily-no-regenerate",
+   "file": "app/reports/daily.tsx",
+   "line": 135,
+   "severity": "high",
+   "what": "Bugünün raporu bir kez var olduktan sonra yenileme yolu yok: 'Rapor Oluştur' butonu yalnızca `!report` dalında render ediliyor (135-150); rapor render dalında (152-212) hiçbir yenile butonu yok. Oysa daily_reports satırı otomatik job tarafından da yazılıyor (progress.tsx:29-33 yorumu bunu doğruluyor), yani kullanıcı butona hiç basmadan da 'dolu' ekrana düşüyor. Kardeş ekranlar bunu çözmüş: weekly.tsx:332 'Yeniden Oluştur', monthly.tsx:372-373 'Raporu Yenile'.",
+   "user_experience": "Akşam yemeğimi kaydettim, Gün Sonu Raporu'nu açtım — hâlâ öğlen üretilen eski kaloriler yazıyor, dashboard'la sayılar tutmuyor ve raporu güncelleyecek hiçbir buton yok.",
+   "fix": "Rapor dalının sonuna (satır 211'deki 'Yarın İçin Tek Aksiyon' kartından sonra), weekly.tsx:332 kalıbıyla `{isToday && (<Button title=\"Yeniden Oluştur\" variant=\"outline\" onPress={handleGenerate} loading={generating} />)}` ekle; handleGenerate zaten force:true ile çağırıyor ve satırı DB'den yeniden okuyor, ek iş gerekmez.",
+   "cluster": "reports",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in app/reports/daily.tsx: 'Rapor Oluştur' exists only in the !report branch (135-150); the report branch (152-212) has no refresh control. progress.tsx:29-31 confirms daily_reports rows are auto-written by the report job, so users land on stale full reports without ever generating. weekly.tsx:332 ('Yeniden Oluştur') and monthly.tsx:372-377 ('Raporu Yenile') confirm the sibling screens already solve this.",
+    "fix_correct": true,
+    "fix_note": "handleGenerate (daily.tsx:90-115) already calls ai-report with force:true, re-reads the row into setReport, and manages generating/haptics/error alerts — adding {isToday && <Button title=\"Yeniden Oluştur\" variant=\"outline\" onPress={handleGenerate} loading={generating} />} after the 'Yarın İçin Tek Aksiyon' card needs no extra wiring and matches the weekly/monthly pattern. The isToday gate is consistent with the existing decision not to retro-generate past days."
+   }
+  },
+  {
+   "id": "monthly-past-months-unreachable",
+   "file": "app/reports/monthly.tsx",
+   "line": 73,
+   "severity": "high",
+   "what": "Ekran ay navigasyonu olmadan month_start'ı hep İÇİNDE bulunulan efektif aya sabitliyor (73-78: `monthStart = `${_y}-${_mm}-01``, sorgu 91-92 `.eq('month_start', monthStart)`). Ayın 1'inde biten ayın AI raporu (monthly_reports'ta duruyor) kalıcı olarak erişilmez oluyor; onun yerine bomboş yeni ay + neredeyse sıfır veriyle ücretli LLM üretimi tetikleyen 'Rapor Oluştur' (276-281) gösteriliyor. Aynı sınıftaki kusur daily için 'ux-audit major' olarak düzeltilmiş (daily.tsx:59-63 date parametresi), monthly unutulmuş.",
+   "user_experience": "Dün gece Temmuz analizime bakıyordum; bu sabah (1 Ağustos) ekran bomboş — %0'a yakın uyum, boş grafik ve yeni 'Rapor Oluştur' butonu. Geçen ayın raporuna dönmenin hiçbir yolu yok.",
+   "fix": "calendar.tsx:54-55 ve 78-96'daki `< Ay Yıl >` navigasyon kalıbını taşı: `year/month` state'i (başlangıç = efektif ay), loadData'ya parametre olarak geçir ve monthStart/monthEnd/prevMonth sınırlarını ondan türet; 'Rapor Oluştur/Raporu Yenile' butonlarını yalnızca görüntülenen ay == efektif ay iken göster (geçmiş ay raporu retro üretilmez — daily'deki isToday kapısının aynısı).",
+   "cluster": "reports",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in app/reports/monthly.tsx: month_start is hard-anchored to the current effective month (lines 73-78) with no navigation state and no date param (daily.tsx:62-63 has one), and the sole entry point (progress.tsx:783) passes no params — so a finished month's persisted monthly_reports row becomes permanently unreachable on the 1st, replaced by an empty month plus the paid 'Rapor Oluştur' button (271-288). The referenced calendar.tsx nav pattern (54-55, 78-96) and daily's isToday gate both exist exactly as described.",
+    "fix_correct": true,
+    "fix_note": "Porting calendar.tsx's year/month state + prev/next handlers and deriving monthStart/monthEnd/prevMonth bounds from it is mechanical (all bounds at 77-85 already derive from _y/_m). Gating generate/refresh buttons to viewed==effective month is right: handleGenerateReport invokes ai-report with no date, so monthly generation is current-month-only anyway; showing it on past months would mislead. One implementation note: the fourWeeksAgo weekly_reports window (line 79) and the period header (line 208) must also be re-derived from the viewed month, and dependency arrays updated, or navigated months will show current-month weekly summaries/header."
+   }
+  },
+  {
+   "id": "HE-01",
+   "file": "app/settings/health-events.tsx",
+   "line": 64,
+   "severity": "high",
+   "what": "Silme hatası kontrol edilmiyor + optimistic remove: `await supabase.from('health_events').delete().eq('id', id)` sonucundaki error hiç okunmuyor, satır her koşulda local state'ten düşülüyor. Kardeş ekran food-preferences.tsx:62-68 aynı işlemde error'u kontrol ediyor — burada unutulmuş. Bu güvenlik verisi (alerji/ameliyat).",
+   "user_experience": "Eski alerji kaydımı sildim, listeden kayboldu, 'tamam' dedim; ertesi gün ekranı açınca kayıt geri geldi ve koç hâlâ o alerjene göre yemekleri engelliyor — sildiğimi sanıyordum.",
+   "fix": "food-preferences kalıbını kopyala: `const { error } = await supabase.from('health_events').delete().eq('id', id); if (error) { haptics.error(); Alert.alert('Silinemedi', 'Kayıt silinemedi, lütfen tekrar dene.'); return; } haptics.success(); setEvents(prev => prev.filter(e => e.id !== id));`",
+   "cluster": "settings-health",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in source: app/settings/health-events.tsx:63-65 runs `await supabase.from('health_events').delete().eq('id', id)` without reading the result's error, then unconditionally does `setEvents(prev => prev.filter(...))` — a failed delete (offline, RLS, network) silently removes the row from the UI only, and it reappears on next load. The safety framing is legitimate: this table holds allergy/surgery data the coach reads. The sibling screen food-preferences.tsx:62-68 does check `{ error }`, alert, and return before mutating state, confirming the pattern exists elsewhere and was omitted here. Severity 'high' is fair given the safety-data context and the user-visible phantom-delete.",
+    "fix_correct": true,
+    "fix_note": "The proposed fix mirrors the established food-preferences.tsx pattern exactly (error check → haptics.error + Turkish Alert + early return; else haptics.success + optimistic filter) and fits the codebase's conventions (user-friendly TR error text, no raw PostgREST leak). One addition needed: health-events.tsx does not currently import haptics — add `import { haptics } from '@/lib/haptics';` (same as food-preferences.tsx:14). Alternatively drop the haptics calls; but including them matches the sibling screen. The fix goes inside the existing Alert 'Sil' onPress async handler at lines 63-66."
+   }
+  },
+  {
+   "id": "F1",
+   "file": "src/services/privacy.service.ts",
+   "line": 139,
+   "severity": "high",
+   "what": "coach-memory'nin tekil silme yolu 3 alanda ölü: deleteAISummaryNote yalnızca string ve 'description' alanlı dizileri işliyor. portion_calibration bir obje olduğu için hiçbir dala girmeden sessizce return ediyor (satır 139-153); micro_nutrient_risks ({nutrient, risk_level}) ve habit_progress ({habit, status}) öğelerinde 'description' alanı olmadığından filter `!item.description?.includes(...)` hep true dönüyor ve dizi AYNEN geri yazılıyor. Çağıran taraf (app/settings/coach-memory.tsx:532, 679, 735) hata görmediği için haptics.success() çalıyor ve loadData sonrası öğe yerinde duruyor.",
+   "user_experience": "Kullanıcı porsiyon çipine / mikro besin riskine / alışkanlık satırına uzun basıyor, 'Bu KVKK Madde 17 kapsamında hakkındır' diyen onay kutusunda Sil'e basıyor, başarı titreşimi geliyor — ve kayıt hâlâ ekranda. Silme hakkı vaat edilip yerine getirilmiyor.",
+   "fix": "deleteAISummaryNote'a iki dal ekle: (1) düz obje ise `const { [noteToDelete]: _, ...rest } = currentValue` ile anahtarı düşür ve rest'i yaz; (2) dizi öğelerini alan-bazlı eşle: `item => !(item.description ?? item.nutrient ?? item.habit ?? '').includes(noteToDelete)`. Hiçbir eşleşme silinmediyse throw et ki coach-memory'deki catch 'Silinemedi' alert'ini göstersin.",
+   "cluster": "settings-coach",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in source: privacy.service.ts deleteAISummaryNote (lines 139-153) only handles string fields and arrays filtered by item.description. portion_calibration is a Record (line 99) so it falls through both branches and silently returns; micro_nutrient_risks ({nutrient,risk_level}, line 111) and habit_progress ({habit,status}, line 112) items lack description, so !item.description?.includes(...) is always true and the unchanged array is rewritten — update succeeds, no throw. Callers coach-memory.tsx:532/679/735 pass the record key / r.nutrient / h.habit; with no error thrown, line 116 fires haptics.success() and loadData() shows the item still present, despite the KVKK Madde 17 promise in the confirm dialog (line 106). High severity is justified — the sibling handleClearField even documents that a Madde 17 delete must never silently fail.",
+    "fix_correct": true,
+    "fix_note": "Both proposed branches match the callers' contracts: object-key drop matches the portion_calibration key passed at :532; description ?? nutrient ?? habit matching covers all three array fields plus existing behavioral_patterns. Throwing on no-match routes into the existing catch/Alert('Silinemedi') at coach-memory.tsx:117-120 and mirrors the service's existing throw-on-0-row pattern. Minor refinement: detect no-match via updated.length === currentValue.length for arrays / key-presence for objects, and optionally extend the same throw to the string branch for symmetry."
+   }
+  },
+  {
+   "id": "F2",
+   "file": "app/settings/session-viewer.tsx",
+   "line": 56,
+   "severity": "high",
+   "what": "Mesajlar `order('created_at', { ascending: true }).limit(500)` ile çekiliyor: 500'den uzun oturumlarda EN YENİ mesajlar sessizce kesiliyor ve hiçbir 'devamı var' göstergesi yok. Uygulama tek-thread sohbet mimarisine geçtiği için (chat.service.ts:458 getOrCreateActiveSession — tüm koç konuşması tek oturumda birikir) aktif kullanıcının ana oturumu 500'ü kolayca aşar.",
+   "user_experience": "Kullanıcı Sohbet Geçmişi'nden ana sohbetini açıyor ve sadece aylar önceki eski mesajları görüyor; dünkü konuşması 'Sohbet Detayı'nda yok — uygulama geçmişini kaybetmiş gibi görünüyor. Arama sonucuna dokununca da eşleşen mesaj ilk 500'de değilse ekranda hiç bulunamıyor.",
+   "fix": "Sıralamayı `ascending: false` + limit(500) yap ve render öncesi diziyi reverse et (en yeni 500 garanti görünür); 500 satır geldiyse liste başına 'Daha eski mesajlar gösterilmiyor' notu koy. Ayrıca satır 7'deki kullanılmayan ActivityIndicator import'unu kaldır.",
+   "cluster": "settings-coach",
+   "verdict": {
+    "real": true,
+    "reason": "Confirmed in code: session-viewer.tsx:55-56 uses order ascending + limit(500), which returns the OLDEST 500 rows and silently drops the newest, with no truncation indicator. The single-thread architecture is also confirmed (chat.service.ts:458 getOrCreateActiveSession; comment at 518-520 says createSession was removed in favor of one canonical thread), so an active user's main session realistically exceeds 500 messages and the newest conversation vanishes from Sohbet Detayı. Screen is reached from chat-history.tsx:105 (rows and search results), and since only sessionId is passed (no message anchor), a search match outside the loaded window can never be shown. The unused ActivityIndicator import at line 7 is also real (loading uses SkeletonScreen).",
+    "fix_correct": true,
+    "fix_note": "Descending fetch + client reverse + 500-row truncation note is architecturally sound and minimal. One refinement: the truncation note should be keyed to the RAW fetched row count (data.length === 500) before the role/marker/empty filters, since filtering can shrink the displayed array below 500 even when the DB truncated. Fix still does not deep-link/scroll to a specific search match, but that is beyond the finding's scope."
+   }
+  },
+  {
+   "id": "MT-01",
+   "file": "app/settings/meal-templates.tsx",
+   "line": 141,
+   "severity": "high",
+   "what": "Şablon kartına TEK dokunuş, onay ve geri-alma olmadan bugüne gerçek bir öğün kaydı yazıyor (handleUse → insertMealLogWithItems). Ekranda tek ipucu 'Uzun bas: sil' — dokunmanın kayıt attığını söyleyen hiçbir şey yok.",
+   "user_experience": "Şablonlarıma göz atarken bir karta dokundum, birden 'Kaydedildi: bugüne kaydedildi' dedi — günlüğüme yemediğim 650 kcal işlendi ve geri alamıyorum.",
+   "fix": "handleUse başına Alert.alert('Bugüne kaydet?', `\"${t.name}\" (${t.total_calories} kcal) bugünkü günlüğüne eklenecek.`, [{text:'Vazgeç',style:'cancel'},{text:'Kaydet',onPress:...}]) ekle; karta 'Dokun: bugüne kaydet | Uzun bas: sil' alt metni yaz.",
+   "cluster": "settings-life",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in app/settings/meal-templates.tsx:141 — onPress={() => handleUse(t)} fires on single tap; handleUse (line 70) immediately calls useTemplate, which in src/services/templates.service.ts:73 calls insertMealLogWithItems, materializing a real meal_logs row for today with all template calories. There is no confirmation dialog (Alert only appears AFTER the write succeeds, line 78) and no undo/rollback path on this screen. The card hint (line 156) only says 'Uzun bas: sil'. Minor overstatement: the screen subtitle at line 93 does say 'tek dokunuşla tekrar gir', so there is one weak hint — but it is off-card and easy to miss, and the missing confirmation/undo on an irreversible calorie write remains a genuine high-severity issue for a browsing user.",
+    "fix_correct": true,
+    "fix_note": "The Alert.alert confirmation matches the file's own pattern (handleDelete at line 83 already uses an Alert confirm with cancel/destructive buttons), uses fields that exist on MealTemplate (name, total_calories), and adding 'Dokun: bugüne kaydet | Uzun bas: sil' to the line-156 hint text is a one-line change consistent with the existing hint. Architecturally sound; an even richer alternative would be an undo-toast after logging, but the proposed confirm-first fix is correct and idiomatic for this codebase."
+   }
+  },
+  {
+   "id": "VN-01",
+   "file": "app/settings/venues.tsx",
+   "line": 48,
+   "severity": "high",
+   "what": "handleDelete onaysız ve anında siliyor: çöp ikonuna dokunmak (satır 96-104) VE karta uzun basmak (satır 88) mekanı tüm öğrenilmiş makro verisiyle geri dönüşsüz uçuruyor. deleteVenue (venues.service.ts:20-22) hatayı da yutuyor — silme başarısız olsa bile UI'dan düşüyor. Kardeş ekranlar (recipes.tsx:58, meal-templates.tsx:83) Alert ile onay alıyor.",
+   "user_experience": "Listeyi kaydırırken çöp ikonuna yanlışlıkla değdim — aylardır öğrenilen 'Simit Sarayı' menü tahminleri tek dokunuşta, soru sorulmadan yok oldu.",
+   "fix": "handleDelete'i recipes.tsx:58'deki desenle sarmala: Alert.alert('Sil', `\"${v.venue_name}\" ve öğrenilen menü tahminleri silinecek. Emin misin?`, [{text:'İptal'},{text:'Sil',style:'destructive',onPress:...}]); deleteVenue'dan dönen hatayı kontrol edip başarısızlıkta 'Silinemedi, tekrar dene' göster.",
+   "cluster": "settings-life",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in source: venues.tsx handleDelete (line 48-51) has no confirmation and Alert is not imported; both the long-press (line 88) and the trash icon with 12px hitSlop (lines 96-104) trigger instant deletion. deleteVenue (venues.service.ts:20-22) discards the supabase { error } result, so failed deletes are silently swallowed while the UI removes the row anyway. Sibling screens recipes.tsx:57-67 and meal-templates.tsx:82-86 both use Alert.alert confirmation (recipes additionally handles delete failure), making venues.tsx the inconsistent outlier. Irreversible loss of accumulated learned_items data from a mistap justifies high severity.",
+    "fix_correct": true,
+    "fix_note": "Fix mirrors the established recipes.tsx pattern (confirm Alert + destructive style + failure toast) and fits the architecture. Minor addendum: deleteVenue currently returns void, so implementing the error check requires changing the service to return { error } or throw — a trivial, consistent change."
+   }
+  },
+  {
+   "id": "CH-01",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\challenges.tsx",
+   "line": 103,
+   "severity": "high",
+   "what": "Custom 'Özel' tip challenge metric:'manual' ile kaydediliyor, ama gece değerlendiricisi (supabase/functions/ai-proactive/index.ts:1878) 'manual' metriği `continue` ile atlıyor ve ekranda elle işaretleme UI'ı yok. Client tarafında challenge progress'e yazan başka hiçbir yüzey de yok (grep doğrulandı).",
+   "user_experience": "Kendi challenge'ımı ('10 gün şekersiz', tip: Özel) başlattım; günler geçti, ilerleme hep 0/10 kaldı — işaretleyecek bir buton da yok, challenge asla tamamlanamıyor.",
+   "fix": "Aktif challenge kartına (challenges.tsx:164 buton satırı) c.target.metric==='manual' iken 'Bugünü işaretle' butonu ekle; challenges.service.ts'e progress dizisine {date: bugün, value:1, met:true} append eden markManualDay(id) fonksiyonu yaz (idempotent: aynı tarih varsa atla, met sayısı duration_days'e ulaşınca status='completed'). Alternatif: 'custom' tipini formdan kaldırıp 4 otomatik tiple sınırla.",
+   "cluster": "settings-social",
+   "verdict": {
+    "real": true,
+    "reason": "Doğrulandı, kod bizzat okundu. (1) challenges.tsx:103 — 'custom' tipi gerçekten metric:'manual' ile kaydediliyor ve handleStartCustom bu target'ı startChallenge'a geçiriyor. (2) supabase/functions/ai-proactive/index.ts:1878 — gece değerlendiricisi evaluateChallenges'ta `if (metric === 'manual') continue; // user-defined, not auto-scorable` satırı aynen mevcut; progress'e yazan tek yer bu fonksiyon (satır 1939/1943). (3) Grep ile tüm challenges tablosu erişimleri tarandı: client tarafında challenges.service.ts sadece insert/status update (pause/resume/abandon) yapıyor, progress dizisine hiçbir client yüzeyi yazmıyor; ai-chat:6035-6073 sadece dönemsel durumda pause/resume yapıyor. (4) challenges.tsx:164-173 aktif kart butonları sadece Duraklat/Devam Et/Bırak — elle işaretleme UI'ı yok. Sonuç: 'Özel' challenge ilerlemesi kalıcı olarak 0/N kalır, tamamlanamaz. Premium bir özelliğin bir tipi tamamen ölü olduğundan 'high' severity abartı değil.",
+    "fix_correct": true,
+    "fix_note": "Önerilen fix mimariye uyuyor: client zaten challenges tablosuna doğrudan supabase ile yazıyor (startChallenge insert, pause/resume/abandon status update — RLS altında update izni mevcut), dolayısıyla challenges.service.ts'e idempotent markManualDay(id) eklemek mevcut kalıpla tutarlı. Evaluator manual metriği atladığı için gece cron'u ile çakışma/çift-yazma riski yok. İki küçük not: (a) progress append'i read-modify-write olacağı için nadir eşzamanlılıkta kayıp güncelleme teorik olarak mümkün (tek-kullanıcı ekranında pratik risk düşük); (b) evaluator'daki tamamlanma yan etkileri (achievement + coaching message, index.ts:1943 sonrası) client tamamlamasında tetiklenmez — markManualDay'de completion'a ek olarak achievement kaydı da düşünülmeli, yoksa 'completed' rozeti eksik kalır. Alternatif ('custom' tipini formdan kaldırmak) da geçerli ama özellik kaybı; buton+servis yaklaşımı tercih edilir."
+   }
+  },
+  {
+   "id": "DI-01",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\data-import.tsx",
+   "line": 35,
+   "severity": "high",
+   "what": "Başarılı import sonrası csvText temizlenmiyor, buton aktif kalıyor ve import.service.ts hiçbir tekrar/dedup kontrolü yapmıyor (insertMealLogWithItems her çağrıda yeni satır ekler; weights upsert olduğu için güvenli, meals değil).",
+   "user_experience": "'İçeri Aktar'a bastım, 'Başarılı' dedi; emin olamayıp bir kez daha bastım — bütün öğünler ikinci kez yazıldı, günlük kalorilerim ve raporlarım ikiye katlandı.",
+   "fix": "res.success dalında (data-import.tsx:36) `setCsvText('')` çağır; ek olarak importMealsFromCSV'de aynı (logged_for_date, food_name, kcal) satırı mevcutsa atlayıp errors yerine 'atlandı (zaten var)' sayacı tut — ya da result doluyken ikinci basışta 'Aynı veri tekrar aktarılacak, emin misin?' Alert onayı iste.",
+   "cluster": "settings-social",
+   "verdict": {
+    "real": true,
+    "reason": "Verified in code: data-import.tsx success branch (lines 35-39) never clears csvText nor disables the button, and import.service.ts meals path uses plain insertMealLogWithItems (plain .insert in meal-log.service.ts:80-92) with zero dedup, so a second press duplicates every meal row. Weights path is indeed idempotent via upsert onConflict 'user_id,date' (import.service.ts:122-125), matching the claimed asymmetry.",
+    "fix_correct": true,
+    "fix_note": "setCsvText('') on success is correct and makes a repeat press hit the existing empty-input guard at line 22; the confirm-Alert alternative is also fine. Minor caveat: the suggested (logged_for_date, food_name, kcal) dedup needs a join to meal_log_items since kcal is stored there, not on meal_logs — slightly more work than the fix text implies, but direction is architecturally consistent (client/service-side, no DB unique constraint exists to rely on)."
+   }
+  }
+ ],
+ "mediums": [
+  {
+   "id": "RST-EXIT-02",
+   "file": "app/reset-password.tsx",
+   "line": 127,
+   "severity": "medium",
+   "what": "linkState==='ready' formunda tek buton 'Şifreyi Güncelle' — vazgeçme/çıkış yolu yok. Ekran app/_layout.tsx:135'te headerShown:false ile kayıtlı, yani header geri oku da yok; deep link ile soğuk açılışta back stack boş olduğundan Android donanım geri tuşu uygulamadan çıkarır, iOS'ta hiçbir çıkış yoktur. 'invalid' ve 'checking' durumlarının çıkışı var, 'ready'nin yok.",
+   "user_experience": "Sıfırlama linkine yanlışlıkla tıkladım, aslında şifremi değiştirmek istemiyorum — ama ekranda 'Şifreyi Güncelle'den başka hiçbir buton yok; ya yeni şifre uydurmak ya da uygulamayı öldürmek zorunda kaldım.",
+   "fix": "Butonun altına invalid-durumundakiyle aynı dille bir ghost buton ekle: <Button title=\"Vazgeç\" variant=\"ghost\" onPress={() => router.replace('/')} /> — index.tsx kapısı oturum varsa uygulamaya, yoksa login'e doğru yönlendirir.",
+   "cluster": "auth-entry"
+  },
+  {
+   "id": "CHT-04",
+   "file": "src/screens/ChatThreadScreen.tsx",
+   "line": 1549,
+   "severity": "medium",
+   "what": "Çip yolu task_completion'ı da düşürüyor (CHT-01 ile aynı kök neden, ayrı deneyim): handleQuickSelect yanıtında taskCompletion eşlenmiyor ve handleSend'deki 'görev bitti → konu paramlarını temizle' bloğu (satır 1387-1389) yalnızca handleSend'de var. Onboarding konularında koç quick_select çipleri sunduğu için son cevabın çiple verilmesi olağan.",
+   "user_experience": "Onboarding konusunun son sorusunu çipe dokunarak cevaplıyorum; konu aslında tamamlanıyor ama kutlama kartı, 'DEVAM EDEBİLECEĞİN KONULAR' önerileri ve 'Sohbete devam et' hiç görünmüyor. Konu pili ekranda asılı kalıyor, görev rayı geri gelmiyor — ta ki sekmeden çıkıp dönene kadar.",
+   "fix": "CHT-01'deki ortak buildAssistantUIMessage'a task_completion'ı da dahil et ve handleQuickSelect başarı dalına handleSend'deki param-temizleme bloğunu (data.task_completion?.completed && taskModeHint → router.setParams({taskModeHint:'', taskNonce:'', prefill:''})) ekle.",
+   "cluster": "chat"
+  },
+  {
+   "id": "CHT-05",
+   "file": "src/screens/ChatThreadScreen.tsx",
+   "line": 739,
+   "severity": "medium",
+   "what": "Sesli giriş iki yerde sessizce ölüyor: (1) startRecording() izin reddi/hata durumunda false dönüyor (voice.service.ts:19,32) ve 'if (started)' dalının else'i yok — hiçbir uyarı çıkmıyor; (2) stopAndTranscribe kayıt URI'si alınamazsa {text:null, audioUri:null} dönüyor ve üç if dalının hiçbiri tutmuyor — yine sessizlik. catch bloğu da (satır 734) yalnız state sıfırlıyor.",
+   "user_experience": "Mikrofona basıyorum, hiçbir şey olmuyor (izin reddedilmiş ama bana kimse söylemiyor). Ya da konuşup durdur'a basıyorum, kırmızı kayıt simgesi sönüyor ve... hiçbir şey: ne metin, ne hata. 'Uygulama bozuk' hissi.",
+   "fix": "startRecording false dönerse Alert.alert('Mikrofon açılamadı', 'Mikrofon iznini kontrol edip tekrar dene.'); stopAndTranscribe'da text && audioUri ikisi de null ise ve catch bloğunda Alert.alert('Kayıt alınamadı', 'Ses kaydı tamamlanamadı — tekrar dener misin?').",
+   "cluster": "chat"
+  },
+  {
+   "id": "CHT-06",
+   "file": "src/screens/ChatThreadScreen.tsx",
+   "line": 3087,
+   "severity": "medium",
+   "what": "Chat içi plan önizleme kartı onPress={() => {}} ile render ediliyor, ama PlanPreviewCard bir TouchableOpacity ve en altında sabit 'Detayı görmek için dokun' yazısı var (PlanPreviewCard.tsx:198). Dokunulabilir görünen, üstelik dokunmayı açıkça vaat eden ölü bir etkileşim.",
+   "user_experience": "Koç plan önerdi, karttaki 'Detayı görmek için dokun' yazısına güvenip dokunuyorum — hiçbir şey olmuyor. Birkaç kez deniyorum, bozuk sanıyorum.",
+   "fix": "PlanPreviewCard'a opsiyonel bir prop ekle (ör. tapHint?: boolean, default true) ve chat kullanımında tapHint={false} + onPress yerine düz View render et; ya da onPress'e gerçek bir hedef ver (taslak onaylanmadığı için /plan rotası yanıltıcı olur — yazıyı gizlemek daha dürüst).",
+   "cluster": "chat"
+  },
+  {
+   "id": "PLN-02",
+   "file": "src/screens/PlanManagerScreen.tsx",
+   "line": 421,
+   "severity": "medium",
+   "what": "handleApprove (421) ve handleAlternative (365) `if (!chatSessionId || !draft) return;` ile SESSIZ cikiyor. Kalici bir taslak yeniden acildiginda load() oturumu createHeadlessSession ile tazeliyor (230-234); bu cagri basarisiz olursa chatSessionId null kalir ama view='draft' gosterilmeye devam eder. sendUserMessage ayni durumda oturumu yeniden yaratip hata baloncugu basiyor (334-345) — iki chip'te bu ag yok.",
+   "user_experience": "Taslagimin butun gunlerini tek tek actim, 'Onayla ve kaydet' yesillendi, basiyorum... hicbir sey olmuyor. Tekrar basiyorum, yine hicbir sey. 'Alternatif gor' de ayni sekilde olu. Uygulama bozuk sanip cikiyorum.",
+   "fix": "handleApprove ve handleAlternative'in basina sendUserMessage'daki oturum-tazeleme blogunu tasi: sid yoksa createHeadlessSession'i yeniden dene; o da null donerse Alert.alert('Baglanti sorunu', 'Koc oturumu acilamadi. Baglantini kontrol edip tekrar dene.') goster (baloncuk yerine Alert — approve alt modali/paywall gecisleri baloncugu ortebiliyor).",
+   "cluster": "plan"
+  },
+  {
+   "id": "PLN-03",
+   "file": "src/screens/PlanManagerScreen.tsx",
+   "line": 230,
+   "severity": "medium",
+   "what": "Taslak muzakeresi sadece in-memory `messages` state'inde yasiyor; ekrandan cikip donunce load() draft'i DB'den getiriyor ama konusma gecmisini getirmiyor — ustune her donuste createHeadlessSession ile YENI bir oturum acip eski oturumu (kocun plan aciklamalari, kullanicinin istekleri) geride birakiyor. FlatList bos kaldigi icin ListEmptyComponent 'Degistirmek istedigin seyi yaz' ipucuna dusuyor.",
+   "user_experience": "Kocla plani pazarlik ederken bir mesaja bakmak icin ekrandan ciktim; geri geldigimde tum konusmamiz silinmis — kocun 'proteini soyle boyle ayarladim' aciklamalari yok, sanki hic konusmamisiz. Ayni soruyu bastan sormam gerekiyor.",
+   "fix": "Rehydrate dalinda (225-235) yeni oturum yaratmak yerine draft'in mevcut plan-chat oturumunu bul (topic_tags=cfg.topicTag olan son oturum) ve son N mesajini getMessages ile cekip setMessages ile doldur; bulunamazsa mevcut yeni-oturum yoluna dus. En azindan cfg.revisionExistingGreet'i seed ederek bos listeyi 'kaldigimiz yerden devam' hissine cevir.",
+   "cluster": "plan"
+  },
+  {
+   "id": "PLN-04",
+   "file": "app/plan/history.tsx",
+   "line": 250,
+   "severity": "medium",
+   "what": "Dosyanin kendi yorumu (5-7. satir) arsivlenmis planlarin 'gecmis yemek/antrenman fikirleri kaydi olarak faydali' oldugunu soyluyor; ama genisletilmis satir (DietExpanded/WorkoutExpanded, 250-289) gun basina yalniz '3 ogun · 1800 kcal' / 'Push' gosteriyor — yemek adlari, malzemeler, egzersiz listesi hicbir yerden acilamiyor. Satira dokununca accordion acilip kapaniyor, baska hicbir yere goturmuyor; FullPlanModal mevcut ve yeniden kullanilabilirdi.",
+   "user_experience": "Gecen ayki planimda cok sevdigim bir aksam yemegi vardi, adini hatirlamak icin Gecmis'e girdim. Karsima sadece sayilar cikiyor: '3 ogun · 1650 kcal'. Hangi yemekler? Goremiyorum. Ekran cikmaz sokak.",
+   "fix": "HistoryRow'un genisletilmis gorunumune 'Tum plani gor' butonu ekleyip mevcut FullPlanModal'i (veya dogrudan PlanDayAccordion'u) onMealEdit=undefined ile salt-okunur ac: <FullPlanModal visible plan={row.plan_data} planVersion={...} weekStart={row.week_start} onClose=... />. Snapshot zaten satirda mevcut, ek sorgu gerekmez.",
+   "cluster": "plan"
+  },
+  {
+   "id": "PLN-05",
+   "file": "src/screens/PlanManagerScreen.tsx",
+   "line": 384,
+   "severity": "medium",
+   "what": "handleAlternative'in hata dali (381-388) hatayi chat listesine baloncuk olarak basiyor; ama ayni fonksiyon AlternativeComparisonModal'in 'Hiçbiri olmadı, 2 alternatif daha göster' butonundan da (onRequestMore) cagriliyor — o anda tam-ekran modal acik ve chat listesi modalin ARKASINDA. pickAlternative'deki es bug bilerek Alert'e cevrilmis (407-411 yorumu) ama bu yol unutulmus. Ayrica buton '2 alternatif daha' vaat ederken basari yolunda yalniz Plan B degisiyor (A her zaman mevcut taslak).",
+   "user_experience": "Iki alternatifi begenmedim, '2 alternatif daha goster'e bastim. 30 saniye spinner dondu, sonra durdu — ekranda ayni iki plan duruyor, ne hata ne aciklama var. Butona tekrar basip tekrar bekliyorum.",
+   "fix": "handleAlternative'in hata dalinda showAltModal acikken Alert kullan: if (showAltModal) { haptics.error(); Alert.alert('Alternatif uretilemedi', error ?? 'Baglantini kontrol edip tekrar dene.'); } else { mevcut baloncuk }. Buton etiketini davranisa uydur: '2 alternatif daha goster' yerine 'Yeni bir B plani iste' (Plan A mevcut taslak olarak kaliyor).",
+   "cluster": "plan"
+  },
+  {
+   "id": "LOG-02-orphan-close-timer",
+   "file": "C:/Users/demir/Desktop/KOCHKOAPP/app/log.tsx",
+   "line": 229,
+   "severity": "medium",
+   "what": "showSuccessAndClose unmount sonrası da çalışabiliyor: handleLog/sendBarcodeLog gibi async akışlar sürerken üstteki X (log.tsx:1109, loading sırasında disabled değil) veya modal aşağı-kaydırma (app/_layout.tsx:137 presentation:'modal', gesture açık) ile ekran kapatılabiliyor. Kayıt sonradan başarılı olunca setTimeout kuruluyor ve 1.2 sn sonra router.back() ARTIK var olmayan modal yerine o anki ekranı pop ediyor. Unmount'ta closeTimer'ı temizleyen hiçbir cleanup yok (tek clearTimeout toast'a dokununca, log.tsx:1079).",
+   "user_experience": "Yemeğimi yazıp Kaydet'e bastım, yanıt gecikince X ile kapattım; bir saniye sonra bulunduğum sekmeden de kendiliğinden geri atıldım — uygulama kendi kendine 'geri' basmış gibi.",
+   "fix": "const mountedRef = useRef(true); useEffect(() => () => { mountedRef.current = false; if (closeTimer.current) clearTimeout(closeTimer.current); }, []); ekle ve showSuccessAndClose'un ilk satırına if (!mountedRef.current) return; koy (fetchToday çağrıları zaten toast'tan bağımsız). İsteğe bağlı pekiştirme: loading sırasında başlıktaki X'e disabled={loading} ver.",
+   "cluster": "log"
+  },
+  {
+   "id": "LOG-03-camera-permission-dead-button",
+   "file": "C:/Users/demir/Desktop/KOCHKOAPP/app/log.tsx",
+   "line": 654,
+   "severity": "medium",
+   "what": "Kamera izni ekranında 'İzin ver' butonu yalnızca requestCameraPermission() çağırıyor; kullanıcı izni 'bir daha sorma' ile kalıcı reddettiyse (cameraPermission.canAskAgain === false) Android/iOS diyaloğu hiç açmıyor ve buton sessiz no-op oluyor. Ayarlara yönlendirme yolu yok.",
+   "user_experience": "Kamera iznini bir kez yanlışlıkla 'Reddet' dedim; şimdi Barkod okut ekranında 'İzin ver'e defalarca basıyorum, hiçbir şey olmuyor — barkod özelliği benim için ölü.",
+   "fix": "react-native'den Linking import et; onPress'i () => { if (cameraPermission && !cameraPermission.canAskAgain) { Linking.openSettings(); } else { requestCameraPermission(); } } yap ve buton metnini koşullu göster: {cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'} (açıklama metnine 'Ayarlar > KOCHKO > Kamera' ipucu ekle).",
+   "cluster": "log"
+  },
+  {
+   "id": "LOG-04-undo-silent-failure",
+   "file": "C:/Users/demir/Desktop/KOCHKOAPP/app/log.tsx",
+   "line": 291,
+   "severity": "medium",
+   "what": "undoMealLog'da supabase.update() hata FIRLATMAZ, { error } döner; error hiç kontrol edilmiyor ve catch bloğu pratikte ulaşılmaz. Çevrimdışı/RLS hatasında haptics.tap() yine çalışıyor ve kullanıcıya hiçbir geri bildirim verilmiyor — 'Geri al' başarısız ama başarılı hissettiriyor.",
+   "user_experience": "Yanlış öğünü ekledim, toast'taki 'Geri al'a bastım, titreşimi hissedip geri alındı sandım — internetim yokmuş, öğün gün toplamımda durmaya devam ediyor ve kimse söylemedi.",
+   "fix": "const { error } = await supabase.from('meal_logs').update({...}).eq('id', mealLogId); if (error) { haptics.error(); showToast('Geri alınamadı — bağlantını kontrol et'); return; } haptics.tap(); ... (showToast zaten import'lu, log.tsx:14).",
+   "cluster": "log"
+  },
+  {
+   "id": "LOG-05-transcribe-fail-drops-speech",
+   "file": "C:/Users/demir/Desktop/KOCHKOAPP/app/log.tsx",
+   "line": 492,
+   "severity": "medium",
+   "what": "transcribeAudio ağ hatasında { text: null } döner (voice.service.ts:94-96 her şeyi yutar) ve UI yalnızca 'Hata / Ses tanıma başarısız.' Alert'i basıp uri'yi çöpe atıyor. Ses dosyası hâlâ diskte ve elde — yeniden deneme teklif edilmiyor, çevrimdışı ayrımı da yapılmıyor.",
+   "user_experience": "Bütün öğünümü konuşarak anlattım, tam o anda internet koptu; 'Ses tanıma başarısız' dedi ve söylediklerimin hepsi uçtu — baştan konuşmam gerekiyor.",
+   "fix": "uri elinizde: Alert'i şu yap — Alert.alert('Ses tanınamadı', 'Bağlantını kontrol edip tekrar deneyebilirsin.', [{ text: 'Vazgeç', style: 'cancel' }, { text: 'Tekrar dene', onPress: () => { setTranscribing(true); void transcribeAudio(uri).then(r => { /* mevcut başarılı/premium dallarını uygula */ }).finally(() => setTranscribing(false)); } }]) — mevcut dalları küçük bir retryTranscribe(uri) yardımcıya çıkarmak en temizi.",
+   "cluster": "log"
+  },
+  {
+   "id": "weekly-enkotu-shaming-inconsistent",
+   "file": "app/reports/weekly.tsx",
+   "line": 257,
+   "severity": "medium",
+   "what": "'En Kötü' etiketi + COLORS.error (257-261). Kardeş ekran progress.tsx tam da bu gerekçeyle bilinçli olarak yeniden çerçevelenmiş: 'ux-round3 #4: En Kötü + red stamps a low day with shame' → 'Zorlu gün' + amber + normalleştirici not (progress.tsx:578-591). Aynı kullanıcı aynı günü Raporlar sekmesinde 'Zorlu gün' (turuncu), Haftalık Rapor'da 'En Kötü' (kırmızı) olarak görüyor — uygulamanın kendi yazılı ton ilkesiyle çelişki.",
+   "user_experience": "Raporlar sekmesi bana 'Zorlu gün — herkesin zorlandığı günler olur' derken, bir dokunuş ötedeki Haftalık Rapor aynı günü kıpkırmızı 'En Kötü' diye damgalıyor.",
+   "fix": "Satır 253/259: 'En Kötü' → 'Zorlu gün', rengi COLORS.error → COLORS.warning; genişlik 50 → 68 (progress.tsx:868'deki 'Zorlu gün' sarma düzeltmesinin aynısı). Kart başlığındaki çift 'En İyi' etiketi kalabilir.",
+   "cluster": "reports"
+  },
+  {
+   "id": "alltime-fabricated-zero-compliance",
+   "file": "app/reports/all-time.tsx",
+   "line": 160,
+   "severity": "medium",
+   "what": "Hiç daily_reports satırı olmayan kullanıcıda avgComp 0'a düşüyor (66-67: `reports.length > 0 ? ... : 0`) ve StatCard '%0' basıyor (160) — veri yokluğu 'sıfır puan' olarak sunuluyor. progress.tsx aynı durum için null döndürüp tile'ı gizliyor (358), yani bu ekran kendi kardeşinin çözdüğü fabricated-zero sınıfına giriyor. 'Ort. Uyum %0' yepyeni kullanıcının ilk gün gördüğü karnesi oluyor.",
+   "user_experience": "Uygulamayı dün kurdum, 'Tüm Zamanlar'ı açtım: 'Ort. Uyum %0' — daha hiçbir şey yapmadan sınıfta kalmışım gibi.",
+   "fix": "stats.avgCompliance'ı `number | null` yap; satır 66-67'de `reports.length > 0 ? Math.round(...) : null`, satır 160'ta `value={stats.avgCompliance != null ? `%${stats.avgCompliance}` : '—'}`. (Toplam Öğün/Antrenman/Başarım 0'ları dürüst sayımlar, kalabilir.)",
+   "cluster": "reports"
+  },
+  {
+   "id": "calendar-score-format-split",
+   "file": "app/reports/calendar.tsx",
+   "line": 213,
+   "severity": "medium",
+   "what": "Seçili gün kartı uyumu '68/100' formatında basıyor (213) ve erişilebilirlik etiketi de 'uyum 68/100' diyor (136); oysa 20 satır yukarıdaki ay-özeti şeridi aynı ekranda '%68' gösteriyor (168) ve uyum tüm uygulamada yüzde (progress tile '%X', daily/weekly/monthly halkaları '%X', ComplianceScore.tsx:37 'uyum her yerde yüzde' düzeltme notu). Tek ekranda iki format.",
+   "user_experience": "Takvimde ay özeti '%68' derken hemen altında aynı gün '68/100' yazıyor — aynı sayı mı, farklı bir puan mı emin olamıyorum.",
+   "fix": "Satır 213: `{selected.compliance_score}/100` → `%{selected.compliance_score}`; satır 136 a11y etiketi: `uyum ${day.compliance_score}/100` → `uyum yüzde ${day.compliance_score}` (ComplianceScore.tsx:32'deki '100 üzerinden' kalıbı yerine yüzde kalıbı, şeritle aynı).",
+   "cluster": "reports"
+  },
+  {
+   "id": "GO-01",
+   "file": "app/settings/goals.tsx",
+   "line": 46,
+   "severity": "medium",
+   "what": "Mevcut hedef fetch'inin yükleme ve hata durumu yok. getGoalPhases (src/services/goals.service.ts:28) hatayı yutup [] döndürüyor; ekran fetch başarısızsa ya da henüz bitmemişse 'hiç hedefin yok' görünümünde açılıyor — Mevcut Hedef kartı, tempo grafiği, faz planı sessizce yok. Kardeş ekranlar (lab-values, food-preferences, health-events) loading skeleton + LoadErrorState aldı, bu ekran alınmamış.",
+   "user_experience": "Zayıf internette Hedef Ayarları'nı açtım: aktif hedefim, ilerleme yüzdem ve tempo grafiğim yokmuş gibi bomboş form geldi — hedefim silindi sanıp yeniden kaydettim.",
+   "fix": "lab-values.tsx kalıbı: `loading`/`loadError` state ekle; useEffect'te getGoalPhases yerine ekranda doğrudan `supabase.from('goals').select('*').eq('user_id', user.id).order('phase_order')` sorgula, error'da `<LoadErrorState title=\"Hedef bilgisi yüklenemedi\" onRetry={...}/>` kartı çiz, loading'de `<SkeletonCard/>` göster; form ancak `!loading && !loadError` iken çizilsin.",
+   "cluster": "settings-health"
+  },
+  {
+   "id": "MP-01",
+   "file": "app/settings/multi-phase-goals.tsx",
+   "line": 61,
+   "severity": "medium",
+   "what": "Fetch hatası boş listeyle ayırt edilemiyor: load() try/finally'li ama getGoalPhases/getTimelineData hatayı içeride yutup [] döndürdüğü için (goals.service.ts:28-33) catch hiçbir zaman çalışmaz; hata = 'hiç fazın yok' görünümü. Kardeş ekranlardaki LoadErrorState burada yok.",
+   "user_experience": "Bağlantı koptuğunda ekran 3 fazlı planım yokmuş gibi açıldı; 'silinmiş' diye panikleyip fazları yeniden ekledim, bağlantı gelince hepsi çift oldu.",
+   "fix": "`loadError` state ekle ve fazları ekranda doğrudan supabase'den sorgula (error kontrolüyle) ya da service'e error döndüren varyant ekle; error'da `<LoadErrorState embedded title=\"Fazlar yüklenemedi\" onRetry={load}/>` (health-events.tsx:112-116 kalıbı), 'Yeni Faz Ekle' butonunu loadError'dayken gizle.",
+   "cluster": "settings-health"
+  },
+  {
+   "id": "SU-01",
+   "file": "app/settings/supplements.tsx",
+   "line": 41,
+   "severity": "medium",
+   "what": "Gün UTC tarihiyle hesaplanıyor: hem ekranın sorgusu (satır 41) hem logSupplement yazımı (src/services/supplements.service.ts:59) `new Date().toISOString().split('T')[0]` kullanıyor. Türkiye UTC+3: yerel 00:00-03:00 arasında UTC tarihi dünkü gün. Ayrıca uygulamanın her yerinde kullanılan `getEffectiveDate` (src/lib/day-boundary.ts — dashboard.store, achievements.service, PlanActiveView hepsi kullanıyor) burada yok sayılıyor; edit-profile'daki 'Gün Sınırı' (03:00-06:00) ayarı bu ekrana işlemiyor.",
+   "user_experience": "Gece 00:30'da kreatin logladım, listede göründü; sabah ekranı açtığımda 'Bugünün Kayıtları (0)' — kayıt düne yazılmış, bugün almadım sanıp ikinci kez içebilirim.",
+   "fix": "İki noktada da (supplements.tsx:41 ve supplements.service.ts:59) `import { getEffectiveDate } from '@/lib/day-boundary'` kullan; profilin `day_boundary_hour` değerini geçir (useStreak.ts:16-17'daki gibi profiles'tan çek, yoksa 4).",
+   "cluster": "settings-health"
+  },
+  {
+   "id": "LV-01",
+   "file": "app/settings/lab-values.tsx",
+   "line": 135,
+   "severity": "medium",
+   "what": "Lab değeri satırlarının hiçbir silme/düzenleme yolu yok: 135-143. satırlardaki satır render'ı salt View — onPress yok, onLongPress yok, çöp ikonu yok. Denetlenen 7 ekranın diğer tüm liste ekranları (health-events, food-preferences, supplements, multi-phase) görünür sil butonu aldı; bu ekran unutulmuş.",
+   "user_experience": "Vitamin D'yi 45 yerine yanlışlıkla 450 girdim; değer kırmızı '!' ve 'Sağlık profesyoneline danış' uyarısıyla sonsuza dek listede duruyor — silmenin ya da düzeltmenin hiçbir yolu yok.",
+   "fix": "health-events.tsx:135-143 kalıbını uygula: her değer satırına `trash-outline` Ionicons butonu (accessibilityLabel dahil) + `Alert.alert('Sil', ...)` onaylı `supabase.from('lab_values').delete().eq('id', e.id)` (error kontrollü), başarıda `loadEntries()`.",
+   "cluster": "settings-health"
+  },
+  {
+   "id": "LV-02",
+   "file": "app/settings/lab-values.tsx",
+   "line": 72,
+   "severity": "medium",
+   "what": "measured_at forma sorulmadan bugüne sabitleniyor: `measured_at: new Date().toISOString().split('T')[0]`. Tahlil sonucu tipik olarak geçmiş tarihlidir; formda tarih alanı hiç yok. (Ayrıca bu da UTC tarihi.)",
+   "user_experience": "Geçen ayki kan tahlilimi girdim; listede bugünün tarihiyle görünüyor. İki ay sonra baktığımda değerin ne zaman ölçüldüğünü yanlış hatırlatıyor — trend takibi (aynı parametrenin zaman içindeki seyri) çöp oluyor.",
+   "fix": "Forma `<DateTimeField label=\"Ölçüm Tarihi\" mode=\"date\" value={measuredAt} onChange={setMeasuredAt} placeholder=\"2026-07-30\" />` ekle (edit-profile.tsx:315 kalıbı; DateTimeField zaten ISO 'YYYY-MM-DD' üretiyor — DateTimeField.tsx:39); boşsa bugünün yerel tarihine düş.",
+   "cluster": "settings-health"
+  },
+  {
+   "id": "HE-02",
+   "file": "app/settings/health-events.tsx",
+   "line": 93,
+   "severity": "medium",
+   "what": "Tarih serbest metin Input: `placeholder=\"2022-06-15\"` formatında hiçbir doğrulama yok; değer olduğu gibi `event_date` olarak insert'e gidiyor. Kullanıcı '15.06.2022' veya 'geçen yaz' yazarsa DB date kolonu insert'i reddeder ve tek geri bildirim jenerik 'Kaydedilemedi' olur. Aynı repo'da hazır DateTimeField (mode=\"date\") var ve edit-profile kullanıyor.",
+   "user_experience": "Ameliyat tarihine Türk alışkanlığıyla '15.06.2022' yazdım, 'Kaydedilemedi, tekrar dene' dedi; neyi yanlış yazdığımı söylemediği için üç kez denedim ve vazgeçtim.",
+   "fix": "`<Input label=\"Tarih (opsiyonel)\" ...>` yerine `<DateTimeField label=\"Tarih (opsiyonel)\" mode=\"date\" value={date} onChange={setDate} placeholder=\"2022-06-15\" maximumDate={new Date()} />` — çıktı zaten ISO formatında.",
+   "cluster": "settings-health"
+  },
+  {
+   "id": "HE-03",
+   "file": "app/settings/health-events.tsx",
+   "line": 71,
+   "severity": "medium",
+   "what": "7 ekranlık ayar takımında KeyboardAvoidingView olmayan tek ekran: ScrollView çıplak. lab-values.tsx:92-94 ve multi-phase-goals.tsx:134-135'teki fix yorumları aynı kalıbın bilinçli yayıldığını gösteriyor — burası atlanmış.",
+   "user_experience": "Çok satırlı 'Açıklama' alanına uzun bir ameliyat notu yazarken klavye açılınca Tarih alanı, 'Devam ediyor' kutusu ve Kaydet butonu klavyenin altında kaldı; küçük ekranda yukarı da kaydıramıyorum.",
+   "fix": "lab-values.tsx kalıbı: ScrollView'u `<KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior=\"padding\">` ile sar (keyboardShouldPersistTaps zaten var).",
+   "cluster": "settings-health"
+  },
+  {
+   "id": "F3",
+   "file": "app/settings/debug-mode.tsx",
+   "line": 89,
+   "severity": "medium",
+   "what": "'Sistem' kartındaki tüm değerler uydurma sabitler: 'Birincil Model: gpt-4o-mini' yazıyor ama gerçek birincil model KOCHKO_MODEL_SMART || 'gpt-4o' (supabase/functions/shared/openai.ts:22); 'Token Bütçesi 130.000' ve K1-K4 yüzde bütçeleri kodda hiç yok — gerçek bütçeler STATIC_LAYERS_TOKEN_BUDGET=12000 ve LAYER4_TOKEN_BUDGET=6000 (context-builders.ts:831,837). Ekran ayarlar menüsünde herkese 'AI Şeffaflık' diye sunuluyor (index.tsx:177) ama şeffaflık diye kurgu gösteriyor.",
+   "user_experience": "Şeffaflık ekranını açan kullanıcı (veya store incelemesi yapan biri) uygulamanın hangi modeli kullandığına dair düpedüz yanlış bilgi okuyor; ortam değişkeniyle model değiştirildiğinde ekran hiç güncellenmiyor.",
+   "fix": "'Sistem' kartındaki model/bütçe satırlarını ya tamamen kaldır ya da gerçek kaynaklardan besle (son mesajların model_version alanı zaten çekiliyor — 'Son kullanılan model' olarak onu göster; token bütçesi satırlarını sil).",
+   "cluster": "settings-coach"
+  },
+  {
+   "id": "F4",
+   "file": "app/settings/coach-tone.tsx",
+   "line": 54,
+   "severity": "medium",
+   "what": "handleSave ve handleReset, `update`'i try/catch'siz await ediyor; profile.store.update hata durumunda throw ediyor (src/stores/profile.store.ts:43). Ağ hatasında Alert hiç gösterilmez, promise rejection sessizce yutulur, kullanıcıya sıfır geri bildirim kalır. Kaydet butonunda loading durumu da yok (satır 99).",
+   "user_experience": "Kötü bağlantıda kullanıcı Kaydet'e basıyor, hiçbir şey olmuyor — ne 'Kaydedildi' ne hata. Tekrar tekrar basıyor, ton değişmiş mi bilmiyor; ekrandan çıkınca da unsaved-guard bir daha sorup kafa karıştırıyor.",
+   "fix": "handleSave/handleReset gövdesini try/catch'e al: catch'te `Alert.alert('Kaydedilemedi', 'Bağlantını kontrol edip tekrar dene.')` + haptics.error(); bir `saving` state ekleyip `<Button title=\"Kaydet\" loading={saving} ...>` ver (notifications.tsx'teki persistPrefs rollback deseniyle aynı aile).",
+   "cluster": "settings-coach"
+  },
+  {
+   "id": "F5",
+   "file": "app/settings/chat-history.tsx",
+   "line": 132,
+   "severity": "medium",
+   "what": "Tarih filtreleri serbest metin Input ve parseTurkishDate null dönerse filtre SESSİZCE atlanıyor (satır 132-139): yanlış formatta yazılan tarih hiçbir uyarı üretmeden yok sayılıyor. Anahtar kelime boşken sadece bozuk tarih girilirse guard'ı da geçiyor (satır 119: dateFrom dolu sayılır) ve arama filtresiz son 30 mesajı 'sonuç' diye listeliyor.",
+   "user_experience": "Kullanıcı 'Başlangıç' kutusuna 5.7.2026 veya 2026-07-01 yazıp Ara'ya basıyor; istediği aralığın tamamen dışındaki mesajlar geliyor ve neden yanlış olduğuna dair tek satır uyarı yok — arama bozuk sanılıyor.",
+   "fix": "handleSearch başında `if (dateFrom && !parseTurkishDate(dateFrom))` (ve dateTo için aynısı) kontrolüyle `Alert.alert('Tarih formatı', 'Tarihi GG.AA.YYYY biçiminde yaz (örn. 05.07.2026).')` gösterip return et; daha iyisi iki kutuyu notifications'taki DateTimeField (mode=\"date\") ile değiştir.",
+   "cluster": "settings-coach"
+  },
+  {
+   "id": "MT-02",
+   "file": "app/settings/meal-templates.tsx",
+   "line": 56,
+   "severity": "medium",
+   "what": "Serbest metin ayrıştırıcı 'kcal' geçmeyen girdiye sessizce calories:0 yazıyor (calMatch ? parseInt : 0). Kullanıcı '2 yumurta, 1 ekmek' yazarsa 0 kcal'lik şablon oluşur, uyarı yok; sonra her kullanımda günlüğe 0 kcal'lik öğün düşer (uygulamanın imza hatası: sessiz-yanlış).",
+   "user_experience": "'Kahvaltım' şablonunu '2 yumurta, 1 ekmek' diye kaydettim; haftalarca kahvaltılarım 0 kalori olarak işlendi, günlük bütçem hep fazladan doluymuş gibi gösterdi.",
+   "fix": "handleAdd'de parse sonrası items.every(i => i.calories === 0) ise kaydetmeden önce uyar: Alert.alert('Kalori eksik', 'Hiçbir öğede kcal bulunamadı. \"2 yumurta 155kcal\" formatında yazmalısın.') ve return; ya da en azından toplam 0 kcal ise onaya düşür.",
+   "cluster": "settings-life"
+  },
+  {
+   "id": "MP-01",
+   "file": "app/settings/meal-prep-plan.tsx",
+   "line": 34,
+   "severity": "medium",
+   "what": "Üretilen plan yalnızca component state'te yaşıyor: generateMealPrepPlan (meal-prep.service.ts:172-240) hiçbir yere persist etmiyor, ekran mount'ta yalnız prefs yüklüyor. Ayrıca hesaplanan shoppingList, containerSuggestion ve prepDay hiç render edilmiyor; aktivasyondan sonra hazırlık gününü değiştirme/modu kapatma UI'ı da yok (gate yalnız !active iken çiziliyor, satır 99).",
+   "user_experience": "Pazar için prep planımı oluşturdum, ekrandan çıktım; geri girince plan kaybolmuş, 'Plan Oluştur'a yeniden basmam gerekiyor. Hazırlık günümü Cumartesi'ye çevirmek istediğimde de hiçbir yerde seçenek bulamadım.",
+   "fix": "Planı profiles ya da ayrı bir meal_prep_plans satırına JSON olarak kaydet ve mount'ta yükle (weekly_plans deseni); aktif moddayken üstte prep günü çipleri + 'Modu Kapat' (setMealPrepPrefs(user.id,false)) göster; plan.shoppingList ve containerSuggestion için mevcut Card desenleriyle iki bölüm ekle.",
+   "cluster": "settings-life"
+  },
+  {
+   "id": "MP-02",
+   "file": "app/settings/meal-prep-plan.tsx",
+   "line": 99,
+   "severity": "medium",
+   "what": "Aktivasyon kapısı yalnız prefsLoaded && !active iken çiziliyor; prefs yüklenene kadar ana return (satır 126-150) render ediliyor — yepyeni kullanıcı önce 'Plan Oluştur' ekranını görüyor, butona basabiliyor, sonra ekran aktivasyon kartına dönüşüyor.",
+   "user_experience": "Ekranı ilk açtığımda 'Plan Oluştur' butonu belirdi, tam basacakken ekran değişip 'modu aktif et' kartı geldi — bir an ne olduğunu anlamadım.",
+   "fix": "if (!prefsLoaded) return <SkeletonCard lines={3}/> (kardeş ekranların yükleme deseni) — gate kontrolünden ÖNCE; böylece yanlış ekran flaşı ve erken dokunma imkânsızlaşır.",
+   "cluster": "settings-life"
+  },
+  {
+   "id": "WM-01",
+   "file": "app/settings/weekly-menu.tsx",
+   "line": 154,
+   "severity": "medium",
+   "what": "'Menüyü Yeniden Oluştur' onaysız çalışıyor: mevcut haftalık menüyü ve alışveriş listesindeki işaretli öğeleri AI'ın yeni çıktısıyla eziyor. periodic-state.tsx:168'de aynı sınıftaki yıkıcı aksiyon için onay eklenmişti; burada unutulmuş.",
+   "user_experience": "Alışveriş listemin yarısını işaretlemiştim; alttaki butona merakla bastım, tüm menü ve işaretlerim sorulmadan silinip yeni menü geldi.",
+   "fix": "onPress'i Alert.alert('Yeniden oluşturulsun mu?', 'Mevcut menü ve alışveriş listesi işaretlerin silinecek.', [{text:'Vazgeç',style:'cancel'},{text:'Yeniden Oluştur',onPress:handleGenerate}]) ile sarmala.",
+   "cluster": "settings-life"
+  },
+  {
+   "id": "RC-01",
+   "file": "app/settings/recipes.tsx",
+   "line": 55,
+   "severity": "medium",
+   "what": "getRecipes (recipes.service.ts:44-49) hatayı yutup [] döndürüyor, ekranda catch/loadError yok → ağ hatasında 'Henüz kayıtlı tarifin yok' boş-durum kartı çiziliyor. Kardeş ekranlar meal-templates.tsx:19-37 ve venues.tsx:24-39 tam bu hata için doğrudan sorgu + LoadErrorState desenine geçirilmişti; recipes atlanmış.",
+   "user_experience": "Metroda internetim koptu, tarif kütüphaneme girince 'Henüz kayıtlı tarifin yok' yazdı — 30 tarifimin silindiğini sanıp panikledim.",
+   "fix": "meal-templates.tsx:26-37 deseni birebir: supabase.from('saved_recipes') doğrudan sorgula, error'da setLoadError(true) + <LoadErrorState embedded title=\"Tarifler yüklenemedi\" onRetry={load}/> göster.",
+   "cluster": "settings-life"
+  },
+  {
+   "id": "MN-01",
+   "file": "app/settings/menstrual.tsx",
+   "line": 45,
+   "severity": "medium",
+   "what": "Takip açıkken 'Son Regl Başlangıcı' boş bırakılıp kaydedilebiliyor: doğrulama yalnız döngü süresine bakıyor, updateMenstrualSettings (menstrual.service.ts:182) tarihi null yazıyor ve 'Döngü takibi aktif.' başarı mesajı geliyor — ama tarih olmadan faz asla hesaplanamaz, özellik sessizce ölü doğuyor.",
+   "user_experience": "Döngü takibini açıp kaydettim, 'aktif' dedi; günler geçti, ne fazımı gösterdi ne koç planımı ayarladı — tarih girmem gerektiğini kimse söylemedi.",
+   "fix": "handleSave'e ekle: if (tracking && !lastPeriod) { haptics.error(); Alert.alert('Tarih eksik', 'Faz hesaplanabilmesi için son regl başlangıç tarihini seç.'); return; }",
+   "cluster": "settings-life"
+  },
+  {
+   "id": "PS-01",
+   "file": "app/settings/periodic-state.tsx",
+   "line": 219,
+   "severity": "medium",
+   "what": "Ekran içi uyarı 'bitiş tarihi önerilir' (yumuşak) derken servis sert engelliyor: setPeriodicState → validatePeriodicState (periodic.service.ts:109-110, 206) requiresEndDate durumlarında 'X için bitiş tarihi gerekli.' fırlatıyor; kullanıcı jenerik 'Hata' alert'ine çakılıyor.",
+   "user_experience": "Ramazan'ı seçtim, ekran 'bitiş tarihi önerilir' dediği için boş bıraktım; 'Dönemi Başlat'a basınca 'Hata' penceresi yedim — önerilen şey meğer zorunluymuş.",
+   "fix": "Metni servisle hizala: config?.requiresEndDate ise 'Bu durum için bitiş tarihi gerekli.' yaz ve Button'a disabled={!selected || (config?.requiresEndDate && !endDate)} ekle — hataya hiç düşürme.",
+   "cluster": "settings-life"
+  },
+  {
+   "id": "HE-01",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\health-export.tsx",
+   "line": 118,
+   "severity": "medium",
+   "what": "weeklyData son 8 GÜNLÜK daily_reports satırından üretiliyor (week: r.date, weight: null sabit). export.service.ts:221-223 bunu doktor PDF'inde 'Haftalık Veriler / Hafta / Kilo' tablosu olarak basıyor: hafta sütununda tekil gün tarihleri, Kilo sütununda her satırda '-' (daily_metrics kiloları zaten çekilmiş olmasına rağmen).",
+   "user_experience": "Doktoruma verdiğim PDF'te 'Haftalık Veriler' tablosunda hafta yerine 8 tek gün tarihi var ve Kilo sütunu baştan sona '-' — rapor doktorun gözünde özensiz ve eksik duruyor.",
+   "fix": "typedReports'u ISO haftasına grupla (plan.service'teki isoDateMondayOfWeek yardımıcısı zaten import edilebilir), her hafta için ortalama compliance ve weights[] içinden o haftaya düşen son weight_kg'yi doldur: `weeklyData: haftaGruplari.map(g => ({ week: g.monday, compliance: avg, weight: g.lastWeight ?? null }))`.",
+   "cluster": "settings-social"
+  },
+  {
+   "id": "DI-02",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\data-import.tsx",
+   "line": 50,
+   "severity": "medium",
+   "what": "Ekran 'MyFitnessPal, Fatsecret, Samsung Health... CSV verisini buraya yapıştır' vadediyor ama parser (src/services/import.service.ts:56-59) yalnızca bespoke 'tarih,ogun_tipi,yiyecek_adi,kalori,protein' 5-kolon formatını okuyor; split(',') tırnaklı alanları desteklemiyor (MFP'nin 'January 15, 2024' tarihi satırı parçalar). ImportSource tipi (import.service.ts:8) tanımlı ama hiçbir yerde kullanılmıyor — kaynak-özgü parser hiç yazılmamış, yarım kalmış iş.",
+   "user_experience": "MyFitnessPal'dan indirdiğim CSV'yi aynen yapıştırdım; her satır için 'Hatali satir' hatası aldım — oysa ekran bu uygulamayı destekliyorum demişti. Veriyi elle satır satır çevirmem gerekti.",
+   "fix": "Kısa vadede açıklamayı dürüstleştir: 'Dışa aktardığın veriyi aşağıdaki örnek formata çevirip yapıştır' (satır 50). Orta vadede header satırından kolon tespiti yap (Date/Meal/Calories → MFP eşlemesi) ve tırnaklı-alan destekli basit bir CSV split kullan. Ayrıca import.service.ts:57 'Hatali satir' → 'Hatalı satır' (diakritik).",
+   "cluster": "settings-social"
+  },
+  {
+   "id": "AC-01",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\achievements.tsx",
+   "line": 36,
+   "severity": "medium",
+   "what": "getAchievements (src/services/achievements.service.ts:16-22) error'u hiç okumadan `data ?? []` döndürüyor; ekranda da catch/loadError yok. Ağ/RLS hatasında ekran kesin bir dille 'Henüz başarımın yok' boş durumunu gösteriyor. Kardeş ekranlar (challenges.tsx:30, household.tsx:33, progress-photos.tsx:54) bu aynı yalanı LoadErrorState+retry ile düzeltmişti — burası unutulmuş.",
+   "user_experience": "Rozetlerim vardı; kötü bağlantıda ekranı açınca 'Henüz başarımın yok' yazdı — bütün başarımlarım silinmiş sandım, yeniden dene butonu da yoktu.",
+   "fix": "Servis: `const { data, error } = ...; if (error) throw error;` (challenges.service.ts:37 kalıbı). Ekran: `const [loadError, setLoadError] = useState(false)`; effect'te `.catch(() => setLoadError(true))`; render'da `if (loadError) return <LoadErrorState title=\"Başarımlar yüklenemedi\" onRetry={reload} />` (challenges.tsx:135-137 ile birebir aynı kalıp).",
+   "cluster": "settings-social"
+  },
+  {
+   "id": "ST-01",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\strength.tsx",
+   "line": 46,
+   "severity": "medium",
+   "what": "Fetch hatasında catch yalnızca setLoading(false) yapıyor — loadError state'i ve retry yok; ekran 'Henüz güç kaydın yok' boş durumuna düşüyor (yorumdaki eski fix sadece sonsuz-loading'i kapatmış, yalan boş-durumu bırakmış). Ayrıca plateau Promise.all'ının (satır 50-57) hiç .catch'i yok → detectPlateauByExercise reject ederse unhandled promise rejection.",
+   "user_experience": "Aylardır squat kaydı giriyorum; zayıf internette ekran bana 'Henüz güç kaydın yok' dedi — verilerim gitti sandım ve yeniden denemenin tek yolu ekrandan çıkıp geri girmekti.",
+   "fix": "challenges.tsx kalıbını uygula: `const [loadError, setLoadError] = useState(false)`; catch'te `setLoadError(true)`; render'da `if (loadError) return <LoadErrorState title=\"Güç kayıtları yüklenemedi\" onRetry={reload} />`. Plateau zincirinin sonuna `.catch(() => {})` ekle (plateau verisi opsiyonel süs, sessiz düşebilir).",
+   "cluster": "settings-social"
+  },
+  {
+   "id": "PP-01",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\progress-photos.tsx",
+   "line": 36,
+   "severity": "medium",
+   "what": "Poz değeri 'on' (ASCII, ö'süz) saklanıyor ve UI ham değeri textTransform:'capitalize' ile basıyor: seçim çipinde 'On' (satır 218), modal başlığında 'Karşılaştırma (on)' (satır 244), küçük etikette 'On' (satır 338); accessibilityLabel (satır 211, 332) de ekran okuyucuya 'on' okutuyor. Doğrusu 'Ön'.",
+   "user_experience": "Fotoğraf pozu seçerken 'On / Yan / Arka' yazıyor — 'Ön' demek istediğini tahmin etmem gerekti; karşılaştırma başlığında da 'Karşılaştırma (on)' çıkıyor, çeviri hatası gibi duruyor.",
+   "fix": "`const POSE_LABELS: Record<string, string> = { on: 'Ön', yan: 'Yan', arka: 'Arka' };` ekle; satır 218/244/338'de `POSE_LABELS[pose] ?? pose` göster, accessibilityLabel'lara da aynısını ver, textTransform:'capitalize' kaldır. Saklanan 'on' değeri DB'de aynen kalır — yalnız görüntü katmanı değişir.",
+   "cluster": "settings-social"
+  },
+  {
+   "id": "AC-02",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\achievements.tsx",
+   "line": 12,
+   "severity": "medium",
+   "what": "Rozet 'ikonları' metin yer tutucusu: '*', '**', '***', '!!!!', 'M1', 'M3'... (satır 61'deki yorum bile 'decorative placeholder glyph' diyor — unutulmuş iş). Evaluator'ın yazdığı 'challenge' tipi rozet haritada hiç yok → daire içinde '+' görünüyor.",
+   "user_experience": "Başarımlar ekranımda madalyamın ikonu '!!!!' ve '**' gibi karakterler — uygulama bozuk mu render edemedi mi diye düşündüm.",
+   "fix": "TYPE_ICONS'u Ionicons adlarına çevir ve satır 64'te `<Ionicons name={...} size={22} color={COLORS.primary} />` bas: first_kg/five_kg:'trending-down', goal_reached:'trophy', streak_*:'flame', pr:'barbell', maintenance_*:'shield-checkmark', challenge:'ribbon' (fallback 'star'). strength.tsx:81 boş-durum ikonu kalıbıyla aynı; Ionicons zaten import edilebilir.",
+   "cluster": "settings-social"
+  },
+  {
+   "id": "HH-01",
+   "file": "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\household.tsx",
+   "line": 219,
+   "severity": "medium",
+   "what": "Davet kodu düz Text (selectable bile değil), kopyala/paylaş aksiyonu yok; hemen altındaki metin 'Bu kodu paylaşarak aile üyelerini davet edebilirsin' diyor ama hiçbir paylaşma yolu sunmuyor — kod ancak ezberlenip elle yazılabiliyor.",
+   "user_experience": "Eşime davet kodunu göndermek için koda basılı tuttum — hiçbir şey olmadı, kopyalanmıyor. Kodu bir kağıda yazıp WhatsApp'tan elle yazdım.",
+   "fix": "Kod rozetini TouchableOpacity yap: onPress'te `Share.share({ message: `KOCHKO aile davet kodum: ${household.inviteCode}` })` (react-native Share, ek bağımlılık yok) + haptics.tap(); veya expo-clipboard ile kopyala + 'Kopyalandı' geri bildirimi. En azından `<Text selectable ...>`.",
+   "cluster": "settings-social"
+  }
+ ],
+ "lows_count": 65,
+ "screens_ok": [
+  "app/(tabs)/chat.tsx — boş durum (SkeletonScreen), hata+retry (LoadErrorState 'Koçuna bağlanılamadı'), hesap-değişimi cache temizliği ve param sözleşmesi düzgün; kusur bulunamadı",
+  "app/chat/[sessionId].tsx — salt param-ileten legacy redirect; tüm paramlar korunarak sekmeye yönlendiriyor, ölü uç yok",
+  "app/(tabs)/plan.tsx — sadece güvenli fallback redirect; sekme butonu _layout.tsx:171-175'te FABButton ile tamamen değiştirilmiş, ekran pratikte hiç render edilmiyor; doğrudan navigasyonda ana sayfaya (plan kartlarının olduğu yere) düşürmesi doğru davranış",
+  "app/plan/diet.tsx — mantıksız iş içermeyen 10 satırlık ince sarmalayıcı; tüm bulgular PlanManagerScreen'e raporlandı",
+  "app/plan/workout.tsx — aynı şekilde ince sarmalayıcı",
+  "log.tsx > Uyku alt ekranı (943-1003): native saat seçici, canlı süre önizlemesi (gece-devri dahil), makul-dışı süre uyarı rengi, iki alan dolmadan Kaydet disabled, X + İptal çıkışları, klavye yok — temiz.",
+  "log.tsx > Toparlanma alt ekranı (1005-1072): pill'lerde tap-again ile seçim geri alma, her iki boyut boşken Kaydet disabled, a11y selected state'leri, X + İptal çıkışları — temiz.",
+  "log.tsx > Ana ekran boş-durum/ilk-gün: şablon ve son-öğün şeritleri veri yokken tamamen gizleniyor (çıplak boş liste yok), giriş yöntemleri kartı + örnekli placeholder'lar ilk gün kullanıcısına anlamlı; Türkçe metinlerde aksan/İngilizce sızıntısı taramasında sorun bulunamadı ('DIĞER' locale hatası zaten literal ile düzeltilmiş, 1277-1282).",
+  "log.tsx > Klavye: ana ekran KeyboardAvoidingView(padding)+scrollTo (1103, 1130), barkod özel-gram KeyboardAvoidingView (701), tartı ekranı üst-hizalama gerekçeli (861-864) — klavye-altında-kalan input bulunamadı.",
+  "app/settings/edit-profile.tsx",
+  "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\theme.tsx — tek seçilebilir seçenek (Koyu) + dürüst 'Yakında' etiketli disabled seçenekler, doğru a11y (radio + disabled state), tema-uyumlu renkler; gerçek kusur bulunamadı",
+  "C:\\Users\\demir\\Desktop\\KOCHKOAPP\\app\\settings\\index.tsx — arama filtresi, TR-locale uppercase/SİL düzeltmeleri, typed-confirm silme modalı (KAV + onRequestClose), FREE_LAUNCH gizlemeleri ve export hata yolları hepsi yerinde; gerçek kusur bulunamadı"
+ ]
+}

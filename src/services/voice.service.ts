@@ -15,6 +15,13 @@ let recording: Audio.Recording | null = null;
  */
 export async function startRecording(): Promise<boolean> {
   try {
+    // ux-sweep (LOG-01, savunma katmanı): önceki oturumdan bayat bir Recording kaldıysa
+    // (X ile yarıda çıkış vb.) önce boşalt — yoksa createAsync 'Only one Recording object'
+    // ile patlar ve sesli giriş uygulama yeniden başlatılana dek kilitlenir.
+    if (recording) {
+      try { await recording.stopAndUnloadAsync(); } catch { /* zaten ölü olabilir */ }
+      recording = null;
+    }
     const permission = await Audio.requestPermissionsAsync();
     if (!permission.granted) return false;
 

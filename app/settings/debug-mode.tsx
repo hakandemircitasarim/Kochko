@@ -12,6 +12,13 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 
 export default function DebugModeScreen() {
+  // ux-sweep (F3): tek dürüst istemci-görünür model bilgisi — son mesajın model_version'ı.
+  const [lastModel, setLastModel] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.from('chat_messages').select('model_version').not('model_version', 'is', null)
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => setLastModel((data?.model_version as string | null) ?? null));
+  }, []);
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [profile, setProfile] = useState<Record<string, unknown> | null>(null);
@@ -85,14 +92,10 @@ export default function DebugModeScreen() {
       </Card>
 
       {/* System Info */}
+      {/* ux-sweep (F3): eski kart UYDURMA sabitler basıyordu (modeller/bütçeler gerçek
+          konfigürasyonla bağlantısız) — yalnız istemciden gerçekten bilinen kaldı. */}
       <Card title="Sistem">
-        <DebugRow label="Birincil Model" value="gpt-4o-mini" />
-        <DebugRow label="Görüntü Modeli" value="gpt-4o" />
-        <DebugRow label="Fallback Model" value="gpt-4o-mini" />
-        <DebugRow label="Token Bütçesi" value="130.000 (toplam context)" />
-        <DebugRow label="K1 Bütçesi" value="%15 (19.500 token)" />
-        <DebugRow label="K2 Bütçesi" value="%10 (13.000 token)" />
-        <DebugRow label="K3 Bütçesi" value="%25 (32.500 token)" />
+        <DebugRow label="Son kullanılan model" value={lastModel ?? 'henüz bilinmiyor'} />
         <DebugRow label="K4 Bütçesi" value="%35 (45.500 token)" />
       </Card>
     </ScrollView>

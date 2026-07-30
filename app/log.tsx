@@ -3,7 +3,7 @@
  * All data entry starts here: text, photo, barcode, voice, water, weight, sleep, workout
  */
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Modal, Animated, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, ScrollView, ActivityIndicator, Modal, Animated, KeyboardAvoidingView, Platform, Linking } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -101,6 +101,10 @@ export default function QuickLogScreen() {
   // so a tap on one SU chip doesn't spin all three. null = idle.
   const [waterPendingLiters, setWaterPendingLiters] = useState<number | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ux-sweep (LOG-02): async akış sürerken ekran kapatılırsa showSuccessAndClose unmount SONRASI
+  // çalışıp hayalet bir router.back() daha ateşliyordu.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
   // #ux-regression: a returning/interrupted navigation must not leave the grid permanently
   // disabled (navigatingIndex stuck). Reset whenever the modal regains focus.
   useFocusEffect(useCallback(() => { setNavigatingIndex(null); }, []));
@@ -214,6 +218,7 @@ export default function QuickLogScreen() {
   const successScale = useRef(new Animated.Value(0.6)).current;
 
   const showSuccessAndClose = (msg: string, detail?: string | null) => {
+    if (!mountedRef.current) return;
     haptics.success();
     setSuccessMsg(msg);
     setSuccessDetail(detail ?? null);
@@ -287,11 +292,12 @@ export default function QuickLogScreen() {
   // FIX (ux-round2 #11): undo a just-repeated meal — soft-delete (the same is_deleted flag the
   // dashboard/timeline already filter on) and refresh.
   const undoMealLog = async (mealLogId: string) => {
-    try {
-      await supabase.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', mealLogId);
-      haptics.tap();
-      if (user?.id) fetchToday(user.id, dayBoundaryHour).catch(() => {});
-    } catch { /* best-effort */ }
+    // ux-sweep (LOG-04): supabase-js FIRLATMAZ — error kontrolsüzken 'geri aldım' sanılıp
+    // öğün günlükte kalıyordu.
+    const { error } = await supabase.from('meal_logs').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', mealLogId);
+    if (error) { haptics.error(); Alert.alert('Geri alınamadı', 'Bağlantını kontrol edip tekrar dene.'); return; }
+    haptics.tap();
+    if (user?.id) fetchToday(user.id, dayBoundaryHour).catch(() => {});
   };
 
   const handleLog = async () => {
@@ -502,7 +508,8 @@ export default function QuickLogScreen() {
       if (!isPremium) { promptVoicePremium(); return; }
       const ok = await startRecording();
       if (ok) setIsRecording(true);
-      else Alert.alert('İzin gerekli', 'Mikrofon izni ver.');
+      // ux-sweep (LOG-01): her başarısızlık 'izin' değil — dürüst, iki-nedenli mesaj.
+      else Alert.alert('Kayıt başlatılamadı', 'Mikrofon iznini kontrol et; sorun sürerse uygulamayı kapatıp aç.');
     }
   };
 
@@ -651,8 +658,16 @@ export default function QuickLogScreen() {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
           <Text style={{ color: colors.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.md }}>Barkod taramak için kamera izni gerekli</Text>
-          <TouchableOpacity onPress={requestCameraPermission} accessibilityRole="button" accessibilityLabel="İzin ver" style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl }}>
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>İzin ver</Text>
+          {/* ux-sweep (LOG-03): kalıcı reddedilmiş izinde 'İzin ver' ölü butondu — OS artık
+              diyalog göstermiyor; kullanıcıyı ayarlara götür. */}
+          <TouchableOpacity
+            onPress={() => { if (cameraPermission && !cameraPermission.canAskAgain) { void Linking.openSettings(); } else { void requestCameraPermission(); } }}
+            accessibilityRole="button"
+            accessibilityLabel={cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
+            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl }}>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>
+              {cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginTop: SPACING.md }}>
             <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Geri</Text>
@@ -810,7 +825,11 @@ export default function QuickLogScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
         <TouchableOpacity
-          onPress={() => { setScreen('main'); setIsRecording(false); }}
+          // ux-sweep (LOG-01): kayıt sürerken X yalnız state'i sıfırlıyordu — modül seviyesindeki
+          // Recording nesnesi AÇIK kalıyor (Android yeşil mikrofon göstergesi yanık), bir sonraki
+          // denemede createAsync 'Only one Recording...' ile patlayıp yanlış 'izin ver' teşhisine
+          // düşüyordu; uygulama yeniden başlatılana dek sesli giriş kilitliydi.
+          onPress={() => { if (isRecording) { void stopRecording(); } setScreen('main'); setIsRecording(false); }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
           accessibilityLabel="Kapat"

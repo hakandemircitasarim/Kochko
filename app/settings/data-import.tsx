@@ -33,6 +33,9 @@ export default function DataImportScreen() {
     setImporting(false);
 
     if (res.success) {
+      // ux-sweep (DI-01): metin temizlenmiyordu — buton aktif kalıp ikinci basışta AYNI veriyi
+      // mükerrer aktarıyordu (dedup yok). Başarıda temizle; tekrar basış boş-girdi kapısına düşer.
+      setCsvText('');
       Alert.alert('Başarılı', `${res.recordsImported} kayıt içeri aktarıldı.`); // FIX (audit diakritik)
     } else {
       Alert.alert('Hata', `İçe aktarma başarısız. ${res.errors.length} hata.`); // FIX (audit diakritik)
@@ -47,7 +50,7 @@ export default function DataImportScreen() {
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
       <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         {/* FIX (audit diakritik) */}
-        Başka uygulamalardan (MyFitnessPal, Fatsecret, Samsung Health) dışa aktardığın CSV verisini buraya yapıştır.
+        Başka uygulamadan aldığın veriyi AŞAĞIDAKİ örnek formata çevirip yapıştır (şimdilik yalnız bu basit format destekleniyor).
       </Text>
 
       {/* Import type selection */}

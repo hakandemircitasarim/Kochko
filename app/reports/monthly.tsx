@@ -3,7 +3,7 @@
  * Spec 8.3: Aylik rapor - hedefe yaklasma, trend, risk sinyalleri.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
@@ -57,6 +57,12 @@ export default function MonthlyReportScreen() {
   // instead of swapping it for the full-screen error state.
   const loadedRef = useRef(false);
   const dayBoundaryHour = useProfileStore(s => (s.profile?.day_boundary_hour as number) ?? 4);
+  // ux-sweep (monthly-past-months-unreachable): ay hep efektif aya SABİTTİ — ayın 1'inde biten
+  // ayın raporu (DB'de durduğu hâlde) kalıcı erişilmez oluyor, yerine bomboş yeni ay + ücretli
+  // 'Rapor Oluştur' çıkıyordu. calendar.tsx'in < Ay > navigasyonu buraya taşındı.
+  const effInit = getEffectiveDate(new Date(), dayBoundaryHour);
+  const [viewYear, setViewYear] = useState(() => Number(effInit.slice(0, 4)));
+  const [viewMonth, setViewMonth] = useState(() => Number(effInit.slice(5, 7))); // 1-12
 
   const loadData = useCallback(() => {
     if (!user?.id) return;
@@ -70,9 +76,8 @@ export default function MonthlyReportScreen() {
     // FIX (ux-pass5): anchor the month to the user's EFFECTIVE day (day_boundary_hour, default
     // 04:00) like daily.tsx — at 00:51 on the 1st the experiential day is still the previous
     // month; raw getMonth() showed an empty new month + a paid regeneration prompt.
-    const eff = getEffectiveDate(new Date(), dayBoundaryHour); // YYYY-MM-DD, local + boundary-aware
-    const _y = Number(eff.slice(0, 4));
-    const _m = Number(eff.slice(5, 7)) - 1; // 0-based
+    const _y = viewYear;
+    const _m = viewMonth - 1; // 0-based
     const _mm = String(_m + 1).padStart(2, '0');
     const monthStart = `${_y}-${_mm}-01`;
     const monthEnd = `${_y}-${_mm}-${String(new Date(_y, _m + 1, 0).getDate()).padStart(2, '0')}`;
@@ -138,7 +143,7 @@ export default function MonthlyReportScreen() {
       setError(true);
       setLoading(false);
     });
-  }, [user?.id, dayBoundaryHour]);
+  }, [user?.id, dayBoundaryHour, viewYear, viewMonth]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -180,6 +185,9 @@ export default function MonthlyReportScreen() {
     );
   }
 
+  const effNow = getEffectiveDate(new Date(), dayBoundaryHour);
+  const isViewingCurrentMonth = viewYear === Number(effNow.slice(0, 4)) && viewMonth === Number(effNow.slice(5, 7));
+
   const weeklyAvgCompliance = weeklyReports.length > 0
     ? Math.round(weeklyReports.reduce((s, r) => s + (r.avg_compliance as number ?? 0), 0) / weeklyReports.length)
     : 0;
@@ -204,9 +212,28 @@ export default function MonthlyReportScreen() {
       {/* FIX (ux-polish): period header so monthly anchors the reader like daily ("Salı, 14 Temmuz")
           and weekly ("Hafta: …"). review fix: derive it from the SAME day-boundary-aware effective
           month the query uses (raw new Date() could name a different month pre-boundary on the 1st). */}
-      <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
-        {new Date(`${getEffectiveDate(new Date(), dayBoundaryHour).slice(0, 7)}-01T00:00:00`).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
-      </Text>
+      {/* ux-sweep: < Ay > navigasyonu (calendar.tsx kalıbı) — geçmiş ay raporları erişilir. */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
+        <TouchableOpacity
+          onPress={() => { if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); }}
+          accessibilityRole="button" accessibilityLabel="Önceki ay"
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={{ color: COLORS.primary, fontSize: FONT.xl }}>{'<'}</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: FONT.md, color: COLORS.text, fontWeight: '700' }}>
+          {new Date(viewYear, viewMonth - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
+        </Text>
+        <TouchableOpacity
+          onPress={() => { if (!isViewingCurrentMonth) { if (viewMonth === 12) { setViewMonth(1); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); } }}
+          disabled={isViewingCurrentMonth}
+          accessibilityRole="button" accessibilityLabel="Sonraki ay"
+          accessibilityState={{ disabled: isViewingCurrentMonth }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={{ color: isViewingCurrentMonth ? COLORS.textMuted : COLORS.primary, fontSize: FONT.xl }}>{'>'}</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Overall Compliance */}
       <Card title="Ortalama Uyum">
@@ -268,7 +295,12 @@ export default function MonthlyReportScreen() {
       )}
 
       {/* AI Report Section */}
-      {!aiReport && (
+      {!aiReport && !isViewingCurrentMonth && (
+        <Card title="AI Aylık Analiz">
+          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Bu aya ait bir AI analizi yok.</Text>
+        </Card>
+      )}
+      {!aiReport && isViewingCurrentMonth && (
         <Card title="AI Aylık Analiz">
           <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.md }}>
             Yapay zeka ile aylık performans analizini oluştur.

@@ -68,8 +68,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       .from('profiles')
       .update({ deleted_at: null, updated_at: new Date().toISOString() })
       .eq('id', userId);
+    // ux-sweep (IDX-REACT-01): deletion_requested_at YERELDE de temizlenmeli — yoksa app/index
+    // kapısı başarılı iptalden sonra da 'silme bekliyor' durumunu okumaya devam ediyor.
     set(state => ({
-      profile: state.profile ? { ...state.profile, deleted_at: null } : null,
+      profile: state.profile ? { ...state.profile, deleted_at: null, deletion_requested_at: null } : null,
     }));
   },
 

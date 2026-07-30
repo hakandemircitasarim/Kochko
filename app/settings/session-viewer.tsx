@@ -65,6 +65,9 @@ export default function SessionViewerScreen() {
     // kullanıcının yazdığı mesaj gibi görünüyordu — thread'deki gibi gizle.
     setMessages(
       ((data ?? []) as Msg[])
+        // ux-sweep (F2): sorgu artık en-yeniden-geriye çekiyor — görünüm için eski→yeni çevir.
+        .slice()
+        .reverse()
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .filter(m => !/^\[(PLAN_INIT|ALT|SYSTEM_INIT)\]/.test(m.content))
         .map(m => ({ ...m, content: sanitizeTranscript(m.content) }))

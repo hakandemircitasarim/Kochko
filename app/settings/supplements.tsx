@@ -1,3 +1,5 @@
+import { getEffectiveDate } from '@/lib/day-boundary';
+import { useProfileStore } from '@/stores/profile.store';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +26,7 @@ const QUICK_SUPPS = [
 
 export default function SupplementsScreen() {
   const insets = useSafeAreaInsets();
+  const dayBoundaryHour = useProfileStore(st => (st.profile?.day_boundary_hour as number) ?? 4);
   const [logs, setLogs] = useState<SupplementLog[]>([]);
   // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar yanlış 'kayıt yok' metni gösterilmiyordu.
   const [loading, setLoading] = useState(true);
@@ -38,7 +41,9 @@ export default function SupplementsScreen() {
   const loadLogs = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
-    const date = new Date().toISOString().split('T')[0];
+    // ux-sweep (SU-01): UTC günü gece 00-03 arası Türkiye'de YANLIŞ güne yazıyordu — uygulama
+    // genelindeki efektif gün (getEffectiveDate + day_boundary_hour) burada da geçerli.
+    const date = getEffectiveDate(new Date(), dayBoundaryHour);
     const { data, error } = await supabase.from('supplement_logs').select('*').eq('logged_for_date', date).order('logged_at');
     if (error) {
       console.warn('supplement_logs load failed', error);
@@ -47,7 +52,7 @@ export default function SupplementsScreen() {
       setLogs((data ?? []) as SupplementLog[]);
     }
     setLoading(false);
-  }, []);
+  }, [dayBoundaryHour]);
 
   useEffect(() => { loadLogs(); }, [loadLogs]);
 

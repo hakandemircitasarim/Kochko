@@ -60,6 +60,12 @@ export default function MealTemplatesScreen() {
       };
     });
 
+    // ux-sweep (MT-02): 'kcal' geçmeyen girdi sessizce calories:0 yazıyordu — 0 kalorili şablon
+    // sonra tek dokunuşla günlüğe 0 kcal öğün olarak giriyordu.
+    if (items.length > 0 && items.every(i => i.calories === 0)) {
+      Alert.alert('Kalori eksik', 'Hiçbir öğede kcal bulunamadı. Örnek: "2 yumurta 155kcal, ekmek 80kcal".');
+      return;
+    }
     const { error } = await createTemplate(name.trim(), items);
     // FIX (audit error-message-sweep): ham hata metnini gösterme; sabit Türkçe mesaj + konsola teknik detay.
     if (error) { console.error('createTemplate error', error); Alert.alert('Hata', 'Şablon kaydedilemedi, lütfen tekrar dene.'); return; }
@@ -67,7 +73,17 @@ export default function MealTemplatesScreen() {
     load();
   };
 
-  const handleUse = async (t: MealTemplate) => {
+  const handleUse = (t: MealTemplate) => {
+    // ux-sweep (MT-01): tek dokunuş onaysız GERÇEK öğün kaydı yazıyordu — kartı gezinirken
+    // yanlışlıkla dokunan kullanıcı günlüğüne hayalet öğün alıyordu. Dosyanın kendi silme
+    // kalıbıyla onay iste.
+    Alert.alert('Bugüne kaydet?', `"${t.name}" (${t.total_calories} kcal) bugünkü günlüğüne eklenecek.`, [
+      { text: 'Vazgeç', style: 'cancel' },
+      { text: 'Kaydet', onPress: () => { void doUse(t); } },
+    ]);
+  };
+
+  const doUse = async (t: MealTemplate) => {
     const { error } = await useTemplate(t.id);
     if (error) {
       // FIX (audit error-message-sweep): ham hata metnini gösterme; sabit Türkçe mesaj + konsola teknik detay.
@@ -153,7 +169,7 @@ export default function MealTemplatesScreen() {
                   <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{item.calories} kcal</Text>
                 </View>
               ))}
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>{t.use_count}x kullanıldı | Uzun bas: sil</Text>
+              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>{t.use_count}x kullanıldı · Dokun: bugüne kaydet · Uzun bas: sil</Text>
             </Card>
           </TouchableOpacity>
         ))

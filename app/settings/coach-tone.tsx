@@ -1,3 +1,4 @@
+import { haptics } from '@/lib/haptics';
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
@@ -51,12 +52,22 @@ export default function CoachToneScreen() {
   // store baseline, so after a successful save/reset `dirty` is false and back is not blocked.
   useUnsavedGuard(selected !== ((profile?.coach_tone as Tone) ?? 'balanced'));
 
+  // ux-sweep (F4): update throw'u yakalanmıyordu — ağ hatasında sessiz hiçlik.
+  const [saving, setSaving] = useState(false);
   const handleSave = async () => {
-    if (!user?.id) return;
-    await update(user.id, { coach_tone: selected } as never);
-    Alert.alert('Kaydedildi', `Koç tonu "${TONES.find(t => t.value === selected)?.label}" olarak ayarlandı.`, [
-      { text: 'Tamam', onPress: () => router.back() },
-    ]);
+    if (!user?.id || saving) return;
+    setSaving(true);
+    try {
+      await update(user.id, { coach_tone: selected } as never);
+      Alert.alert('Kaydedildi', `Koç tonu "${TONES.find(t => t.value === selected)?.label}" olarak ayarlandı.`, [
+        { text: 'Tamam', onPress: () => router.back() },
+      ]);
+    } catch {
+      haptics.error();
+      Alert.alert('Kaydedilemedi', 'Bağlantını kontrol edip tekrar dene.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReset = () => {
@@ -96,7 +107,7 @@ export default function CoachToneScreen() {
         </TouchableOpacity>
       ))}
 
-      <Button title="Kaydet" onPress={handleSave} size="lg" style={{ marginTop: SPACING.md }} />
+      <Button title="Kaydet" onPress={handleSave} size="lg" style={{ marginTop: SPACING.md }}  loading={saving} />
       <Button title="Tonu Sıfırla" variant="ghost" onPress={handleReset} style={{ marginTop: SPACING.sm }} />
     </ScrollView>
   );

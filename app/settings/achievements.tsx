@@ -1,3 +1,5 @@
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
@@ -9,10 +11,11 @@ import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 
+// ux-sweep (AC-02): '*', '!!!!', 'M1' yer tutucuları GERÇEK ikonlara çevrildi.
 const TYPE_ICONS: Record<string, string> = {
-  first_kg: '*', five_kg: '**', half_goal: '***', goal_reached: '!!!!',
-  streak_7: '7', streak_30: '30', streak_100: '100', pr: 'PR',
-  maintenance_1m: 'M1', maintenance_3m: 'M3', maintenance_6m: 'M6',
+  first_kg: 'trending-down-outline', five_kg: 'trending-down', half_goal: 'flag-outline', goal_reached: 'trophy',
+  streak_7: 'flame-outline', streak_30: 'flame', streak_100: 'bonfire', pr: 'barbell',
+  maintenance_1m: 'shield-checkmark-outline', maintenance_3m: 'shield-checkmark', maintenance_6m: 'shield',
 };
 
 // P1#8: map an achievement to a shareable 1080x1920 card (share-card.service).
@@ -33,12 +36,28 @@ export default function AchievementsScreen() {
   const [items, setItems] = useState<Achievement[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { getAchievements().then(setItems).finally(() => setLoading(false)); }, []);
+  // ux-sweep (AC-01): servis error'u yutuyor — ağ hatası 'hiç başarımın yok' olarak okunuyordu.
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  useEffect(() => {
+    setLoadError(false);
+    getAchievements()
+      .then(res => { setItems(res); setLoading(false); })
+      .catch(() => { setLoadError(true); setLoading(false); });
+  }, [reloadKey]);
 
   if (loading) {
     // FIX (ux-ideas #28): skeleton loader instead of a bare centered spinner — no "frozen" feel,
     // no layout jump when content lands, and visual parity with dashboard/reports/coach-memory.
     return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={4} /></View>;
+  }
+
+  if (loadError) {
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md }}>
+        <Card><LoadErrorState embedded title="Başarımlar yüklenemedi" onRetry={() => { setLoading(true); setReloadKey(k => k + 1); }} /></Card>
+      </ScrollView>
+    );
   }
 
   return (
@@ -61,7 +80,7 @@ export default function AchievementsScreen() {
             {/* FIX (ux-polish): decorative placeholder glyph — hide from screen readers so TalkBack
                 doesn't read the raw characters before each title (the title already names it). */}
             <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '800' }}>{TYPE_ICONS[a.achievement_type] ?? '+'}</Text>
+              <Ionicons name={(TYPE_ICONS[a.achievement_type] ?? 'ribbon-outline') as never} size={22} color={COLORS.primary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700' }}>{a.title}</Text>

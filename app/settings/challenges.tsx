@@ -4,7 +4,7 @@ import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getActiveChallenges, getCompletedChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge } from '@/services/challenges.service';
+import { getActiveChallenges, getCompletedChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge , markManualDay } from '@/services/challenges.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { COLORS, SPACING, FONT } from '@/lib/constants';
@@ -162,6 +162,14 @@ export default function ChallengesScreen() {
               {c.progress.filter(p => p.met).length} / {c.target.duration_days} gün tamamlandı
             </Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+              {/* ux-sweep (CH-01): 'manual' metriği otomatik değerlendirilemez — gün kullanıcıdan. */}
+              {c.status === 'active' && c.target?.metric === 'manual' && (
+                <Button title="Bugünü işaretle" variant="primary" size="sm" onPress={() => runAction(async () => {
+                  const r = await markManualDay(c.id);
+                  if (r.already) Alert.alert('Zaten işaretli', 'Bugünü daha önce işaretlemişsin.');
+                  else if (r.done) Alert.alert('Tebrikler!', 'Challenge tamamlandı.');
+                })} />
+              )}
               {c.status === 'active' && <Button title="Duraklat" variant="outline" size="sm" onPress={() => runAction(() => pauseChallenge(c.id))} />}
               {c.status === 'paused' && <Button title="Devam Et" variant="primary" size="sm" onPress={() => runAction(() => resumeChallenge(c.id))} />}
               <Button title="Bırak" variant="ghost" size="sm" onPress={() => {

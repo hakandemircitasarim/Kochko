@@ -250,13 +250,14 @@ export default function WeeklyReportScreen() {
             <Card title="Haftanın Günleri">
               {report.best_day && (
                 <View style={{ flexDirection: 'row', gap: SPACING.md, paddingVertical: SPACING.xs }}>
-                  <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600', width: 50 }}>En İyi</Text>
+                  <Text style={{ color: COLORS.success, fontSize: FONT.sm, fontWeight: '600', width: 68 }}>En İyi</Text>
                   <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{new Date(report.best_day).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric' })}</Text>
                 </View>
               )}
               {report.worst_day && (
                 <View style={{ flexDirection: 'row', gap: SPACING.md, paddingVertical: SPACING.xs }}>
-                  <Text style={{ color: COLORS.error, fontSize: FONT.sm, fontWeight: '600', width: 50 }}>En Kötü</Text>
+                  {/* ux-sweep: kardeş progress.tsx bilinçli 'Zorlu gün' der — utandırma dili yok. */}
+                  <Text style={{ color: COLORS.warning, fontSize: FONT.sm, fontWeight: '600', width: 68 }}>Zorlu gün</Text>
                   <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{new Date(report.worst_day).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric' })}</Text>
                 </View>
               )}

@@ -17,8 +17,10 @@ export async function getVenues(): Promise<Venue[]> {
   return (data ?? []) as Venue[];
 }
 
-export async function deleteVenue(id: string): Promise<void> {
-  await supabase.from('user_venues').delete().eq('id', id);
+// ux-sweep (VN-01): hata artık çağırana dönüyor — sessiz 'sildim' yalanı bitti.
+export async function deleteVenue(id: string): Promise<{ error: string | null }> {
+  const { error } = await supabase.from('user_venues').delete().eq('id', id);
+  return { error: error ? error.message : null };
 }
 
 export async function addOrUpdateVenue(

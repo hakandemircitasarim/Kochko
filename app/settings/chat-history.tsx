@@ -117,6 +117,15 @@ export default function ChatHistoryScreen() {
 
   const handleSearch = async () => {
     if (!user?.id || (!searchQuery.trim() && !dateFrom && !dateTo)) return;
+    // ux-sweep (F5): bozuk tarih SESSİZCE atlanıyordu — kullanıcı filtre çalıştı sanıyordu.
+    if (dateFrom && !parseTurkishDate(dateFrom)) {
+      Alert.alert('Tarih formatı', 'Başlangıç tarihini GG.AA.YYYY biçiminde yaz (örn. 05.07.2026).');
+      return;
+    }
+    if (dateTo && !parseTurkishDate(dateTo)) {
+      Alert.alert('Tarih formatı', 'Bitiş tarihini GG.AA.YYYY biçiminde yaz (örn. 05.07.2026).');
+      return;
+    }
     setSearching(true);
 
     let query = supabase

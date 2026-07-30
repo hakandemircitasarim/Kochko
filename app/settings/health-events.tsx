@@ -1,5 +1,6 @@
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -61,13 +62,17 @@ export default function HealthEventsScreen() {
     Alert.alert('Sil', 'Bu kaydı silmek istediğine emin misin?', [
       { text: 'İptal', style: 'cancel' },
       { text: 'Sil', style: 'destructive', onPress: async () => {
-        await supabase.from('health_events').delete().eq('id', id);
+        // ux-sweep (HE-01): supabase-js hata FIRLATMAZ — error kontrolsüz + optimistic remove,
+        // ağ hatasında 'sildim' görünüp yenilemede kayıt geri geliyordu. Önce yaz, sonra düşür.
+        const { error } = await supabase.from('health_events').delete().eq('id', id);
+        if (error) { Alert.alert('Hata', 'Kayıt silinemedi. Bağlantını kontrol edip tekrar dene.'); return; }
         setEvents(prev => prev.filter(e => e.id !== id));
       }},
     ]);
   };
 
   return (
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit ui-settings-duplicate-title): native header (settings/_layout.tsx) renders the title; in-body H1 removed as redundant. */}
       <Button title={showAdd ? 'İptal' : 'Yeni Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} style={{ marginTop: SPACING.lg }} />
@@ -90,7 +95,8 @@ export default function HealthEventsScreen() {
             ))}
           </View>
           <Input label="Açıklama" placeholder="Diz ameliyatı, 2022" value={desc} onChangeText={setDesc} multiline />
-          <Input label="Tarih (opsiyonel)" placeholder="2022-06-15" value={date} onChangeText={setDate} />
+          {/* ux-sweep (HE-02): serbest metin tarih doğrulamasızdı — takvim alanı ISO üretir. */}
+          <DateTimeField label="Tarih (opsiyonel)" mode="date" value={date} onChange={setDate} placeholder="2022-06-15" maximumDate={new Date()} />
           {/* FIX (audit ui-toggles): onay kutusuna checkbox rolü + checked state + label. */}
           <TouchableOpacity onPress={() => setOngoing(!ongoing)} accessibilityRole="checkbox" accessibilityState={{ checked: ongoing }} accessibilityLabel="Devam ediyor" style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Text style={{ color: COLORS.primary }}>{ongoing ? '[x]' : '[ ]'}</Text>
@@ -148,5 +154,6 @@ export default function HealthEventsScreen() {
         </TouchableOpacity>
       ))}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

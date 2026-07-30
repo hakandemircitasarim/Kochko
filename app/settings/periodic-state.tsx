@@ -218,11 +218,13 @@ export default function PeriodicStateScreen() {
       />
       {config?.requiresEndDate && !endDate && (
         <Text style={{ color: COLORS.warning, fontSize: FONT.xs, marginTop: -SPACING.sm, marginBottom: SPACING.sm }}>
-          Bu durum için bitiş tarihi önerilir.
+          Bu durum için bitiş tarihi gerekli.
         </Text>
       )}
 
-      <Button title="Dönemi Başlat" onPress={handleActivate} loading={loading} size="lg" disabled={!selected} />
+      {/* ux-sweep (PS-01): ekran 'önerilir' derken servis SERT engelliyordu — kapı butonda,
+          kullanıcı hataya hiç düşmez. */}
+      <Button title="Dönemi Başlat" onPress={handleActivate} loading={loading} size="lg" disabled={!selected || !!(config?.requiresEndDate && !endDate)} />
     </ScrollView>
     </KeyboardAvoidingView>
   );

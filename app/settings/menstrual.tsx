@@ -47,6 +47,12 @@ export default function MenstrualScreen() {
       Alert.alert('Geçersiz süre', 'Döngü süresi 21–45 gün olmalı.');
       return;
     }
+    // ux-sweep (MN-01): takip açıkken tarihsiz kayıt faz hesabını sessizce imkânsız bırakıyordu.
+    if (tracking && !lastPeriod) {
+      haptics.error();
+      Alert.alert('Tarih eksik', 'Faz hesaplanabilmesi için son regl başlangıç tarihini seç.');
+      return;
+    }
     try {
       setSaving(true);
       await updateMenstrualSettings(user.id, tracking, cl || 28, lastPeriod || undefined);

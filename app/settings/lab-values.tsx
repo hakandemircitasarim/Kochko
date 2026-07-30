@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { DateTimeField } from '@/components/ui/DateTimeField';
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -21,6 +23,8 @@ export default function LabValuesScreen() {
   const [paramName, setParamName] = useState('');
   const [value, setValue] = useState('');
   const [unit, setUnit] = useState('');
+  // ux-sweep (LV-02): ölçüm tarihi sorulmadan bugüne sabitleniyordu — eski tahlil girilemiyordu.
+  const [measuredAt, setMeasuredAt] = useState('');
   const [refMin, setRefMin] = useState('');
   const [refMax, setRefMax] = useState('');
   // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya yanlış 'boş' kartı gösterilmiyordu (food-preferences kalıbı).
@@ -69,7 +73,7 @@ export default function LabValuesScreen() {
     const ok = await addLabValue({
       parameter_name: paramName, value: n, unit: unit || '-',
       reference_min: rMin, reference_max: rMax,
-      measured_at: new Date().toISOString().split('T')[0],
+      measured_at: measuredAt || new Date().toISOString().split('T')[0],
     });
     if (!ok) {
       haptics.error();
@@ -126,6 +130,7 @@ export default function LabValuesScreen() {
             <View style={{ flex: 1 }}><Input label="Ref Min" value={refMin} onChangeText={setRefMin} keyboardType="decimal-pad" /></View>
             <View style={{ flex: 1 }}><Input label="Ref Max" value={refMax} onChangeText={setRefMax} keyboardType="decimal-pad" /></View>
           </View>
+          <DateTimeField label="Ölçüm Tarihi (boşsa bugün)" mode="date" value={measuredAt} onChange={setMeasuredAt} placeholder="2026-07-30" maximumDate={new Date()} />
           <Button title="Kaydet" onPress={handleAdd} />
         </Card>
       )}
@@ -139,6 +144,23 @@ export default function LabValuesScreen() {
               </Text>
               <Text style={{ color: e.is_out_of_range ? COLORS.error : COLORS.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{e.value} {e.unit}</Text>
               {e.is_out_of_range && <Text style={{ color: COLORS.error, fontSize: FONT.lg, fontWeight: '800' }}>!</Text>}
+              {/* ux-sweep (LV-01): yanlış girilen değerin hiçbir silme yolu yoktu. */}
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert('Sil', `${param} · ${e.value} ${e.unit} silinsin mi?`, [
+                    { text: 'İptal', style: 'cancel' },
+                    { text: 'Sil', style: 'destructive', onPress: async () => {
+                      const { error } = await supabase.from('lab_values').delete().eq('id', e.id);
+                      if (error) { Alert.alert('Hata', 'Silinemedi, tekrar dene.'); return; }
+                      loadEntries();
+                    }},
+                  ]);
+                }}
+                accessibilityRole="button" accessibilityLabel={`${param} değerini sil`}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
             </View>
           ))}
           {values.some(v => v.is_out_of_range) && (

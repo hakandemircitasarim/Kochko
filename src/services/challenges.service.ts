@@ -74,6 +74,29 @@ export async function startChallenge(
   if (error) throw error;
 }
 
+/**
+ * ux-sweep (CH-01): 'Özel' (manual) challenge'ları gece değerlendiricisi İŞLEMİYOR — metric
+ * 'manual' hiçbir otomatik veri kaynağına bağlanamaz. Kullanıcı günü kendisi işaretler;
+ * idempotent (aynı efektif gün ikinci kez yazılmaz), hedef gün sayısına ulaşınca tamamlanır.
+ */
+export async function markManualDay(id: string): Promise<{ done: boolean; already: boolean }> {
+  const { data, error } = await supabase.from('challenges')
+    .select('progress, target, status').eq('id', id).single();
+  if (error) throw error;
+  const row = data as { progress: { date: string; value: number; met: boolean }[]; target: { duration_days: number }; status: string };
+  const today = new Date().toISOString().split('T')[0];
+  const progress = row.progress ?? [];
+  if (progress.some(pr => pr.date === today)) return { done: false, already: true };
+  const updated = [...progress, { date: today, value: 1, met: true }];
+  const metCount = updated.filter(pr => pr.met).length;
+  const completed = metCount >= (row.target?.duration_days ?? Infinity);
+  const { error: upErr } = await supabase.from('challenges')
+    .update({ progress: updated, ...(completed ? { status: 'completed' } : {}) })
+    .eq('id', id);
+  if (upErr) throw upErr;
+  return { done: completed, already: false };
+}
+
 export async function pauseChallenge(id: string): Promise<void> {
   const { error } = await supabase.from('challenges').update({ status: 'paused', paused_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;

@@ -363,11 +363,26 @@ function parseReasoning(content: string): { cleanContent: string; reasoning: str
 // parseReasoning ÖNCE çalışır, blok içerikten sökülüp mesajın `reasoning` alanına
 // taşınır — panel canlı mesajlardaki gibi reload sonrası da çalışır.
 function toUIMessage(m: ChatMessage): UIMessage {
-  if (m.role === 'assistant' && m.content.includes('<reasoning>')) {
-    const { cleanContent, reasoning } = parseReasoning(m.content);
-    return { ...m, content: cleanContent, reasoning };
+  let content = m.content;
+  let reasoning: string | undefined;
+  if (m.role === 'assistant' && content.includes('<reasoning>')) {
+    const parsed = parseReasoning(content);
+    content = parsed.cleanContent;
+    reasoning = parsed.reasoning ?? undefined;
   }
-  return { ...m };
+  if (m.role !== 'assistant') return { ...m, content, reasoning };
+  // ux-sweep (CHT-02): sunucu <confirm_reject/> işaretini BİLEREK kayıtlı metinde tutuyor ki
+  // geçmiş yüklemesi de Onayla/Değiştir butonlarını çizsin — ama hiçbir yükleme yolu bayrağı
+  // hesaplamıyordu; sanitize işareti sessizce silip planı onaylanamaz bırakıyordu (uygulamayı
+  // kapatıp açan kullanıcı için plan akışı ölüyordu). planType task_mode'dan türer; draftId
+  // null kalır — sunucu onayda en son taslağı çözer.
+  const hasPlan = hasConfirmRejectIndicator(content, m.task_mode);
+  content = stripMachineMarkers(content);
+  return {
+    ...m, content, reasoning,
+    hasPlanSuggestion: hasPlan || undefined,
+    planType: hasPlan ? (((m.task_mode ?? '').includes('workout')) ? 'workout' : 'diet') : undefined,
+  };
 }
 
 function parseQuickSelect(content: string): { cleanContent: string; options: string[] | null } {
@@ -730,6 +745,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           setTimeout(() => setVoiceConfirmation(prev => prev?.expiresAt === expiresAt ? null : prev), 5000);
         } else if (audioUri) {
           Alert.alert('Yazıya çevrilemedi', 'Sesini kaydettim ama yazıya çeviremedim — mesajını yazarak gönderir misin?');
+        } else {
+          // ux-sweep (CHT-05): ne metin ne ses — eskiden SESSİZ ölüyordu.
+          Alert.alert('Kayıt alınamadı', 'Ses kaydı tamamlanamadı — tekrar dener misin?');
         }
       } catch {
         setIsRecordingVoice(false);
@@ -738,8 +756,11 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       try {
         const started = await startRecording();
         if (started) setIsRecordingVoice(true);
+        // ux-sweep (CHT-05): false dönüş sessizdi — mikrofon butonu ölü sanılıyordu.
+        else Alert.alert('Mikrofon açılamadı', 'Mikrofon iznini kontrol edip tekrar dene.');
       } catch {
         setIsRecordingVoice(false);
+        Alert.alert('Mikrofon açılamadı', 'Mikrofon iznini kontrol edip tekrar dene.');
       }
     }
   };
@@ -995,7 +1016,11 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         // Only replace when the server actually has newer content — never clobber
         // optimistic local bubbles (or a just-fired topic marker) for nothing.
         if (prevNewest && freshNewest && prevNewest.id === freshNewest.id) return prev;
-        return fresh.map(toUIMessage);
+        // ux-sweep (CHT-03): yorumdaki 'never clobber optimistic bubbles' garantisi BAŞARISIZ
+        // gönderimde tutmuyordu — sekme değiştirip dönen kullanıcının failed balonu ve
+        // 'Yeniden dene' yükü sunucu satırlarıyla eziliyordu. Kuyruktaki failed yereller korunur.
+        const failedLocals = prev.filter(m => m.failed);
+        return [...fresh.map(toUIMessage), ...failedLocals];
       });
     }).catch(() => {});
     return () => { cancelled = true; };
@@ -1537,15 +1562,28 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         content = recipeParsed.cleanContent;
         const qsParsed = parseQuickSelect(content);
         content = qsParsed.cleanContent;
+        // ux-sweep (CHT-01, critical): çip yolu zarfın PLAN alanlarını düşürüyordu — plan
+        // reddetme/İnceltme akışı ('Tamamen değiştir' vb.) tam bu yoldan geçer; revize plan
+        // kimliksiz gelince Onayla en son KİMLİKLİ (eski) mesajı bulup YANLIŞ planı
+        // onaylayabiliyordu. Ana gönderim yolundaki eşleme buraya da taşındı.
+        const chipReasoning = content.includes('<reasoning>') ? parseReasoning(content) : null;
+        if (chipReasoning) content = chipReasoning.cleanContent;
         const hasPlan = hasConfirmRejectIndicator(content, data.task_mode);
         content = stripMachineMarkers(content);
         const hasLowConf = hasLowConfidenceVerificationIndicator(content);
         setMessages(prev => [...prev, {
-          id: `a-${Date.now()}`, role: 'assistant', content, task_mode: data.task_mode,
+          id: (data.assistant_message_id as string | undefined) ?? `a-${Date.now()}`,
+          role: 'assistant', content, task_mode: data.task_mode,
           created_at: new Date().toISOString(), actions: data.actions, receipts: data.receipts ?? null, showFeedback: false,
           simulationData: simParsed.data, recipeData: recipeParsed.data,
           quickSelectOptions: qsParsed.options, hasPlanSuggestion: hasPlan,
           hasLowConfidenceVerification: hasLowConf,
+          reasoning: chipReasoning?.reasoning,
+          planSnapshot: (data.plan_snapshot as Record<string, unknown> | null) ?? null,
+          planDraftId: (data.plan_draft_id as string | null) ?? null,
+          planType: (data.plan_type as 'diet' | 'workout' | null) ?? null,
+          taskCompletion: data.task_completion ?? null,
+          navigateTo: (data.navigate_to as string | null) ?? null,
         }]);
         if (data.actions.some((a: { feedback: string | null }) => a.feedback) && user?.id) { haptics.success(); refreshDashboard(user.id); }
       } else {

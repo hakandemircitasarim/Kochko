@@ -34,6 +34,8 @@ interface ProgressPhoto {
 }
 
 const POSE_TYPES = ['on', 'yan', 'arka'];
+// ux-sweep (PP-01): DB 'on' (ASCII) saklar; UI ham değeri 'On' diye basıyordu — TR etiket haritası.
+const POSE_LABELS: Record<string, string> = { on: 'Ön', yan: 'Yan', arka: 'Arka' };
 const screenWidth = Dimensions.get('window').width;
 
 export default function ProgressPhotosScreen() {
@@ -208,14 +210,14 @@ export default function ProgressPhotosScreen() {
           <TouchableOpacity key={pose} onPress={() => setSelectedPose(pose)}
             accessibilityRole="radio"
             accessibilityState={{ selected: selectedPose === pose }}
-            accessibilityLabel={pose}
+            accessibilityLabel={POSE_LABELS[pose] ?? pose}
             style={{
               flex: 1, padding: SPACING.sm, borderRadius: 8, alignItems: 'center',
               backgroundColor: selectedPose === pose ? COLORS.primary : COLORS.card,
               borderWidth: 1, borderColor: selectedPose === pose ? COLORS.primary : COLORS.border,
             }}>
             {/* FIX (audit UI-DS-01): seçili poz metni '#fff' yerine getContrastColor(COLORS.primary) (siyah; teal üzerinde WCAG AA geçer, beyaz 3.39:1 idi). */}
-            <Text style={{ color: selectedPose === pose ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600', textTransform: 'capitalize' }}>{pose}</Text>
+            <Text style={{ color: selectedPose === pose ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>{POSE_LABELS[pose] ?? pose}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -335,7 +337,7 @@ export default function ProgressPhotosScreen() {
                   >
                     <Ionicons name="trash-outline" size={15} color="#fff" />
                   </TouchableOpacity>
-                  <Text style={{ color: COLORS.textMuted, fontSize: 9, textAlign: 'center', marginTop: 2, textTransform: 'capitalize' }}>{photo.pose_type}</Text>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 9, textAlign: 'center', marginTop: 2, }}>{POSE_LABELS[photo.pose_type] ?? photo.pose_type}</Text>
                 </TouchableOpacity>
               ))}
             </View>

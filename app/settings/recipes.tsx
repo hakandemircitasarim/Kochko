@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase';
+import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -52,7 +54,18 @@ export default function RecipesScreen() {
   }, [profileLoading, profile, isPremium, router]);
 
   useEffect(() => { load(); }, [filter]);
-  const load = () => getRecipes(filter ?? undefined).then(setRecipes).finally(() => setLoading(false));
+  // ux-sweep (RC-01): servis hatayı yutup [] döndürüyordu — ağ hatası 'hiç tarifin yok'
+  // yalanına dönüşüyordu. Ekranda doğrudan sorgula, hatada dürüst kart + tekrar dene.
+  const [loadError, setLoadError] = useState(false);
+  const load = async () => {
+    setLoadError(false);
+    let q = supabase.from('saved_recipes').select('*').order('created_at', { ascending: false });
+    if (filter) q = q.eq('category', filter);
+    const { data, error } = await q;
+    if (error) { setLoadError(true); setLoading(false); return; }
+    setRecipes((data ?? []) as SavedRecipe[]);
+    setLoading(false);
+  };
 
   const handleDelete = (id: string) => {
     Alert.alert('Sil', 'Tarifi silmek istediğine emin misin?', [
@@ -208,7 +221,9 @@ export default function RecipesScreen() {
       )}
 
       {/* FIX (audit UI-STA-03): ilk fetch sürerken boş-durum kartı yerine yükleniyor göstergesi. */}
-      {loading ? (
+      {loadError ? (
+        <Card><LoadErrorState embedded title="Tarifler yüklenemedi" onRetry={load} /></Card>
+      ) : loading ? (
         <View style={{ gap: SPACING.md, paddingTop: SPACING.md }}>
           <SkeletonCard lines={3} />
           <SkeletonCard lines={2} />

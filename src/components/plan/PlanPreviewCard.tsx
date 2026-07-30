@@ -116,6 +116,17 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
   );
 }
 
+
+// ux-sweep: taslağın haftası bu haftanın pazartesisinden eskiyse bayattır.
+function isStaleWeek(weekStart: string | null | undefined): boolean {
+  if (!weekStart) return false;
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  const mondayISO = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+  return weekStart < mondayISO;
+}
+
 export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekStart }: Props) {
   const { colors } = useTheme();
 
@@ -167,8 +178,12 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
           <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>
             {/* FIX (fix-pass 07-12, item 4c): 'Hafta 2026-07-12' → '12 Temmuz haftası',
                 driven by the STORED row week_start (not the LLM snapshot's). */}
-            {formatWeekStartTR(weekStart ?? plan.week_start)} · v{plan.version ?? 1}
-            {updatedLabel ? ` · ${updatedLabel}` : ''}
+            {/* ux-sweep (canlı 07-29): '20 Temmuz haftası' etiketi 'Bu haftaki diyetin'
+                başlığıyla ÇELİŞİYORDU — bayat taslakta dürüst konuş: sunucu onayda haftayı
+                zaten bugüne çekiyor, kullanıcıya da bunu söyle. */}
+            {isStaleWeek(weekStart ?? plan.week_start)
+              ? 'Geçen haftadan kalan taslak — onaylarsan bu haftaya uygulanır'
+              : `${formatWeekStartTR(weekStart ?? plan.week_start)} · v${plan.version ?? 1}${updatedLabel ? ` · ${updatedLabel}` : ''}`}
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>

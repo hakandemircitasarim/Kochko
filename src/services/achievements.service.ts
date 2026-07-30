@@ -14,10 +14,12 @@ export interface Achievement {
 }
 
 export async function getAchievements(): Promise<Achievement[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('achievements')
     .select('*')
     .order('achieved_at', { ascending: false });
+  // ux-sweep (AC-01): error yutulunca ağ hatası 'hiç başarım yok' olarak görünüyordu.
+  if (error) throw error;
   return (data ?? []) as Achievement[];
 }
 

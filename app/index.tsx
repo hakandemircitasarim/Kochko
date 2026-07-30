@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
-import { View, ActivityIndicator, Text, TouchableOpacity } from 'react-native';
+import { View, ActivityIndicator, Text, TouchableOpacity, Alert } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
@@ -96,6 +96,15 @@ export default function Index() {
   const deletionRequestedRaw =
     (pendingProfile.deletion_requested_at as string | null | undefined) ??
     (pendingProfile.deleted_at as string | null | undefined);
+  // Yazım sürerken yorumun vadettiği spinner GERÇEKTEN çizilir (eskiden hiçbir JSX yoktu —
+  // onay ekranı kalkıyor, kullanıcı yarı-yazılmış durumda tabs'a düşüyordu).
+  if (deletionRequestedRaw && reactivating) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+        <ActivityIndicator size="large" color={COLORS.primary} accessibilityLabel="Hesap geri açılıyor" />
+      </View>
+    );
+  }
   if (deletionRequestedRaw && !reactivating) {
     const requestedAt = new Date(deletionRequestedRaw);
     const completesAt = new Date(requestedAt.getTime());
@@ -116,10 +125,19 @@ export default function Index() {
             : `Hesabın silinmek üzere işaretli. Talep tamamlandığında tüm verilerin kalıcı olarak silinecek.`}
         </Text>
         <TouchableOpacity
-          onPress={() => {
+          onPress={async () => {
             if (!session?.user?.id) return;
             setReactivating(true);
-            reactivateAccount(session.user.id);
+            // ux-sweep (IDX-REACT-01): eski hali await'siz/catch'siz ateşliyordu — yazım ağda
+            // ölürse kullanıcı 'iptal ettim' sanıp içeri giriyor, 30. gün cron hesabı yine
+            // siliyordu. Redirect ancak yazım BAŞARILI olursa (reactivating açık kalır — store
+            // yerelde deletion alanlarını temizler ve akış /(tabs)'a düşer); hatada dürüst uyarı.
+            try {
+              await reactivateAccount(session.user.id);
+            } catch {
+              setReactivating(false);
+              Alert.alert('Hata', 'Silme talebi iptal edilemedi. İnternet bağlantını kontrol edip tekrar dene.');
+            }
           }}
           accessibilityRole="button"
           accessibilityLabel="Silmeyi iptal et"

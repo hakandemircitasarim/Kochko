@@ -141,6 +141,8 @@ export default function ResetPasswordScreen() {
         <Input label="Yeni Şifre (Tekrar)" value={confirm} onChangeText={setConfirm} secureToggle placeholder="••••••••" />
 
         <Button title="Şifreyi Güncelle" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.lg }} />
+          {/* ux-sweep (RST-EXIT-02): tek butonlu ekranda vazgeçme yolu yoktu. */}
+          <Button title="Vazgeç" variant="ghost" onPress={() => router.replace('/')} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

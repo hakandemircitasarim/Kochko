@@ -209,6 +209,13 @@ export default function DailyReportScreen() {
           <Card title="Yarın İçin Tek Aksiyon">
             <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600', lineHeight: 26 }}>{report.tomorrow_action}</Text>
           </Card>
+
+          {/* ux-sweep (daily-no-regenerate): otomatik gece job'ı satırı yazınca kullanıcı butona
+              hiç basmadan 'dolu' ekrana düşüyor ve akşamki yeni kayıtlardan sonra raporu tazeleme
+              yolu YOKTU — kardeş weekly.tsx kalıbıyla yalnız BUGÜN için yenile. */}
+          {isToday && (
+            <Button title="Yeniden Oluştur" variant="outline" onPress={handleGenerate} loading={generating} />
+          )}
         </>
       )}
     </ScrollView>

@@ -2,6 +2,7 @@
  * Supplement Tracking Service
  * Spec 3.1: Supplement/takviye kaydı
  */
+import { getEffectiveDate } from '@/lib/day-boundary';
 import { supabase } from '@/lib/supabase';
 
 export interface SupplementLog {
@@ -56,13 +57,14 @@ export async function logSupplement(name: string, amount: string): Promise<{ err
     amount,
     calories: macros.calories,
     protein_g: macros.protein_g,
-    logged_for_date: new Date().toISOString().split('T')[0],
+    // ux-sweep (SU-01): efektif gün (04:00 sınırı) — UTC değil.
+    logged_for_date: getEffectiveDate(new Date(), 4),
   });
   return { error: error?.message ?? null };
 }
 
 export async function getTodaySupplements(userId?: string): Promise<SupplementLog[]> {
-  const date = new Date().toISOString().split('T')[0];
+  const date = getEffectiveDate(new Date(), 4);
   let query = supabase
     .from('supplement_logs')
     .select('*')

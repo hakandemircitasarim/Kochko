@@ -133,7 +133,7 @@ export default function CalendarScreen() {
             <TouchableOpacity key={day.date} onPress={() => setSelected(day)}
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
-              accessibilityLabel={`${dayNum} ${MONTH_NAMES[month - 1]}${isToday ? ', bugün' : ''}${day.hasData && day.compliance_score !== null ? `, uyum ${day.compliance_score}/100` : day.hasData ? '' : ', veri yok'}`}
+              accessibilityLabel={`${dayNum} ${MONTH_NAMES[month - 1]}${isToday ? ', bugün' : ''}${day.hasData && day.compliance_score !== null ? `, uyum yüzde ${day.compliance_score}` : day.hasData ? '' : ', veri yok'}`}
               style={{ width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' }}>
               <View style={{
                 width: 36, height: 36, borderRadius: 18,
@@ -210,7 +210,7 @@ export default function CalendarScreen() {
               {selected.compliance_score !== null && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Uyum</Text>
-                  <Text style={{ color: getScoreColor(selected.compliance_score), fontSize: FONT.md, fontWeight: '700' }}>{selected.compliance_score}/100</Text>
+                  <Text style={{ color: getScoreColor(selected.compliance_score), fontSize: FONT.md, fontWeight: '700' }}>%{selected.compliance_score}</Text>
                 </View>
               )}
               {selected.calorie_actual !== null && (

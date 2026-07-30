@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useProfileStore } from '@/stores/profile.store';
@@ -151,7 +151,13 @@ export default function WeeklyMenuScreen() {
           )}
 
           {error && <Text style={{ color: COLORS.error, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{error}</Text>}
-          <Button title="Menüyü Yeniden Oluştur" variant="outline" onPress={handleGenerate} loading={generating} />
+          {/* ux-sweep (WM-01): onaysız yeniden üretim mevcut menüyü + alışveriş işaretlerini siliyordu. */}
+          <Button title="Menüyü Yeniden Oluştur" variant="outline" loading={generating} onPress={() => {
+            Alert.alert('Yeniden oluşturulsun mu?', 'Mevcut menü ve alışveriş listesi işaretlerin silinecek.', [
+              { text: 'Vazgeç', style: 'cancel' },
+              { text: 'Yeniden Oluştur', onPress: handleGenerate },
+            ]);
+          }} />
         </>
       )}
     </ScrollView>
