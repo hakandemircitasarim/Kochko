@@ -52,3 +52,4 @@ TEMP/
 # Play upload keystore — ASLA commit etme (parola içerir / anahtar kaybolursa Play kimliği gider)
 android/keystore.properties
 android/app/kochko-upload.keystore
+scratch_sweep.json
