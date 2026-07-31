@@ -21,7 +21,7 @@ import { isActivePremium } from '../shared/premium.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, scanReplyForAllergens, buildAllergenBlockMessage, type AllergenSeverity, detectTaskSkipIntent, normalizeClockTime, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
-import { computeItemNutrition } from '../shared/food-reference.ts';
+import { computeItemNutrition, isZeroCaloriePlausible } from '../shared/food-reference.ts';
 import { isMemoryMirrorIntent, buildMemoryMirror, composeGeneralSummary } from '../shared/memory-mirror.ts';
 import { writeTurnLog, writeFactReceipts, type FactReceipt } from '../shared/turn-log.ts';
 import { logBelief } from '../shared/belief-log.ts';
@@ -2893,19 +2893,34 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
       }
     }
 
-    // A8: Low confidence proactive verification — append confirmation question
+    // A8: Low confidence proactive verification — append confirmation question.
+    // 0-kcal kusuru (canlı, 'kase yoğurt (~0 kcal)'): bu satır HAM model item'ından basıyordu —
+    // DB yolu aynı öğeyi food-reference'la 122'ye temellendirirken kullanıcı '~0 kcal' görüyor,
+    // onaylarsa pano 122 diyordu (çelişki + saçmalık). Artık aynı temellendirme burada da geçerli;
+    // hâlâ bilinmeyen (0) kalan yenilebilir öğe için sayı UYDURMAK yerine dürüstçe soruyoruz.
     const mealActions = actions.filter((a) => (a as { type?: string }).type === 'meal_log');
     for (const mealAction of mealActions) {
       const items = mealAction.items as { name: string; portion: string; calories: number; confidence?: number }[] | undefined;
       if (items && items.length > 0) {
-        const lowConf = items.filter(i => (i.confidence ?? 0.8) < 0.7);
-        if (lowConf.length > 0) {
-          const parsed = items.map(i => `${i.portion} ${i.name} (~${i.calories} kcal)`).join(', ');
-          // FIX (AI-behaviour #4c): shipped aksansız Turkish to the user. Proper diacritics; the
-          // dedupe check accepts BOTH spellings so a reply that already carries either is not doubled.
-          if (!/[Dd]o[gğ]ru anlad[iı]ysam/.test(assistantMessage)) {
-            assistantMessage += `\n\nDoğru anladıysam: ${parsed}. Bu doğru mu?`;
-          }
+        const enriched = items.map(i => {
+          const grounded = i.name ? computeItemNutrition(i.name, i.portion ?? '') : null;
+          const kcal = grounded ? grounded.calories : (Number(i.calories) || 0);
+          const unknown = kcal <= 0 && !isZeroCaloriePlausible(i.name ?? '');
+          return { ...i, kcal, unknown };
+        });
+        const lowConf = enriched.filter(i => (i.confidence ?? 0.8) < 0.7);
+        const unknowns = enriched.filter(i => i.unknown);
+        // Sıfır-kalorili yenilebilir öğe DOĞASI GEREĞİ düşük güvendir — confidence ne derse desin sor.
+        if ((lowConf.length > 0 || unknowns.length > 0) && !/[Dd]o[gğ]ru anlad[iı]ysam/.test(assistantMessage)) {
+          const parsed = enriched
+            .map(i => i.unknown ? `${i.portion} ${i.name}` : `${i.portion} ${i.name} (~${Math.round(i.kcal)} kcal)`)
+            .join(', ');
+          const tail = unknowns.length > 0
+            ? ` ${unknowns.map(u => u.name).join(' ve ')} için kaloriyi kestiremedim — kaç gram olduğunu ya da nasıl hazırlandığını söylersen netleştiririm.`
+            : ' Bu doğru mu?';
+          assistantMessage += `
+
+Doğru anladıysam: ${parsed}.${tail}`;
         }
       }
     }

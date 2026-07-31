@@ -62,6 +62,12 @@ export function validateMealParse(output: Record<string, unknown>): ValidationRe
       errors.push(`Item ${i}: makro-kalori tutarsiz (${stated} kcal vs hesaplanan ${calculated} kcal)`);
       // Trust macros only when they exist, recalculate calories
       corrected.calories = calculated;
+    } else if (stated <= 0 && calculated > 0) {
+      // 0-kcal kusuru (canlı 'kase yoğurt ~0 kcal'): model kaloriyi boş/0 bıraktı ama makrolar
+      // dolu — eski kod 0'ı SESSİZCE geçiriyordu (yukarıdaki kurtarma stated>0 şartlıydı).
+      // Yenilebilir bir öğe 0 kcal olamaz; makrolardan hesapla.
+      errors.push(`Item ${i}: kalori eksik/0 — makrolardan hesaplandi (${calculated} kcal)`);
+      corrected.calories = calculated;
     }
 
     return corrected;

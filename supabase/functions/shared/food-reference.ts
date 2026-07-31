@@ -343,3 +343,13 @@ export function computeItemNutrition(name: string, portionText: string, userPort
 
 /** For seeding the DB mirror / audit. */
 export function allFoods(): FoodEntry[] { return FOODS; }
+
+/**
+ * 0-kcal parse kusuru (canlı, 'kase yoğurt ~0 kcal'): yenilebilir bir öğe 0 kalori OLAMAZ —
+ * istisnalar sıfıra-yakın içecekler. Doğrulama sorusu ve zero-kalori mantık kontrolleri
+ * bu TEK sahibi kullanır.
+ */
+const ZERO_KCAL_RE = /(^|\s)(su|maden suyu|soda|sade kahve|americano|türk kahvesi sade|çay|yeşil çay|bitki çayı|ıhlamur|zero|diyet kola|light kola|kola zero|sakız)(\s|$)/;
+export function isZeroCaloriePlausible(name: string): boolean {
+  return ZERO_KCAL_RE.test(normalizeName(name));
+}
