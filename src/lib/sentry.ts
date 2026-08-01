@@ -85,3 +85,18 @@ export function getRecentErrors(): ReadonlyArray<ErrorRecord> {
 export function isSentryActive(): boolean {
   return sentryLib !== null;
 }
+
+/**
+ * Halka tamponu boşalt — gönderilecek kayıtları döndürür ve tamponu temizler.
+ * Gönderim başarısız olursa çağıran `restoreErrors` ile geri koyabilir.
+ */
+export function drainErrors(): ErrorRecord[] {
+  const out = recentErrors.splice(0, recentErrors.length);
+  return out;
+}
+
+/** Gönderim başarısızsa kayıtları tampona geri koy (sıra korunur, taşma budanır). */
+export function restoreErrors(records: ErrorRecord[]): void {
+  recentErrors.unshift(...records);
+  if (recentErrors.length > MAX_BUFFER) recentErrors.splice(0, recentErrors.length - MAX_BUFFER);
+}

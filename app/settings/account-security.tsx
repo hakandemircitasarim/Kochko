@@ -12,11 +12,13 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { SectionHeader } from '@/components/settings/SectionHeader';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
 import { GOOGLE_LOGIN_ENABLED, APPLE_LOGIN_ENABLED } from '@/lib/auth-flags';
 export default function AccountSecurityScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [newPassword, setNewPassword] = useState('');
@@ -199,19 +201,19 @@ export default function AccountSecurityScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
       {/* Account Info */}
       <Card title="Hesap Bilgileri">
         <View style={{ marginBottom: SPACING.sm }}>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>E-posta</Text>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{user?.email ?? '-'}</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>E-posta</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.md }}>{user?.email ?? '-'}</Text>
         </View>
         <View>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Giriş Yöntemleri</Text>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Giriş Yöntemleri</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.md }}>
             {providers.length > 0 ? providers.join(', ') : 'email'}
           </Text>
         </View>
@@ -220,7 +222,7 @@ export default function AccountSecurityScreen() {
       {/* Email Change (Spec 1.4) */}
       <SectionHeader title="E-posta Değiştir" />
       <Card>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
           Yeni e-posta adresine bir doğrulama linki gönderilecek.
         </Text>
         <Input label="Yeni E-posta" placeholder="yeni@ornek.com" value={newEmail} onChangeText={setNewEmail} keyboardType="email-address" autoCapitalize="none" />
@@ -238,7 +240,7 @@ export default function AccountSecurityScreen() {
       {/* Account Linking & Unlinking (Spec 1.4) */}
       <SectionHeader title="Giriş Yöntemleri" />
       <Card>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md }}>
           Birden fazla giriş yöntemi bağlayabilirsin. En az bir yöntem aktif olmalı.
         </Text>
 
@@ -266,8 +268,8 @@ export default function AccountSecurityScreen() {
 
         {/* Email */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md }}>E-posta</Text>
-          <Text style={{ color: providers.includes('email') ? COLORS.success : COLORS.textMuted, fontSize: FONT.sm }}>
+          <Text style={{ color: colors.text, fontSize: FONT.md }}>E-posta</Text>
+          <Text style={{ color: providers.includes('email') ? colors.success : colors.textMuted, fontSize: FONT.sm }}>
             {providers.includes('email') ? 'Aktif' : '-'}
           </Text>
         </View>
@@ -276,13 +278,13 @@ export default function AccountSecurityScreen() {
       {/* Active Sessions (Spec 1.2) */}
       <SectionHeader title="Aktif Oturumlar" />
       <Card>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
           Hesabına bağlı aktif cihazlar. Tanımlamadığın bir oturumu kapatabilirsin.
         </Text>
         {sessionsLoading ? (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Yükleniyor...</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Yükleniyor...</Text>
         ) : sessions.length === 0 ? (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Aktif oturum bulunamadı.</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.sm }}>Aktif oturum bulunamadı.</Text>
         ) : (
           sessions.map((session, index) => {
             // FIX (ux-audit device-fix): identify the current device by its real session id, not by
@@ -291,15 +293,15 @@ export default function AccountSecurityScreen() {
             // local id is somehow unavailable.
             const isCurrent = currentSessionId ? session.sessionId === currentSessionId : index === 0;
             return (
-            <View key={session.sessionId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: index < sessions.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
+            <View key={session.sessionId} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: index < sessions.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{session.deviceInfo}</Text>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
+                <Text style={{ color: colors.text, fontSize: FONT.md }}>{session.deviceInfo}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
                   Son aktif: {new Date(session.lastActiveAt).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
               {isCurrent ? (
-                <Text style={{ color: COLORS.success, fontSize: FONT.xs, marginLeft: SPACING.sm }}>Mevcut</Text>
+                <Text style={{ color: colors.success, fontSize: FONT.xs, marginLeft: SPACING.sm }}>Mevcut</Text>
               ) : (
                 <Button title="Kapat" variant="ghost" size="sm" onPress={() => handleTerminateSession(session.sessionId)} />
               )}
@@ -330,12 +332,13 @@ function ProviderRow({
   onUnlink: () => void;
   comingSoon?: boolean;
 }) {
+  const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-      <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{name}</Text>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+      <Text style={{ color: colors.text, fontSize: FONT.md }}>{name}</Text>
       {linked ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-          <Text style={{ color: COLORS.success, fontSize: FONT.sm }}>Bağlı</Text>
+          <Text style={{ color: colors.success, fontSize: FONT.sm }}>Bağlı</Text>
           {canUnlink && (
             <Button title="Kaldır" variant="ghost" size="sm" onPress={onUnlink} />
           )}
@@ -348,9 +351,9 @@ function ProviderRow({
           accessibilityRole="button"
           accessibilityState={{ disabled: true }}
           accessibilityLabel={`${name} bağlama yakında`}
-          style={{ paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 8, backgroundColor: COLORS.border }}
+          style={{ paddingHorizontal: SPACING.sm, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.border }}
         >
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Yakında</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Yakında</Text>
         </TouchableOpacity>
       ) : (
         <Button title="Bağla" variant="outline" size="sm" onPress={onLink} />

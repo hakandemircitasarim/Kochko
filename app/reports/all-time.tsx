@@ -12,9 +12,11 @@ import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 
 export default function AllTimeReportScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { streak } = useStreak();
@@ -123,7 +125,7 @@ export default function AllTimeReportScreen() {
   // (refactor: shared LoadErrorState)
   if (error) {
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <LoadErrorState title="Rapor yüklenemedi" subtitle="İnternet bağlantını kontrol et." onRetry={loadStats} />
       </View>
     );
@@ -133,17 +135,17 @@ export default function AllTimeReportScreen() {
     ? stats.currentWeight - stats.startWeight : null;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
 
       {/* Total Progress */}
       {totalWeightChange !== null && (
         <Card title="Toplam İlerleme">
           <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
             {/* FIX (ux-pass5): TR ondalık — virgül ("-4,5 kg"), nokta değil. */}
-            <Text style={{ color: totalWeightChange < 0 ? COLORS.success : COLORS.error, fontSize: FONT.hero, fontWeight: '800' }}>
+            <Text style={{ color: totalWeightChange < 0 ? colors.success : colors.error, fontSize: FONT.hero, fontWeight: '800' }}>
               {totalWeightChange > 0 ? '+' : ''}{totalWeightChange.toFixed(1).replace('.', ',')} kg
             </Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
               {/* FIX (ux-pass5): DB ondalıkları da virgülle ("81,5 kg → 79,5 kg"). */}
               {String(stats.startWeight).replace('.', ',')} kg → {String(stats.currentWeight).replace('.', ',')} kg
             </Text>
@@ -179,7 +181,7 @@ export default function AllTimeReportScreen() {
         {/* FIX (audit UI-PLN-03): only show the empty-state when there is genuinely no kg
             milestone either — otherwise a gaining user with >=1 kg saw an empty card. */}
         {(totalWeightChange === null || Math.abs(totalWeightChange) < 1) && stats.longestStreak < 7 && (
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
         )}
       </Card>
     </ScrollView>
@@ -187,27 +189,29 @@ export default function AllTimeReportScreen() {
 }
 
 function StatCard({ label, value, icon }: { label: string; value: string; icon?: keyof typeof Ionicons.glyphMap }) {
+  const { colors } = useTheme();
   // FIX (ux-polish): align to the progress-tab SummaryBox — hairline (0.5) + RADIUS.md + a tinted
   // icon badge (was a 1px-border, iconless tile that read ~2× thicker than every other card).
   return (
-    <View style={{ width: '47%', backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center', borderWidth: 0.5, borderColor: COLORS.border }}>
+    <View style={{ width: '47%', backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center', borderWidth: 0.5, borderColor: colors.border }}>
       {icon && (
-        <View style={{ width: 32, height: 32, borderRadius: RADIUS.sm, backgroundColor: COLORS.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xs }}>
-          <Ionicons name={icon} size={16} color={COLORS.primary} />
+        <View style={{ width: 32, height: 32, borderRadius: RADIUS.sm, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xs }}>
+          <Ionicons name={icon} size={16} color={colors.primary} />
         </View>
       )}
-      <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '700' }}>{value}</Text>
-      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{label}</Text>
+      <Text style={{ color: colors.primary, fontSize: FONT.xl, fontWeight: '700' }}>{value}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{label}</Text>
     </View>
   );
 }
 
 function MilestoneRow({ text, done }: { text: string; done: boolean }) {
+  const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm }}>
       {/* FIX (ux-polish): Ionicons to match the daily report's checklist (was bare ✓/○ text glyphs). */}
-      <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={done ? COLORS.success : COLORS.textMuted} style={{ marginRight: SPACING.sm }} />
-      <Text style={{ color: done ? COLORS.success : COLORS.textMuted, fontSize: FONT.md }}>{text}</Text>
+      <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={done ? colors.success : colors.textMuted} style={{ marginRight: SPACING.sm }} />
+      <Text style={{ color: done ? colors.success : colors.textMuted, fontSize: FONT.md }}>{text}</Text>
     </View>
   );
 }

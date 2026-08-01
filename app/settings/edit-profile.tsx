@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 import { GENDER_LABELS_TR, ACTIVITY_LEVEL_LABELS_TR, toOptions } from '@/lib/labels';
@@ -63,6 +64,7 @@ const DAY_BOUNDARY_OPTIONS = [
 // ─── Screen ───
 
 export default function EditProfileScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { profile, update } = useProfileStore();
@@ -267,19 +269,19 @@ export default function EditProfileScreen() {
         onPress={() => { if (closeTimer.current) clearTimeout(closeTimer.current); setSavedToast(false); router.back(); }}
         accessibilityRole="button"
         accessibilityLabel="Profil güncellendi. Kapatmak için dokun"
-        style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
-        <View style={{ backgroundColor: COLORS.card, borderRadius: RADIUS.md, padding: SPACING.xxl, alignItems: 'center', borderWidth: 0.5, borderColor: COLORS.border }}>
+        style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl, alignItems: 'center', borderWidth: 0.5, borderColor: colors.border }}>
           <Animated.View style={{ transform: [{ scale: successScale }] }}>
-            <Ionicons name="checkmark-circle" size={48} color={COLORS.primary} />
+            <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
           </Animated.View>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md }}>Profil güncellendi</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md }}>Profil güncellendi</Text>
         </View>
       </TouchableOpacity>
     );
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
       {/* FIX (audit UI-SET-03): the native Stack header already owns the top safe-area inset;
           adding paddingTop: insets.top here double-counted it. Use the suite-standard plain
           padding (SPACING.md) with only the bottom inset. */}
@@ -321,7 +323,15 @@ export default function EditProfileScreen() {
 
         {/* Tercihler */}
         <Card title="Tercihler">
-          <ChipSelect label="Ölçü Birimi" options={UNIT_OPTIONS} selected={unitSystem} onChange={setUnitSystem} />
+          {/* "Ölçü Birimi: Metrik / İmperial" seçici KALDIRILDI. Değer kaydediliyor ve
+              "Profil güncellendi" onayı veriliyordu ama HİÇBİR yüzey onu okumuyordu:
+              src/lib/units.ts (formatWeight/formatHeight/formatVolume) uygulamada tek bir
+              yerden bile import edilmiyor, kg/cm/L her ekranda sabit yazılı ve giriş
+              alanları yalnızca kg kabul ediyor (onboarding'de "30–300 kg" doğrulaması).
+              İmperial seçen kullanıcı hiçbir değişiklik görmüyordu — sessiz bir yalan.
+              Uygulama şimdilik metrik-tek; seçenek, units.ts tüm gösterim noktalarına
+              (StatStrip, log, progress, raporlar, PDF çıktısı, koç bağlamı) bağlandığında
+              geri gelir. profiles.unit_system kolonu ve UNIT_OPTIONS yerinde duruyor. */}
           <ChipSelect label="Porsiyon Dili" options={PORTION_OPTIONS} selected={portionLang} onChange={setPortionLang} />
           <ChipSelect label="Alkol Tüketimi" options={ALCOHOL_OPTIONS} selected={alcoholFreq} onChange={setAlcoholFreq} />
           <ChipSelect label="Gün Sınırı" options={DAY_BOUNDARY_OPTIONS} selected={dayBoundary} onChange={setDayBoundary} />
@@ -354,9 +364,10 @@ function ChipSelect({ label, options, selected, onChange }: {
   selected: string;
   onChange: (v: string) => void;
 }) {
+  const { colors } = useTheme();
   return (
     <View style={{ marginBottom: SPACING.md }}>
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
         {options.map(opt => {
           const isSelected = selected === opt.value;
@@ -369,9 +380,9 @@ function ChipSelect({ label, options, selected, onChange }: {
               accessibilityState={{ selected: isSelected }}
               accessibilityLabel={`${label}: ${opt.label}`}
               style={{ paddingVertical: 10, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
-                borderColor: isSelected ? COLORS.primary : COLORS.border,
-                backgroundColor: isSelected ? COLORS.primary : 'transparent' }}>
-              <Text style={{ color: isSelected ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm }}>{opt.label}</Text>
+                borderColor: isSelected ? colors.primary : colors.border,
+                backgroundColor: isSelected ? colors.primary : 'transparent' }}>
+              <Text style={{ color: isSelected ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.sm }}>{opt.label}</Text>
             </TouchableOpacity>
           );
         })}

@@ -13,6 +13,7 @@ import { setupNotificationsIfGranted, savePushToken, scheduleNotificationsOnStar
 import { checkAndRunBackup } from '@/services/auto-backup.service';
 import { registerSession, reregisterSession, heartbeatSession, isSessionStillValid } from '@/services/realtime-sync.service';
 import { getWidgetData, serializeForNativeWidget } from '@/services/widget.service';
+import { flushTelemetry } from '@/services/telemetry.service';
 import { detectTimezone } from '@/lib/timezone';
 
 const WIDGET_STORAGE_KEY = '@kochko_widget_data';
@@ -62,6 +63,9 @@ export function useAuthenticatedAppInit() {
     initNotificationsAndSession(userId);
     checkAndRunBackup().catch((err) => console.warn('Auto backup check failed:', err));
     syncTimezone(userId);
+    // Açılışta bir kez: giriş/başlatma sırasında oluşan hatalar (auth, profil çekme,
+    // bildirim kurulumu) uygulama arka plana geçene kadar beklemesin.
+    flushTelemetry(userId);
   }, [userId]);
 }
 
@@ -80,6 +84,10 @@ export function useAppStateSync() {
         } catch (err) {
           console.warn('Widget sync failed:', err);
         }
+        // Arka plana geçiş, biriken hata/olay tamponunu göndermek için doğru an: oturum
+        // burada bitebilir ve tamponlar YALNIZCA RAM'de. flushTelemetry hiçbir zaman
+        // throw etmez ve tablo yoksa sessizce yerel modda kalır.
+        await flushTelemetry(userId);
       }
 
       if (nextState === 'active') {

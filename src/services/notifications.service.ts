@@ -213,13 +213,53 @@ export async function updateNotificationPrefs(
     if_eating_end: profile.if_eating_end as string | null,
   } : null;
 
-  // profiles has no workout_days column — workout-day reminders are disabled until one exists
-  // (querying it 400'd the whole select and silently killed ALL local notification scheduling).
-  const workoutDays: number[] | null = null;
+  const workoutDays = await getWorkoutWeekdays(userId);
   const sleepTime = (profile as Record<string, unknown> | null)?.sleep_time as string | null;
 
   await scheduleLocalNotifications(updated, ifProfile, workoutDays, userId, sleepTime);
   return true;
+}
+
+/**
+ * Antrenman günlerini kullanıcının PLANINDAN türet.
+ *
+ * "Antrenman hatırlatma" anahtarı ayarlarda açılabiliyor ve "Antrenman günlerinde
+ * hatırlatır" diyordu, ama `workoutDays` sabit `null` bırakılmıştı (profiles'ta
+ * workout_days kolonu yok diye) — koşul `workoutDays && length > 0` hiçbir zaman
+ * geçmediği için bu bildirim BİR KEZ BİLE planlanmadı. Kolon yok ama veri var:
+ * `daily_plans.plan_type` zaten 'training' | 'rest'.
+ *
+ * Önümüzdeki 14 günü okuyup antrenman günü olan HAFTA GÜNLERİNİ çıkarıyoruz
+ * (14 gün = plan haftalık döngüde olsa bile her günü en az bir kez görürüz).
+ * Expo'nun WEEKLY tetikleyicisi 1=Pazar..7=Cumartesi sayar; JS getDay() 0=Pazar
+ * verir, o yüzden +1.
+ *
+ * Plan yoksa null döner → hatırlatma kurulmaz (uydurma gün üretmeyiz).
+ */
+async function getWorkoutWeekdays(userId: string): Promise<number[] | null> {
+  const today = new Date();
+  const from = today.toISOString().slice(0, 10);
+  const until = new Date(today.getTime() + 14 * 86400000).toISOString().slice(0, 10);
+
+  const { data, error } = await supabase
+    .from('daily_plans')
+    .select('date, plan_type')
+    .eq('user_id', userId)
+    .eq('plan_type', 'training')
+    .gte('date', from)
+    .lte('date', until);
+
+  if (error || !data || data.length === 0) return null;
+
+  const weekdays = new Set<number>();
+  for (const row of data as { date: string }[]) {
+    // 'YYYY-MM-DD' — parçalayarak kur; new Date('2026-07-31') UTC yorumlanır ve
+    // UTC+3'te gün kayabilir (gece yarısı sınırındaki plan yanlış güne düşerdi).
+    const [y, m, d] = row.date.split('-').map(Number);
+    if (!y || !m || !d) continue;
+    weekdays.add(new Date(y, m - 1, d).getDay() + 1);
+  }
+  return weekdays.size > 0 ? [...weekdays].sort((a, b) => a - b) : null;
 }
 
 /**
@@ -244,7 +284,10 @@ export async function scheduleNotificationsOnStartup(userId: string): Promise<vo
     if_eating_end: profile.if_eating_end as string | null,
   } : null;
   const sleepTime = (profile as Record<string, unknown> | null)?.sleep_time as string | null;
-  await scheduleLocalNotifications(prefs, ifProfile, null, userId, sleepTime);
+  // Açılıştaki bu yol da `null` geçiyordu — yani ayarlar ekranına hiç girmeyen kullanıcıda
+  // antrenman hatırlatması iki kere ölüydü. Aynı türetimi burada da kullan.
+  const workoutDays = await getWorkoutWeekdays(userId);
+  await scheduleLocalNotifications(prefs, ifProfile, workoutDays, userId, sleepTime);
 }
 
 export async function scheduleLocalNotifications(

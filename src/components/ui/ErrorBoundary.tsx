@@ -2,9 +2,12 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { trackEvent } from '@/services/analytics.service';
+import { flushTelemetry } from '@/services/telemetry.service';
 // FIX (audit ui-errorboundary): replace hand-rolled (drifted) hex colors with theme tokens.
-// Class component can't call useTheme(); use DARK_COLORS directly (light theme is gated, so
-// dark is the correct fallback even if the crash happens before ThemeProvider mounts).
+// Bu sınır ThemeContext.Provider'ı SARDIĞI için (app/_layout.tsx) hook'a erişemez ve zaten
+// sağlayıcı monte olmadan da çökme yakalayabilir. Bu yüzden koyu palet bilinçli sabit
+// yedektir — açık tema açıldıktan sonra da geçerli: çökme ekranı tek seferlik bir kurtarma
+// yüzeyi, tema tutarlılığı değil okunabilirlik önceliklidir.
 import { DARK_COLORS as c } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 // FIX (audit UI-DS-05): consume the numeric scale tokens instead of raw literals.
@@ -45,6 +48,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
         stack: error.stack,
         componentStack: info.componentStack,
       });
+      // Render çökmesi, kullanıcının uygulamayı KAPATMA ihtimalinin en yüksek olduğu an —
+      // tamponlar yalnızca RAM'de olduğu için "arka plana geçince göndeririz" burada
+      // yetmez. Hemen yolla (best-effort, hiçbir zaman throw etmez).
+      const uid = useAuthStore.getState().user?.id;
+      if (uid) void flushTelemetry(uid);
     } catch { /* analytics is best-effort */ }
     this.setState({ errorInfo: info.componentStack ?? null });
   }

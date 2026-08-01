@@ -7,7 +7,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 
 type Tone = 'strict' | 'balanced' | 'gentle';
@@ -34,6 +35,7 @@ const TONES: { value: Tone; label: string; desc: string; example: string }[] = [
 ];
 
 export default function CoachToneScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { profile, update } = useProfileStore();
@@ -85,9 +87,9 @@ export default function CoachToneScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Koçunun seninle nasıl konuşmasını istediğini seç. AI zamanla tepkilerinden otomatik de öğrenir.
       </Text>
 
@@ -96,13 +98,13 @@ export default function CoachToneScreen() {
           accessibilityRole="radio"
           accessibilityState={{ selected: selected === tone.value }}
           accessibilityLabel={tone.label}>
-          <Card style={{ borderColor: selected === tone.value ? COLORS.primary : COLORS.border, borderWidth: selected === tone.value ? 2 : 1 }}>
+          <Card style={{ borderColor: selected === tone.value ? colors.primary : colors.border, borderWidth: selected === tone.value ? 2 : 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs }}>
-              <Text style={{ color: selected === tone.value ? COLORS.primary : COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{tone.label}</Text>
-              {selected === tone.value && <Text style={{ color: COLORS.primary, fontSize: FONT.md }}>Seçili</Text>}
+              <Text style={{ color: selected === tone.value ? colors.primary : colors.text, fontSize: FONT.lg, fontWeight: '700' }}>{tone.label}</Text>
+              {selected === tone.value && <Text style={{ color: colors.primary, fontSize: FONT.md }}>Seçili</Text>}
             </View>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{tone.desc}</Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, fontStyle: 'italic', lineHeight: 20 }}>{tone.example}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{tone.desc}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, fontStyle: 'italic', lineHeight: 20 }}>{tone.example}</Text>
           </Card>
         </TouchableOpacity>
       ))}

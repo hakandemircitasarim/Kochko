@@ -29,7 +29,10 @@ import { haptics } from '@/lib/haptics';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 
-type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery';
+type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery' | 'steps';
+
+// Adım hızlı ekleme çipleri — tipik yarım/tam gün değerleri, elle yazmadan tek dokunuş.
+const STEP_CHIPS = [2000, 5000, 8000, 10000] as const;
 
 // daily_metrics.muscle_soreness is CHECK-constrained to these text values.
 const SORENESS_LEVELS = [
@@ -80,7 +83,7 @@ export default function QuickLogScreen() {
   const user = useAuthStore(s => s.user);
   const { isPremium } = usePremium();
   const profile = useProfileStore(s => s.profile);
-  const { fetchToday, addWater, waterLiters, weightKg } = useDashboardStore();
+  const { fetchToday, addWater, waterLiters, weightKg, steps: stepsToday } = useDashboardStore();
   const dayBoundaryHour = profile?.day_boundary_hour as number ?? 4;
   const waterTarget = (profile?.water_target_liters ?? 2.5) as number;
   // FIX (ux-ideas #13): the last known weight (today's logged value, else the profile value) —
@@ -169,6 +172,7 @@ export default function QuickLogScreen() {
     if (to === 'weight') { setWeightInput(lastKnownWeight != null ? String(lastKnownWeight) : ''); setScreen('weight'); }
     else if (to === 'sleep') setScreen('sleep');
     else if (to === 'recovery') setScreen('recovery');
+    else if (to === 'steps') { setStepsInput(stepsToday != null && stepsToday > 0 ? String(stepsToday) : ''); setScreen('steps'); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [to]);
 
@@ -198,6 +202,10 @@ export default function QuickLogScreen() {
   // Sleep state
   const [sleepTime, setSleepTime] = useState('');
   const [wakeTime, setWakeTime] = useState('');
+
+  // Adım state — Android'de telefon pedometresi (expo-sensors getStepCountAsync) iOS'a özel
+  // olduğu için ölçüm gelmiyor; elle giriş bu yüzden kartın TEK çalışan yolu.
+  const [stepsInput, setStepsInput] = useState('');
 
   // Recovery state (Spec 3.1 — muscle soreness + recovery feel)
   const [soreness, setSoreness] = useState<number | null>(null);
@@ -586,6 +594,40 @@ export default function QuickLogScreen() {
       void useProfileStore.getState().fetch(user.id);
     } catch {
       Alert.alert('Hata', 'Kilo kaydedilemedi. Tekrar dene.');
+    } finally {
+      submittingRef.current = false;
+      setLoading(false);
+    }
+  };
+
+  // Adım kaydı. daily_metrics.steps GÜNLÜK TOPLAM'dır (artış değil) — kullanıcı saatinden/
+  // telefonundan okuduğu sayıyı olduğu gibi girer, tekrar girince üzerine yazılır.
+  // steps_source='manual' (migration 002 CHECK: manual | phone | wearable) — böylece
+  // iOS pedometre senkronu (syncStepsToDailyMetrics, yalnız DAHA YÜKSEK değerde yazar)
+  // elle girilen doğru sayıyı ezmez.
+  const handleStepsSave = async () => {
+    if (submittingRef.current) return;
+    if (!user?.id) return;
+    // Binlik ayırıcıyla yapıştırılan değerler ('12.500' / '12 500') de kabul edilsin.
+    const s = parseInt(stepsInput.replace(/[.\s]/g, ''), 10);
+    if (!Number.isFinite(s) || s < 0 || s > 100000) {
+      haptics.error();
+      return Alert.alert('Geçersiz adım', '0 – 100.000 arası bir değer gir.');
+    }
+    submittingRef.current = true;
+    setLoading(true);
+    try {
+      const date = getEffectiveDate(new Date(), dayBoundaryHour);
+      const { error } = await supabase.from('daily_metrics').upsert(
+        { user_id: user.id, date, steps: s, steps_source: 'manual', synced: true },
+        { onConflict: 'user_id,date' }
+      );
+      if (error) throw error;
+      await fetchToday(user.id, dayBoundaryHour);
+      setScreen('main'); // başarı toast'ı alt-ekran guard'larından SONRA render ediliyor (bkz. tartı kaydı)
+      showSuccessAndClose('Adım kaydedildi!', `${s.toLocaleString('tr-TR')} adım`);
+    } catch {
+      Alert.alert('Hata', 'Adım kaydedilemedi. Tekrar dene.');
     } finally {
       submittingRef.current = false;
       setLoading(false);
@@ -1021,6 +1063,74 @@ export default function QuickLogScreen() {
     );
   }
 
+  // ====== STEPS SCREEN ======
+  if (screen === 'steps') {
+    const sParsed = parseInt(stepsInput.replace(/[.\s]/g, ''), 10);
+    const stepsValid = Number.isFinite(sParsed) && sParsed >= 0 && sParsed <= 100000;
+    const stepsOutOfRange = stepsInput.trim() !== '' && !stepsValid;
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'flex-start', alignItems: 'center', padding: SPACING.xl, paddingTop: insets.top + 64 }}>
+        <TouchableOpacity
+          onPress={() => setScreen('main')}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Kapat"
+          style={{ position: 'absolute', top: insets.top + 12, left: SPACING.xl }}>
+          <Ionicons name="close" size={24} color={colors.textMuted} />
+        </TouchableOpacity>
+        <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.purple + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
+          <Ionicons name="footsteps" size={24} color={colors.purple} />
+        </View>
+        <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.sm }}>Adım Kaydı</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.xl }}>
+          Bugünün TOPLAM adımı — saatinden veya telefonundan okuduğun sayıyı gir.
+        </Text>
+        <TextInput
+          style={{
+            width: '85%',
+            backgroundColor: colors.card, borderRadius: RADIUS.md,
+            paddingHorizontal: SPACING.md, paddingVertical: SPACING.lg,
+            color: colors.text, fontSize: FONT.hero, fontWeight: '700',
+            textAlign: 'center', borderWidth: 0.5, borderColor: colors.border,
+          }}
+          placeholder="10000"
+          placeholderTextColor={colors.textMuted}
+          value={stepsInput} onChangeText={setStepsInput}
+          keyboardType="number-pad" autoFocus
+          selectTextOnFocus
+          maxLength={6}
+          accessibilityLabel="Adım sayısı"
+        />
+        {stepsOutOfRange ? (
+          <Text style={{ color: colors.error, fontSize: FONT.xs, marginTop: SPACING.sm }}>Geçerli aralık: 0 – 100.000 adım</Text>
+        ) : (
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm }}>adım</Text>
+        )}
+        {/* Tek dokunuşla tipik değerler — sayıyı YAZAR (günlük toplam, artış değil). */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.lg, marginBottom: SPACING.xxl }}>
+          {STEP_CHIPS.map(n => (
+            <TouchableOpacity
+              key={n}
+              onPress={() => { haptics.tap(); setStepsInput(String(n)); }}
+              accessibilityRole="button"
+              accessibilityLabel={`${n.toLocaleString('tr-TR')} adım`}
+              style={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight, borderWidth: 0.5, borderColor: colors.border }}>
+              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{n.toLocaleString('tr-TR')}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
+          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleStepsSave} disabled={loading || !stepsValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !stepsValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !stepsValid) ? 0.5 : 1 }}>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   // ====== RECOVERY SCREEN ======
   if (screen === 'recovery') {
     return (
@@ -1355,6 +1465,7 @@ export default function QuickLogScreen() {
           { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, navigates: true, pending: false, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
           { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, pending: false, onPress: () => { setWeightInput(lastKnownWeight != null ? String(lastKnownWeight) : ''); setScreen('weight'); } },
           { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, navigates: false, pending: false, onPress: () => setScreen('sleep') },
+          { icon: 'footsteps-outline' as const, label: 'Adım', color: colors.purple, navigates: false, pending: false, onPress: () => { setStepsInput(stepsToday != null && stepsToday > 0 ? String(stepsToday) : ''); setScreen('steps'); } },
           { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, navigates: false, pending: false, onPress: () => setScreen('recovery') },
         ].map((action, i) => {
           const busy = navigatingIndex === 100 + i || action.pending;

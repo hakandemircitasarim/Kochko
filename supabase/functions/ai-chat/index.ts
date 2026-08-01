@@ -42,7 +42,7 @@ import { selectModel } from '../shared/model-router.ts';
 import { BASE_SYSTEM_PROMPT, PHOTO_ANALYSIS_PROMPT, PERIODIC_STATE_PROMPT, CYCLE_PROMPT, RETURN_FLOW_PROMPT, buildConfidenceNote } from './system-prompt.ts';
 import { detectTaskMode, getModeInstructions, type TaskMode } from './task-modes.ts';
 import {
-  detectRepairIntent, handleUndo, undoTypeForPhrase, buildCorrectionContext,
+  detectRepairIntent, handleUndo, undoTypeForPhrase, buildCorrectionContext, revertLastTurnWrite,
   shouldDetectPersona, buildPersonaDetectionPrompt, getMessageCount,
   getToneContext, buildKnowledgeSummary, getRepairContext,
 } from '../shared/repair-handler.ts';
@@ -409,7 +409,23 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
         const intendedType = undoTypeForPhrase(repairIntent.matchedPhrase);
         const undoResult = await handleUndo(userId, intendedType);
         await storeMessages(userId, message, undoResult.response ?? '', undefined, undefined, undefined, undefined, session_id);
-        return await commitAndRespond({ message: undoResult.response, actions: [], task_mode: 'repair' });
+        // Bu dal `actions: []` döndürüyordu. İstemci başarıyı `actions.some(a => a.feedback)`
+        // ile ölçtüğü için BAŞARILI bir geri alma bile HER ZAMAN "Geri alınamadı" uyarısı
+        // gösteriyor ve panoyu tazelemiyordu — kayıt gerçekten silinmişken kullanıcıya
+        // silinmedi deniyordu. Sonuç artık zarfta taşınıyor.
+        const undone = undoResult.undoneAction != null;
+        return await commitAndRespond({
+          message: undoResult.response,
+          actions: undone ? [{ type: 'undo', feedback: undoResult.response }] : [],
+          receipts: [{
+            action_type: 'undo',
+            ok: undone,
+            rows_affected: undone ? 1 : 0,
+            user_line: undoResult.response,
+            failure_class: undone ? null : 'nothing_to_undo',
+          }],
+          task_mode: 'repair',
+        });
       }
 
       // "Benim hakkımda ne biliyorsun?" handler (Spec 5.18)
@@ -663,11 +679,19 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
     const repairContext = await getRepairContext(userId);
 
     // Correction mode — if user said "yanlış anladın"
+    // Artık yalnızca prompt metni enjekte etmiyoruz: önce koçun ÖNCEKİ turda yazdığı
+    // kaydı gerçekten geri alıyoruz, sonra modele olan biteni anlatıyoruz. Eskiden
+    // bu dal tek bir DB yazımını bile geri almıyordu; koç "düzeltiyorum" diyor, sayılar
+    // yerinde kalıyordu. (Sohbetteki "Yanlış, düzelt" düğmesi de buraya düşüyor: gönderdiği
+    // "Hayır, yanlış anladın — son kaydı sil" 5 kelimeden uzun olduğu için undo kapısına
+    // takılmıyor, correction olarak buraya geliyordu ve hiçbir şey silinmiyordu.)
     let correctionCtx = '';
     if (message) {
       const repairCheck = detectRepairIntent(message);
       if (repairCheck.type === 'correction') {
-        correctionCtx = buildCorrectionContext(userId);
+        const reverted = await revertLastTurnWrite(userId, session_id ?? null);
+        if (reverted) console.log('[correction][reverted]', reverted.type, reverted.label.slice(0, 60));
+        correctionCtx = buildCorrectionContext(reverted);
       }
     }
 

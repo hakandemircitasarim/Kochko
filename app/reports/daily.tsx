@@ -14,7 +14,8 @@ import { ComplianceScore } from '@/components/reports/ComplianceScore';
 import { DeviationTag } from '@/components/reports/DeviationTag';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
 interface DailyReport {
@@ -43,6 +44,7 @@ const DEVIATION_LABELS: Record<string, string> = {
 };
 
 export default function DailyReportScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -119,16 +121,16 @@ export default function DailyReportScreen() {
   // FIX (ux-pass5): only replace the screen with the error state when nothing is loaded —
   // a refresh failure must not hide an already-shown report. (refactor: shared LoadErrorState)
   if (error && !report) return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <LoadErrorState title="Rapor yüklenemedi" onRetry={loadReport} />
     </View>
   );
 
-  const scoreColor = (report?.compliance_score ?? 0) >= 70 ? COLORS.success : (report?.compliance_score ?? 0) >= 40 ? COLORS.warning : COLORS.error;
+  const scoreColor = (report?.compliance_score ?? 0) >= 70 ? colors.success : (report?.compliance_score ?? 0) >= 40 ? colors.warning : colors.error;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+      <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.lg }}>
         {new Date(`${reportDate}T00:00:00`).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
       </Text>
 
@@ -138,14 +140,14 @@ export default function DailyReportScreen() {
               show it plainly. Only today offers "Rapor Oluştur". */}
           {isToday ? (
             <>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
               <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
               {generating && (
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm, textAlign: 'center' }}>Koç gününü analiz ediyor, bu birkaç saniye sürebilir…</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm, textAlign: 'center' }}>Koç gününü analiz ediyor, bu birkaç saniye sürebilir…</Text>
               )}
             </>
           ) : (
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Bu güne ait bir gün sonu raporu yok.</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Bu güne ait bir gün sonu raporu yok.</Text>
           )}
         </Card>
       ) : (
@@ -169,20 +171,20 @@ export default function DailyReportScreen() {
           {/* Macros */}
           <Card title="Makro Dağılımı">
             <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-              <MacroCircle label="Protein" value={report.protein_actual} unit="g" color={COLORS.protein} />
-              <MacroCircle label="Karb" value={report.carbs_actual} unit="g" color={COLORS.carbs} />
-              <MacroCircle label="Yağ" value={report.fat_actual} unit="g" color={COLORS.fat} />
+              <MacroCircle label="Protein" value={report.protein_actual} unit="g" color={colors.protein} />
+              <MacroCircle label="Karb" value={report.carbs_actual} unit="g" color={colors.carbs} />
+              <MacroCircle label="Yağ" value={report.fat_actual} unit="g" color={colors.fat} />
               {/* FIX (audit UI-STA-06): use the lighter `errorText` tone (>=4.5:1 on card) for the
                   accent value text instead of base `error` (4.39:1, below AA-small). */}
-              {report.alcohol_calories > 0 && <MacroCircle label="Alkol" value={report.alcohol_calories} unit="kcal" color={COLORS.errorText} />}
+              {report.alcohol_calories > 0 && <MacroCircle label="Alkol" value={report.alcohol_calories} unit="kcal" color={colors.errorText} />}
             </View>
           </Card>
 
           {/* Impacts */}
           {(report.sleep_impact || report.water_impact) && (
             <Card title="Etkiler">
-              {report.sleep_impact && <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22, marginBottom: SPACING.xs }}>Uyku: {report.sleep_impact}</Text>}
-              {report.water_impact && <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>Su: {report.water_impact}</Text>}
+              {report.sleep_impact && <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22, marginBottom: SPACING.xs }}>Uyku: {report.sleep_impact}</Text>}
+              {report.water_impact && <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22 }}>Su: {report.water_impact}</Text>}
             </Card>
           )}
 
@@ -196,18 +198,18 @@ export default function DailyReportScreen() {
           {/* Weekly Budget */}
           {report.weekly_budget_status && (
             <Card title="Haftalık Bütçe">
-              <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 22 }}>{report.weekly_budget_status}</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22 }}>{report.weekly_budget_status}</Text>
             </Card>
           )}
 
           {/* Full Report */}
           <Card title="Değerlendirme">
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, lineHeight: 24 }}>{report.full_report}</Text>
+            <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 24 }}>{report.full_report}</Text>
           </Card>
 
           {/* Tomorrow */}
           <Card title="Yarın İçin Tek Aksiyon">
-            <Text style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '600', lineHeight: 26 }}>{report.tomorrow_action}</Text>
+            <Text style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '600', lineHeight: 26 }}>{report.tomorrow_action}</Text>
           </Card>
 
           {/* ux-sweep (daily-no-regenerate): otomatik gece job'ı satırı yazınca kullanıcı butona
@@ -223,27 +225,29 @@ export default function DailyReportScreen() {
 }
 
 function CheckItem({ label, met, detail }: { label: string; met: boolean; detail?: string }) {
+  const { colors } = useTheme();
   return (
     <View
       style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, gap: SPACING.sm }}
       accessibilityRole="text"
       accessibilityLabel={`${label}: ${met ? 'hedef tutturuldu' : 'hedef tutturulmadı'}${detail ? `, ${detail}` : ''}`}
     >
-      <Ionicons name={met ? 'checkmark-circle' : 'close-circle'} size={24} color={met ? COLORS.success : COLORS.error} />
-      <Text style={{ color: COLORS.text, fontSize: FONT.md, flex: 1 }}>{label}</Text>
-      {detail && <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{detail}</Text>}
+      <Ionicons name={met ? 'checkmark-circle' : 'close-circle'} size={24} color={met ? colors.success : colors.error} />
+      <Text style={{ color: colors.text, fontSize: FONT.md, flex: 1 }}>{label}</Text>
+      {detail && <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{detail}</Text>}
     </View>
   );
 }
 
 function MacroCircle({ label, value, unit, color }: { label: string; value: number; unit: string; color: string }) {
+  const { colors } = useTheme();
   return (
     <View style={{ alignItems: 'center' }} accessibilityRole="text" accessibilityLabel={`${label}: ${value} ${unit}`}>
       <View style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 3, borderColor: color, justifyContent: 'center', alignItems: 'center' }}>
         <Text style={{ color, fontSize: FONT.md, fontWeight: '700' }}>{value}</Text>
       </View>
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>{label}</Text>
-      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{unit}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>{label}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{unit}</Text>
     </View>
   );
 }

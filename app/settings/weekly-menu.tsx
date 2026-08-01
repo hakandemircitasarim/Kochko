@@ -7,7 +7,8 @@ import { usePremium } from '@/hooks/usePremium';
 import { getCurrentWeeklyPlan, generateWeeklyPlan, toggleShoppingItem, type WeeklyPlan } from '@/services/weekly-plan.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { mealTypeLabelTR } from '@/lib/labels';
@@ -15,6 +16,7 @@ import { mealTypeLabelTR } from '@/lib/labels';
 const CATEGORY_LABELS: Record<string, string> = { protein: 'Protein', vegetable: 'Sebze', fruit: 'Meyve', dairy: 'Süt Ürünü', grain: 'Tahıl', other: 'Diğer' };
 
 export default function WeeklyMenuScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   // FIX (ux-readiness): this premium screen lacked its own guard — a free user reaching it via deep
@@ -71,22 +73,22 @@ export default function WeeklyMenuScreen() {
 
   // FIX (ux-readiness): blank while the redirect effect runs, so a free user never sees the content.
   if (!isPremium && profile !== null && !profileLoading) {
-    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
       {loading ? (
         <Card>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Menü yükleniyor…</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Menü yükleniyor…</Text>
         </Card>
       ) : !plan ? (
         // LoadErrorState'e taşınmadı: hata ayrı bir retry kartı değil — boş-durum kartına gömülü
         // metin, CTA'sı da yeniden yükleme değil "Menü Oluştur" (üretim) aksiyonu.
         <Card>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>
             {error ? error : 'Haftalık menü henüz oluşturulmamış.'}
           </Text>
           <Button title="Menü Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
@@ -97,13 +99,13 @@ export default function WeeklyMenuScreen() {
           <View style={{ flexDirection: 'row', marginBottom: SPACING.md, gap: SPACING.sm }}>
             <TouchableOpacity onPress={() => { haptics.tap(); setTab('menu'); }}
               accessibilityRole="tab" accessibilityLabel="Menü" accessibilityState={{ selected: tab === 'menu' }}
-              style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center', backgroundColor: tab === 'menu' ? COLORS.primary : COLORS.card }}>
-              <Text style={{ color: tab === 'menu' ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Menü</Text>
+              style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center', backgroundColor: tab === 'menu' ? colors.primary : colors.card }}>
+              <Text style={{ color: tab === 'menu' ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Menü</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => { haptics.tap(); setTab('shopping'); }}
               accessibilityRole="tab" accessibilityLabel="Alışveriş" accessibilityState={{ selected: tab === 'shopping' }}
-              style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center', backgroundColor: tab === 'shopping' ? COLORS.primary : COLORS.card }}>
-              <Text style={{ color: tab === 'shopping' ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Alışveriş</Text>
+              style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center', backgroundColor: tab === 'shopping' ? colors.primary : colors.card }}>
+              <Text style={{ color: tab === 'shopping' ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Alışveriş</Text>
             </TouchableOpacity>
           </View>
 
@@ -112,12 +114,12 @@ export default function WeeklyMenuScreen() {
             plan.plan_data.map((day, di) => (
               <Card key={di} title={`${day.dayName}${day.isTrainingDay === undefined ? '' : day.isTrainingDay ? ' (Antrenman)' : ' (Dinlenme)'}`}>
                 {day.meals.map((meal, mi) => (
-                  <View key={mi} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: mi < day.meals.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
+                  <View key={mi} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: mi < day.meals.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>{mealTypeLabelTR(meal.meal_type)}</Text>
-                      <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>{meal.suggestion.name}</Text>
+                      <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600' }}>{mealTypeLabelTR(meal.meal_type)}</Text>
+                      <Text style={{ color: colors.text, fontSize: FONT.sm }}>{meal.suggestion.name}</Text>
                     </View>
-                    <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{meal.suggestion.calories} kcal</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{meal.suggestion.calories} kcal</Text>
                   </View>
                 ))}
               </Card>
@@ -138,11 +140,11 @@ export default function WeeklyMenuScreen() {
                     <TouchableOpacity key={index} onPress={() => handleToggleItem(index)}
                       accessibilityRole="checkbox" accessibilityLabel={`${item.name} ${item.amount}`} accessibilityState={{ checked: item.checked }}
                       style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingVertical: 4, gap: SPACING.sm }}>
-                      <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: item.checked ? COLORS.success : COLORS.border, backgroundColor: item.checked ? COLORS.success : 'transparent', justifyContent: 'center', alignItems: 'center' }}>
-                        {item.checked && <Text style={{ color: getContrastColor(COLORS.success), fontSize: 12, fontWeight: '700' }}>+</Text>}
+                      <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: item.checked ? colors.success : colors.border, backgroundColor: item.checked ? colors.success : 'transparent', justifyContent: 'center', alignItems: 'center' }}>
+                        {item.checked && <Text style={{ color: getContrastColor(colors.success), fontSize: 12, fontWeight: '700' }}>+</Text>}
                       </View>
-                      <Text style={{ color: item.checked ? COLORS.textMuted : COLORS.text, fontSize: FONT.md, flex: 1, textDecorationLine: item.checked ? 'line-through' : 'none' }}>{item.name}</Text>
-                      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{item.amount}</Text>
+                      <Text style={{ color: item.checked ? colors.textMuted : colors.text, fontSize: FONT.md, flex: 1, textDecorationLine: item.checked ? 'line-through' : 'none' }}>{item.name}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{item.amount}</Text>
                     </TouchableOpacity>
                   ))}
                 </Card>
@@ -150,7 +152,7 @@ export default function WeeklyMenuScreen() {
             </>
           )}
 
-          {error && <Text style={{ color: COLORS.error, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{error}</Text>}
+          {error && <Text style={{ color: colors.error, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{error}</Text>}
           {/* ux-sweep (WM-01): onaysız yeniden üretim mevcut menüyü + alışveriş işaretlerini siliyordu. */}
           <Button title="Menüyü Yeniden Oluştur" variant="outline" loading={generating} onPress={() => {
             Alert.alert('Yeniden oluşturulsun mu?', 'Mevcut menü ve alışveriş listesi işaretlerin silinecek.', [

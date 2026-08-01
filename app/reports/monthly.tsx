@@ -15,8 +15,8 @@ import { CircularProgress } from '@/components/ui/CircularProgress';
 import { ProgressChart } from '@/components/reports/ProgressChart';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
-import { METRIC_COLORS } from '@/lib/theme';
+import { SPACING, FONT } from '@/lib/constants';
+import { METRIC_COLORS, useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
 interface MonthlyAIReport {
@@ -39,6 +39,7 @@ const DEVIATION_LABELS: Record<string, string> = {
 };
 
 export default function MonthlyReportScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [loading, setLoading] = useState(true);
@@ -166,9 +167,9 @@ export default function MonthlyReportScreen() {
   };
 
   const trendColor = (dir?: string) => {
-    if (dir === 'yukselis') return COLORS.success;
-    if (dir === 'dusus') return COLORS.error;
-    return COLORS.warning;
+    if (dir === 'yukselis') return colors.success;
+    if (dir === 'dusus') return colors.error;
+    return colors.warning;
   };
 
   if (loading) {
@@ -179,7 +180,7 @@ export default function MonthlyReportScreen() {
   // (refactor: shared LoadErrorState)
   if (error) {
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <LoadErrorState title="Rapor yüklenemedi" onRetry={loadData} />
       </View>
     );
@@ -198,7 +199,7 @@ export default function MonthlyReportScreen() {
   // bare "1". Values are already 0-100 (ai-report clamps them server-side; the local averages are
   // built from 0-100 compliance_score rows), so format as %N without rescaling.
   const complianceScore = aiReport?.avg_compliance ?? avgCompliance;
-  const complianceColor = complianceScore >= 70 ? COLORS.success : complianceScore >= 40 ? COLORS.warning : COLORS.error;
+  const complianceColor = complianceScore >= 70 ? colors.success : complianceScore >= 40 ? colors.warning : colors.error;
 
   // weekly_reports has no weight_start/weight_end columns — derive month-boundary weights from
   // the daily_metrics weights already loaded (weightData is ascending by date).
@@ -207,7 +208,7 @@ export default function MonthlyReportScreen() {
   const weightChange: number | null = firstWeight !== null && lastWeight !== null ? lastWeight - firstWeight : null;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
 
       {/* FIX (ux-polish): period header so monthly anchors the reader like daily ("Salı, 14 Temmuz")
           and weekly ("Hafta: …"). review fix: derive it from the SAME day-boundary-aware effective
@@ -219,9 +220,9 @@ export default function MonthlyReportScreen() {
           accessibilityRole="button" accessibilityLabel="Önceki ay"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xl }}>{'<'}</Text>
+          <Text style={{ color: colors.primary, fontSize: FONT.xl }}>{'<'}</Text>
         </TouchableOpacity>
-        <Text style={{ fontSize: FONT.md, color: COLORS.text, fontWeight: '700' }}>
+        <Text style={{ fontSize: FONT.md, color: colors.text, fontWeight: '700' }}>
           {new Date(viewYear, viewMonth - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
         </Text>
         <TouchableOpacity
@@ -231,7 +232,7 @@ export default function MonthlyReportScreen() {
           accessibilityState={{ disabled: isViewingCurrentMonth }}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={{ color: isViewingCurrentMonth ? COLORS.textMuted : COLORS.primary, fontSize: FONT.xl }}>{'>'}</Text>
+          <Text style={{ color: isViewingCurrentMonth ? colors.textMuted : colors.primary, fontSize: FONT.xl }}>{'>'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -241,13 +242,13 @@ export default function MonthlyReportScreen() {
             %N için ringi burada doğrudan çiz — görünüm aynı (120/8 ring + alt etiket). */}
         <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
           <CircularProgress progress={complianceScore / 100} value={`%${complianceScore}`} size={120} strokeWidth={8} color={complianceColor} a11yLabel="Ortalama uyum" />
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, marginTop: SPACING.sm }}>Uyum Puanı</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.md, marginTop: SPACING.sm }}>Uyum Puanı</Text>
           {/* FIX (ux-round3 #5): trend vs last month (weekly parity) so '%62' gains direction. */}
           {prevMonthCompliance != null && (() => {
             const d = complianceScore - prevMonthCompliance;
-            if (d === 0) return <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>geçen ayla aynı</Text>;
+            if (d === 0) return <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>geçen ayla aynı</Text>;
             return (
-              <Text style={{ color: d > 0 ? COLORS.success : COLORS.warning, fontSize: FONT.sm, fontWeight: '700', marginTop: SPACING.xs }}>
+              <Text style={{ color: d > 0 ? colors.success : colors.warning, fontSize: FONT.sm, fontWeight: '700', marginTop: SPACING.xs }}>
                 geçen aya göre {d > 0 ? '+' : '−'}{Math.abs(d)}
               </Text>
             );
@@ -264,7 +265,7 @@ export default function MonthlyReportScreen() {
             // FIX (ux-pass5): TR ondalık — virgül, nokta değil ("73,5 kilodan").
             accessibilityLabel={`Kilo grafiği: ${firstWeight?.toFixed(1).replace('.', ',')} kilodan ${lastWeight?.toFixed(1).replace('.', ',')} kiloya`}
           >
-            {/* FIX (audit ui-weight-chart): kilo grafiği marka kilo rengiyle (METRIC_COLORS.weight, pembe) tutarlı; eskiden COLORS.secondary (mor) idi. */}
+            {/* FIX (audit ui-weight-chart): kilo grafiği marka kilo rengiyle (METRIC_COLORS.weight, pembe) tutarlı; eskiden colors.secondary (mor) idi. */}
             {/* FIX (ux-pass5, emulator): height=150 x-ekseni etiketlerini kartın alt kenarında ortadan kesiyordu — ProgressChart'ın yeni 180 varsayılanına bırak (progress.tsx grafikleriyle aynı). */}
             <ProgressChart data={weightData} unit=" kg" color={METRIC_COLORS.weight} />
           </View>
@@ -277,18 +278,18 @@ export default function MonthlyReportScreen() {
           {/* FIX (ux-pass5): TR ondalık — kilo değerleri virgülle ("73,5 kg", "+1,2 kg"). */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View>
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Ay başı</Text>
-              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{firstWeight?.toFixed(1).replace('.', ',')} kg</Text>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Ay başı</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700' }}>{firstWeight?.toFixed(1).replace('.', ',')} kg</Text>
             </View>
             <View style={{ alignItems: 'center' }}>
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Değişim</Text>
-              <Text style={{ color: weightChange < 0 ? COLORS.success : weightChange > 0 ? COLORS.error : COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Değişim</Text>
+              <Text style={{ color: weightChange < 0 ? colors.success : weightChange > 0 ? colors.error : colors.text, fontSize: FONT.lg, fontWeight: '700' }}>
                 {weightChange > 0 ? '+' : ''}{weightChange.toFixed(1).replace('.', ',')} kg
               </Text>
             </View>
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Ay sonu</Text>
-              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{lastWeight?.toFixed(1).replace('.', ',')} kg</Text>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Ay sonu</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700' }}>{lastWeight?.toFixed(1).replace('.', ',')} kg</Text>
             </View>
           </View>
         </Card>
@@ -297,12 +298,12 @@ export default function MonthlyReportScreen() {
       {/* AI Report Section */}
       {!aiReport && !isViewingCurrentMonth && (
         <Card title="AI Aylık Analiz">
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Bu aya ait bir AI analizi yok.</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Bu aya ait bir AI analizi yok.</Text>
         </Card>
       )}
       {!aiReport && isViewingCurrentMonth && (
         <Card title="AI Aylık Analiz">
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginBottom: SPACING.md }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginBottom: SPACING.md }}>
             Yapay zeka ile aylık performans analizini oluştur.
           </Text>
           <Button
@@ -312,7 +313,7 @@ export default function MonthlyReportScreen() {
             disabled={generating}
           />
           {generating && (
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
               Koç ayını analiz ediyor, bu birkaç saniye sürebilir…
             </Text>
           )}
@@ -324,10 +325,10 @@ export default function MonthlyReportScreen() {
           {/* Monthly Summary */}
           {aiReport.monthly_summary && (
             <Card title="Aylık Özet">
-              <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 22 }}>{aiReport.monthly_summary}</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{aiReport.monthly_summary}</Text>
               {aiReport.trend_direction && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm }}>
-                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>Trend: </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Trend: </Text>
                   <Text style={{ color: trendColor(aiReport.trend_direction), fontSize: FONT.sm, fontWeight: '700' }}>
                     {aiReport.trend_direction === 'yukselis' ? 'Yükseliş' : aiReport.trend_direction === 'dusus' ? 'Düşüş' : 'Stabil'}
                   </Text>
@@ -339,7 +340,7 @@ export default function MonthlyReportScreen() {
           {/* Top Achievement */}
           {aiReport.top_achievement && (
             <Card title="Ayın Başarısı">
-              <Text style={{ color: COLORS.success, fontSize: FONT.md, fontWeight: '600' }}>{aiReport.top_achievement}</Text>
+              <Text style={{ color: colors.success, fontSize: FONT.md, fontWeight: '600' }}>{aiReport.top_achievement}</Text>
             </Card>
           )}
 
@@ -348,8 +349,8 @@ export default function MonthlyReportScreen() {
             <Card title="Risk Sinyalleri">
               {aiReport.risk_signals.map((signal, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < aiReport.risk_signals!.length - 1 ? SPACING.xs : 0 }}>
-                  <Text style={{ color: COLORS.error, fontSize: FONT.sm, marginRight: SPACING.xs }}>!</Text>
-                  <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1 }}>{signal}</Text>
+                  <Text style={{ color: colors.error, fontSize: FONT.sm, marginRight: SPACING.xs }}>!</Text>
+                  <Text style={{ color: colors.text, fontSize: FONT.sm, flex: 1 }}>{signal}</Text>
                 </View>
               ))}
             </Card>
@@ -369,11 +370,11 @@ export default function MonthlyReportScreen() {
                 return entries.map(([k, v]) => (
                   <View key={k} style={{ marginBottom: SPACING.sm }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
-                      <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>{DEVIATION_LABELS[k] ?? k}</Text>
-                      <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>{v} gün</Text>
+                      <Text style={{ color: colors.text, fontSize: FONT.sm }}>{DEVIATION_LABELS[k] ?? k}</Text>
+                      <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>{v} gün</Text>
                     </View>
-                    <View style={{ height: 6, borderRadius: 3, backgroundColor: COLORS.border, overflow: 'hidden' }}>
-                      <View style={{ width: `${max > 0 ? Math.round((v / max) * 100) : 0}%`, height: '100%', borderRadius: 3, backgroundColor: COLORS.warning }} />
+                    <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}>
+                      <View style={{ width: `${max > 0 ? Math.round((v / max) * 100) : 0}%`, height: '100%', borderRadius: 3, backgroundColor: colors.warning }} />
                     </View>
                   </View>
                 ));
@@ -386,8 +387,8 @@ export default function MonthlyReportScreen() {
             <Card title="Davranış Kalıpları">
               {aiReport.behavioral_patterns.map((pattern, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < aiReport.behavioral_patterns!.length - 1 ? SPACING.xs : 0 }}>
-                  <Text style={{ color: COLORS.primary, fontSize: FONT.sm, marginRight: SPACING.xs }}>-</Text>
-                  <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1 }}>{pattern}</Text>
+                  <Text style={{ color: colors.primary, fontSize: FONT.sm, marginRight: SPACING.xs }}>-</Text>
+                  <Text style={{ color: colors.text, fontSize: FONT.sm, flex: 1 }}>{pattern}</Text>
                 </View>
               ))}
             </Card>
@@ -396,7 +397,7 @@ export default function MonthlyReportScreen() {
           {/* Next Month Focus */}
           {aiReport.next_month_focus && (
             <Card title="Gelecek Ay Odak">
-              <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 22 }}>{aiReport.next_month_focus}</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{aiReport.next_month_focus}</Text>
             </Card>
           )}
 
@@ -410,7 +411,7 @@ export default function MonthlyReportScreen() {
             style={{ marginTop: SPACING.sm }}
           />
           {generating && (
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>
               Koç ayını analiz ediyor, bu birkaç saniye sürebilir…
             </Text>
           )}
@@ -420,11 +421,11 @@ export default function MonthlyReportScreen() {
       {/* Goal Progress */}
       {!!(profile?.target_weight_kg) && lastWeight && (
         <Card title="Hedefe Kalan">
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>
             {/* FIX (ux-pass5): TR ondalık virgül. */}
             {Math.abs(lastWeight - (profile.target_weight_kg as number)).toFixed(1).replace('.', ',')} kg
           </Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>
             Hedef: {profile.target_weight_kg as number} kg
           </Text>
         </Card>
@@ -437,19 +438,19 @@ export default function MonthlyReportScreen() {
           const weekLabel = new Date(wr.week_start as string)
             .toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
           return (
-            <View key={i} style={{ paddingVertical: SPACING.sm, borderBottomWidth: i < weeklyReports.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
+            <View key={i} style={{ paddingVertical: SPACING.sm, borderBottomWidth: i < weeklyReports.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{weekLabel} haftası</Text>
-                <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '600' }}>%{compliance}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{weekLabel} haftası</Text>
+                <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>%{compliance}</Text>
               </View>
-              <View style={{ height: 6, borderRadius: 3, backgroundColor: COLORS.border, overflow: 'hidden' }}>
-                <View style={{ width: `${Math.min(100, Math.max(0, compliance))}%`, height: '100%', borderRadius: 3, backgroundColor: COLORS.primary }} />
+              <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}>
+                <View style={{ width: `${Math.min(100, Math.max(0, compliance))}%`, height: '100%', borderRadius: 3, backgroundColor: colors.primary }} />
               </View>
             </View>
           );
         })}
         {weeklyReports.length === 0 && (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>Henüz haftalık rapor yok.</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>Henüz haftalık rapor yok.</Text>
         )}
       </Card>
     </ScrollView>

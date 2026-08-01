@@ -83,6 +83,20 @@ export function flushEventBuffer(): AnalyticsEvent[] {
   return flushed;
 }
 
+/**
+ * Gönderim başarısız olursa olayları tampona geri koy.
+ *
+ * `flushEventBuffer` tamponu boşaltıp diziyi döndürüyordu ama HİÇBİR YERDEN çağrılmıyordu —
+ * yani olaylar zaten hiç gönderilmiyordu. Artık telemetry.service gönderiyor; gönderemediğinde
+ * (ağ yok, tablo yok) kayıtların kaybolmaması için geri koyma yolu gerekiyor.
+ */
+export function restoreEventBuffer(events: AnalyticsEvent[]): void {
+  eventBuffer.unshift(...events);
+  if (eventBuffer.length > MAX_BUFFER_SIZE) {
+    eventBuffer.splice(0, eventBuffer.length - MAX_BUFFER_SIZE);
+  }
+}
+
 // ────────────────────────────── Retention ──────────────────────────────
 
 /**

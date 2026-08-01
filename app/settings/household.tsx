@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import {
   getUserHousehold,
@@ -25,6 +26,7 @@ import {
 } from '@/services/household.service';
 
 export default function HouseholdScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const userId = useAuthStore(s => s.user?.id);
 
@@ -155,22 +157,22 @@ export default function HouseholdScreen() {
   if (loading) {
     // FIX (ux-polish): content-shaped skeleton (like the sibling settings screens) instead of a bare
     // centered spinner that jumps to a full page of cards.
-    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={2} /></View>;
+    return <View style={{ flex: 1, backgroundColor: colors.background }}><SkeletonScreen cards={2} /></View>;
   }
 
   // FIX (ux-round4 #20): a real load failure gets a retry — not a misleading "create a family" form.
   if (loadError) {
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <LoadErrorState title="Aile bilgisi yüklenemedi" onRetry={loadData} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Aile üyelerini ekle, ortak alışveriş listesi oluştur.
       </Text>
 
@@ -215,19 +217,19 @@ export default function HouseholdScreen() {
           <Card title={household.name}>
             <View style={{ gap: SPACING.sm }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Davet Kodu</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Davet Kodu</Text>
                 {/* ux-sweep (HH-01): kod salt-görüntüydü — 'paylaş' vaadi eylemsizdi. Dokun→paylaş. */}
                 <TouchableOpacity
                   onPress={() => { void Share.share({ message: `KOCHKO aile davet kodum: ${household.inviteCode}` }); }}
                   accessibilityRole="button"
                   accessibilityLabel={`Davet kodu ${household.inviteCode}. Paylaşmak için dokun`}
-                  style={{ backgroundColor: COLORS.surfaceLight, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
+                  style={{ backgroundColor: colors.surfaceLight, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
                 >
-                  <Text selectable style={{ color: COLORS.primary, fontSize: FONT.lg, fontWeight: '700', letterSpacing: 2 }}>{household.inviteCode}</Text>
-                  <Ionicons name="share-social-outline" size={16} color={COLORS.primary} />
+                  <Text selectable style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '700', letterSpacing: 2 }}>{household.inviteCode}</Text>
+                  <Ionicons name="share-social-outline" size={16} color={colors.primary} />
                 </TouchableOpacity>
               </View>
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                 Koda dokunarak paylaşabilirsin — aile üyeleri bu kodla katılır.
               </Text>
             </View>
@@ -244,11 +246,11 @@ export default function HouseholdScreen() {
                   alignItems: 'center',
                   paddingVertical: SPACING.sm,
                   borderBottomWidth: i < members.length - 1 ? 1 : 0,
-                  borderBottomColor: COLORS.border,
+                  borderBottomColor: colors.border,
                 }}
               >
-                <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{m.displayName}</Text>
-                <Text style={{ color: m.role === 'owner' ? COLORS.primary : COLORS.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>
+                <Text style={{ color: colors.text, fontSize: FONT.md }}>{m.displayName}</Text>
+                <Text style={{ color: m.role === 'owner' ? colors.primary : colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>
                   {m.role === 'owner' ? 'Kurucu' : 'Üye'}
                 </Text>
               </View>
@@ -258,7 +260,7 @@ export default function HouseholdScreen() {
           {/* Shopping list */}
           <Card title="Ortak Alışveriş Listesi" style={{ marginTop: SPACING.md }}>
             {shoppingList.length === 0 ? (
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>
                 Henüz alışveriş listesi yok. Haftalık menü oluşturulduğunda burada görünecek.
               </Text>
             ) : (
@@ -279,7 +281,7 @@ export default function HouseholdScreen() {
                       minHeight: 44,
                       paddingVertical: SPACING.sm,
                       borderBottomWidth: 1,
-                      borderBottomColor: COLORS.border,
+                      borderBottomColor: colors.border,
                     }}
                   >
                     <View
@@ -288,20 +290,20 @@ export default function HouseholdScreen() {
                         height: 22,
                         borderRadius: 4,
                         borderWidth: 2,
-                        borderColor: checked ? COLORS.primary : COLORS.textMuted,
-                        backgroundColor: checked ? COLORS.primary : 'transparent',
+                        borderColor: checked ? colors.primary : colors.textMuted,
+                        backgroundColor: checked ? colors.primary : 'transparent',
                         justifyContent: 'center',
                         alignItems: 'center',
                       }}
                     >
-                      {checked && <Text style={{ color: getContrastColor(COLORS.primary), fontSize: 12, fontWeight: '700' }}>✓</Text>}
+                      {checked && <Text style={{ color: getContrastColor(colors.primary), fontSize: 12, fontWeight: '700' }}>✓</Text>}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: checked ? COLORS.textMuted : COLORS.text, fontSize: FONT.md, textDecorationLine: checked ? 'line-through' : 'none' }}>
+                      <Text style={{ color: checked ? colors.textMuted : colors.text, fontSize: FONT.md, textDecorationLine: checked ? 'line-through' : 'none' }}>
                         {item.ingredient}
                       </Text>
                     </View>
-                    <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>
                       {/* FIX (final sweep): totalAmount = MEMBER COUNT, unit = the full amount string —
                           '{count} {unit}' rendered '1 500 g' as if it were 1500 g. Show the amount,
                           plus how many members need it when shared. */}

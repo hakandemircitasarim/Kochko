@@ -9,9 +9,11 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 
 export default function MealTemplatesScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [templates, setTemplates] = useState<MealTemplate[]>([]);
   // FIX (audit UI-STA-03): yükleme durumu — ilk fetch bitene kadar veri olan kullanıcıya yanlış 'boş' kartı gösterilmiyordu.
@@ -103,9 +105,9 @@ export default function MealTemplatesScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Sık yediğin kombinasyonları kaydet, tek dokunuşla tekrar gir.
       </Text>
 
@@ -123,7 +125,7 @@ export default function MealTemplatesScreen() {
             numberOfLines={3}
             style={{ minHeight: 70, textAlignVertical: 'top' }}
           />
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginBottom: SPACING.md }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.md }}>
             Format: yiyecek adı Xkcal Xg pro, ... (koçuna sorarak da şablon oluşturabilirsin)
           </Text>
           <Button title="Kaydet" onPress={handleAdd} />
@@ -145,11 +147,11 @@ export default function MealTemplatesScreen() {
         <Card style={{ marginTop: SPACING.md }}>
           {/* FIX (ux-polish): iconed empty state to match the app's empty-state pattern. */}
           <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name="bookmark-outline" size={26} color={COLORS.primary} />
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="bookmark-outline" size={26} color={colors.primary} />
             </View>
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz şablonun yok</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Sık yediğin öğünleri kaydet veya koçuna "bunu şablona ekle" de.</Text>
+            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz şablonun yok</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Sık yediğin öğünleri kaydet veya koçuna "bunu şablona ekle" de.</Text>
           </View>
         </Card>
       ) : (
@@ -157,19 +159,19 @@ export default function MealTemplatesScreen() {
           <TouchableOpacity key={t.id} onPress={() => handleUse(t)} onLongPress={() => handleDelete(t.id)}>
             <Card style={{ marginTop: SPACING.sm }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs }}>
-                <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{t.name}</Text>
+                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{t.name}</Text>
                 <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-                  <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>{t.total_calories} kcal</Text>
-                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{t.total_protein}g pro</Text>
+                  <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600' }}>{t.total_calories} kcal</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{t.total_protein}g pro</Text>
                 </View>
               </View>
               {t.items.map((item, i) => (
                 <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 }}>
-                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{item.name}</Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{item.calories} kcal</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{item.name}</Text>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{item.calories} kcal</Text>
                 </View>
               ))}
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>{t.use_count}x kullanıldı · Dokun: bugüne kaydet · Uzun bas: sil</Text>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>{t.use_count}x kullanıldı · Dokun: bugüne kaydet · Uzun bas: sil</Text>
             </Card>
           </TouchableOpacity>
         ))

@@ -16,7 +16,8 @@ import { supabase } from '@/lib/supabase';
 import { exportPDF } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { genderLabelTR, goalInfinitiveLabelTR, activityLevelLabelTR, mealTypeLabelTR } from '@/lib/labels';
 
@@ -51,6 +52,7 @@ const capList = (items: string[], max = 10): string =>
   items.length > max ? `${items.slice(0, max).join(', ')} +${items.length - max} daha` : items.join(', ');
 
 export default function CoachSummaryScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [rangeDays, setRangeDays] = useState(30);
@@ -228,8 +230,8 @@ export default function CoachSummaryScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Antrenörüne veya diyetisyenine verebileceğin derli toplu bir özet oluştur. Hangi bölümlerin dahil olacağını sen seç — PDF olarak paylaşılır.
       </Text>
 
@@ -244,11 +246,11 @@ export default function CoachSummaryScreen() {
               accessibilityState={{ selected: rangeDays === chip.days }}
               style={{
                 flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.pill, alignItems: 'center',
-                borderWidth: 0.5, borderColor: rangeDays === chip.days ? COLORS.primary : COLORS.border,
-                backgroundColor: rangeDays === chip.days ? COLORS.primary + '22' : COLORS.inputBg,
+                borderWidth: 0.5, borderColor: rangeDays === chip.days ? colors.primary : colors.border,
+                backgroundColor: rangeDays === chip.days ? colors.primary + '22' : colors.inputBg,
               }}
             >
-              <Text style={{ color: rangeDays === chip.days ? COLORS.primary : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>{chip.label}</Text>
+              <Text style={{ color: rangeDays === chip.days ? colors.primary : colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>{chip.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -256,15 +258,15 @@ export default function CoachSummaryScreen() {
 
       <Card title="Özete Dahil Olacaklar">
         {SECTIONS.map((s, i) => (
-          <View key={s.key} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderTopWidth: i === 0 ? 0 : 0.5, borderTopColor: COLORS.border }}>
+          <View key={s.key} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderTopWidth: i === 0 ? 0 : 0.5, borderTopColor: colors.border }}>
             <View style={{ flex: 1, marginRight: SPACING.md }}>
-              <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '600' }}>{s.label}</Text>
-              <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{s.desc}</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{s.label}</Text>
+              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{s.desc}</Text>
             </View>
             <Switch
               value={included[s.key]}
               onValueChange={() => toggle(s.key)}
-              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              trackColor={{ false: colors.border, true: colors.primary }}
               accessibilityLabel={`${s.label} bölümünü özete dahil et`}
             />
           </View>

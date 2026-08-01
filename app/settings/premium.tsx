@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert, Platform, Linking } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -6,7 +6,8 @@ import { useProfileStore } from '@/stores/profile.store';
 import { usePremium } from '@/hooks/usePremium';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { initiatePurchase, restorePurchases, startTrialIfEligible, PURCHASE_ENABLED } from '@/services/subscription.service';
 import { supabase } from '@/lib/supabase';
 import { haptics } from '@/lib/haptics';
@@ -17,7 +18,10 @@ const FREE = [
   'Barkod okuma',
   'Basit grafikler',
   'Temel hedef takibi',
-  'Telefon adım sayacı',
+  // Otomatik telefon adım sayacı yalnızca iOS'ta çalışıyor (expo-sensors'ın gün-toplamı
+  // okuması iOS'a özel); Android'de adım ELLE girilir. "Telefon adım sayacı" demek
+  // Android kullanıcısına olmayan bir özellik vaat ediyordu.
+  'Adım takibi (iOS otomatik, Android elle giriş)',
   'Günlük 50 AI mesaj hakkı',
   '1 diyet + 1 antrenman planı',
 ];
@@ -58,6 +62,7 @@ function matchesFeature(rowText: string, feature?: string): boolean {
 }
 
 export default function PremiumScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { feature } = useLocalSearchParams<{ feature?: string }>();
   const user = useAuthStore(s => s.user);
@@ -154,16 +159,33 @@ export default function PremiumScreen() {
     );
   };
 
+  // Abonelik iptali mağazanın işidir — uygulama Google Play / App Store aboneliğini
+  // kendi başına iptal EDEMEZ. Buradaki eski kod hiçbir şey yapmadan "İptal Edildi"
+  // diyordu: kullanıcı iptal ettiğini sanıp bir dönem daha ücretlendirilirdi. Artık
+  // doğruyu söylüyor ve iptalin gerçekten yapılabildiği yere götürüyor.
   const handleCancel = () => {
-    Alert.alert('Aboneliği İptal Et', 'Premium aboneliğini iptal etmek istiyor musun? Mevcut dönem sonuna kadar erişimin devam eder.', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'İptal Et', style: 'destructive', onPress: async () => {
-        // In production: cancel via RevenueCat/IAP
-        // Premium remains until premium_expires_at
-        haptics.warning();
-        Alert.alert('İptal Edildi', 'Mevcut dönem sonuna kadar Premium devam eder.');
-      }},
-    ]);
+    const storeName = Platform.OS === 'ios' ? 'App Store' : 'Google Play';
+    Alert.alert(
+      'Aboneliği İptal Et',
+      `Abonelikler ${storeName} üzerinden yönetilir — iptali oradan yapman gerekiyor. İptal etsen bile mevcut dönem sonuna kadar Premium erişimin devam eder.`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: `${storeName}'e git`,
+          onPress: async () => {
+            haptics.tap();
+            const url = Platform.OS === 'ios'
+              ? 'https://apps.apple.com/account/subscriptions'
+              : 'https://play.google.com/store/account/subscriptions?package=com.kochko.app';
+            try {
+              await Linking.openURL(url);
+            } catch {
+              Alert.alert('Açılamadı', `${storeName} uygulamasını açamadım. ${storeName} > Abonelikler bölümünden iptal edebilirsin.`);
+            }
+          },
+        },
+      ],
+    );
   };
 
   // FREE LAUNCH: this whole screen is paywall UI. Entry points are hidden, but deep links /
@@ -171,10 +193,10 @@ export default function PremiumScreen() {
   // a fake "Premium Aktif" status.
   if (FREE_LAUNCH) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom, justifyContent: 'center' }}>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom, justifyContent: 'center' }}>
         <Card>
-          <Text style={{ color: COLORS.success, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Lansman dönemi — her şey ücretsiz</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.sm }}>
+          <Text style={{ color: colors.success, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Lansman dönemi — her şey ücretsiz</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.sm }}>
             KOCHKO'nun tüm özellikleri şu an herkese açık. Ücretli abonelik ileride açıldığında uygulama içinden duyurulacak.
           </Text>
           <Button title="Devam et" onPress={() => router.back()} style={{ marginTop: SPACING.lg }} />
@@ -193,12 +215,12 @@ export default function PremiumScreen() {
     // paddingTop: SPACING.lg + insets.top double-counted it (and the Trial/Expired branches use
     // plain padding: SPACING.md). Match the suite convention — plain padding, bottom inset only.
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom, justifyContent: 'center' }}>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom, justifyContent: 'center' }}>
         <Card>
-          <Text style={{ color: COLORS.success, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Premium Aktif</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>Tüm özelliklere erişimin var.</Text>
+          <Text style={{ color: colors.success, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Premium Aktif</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>Tüm özelliklere erişimin var.</Text>
           {expiresDate && (
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>Geçerlilik: {expiresDate}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>Geçerlilik: {expiresDate}</Text>
           )}
         </Card>
         <View style={{ marginTop: SPACING.lg }}>
@@ -211,29 +233,29 @@ export default function PremiumScreen() {
   // Trial period
   if (isInTrial) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
         {/* Trial expiry countdown banner */}
-        <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md }}>
-          <Text style={{ color: COLORS.warning, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>
+        <View style={{ backgroundColor: colors.warning + '20', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md }}>
+          <Text style={{ color: colors.warning, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>
             Deneme süren {trialDaysLeft} gün sonra bitiyor
           </Text>
         </View>
 
         <Card>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Deneme Süresi</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>
+          <Text style={{ color: colors.primary, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center' }}>Deneme Süresi</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.md, textAlign: 'center', marginTop: SPACING.xs }}>
             {trialDaysLeft} gün kaldı. Tüm Premium özellikler açık.
           </Text>
         </Card>
 
         {/* Feature comparison */}
         <View style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', marginBottom: SPACING.sm }}>Ücretsiz vs Premium</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700', marginBottom: SPACING.sm }}>Ücretsiz vs Premium</Text>
           <Card title="Ücretsiz">
-            {FREE.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.success} />)}
+            {FREE.map((f, i) => <FeatureRow key={i} text={f} color={colors.success} />)}
           </Card>
-          <Card title="Premium" style={{ borderColor: COLORS.primary, borderWidth: 2 }}>
-            {PREMIUM.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.primary} />)}
+          <Card title="Premium" style={{ borderColor: colors.primary, borderWidth: 2 }}>
+            {PREMIUM.map((f, i) => <FeatureRow key={i} text={f} color={colors.primary} />)}
           </Card>
         </View>
 
@@ -244,7 +266,7 @@ export default function PremiumScreen() {
         <View style={{ marginTop: SPACING.md }}>
           {PURCHASE_ENABLED ? (
             <>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
                 Deneme bitmeden abone olarak kesintisiz devam et.
               </Text>
               <Button title="Aboneliğe Geç" onPress={handleSubscribe} size="lg" />
@@ -253,7 +275,7 @@ export default function PremiumScreen() {
               </View>
             </>
           ) : (
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>
               Ücretli abonelik App Store / Google Play üzerinden çok yakında açılacak. Deneme süren boyunca tüm Premium özellikler açık kalır.
             </Text>
           )}
@@ -264,15 +286,15 @@ export default function PremiumScreen() {
 
   // Expired or never subscribed
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (ux-ideas #3): context hero — lead with the exact feature the user tapped. */}
       {feature ? (
-        <View style={{ backgroundColor: COLORS.primary + '18', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderLeftWidth: 3, borderLeftColor: COLORS.primary }}>
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.5 }}>
+        <View style={{ backgroundColor: colors.primary + '18', borderRadius: 8, padding: SPACING.md, marginBottom: SPACING.md, borderLeftWidth: 3, borderLeftColor: colors.primary }}>
+          <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.5 }}>
             {'AÇMAK İSTEDİN'}
           </Text>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', marginTop: 2 }}>{feature}</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700', marginTop: 2 }}>{feature}</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>
             {/* FIX (ux-review): only promise "aşağıda işaretledik" when a PREMIUM row actually
                 matches — several gated labels don't substring-match the list wording. */}
             {PREMIUM.some(f => matchesFeature(f, feature)) ? 'Bu özellik Premium ile açılır — aşağıda işaretledik.' : 'Bu özellik Premium ile açılır.'}
@@ -281,22 +303,22 @@ export default function PremiumScreen() {
       ) : null}
       {/* FIX (audit duplicate-title): Native header (title "Premium'a Geç") renders the title; in-body H1 removed as redundant. */}
       {isExpired && (
-        <View style={{ backgroundColor: COLORS.warning + '20', borderRadius: 8, padding: SPACING.sm, marginTop: SPACING.sm }}>
+        <View style={{ backgroundColor: colors.warning + '20', borderRadius: 8, padding: SPACING.sm, marginTop: SPACING.sm }}>
           {/* FIX (ux-pass5): 'Yenile.' pointed at an affordance that can't succeed while
               purchases are unwired and the trial is spent — say what's actually possible. */}
-          <Text style={{ color: COLORS.warning, fontSize: FONT.sm, textAlign: 'center' }}>
+          <Text style={{ color: colors.warning, fontSize: FONT.sm, textAlign: 'center' }}>
             {!PURCHASE_ENABLED && trialUsed ? 'Premium süren doldu. Satın alma yakında aktif olacak.' : 'Premium süren doldu. Yenile.'}
           </Text>
         </View>
       )}
-      <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yaşam tarzı koçunun tam gücünü aç.</Text>
+      <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Yaşam tarzı koçunun tam gücünü aç.</Text>
 
       <Card title="Ücretsiz">
-        {FREE.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.success} />)}
+        {FREE.map((f, i) => <FeatureRow key={i} text={f} color={colors.success} />)}
       </Card>
 
-      <Card title="Premium" style={{ borderColor: COLORS.primary, borderWidth: 2 }}>
-        {PREMIUM.map((f, i) => <FeatureRow key={i} text={f} color={COLORS.primary} highlighted={matchesFeature(f, feature)} />)}
+      <Card title="Premium" style={{ borderColor: colors.primary, borderWidth: 2 }}>
+        {PREMIUM.map((f, i) => <FeatureRow key={i} text={f} color={colors.primary} highlighted={matchesFeature(f, feature)} />)}
       </Card>
 
       {/* FIX (audit UX-PRM-08): while the native IAP path (RevenueCat) is unwired, showing live
@@ -309,20 +331,20 @@ export default function PremiumScreen() {
           {/* Pricing */}
           <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Card style={{ flex: 1 }}>
-              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Aylık</Text>
-              <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$9.99</Text>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>/ay</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Aylık</Text>
+              <Text style={{ color: colors.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$9.99</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>/ay</Text>
             </Card>
-            <Card style={{ flex: 1, borderColor: COLORS.primary, borderWidth: 1 }}>
-              <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>%33 İNDİRİM</Text>
-              <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Yıllık</Text>
-              <Text style={{ color: COLORS.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$79.99</Text>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>$6.67/ay</Text>
+            <Card style={{ flex: 1, borderColor: colors.primary, borderWidth: 1 }}>
+              <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700', textAlign: 'center', marginBottom: 2 }}>%33 İNDİRİM</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700', textAlign: 'center' }}>Yıllık</Text>
+              <Text style={{ color: colors.primary, fontSize: FONT.xxl, fontWeight: '800', textAlign: 'center' }}>$79.99</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>$6.67/ay</Text>
             </Card>
           </View>
 
           <Button title="Premium'a Geç" onPress={handleSubscribe} size="lg" />
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
             7 gün ücretsiz deneme. İstediğin zaman iptal edebilirsin.
           </Text>
           <View style={{ marginTop: SPACING.md }}>
@@ -335,14 +357,14 @@ export default function PremiumScreen() {
         // below stays for trial-eligible users and the PURCHASE_ENABLED branch is untouched.
         <>
           <Button title="Deneme süren kullanıldı" onPress={() => {}} size="lg" disabled />
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
             7 günlük ücretsiz denemeni daha önce kullandın. Premium satın alma App Store / Google Play üzerinden çok yakında aktif olacak.
           </Text>
         </>
       ) : (
         <>
           <Button title="7 gün ücretsiz dene" onPress={startFreeTrial} size="lg" />
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
             7 günlük ücretsiz deneme ile tüm Premium özellikleri kullan. Ücretli abonelik App Store / Google Play üzerinden çok yakında açılacak.
           </Text>
         </>
@@ -352,13 +374,14 @@ export default function PremiumScreen() {
 }
 
 function FeatureRow({ text, color, highlighted }: { text: string; color: string; highlighted?: boolean }) {
+  const { colors } = useTheme();
   return (
     <View style={{
       flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 3,
-      ...(highlighted ? { backgroundColor: COLORS.primary + '18', borderRadius: 6, paddingHorizontal: 6, marginHorizontal: -6 } : null),
+      ...(highlighted ? { backgroundColor: colors.primary + '18', borderRadius: 6, paddingHorizontal: 6, marginHorizontal: -6 } : null),
     }}>
       <Text style={{ color, fontSize: FONT.md, fontWeight: '700', width: 20 }}>{highlighted ? '★' : '+'}</Text>
-      <Text style={{ color: COLORS.text, fontSize: FONT.sm, flex: 1, fontWeight: highlighted ? '700' : '400' }}>{text}</Text>
+      <Text style={{ color: colors.text, fontSize: FONT.sm, flex: 1, fontWeight: highlighted ? '700' : '400' }}>{text}</Text>
     </View>
   );
 }

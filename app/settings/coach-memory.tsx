@@ -3,7 +3,7 @@
  * Shows ALL Layer 2 data the AI coach has learned about the user.
  * KVKK Article 16/17: User can view, correct, and delete any data.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,8 +15,8 @@ import { logAuditEvent, logAISummaryAccess } from '@/services/audit-log.service'
 // FIX (audit raw-enum): map periodic_state ('busy_work'...) to its Turkish label.
 import { PERIODIC_LABELS, type PeriodicState } from '@/services/periodic.service';
 import { supabase } from '@/lib/supabase';
-import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, CARD_SHADOW, COLORS } from '@/lib/constants';
+import { useTheme, type ThemeColors } from '@/lib/theme';
+import { SPACING, FONT, RADIUS, CARD_SHADOW } from '@/lib/constants';
 import { haptics } from '@/lib/haptics';
 import { genderLabelTR, activityLevelLabelTR, mealTypeLabelTR, goalInfinitiveLabelTR, coachToneLabelTR } from '@/lib/labels';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
@@ -25,22 +25,25 @@ import { trace } from '@/lib/uiTrace';
 
 type SummaryData = NonNullable<Awaited<ReturnType<typeof getAISummaryForReview>>>;
 
-const PATTERN_COLORS: Record<string, string> = {
-  night_eating: COLORS.pink, weekend_binge: COLORS.warning, stress_eating: COLORS.purple,
-  skipping_meals: COLORS.coral, exercise_avoidance: COLORS.textMuted, social_eating: COLORS.protein,
-  alcohol_pattern: COLORS.purple, late_caffeine: COLORS.coral,
-};
+// FIX (theme): bu tablolar modül seviyesinde COLORS ile hesaplanıyordu — import anında bir kez
+// çözülüp koyu paleti her temaya donduruyordu. Fabrikaya çevrildi; bileşen içinde useTheme()'den
+// gelen palet ile useMemo ile çözülüyor (kullanım yerleri aynen korundu).
+const makePatternColors = (c: ThemeColors): Record<string, string> => ({
+  night_eating: c.pink, weekend_binge: c.warning, stress_eating: c.purple,
+  skipping_meals: c.coral, exercise_avoidance: c.textMuted, social_eating: c.protein,
+  alcohol_pattern: c.purple, late_caffeine: c.coral,
+});
 
-const RISK_COLORS: Record<string, string> = {
-  high: COLORS.error, medium: COLORS.warning, low: COLORS.success,
-};
+const makeRiskColors = (c: ThemeColors): Record<string, string> => ({
+  high: c.error, medium: c.warning, low: c.success,
+});
 
-const HABIT_STATUS_ICON: Record<string, { icon: string; color: string }> = {
-  building: { icon: 'trending-up', color: COLORS.protein },
-  established: { icon: 'checkmark-circle', color: COLORS.success },
-  struggling: { icon: 'alert-circle', color: COLORS.warning },
-  lost: { icon: 'close-circle', color: COLORS.error },
-};
+const makeHabitStatusIcon = (c: ThemeColors): Record<string, { icon: string; color: string }> => ({
+  building: { icon: 'trending-up', color: c.protein },
+  established: { icon: 'checkmark-circle', color: c.success },
+  struggling: { icon: 'alert-circle', color: c.warning },
+  lost: { icon: 'close-circle', color: c.error },
+});
 
 export default function CoachMemoryScreen() {
   const insets = useSafeAreaInsets();
@@ -54,6 +57,11 @@ export default function CoachMemoryScreen() {
   const [activeGoal, setActiveGoal] = useState<{ goal_type?: string; target_weight_kg?: number; weekly_rate?: number } | null>(null);
   const [allergens, setAllergens] = useState<string[]>([]);
   const [healthFacts, setHealthFacts] = useState<{ kind: string; subject: string; text: string; severity: string | null }[]>([]);
+
+  // Tema paletinden çözülen sabit tablolar (hook kuralı: tüm erken return'lerden önce).
+  const PATTERN_COLORS = useMemo(() => makePatternColors(colors), [colors]);
+  const RISK_COLORS = useMemo(() => makeRiskColors(colors), [colors]);
+  const HABIT_STATUS_ICON = useMemo(() => makeHabitStatusIcon(colors), [colors]);
 
   const cardStyle = {
     backgroundColor: colors.card, borderRadius: RADIUS.xl, padding: SPACING.md, marginBottom: SPACING.md,

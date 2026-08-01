@@ -2,7 +2,7 @@
  * Multi-Phase Goal Planning Screen
  * Spec 6.7: Cut/bulk/maintain döngüsü
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { useRouter } from 'expo-router';
@@ -14,21 +14,25 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { usePremium } from '@/hooks/usePremium';
 import { useProfileStore } from '@/stores/profile.store';
 
-const PHASE_LABELS: Record<string, { label: string; color: string }> = {
-  cut: { label: 'Cut (Kilo Ver)', color: COLORS.error },
-  bulk: { label: 'Bulk (Kilo Al)', color: COLORS.success },
-  maintain: { label: 'Bakım', color: COLORS.primary },
-  mini_cut: { label: 'Mini Cut', color: COLORS.warning },
-  recomp: { label: 'Recomp', color: COLORS.purple },
-};
+// FIX (tema): modül seviyesinde COLORS okumak koyu paleti her temaya donduruyordu —
+// fabrika fonksiyonu + bileşen içinde useMemo ile aktif temadan çözülüyor.
+const makePhaseLabels = (c: ThemeColors): Record<string, { label: string; color: string }> => ({
+  cut: { label: 'Cut (Kilo Ver)', color: c.error },
+  bulk: { label: 'Bulk (Kilo Al)', color: c.success },
+  maintain: { label: 'Bakım', color: c.primary },
+  mini_cut: { label: 'Mini Cut', color: c.warning },
+  recomp: { label: 'Recomp', color: c.purple },
+});
 
 export default function MultiPhaseGoalsScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore(s => s.user);
@@ -45,6 +49,8 @@ export default function MultiPhaseGoalsScreen() {
   const [newPhaseLabel, setNewPhaseLabel] = useState('cut');
   const [newTarget, setNewTarget] = useState('');
   const [newWeeks, setNewWeeks] = useState('12');
+
+  const PHASE_LABELS = useMemo(() => makePhaseLabels(colors), [colors]);
 
   // FIX (audit UX-PRM-06): profil çözüldükten sonra premium değilse paywall'a yönlendir
   // (profil null/yükleniyorken yönlendirme yok — geçici null premium kullanıcıyı atmasın).
@@ -127,15 +133,15 @@ export default function MultiPhaseGoalsScreen() {
 
   // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
   if (!isPremium && profile !== null && !profileLoading) {
-    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
   return (
     // FIX (audit UI-LAY-04): KeyboardAvoidingView + keyboardShouldPersistTaps — 'Yeni Faz Ekle' formu en altta, klavye altında kalıyordu (lab-values.tsx kalıbı).
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Native Stack header (settings/_layout.tsx) already shows the Turkish title "Çok Fazlı Hedef" — body heading removed to avoid double-title */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Sıralı fazlar tanımla: örneğin "75 kg'a in (cut) → 3 ay bulk 80 kg → 77 kg'a in (mini cut)". Fazlar sırayla aktif olur.
       </Text>
 
@@ -158,30 +164,30 @@ export default function MultiPhaseGoalsScreen() {
       {!loading && phases.length > 0 && (
         <Card title="Faz Zaman Çizelgesi">
           {phases.map((phase, i) => {
-            const info = PHASE_LABELS[phase.phase_label ?? ''] ?? { label: phase.phase_label ?? phase.goal_type, color: COLORS.textMuted };
+            const info = PHASE_LABELS[phase.phase_label ?? ''] ?? { label: phase.phase_label ?? phase.goal_type, color: colors.textMuted };
             return (
               <TouchableOpacity key={phase.id} onLongPress={() => handleDelete(phase.id)}
-                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: i < phases.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: i < phases.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
                 {/* Phase indicator */}
                 <View style={{ width: 24, alignItems: 'center', marginRight: SPACING.sm }}>
-                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: phase.is_active ? info.color : COLORS.surfaceLight, borderWidth: phase.is_active ? 0 : 1, borderColor: COLORS.border }} />
-                  {i < phases.length - 1 && <View style={{ width: 2, height: 20, backgroundColor: COLORS.border, marginTop: 2 }} />}
+                  <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: phase.is_active ? info.color : colors.surfaceLight, borderWidth: phase.is_active ? 0 : 1, borderColor: colors.border }} />
+                  {i < phases.length - 1 && <View style={{ width: 2, height: 20, backgroundColor: colors.border, marginTop: 2 }} />}
                 </View>
                 {/* Phase info */}
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-                    <Text style={{ color: phase.is_active ? info.color : COLORS.text, fontSize: FONT.md, fontWeight: phase.is_active ? '700' : '400' }}>{info.label}</Text>
+                    <Text style={{ color: phase.is_active ? info.color : colors.text, fontSize: FONT.md, fontWeight: phase.is_active ? '700' : '400' }}>{info.label}</Text>
                     {phase.is_active && (
                       <View style={{ backgroundColor: info.color, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1 }}>
                         <Text style={{ color: getContrastColor(info.color), fontSize: 11, fontWeight: '700' }}>AKTİF</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 1 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>
                     {phase.target_weight_kg ? `Hedef: ${phase.target_weight_kg}kg` : 'Koru'} · {phase.target_weeks ?? '?'} hafta
                   </Text>
                 </View>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.md, marginRight: SPACING.sm }}>#{phase.phase_order}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: FONT.md, marginRight: SPACING.sm }}>#{phase.phase_order}</Text>
                 {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu; long-press kısayolu korundu. */}
                 <TouchableOpacity
                   onPress={() => handleDelete(phase.id)}
@@ -190,7 +196,7 @@ export default function MultiPhaseGoalsScreen() {
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   style={{ padding: SPACING.xs }}
                 >
-                  <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+                  <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
                 </TouchableOpacity>
               </TouchableOpacity>
             );
@@ -208,14 +214,14 @@ export default function MultiPhaseGoalsScreen() {
 
       {showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Faz Tipi</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Faz Tipi</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
             {Object.entries(PHASE_LABELS).map(([key, info]) => (
               <TouchableOpacity key={key} onPress={() => { haptics.tap(); setNewPhaseLabel(key); }}
                 style={{ paddingVertical: 6, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
-                  borderColor: newPhaseLabel === key ? info.color : COLORS.border,
+                  borderColor: newPhaseLabel === key ? info.color : colors.border,
                   backgroundColor: newPhaseLabel === key ? info.color : 'transparent' }}>
-                <Text style={{ color: newPhaseLabel === key ? getContrastColor(info.color) : COLORS.textSecondary, fontSize: FONT.sm }}>{info.label}</Text>
+                <Text style={{ color: newPhaseLabel === key ? getContrastColor(info.color) : colors.textSecondary, fontSize: FONT.sm }}>{info.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -225,7 +231,7 @@ export default function MultiPhaseGoalsScreen() {
         </Card>
       )}
 
-      <Text style={{ color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.md }}>Uzun bas: fazı sil</Text>
+      <Text style={{ color: colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: SPACING.md }}>Uzun bas: fazı sil</Text>
     </ScrollView>
     </KeyboardAvoidingView>
   );

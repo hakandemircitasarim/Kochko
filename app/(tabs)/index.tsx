@@ -1126,6 +1126,7 @@ export default function TodayScreen() {
             // (stepper, ön-doğrulama, son-kilo prefill). Uyku hücresi de artık ölü değil.
             onWeightPress={() => { haptics.tap(); router.push('/log?to=weight'); }}
             onSleepPress={() => { haptics.tap(); router.push('/log?to=sleep'); }}
+            onStepsPress={() => { haptics.tap(); router.push('/log?to=steps'); }}
           />
         </View>
 

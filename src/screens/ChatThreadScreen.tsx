@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { PlanPreviewCard } from '@/components/plan/PlanPreviewCard';
+import { FullPlanModal } from '@/components/plan/FullPlanModal';
 import type { PlanData } from '@/services/plan.service';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -592,6 +593,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   const [photo, setPhoto] = useState<string | null>(null);
   // FIX (ux-round2 #15): tap a sent/preview photo to view it full-screen (verify the meal shot).
   const [fullscreenPhoto, setFullscreenPhoto] = useState<string | null>(null);
+  // Sohbetteki plan önizleme kartı "Detayı görmek için dokun" diyor ama onPress'i boştu —
+  // dokunuş görsel geri bildirim veriyor, hiçbir şey açmıyordu. Onaylamadan önce planın
+  // TAMAMINI görmek tam da bu kartın vaadi; FullPlanModal zaten yazılmıştı, bağlanmamıştı.
+  const [fullPlan, setFullPlan] = useState<{ plan: PlanData; weekStart?: string } | null>(null);
   const [undoAction, setUndoAction] = useState<{ type: string; messageId: string; expiresAt: number } | null>(null);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -1469,6 +1474,12 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   const handleSendRef = useRef(handleSend);
   handleSendRef.current = handleSend;
   const stableRetry = useCallback((m: UIMessage) => { handleSendRef.current(m); }, []);
+  // MessageBubble memo'lu — her render'da yeni bir ok fonksiyonu geçmek memo'yu boşa
+  // düşürürdü; stableRetry'nin desenini izle.
+  const stableOpenPlan = useCallback((plan: PlanData) => {
+    const ws = (plan as unknown as { week_start?: string })?.week_start;
+    setFullPlan({ plan, weekStart: typeof ws === 'string' ? ws : undefined });
+  }, []);
 
   // Quick suggestion handler
   const handleSuggestion = (text: string) => {
@@ -1795,15 +1806,23 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           showFeedback: false,
         };
         setMessages(prev => [...prev, reply]);
-        const committed = data.actions.some(a => a.feedback);
+        // Geri alma turunun sonucu artık zarfta TİPLİ geliyor (receipts[action_type='undo']).
+        // Eskiden başarı `actions.some(a => a.feedback)` ile ölçülüyordu, ama sunucunun undo
+        // dalı her zaman `actions: []` döndürüyordu — yani kayıt gerçekten silindiğinde bile
+        // kullanıcı "Geri alınamadı" görüyor ve pano tazelenmiyordu. Fiş yoksa (eski sunucu)
+        // eski ölçüme düş.
+        const undoReceipt = (data.receipts ?? []).find(r => r.action_type === 'undo');
+        const committed = undoReceipt ? undoReceipt.ok : data.actions.some(a => a.feedback);
         if (committed && user?.id) {
           haptics.success(); // delete committed — tactile confirm
           refreshDashboard(user.id);
-        } else if (!committed) {
-          // Request succeeded but the model produced no delete action — don't leave
-          // the user believing the record was removed. Verify before assuming.
+        } else {
           haptics.error();
-          Alert.alert('Geri alınamadı', 'Kaydı silemedim — son kaydını kontrol edip gerekirse tekrar dene.');
+          // 'nothing_to_undo' sunucunun BİLDİĞİ bir durum ve cümlesi zaten baloncukta
+          // ("Geri alınacak bir kayıt bulunamadı.") — üstüne ikinci bir uyarı yığmıyoruz.
+          if (undoReceipt?.failure_class !== 'nothing_to_undo') {
+            Alert.alert('Geri alınamadı', 'Kaydı silemedim — son kaydını kontrol edip gerekirse tekrar dene.');
+          }
         }
       } else {
         // Mirror the main send path: flip the user's own bubble to a failed/retry
@@ -2100,7 +2119,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               if (item.kind === 'separator') return <DateSeparator label={item.label} />;
               const m = item.msg as UIMessage;
               if (m.topicMarker) return <TopicMarker label={m.topicMarker} />;
-              return <MessageBubble message={m} incompleteKeys={incompleteKeys} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={stableRetry} onEditUser={handleEditUserMessage} onOpenPhoto={setFullscreenPhoto} sending={sending} isLastPending={m.id === lastPendingUserId} />;
+              return <MessageBubble message={m} incompleteKeys={incompleteKeys} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={stableRetry} onEditUser={handleEditUserMessage} onOpenPhoto={setFullscreenPhoto} onOpenPlan={stableOpenPlan} sending={sending} isLastPending={m.id === lastPendingUserId} />;
             }}
             // Inverted list: ListFooter renders at the VISUAL TOP — that's where the
             // "load older" control belongs (FIX audit UX-CHT-06).
@@ -2611,6 +2630,15 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         </TouchableOpacity>
       </Modal>
 
+      {/* Plan önizleme kartının dokunuşunun karşılığı: planın tamamı. */}
+      <FullPlanModal
+        visible={!!fullPlan}
+        onClose={() => setFullPlan(null)}
+        plan={(fullPlan?.plan ?? { plan_type: 'diet', days: [] }) as PlanData}
+        planVersion={0}
+        weekStart={fullPlan?.weekStart}
+      />
+
       {/* FIX (kullanıcı bulgusu: "toplam kartları görmeliyiz — hangileri bitti hangileri
           bitmedi"): Konular genel bakış modalı. Ayarlar'daki silme-onayı modalının
           desenini izler (fade + karartma + colors.card kart, RADIUS.lg). Bekleyen satıra
@@ -2853,7 +2881,7 @@ function MessageBubbleFrame({ isUser, animate = true, children }: { isUser: bool
 // props change. With the now-stable (useMemo/useCallback) props from the parent,
 // unrelated re-renders (keyboard, per-second rate-limit countdown, dashboard totals)
 // no longer re-render every visible bubble.
-const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, onEditUser, onOpenPhoto, sending, isLastPending }: {
+const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, onEditUser, onOpenPhoto, onOpenPlan, sending, isLastPending }: {
   message: UIMessage;
   // FIX (kullanıcı bulgusu): tamamlanma kartının öneri filtresi — henüz EKSİK konu
   // anahtarları (parent'ın railTasks'i). Tamamlanmış bir konu asla önerilmez.
@@ -2878,6 +2906,8 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
   onEditUser: (text: string) => void;
   // FIX (ux-round2 #15): open a bubble photo full-screen.
   onOpenPhoto: (uri: string) => void;
+  /** Plan önizleme kartına dokunuş — planın tamamını modal'da açar. */
+  onOpenPlan: (plan: PlanData) => void;
   // FIX (audit UX-CHT-04): when a send is in flight, disable inline action chips so a
   // double-tap can't fire a second concurrent send (duplicate AI turn / side effect).
   sending: boolean;
@@ -3122,7 +3152,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             <PlanPreviewCard
               plan={message.planSnapshot as unknown as PlanData}
               planType={message.planType ?? 'diet'}
-              onPress={() => {}}
+              onPress={() => onOpenPlan(message.planSnapshot as unknown as PlanData)}
             />
           </View>
         ); })()}

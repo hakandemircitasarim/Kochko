@@ -11,11 +11,13 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
 export default function LabValuesScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [entries, setEntries] = useState<LabValue[]>([]);
@@ -95,16 +97,16 @@ export default function LabValuesScreen() {
   return (
     // FIX (audit lab-values-screen): KeyboardAvoidingView + keyboardShouldPersistTaps —
     // Ref Min/Max + Kaydet klavyenin altında kalıyordu (menstrual.tsx kalıbı).
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Native header (settings/_layout.tsx) already shows the Turkish "Lab Değerleri" title — redundant body heading dropped, disclaimer kept as the screen intro. */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginBottom: SPACING.lg }}>Yaşam tarzı takibi içindir. Tıbbi yorum için doktoruna danış.</Text>
+      <Text style={{ fontSize: FONT.sm, color: colors.warning, marginBottom: SPACING.lg }}>Yaşam tarzı takibi içindir. Tıbbi yorum için doktoruna danış.</Text>
 
       <Button title={showAdd ? 'İptal' : 'Yeni Değer Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} />
 
       {showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>Hızlı Seçim</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>Hızlı Seçim</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
             {COMMON_LAB_PARAMS.map(p => {
               const selected = paramName === p.name;
@@ -114,9 +116,9 @@ export default function LabValuesScreen() {
                   accessibilityState={{ selected }}
                   accessibilityLabel={p.name}
                   style={{ paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: 6, borderWidth: 1,
-                    borderColor: selected ? COLORS.primary : COLORS.border,
-                    backgroundColor: selected ? COLORS.primary : 'transparent' }}>
-                  <Text style={{ color: selected ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.xs }}>{p.name}</Text>
+                    borderColor: selected ? colors.primary : colors.border,
+                    backgroundColor: selected ? colors.primary : 'transparent' }}>
+                  <Text style={{ color: selected ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.xs }}>{p.name}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -138,12 +140,12 @@ export default function LabValuesScreen() {
       {Object.entries(grouped).map(([param, values]) => (
         <Card key={param} title={param} style={{ marginTop: SPACING.md }}>
           {values.map(e => (
-            <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.xs, gap: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, width: 60 }}>
+            <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.xs, gap: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, width: 60 }}>
                 {new Date(e.measured_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
               </Text>
-              <Text style={{ color: e.is_out_of_range ? COLORS.error : COLORS.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{e.value} {e.unit}</Text>
-              {e.is_out_of_range && <Text style={{ color: COLORS.error, fontSize: FONT.lg, fontWeight: '800' }}>!</Text>}
+              <Text style={{ color: e.is_out_of_range ? colors.error : colors.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{e.value} {e.unit}</Text>
+              {e.is_out_of_range && <Text style={{ color: colors.error, fontSize: FONT.lg, fontWeight: '800' }}>!</Text>}
               {/* ux-sweep (LV-01): yanlış girilen değerin hiçbir silme yolu yoktu. */}
               <TouchableOpacity
                 onPress={() => {
@@ -159,12 +161,12 @@ export default function LabValuesScreen() {
                 accessibilityRole="button" accessibilityLabel={`${param} değerini sil`}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+                <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
           ))}
           {values.some(v => v.is_out_of_range) && (
-            <Text style={{ color: COLORS.warning, fontSize: FONT.xs, marginTop: SPACING.sm }}>Referans dışı değer var. Sağlık profesyoneline danış.</Text>
+            <Text style={{ color: colors.warning, fontSize: FONT.xs, marginTop: SPACING.sm }}>Referans dışı değer var. Sağlık profesyoneline danış.</Text>
           )}
         </Card>
       ))}
@@ -187,8 +189,8 @@ export default function LabValuesScreen() {
       {/* FIX (audit UI-SET-04): kayıt yokken (ve form kapalıyken) açıklayıcı boş-durum kartı; kardeş liste ekranları gibi. */}
       {!loading && !loadError && Object.keys(grouped).length === 0 && !showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz lab değerin yok</Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Vitamin D, B12, ferritin gibi tahlil sonuçlarını ekle; koçun planı bu değerlere göre uyarlar.</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz lab değerin yok</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Vitamin D, B12, ferritin gibi tahlil sonuçlarını ekle; koçun planı bu değerlere göre uyarlar.</Text>
         </Card>
       )}
     </ScrollView>

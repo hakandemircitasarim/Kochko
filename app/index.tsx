@@ -3,10 +3,12 @@ import { Redirect } from 'expo-router';
 import { View, ActivityIndicator, Text, TouchableOpacity, Alert } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
 export default function Index() {
+  const { colors } = useTheme();
   const { session, initialized, signOut } = useAuthStore();
   const { profile, fetchError, fetch: fetchProfile, reactivateAccount } = useProfileStore();
   // FIX (audit DB-PRV-05): true while the user is canceling a pending deletion, so the
@@ -33,10 +35,10 @@ export default function Index() {
 
   if (!initialized) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator
           size="large"
-          color={COLORS.primary}
+          color={colors.primary}
           accessibilityLabel="Yükleniyor"
         />
       </View>
@@ -56,29 +58,29 @@ export default function Index() {
     // retry AND a sign-out escape instead of spinning forever (#R7-2 + ux-audit device-fix).
     if (fetchError || spinTimedOut) {
       return (
-        <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl, gap: SPACING.md }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>Profilin yüklenemedi</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.md }}>
+        <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl, gap: SPACING.md }}>
+          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>Profilin yüklenemedi</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.md }}>
             {fetchError ? 'İnternet bağlantını kontrol et.' : 'Beklenenden uzun sürdü. Tekrar dene ya da çıkış yapıp yeniden gir.'}
           </Text>
           <TouchableOpacity
             onPress={() => { setSpinTimedOut(false); if (session?.user?.id) fetchProfile(session.user.id); }}
             accessibilityRole="button" accessibilityLabel="Tekrar dene"
-            style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
+            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
           >
-            <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
+            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => { signOut(); }} accessibilityRole="button" accessibilityLabel="Çıkış yap" style={{ paddingVertical: SPACING.sm, minHeight: 44, justifyContent: 'center' }}>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Çıkış yap</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Çıkış yap</Text>
           </TouchableOpacity>
         </View>
       );
     }
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator
           size="large"
-          color={COLORS.primary}
+          color={colors.primary}
           accessibilityLabel="Profilin yükleniyor"
         />
       </View>
@@ -100,8 +102,8 @@ export default function Index() {
   // onay ekranı kalkıyor, kullanıcı yarı-yazılmış durumda tabs'a düşüyordu).
   if (deletionRequestedRaw && reactivating) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
-        <ActivityIndicator size="large" color={COLORS.primary} accessibilityLabel="Hesap geri açılıyor" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} accessibilityLabel="Hesap geri açılıyor" />
       </View>
     );
   }
@@ -115,11 +117,11 @@ export default function Index() {
     const completesStr = fmt(completesAt);
 
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, padding: SPACING.xl }}>
-        <Text style={{ color: COLORS.text, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.lg }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: SPACING.xl }}>
+        <Text style={{ color: colors.text, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.lg }}>
           Hesap silme talebi bekliyor
         </Text>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md, lineHeight: 22, textAlign: 'center', marginBottom: SPACING.xxl }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.md, lineHeight: 22, textAlign: 'center', marginBottom: SPACING.xxl }}>
           {requestedStr
             ? `${requestedStr} tarihinde hesabını silmek istedin. Talep ${completesStr} tarihinde tamamlanacak ve tüm verilerin kalıcı olarak silinecek.`
             : `Hesabın silinmek üzere işaretli. Talep tamamlandığında tüm verilerin kalıcı olarak silinecek.`}
@@ -141,17 +143,17 @@ export default function Index() {
           }}
           accessibilityRole="button"
           accessibilityLabel="Silmeyi iptal et"
-          style={{ backgroundColor: COLORS.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignSelf: 'stretch', alignItems: 'center', marginBottom: SPACING.md }}
+          style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignSelf: 'stretch', alignItems: 'center', marginBottom: SPACING.md }}
         >
-          <Text style={{ color: getContrastColor(COLORS.primary), fontSize: FONT.md, fontWeight: '600' }}>Silmeyi iptal et</Text>
+          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.md, fontWeight: '600' }}>Silmeyi iptal et</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => { signOut(); }}
           accessibilityRole="button"
           accessibilityLabel="Silmeye devam et"
-          style={{ borderColor: COLORS.error, borderWidth: 1, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignSelf: 'stretch', alignItems: 'center' }}
+          style={{ borderColor: colors.error, borderWidth: 1, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignSelf: 'stretch', alignItems: 'center' }}
         >
-          <Text style={{ color: COLORS.error, fontSize: FONT.md, fontWeight: '600' }}>Silmeye devam et</Text>
+          <Text style={{ color: colors.error, fontSize: FONT.md, fontWeight: '600' }}>Silmeye devam et</Text>
         </TouchableOpacity>
       </View>
     );

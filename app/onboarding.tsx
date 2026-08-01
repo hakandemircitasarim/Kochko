@@ -7,7 +7,8 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -74,6 +75,7 @@ const ACTIVITY_OPTIONS = toOptions(ACTIVITY_LEVEL_LABELS_TR);
 // ─── Main Screen ───
 
 export default function OnboardingScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { mode } = useLocalSearchParams<{ mode?: string }>();
   const isReOnboarding = mode === 're_onboarding';
@@ -113,7 +115,7 @@ export default function OnboardingScreen() {
   }, [step, hydrated, initialDraft, isReOnboarding]);
 
   if (!hydrated) {
-    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
   const body = step < SLIDES.length
@@ -135,7 +137,7 @@ export default function OnboardingScreen() {
   // Overlay a non-destructive close on every step so the user can leave with their data intact.
   if (!isReOnboarding) return body;
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       {body}
       <TouchableOpacity
         onPress={handleExit}
@@ -145,10 +147,10 @@ export default function OnboardingScreen() {
         style={{
           position: 'absolute', top: insets.top + 8, right: SPACING.md, zIndex: 20,
           width: 40, height: 40, borderRadius: 20,
-          alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary + '20',
+          alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary + '20',
         }}
       >
-        <Ionicons name="close" size={24} color={COLORS.text} />
+        <Ionicons name="close" size={24} color={colors.text} />
       </TouchableOpacity>
     </View>
   );
@@ -171,19 +173,20 @@ function WelcomeSlide({
   onSkip: () => void;
   onBack?: () => void;
 }) {
+  const { colors } = useTheme();
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
       <View style={{
         width: 80, height: 80, borderRadius: 40,
-        backgroundColor: COLORS.primary + '20',
+        backgroundColor: colors.primary + '20',
         alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xl,
       }}>
-        <Ionicons name={slide.icon} size={36} color={COLORS.primary} />
+        <Ionicons name={slide.icon} size={36} color={colors.primary} />
       </View>
-      <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: COLORS.text, textAlign: 'center', marginBottom: SPACING.md }}>
+      <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: SPACING.md }}>
         {slide.title}
       </Text>
-      <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: SPACING.xxl }}>
+      <Text style={{ fontSize: FONT.md, color: colors.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: SPACING.xxl }}>
         {slide.body}
       </Text>
 
@@ -200,7 +203,7 @@ function WelcomeSlide({
               width: i === stepIndex ? 24 : 8,
               height: 8,
               borderRadius: 4,
-              backgroundColor: i === stepIndex ? COLORS.primary : COLORS.border,
+              backgroundColor: i === stepIndex ? colors.primary : colors.border,
             }}
           />
         ))}
@@ -222,6 +225,7 @@ function WelcomeSlide({
 // ─── Quick Form (Katman 1) ───
 
 function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingDraft | null; isReOnboarding?: boolean }) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { update, fetch: fetchProfile, profile } = useProfileStore();
@@ -632,7 +636,7 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: COLORS.background }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       // FIX (audit UI-CHT-01 kalıbı): her iki platformda da 'padding'. Expo SDK 55'in zorunlu
       // edge-to-edge'i altında Android 'height' pencereyi yanlış ölçüyor ve alanları/butonu
       // klavyenin altında bırakabiliyordu (bkz. app/chat/[sessionId].tsx'teki aynı fix notu).
@@ -647,28 +651,28 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
           // so the form signals momentum toward a finish line, not just what's still missing.
           <View style={{ alignSelf: 'stretch', marginBottom: SPACING.sm }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.pill, backgroundColor: COLORS.primary + '20' }}>
-                <Ionicons name="flag" size={12} color={COLORS.primary} />
-                <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: COLORS.primary }}>Son adım</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.pill, backgroundColor: colors.primary + '20' }}>
+                <Ionicons name="flag" size={12} color={colors.primary} />
+                <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: colors.primary }}>Son adım</Text>
               </View>
-              <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: filledCount === totalCount ? COLORS.primary : COLORS.textSecondary }}>
+              <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: filledCount === totalCount ? colors.primary : colors.textSecondary }}>
                 {filledCount}/{totalCount} hazır
               </Text>
             </View>
-            <View style={{ height: 4, borderRadius: 2, backgroundColor: COLORS.border, overflow: 'hidden' }}>
-              <View style={{ height: '100%', width: `${Math.round((filledCount / totalCount) * 100)}%`, backgroundColor: COLORS.primary, borderRadius: 2 }} />
+            <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: 'hidden' }}>
+              <View style={{ height: '100%', width: `${Math.round((filledCount / totalCount) * 100)}%`, backgroundColor: colors.primary, borderRadius: 2 }} />
             </View>
           </View>
         )}
         {/* FIX (audit re-onboarding): mevcut kullanıcıya yeni-kullanıcı kopyası ("Seni
             Tanıyalım") gösterme — bu bir güncelleme ekranı. */}
         <Text
-          style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.xs }}
+          style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.xs }}
           accessibilityRole="header"
         >
           {isReOnboarding ? 'Bilgilerini güncelle' : 'Seni Tanıyalım'}
         </Text>
-        <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.lg }}>
+        <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.lg }}>
           {isReOnboarding
             ? 'Bilgilerin mevcut hallerinle dolu geliyor — sadece değişenleri düzelt.'
             : 'Sadece 5 bilgi ile başlayalım — sonra Koç seni tanımaya başlayacak.'}
@@ -727,8 +731,8 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
 
         {/* AI-first promise: bridge the slide-2 "Sohbet Et" hero to the post-submit chat. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.lg, marginBottom: SPACING.sm }}>
-          <Ionicons name="chatbubble-ellipses" size={14} color={COLORS.primary} />
-          <Text style={{ flex: 1, fontSize: FONT.sm, color: COLORS.textSecondary }}>
+          <Ionicons name="chatbubble-ellipses" size={14} color={colors.primary} />
+          <Text style={{ flex: 1, fontSize: FONT.sm, color: colors.textSecondary }}>
             {isReOnboarding
               ? 'Kaydettiğinde Koç güncel bilgilerinle devam edecek.'
               : 'Bunlar bitince Koç ile sohbete başlıyoruz.'}
@@ -737,27 +741,27 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
 
         {/* Tell the user *what* is still missing instead of just a dead grey button. */}
         {!isValid && missingLabel && (
-          <Text style={{ fontSize: FONT.sm, color: COLORS.warning, marginBottom: SPACING.xs }}>
+          <Text style={{ fontSize: FONT.sm, color: colors.warning, marginBottom: SPACING.xs }}>
             Devam etmek için {missingLabel}.
           </Text>
         )}
 
         {/* FIX (ux-round4 #22): first-value preview above the commit button. */}
         {planPreview && (
-          <View style={{ backgroundColor: COLORS.primary + '12', borderWidth: 1, borderColor: COLORS.primary + '33', borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.md }}>
+          <View style={{ backgroundColor: colors.primary + '12', borderWidth: 1, borderColor: colors.primary + '33', borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <Ionicons name="sparkles" size={13} color={COLORS.primary} />
-              <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: COLORS.primary, letterSpacing: 0.3 }}>TAHMİNİ BAŞLANGIÇ PLANIN</Text>
+              <Ionicons name="sparkles" size={13} color={colors.primary} />
+              <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: colors.primary, letterSpacing: 0.3 }}>TAHMİNİ BAŞLANGIÇ PLANIN</Text>
             </View>
-            <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: COLORS.text }}>
+            <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>
               ~{planPreview.kcalMin}–{planPreview.kcalMax} kcal/gün
             </Text>
             {planPreview.showGoal && (
-              <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: 2 }}>
+              <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: 2 }}>
                 {String(planPreview.w).replace('.', ',')} → {String(planPreview.tw).replace('.', ',')} kg · ~12 hafta
               </Text>
             )}
-            <Text style={{ fontSize: FONT.xs, color: COLORS.textMuted, marginTop: 4 }}>
+            <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 4 }}>
               Koç bunları seninle konuşarak inceltecek.
             </Text>
           </View>
@@ -783,9 +787,10 @@ function ChipSelect({ label, options, selected, onChange }: {
   selected: string;
   onChange: (v: string) => void;
 }) {
+  const { colors } = useTheme();
   return (
     <View style={{ marginBottom: SPACING.md }}>
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
         {options.map(opt => {
           const isSelected = selected === opt.value;
@@ -803,11 +808,11 @@ function ChipSelect({ label, options, selected, onChange }: {
                 paddingHorizontal: SPACING.md,
                 borderRadius: RADIUS.pill,
                 borderWidth: 0.5,
-                borderColor: isSelected ? COLORS.primary : COLORS.border,
-                backgroundColor: isSelected ? COLORS.primary : 'transparent',
+                borderColor: isSelected ? colors.primary : colors.border,
+                backgroundColor: isSelected ? colors.primary : 'transparent',
               }}
             >
-              <Text style={{ color: isSelected ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.sm, fontWeight: isSelected ? '600' : '400' }}>
+              <Text style={{ color: isSelected ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.sm, fontWeight: isSelected ? '600' : '400' }}>
                 {opt.label}
               </Text>
             </TouchableOpacity>

@@ -6,7 +6,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 
@@ -16,6 +17,7 @@ import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 const HOURS = [0, 1, 2, 3, 4, 5, 6];
 
 export default function DayBoundaryScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { profile, update } = useProfileStore();
@@ -49,15 +51,15 @@ export default function DayBoundaryScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): native header (settings/_layout.tsx) zaten "Gün Dönümü"
           başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Senin için "yeni gün" hangi saatte başlasın? Bu saatten önce yaptığın kayıtlar (gece atıştırması gibi) bir önceki güne sayılır. Streak, günlük kalori bütçen ve oruç penceresi bu saate göre hesaplanır.
       </Text>
 
       <Card style={{ marginBottom: SPACING.lg }}>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '600' }}>Gün dönümü saati</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '600' }}>Gün dönümü saati</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
           {HOURS.map(h => (
             <TouchableOpacity
@@ -74,18 +76,18 @@ export default function DayBoundaryScreen() {
                 paddingHorizontal: SPACING.md,
                 borderRadius: RADIUS.pill,
                 borderWidth: selected === h ? 2 : 1,
-                borderColor: selected === h ? COLORS.primary : COLORS.border,
-                backgroundColor: selected === h ? COLORS.primary : 'transparent',
+                borderColor: selected === h ? colors.primary : colors.border,
+                backgroundColor: selected === h ? colors.primary : 'transparent',
               }}
             >
               {/* FIX (audit theme-token): sabit #fff yerine kontrast token'ı */}
-              <Text style={{ color: selected === h ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>
+              <Text style={{ color: selected === h ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>
                 {String(h).padStart(2, '0')}:00
               </Text>
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.md, lineHeight: 18 }}>
+        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.md, lineHeight: 18 }}>
           Çoğu kişi için 04:00 idealdir — gece geç saatlerde yenenler doğru güne düşer.
         </Text>
       </Card>

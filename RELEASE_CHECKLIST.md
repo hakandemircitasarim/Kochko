@@ -63,24 +63,30 @@ WHERE schemaname='public' GROUP BY tablename, rowsecurity ORDER BY tablename;
 
 Not: Chat calendar/voice/camera/barcode/send ikon butonlarına hitSlop 44×44 zaten uygulandı bu sürümde.
 
-## 6. Sentry (error telemetry)
+## 6. Hata telemetrisi
 
-Kurulum (opsiyonel, package.json'a dep ekle):
+**Artık harici bir servis şart değil.** İstemci hataları (`reportError`) ve ürün olayları
+(`trackEvent`) `client_events` tablosuna gönderiliyor — `src/services/telemetry.service.ts`,
+uygulama arka plana geçtiğinde + açılışta + ErrorBoundary bir render çökmesi yakaladığında.
+
+Tek gereksinim **migration 103**:
 
 ```bash
-npx expo install @sentry/react-native
+supabase db push        # 103_client_events.sql
 ```
 
-Sonra `app/_layout.tsx` başına:
+> Migration uygulanmadan da uygulama sorunsuz çalışır: gönderim tablonun yokluğunu
+> (PGRST205/42P01) anlayıp o oturum için sessizce kapanır, kayıtlar yerelde kalır ve
+> Ayarlar → Debug ekranındaki "Son Hatalar" kartında görünür. Uzak kopya oluşmaz.
 
-```typescript
-import * as Sentry from '@sentry/react-native';
-Sentry.init({ dsn: 'YOUR_DSN', tracesSampleRate: 0.1 });
-```
+Yerli (native) çökmeler ve ANR'ler için ayrıca bir SDK'ya gerek yok — **Play Console →
+Android vitals** onları kendisi raporluyor. Buradaki kapsam JS/React tarafı.
 
-- [ ] Sentry DSN alındı
-- [ ] Production release'e wrap edildi
-- [ ] Son 7 gün 0 unhandled crash
+- [ ] Migration 103 uygulandı (`select count(*) from client_events` hata vermiyor)
+- [ ] Kapalı test sırasında `client_events` içinde `kind='error'` satırları izlendi
+
+İsteğe bağlı: `@sentry/react-native` kurulup `EXPO_PUBLIC_SENTRY_DSN` verilirse
+`src/lib/sentry.ts` onu da otomatik devreye alır (dinamik import, kurulu değilse no-op).
 
 ## 7. KVKK/GDPR Compliance
 
@@ -101,6 +107,19 @@ Sentry.init({ dsn: 'YOUR_DSN', tracesSampleRate: 0.1 });
 - [ ] `app.config.js` production values (scheme, version, bundleId)
 
 ## 9. Build & Release
+
+### ⚠ HER yüklemeden önce: versionCode artır
+
+`app.config.js` → `expo.android.versionCode`. Play **aynı versionCode'u ikinci kez kabul
+etmez** ("Version code N has already been used"). Bu alan eskiden app.config.js'te YOKTU;
+prebuild `android/app/build.gradle`'a sabit `versionCode 1` yazıyordu ve o dosya gitignore'lu
+olduğu için hata inceleme sırasında değil, yükleme anında ortaya çıkıyordu.
+
+| Yükleme | versionCode | versionName |
+|---|---|---|
+| İlk kapalı test | 1 | 1.0.0 |
+| Sonraki her sürüm | +1 | ihtiyaca göre |
+
 
 ### EAS Build (cloud, önerilen)
 ```bash

@@ -12,7 +12,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
 interface Msg {
@@ -32,6 +33,7 @@ function sanitizeTranscript(text: string): string {
 }
 
 export default function SessionViewerScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
@@ -65,9 +67,11 @@ export default function SessionViewerScreen() {
     // kullanıcının yazdığı mesaj gibi görünüyordu — thread'deki gibi gizle.
     setMessages(
       ((data ?? []) as Msg[])
-        // ux-sweep (F2): sorgu artık en-yeniden-geriye çekiyor — görünüm için eski→yeni çevir.
-        .slice()
-        .reverse()
+        // Sorgu ZATEN ascending (eski→yeni, satır 57) ve bu FlatList `inverted` DEĞİL — burada
+        // bir zamanlar `.reverse()` vardı ve "sorgu artık en-yeniden-geriye çekiyor" diyordu,
+        // ama sorgu hiç değiştirilmemişti. Sonuç: arşiv ters okunuyordu (koçun cevabı sorudan
+        // önce). reverse() kaldırıldı — sohbet ekranındaki reverse'in eşi olan `inverted` prop'u
+        // burada yok, yani çevirmenin karşılığı da yok.
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .filter(m => !/^\[(PLAN_INIT|ALT|SYSTEM_INIT)\]/.test(m.content))
         .map(m => ({ ...m, content: sanitizeTranscript(m.content) }))
@@ -80,13 +84,13 @@ export default function SessionViewerScreen() {
 
   if (loading) {
     // FIX (ux-ideas #28): skeleton loader instead of a bare centered spinner (see achievements).
-    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={4} /></View>;
+    return <View style={{ flex: 1, backgroundColor: colors.background }}><SkeletonScreen cards={4} /></View>;
   }
 
   // (refactor: shared LoadErrorState)
   if (loadError) {
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <LoadErrorState title="Sohbet yüklenemedi" onRetry={load} />
       </View>
     );
@@ -96,19 +100,19 @@ export default function SessionViewerScreen() {
   // a plain ScrollView mounted them all at once and stalled low-end devices.
   return (
     <FlatList
-      style={{ flex: 1, backgroundColor: COLORS.background }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}
       data={messages}
       keyExtractor={m => m.id}
       initialNumToRender={20}
       ListHeaderComponent={
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, textAlign: 'center', marginBottom: SPACING.md }}>
+        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textAlign: 'center', marginBottom: SPACING.md }}>
           Salt okunur kayıt — bu sohbete buradan mesaj yazılamaz.
         </Text>
       }
       ListEmptyComponent={
         <Card>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>
             Bu oturumda mesaj yok.
           </Text>
         </Card>
@@ -120,22 +124,22 @@ export default function SessionViewerScreen() {
             style={{
               alignSelf: isUser ? 'flex-end' : 'flex-start',
               maxWidth: '85%',
-              backgroundColor: isUser ? COLORS.primary : COLORS.card,
+              backgroundColor: isUser ? colors.primary : colors.card,
               borderRadius: RADIUS.lg,
               borderWidth: isUser ? 0 : 1,
-              borderColor: COLORS.border,
+              borderColor: colors.border,
               paddingHorizontal: SPACING.md,
               paddingVertical: SPACING.sm,
               marginBottom: SPACING.sm,
             }}
             accessibilityLabel={`${isUser ? 'Sen' : 'Kochko'}: ${m.content}`}
           >
-            <Text style={{ color: isUser ? getContrastColor(COLORS.primary) : COLORS.text, fontSize: FONT.sm, lineHeight: 20 }}>
+            <Text style={{ color: isUser ? getContrastColor(colors.primary) : colors.text, fontSize: FONT.sm, lineHeight: 20 }}>
               {m.content}
             </Text>
             <Text
               style={{
-                color: isUser ? getContrastColor(COLORS.primary) : COLORS.textMuted,
+                color: isUser ? getContrastColor(colors.primary) : colors.textMuted,
                 opacity: isUser ? 0.7 : 1,
                 fontSize: 10,
                 marginTop: 4,

@@ -3,7 +3,7 @@
  * Flat design, no gradients
  */
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
@@ -24,6 +24,8 @@ interface Props {
   onWeightPress?: () => void;
   /** ux-defect pass: Uyku hücresi griddeki tek ÖLÜ hücreydi — dokununca uyku kaydına gider. */
   onSleepPress?: () => void;
+  /** Adım hücresi Android'de "Yakında" Alert'inden ibaretti — artık elle adım kaydını açar. */
+  onStepsPress?: () => void;
 }
 
 interface StatCardProps {
@@ -104,7 +106,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
 
 // FIX (audit: ölü prop) sleepHours/weightKg artık imzada destructure edilip
 // 2x2 grid'de render ediliyor (eskiden tanımlı ama hiç gösterilmiyordu).
-export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, lastKnownWeightKg, onAddWater, onWaterLongPress, onWeightPress, onSleepPress }: Props) {
+export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, lastKnownWeightKg, onAddWater, onWaterLongPress, onWeightPress, onSleepPress, onStepsPress }: Props) {
   const waterPct = waterTarget > 0 ? waterLiters / waterTarget : 0;
   const noWeighInToday = weightKg == null && lastKnownWeightKg != null;
 
@@ -126,23 +128,16 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
         />
         <StatCard
           icon="footsteps"
-          // FIX (final sweep): expo-sensors Pedometer is iOS-only. FIX (ux-audit major): the old
-          // code hardcoded 'Yakında' on Android even when the user DID have step data (manually
-          // logged / synced), so the cell was permanently dead on the platform we ship APKs for.
-          // Show the real value whenever there is one (any platform); only fall back to the honest
-          // muted 'Yakında' when Android genuinely has no step source yet.
-          value={steps && steps > 0
-            ? steps.toLocaleString('tr-TR')
-            : Platform.OS === 'android' ? 'Yakında' : '-'}
-          valueMuted={(!steps || steps <= 0) && Platform.OS === 'android'}
-          a11yLabel={(!steps || steps <= 0) && Platform.OS === 'android' ? 'Adım sayımı yakında' : undefined}
-          // Launch inventory: 'Yakında' used to be untappable — no way to learn WHAT is coming.
-          {...((!steps || steps <= 0) && Platform.OS === 'android' ? {
-            onPress: () => Alert.alert('Yakında', 'Adım sayımı Google Health Connect entegrasyonuyla çok yakında. Şimdilik adımlarını koça yazarak kaydedebilirsin.'),
-            a11yHint: 'Ayrıntı için dokun',
-          } : {})}
+          // expo-sensors Pedometer'ın gün-toplamı okuması (getStepCountAsync) iOS'a özel, yani
+          // Android'de otomatik ölçüm YOK. Bu hücre eskiden dokunulunca yalnızca "Yakında" diyen
+          // bir Alert açıyordu — griddeki tek çıkmaz sokak. Artık komşularıyla (Su/Uyku/Kilo) aynı:
+          // dokunuş elle adım kaydına gider, veri geldiğinde gerçek sayı görünür.
+          value={steps && steps > 0 ? steps.toLocaleString('tr-TR') : 'Ekle'}
+          valueMuted={!steps || steps <= 0}
           label="Adım"
           color={METRIC_COLORS.steps}
+          onPress={onStepsPress}
+          a11yHint="Adım kaydı girmek için dokun"
         />
       </View>
       <View style={{ flexDirection: 'row', gap: SPACING.sm }}>

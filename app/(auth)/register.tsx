@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
 // Hosted legal documents (KVKK aydınlatma / kullanım koşulları). Domain derives from the
@@ -58,6 +59,7 @@ function validateBirthYear(raw: string): { year: number | null; error: string | 
 }
 
 export default function RegisterScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   // FIX (ux-round3 #7): keyboard "İleri" walks the sign-up fields in order instead of dismissing.
   const birthYearRef = useRef<TextInput>(null);
@@ -124,7 +126,7 @@ export default function RegisterScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: COLORS.background }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       // FIX (audit UI-CHT-01 kalıbı): her iki platformda da 'padding'. Expo SDK 55'in zorunlu
       // edge-to-edge'i altında Android 'height' pencereyi yanlış ölçüyor ve form alanlarını/
       // butonu klavyenin altında bırakabiliyordu (bkz. app/chat/[sessionId].tsx'teki fix notu).
@@ -143,15 +145,15 @@ export default function RegisterScreen() {
       >
         {/* FIX (audit ui-auth-header): login.tsx ile birebir aynı logo/başlık bloğu (letterSpacing/boşluk) */}
         <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
-          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary, letterSpacing: 2 }}>Kochko</Text>
-          <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary, marginTop: SPACING.xs }}>Hesap Oluştur</Text>
+          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.primary, letterSpacing: 2 }}>Kochko</Text>
+          <Text style={{ fontSize: FONT.lg, color: colors.textSecondary, marginTop: SPACING.xs }}>Hesap Oluştur</Text>
         </View>
 
         {/* KVKK / consent — sits above all signup paths (form + social) so it's visible before any commitment. */}
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', lineHeight: 19, marginBottom: SPACING.xl }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', lineHeight: 19, marginBottom: SPACING.xl }}>
           Kayıt olarak{' '}
           <Text
-            style={{ color: COLORS.primary, fontWeight: '600' }}
+            style={{ color: colors.primary, fontWeight: '600' }}
             onPress={() => openLink(TERMS_URL)}
             accessibilityRole="link"
             accessibilityLabel="Kullanım Koşulları'nı aç"
@@ -160,7 +162,7 @@ export default function RegisterScreen() {
           </Text>
           {"'nı ve "}
           <Text
-            style={{ color: COLORS.primary, fontWeight: '600' }}
+            style={{ color: colors.primary, fontWeight: '600' }}
             onPress={() => openLink(PRIVACY_URL)}
             accessibilityRole="link"
             accessibilityLabel="Gizlilik Politikası'nı aç"
@@ -187,9 +189,9 @@ export default function RegisterScreen() {
         {/* Divider — FIX (ux-readiness): only when a social button renders above it (Android has none). */}
         {(GOOGLE_LOGIN_ENABLED || Platform.OS === 'ios') && (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
           </View>
         )}
 
@@ -254,8 +256,8 @@ export default function RegisterScreen() {
         />
         <Button title="Kayıt Ol" onPress={handleRegister} loading={loading} size="lg" />
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.lg }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Zaten hesabın var mı? </Text>
-          <Link href="/(auth)/login" style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>Giriş Yap</Link>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Zaten hesabın var mı? </Text>
+          <Link href="/(auth)/login" style={{ color: colors.primary, fontSize: FONT.md, fontWeight: '600' }}>Giriş Yap</Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

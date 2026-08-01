@@ -8,7 +8,8 @@ import { getAchievements, type Achievement } from '@/services/achievements.servi
 import { shareMilestone } from '@/services/sharing.service';
 import { shareMilestoneCard, type MilestoneCardData } from '@/services/share-card.service';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
 // ux-sweep (AC-02): '*', '!!!!', 'M1' yer tutucuları GERÇEK ikonlara çevrildi.
@@ -32,6 +33,7 @@ function achievementToCard(a: Achievement): MilestoneCardData {
 }
 
 export default function AchievementsScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Achievement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,44 +51,44 @@ export default function AchievementsScreen() {
   if (loading) {
     // FIX (ux-ideas #28): skeleton loader instead of a bare centered spinner — no "frozen" feel,
     // no layout jump when content lands, and visual parity with dashboard/reports/coach-memory.
-    return <View style={{ flex: 1, backgroundColor: COLORS.background }}><SkeletonScreen cards={4} /></View>;
+    return <View style={{ flex: 1, backgroundColor: colors.background }}><SkeletonScreen cards={4} /></View>;
   }
 
   if (loadError) {
     return (
-      <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md }}>
+      <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md }}>
         <Card><LoadErrorState embedded title="Başarımlar yüklenemedi" onRetry={() => { setLoading(true); setReloadKey(k => k + 1); }} /></Card>
       </ScrollView>
     );
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
       {items.length === 0 ? (
         <Card>
           <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: COLORS.primary, fontSize: FONT.xl, fontWeight: '800' }}>★</Text>
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ color: colors.primary, fontSize: FONT.xl, fontWeight: '800' }}>★</Text>
             </View>
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz başarımın yok</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Kilo, antrenman ve seri kayıtların biriktikçe başarımların burada görünecek. Kayıt girmeye devam et!</Text>
+            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz başarımın yok</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Kilo, antrenman ve seri kayıtların biriktikçe başarımların burada görünecek. Kayıt girmeye devam et!</Text>
           </View>
         </Card>
       ) : (
         items.map(a => (
-          <View key={a.id} style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.primary, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+          <View key={a.id} style={{ backgroundColor: colors.card, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: colors.primary, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
             {/* FIX (ux-polish): decorative placeholder glyph — hide from screen readers so TalkBack
                 doesn't read the raw characters before each title (the title already names it). */}
-            <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name={(TYPE_ICONS[a.achievement_type] ?? 'ribbon-outline') as never} size={22} color={COLORS.primary} />
+            <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name={(TYPE_ICONS[a.achievement_type] ?? 'ribbon-outline') as never} size={22} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700' }}>{a.title}</Text>
-              {a.description && <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{a.description}</Text>}
+              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>{a.title}</Text>
+              {a.description && <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{a.description}</Text>}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                   {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </Text>
                 {/* D17: Share button */}
@@ -97,10 +99,10 @@ export default function AchievementsScreen() {
                   accessibilityLabel={`${a.title} başarımını paylaş`}
                   style={{
                     paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: 8,
-                    backgroundColor: COLORS.primary + '15', borderWidth: 1, borderColor: COLORS.primary + '40',
+                    backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '40',
                   }}
                 >
-                  <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600' }}>Paylaş</Text>
+                  <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600' }}>Paylaş</Text>
                 </TouchableOpacity>
               </View>
             </View>

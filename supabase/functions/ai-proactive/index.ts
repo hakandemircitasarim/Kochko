@@ -962,6 +962,16 @@ serve(async (req: Request) => {
     // If user hit target reps in last 2 consecutive compound-lift sessions,
     // suggest +2.5kg for the next session.
     const COMPOUND_LIFTS = ['squat', 'bench_press', 'deadlift', 'overhead_press'];
+    // Bu anahtarlar DB'de saklanan snake_case İngilizce adlar (ai-chat egzersiz adlarını
+    // bu biçime normalize ediyor). Nudge metni anahtarı olduğu gibi basıyordu ve kullanıcı
+    // Türkçe koçundan "bench_press: 2 seanstır..." mesajı alıyordu. Kullanıcıya giden ad
+    // Türkçe olmalı; anahtar yalnız sorgu içindir.
+    const LIFT_TR: Record<string, string> = {
+      squat: 'Squat',
+      bench_press: 'Bench press',
+      deadlift: 'Deadlift',
+      overhead_press: 'Omuz press',
+    };
     const TARGET_REPS = 8;
     if (dayOfWeek === 1) {
       for (const profile of profiles as { id: string; home_timezone?: string; active_timezone?: string; push_token: string | null; notification_prefs: Record<string, unknown> | null }[]) {
@@ -1010,7 +1020,7 @@ serve(async (req: Request) => {
                 trigger_type: 'progressive_overload',
                 priority: 'medium',
                 // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
-                content: `${lift}: 2 seanstır ${TARGET_REPS}+ rep tutturuyorsun. Bir sonraki seans ${sessionList[0].weight}kg -> ${nextWeight}kg deneyelim.`,
+                content: `${LIFT_TR[lift] ?? lift}: 2 seanstır ${TARGET_REPS}+ tekrar tutturuyorsun. Bir sonraki seans ${sessionList[0].weight}kg yerine ${nextWeight}kg deneyelim.`,
               });
               totalSent++;
               break; // only one lift per user per Monday
@@ -1280,10 +1290,16 @@ serve(async (req: Request) => {
                   (w: { weight_kg: number }) => (w.weight_kg as number) > targetKg + 1.5
                 );
                 if (allExceeded) {
+                  // "1.5kg üstündesin" SABİTTİ — oysa 1.5 yalnızca TETİK EŞİĞİ, gerçek fark
+                  // değil. Hedefinin 4.2kg üstündeki kullanıcı da "1.5kg üstündesin" mesajı
+                  // alıyor, kendi verisinde göremediği bir sayı okuyor ve koça güvenini
+                  // yitiriyordu. Gerçek fark aynı satırlarda zaten elimizde.
+                  const latestKg = recentWeighIns[0].weight_kg as number;
+                  const excessKg = Math.round((latestKg - targetKg) * 10) / 10;
                   await insertCoachingMessage({
                     user_id: profile.id,
                     // FIX (final sweep): aksansız → proper Turkish, meaning unchanged.
-                    content: 'MİNİ CUT ÖNERİSİ: Hedef kilonun 1.5kg üstündesin. 2-4 haftalık mini cut dönemi önerilir.',
+                    content: `MİNİ CUT ÖNERİSİ: Son tartın ${String(latestKg).replace('.', ',')} kg — hedefinin ${String(excessKg).replace('.', ',')} kg üstünde ve son ölçümlerin hep bandın dışında. 2-4 haftalık mini cut dönemi önerilir.`,
                     trigger_type: 'mini_cut_suggestion',
                     priority: 'high',
                     read: false,

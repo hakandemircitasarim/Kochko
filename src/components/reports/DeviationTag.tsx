@@ -3,21 +3,24 @@
  * Shows why the user deviated from their plan.
  */
 import { View, Text } from 'react-native';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 
 // All deviation reasons are "slip/risk" signals, rendered with on-brand
 // semantic tokens (no off-palette Material rainbow). Two tiers:
-// medically relevant reasons -> COLORS.error, the rest -> COLORS.warning.
-const LABELS: Record<string, { text: string; color: string }> = {
-  stres: { text: 'Stres', color: COLORS.warning },
-  aclik: { text: 'Açlık Yönetimi', color: COLORS.warning },
-  disarida_yemek: { text: 'Dışarıda Yemek', color: COLORS.warning },
-  plansiz_atistirma: { text: 'Plansız Atıştırma', color: COLORS.warning },
-  sosyal: { text: 'Sosyal Ortam', color: COLORS.warning },
-  alkol: { text: 'Alkol', color: COLORS.error },
-  yorgunluk: { text: 'Yorgunluk', color: COLORS.warning },
-  hastalik: { text: 'Hastalık', color: COLORS.error },
-  yok: { text: 'Sapma Yok', color: COLORS.success },
+// medically relevant reasons -> `error`, the rest -> `warning`.
+// The table stores the TOKEN NAME, not a resolved hex: a module-level constant
+// is evaluated once at import and would freeze the dark palette into every theme.
+const LABELS: Record<string, { text: string; token: keyof ThemeColors }> = {
+  stres: { text: 'Stres', token: 'warning' },
+  aclik: { text: 'Açlık Yönetimi', token: 'warning' },
+  disarida_yemek: { text: 'Dışarıda Yemek', token: 'warning' },
+  plansiz_atistirma: { text: 'Plansız Atıştırma', token: 'warning' },
+  sosyal: { text: 'Sosyal Ortam', token: 'warning' },
+  alkol: { text: 'Alkol', token: 'error' },
+  yorgunluk: { text: 'Yorgunluk', token: 'warning' },
+  hastalik: { text: 'Hastalık', token: 'error' },
+  yok: { text: 'Sapma Yok', token: 'success' },
 };
 
 interface Props {
@@ -25,10 +28,14 @@ interface Props {
 }
 
 export function DeviationTag({ reason }: Props) {
+  const { colors } = useTheme();
   if (!reason || reason === 'yok') return null;
 
   // Unknown reasons: textSecondary (AA-readable) instead of borderline textMuted.
-  const info = LABELS[reason] ?? { text: reason, color: COLORS.textSecondary };
+  const entry = LABELS[reason];
+  const info = entry
+    ? { text: entry.text, color: colors[entry.token] }
+    : { text: reason, color: colors.textSecondary };
 
   return (
     <View

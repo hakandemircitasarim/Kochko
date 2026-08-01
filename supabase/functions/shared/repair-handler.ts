@@ -259,13 +259,140 @@ export async function handleUndo(userId: string, intendedType: UndoTargetType | 
  * When user says "yanlış anladın", build context for AI to re-parse.
  * Returns instructions to prepend to the system prompt.
  */
-export function buildCorrectionContext(userId: string): string {
-  return `KULLANICI SON PARSE'I DUZELTMEK ISTIYOR.
-Onceki anladığın YANLIS olabilir.
-1. Kullaniciya "Ne duzeltmemi istersin?" diye sor
-2. Yeni bilgiyi al ve DUZELTILMIS parse yap
-3. Duzeltmeyi asla sessizce yapma — her zaman "Anladim, su sekilde duzeltiyorum: ..." de
-4. Eski yanlis kaydi otomatik sil (is_deleted=true)`;
+export interface RevertedWrite {
+  type: UndoTargetType;
+  label: string;
+}
+
+/**
+ * Koçun BİR ÖNCEKİ turunda yazdığı kaydı bul ve geri al.
+ *
+ * Neden gerekti: `buildCorrectionContext` modele "Eski yanlis kaydi otomatik sil
+ * (is_deleted=true)" diyordu, oysa system-prompt modele hiçbir kaydı silemeyeceğini
+ * söylüyor ve kod tarafında da correction dalında TEK BİR yazım bile geri alınmıyordu.
+ * Sonuç: kullanıcı "yanlış anladın" deyince koç "düzeltiyorum" diyordu ama yanlış öğün
+ * panoda ve günün toplamında aynen duruyordu. Sözü tutan taraf yoktu; artık var.
+ *
+ * Hedefi nasıl buluyoruz (yeni kolon/migration gerektirmeden): son ASİSTAN mesajının
+ * zamanı bir çıpa. Turun yazımları o mesaj KAYDEDİLMEDEN hemen önce yapılır, yani
+ * [çıpa − 3 dk, çıpa + 30 sn] penceresine düşerler. O pencerede yazılmış en yeni
+ * öğün/antrenman/takviye kaydı = "koçun az önce yazdığı şey".
+ *
+ * Hiçbir şey bulunamazsa null döner ve HİÇBİR ŞEY SİLİNMEZ — düzeltme kaydı olmayan
+ * bir yanlış anlama da olabilir ("yanlış anladın, ben 35 yaşındayım"). Tahmin ederek
+ * doğru bir öğünü silmektense hiçbir şey silmemek doğrudur.
+ */
+export async function revertLastTurnWrite(
+  userId: string,
+  sessionId?: string | null,
+): Promise<RevertedWrite | null> {
+  let anchorQuery = supabaseAdmin
+    .from('chat_messages')
+    .select('created_at')
+    .eq('user_id', userId)
+    .eq('role', 'assistant')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (sessionId) anchorQuery = anchorQuery.eq('session_id', sessionId);
+
+  const { data: anchorRows, error: anchorErr } = await anchorQuery;
+  if (anchorErr) { console.error('[revertLastTurnWrite] anchor fetch failed', anchorErr); return null; }
+  const anchorAt = (anchorRows as { created_at: string }[] | null)?.[0]?.created_at;
+  if (!anchorAt) return null;
+
+  const anchorMs = new Date(anchorAt).getTime();
+  if (!Number.isFinite(anchorMs)) return null;
+  // Bayat çıpa koruması: koçun EN SON turu günler öncesindeyse o kaydı "az önce yazdım"
+  // sayıp silmek yanlış olur.
+  if (Date.now() - anchorMs > 24 * 60 * 60 * 1000) return null;
+
+  const from = new Date(anchorMs - 3 * 60 * 1000).toISOString();
+  const to = new Date(anchorMs + 30 * 1000).toISOString();
+
+  const [mealRes, workoutRes, supplementRes] = await Promise.all([
+    supabaseAdmin.from('meal_logs')
+      .select('id, raw_input, meal_type, logged_at')
+      .eq('user_id', userId).eq('is_deleted', false)
+      .gte('logged_at', from).lte('logged_at', to)
+      .order('logged_at', { ascending: false }).limit(1).maybeSingle(),
+    supabaseAdmin.from('workout_logs')
+      .select('id, raw_input, logged_at')
+      .eq('user_id', userId)
+      .gte('logged_at', from).lte('logged_at', to)
+      .order('logged_at', { ascending: false }).limit(1).maybeSingle(),
+    supabaseAdmin.from('supplement_logs')
+      .select('id, supplement_name, logged_at')
+      .eq('user_id', userId)
+      .gte('logged_at', from).lte('logged_at', to)
+      .order('logged_at', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+
+  type Cand = { id: string; logged_at: string; type: UndoTargetType; label: string };
+  const candidates: Cand[] = [];
+  const meal = mealRes.data as { id: string; raw_input: string; meal_type: string; logged_at: string } | null;
+  if (meal) candidates.push({ id: meal.id, logged_at: meal.logged_at, type: 'meal', label: `${meal.meal_type}: ${meal.raw_input}` });
+  const workout = workoutRes.data as { id: string; raw_input: string; logged_at: string } | null;
+  if (workout) candidates.push({ id: workout.id, logged_at: workout.logged_at, type: 'workout', label: workout.raw_input });
+  const supp = supplementRes.data as { id: string; supplement_name: string; logged_at: string } | null;
+  if (supp) candidates.push({ id: supp.id, logged_at: supp.logged_at, type: 'supplement', label: supp.supplement_name });
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime());
+  const target = candidates[0];
+
+  // Öğün SOFT delete (geri getirilebilir); diğer ikisinin soft-delete kolonu yok.
+  let mutationError: unknown = null;
+  if (target.type === 'meal') {
+    const { error } = await supabaseAdmin.from('meal_logs')
+      .update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', target.id);
+    mutationError = error;
+  } else {
+    const { error } = await supabaseAdmin
+      .from(target.type === 'workout' ? 'workout_logs' : 'supplement_logs')
+      .delete().eq('id', target.id);
+    mutationError = error;
+  }
+
+  // Silme başarısızsa "geri aldım" DEME — bu fonksiyonun tüm varlık sebebi tutulamayan
+  // sözü ortadan kaldırmaktı; burada yalan söylersek aynı kusuru yeniden üretiriz.
+  if (mutationError) {
+    console.error('[revertLastTurnWrite] revert failed', mutationError);
+    return null;
+  }
+
+  // Düzeltmeler de artık repair_history'ye düşüyor — "sık düzeltilen yiyecek" hafızası
+  // (getRepairContext) eskiden yalnız undo'lardan besleniyordu, yani neredeyse hiç.
+  await storeRepairEvent(userId, {
+    repair_type: 'correction',
+    original_input: target.label,
+    corrected_input: null,
+    food_item: target.type === 'meal' ? target.label : null,
+  });
+
+  return { type: target.type, label: target.label };
+}
+
+/**
+ * "yanlış anladın" turunda modele verilecek bağlam. `reverted`, revertLastTurnWrite'ın
+ * GERÇEKTEN yaptığı iştir — burada artık yalnızca olan biteni anlatıyoruz, yapılmayan
+ * bir şeyi modelden talep etmiyoruz.
+ */
+export function buildCorrectionContext(reverted: RevertedWrite | null): string {
+  const typeLabel = reverted?.type === 'meal' ? 'ogun' : reverted?.type === 'workout' ? 'antrenman' : 'takviye';
+  if (reverted) {
+    return `KULLANICI SON ANLADIGINI DUZELTIYOR.
+Sunu ZATEN GERI ALDIM (sistem yapti, sen bir sey silmedin): ${typeLabel} — "${reverted.label}"
+1. Once kisaca bunu geri aldigini SOYLE (ornek: "${reverted.label} kaydini geri aldim").
+2. Kullanicinin duzeltmesi net degilse TEK bir soru sor.
+3. Net ise DUZELTILMIS halini yeniden kaydet (normal aksiyonlarla).
+4. Ayni kaydi tekrar silmeye calisma — geri alma islemi bitti.`;
+  }
+  return `KULLANICI SON ANLADIGINI DUZELTIYOR.
+Geri alinacak TAZE bir kayit BULAMADIM — son turda kalici bir kayit yazilmamis olabilir,
+ya da kullanici bir kaydi degil bir BILGIYI duzeltiyor (yas, alerji, hedef gibi).
+1. Hicbir kaydi "sildim" DEME — silinmedi.
+2. Neyi yanlis anladigini TEK bir soruyla netlestir.
+3. Duzeltilmis bilgiyi normal akista kaydet.`;
 }
 
 // ─── Repair Event Storage ───

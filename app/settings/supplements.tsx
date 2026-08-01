@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
 const QUICK_SUPPS = [
@@ -25,6 +26,7 @@ const QUICK_SUPPS = [
 ];
 
 export default function SupplementsScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const dayBoundaryHour = useProfileStore(st => (st.profile?.day_boundary_hour as number) ?? 4);
   const [logs, setLogs] = useState<SupplementLog[]>([]);
@@ -92,8 +94,8 @@ export default function SupplementsScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
       {/* Quick Add */}
@@ -103,8 +105,8 @@ export default function SupplementsScreen() {
             <TouchableOpacity key={i} onPress={() => { haptics.tap(); handleQuickAdd(s.name, s.amount); }}
               accessibilityRole="button"
               accessibilityLabel={`${s.name} ekle`}
-              style={{ paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 8, backgroundColor: COLORS.surfaceLight }}>
-              <Text style={{ color: COLORS.text, fontSize: FONT.xs }}>{s.name}</Text>
+              style={{ paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 8, backgroundColor: colors.surfaceLight }}>
+              <Text style={{ color: colors.text, fontSize: FONT.xs }}>{s.name}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -124,22 +126,22 @@ export default function SupplementsScreen() {
         {/* FIX (audit UI-STA-03): ilk fetch sürerken 'kayıt yok' yerine yükleniyor göstergesi. */}
         {loading ? (
           <View style={{ paddingVertical: SPACING.md, alignItems: 'center' }}>
-            <ActivityIndicator color={COLORS.primary} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : loadError ? (
           /* FIX (audit empty-vs-error): fetch hatası 'kayıt yok' değil, hata+tekrar dene (shared LoadErrorState). */
           <LoadErrorState embedded title="Kayıtlar yüklenemedi" onRetry={loadLogs} />
         ) : logs.length === 0 ? (
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Bugün supplement kaydı yok.</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Bugün supplement kaydı yok.</Text>
         ) : (
           logs.map(l => (
-            <View key={l.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-              <Text style={{ color: COLORS.text, fontSize: FONT.md, flex: 1 }}>{l.supplement_name}</Text>
+            <View key={l.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ color: colors.text, fontSize: FONT.md, flex: 1 }}>{l.supplement_name}</Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{l.amount}</Text>
-                {l.calories > 0 && <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>{l.calories} kcal</Text>}
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{l.amount}</Text>
+                {l.calories > 0 && <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>{l.calories} kcal</Text>}
                 <TouchableOpacity onPress={() => handleDelete(l)} accessibilityRole="button" accessibilityLabel={`${l.supplement_name} kaydını sil`} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+                  <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
             </View>

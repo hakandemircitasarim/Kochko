@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 
 // Hosted legal documents (KVKK aydınlatma / kullanım koşulları) — same as register.tsx.
 // launch 2026-07-29: pages are LIVE on the public legal edge function (source: store/*.html)
@@ -41,6 +42,7 @@ function localizeAuthError(message?: string | null): string {
 }
 
 export default function LoginScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   // FIX (ux-round3 #7): keyboard "İleri" jumps e-posta → şifre instead of dismissing.
   const passwordRef = useRef<TextInput>(null);
@@ -95,7 +97,7 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: COLORS.background }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       // FIX (audit UI-CHT-01 kalıbı): her iki platformda da 'padding'. Expo SDK 55'in zorunlu
       // edge-to-edge'i altında Android 'height' pencereyi yanlış ölçüyor ve giriş alanlarını/
       // butonu klavyenin altında bırakabiliyordu (bkz. app/chat/[sessionId].tsx'teki fix notu).
@@ -113,8 +115,8 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ alignItems: 'center', marginBottom: SPACING.xl }}>
-          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: COLORS.primary, letterSpacing: 2 }}>Kochko</Text>
-          <Text style={{ fontSize: FONT.lg, color: COLORS.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
+          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.primary, letterSpacing: 2 }}>Kochko</Text>
+          <Text style={{ fontSize: FONT.lg, color: colors.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
         </View>
 
         {/* FIX (ux-audit major): a cold-start user landed on a bare returning-user login form with no
@@ -127,8 +129,8 @@ export default function LoginScreen() {
             'Hedefine özel diyet ve antrenman planı',
           ].map((t, i) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm }}>
-              <Text style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '800', lineHeight: 20 }}>•</Text>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20, flex: 1 }}>{t}</Text>
+              <Text style={{ color: colors.primary, fontSize: FONT.md, fontWeight: '800', lineHeight: 20 }}>•</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20, flex: 1 }}>{t}</Text>
             </View>
           ))}
         </View>
@@ -136,10 +138,10 @@ export default function LoginScreen() {
         {/* FIX (audit UX-ONB-01/HIGH): social sign-in CREATES an account on first use, so the
             KVKK/Terms consent must be shown here too (not only on the register screen) — it sits
             above the social buttons so it's visible before any account is created. */}
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center', lineHeight: 19, marginBottom: SPACING.lg }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', lineHeight: 19, marginBottom: SPACING.lg }}>
           Devam ederek{' '}
           <Text
-            style={{ color: COLORS.primary, fontWeight: '600' }}
+            style={{ color: colors.primary, fontWeight: '600' }}
             onPress={() => openLink(TERMS_URL)}
             accessibilityRole="link"
             accessibilityLabel="Kullanım Koşulları'nı aç"
@@ -148,7 +150,7 @@ export default function LoginScreen() {
           </Text>
           {"'nı ve "}
           <Text
-            style={{ color: COLORS.primary, fontWeight: '600' }}
+            style={{ color: colors.primary, fontWeight: '600' }}
             onPress={() => openLink(PRIVACY_URL)}
             accessibilityRole="link"
             accessibilityLabel="Gizlilik Politikası'nı aç"
@@ -176,9 +178,9 @@ export default function LoginScreen() {
             On Android (no Google/Apple) the "veya" hung over the lone email form like a broken button. */}
         {(GOOGLE_LOGIN_ENABLED || Platform.OS === 'ios') && (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: COLORS.border }} />
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
           </View>
         )}
 
@@ -217,13 +219,13 @@ export default function LoginScreen() {
           accessibilityRole="button"
           accessibilityLabel="Şifremi unuttum"
         >
-          <Text style={{ color: COLORS.primary, fontSize: FONT.sm }}>Şifremi Unuttum</Text>
+          <Text style={{ color: colors.primary, fontSize: FONT.sm }}>Şifremi Unuttum</Text>
         </TouchableOpacity>
 
         <Button title="Giriş Yap" onPress={handleLogin} loading={loading} size="lg" />
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.lg }}>
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Hesabın yok mu? </Text>
-          <Link href="/(auth)/register" style={{ color: COLORS.primary, fontSize: FONT.md, fontWeight: '600' }}>Kayıt Ol</Link>
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Hesabın yok mu? </Text>
+          <Link href="/(auth)/register" style={{ color: colors.primary, fontSize: FONT.md, fontWeight: '600' }}>Kayıt Ol</Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

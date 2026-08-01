@@ -18,7 +18,8 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
@@ -52,6 +53,7 @@ function parseTurkishDate(input: string): string | null {
 }
 
 export default function ChatHistoryScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -220,7 +222,7 @@ export default function ChatHistoryScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
       {/* Search */}
@@ -256,13 +258,13 @@ export default function ChatHistoryScreen() {
                 paddingVertical: 4,
                 paddingHorizontal: SPACING.sm,
                 borderRadius: 12,
-                backgroundColor: selectedTag === tag ? COLORS.primary : COLORS.surfaceLight,
+                backgroundColor: selectedTag === tag ? colors.primary : colors.surfaceLight,
                 borderWidth: 1,
-                borderColor: selectedTag === tag ? COLORS.primary : COLORS.border,
+                borderColor: selectedTag === tag ? colors.primary : colors.border,
               }}
             >
               {/* FIX (audit accent-contrast): selected chip text via getContrastColor instead of hardcoded #fff. */}
-              <Text style={{ color: selectedTag === tag ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.xs }}>{tag}</Text>
+              <Text style={{ color: selectedTag === tag ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.xs }}>{tag}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -277,17 +279,17 @@ export default function ChatHistoryScreen() {
               onPress={() => { haptics.tap(); openSession(r.session_id); }}
               accessibilityRole="button"
               accessibilityLabel="Sonucun bulunduğu sohbeti aç"
-              style={{ paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border }}
+              style={{ paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}
             >
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
-                <Text style={{ color: r.role === 'user' ? COLORS.primary : COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>
+                <Text style={{ color: r.role === 'user' ? colors.primary : colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>
                   {r.role === 'user' ? 'Sen' : 'Kochko'}
                 </Text>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                   {new Date(r.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
-              <Text style={{ color: COLORS.text, fontSize: FONT.sm, lineHeight: 20 }} numberOfLines={3}>{r.content}</Text>
+              <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }} numberOfLines={3}>{r.content}</Text>
             </TouchableOpacity>
           ))}
         </Card>
@@ -296,7 +298,7 @@ export default function ChatHistoryScreen() {
       {/* FIX (audit search-0-results): explicit 'Sonuç bulunamadı' card after a real search. */}
       {hasSearched && !searching && searchResults.length === 0 && (
         <Card>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>
             Sonuç bulunamadı. Farklı bir kelime veya tarih aralığı dene.
           </Text>
         </Card>
@@ -304,7 +306,7 @@ export default function ChatHistoryScreen() {
 
       {/* Session List */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.sm }}>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase' }}>Sohbet Oturumları</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase' }}>Sohbet Oturumları</Text>
         {filteredSessions.length > 0 && <Button title="Hepsini Sil" variant="ghost" size="sm" onPress={handleClearAll} />}
       </View>
 
@@ -322,7 +324,7 @@ export default function ChatHistoryScreen() {
           <LoadErrorState embedded title="Sohbet geçmişi yüklenemedi" onRetry={loadSessions} />
         </Card>
       ) : filteredSessions.length === 0 ? (
-        <Card><Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Henüz sohbet geçmişi yok.</Text></Card>
+        <Card><Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Henüz sohbet geçmişi yok.</Text></Card>
       ) : (
         filteredSessions.map(s => (
           <TouchableOpacity
@@ -335,19 +337,19 @@ export default function ChatHistoryScreen() {
             <Card>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '500' }}>
+                  <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }}>
                     {s.title ?? new Date(s.started_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </Text>
-                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
                     {s.message_count} mesaj
                     {s.topic_tags && s.topic_tags.length > 0 ? ` | ${s.topic_tags.join(', ')}` : ''}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
-                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
                     {new Date(s.started_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                   </Text>
-                  <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+                  <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
                 </View>
               </View>
             </Card>
@@ -355,7 +357,7 @@ export default function ChatHistoryScreen() {
         ))
       )}
 
-      <Text style={{ color: COLORS.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Dokun: sohbeti aç · Uzun bas: sohbeti sil</Text>
+      <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Dokun: sohbeti aç · Uzun bas: sohbeti sil</Text>
       {/* Spec note: Sohbet silme Katman 2'yi etkilemez */}
     </ScrollView>
   );

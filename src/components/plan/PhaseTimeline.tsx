@@ -5,7 +5,8 @@
  * Mevcut faz konumunu, geçiş bölgelerini ve gelecek fazları gösterir.
  */
 import { View, Text } from 'react-native';
-import { COLORS, SPACING, FONT, MAX_FONT_SCALE } from '@/lib/constants';
+import { SPACING, FONT, MAX_FONT_SCALE } from '@/lib/constants';
+import { useTheme, type ThemeColors } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { goalShortLabelTR } from '@/lib/labels';
 
@@ -24,29 +25,32 @@ interface PhaseTimelineProps {
 }
 
 // FIX (audit phase-palette): tema-dışı Material tonlarını mevcut marka token'larına eşle.
-const GOAL_COLORS: Record<string, string> = {
-  lose_weight: COLORS.primary,
-  gain_weight: COLORS.success,
-  gain_muscle: COLORS.purple,
-  maintain: COLORS.warning,
-  health: COLORS.protein,
-  conditioning: COLORS.coral,
+// FIX (theme): modül seviyesinde renk DEĞERİ tutmak koyu paleti her temaya donduruyordu —
+// tabloda artık token ADI var, renk render sırasında aktif temadan çözülüyor.
+const GOAL_COLOR_TOKENS: Record<string, keyof ThemeColors> = {
+  lose_weight: 'primary',
+  gain_weight: 'success',
+  gain_muscle: 'purple',
+  maintain: 'warning',
+  health: 'protein',
+  conditioning: 'coral',
 };
 
 export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
+  const { colors } = useTheme();
   if (phases.length === 0) return null;
 
   const totalWeeks = phases.reduce((s, p) => s + p.targetWeeks, 0);
 
   return (
     <View style={{
-      backgroundColor: COLORS.card,
+      backgroundColor: colors.card,
       borderRadius: 12,
       padding: SPACING.md,
       borderWidth: 1,
-      borderColor: COLORS.border,
+      borderColor: colors.border,
     }}>
-      <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '700', marginBottom: SPACING.sm }}>
+      <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginBottom: SPACING.sm }}>
         Hedef Fazları
       </Text>
 
@@ -61,11 +65,11 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
         height: 32,
         borderRadius: 8,
         overflow: 'hidden',
-        backgroundColor: COLORS.surfaceLight,
+        backgroundColor: colors.surfaceLight,
       }}>
         {phases.map((phase, i) => {
           const widthPct = (phase.targetWeeks / totalWeeks) * 100;
-          const color = GOAL_COLORS[phase.goalType] ?? COLORS.textMuted;
+          const color = colors[GOAL_COLOR_TOKENS[phase.goalType] ?? 'textMuted'];
 
           return (
             <View key={phase.id} style={{
@@ -78,7 +82,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
               justifyContent: 'center',
               alignItems: 'center',
               borderRightWidth: i < phases.length - 1 ? 1 : 0,
-              borderRightColor: COLORS.background,
+              borderRightColor: colors.background,
             }}>
               <Text
                 // FIX (ux-pass5): TR etiketler eski 'Cut'/'Bulk'tan uzun — dar fazda 32px
@@ -87,7 +91,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
                 style={{
                 // FIX (audit accent-contrast): aktif faz metnini sabit beyaz yerine faz
                 // rengine göre kontrast-güvenli seç (WCAG AA).
-                color: phase.isActive ? (getContrastColor(color) === 'black' ? COLORS.background : '#fff') : COLORS.textSecondary,
+                color: phase.isActive ? (getContrastColor(color) === 'black' ? colors.background : '#fff') : colors.textSecondary,
                 fontSize: FONT.xs,
                 fontWeight: phase.isActive ? '700' : '500',
               }}>
@@ -115,7 +119,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
                 // color only, which a screen reader couldn't announce.
                 accessibilityLabel={`${phase.label ? goalShortLabelTR(phase.label) : `${phase.targetWeeks} hafta`}${phase.isActive ? ', şu anki faz' : phase.isCompleted ? ', tamamlandı' : ''}`}
                 style={{
-                  color: phase.isActive ? COLORS.text : COLORS.textMuted,
+                  color: phase.isActive ? colors.text : colors.textMuted,
                   fontSize: 10,
                   fontWeight: phase.isActive ? '600' : '400',
                 }}
@@ -131,8 +135,8 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
 
       {/* Current position indicator */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm }}>
-        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary, marginRight: SPACING.xs }} />
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginRight: SPACING.xs }} />
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
           {/* FIX (audit phase-overflow): currentWeek totalWeeks'i aşarsa 'Hafta 20 / 16' yerine
               clamp + aşım ek metni göster. */}
           Hafta {Math.min(currentWeek, totalWeeks)} / {totalWeeks}{currentWeek > totalWeeks ? ` (+${currentWeek - totalWeeks} hafta)` : ''}

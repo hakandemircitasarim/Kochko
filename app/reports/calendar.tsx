@@ -7,13 +7,15 @@ import { getEffectiveDate } from '@/lib/day-boundary';
 import { getMonthSummaries, type DaySummary } from '@/services/calendar.service';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
 const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const DAY_NAMES = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
 export default function CalendarScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   // Review fix (efficiency): tüm profile objesine değil tek skalere abone ol —
   // her profil yazımı 42 hücrelik grid'i yeniden render ediyordu.
@@ -65,14 +67,14 @@ export default function CalendarScreen() {
   const todayStr = effTodayStr;
 
   const getScoreColor = (score: number | null) => {
-    if (score === null) return COLORS.surfaceLight;
-    if (score >= 70) return COLORS.success;
-    if (score >= 40) return COLORS.warning;
-    return COLORS.error;
+    if (score === null) return colors.surfaceLight;
+    if (score >= 70) return colors.success;
+    if (score >= 40) return colors.warning;
+    return colors.error;
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
 
       {/* Month navigation */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
@@ -82,16 +84,16 @@ export default function CalendarScreen() {
           accessibilityLabel="Önceki ay"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xl }}>{'<'}</Text>
+          <Text style={{ color: colors.primary, fontSize: FONT.xl }}>{'<'}</Text>
         </TouchableOpacity>
-        <Text style={{ color: COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{MONTH_NAMES[month - 1]} {year}</Text>
+        <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700' }}>{MONTH_NAMES[month - 1]} {year}</Text>
         <TouchableOpacity
           onPress={nextMonth}
           accessibilityRole="button"
           accessibilityLabel="Sonraki ay"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={{ color: COLORS.primary, fontSize: FONT.xl }}>{'>'}</Text>
+          <Text style={{ color: colors.primary, fontSize: FONT.xl }}>{'>'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -99,7 +101,7 @@ export default function CalendarScreen() {
       <View style={{ flexDirection: 'row', marginBottom: SPACING.xs }}>
         {DAY_NAMES.map(d => (
           <View key={d} style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{d}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{d}</Text>
           </View>
         ))}
       </View>
@@ -107,7 +109,7 @@ export default function CalendarScreen() {
       {/* Loading: spinner in place of the grid (no blank flash, no stale month). */}
       {loading && (
         <View style={{ paddingVertical: SPACING.xxl, alignItems: 'center' }} accessibilityLabel="Takvim yükleniyor">
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       )}
 
@@ -137,12 +139,12 @@ export default function CalendarScreen() {
               style={{ width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' }}>
               <View style={{
                 width: 36, height: 36, borderRadius: 18,
-                backgroundColor: isSelected ? COLORS.primary : day.hasData ? getScoreColor(day.compliance_score) + '30' : 'transparent',
-                borderWidth: isToday ? 2 : 0, borderColor: COLORS.primary,
+                backgroundColor: isSelected ? colors.primary : day.hasData ? getScoreColor(day.compliance_score) + '30' : 'transparent',
+                borderWidth: isToday ? 2 : 0, borderColor: colors.primary,
                 justifyContent: 'center', alignItems: 'center',
               }}>
-                {/* FIX (audit UI-DS-01): seçili gün metni '#fff' yerine getContrastColor(COLORS.primary) (siyah; teal üzerinde WCAG AA geçer, beyaz 3.39:1 idi). */}
-                <Text style={{ color: isSelected ? getContrastColor(COLORS.primary) : day.hasData ? COLORS.text : COLORS.textMuted, fontSize: FONT.sm, fontWeight: isToday ? '700' : '400' }}>{dayNum}</Text>
+                {/* FIX (audit UI-DS-01): seçili gün metni '#fff' yerine getContrastColor(colors.primary) (siyah; teal üzerinde WCAG AA geçer, beyaz 3.39:1 idi). */}
+                <Text style={{ color: isSelected ? getContrastColor(colors.primary) : day.hasData ? colors.text : colors.textMuted, fontSize: FONT.sm, fontWeight: isToday ? '700' : '400' }}>{dayNum}</Text>
               </View>
               {/* Dot indicator */}
               {day.hasData && !isSelected && (
@@ -162,15 +164,15 @@ export default function CalendarScreen() {
         const avg = scored.length ? Math.round(scored.reduce((s, d) => s + (d.compliance_score ?? 0), 0) / scored.length) : null;
         const workouts = days.filter(d => d.workout_done).length;
         return (
-          <View style={{ flexDirection: 'row', marginTop: SPACING.md, backgroundColor: COLORS.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: COLORS.border, paddingVertical: SPACING.md }}>
+          <View style={{ flexDirection: 'row', marginTop: SPACING.md, backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, paddingVertical: SPACING.md }}>
             {[
-              { value: `${logged.length}`, label: 'loglanan gün', color: COLORS.text },
-              { value: avg != null ? `%${avg}` : '-', label: 'ort. uyum', color: avg != null ? getScoreColor(avg) : COLORS.text },
-              { value: `${workouts}`, label: 'antrenman', color: COLORS.text },
+              { value: `${logged.length}`, label: 'loglanan gün', color: colors.text },
+              { value: avg != null ? `%${avg}` : '-', label: 'ort. uyum', color: avg != null ? getScoreColor(avg) : colors.text },
+              { value: `${workouts}`, label: 'antrenman', color: colors.text },
             ].map((s) => (
               <View key={s.label} style={{ alignItems: 'center', flex: 1 }}>
                 <Text style={{ color: s.color, fontSize: FONT.xl, fontWeight: '800' }}>{s.value}</Text>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{s.label}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{s.label}</Text>
               </View>
             ))}
           </View>
@@ -184,18 +186,18 @@ export default function CalendarScreen() {
         accessibilityLabel="Renk açıklaması: yeşil iyi, turuncu orta, kırmızı düşük uyum, boş hücre veri yok"
       >
         {[
-          { color: COLORS.success, label: 'İyi' },
-          { color: COLORS.warning, label: 'Orta' },
-          { color: COLORS.error, label: 'Düşük' },
+          { color: colors.success, label: 'İyi' },
+          { color: colors.warning, label: 'Orta' },
+          { color: colors.error, label: 'Düşük' },
         ].map(item => (
           <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.color }} />
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>{item.label}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>{item.label}</Text>
           </View>
         ))}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
-          <View style={{ width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: COLORS.textMuted }} />
-          <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>Veri yok</Text>
+          <View style={{ width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: colors.textMuted }} />
+          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Veri yok</Text>
         </View>
       </View>
       )}
@@ -204,34 +206,34 @@ export default function CalendarScreen() {
       {selected && (
         <Card title={new Date(selected.date).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })} style={{ marginTop: SPACING.lg }}>
           {!selected.hasData ? (
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Bu gün için veri yok.</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Bu gün için veri yok.</Text>
           ) : (
             <View style={{ gap: 4 }}>
               {selected.compliance_score !== null && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Uyum</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Uyum</Text>
                   <Text style={{ color: getScoreColor(selected.compliance_score), fontSize: FONT.md, fontWeight: '700' }}>%{selected.compliance_score}</Text>
                 </View>
               )}
               {selected.calorie_actual !== null && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Kalori</Text>
-                  <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{selected.calorie_actual} kcal</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Kalori</Text>
+                  <Text style={{ color: colors.text, fontSize: FONT.md }}>{selected.calorie_actual} kcal</Text>
                 </View>
               )}
               {selected.weight_kg !== null && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Kilo</Text>
-                  <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{selected.weight_kg} kg</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Kilo</Text>
+                  <Text style={{ color: colors.text, fontSize: FONT.md }}>{selected.weight_kg} kg</Text>
                 </View>
               )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Öğün</Text>
-                <Text style={{ color: COLORS.text, fontSize: FONT.md }}>{selected.meal_count} kayıt</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Öğün</Text>
+                <Text style={{ color: colors.text, fontSize: FONT.md }}>{selected.meal_count} kayıt</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Antrenman</Text>
-                <Text style={{ color: selected.workout_done ? COLORS.success : COLORS.textMuted, fontSize: FONT.md }}>{selected.workout_done ? 'Yapıldı' : 'Yapılmadı'}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Antrenman</Text>
+                <Text style={{ color: selected.workout_done ? colors.success : colors.textMuted, fontSize: FONT.md }}>{selected.workout_done ? 'Yapıldı' : 'Yapılmadı'}</Text>
               </View>
               {/* FIX (ux-audit major): the tap used to dead-end at this 5-row summary; give it a path
                   to that day's full gün-sonu report (narrative, tomorrow_action, deviation reason).
@@ -244,7 +246,7 @@ export default function CalendarScreen() {
                   accessibilityLabel="Bu günün gün sonu raporunu gör"
                   style={{ marginTop: SPACING.sm, paddingVertical: SPACING.sm, alignSelf: 'flex-start' }}
                 >
-                  <Text style={{ color: COLORS.primary, fontSize: FONT.sm, fontWeight: '600' }}>Gün sonu raporunu gör →</Text>
+                  <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600' }}>Gün sonu raporunu gör →</Text>
                 </TouchableOpacity>
               )}
             </View>

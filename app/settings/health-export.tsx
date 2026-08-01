@@ -15,11 +15,13 @@ import { exportPDF } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
-import { COLORS, SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { genderLabelTR } from '@/lib/labels';
 
 export default function HealthExportScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore(s => s.user);
@@ -151,13 +153,13 @@ export default function HealthExportScreen() {
 
   // FIX (ux-readiness): blank while the redirect effect runs, so a free user never sees the content.
   if (!isPremium && profile !== null && !profileLoading) {
-    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Doktoruna veya diyetisyenine gösterebileceğin formatta bir rapor oluştur. Kilo trendi, beslenme özeti, lab değerleri ve egzersiz bilgileri içerir.
       </Text>
 
@@ -179,12 +181,12 @@ export default function HealthExportScreen() {
                 paddingVertical: SPACING.sm,
                 borderRadius: RADIUS.pill,
                 borderWidth: 0.5,
-                borderColor: COLORS.border,
-                backgroundColor: COLORS.inputBg,
+                borderColor: colors.border,
+                backgroundColor: colors.inputBg,
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>{chip.label}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>{chip.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -212,11 +214,11 @@ export default function HealthExportScreen() {
             />
           </View>
         </View>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Boş bırakırsan son 3 ay kullanılır.</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Boş bırakırsan son 3 ay kullanılır.</Text>
       </Card>
 
       <Card title="Rapor İçeriği">
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
           - Hasta bilgileri (yaş, cinsiyet, boy, kilo){'\n'}
           - Kilo trendi (başlangıç → son){'\n'}
           - Beslenme özeti (ortalama kalori/protein){'\n'}

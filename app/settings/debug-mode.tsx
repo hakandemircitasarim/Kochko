@@ -9,9 +9,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
+import { getRecentErrors, isSentryActive } from '@/lib/sentry';
 
 export default function DebugModeScreen() {
+  const { colors } = useTheme();
+  // Halka tampon mutasyona uğrayan bir dizi — render sırasında bir kez kopyala ki
+  // ekran açıkken gelen yeni hatalar mevcut render'ı bozmasın.
+  const recentErrors = [...getRecentErrors()];
   // ux-sweep (F3): tek dürüst istemci-görünür model bilgisi — son mesajın model_version'ı.
   const [lastModel, setLastModel] = useState<string | null>(null);
   useEffect(() => {
@@ -50,9 +56,9 @@ export default function DebugModeScreen() {
   }, [user?.id]);
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>AI sisteminin iç yapısı ve performans metrikleri.</Text>
+      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>AI sisteminin iç yapısı ve performans metrikleri.</Text>
 
       {/* Profile Summary */}
       <Card title="Katman 1 (Profil)">
@@ -82,13 +88,13 @@ export default function DebugModeScreen() {
       {/* Recent Messages Debug */}
       <Card title="Son 10 Mesaj (Görev Modları)">
         {lastMessages.map((m, i) => (
-          <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: i < lastMessages.length - 1 ? 1 : 0, borderBottomColor: COLORS.border }}>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>{String(m.task_mode ?? '-')}</Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{String(m.model_version ?? '-')}</Text>
-            <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{String(m.token_count ?? '-')} tok</Text>
+          <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: i < lastMessages.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>{String(m.task_mode ?? '-')}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{String(m.model_version ?? '-')}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{String(m.token_count ?? '-')} tok</Text>
           </View>
         ))}
-        {lastMessages.length === 0 && <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Henüz mesaj yok.</Text>}
+        {lastMessages.length === 0 && <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Henüz mesaj yok.</Text>}
       </Card>
 
       {/* System Info */}
@@ -96,17 +102,37 @@ export default function DebugModeScreen() {
           konfigürasyonla bağlantısız) — yalnız istemciden gerçekten bilinen kaldı. */}
       <Card title="Sistem">
         <DebugRow label="Son kullanılan model" value={lastModel ?? 'henüz bilinmiyor'} />
-        <DebugRow label="K4 Bütçesi" value="%35 (45.500 token)" />
+        {/* "K4 Bütçesi %35 (45.500 token)" satırı KALDIRILDI: sunucunun bağlam bütçesiyle
+            hiçbir bağı olmayan, elle yazılmış bir sayıydı. Şeffaflık ekranında uydurma
+            sabit basmak, ekranın varlık sebebine aykırı. İstemcinin GERÇEKTEN bildiği
+            şeyler kalıyor. */}
+        <DebugRow label="Sentry (harici SDK)" value={isSentryActive() ? 'açık' : 'kapalı'} />
+      </Card>
+
+      {/* reportError() son 50 hatayı yerel bir halkaya yazıyor ve bunun "Debug ekranında
+          gösterileceği" sentry.ts'te yazılıydı — o yüzey hiç yapılmamıştı, yani tampon
+          hiçbir zaman okunmuyordu. Okuyucusu burası. */}
+      <Card title={`Son Hatalar (${recentErrors.length})`}>
+        {recentErrors.length === 0 && (
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Bu oturumda kaydedilmiş hata yok.</Text>
+        )}
+        {recentErrors.slice(-10).reverse().map((e, i) => (
+          <View key={i} style={{ paddingVertical: 4, borderBottomWidth: i < Math.min(10, recentErrors.length) - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+            <Text style={{ color: colors.text, fontSize: FONT.xs }} numberOfLines={2}>{e.message}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{new Date(e.at).toLocaleString('tr-TR')}</Text>
+          </View>
+        ))}
       </Card>
     </ScrollView>
   );
 }
 
 function DebugRow({ label, value }: { label: string; value: string }) {
+  const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
-      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{label}</Text>
-      <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '500', maxWidth: '60%', textAlign: 'right' }} numberOfLines={1}>{value}</Text>
+      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{label}</Text>
+      <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500', maxWidth: '60%', textAlign: 'right' }} numberOfLines={1}>{value}</Text>
     </View>
   );
 }

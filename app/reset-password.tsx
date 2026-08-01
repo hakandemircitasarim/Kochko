@@ -20,7 +20,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 
 type LinkState = 'checking' | 'ready' | 'invalid';
 
@@ -46,6 +47,7 @@ async function establishRecoverySession(url: string | null): Promise<boolean> {
 }
 
 export default function ResetPasswordScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -103,20 +105,20 @@ export default function ResetPasswordScreen() {
 
   if (linkState === 'checking') {
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center', gap: SPACING.md }}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.md }}>Bağlantı doğrulanıyor…</Text>
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: SPACING.md }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Bağlantı doğrulanıyor…</Text>
       </View>
     );
   }
 
   if (linkState === 'invalid') {
     return (
-      <View style={{ flex: 1, backgroundColor: COLORS.background, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
-        <Text style={{ fontSize: FONT.xl, fontWeight: '700', color: COLORS.text, marginBottom: SPACING.sm, textAlign: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
+        <Text style={{ fontSize: FONT.xl, fontWeight: '700', color: colors.text, marginBottom: SPACING.sm, textAlign: 'center' }}>
           Bağlantı geçersiz
         </Text>
-        <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.xl, textAlign: 'center', lineHeight: 22 }}>
+        <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.xl, textAlign: 'center', lineHeight: 22 }}>
           Sıfırlama bağlantısının süresi dolmuş ya da bağlantı eksik. Giriş ekranından yeni bir bağlantı isteyebilirsin.
         </Text>
         <Button title="Giriş ekranına dön" onPress={() => router.replace('/(auth)/login')} size="lg" />
@@ -125,15 +127,15 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: SPACING.xl, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: COLORS.text, marginBottom: SPACING.xs }}>
+        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.xs }}>
           Yeni Şifre Belirle
         </Text>
-        <Text style={{ fontSize: FONT.md, color: COLORS.textSecondary, marginBottom: SPACING.xl }}>
+        <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.xl }}>
           Hesabın için yeni bir şifre gir.
         </Text>
 

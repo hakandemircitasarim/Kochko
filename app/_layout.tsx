@@ -3,7 +3,7 @@ import { useColorScheme } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Stack, router, useSegments } from 'expo-router';
 import { routeForNotificationType } from '@/services/notifications.service';
-import { StatusBar } from 'expo-status-bar';
+import { SystemBars } from 'react-native-edge-to-edge';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuthenticatedAppInit, useAppStateSync } from '@/services/app-init.service';
 import { installGlobalErrorHandlers } from '@/services/error-handler.service';
@@ -122,7 +122,15 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
     <ThemeContext.Provider value={themeValue}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      {/* Durum çubuğu ikon rengi.
+          Burada `expo-status-bar`'ın <StatusBar> bileşeni vardı ve targetSdk 36'da (Android 15)
+          HİÇBİR ETKİSİ YOKTU: edge-to-edge artık zorunlu ve RN'in StatusBarModule'ü stil
+          değişimini sessizce yok sayıyor ("Ignored status bar change, current activity is
+          edge-to-edge" — logcat'te görülebilir). Koyu tema tek seçenekken bu fark edilmiyordu;
+          açık tema açılınca kusur görünür oldu: aydınlık zeminde saat/pil ikonları BEYAZ
+          kalıyor ve okunmuyordu. Edge-to-edge'de doğru API WindowInsetsControllerCompat'tır,
+          onu da `react-native-edge-to-edge`'in <SystemBars> bileşeni sarar. */}
+      <SystemBars style={isDark ? 'light' : 'dark'} />
       <OfflineBanner />
       <Stack screenOptions={{
         headerStyle: { backgroundColor: colors.background },

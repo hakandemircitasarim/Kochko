@@ -6,15 +6,15 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { SPACING, FONT } from '@/lib/constants';
 
-// KOCHKO is designed as a flat dark theme. Settings/Reports/auth screens still use
-// the static (dark) COLORS, so light/system would render those screens dark over a
-// light shell — a broken split. Until those screens are migrated to useTheme, light
-// and system are gated ("Yakında") so the experience stays consistently dark (#R3-6).
+// Açık tema (LIGHT_COLORS) ve sağlayıcı en baştan yazılmıştı; kilit yalnızca 47 ekranın
+// hâlâ statik (koyu) COLORS'ı import etmesindendi — açık seçilince kabuk aydınlanır, o
+// ekranlar koyu kalır, arayüz ikiye bölünürdü. O 47 dosya useTheme()'e taşındı (uygulama
+// genelinde SIFIR statik COLORS kaldı), yani bölünme kaynağı ortadan kalktı: kilit açıldı.
 const THEME_OPTIONS: { mode: ThemeMode; label: string; desc: string; comingSoon?: boolean }[] = [
   // FIX (audit diakritik)
   { mode: 'dark', label: 'Her Zaman Koyu', desc: 'Göz yorgunluğunu azaltır, OLED pil tasarrufu' },
-  { mode: 'system', label: 'Sistemi Takip Et', desc: 'Cihazın tema ayarına göre otomatik değişir', comingSoon: true },
-  { mode: 'light', label: 'Her Zaman Açık', desc: 'Aydınlık ortamlarda daha rahat okunur', comingSoon: true },
+  { mode: 'system', label: 'Sistemi Takip Et', desc: 'Cihazın tema ayarına göre otomatik değişir' },
+  { mode: 'light', label: 'Her Zaman Açık', desc: 'Aydınlık ortamlarda daha rahat okunur' },
 ];
 
 export default function ThemeScreen() {

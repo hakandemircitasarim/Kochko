@@ -32,6 +32,12 @@ export default {
         monochromeImage: './assets/android-icon-monochrome.png',
       },
       package: 'com.kochko.app',
+      // Play HER yüklemede versionCode'un ARTMASINI şart koşar. Bu alan yokken prebuild
+      // build.gradle'a sabit `versionCode 1` yazıyordu — ilk yükleme geçer, İKİNCİSİ
+      // "Version code 1 has already been used" ile reddedilirdi ve sebebi üretilmiş,
+      // gitignore'lu bir dosyada gizliydi. Artık sürüm kimliği burada, sürüm kontrolünde.
+      // ⚠ HER Play yüklemesinden önce 1 artır (RELEASE_CHECKLIST.md).
+      versionCode: 1,
       permissions: ['CAMERA', 'RECORD_AUDIO', 'ACTIVITY_RECOGNITION', 'POST_NOTIFICATIONS'],
       // launch: expo-dev-client injects SYSTEM_ALERT_WINDOW; the shipped app never needs it and
       // it triggers Play's sensitive-permission review. Blocked at prebuild (manifest also
@@ -49,12 +55,22 @@ export default {
       'expo-secure-store',
       ['expo-camera', { cameraPermission: 'Kochko ogun ve barkod fotografi cekmen icin kameraya erisir.' }],
       ['expo-image-picker', { photosPermission: 'Kochko galeriden ogun fotografi secmen icin galerine erisir.' }],
-      'expo-notifications',
+      // Android bildirim ikonu SİLUET olmak zorunda: sistem saydam olmayan her pikseli
+      // beyaza boyar. Yapılandırma yokken expo-notifications uygulama ikonunu kullanıyordu
+      // ve renkli/kare logo durum çubuğunda BEYAZ BİR KAREYE dönüşüyordu. Monokrom varlık
+      // zaten siluet — onu ver, tint rengi de markanın teali olsun.
+      ['expo-notifications', { icon: './assets/android-icon-monochrome.png', color: '#1D9E75' }],
+      // Durum/gezinme çubuğu ikon rengini edge-to-edge altında ayarlayabilmek için
+      // (app/_layout.tsx → <SystemBars>). Android 15'te edge-to-edge zorunlu olduğundan
+      // RN'in kendi StatusBar stil çağrıları yok sayılıyor.
+      'react-native-edge-to-edge',
     ],
     updates: {
-      // Set EXPO_PUBLIC_UPDATES_URL after running `eas update:configure`.
-      // Channels: 'preview' for TestFlight/Play Internal, 'production' for public.
-      enabled: true,
+      // `expo-updates` KURULU DEĞİL (package.json'da yok) ve hiçbir güncelleme URL'i
+      // yapılandırılmadı — bu blok `enabled: true` iken bile hiçbir şey yapmıyordu, yalnızca
+      // "OTA hotfix yolumuz var" izlenimi veriyordu. Dürüst durum: yok.
+      // Açmak için: `npx expo install expo-updates` + `eas update:configure`, sonra enabled: true.
+      enabled: false,
       fallbackToCacheTimeout: 0,
     },
     runtimeVersion: { policy: 'appVersion' },

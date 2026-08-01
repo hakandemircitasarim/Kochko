@@ -9,13 +9,15 @@ import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 
 const TYPE_LABELS: Record<string, string> = {
   restaurant: 'Restoran', cafeteria: 'Kafeterya', fast_food: 'Fast Food', cafe: 'Kafe',
 };
 
 export default function VenuesScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -40,9 +42,15 @@ export default function VenuesScreen() {
 
   useEffect(() => { loadVenues(); }, [loadVenues]);
 
+  // "Dışarıda Yemek Planlıyorum" boş bir sohbet açıyordu ve yorumu "sohbet ekranı modu
+  // kullanıcının mesajından anlar" diyordu — ama kullanıcı henüz bir şey YAZMAMIŞTI, yani
+  // düğme hiçbir bağlam taşımıyordu. Sohbet ekranı `prefill` parametresini zaten okuyor
+  // (ChatThreadScreen: rawParams.prefill); niyeti bestecinin içine koyup gönderiyoruz.
   const navigateToEatingOut = () => {
-    router.push('/(tabs)/chat');
-    // The chat screen will pick up the eating_out mode from the user's message
+    router.push({
+      pathname: '/(tabs)/chat',
+      params: { prefill: 'Bugün dışarıda yemek yiyeceğim. Nereye gideceğimi ve ne seçmem gerektiğini birlikte planlayalım mı?' },
+    });
   };
 
   const handleDelete = (id: string) => {
@@ -60,10 +68,10 @@ export default function VenuesScreen() {
   };
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit ui-settings-duplicate-title): native header (settings/_layout.tsx) renders the title; in-body H1 removed as redundant. */}
       {/* FIX (audit i18n-strings): Türkçe diakritik geri yüklendi. */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.md }}>Sık gittiğin mekanlar ve öğrenilen makro tahminleri.</Text>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginBottom: SPACING.md }}>Sık gittiğin mekanlar ve öğrenilen makro tahminleri.</Text>
 
       {/* Quick Action: Navigate to chat for eating out planning */}
       <View style={{ marginBottom: SPACING.lg }}>
@@ -85,11 +93,11 @@ export default function VenuesScreen() {
         <Card>
           {/* FIX (ux-polish): iconed empty state to match achievements/health-events/lab-values. */}
           <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name="storefront-outline" size={26} color={COLORS.primary} />
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="storefront-outline" size={26} color={colors.primary} />
             </View>
-            <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz kayıtlı mekan yok</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Koçuna "Simit Sarayı'nda yedim" gibi yazdığında mekan otomatik öğrenilir.</Text>
+            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz kayıtlı mekan yok</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Koçuna "Simit Sarayı'nda yedim" gibi yazdığında mekan otomatik öğrenilir.</Text>
           </View>
         </Card>
       ) : (
@@ -97,10 +105,10 @@ export default function VenuesScreen() {
           <TouchableOpacity key={v.id} onLongPress={() => handleDelete(v.id)}>
             <Card>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
-                <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{v.venue_name}</Text>
+                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{v.venue_name}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-                  {v.venue_type && <Text style={{ color: COLORS.primary, fontSize: FONT.xs }}>{TYPE_LABELS[v.venue_type] ?? v.venue_type}</Text>}
-                  <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs }}>{v.visit_count}x</Text>
+                  {v.venue_type && <Text style={{ color: colors.primary, fontSize: FONT.xs }}>{TYPE_LABELS[v.venue_type] ?? v.venue_type}</Text>}
+                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{v.visit_count}x</Text>
                   {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu; long-press kısayolu korundu. */}
                   <TouchableOpacity
                     onPress={() => handleDelete(v.id)}
@@ -109,7 +117,7 @@ export default function VenuesScreen() {
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                     style={{ padding: SPACING.xs }}
                   >
-                    <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+                    <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -117,10 +125,10 @@ export default function VenuesScreen() {
                 <View style={{ gap: 2 }}>
                   {v.learned_items.map((item, i) => (
                     <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{item.name}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{item.name}</Text>
                       <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-                        <Text style={{ color: COLORS.text, fontSize: FONT.sm }}>{item.calories} kcal</Text>
-                        {item.confirmed && <Text style={{ color: COLORS.success, fontSize: FONT.xs }}>onaylı</Text>}
+                        <Text style={{ color: colors.text, fontSize: FONT.sm }}>{item.calories} kcal</Text>
+                        {item.confirmed && <Text style={{ color: colors.success, fontSize: FONT.xs }}>onaylı</Text>}
                       </View>
                     </View>
                   ))}

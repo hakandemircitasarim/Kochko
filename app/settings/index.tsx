@@ -150,7 +150,7 @@ export default function SettingsScreen() {
       { key: 'progress-photos', icon: 'camera-outline', iconColor: colors.pink, label: 'İlerleme Fotoğrafları', route: '/settings/progress-photos', premiumFeature: 'İlerleme Fotoğrafları', aliases: ['foto', 'resim', 'progress'] },
       // Launch inventory: wearable sync is a service skeleton (health-connect.service stubs) with
       // ZERO visible surface — users couldn't even know it's planned. Visible "Yakında" row.
-      { key: 'health-sync', icon: 'watch-outline', iconColor: colors.protein, label: 'Sağlık Uygulamaları ve Saat', aliases: ['google fit', 'health connect', 'apple health', 'akıllı saat', 'wearable', 'senkron', 'adım'], action: () => Alert.alert('Yakında', 'Google Health Connect / Apple Health senkronizasyonu çok yakında: adım, uyku ve kilo verilerin otomatik aktarılacak. Şimdilik bunları koça yazarak kaydedebilirsin.') },
+      { key: 'health-sync', icon: 'watch-outline', iconColor: colors.protein, label: 'Sağlık Uygulamaları ve Saat', aliases: ['google fit', 'health connect', 'apple health', 'akıllı saat', 'wearable', 'senkron', 'adım'], action: () => Alert.alert('Otomatik senkron yakında', 'Google Health Connect / Apple Health senkronizasyonu çok yakında: adım, uyku ve kilo verilerin otomatik aktarılacak.\n\nŞimdilik elle girebilirsin: Kayıt ekranında Adım / Uyku / Tartı kutucukları, ya da koça yazarak.') },
     ] },
     { title: 'Sosyal', rows: [
       { key: 'household', icon: 'people-outline', iconColor: colors.protein, label: 'Aile Planı', route: '/settings/household', aliases: ['aile', 'ev', 'household'] },

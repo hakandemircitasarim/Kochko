@@ -6,7 +6,8 @@
 import React from 'react';
 import { View, Text, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import { COLORS, SPACING, RADIUS, FONT } from '@/lib/constants';
+import { SPACING, RADIUS, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 
 interface DataPoint {
   label: string;
@@ -30,11 +31,15 @@ function formatShortDate(label: string): string {
 // FIX (ux-pass5, emulator): chart-kit draws the x-label row INSIDE the svg; at 150px the "11/07"
 // labels clipped mid-glyph at the card's bottom edge. 180 matches app/(tabs)/progress.tsx, where
 // the same library renders the label row fully.
-export function ProgressChart({ data, color = COLORS.primary, unit = '', height = 180 }: Props) {
+export function ProgressChart({ data, color: colorProp, unit = '', height = 180 }: Props) {
+  const { colors } = useTheme();
+  // FIX (theme): varsayılan renk artık varsayılan-parametrede sabitlenmiyor — aktif temadan çözülüyor.
+  const color = colorProp ?? colors.primary;
+
   if (data.length === 0) {
     return (
       <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>Henüz veri yok</Text>
+        <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Henüz veri yok</Text>
       </View>
     );
   }
@@ -61,13 +66,13 @@ export function ProgressChart({ data, color = COLORS.primary, unit = '', height 
       {/* Summary labels — readable size + AA-contrast textSecondary */}
       {/* FIX (ux-pass5): TR ondalık — virgül ("72,5 kg"), nokta değil. */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
           En düşük {min.toFixed(1).replace('.', ',')}{unit}
         </Text>
-        <Text style={{ color: COLORS.text, fontSize: FONT.sm, fontWeight: '700' }}>
+        <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
           Son {last.toFixed(1).replace('.', ',')}{unit}
         </Text>
-        <Text style={{ color: COLORS.textSecondary, fontSize: FONT.xs }}>
+        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
           En yüksek {max.toFixed(1).replace('.', ',')}{unit}
         </Text>
       </View>
@@ -87,12 +92,12 @@ export function ProgressChart({ data, color = COLORS.primary, unit = '', height 
         width={chartWidth}
         height={height}
         chartConfig={{
-          backgroundColor: COLORS.card,
-          backgroundGradientFrom: COLORS.card,
-          backgroundGradientTo: COLORS.card,
+          backgroundColor: colors.card,
+          backgroundGradientFrom: colors.card,
+          backgroundGradientTo: colors.card,
           decimalPlaces: 1,
           color: () => color,
-          labelColor: () => COLORS.textSecondary,
+          labelColor: () => colors.textSecondary,
           propsForDots: { r: data.length > 20 ? '0' : '2' },
         }}
         bezier

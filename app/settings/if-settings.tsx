@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/Button';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Card } from '@/components/ui/Card';
 import { Toggle } from '@/components/settings/ToggleRow'; // FIX (audit UI-DS-03): shared toggle primitive
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { a11ySwitch } from '@/lib/accessibility'; // FIX (audit UI-DS-03): getContrastColor moved into shared <Toggle/>
 import { PERIODIC_STATE_CONFIG, type PeriodicState } from '@/services/periodic.service';
@@ -24,6 +25,7 @@ const IF_WINDOWS = [
 ];
 
 export default function IFSettingsScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { profile, update } = useProfileStore();
@@ -93,11 +95,11 @@ export default function IFSettingsScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Native header (settings/_layout.tsx) already renders the Turkish "Aralıklı Oruç (IF)"
           title; the in-body heading was a redundant duplicate and has been removed. */}
-      <Text style={{ fontSize: FONT.sm, color: COLORS.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
         IF aktif olduğunda koçun tüm öğün önerilerini yeme penceresine sığdırır. Pencere dışında bildirim göndermez.
       </Text>
 
@@ -106,11 +108,11 @@ export default function IFSettingsScreen() {
         const ps = profile?.periodic_state as PeriodicState | null;
         if (ps && !PERIODIC_STATE_CONFIG[ps]?.ifCompatible) {
           return (
-            <Card style={{ borderColor: COLORS.error, borderWidth: 2, marginBottom: SPACING.md }}>
-              <Text style={{ color: COLORS.error, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>
+            <Card style={{ borderColor: colors.error, borderWidth: 2, marginBottom: SPACING.md }}>
+              <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>
                 IF Devre Dışı
               </Text>
-              <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
                 Mevcut dönemsel durumun ({PERIODIC_STATE_CONFIG[ps]?.label_tr}) IF ile uyumlu değil. Dönem bitene kadar IF devre dışı kaldı.
               </Text>
             </Card>
@@ -136,7 +138,7 @@ export default function IFSettingsScreen() {
         {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns switch role + guarded press).
             Theme-token knob (contrast over primary when active) is built into the primitive. */}
         <Toggle value={active} onToggle={() => setActive(!active)} />
-        <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600' }}>IF {active ? 'Aktif' : 'Kapalı'}</Text>
+        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>IF {active ? 'Aktif' : 'Kapalı'}</Text>
       </TouchableOpacity>
 
       {active && (
@@ -150,13 +152,13 @@ export default function IFSettingsScreen() {
                 accessibilityRole="radio"
                 accessibilityState={{ selected: selected === w.label }}
                 accessibilityLabel={`${w.titleTr ?? w.label} oruç penceresi, ${w.eating}`}>
-                <Card style={{ borderColor: selected === w.label ? COLORS.primary : COLORS.border, borderWidth: selected === w.label ? 2 : 1 }}>
+                <Card style={{ borderColor: selected === w.label ? colors.primary : colors.border, borderWidth: selected === w.label ? 2 : 1 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <View>
-                      <Text style={{ color: selected === w.label ? COLORS.primary : COLORS.text, fontSize: FONT.lg, fontWeight: '700' }}>{w.titleTr ?? w.label}</Text>
-                      <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>{w.eating}</Text>
+                      <Text style={{ color: selected === w.label ? colors.primary : colors.text, fontSize: FONT.lg, fontWeight: '700' }}>{w.titleTr ?? w.label}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{w.eating}</Text>
                     </View>
-                    {w.start && <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm }}>{w.start} - {w.end}</Text>}
+                    {w.start && <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>{w.start} - {w.end}</Text>}
                   </View>
                 </Card>
               </TouchableOpacity>

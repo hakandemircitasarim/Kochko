@@ -10,13 +10,15 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { COLORS, SPACING, FONT } from '@/lib/constants';
+import { SPACING, FONT } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
 const EVENT_TYPES = ['surgery', 'injury', 'illness', 'medication', 'allergy', 'other'];
 const EVENT_LABELS: Record<string, string> = { surgery: 'Ameliyat', injury: 'Sakatlık', illness: 'Hastalık', medication: 'İlaç', allergy: 'Alerji', other: 'Diğer' };
 
 export default function HealthEventsScreen() {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [events, setEvents] = useState<HealthEvent[]>([]);
   const [showAdd, setShowAdd] = useState(false);
@@ -72,8 +74,8 @@ export default function HealthEventsScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.background }} behavior="padding">
-    <ScrollView style={{ flex: 1, backgroundColor: COLORS.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit ui-settings-duplicate-title): native header (settings/_layout.tsx) renders the title; in-body H1 removed as redundant. */}
       <Button title={showAdd ? 'İptal' : 'Yeni Ekle'} variant={showAdd ? 'ghost' : 'primary'} onPress={() => setShowAdd(!showAdd)} style={{ marginTop: SPACING.lg }} />
 
@@ -87,10 +89,10 @@ export default function HealthEventsScreen() {
                 accessibilityState={{ selected: type === t }}
                 accessibilityLabel={EVENT_LABELS[t]}
                 style={{ paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 8, borderWidth: 1,
-                  borderColor: type === t ? COLORS.primary : COLORS.border,
-                  backgroundColor: type === t ? COLORS.primary : 'transparent' }}>
-                {/* FIX (audit UI-STA-04): seçili chip metni '#fff' yerine getContrastColor(COLORS.primary) (siyah, teal üzerinde WCAG AA geçer; beyaz 3.39:1 idi). */}
-                <Text style={{ color: type === t ? getContrastColor(COLORS.primary) : COLORS.textSecondary, fontSize: FONT.xs }}>{EVENT_LABELS[t]}</Text>
+                  borderColor: type === t ? colors.primary : colors.border,
+                  backgroundColor: type === t ? colors.primary : 'transparent' }}>
+                {/* FIX (audit UI-STA-04): seçili chip metni '#fff' yerine getContrastColor(colors.primary) (siyah, teal üzerinde WCAG AA geçer; beyaz 3.39:1 idi). */}
+                <Text style={{ color: type === t ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.xs }}>{EVENT_LABELS[t]}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -99,8 +101,8 @@ export default function HealthEventsScreen() {
           <DateTimeField label="Tarih (opsiyonel)" mode="date" value={date} onChange={setDate} placeholder="2022-06-15" maximumDate={new Date()} />
           {/* FIX (audit ui-toggles): onay kutusuna checkbox rolü + checked state + label. */}
           <TouchableOpacity onPress={() => setOngoing(!ongoing)} accessibilityRole="checkbox" accessibilityState={{ checked: ongoing }} accessibilityLabel="Devam ediyor" style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
-            <Text style={{ color: COLORS.primary }}>{ongoing ? '[x]' : '[ ]'}</Text>
-            <Text style={{ color: COLORS.textSecondary, fontSize: FONT.sm }}>Devam ediyor</Text>
+            <Text style={{ color: colors.primary }}>{ongoing ? '[x]' : '[ ]'}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Devam ediyor</Text>
           </TouchableOpacity>
           <Button title="Kaydet" onPress={handleAdd} />
         </Card>
@@ -125,18 +127,18 @@ export default function HealthEventsScreen() {
       {/* FIX (audit UI-SET-04): form açıkken boş-durum kartını gizle (form zaten görünüyor). */}
       {!loading && !loadError && events.length === 0 && !showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz sağlık olayın yok</Text>
-          <Text style={{ color: COLORS.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Ameliyat, sakatlık, kronik hastalık veya alerji gibi kayıtları buraya ekle; koçun planı bunlara göre güvenli tutar.</Text>
+          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz sağlık olayın yok</Text>
+          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Ameliyat, sakatlık, kronik hastalık veya alerji gibi kayıtları buraya ekle; koçun planı bunlara göre güvenli tutar.</Text>
         </Card>
       )}
 
       {events.map(e => (
         <TouchableOpacity key={e.id} onLongPress={() => handleDelete(e.id)}
-          style={{ backgroundColor: COLORS.card, borderRadius: 12, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 1, borderColor: COLORS.border }}>
+          style={{ backgroundColor: colors.card, borderRadius: 12, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 1, borderColor: colors.border }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: COLORS.primary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase', flex: 1 }}>{EVENT_LABELS[e.event_type] ?? e.event_type}</Text>
+            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase', flex: 1 }}>{EVENT_LABELS[e.event_type] ?? e.event_type}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-              {e.is_ongoing && <Text style={{ color: COLORS.warning, fontSize: FONT.xs }}>Devam ediyor</Text>}
+              {e.is_ongoing && <Text style={{ color: colors.warning, fontSize: FONT.xs }}>Devam ediyor</Text>}
               {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}
               <TouchableOpacity
                 onPress={() => handleDelete(e.id)}
@@ -145,12 +147,12 @@ export default function HealthEventsScreen() {
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 style={{ padding: SPACING.xs }}
               >
-                <Ionicons name="trash-outline" size={18} color={COLORS.textMuted} />
+                <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
           </View>
-          <Text style={{ color: COLORS.text, fontSize: FONT.md, marginTop: 4 }}>{e.description}</Text>
-          {e.event_date && <Text style={{ color: COLORS.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{e.event_date}</Text>}
+          <Text style={{ color: colors.text, fontSize: FONT.md, marginTop: 4 }}>{e.description}</Text>
+          {e.event_date && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{e.event_date}</Text>}
         </TouchableOpacity>
       ))}
     </ScrollView>
