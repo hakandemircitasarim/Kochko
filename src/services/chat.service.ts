@@ -1,4 +1,9 @@
-import * as FileSystem from 'expo-file-system';
+// SDK 55: 'expo-file-system' artık yeni File/Directory API'sini export ediyor —
+// readAsStringAsync YALNIZCA legacy modülde var. Yanlış import yüzünden HER foto
+// gönderimi "readAsStringAsync is not a function" ile düşüyordu ve kullanıcıya
+// sadece sessiz bir hata dönüyordu ("chate foto eklenmiyor"). Repodaki diğer iki
+// legacy-API çağıran dosya (export.service, progress-photos) zaten /legacy kullanıyor.
+import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
