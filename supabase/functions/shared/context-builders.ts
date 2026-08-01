@@ -828,13 +828,17 @@ function formatLayer3(
 // Rough token budget for Layer 4 history. Leaves headroom for the rest of the
 // system prompt (layers 1-3 + mode instructions + user message + response).
 // Assumes a 128k context model with ~8k reserved for history; conservative.
-const LAYER4_TOKEN_BUDGET = 6000;
+// Tek baglam omurgasi (retrieval-planner CONVERSATIONAL_FLOOR): her tur en az son 30
+// mesaji gorur. 6000 token o tabanin ~yarisinda kesiyordu — planner 30 mesaj istese bile
+// bütçe 12-15'te kırpıyor, yani "kulaktan kulakga" etkisi burada geri geliyordu.
+// 24k, 128k+ pencereli modellerde statik katmanlarla birlikte rahat sigar.
+const LAYER4_TOKEN_BUDGET = 24000;
 const CHARS_PER_TOKEN = 3.5;
 
 // FIX (audit AI-CTX-03): ceiling for the static layers (1+2+3). gpt-4o has a 128k
 // window so this almost never bites; it bounds cost/latency on pathological histories.
 // Generous relative to LAYER4_TOKEN_BUDGET so normal turns are untouched.
-const STATIC_LAYERS_TOKEN_BUDGET = 12000;
+const STATIC_LAYERS_TOKEN_BUDGET = 20000;
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / CHARS_PER_TOKEN);

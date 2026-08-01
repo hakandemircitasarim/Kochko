@@ -310,8 +310,11 @@ function analyzeQA(lower: string): MessageAnalysis {
 /**
  * Build a retrieval plan from message analysis.
  * This determines exactly which data layers and scopes to fetch.
+ *
+ * NOT the public entry point — getRetrievalPlan() below clamps the result to the
+ * conversational floor. Everything here may only ENRICH beyond that floor.
  */
-export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
+function buildRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
   const { taskMode, subtype } = analysis;
 
   // Greeting fast path
@@ -501,6 +504,84 @@ function buildQAPlan(subtype: MessageSubtype): RetrievalPlan {
   }
   // qa_general (already handled above, but as fallback)
   return makePlan('minimal', ['demographics'], 'none', [], 0, [], 'reference', 5);
+}
+
+// ─── Conversational floor ───
+
+/**
+ * TEK BAGLAM OMURGASI (kullanici bulgusu: "her mesajda bir oncekiyle kulaktan kulakga
+ * oynuyor, koc hicbir seyin farkinda degil").
+ *
+ * TESHIS: buildRetrievalPlan her mesaja regex uygulayip bir alt tip tayin ediyor ve o alt
+ * tipe gore modelin hafizasini YENIDEN BOYUTLANDIRIYORDU. Ardisik iki mesajda profil
+ * full <-> minimal, kisi ozeti full <-> YOK, gorunen sohbet 3 <-> 15 mesaj arasinda gidip
+ * geliyordu. Kullanicinin karsisinda her turda FARKLI HAFIZAYA SAHIP FARKLI BIR ASISTAN
+ * vardi; tutarli olmasi mumkun degildi. Tekrar sorulan sorularin, konudan sapmanin ve
+ * "kopuk/baglamsiz" hissin tek bir teknik sebebi bu.
+ *
+ * Bu tasarim 2024 kisitlarini (dar pencere, pahali token) cozmek icin yazilmisti. O
+ * kisitlar yok; dahasi degisken on-ek prompt cache'ini de oldurup tasarrufu yiyordu.
+ *
+ * COZUM: alt tip mantigi DURUYOR ama artik yalnizca ZENGINLESTIREBILIR — hicbir tur bu
+ * tabanin altina inemez. Her tur en az: tam profil + tam kisi ozeti + 7 gunluk veri +
+ * son 30 mesaj. Bir plan zaten daha genisse (analist 30 gun, rapor vb.) oldugu gibi kalir.
+ */
+const CONVERSATIONAL_FLOOR = {
+  layer1: 'full' as Layer1Scope,
+  layer1Focus: ['health', 'nutrition', 'training', 'demographics'] as Layer1Focus[],
+  layer2: 'full' as Layer2Scope,
+  layer2Focus: ['patterns', 'persona', 'preferences', 'strength', 'habits'] as Layer2Focus[],
+  layer3DaysBack: 7,
+  layer3Scope: ['meals', 'workouts', 'metrics'] as Layer3DataType[],
+  layer4MaxMessages: 30,
+};
+
+const L1_RANK: Record<Layer1Scope, number> = { minimal: 0, focused: 1, full: 2 };
+const L2_RANK: Record<Layer2Scope, number> = { none: 0, minimal: 1, full: 2 };
+const L3_RANK: Record<Layer3Detail, number> = { reference: 0, summary: 1, full: 2 };
+
+function union<T>(a: T[], b: T[]): T[] {
+  return [...new Set([...a, ...b])];
+}
+
+/**
+ * Public entry point: raise any plan to the conversational floor.
+ *
+ * Tek istisna: pure_greeting hizli yolu. "merhaba"ya cevap vermek icin 30 mesaj + 7 gunluk
+ * veri cekmek gereksiz — AMA eski hali kisi ozetini de atiyordu, yani koc selam verirken
+ * kim oldugunu unutuyordu. Taban orada da uygulanir, yalnizca gun/mesaj sayisi dusuk kalir.
+ */
+export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
+  const plan = buildRetrievalPlan(analysis);
+  const isGreeting = analysis.subtype === 'pure_greeting';
+
+  return {
+    ...plan,
+    layer1: L1_RANK[plan.layer1] >= L1_RANK[CONVERSATIONAL_FLOOR.layer1]
+      ? plan.layer1 : CONVERSATIONAL_FLOOR.layer1,
+    layer1Focus: union(plan.layer1Focus, CONVERSATIONAL_FLOOR.layer1Focus),
+    layer2: L2_RANK[plan.layer2] >= L2_RANK[CONVERSATIONAL_FLOOR.layer2]
+      ? plan.layer2 : CONVERSATIONAL_FLOOR.layer2,
+    layer2Focus: union(plan.layer2Focus, CONVERSATIONAL_FLOOR.layer2Focus),
+    layer3: {
+      // Selamlasmada gun verisi cekmeye gerek yok; diger her turda taban gecerli.
+      daysBack: isGreeting
+        ? plan.layer3.daysBack
+        : Math.max(plan.layer3.daysBack, CONVERSATIONAL_FLOOR.layer3DaysBack),
+      scope: isGreeting
+        ? plan.layer3.scope
+        : union(plan.layer3.scope, CONVERSATIONAL_FLOOR.layer3Scope),
+      // 'reference' seviyesi gunluk verinin sadece VAR/YOK bilgisini gecirir — sohbet
+      // turlarinda bu "dun ne yedigimi bilmiyor" demek. En az 'summary'.
+      detailLevel: isGreeting
+        ? plan.layer3.detailLevel
+        : (L3_RANK[plan.layer3.detailLevel] >= L3_RANK.summary ? plan.layer3.detailLevel : 'summary'),
+    },
+    layer4MaxMessages: isGreeting
+      ? Math.max(plan.layer4MaxMessages, 10)
+      : Math.max(plan.layer4MaxMessages, CONVERSATIONAL_FLOOR.layer4MaxMessages),
+    contextMeta: plan.contextMeta,
+  };
 }
 
 // ─── Helper ───

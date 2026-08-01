@@ -140,13 +140,24 @@ export function selectModel(analysis: MessageAnalysis, hasImage: boolean, taskMo
     };
   }
 
-  // Subtype-based routing
+  // Subtype-based routing.
+  //
+  // HIZLI KATMAN SOHBETTEN KALDIRILDI (kullanici bulgusu: "model hicbir seyin farkinda
+  // degil, salak salak takiliyor"). FAST_SUBTYPES gunluk mesajlarin cogunu kapsiyordu —
+  // selamlasma, yemek kaydi, antrenman kaydi, tarti, su/uyku/mod, genel soru. Yani
+  // kullanicinin koclariyla en sik konustugu turlar KUCUK modele gidiyordu; ayni sohbette
+  // bir mesaj gpt-4o, sonraki gpt-4o-mini cevapliyordu. Kalite dalgalanmasinin ve
+  // "onceki mesaji anlamamis gibi" hissin ikinci sebebi buydu (birincisi baglam varyansi,
+  // bkz. retrieval-planner CONVERSATIONAL_FLOOR).
+  //
+  // Kayit turlari kisa cevap urettigi icin maliyet farki kucuk; tutarlilik farki buyuk.
+  // maxTokens hizli katmanin dar tavaninda (1500) kalir — bu turlar zaten uzun yazmamali.
   if (FAST_SUBTYPES.has(subtype)) {
     return {
-      tier: 'fast',
-      model: MODEL_CONFIG.fast.model,
+      tier: 'smart',
+      model: MODEL_CONFIG.smart.model,
       maxTokens: MODEL_CONFIG.fast.maxTokens,
-      reason: `fast_subtype_${subtype}`,
+      reason: `smart_uniform_${subtype}`,
     };
   }
 
