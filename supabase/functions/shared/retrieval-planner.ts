@@ -313,6 +313,17 @@ function analyzeQA(lower: string): MessageAnalysis {
  *
  * NOT the public entry point — getRetrievalPlan() below clamps the result to the
  * conversational floor. Everything here may only ENRICH beyond that floor.
+ *
+ * IDENTITY LAYERS ARE NOT ROUTED (2026-08). Every builder here used to also name a layer1 scope
+ * (who the user IS) and a layer2 scope (what we have learned about them). Since the conversational
+ * floor pins both to `full`, those arguments were fiction: measured across 352 mode x message
+ * combinations, layer1/layer1Focus/layer2/layer2Focus took exactly ONE value each — the floor's.
+ * Fifteen call sites were writing values that were overwritten a function call later, which is
+ * how "meal_log gets a minimal profile" could look true in review while being false at runtime.
+ *
+ * They are now set in ONE place (getRetrievalPlan, from CONVERSATIONAL_FLOOR). What a turn may
+ * still vary is what it READS: how far back, which data types, how much detail, how much history.
+ * That variance is real and measured — daysBack 0/7/14/21, four detail levels, five scope unions.
  */
 function buildRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
   const { taskMode, subtype } = analysis;
@@ -320,12 +331,7 @@ function buildRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
   // Greeting fast path
   if (subtype === 'pure_greeting') {
     return {
-      layer1: 'minimal',
-      layer1Focus: ['demographics'],
-      layer2: 'none',
-      layer2Focus: [],
-      layer3: { daysBack: 0, scope: [], detailLevel: 'reference' },
-      layer4MaxMessages: 3,
+      ...makePlan(0, [], 'reference', 3),
       contextMeta: {
         confidenceLevel: 'high',
         missingDataTypes: [],
@@ -335,15 +341,11 @@ function buildRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
     };
   }
 
-  // QA general — minimal personal context
+  // QA general — no personal DATA needed (the identity layers still come from the floor, so the
+  // coach knows who it is talking to even when the question is a textbook one).
   if (subtype === 'qa_general') {
     return {
-      layer1: 'minimal',
-      layer1Focus: ['demographics'],
-      layer2: 'none',
-      layer2Focus: [],
-      layer3: { daysBack: 0, scope: [], detailLevel: 'reference' },
-      layer4MaxMessages: 5,
+      ...makePlan(0, [], 'reference', 5),
       contextMeta: {
         // D5 (plan v2, DÜRÜSTLÜK-04): was hardcoded 'high' — the turn that loads the LEAST
         // personal context claimed the MOST confidence in the app (the allergen-card misroute
@@ -370,42 +372,35 @@ function buildRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
     case 'qa':
       return buildQAPlan(subtype);
     case 'recipe':
-      return makePlan('focused', ['nutrition'], 'minimal', ['preferences'], 1, ['meals'], 'summary', 3);
+      return makePlan(1, ['meals'], 'summary', 3);
     case 'eating_out':
-      return makePlan('focused', ['nutrition'], 'minimal', ['preferences'], 1, ['meals'], 'summary', 5);
+      return makePlan(1, ['meals'], 'summary', 5);
     case 'mvd':
-      return makePlan('minimal', ['demographics'], 'full', ['persona', 'habits'], 3, ['metrics'], 'summary', 10);
+      return makePlan(3, ['metrics'], 'summary', 10);
     case 'plateau':
-      return makePlan('full', ['health', 'nutrition', 'training', 'demographics'], 'full', ['patterns', 'persona', 'preferences', 'strength', 'habits'], 21, ['metrics', 'workouts', 'reports'], 'full', 5);
+      return makePlan(21, ['metrics', 'workouts', 'reports'], 'full', 5);
     case 'simulation':
-      return makePlan('focused', ['nutrition'], 'minimal', ['preferences'], 1, ['meals'], 'full', 5);
+      return makePlan(1, ['meals'], 'full', 5);
     case 'recovery':
-      return makePlan('full', ['health', 'nutrition', 'demographics'], 'full', ['patterns', 'persona'], 7, ['meals', 'metrics'], 'summary', 10);
+      return makePlan(7, ['meals', 'metrics'], 'summary', 10);
     case 'onboarding':
-      // Full layer1 is critical: task-card chats persist into profiles/goals/food_preferences,
-      // and other onboarding sessions MUST see that data so they don't re-ask what's already
-      // been answered. Includes motivation, goal, nutrition prefs, training background.
-      // Layer2 still 'none' since onboarding is primarily populating, not reasoning from,
-      // learned insights. Layer4 reference keeps the immediate chat turn context intact.
-      return makePlan('full', ['health', 'nutrition', 'training', 'demographics'], 'minimal', ['preferences'], 0, [], 'reference', 10);
+      // Onboarding is primarily POPULATING the profile, not reasoning from history — so it reads
+      // no day data. It still receives the full identity layers from the floor, which is what
+      // stops a task-card chat from re-asking something an earlier session already answered.
+      return makePlan(0, [], 'reference', 10);
     case 'plan_diet':
-      // Full profile + rich layer2 (food preferences, portion calibration, alcohol pattern,
-      // micro-nutrient risks) so the plan chat has everything needed to negotiate.
-      return makePlan('full', ['health', 'nutrition', 'demographics'], 'full', ['preferences', 'patterns'], 14, ['meals', 'metrics'], 'reference', 10);
+      return makePlan(14, ['meals', 'metrics'], 'reference', 10);
     case 'plan_workout':
-      // Same idea but training-focused. Layer3 includes recent workouts so AI respects
-      // existing intensity/frequency.
-      return makePlan('full', ['health', 'training', 'demographics'], 'full', ['strength', 'habits', 'preferences'], 14, ['workouts', 'metrics'], 'reference', 10);
+      // Recent workouts so the AI respects existing intensity/frequency.
+      return makePlan(14, ['workouts', 'metrics'], 'reference', 10);
     case 'daily_log':
-      // Day-to-day conversational logging. Needs profile for TDEE context, recent meals
-      // and workouts (7 days) for pattern continuity, and layer2 patterns to recognize
-      // habits. Layer4 full so the chat thread stays coherent.
+      // Day-to-day conversational logging: recent meals and workouts for pattern continuity.
       // AI-behaviour #7: 'commitments' + 'reports' added — the coach could not see its own open
       // commitments or yesterday's prescribed action on the app's HIGHEST-frequency mode, so it could
       // never follow up on what it asked for. The due/upcoming formatter already exists downstream.
-      return makePlan('focused', ['nutrition', 'training'], 'minimal', ['patterns', 'preferences'], 7, ['meals', 'workouts', 'metrics', 'reports', 'commitments'], 'full', 15);
+      return makePlan(7, ['meals', 'workouts', 'metrics', 'reports', 'commitments'], 'full', 15);
     case 'periodic':
-      return makePlan('full', ['health', 'nutrition', 'training', 'demographics'], 'full', ['patterns', 'persona', 'preferences', 'strength', 'habits'], 7, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 10);
+      return makePlan(7, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 10);
     default:
       return buildCoachingPlan('general_coaching');
   }
@@ -416,94 +411,50 @@ function buildRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
 function buildRegisterPlan(subtype: MessageSubtype): RetrievalPlan {
   switch (subtype) {
     case 'meal_log':
-      return makePlan('focused', ['nutrition'], 'minimal', ['preferences'], 1, ['meals'], 'full', 3);
+      return makePlan(1, ['meals'], 'full', 3);
     case 'workout_log':
-      return makePlan('focused', ['training'], 'minimal', ['strength'], 1, ['workouts'], 'full', 3);
+      return makePlan(1, ['workouts'], 'full', 3);
     case 'weight_log':
-      return makePlan('focused', ['demographics'], 'minimal', ['patterns'], 7, ['metrics'], 'summary', 3);
+      return makePlan(7, ['metrics'], 'summary', 3);
     default: // water_sleep_mood_log
-      return makePlan('minimal', ['demographics'], 'none', [], 1, ['metrics'], 'summary', 3);
+      return makePlan(1, ['metrics'], 'summary', 3);
   }
 }
 
 function buildPlanPlan(subtype: MessageSubtype): RetrievalPlan {
-  if (subtype === 'workout_plan') {
-    return makePlan(
-      'full', ['training', 'health', 'demographics'],
-      'full', ['strength', 'habits', 'patterns'],
-      3, ['workouts', 'metrics'], 'summary', 5
-    );
-  }
+  if (subtype === 'workout_plan') return makePlan(3, ['workouts', 'metrics'], 'summary', 5);
   // meal_guidance
-  return makePlan(
-    'full', ['nutrition', 'health', 'demographics'],
-    'full', ['preferences', 'patterns'],
-    3, ['meals', 'metrics'], 'summary', 5
-  );
+  return makePlan(3, ['meals', 'metrics'], 'summary', 5);
 }
 
 function buildCoachingPlan(subtype: MessageSubtype): RetrievalPlan {
   switch (subtype) {
     case 'symptom_decision':
-      return makePlan(
-        'focused', ['health', 'demographics'],
-        'full', ['patterns'],
-        7, ['meals', 'metrics'], 'summary', 10
-      );
+      return makePlan(7, ['meals', 'metrics'], 'summary', 10);
     case 'motivation':
-      return makePlan(
-        'minimal', ['demographics'],
-        'full', ['persona', 'habits'],
-        3, ['metrics'], 'summary', 10
-      );
+      return makePlan(3, ['metrics'], 'summary', 10);
     case 'behavior_correction':
-      return makePlan(
-        'full', ['nutrition', 'health', 'demographics'],
-        'full', ['patterns', 'persona'],
-        7, ['meals', 'metrics'], 'summary', 10
-      );
+      return makePlan(7, ['meals', 'metrics'], 'summary', 10);
     default: // general_coaching
-      return makePlan(
-        'full', ['health', 'nutrition', 'training', 'demographics'],
-        'full', ['patterns', 'persona', 'preferences', 'strength', 'habits'],
-        7, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 15
-      );
+      return makePlan(7, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 15);
   }
 }
 
 function buildAnalystPlan(subtype: MessageSubtype): RetrievalPlan {
   if (subtype === 'plateau_diagnosis') {
-    return makePlan(
-      'full', ['health', 'nutrition', 'training', 'demographics'],
-      'full', ['patterns', 'persona', 'preferences', 'strength', 'habits'],
-      30, ['metrics', 'workouts', 'reports'], 'full', 5
-    );
+    return makePlan(30, ['metrics', 'workouts', 'reports'], 'full', 5);
   }
   if (subtype === 'weekly_review') {
-    return makePlan(
-      'focused', ['nutrition', 'training', 'demographics'],
-      'full', ['patterns'],
-      7, ['meals', 'workouts', 'metrics', 'reports'], 'full', 5
-    );
+    return makePlan(7, ['meals', 'workouts', 'metrics', 'reports'], 'full', 5);
   }
   // general_analysis
-  return makePlan(
-    'full', ['health', 'nutrition', 'training', 'demographics'],
-    'full', ['patterns', 'persona', 'preferences', 'strength', 'habits'],
-    14, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 10
-  );
+  return makePlan(14, ['meals', 'workouts', 'metrics', 'reports', 'commitments', 'labAlerts'], 'full', 10);
 }
 
 function buildQAPlan(subtype: MessageSubtype): RetrievalPlan {
-  if (subtype === 'qa_personalized') {
-    return makePlan(
-      'focused', ['health', 'nutrition', 'demographics'],
-      'minimal', ['preferences'],
-      3, ['meals', 'metrics'], 'summary', 5
-    );
-  }
+  if (subtype === 'qa_personalized') return makePlan(3, ['meals', 'metrics'], 'summary', 5);
   // qa_general (already handled above, but as fallback)
-  return makePlan('minimal', ['demographics'], 'none', [], 0, [], 'reference', 5);
+  return makePlan(0, [], 'reference', 5);
 }
 
 // ─── Conversational floor ───
@@ -536,8 +487,6 @@ const CONVERSATIONAL_FLOOR = {
   layer4MaxMessages: 30,
 };
 
-const L1_RANK: Record<Layer1Scope, number> = { minimal: 0, focused: 1, full: 2 };
-const L2_RANK: Record<Layer2Scope, number> = { none: 0, minimal: 1, full: 2 };
 const L3_RANK: Record<Layer3Detail, number> = { reference: 0, summary: 1, full: 2 };
 
 function union<T>(a: T[], b: T[]): T[] {
@@ -547,9 +496,14 @@ function union<T>(a: T[], b: T[]): T[] {
 /**
  * Public entry point: raise any plan to the conversational floor.
  *
+ * The identity layers (1 and 2 — who the user is, what we have learned) are not raised, they are
+ * ASSIGNED: no turn may ever see less than the whole person. That is the invariant the whole
+ * "tek baglam omurgasi" fix rests on, and it now holds by construction rather than by every
+ * builder remembering to ask for enough.
+ *
  * Tek istisna: pure_greeting hizli yolu. "merhaba"ya cevap vermek icin 30 mesaj + 7 gunluk
  * veri cekmek gereksiz — AMA eski hali kisi ozetini de atiyordu, yani koc selam verirken
- * kim oldugunu unutuyordu. Taban orada da uygulanir, yalnizca gun/mesaj sayisi dusuk kalir.
+ * kim oldugunu unutuyordu. Kimlik katmanlari orada da tam; yalnizca gun/mesaj sayisi dusuk kalir.
  */
 export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
   const plan = buildRetrievalPlan(analysis);
@@ -557,12 +511,10 @@ export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
 
   return {
     ...plan,
-    layer1: L1_RANK[plan.layer1] >= L1_RANK[CONVERSATIONAL_FLOOR.layer1]
-      ? plan.layer1 : CONVERSATIONAL_FLOOR.layer1,
-    layer1Focus: union(plan.layer1Focus, CONVERSATIONAL_FLOOR.layer1Focus),
-    layer2: L2_RANK[plan.layer2] >= L2_RANK[CONVERSATIONAL_FLOOR.layer2]
-      ? plan.layer2 : CONVERSATIONAL_FLOOR.layer2,
-    layer2Focus: union(plan.layer2Focus, CONVERSATIONAL_FLOOR.layer2Focus),
+    layer1: CONVERSATIONAL_FLOOR.layer1,
+    layer1Focus: [...CONVERSATIONAL_FLOOR.layer1Focus],
+    layer2: CONVERSATIONAL_FLOOR.layer2,
+    layer2Focus: [...CONVERSATIONAL_FLOOR.layer2Focus],
     layer3: {
       // Selamlasmada gun verisi cekmeye gerek yok; diger her turda taban gecerli.
       daysBack: isGreeting
@@ -586,17 +538,20 @@ export function getRetrievalPlan(analysis: MessageAnalysis): RetrievalPlan {
 
 // ─── Helper ───
 
+/**
+ * A plan states only what a turn READS: how far back, which data types, how much detail, how much
+ * conversation. The identity layers are filled from the floor by getRetrievalPlan — passing them
+ * here would be writing a value that is overwritten one call later.
+ */
 function makePlan(
-  l1: Layer1Scope, l1Focus: Layer1Focus[],
-  l2: Layer2Scope, l2Focus: Layer2Focus[],
   l3Days: number, l3Scope: Layer3DataType[], l3Detail: Layer3Detail,
   l4Max: number
 ): RetrievalPlan {
   return {
-    layer1: l1,
-    layer1Focus: l1Focus,
-    layer2: l2,
-    layer2Focus: l2Focus,
+    layer1: CONVERSATIONAL_FLOOR.layer1,
+    layer1Focus: [...CONVERSATIONAL_FLOOR.layer1Focus],
+    layer2: CONVERSATIONAL_FLOOR.layer2,
+    layer2Focus: [...CONVERSATIONAL_FLOOR.layer2Focus],
     layer3: { daysBack: l3Days, scope: l3Scope, detailLevel: l3Detail },
     layer4MaxMessages: l4Max,
     contextMeta: {
