@@ -25,6 +25,9 @@ export async function writeTurnLog(
       prompt_tokens: receipt?.promptTokens ?? 0,
       completion_tokens: receipt?.completionTokens ?? 0,
       total_tokens: receipt?.totalTokens ?? 0,
+      // migration 104: thinking is billed as output, so without this column an expensive ANSWER
+      // and expensive THINKING are indistinguishable — and thinking is the lever we control.
+      reasoning_tokens: receipt?.reasoningTokens ?? 0,
       latency_ms: receipt?.latencyMs ?? 0,
       finish_reason: receipt?.finishReason ?? null,
       fallback_reason: receipt?.fallbackReason ?? null,

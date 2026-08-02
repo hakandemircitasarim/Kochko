@@ -14,31 +14,20 @@ import { supabaseAdmin } from '../shared/supabase-admin.ts';
 import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep, updateLayer2, detectDayOfWeekDrift, detectDerailFoods } from '../shared/memory.ts';
 import { composeGeneralSummary } from '../shared/memory-mirror.ts';
 import { denyIfNotCron } from '../shared/cron-auth.ts';
+import { chatCompletion, EFFORT } from '../shared/openai.ts';
 
-const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
-// Same provider-config knob as shared/openai.ts — point at any OpenAI-compatible
-// endpoint via the OPENAI_BASE_URL secret (defaults to OpenAI).
-const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
 // FIX (audit AI-MDL-01): route the extractor's model through KOCHKO_MODEL_FAST so a backend
-// swap (OPENAI_BASE_URL → OpenRouter/Azure/self-host) doesn't leave this cron pinned to the
-// literal 'gpt-4o-mini' (a model name the gateway may not recognize → 404/400). Defaults to the
-// previous literal on OpenAI.
-const EXTRACTOR_MODEL = Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-4o-mini';
+// swap (OPENAI_BASE_URL → OpenRouter/Azure/self-host) doesn't leave this cron pinned to a
+// literal model name the gateway may not recognize → 404/400.
+//
+// This names the MECHANICAL tier (see model-router.mechanicalModel): the output is a fixed JSON
+// shape the parse below validates, so the cheap model cannot drift undetected.
+const EXTRACTOR_MODEL = Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-5.6-luna';
 
-// FIX (audit AI-MDL-02): hard timeout on the extraction fetch. Without it a hung upstream
-// (custom gateway stall) blocks the whole cron run until the edge wall-clock kills it. 45s is
-// well above p99; on timeout we skip this user (the checkpoint is not advanced) so the next run
-// retries cleanly instead of leaving an indefinite hang.
-const EXTRACTOR_TIMEOUT_MS = 45_000;
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = EXTRACTOR_TIMEOUT_MS): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// The provider knobs (OPENAI_API_KEY / OPENAI_BASE_URL) and the timeout+retry wrapper that used
+// to live here now belong to shared/openai.ts, which this function calls instead of hand-rolling
+// its own POST. Keeping a second copy is what let this cron drift onto a body shape the model
+// family rejects — with the failure swallowed by `if (!res.ok) continue`.
 
 const TIER2_FIELDS = [
   'occupation', 'work_start', 'work_end', 'sleep_time', 'wake_time', 'sleep_quality',
@@ -249,36 +238,33 @@ serve(async (req: Request) => {
         .map(m => `[${m.role}]: ${(m.content as string).substring(0, 500)}`)
         .join('\n');
 
-      // 4. Call the fast model for extraction (env-driven + timeout-wrapped)
-      let openaiRes: Response;
+      // 4. Call the mechanical model for extraction.
+      //
+      // 2026-08: this used to hand-roll its own POST to /chat/completions with `temperature` and
+      // `max_tokens`, reading `choices[0]` off the response. Reasoning models reject that body
+      // outright, and the old `if (!openaiRes.ok) continue` swallowed the 400 without logging it —
+      // so the GPT-5.6 switch would have silently stopped ALL extraction for every user, with no
+      // error anywhere. Routing through the shared client makes the transport follow whatever
+      // KOCHKO_MODEL_FAST names, and inherits its timeout/backoff/fallback hardening.
+      //
+      // This is the canonical "mechanical tier" call: output is a fixed JSON shape that the parse
+      // below validates, so the cheap model cannot drift undetected, and thinking buys nothing.
+      let content: string;
       try {
-        openaiRes = await fetchWithTimeout(`${OPENAI_BASE_URL}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${OPENAI_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: EXTRACTOR_MODEL,
-            temperature: 0.1,
-            max_tokens: 1000,
-            messages: [
-              { role: 'system', content: 'Sen bir veri çıkarsama asistanısın. Sohbet metinlerinden yapılandırılmış veri çıkarsıyorsun. Sadece JSON döndür.' },
-              { role: 'user', content: EXTRACTION_PROMPT(fields, messagesText) },
-            ],
-          }),
-        });
-      } catch (fetchErr) {
-        // Timeout/abort or network error — skip this user without advancing the checkpoint
-        // so the next cron run retries the same window.
-        console.error(`[Extractor] OpenAI fetch failed for ${userId}:`, (fetchErr as Error).message);
+        content = await chatCompletion<string>(
+          [
+            { role: 'system', content: 'Sen bir veri çıkarsama asistanısın. Sohbet metinlerinden yapılandırılmış veri çıkarsıyorsun. Sadece JSON döndür.' },
+            { role: 'user', content: EXTRACTION_PROMPT(fields, messagesText) },
+          ],
+          { model: EXTRACTOR_MODEL, temperature: 0.1, reasoningEffort: EFFORT.register, maxTokens: 1000, jsonRaw: true },
+        );
+      } catch (llmErr) {
+        // Timeout/abort, network error, or an upstream rejection. Skip this user WITHOUT advancing
+        // the checkpoint so the next cron run retries the same window — but say so out loud, so a
+        // systematic failure (bad model id, rejected parameter) is visible instead of silent.
+        console.error(`[Extractor] extraction call failed for ${userId}:`, (llmErr as Error).message);
         continue;
       }
-
-      if (!openaiRes.ok) continue;
-
-      const openaiData = await openaiRes.json() as { choices?: { message?: { content?: string } }[] };
-      const content = openaiData.choices?.[0]?.message?.content ?? '{}';
 
       // 5. Parse extracted data
       let extracted: Record<string, unknown> = {};

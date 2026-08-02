@@ -7,7 +7,7 @@
  * Max 2-3 proactive messages per user per day.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
+import { chatCompletion, TEMPERATURE, EFFORT } from '../shared/openai.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
 import { writeTurnLog } from '../shared/turn-log.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
@@ -1686,7 +1686,7 @@ ${sentTodayContext}`;
       let nudgeRc: UsageReceipt | null = null;
       const result = await chatCompletion<NudgeResult>(
         [{ role: 'system', content: NUDGE_PROMPT }, { role: 'user', content: context }],
-        { temperature: TEMPERATURE.coaching, maxTokens: 200, jsonMode: true, onReceipt: (r) => { nudgeRc = r; } }
+        { temperature: TEMPERATURE.coaching, reasoningEffort: EFFORT.coaching, maxTokens: 200, jsonMode: true, onReceipt: (r) => { nudgeRc = r; } }
       );
       // #arch step 5 (audit ledger-gap): the per-user proactive LLM call was completely untracked.
       writeTurnLog(profile.id, 'ai-proactive', 'nudge', nudgeRc).then(() => {}, () => {});

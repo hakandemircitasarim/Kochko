@@ -6,7 +6,7 @@
  * Called when user requests plan or on morning schedule.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
+import { chatCompletion, TEMPERATURE, EFFORT } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2 } from '../shared/memory.ts';
 // #arch S1: ai-plan now uses the SAME context builder as chat (context-builders.ts) instead of a
@@ -585,7 +585,7 @@ serve(async (req: Request) => {
         { role: 'system', content: PLAN_SYSTEM },
         { role: 'user', content: prompt },
       ],
-      { temperature: TEMPERATURE.plan, maxTokens: 3000, jsonMode: true, onReceipt: (r) => { dailyRc = r; } }
+      { temperature: TEMPERATURE.plan, reasoningEffort: EFFORT.plan, maxTokens: 3000, jsonMode: true, onReceipt: (r) => { dailyRc = r; } }
     );
     // #arch step 5: plan generation is the priciest LLM call — log its cost/model/latency too.
     writeTurnLog(userId, 'ai-plan', 'plan_daily', dailyRc).then(() => {}, () => {});
@@ -983,7 +983,7 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
       { role: 'system', content: WEEKLY_PLAN_SYSTEM },
       { role: 'user', content: prompt },
     ],
-    { temperature: TEMPERATURE.plan, maxTokens: 5000, jsonMode: true, onReceipt: (r) => { weeklyRc = r; } }
+    { temperature: TEMPERATURE.plan, reasoningEffort: EFFORT.plan, maxTokens: 5000, jsonMode: true, onReceipt: (r) => { weeklyRc = r; } }
   );
   // #arch step 5: log the weekly plan generation cost/model/latency.
   writeTurnLog(userId, 'ai-plan', 'plan_weekly', weeklyRc).then(() => {}, () => {});

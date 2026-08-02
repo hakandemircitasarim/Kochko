@@ -13,7 +13,7 @@
  * 8. Store conversation
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { chatCompletion, buildVisionContent, TEMPERATURE, MODELS } from '../shared/openai.ts';
+import { chatCompletion, buildVisionContent, TEMPERATURE, EFFORT, MODELS } from '../shared/openai.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
 // B2a: the typed action receipt — ONE definition, read by both runtimes (contracts/ discipline).
 import type { ActionReceipt } from '../shared/contracts/turn-envelope.ts';
@@ -1069,11 +1069,14 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       reservedUserMessageId = reservation.reservedMessageId;
     }
 
-    // Call OpenAI (Spec 5.27: temperature by mode, model router for tier selection)
+    // Call OpenAI (Spec 5.27: temperature by mode; the router now selects REASONING EFFORT —
+    // one model, one memory, only the pause before answering varies. See model-router.ts.)
     const modelSelection = selectModel(analysis, !!image_base64, effectiveMode);
     // F1/B1b: temperature keyed by the canonical mode. The raw key made every promoted plan turn
     // fall through to the 0.5 default — the app's most structure-sensitive turns ran HOTTER than
     // the plan contract intended (plan_diet/plan_workout/daily_log/onboarding keys exist now).
+    // Only reaches the wire on the legacy /chat/completions path (gpt-4o rollback); reasoning
+    // models reject temperature outright, so openai.ts drops it there.
     const temperature = TEMPERATURE[effectiveMode] ?? 0.5;
 
     // #arch S2: STRUCTURED-ENVELOPE output. The model now returns {"reply":"...","actions":[...]}
@@ -1086,7 +1089,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     let turnReceipt: UsageReceipt | null = null;
     const rawModelOut = await chatCompletion<string>(
       gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[],
-      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, jsonRaw: true, onReceipt: (r) => { turnReceipt = r; } }
+      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, reasoningEffort: modelSelection.effort, jsonRaw: true, onReceipt: (r) => { turnReceipt = r; } }
     );
     let assistantMessage: string;
     let actions: Record<string, unknown>[];
@@ -1909,7 +1912,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
             ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
             { role: 'user', content: `SADECE gecerli bir JSON objesi don — haftalik ${isDietRegen ? 'diyet' : 'antrenman'} planinin TAMAMI. Prose/aciklama/markdown YOK, yalnizca json. Sema (aynen bu alanlar): ${schemaHint}. ZORUNLU: "days" dizisinde TAM 7 gun (day_index 0..6, Pazartesi..Pazar), her gun eksiksiz${isDietRegen ? ', "targets" dolu, her gunun ogun total_kcal toplami targets.kcal ile ~esit' : ', dinlenme gunlerinde rest_day:true'}. "...", kisaltma, "devami benzer" YASAK. Kullanicinin alerjen/sevmedigi besinlerini ASLA koyma.` },
           ],
-          { model: modelSelection.model, temperature: 0.2, maxTokens: 8000, jsonMode: true, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
+          { model: modelSelection.model, temperature: 0.2, reasoningEffort: EFFORT.plan, maxTokens: 8000, jsonMode: true, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
         );
         // json_object returns a parsed object. It IS the snapshot — unless the model nested it
         // under a wrapper key ({"plan": {...}} / {"plan_snapshot": {...}}); unwrap defensively.
@@ -1977,7 +1980,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
                   ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
                   { role: 'user', content: `Onceki plan kullanicinin ALERJENINI iceriyordu: ${excludeList}. Bu KESIN YASAK. Bu besinleri ve TUM turevlerini (deniz urunleri ise karides/midye/kalamar/somon/levrek/balik dahil) plandan TAMAMEN cikar, yerine guvenli alternatif koy. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> uret: 7 gun (day_index 0-6) eksiksiz, "targets" dolu, HICBIR gunde ${excludeList} veya turevi olmasin. "...", kisaltma, markdown KULLANMA.` },
                 ],
-                { model: modelSelection.model, temperature: 0.2, maxTokens: 8000, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
+                { model: modelSelection.model, temperature: 0.2, reasoningEffort: EFFORT.plan, maxTokens: 8000, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
               );
               const retry = extractPlanSnapshot(forcedRaw);
               if (retry.snapshot && snapshotUsable(retry.snapshot) && scanViolations(retry.snapshot).length === 0) {
@@ -2035,7 +2038,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
                   ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
                   { role: 'user', content: `Onceki program kullanicinin SAKATLIGINI zorlayan egzersizler iceriyordu (etkilenen bolge: ${partsTr}). Bu KESIN YASAK. O bolgeyi yukleyen tum hareketleri (ornegin diz icin squat/lunge/leg press/kosu/ziplama; bel icin deadlift/good morning) plandan TAMAMEN cikar, yerine guvenli alternatif (izolasyon, yuzme, ust vucut, hafif kardiyo) koy. SIMDI yalnizca gecerli ve TAM bir <plan_snapshot>...</plan_snapshot> uret: 7 gun (day_index 0-6), her aktif gunde exercises dolu, HICBIR gunde sakat bolgeyi yukleyen hareket olmasin. "...", kisaltma, markdown KULLANMA.` },
                 ],
-                { model: modelSelection.model, temperature: 0.2, maxTokens: 8000, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
+                { model: modelSelection.model, temperature: 0.2, reasoningEffort: EFFORT.plan, maxTokens: 8000, onReceipt: (r) => { writeTurnLog(userId, 'ai-chat', 'plan_regen', r).then(() => {}, () => {}); } },
               );
               const retry = extractPlanSnapshot(forcedRaw);
               if (retry.snapshot && snapshotUsable(retry.snapshot) && scanInjury(retry.snapshot).length === 0) {
@@ -3616,7 +3619,9 @@ async function forceMealLogAction(
         { role: 'system', content: systemInstruction },
         { role: 'user', content: message },
       ],
-      { model, temperature: 0.2, maxTokens: 600, onReceipt: (r) => { rc = r; } },
+      // Pure extraction into a fixed shape: thinking buys nothing and costs seconds on a turn the
+      // user is already waiting through. EFFORT.register is the canonical `none`.
+      { model, temperature: 0.2, reasoningEffort: EFFORT.register, maxTokens: 600, onReceipt: (r) => { rc = r; } },
     );
     writeTurnLog(userId, 'ai-chat', 'force_meal_extract', rc).then(() => {}, () => {});
   } catch (e) {
@@ -3696,7 +3701,7 @@ async function forceWorkoutLogAction(
         { role: 'system', content: systemInstruction },
         { role: 'user', content: message },
       ],
-      { model, temperature: 0.2, maxTokens: 500, onReceipt: (r) => { rc = r; } },
+      { model, temperature: 0.2, reasoningEffort: EFFORT.register, maxTokens: 500, onReceipt: (r) => { rc = r; } },
     );
     writeTurnLog(userId, 'ai-chat', 'force_workout_extract', rc).then(() => {}, () => {});
   } catch (e) {
@@ -3747,7 +3752,7 @@ async function forceGoalAction(
         { role: 'system', content: systemInstruction },
         { role: 'user', content: message },
       ],
-      { model, temperature: 0.1, maxTokens: 200, onReceipt: (r) => { rc = r; } },
+      { model, temperature: 0.1, reasoningEffort: EFFORT.register, maxTokens: 200, onReceipt: (r) => { rc = r; } },
     );
     writeTurnLog(userId, 'ai-chat', 'force_goal_extract', rc).then(() => {}, () => {});
   } catch (e) {

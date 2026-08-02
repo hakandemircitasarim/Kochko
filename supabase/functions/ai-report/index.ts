@@ -7,7 +7,7 @@
  * Weekly: weight trend, compliance avg, budget uyumu, strategy, plan revision.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { chatCompletion, TEMPERATURE } from '../shared/openai.ts';
+import { chatCompletion, TEMPERATURE, EFFORT } from '../shared/openai.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
 import { writeTurnLog } from '../shared/turn-log.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
@@ -294,7 +294,7 @@ KISITLAR (tomorrow_action ve yorumlarda ASLA ihlal etme): ${[
     : '';
   const report = await chatCompletion<Record<string, unknown>>(
     [{ role: 'system', content: DAILY_REPORT_SYSTEM }, { role: 'user', content: prompt + constraintNote }],
-    { temperature: TEMPERATURE.analyst, maxTokens: 1500, jsonMode: true, onReceipt: (r) => { rc = r; } }
+    { temperature: TEMPERATURE.analyst, reasoningEffort: EFFORT.analyst, maxTokens: 1500, jsonMode: true, onReceipt: (r) => { rc = r; } }
   );
   writeTurnLog(userId, 'ai-report', 'report_daily', rc).then(() => {}, () => {});
 
@@ -431,7 +431,7 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
   let rc: UsageReceipt | null = null;
   const report = await chatCompletion<Record<string, unknown>>(
     [{ role: 'system', content: WEEKLY_REPORT_SYSTEM }, { role: 'user', content: prompt }],
-    { temperature: TEMPERATURE.analyst, maxTokens: 2000, jsonMode: true, onReceipt: (r) => { rc = r; } }
+    { temperature: TEMPERATURE.analyst, reasoningEffort: EFFORT.analyst, maxTokens: 2000, jsonMode: true, onReceipt: (r) => { rc = r; } }
   );
   writeTurnLog(userId, 'ai-report', 'report_weekly', rc).then(() => {}, () => {});
 
@@ -550,7 +550,7 @@ Gunluk Uyum: ${dailyReports.map((r: { date: string; compliance_score: number }) 
   let rc: UsageReceipt | null = null;
   const report = await chatCompletion<Record<string, unknown>>(
     [{ role: 'system', content: MONTHLY_REPORT_SYSTEM }, { role: 'user', content: prompt }],
-    { temperature: TEMPERATURE.analyst, maxTokens: 2500, jsonMode: true, onReceipt: (r) => { rc = r; } }
+    { temperature: TEMPERATURE.analyst, reasoningEffort: EFFORT.analyst, maxTokens: 2500, jsonMode: true, onReceipt: (r) => { rc = r; } }
   );
   writeTurnLog(userId, 'ai-report', 'report_monthly', rc).then(() => {}, () => {});
 
