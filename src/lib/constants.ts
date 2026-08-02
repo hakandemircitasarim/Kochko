@@ -4,22 +4,29 @@ import { DARK_COLORS } from './theme';
 // In components, prefer useTheme().colors for dynamic theme support.
 export const COLORS = DARK_COLORS;
 
-// FIX (audit UI-DS-04): `lg: 14` is an intentional half-step, not a 4dp-grid
-// error — it is the primary content padding in Card.tsx and many screens. Bumping
-// it to 16 would re-pad the whole app and shift current layouts, so the series is
-// left as-is by design. New code should still prefer the 4dp values (xs/sm/md/xl/xxl).
-export const SPACING = { xs: 4, sm: 8, md: 12, lg: 14, xl: 16, xxl: 24 } as const;
+// RE-TUNED 2026-08 (see src/lib/design.ts for the reasoning).
+//
+// The previous series stopped at 24 and contained a deliberate off-grid half-step (`lg: 14`). Both
+// were defended on the grounds that changing them would "re-pad the whole app" — which is exactly
+// what needed to happen: with no value above 24, no section could be separated from the next by
+// more than a thumbnail's width, so every screen read as one undifferentiated column. That is the
+// single biggest reason the app looks like a document instead of a product.
+//
+// `lg` is back on the 4dp grid (14 → 16) and the top end finally exists. Padding growing is the
+// safe direction for a layout: content gets more room, it does not get clipped.
+//
+// New code should prefer SPACE from design.ts, which is the same ladder with role names.
+export const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 28, xxxl: 36, huge: 48 } as const;
 // `xl2: 18` fills the 16→20 gap so authors stop reaching for raw fontSize:18 on
 // sub-headings; existing steps are unchanged to avoid shifting current layouts.
 // FIX (audit UI-DS-06): keys are ordered to match their values (11→28), so the
 // literal reads monotonically. NB the name `xl2` is SMALLER than `xl` (18 < 20) —
 // it is the in-between sub-heading step, NOT "extra-extra-large". Pick by value.
 export const FONT = { xs: 11, sm: 13, md: 14, lg: 16, xl2: 18, xl: 20, xxl: 24, hero: 28 } as const;
-// FIX (audit UI-DS-04): `xxl` is an alias of `xl` (both 24) kept only for call-site
-// symmetry with SPACING/FONT — prefer `xl`. `pill` (99) and `full` (999) are both
-// "fully round"; both are in live use (pill: StreakBadge, full: elsewhere) so neither
-// is removed here to avoid cross-file breakage — treat `full` as the canonical one.
-export const RADIUS = { sm: 8, md: 12, lg: 16, xl: 24, xxl: 24, pill: 99, full: 999 } as const;
+// RE-TUNED 2026-08. Rounder by one step across the board: at 12 a card reads as "a box", at 18 it
+// reads as "a surface". `xxl` is no longer a duplicate of `xl` — it now has its own value for
+// sheets and modals. `pill`/`full` both mean fully-round and both remain in live use.
+export const RADIUS = { sm: 10, md: 14, lg: 18, xl: 24, xxl: 32, pill: 999, full: 999 } as const;
 export const WATER_INCREMENT = 0.25;
 
 /**

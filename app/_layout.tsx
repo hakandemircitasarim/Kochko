@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Stack, router, useSegments } from 'expo-router';
 import { routeForNotificationType } from '@/services/notifications.service';
@@ -40,7 +40,13 @@ export default function RootLayout() {
   // a tap while running and a cold start launched by the notification (useLastNotificationResponse
   // returns the launching response). Deduped by identifier so a re-render never re-routes;
   // gated on an active session so an unauthenticated user isn't pushed past the login guard.
-  const lastNotifResponse = Notifications.useLastNotificationResponse();
+  // expo-notifications has no `getLastNotificationResponse` on web, and the hook calls it during
+  // render — so on web this THREW inside RootLayout and the whole app tree failed to mount (blank
+  // screen, only an error-boundary warning in the console). Platform.OS is fixed for the lifetime
+  // of the process, so this branch is stable across renders and does not violate the rules of
+  // hooks. Guarding here (rather than not rendering the layout) keeps `expo start --web` usable
+  // for UI work; on device the behaviour is unchanged.
+  const lastNotifResponse = Platform.OS === 'web' ? null : Notifications.useLastNotificationResponse();
   const handledNotifKey = useRef<string | null>(null);
   useEffect(() => {
     if (!authInitialized || !lastNotifResponse) return;
