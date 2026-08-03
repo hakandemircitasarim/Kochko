@@ -326,6 +326,13 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
     ...(needsBirthYear ? [!!birthYear] : []),
   ];
   const filledCount = requiredFilled.filter(Boolean).length;
+  // NB the denominator legitimately moves: picking a lose/gain goal adds a target weight, and the
+  // birth-year field drops out once a saved profile supplies one. Driving a fresh account showed
+  // 0/6 -> 5/7 -> 6/6. Both numbers come from the same array so the fraction is never internally
+  // wrong — the defect was the heading claiming a fixed "5 bilgi" alongside it (fixed below).
+  // Resist "stabilising" this by freezing or ratcheting the total: freezing at mount would re-ask
+  // a returning user for a birth year they already gave (`profile` loads async), and ratcheting
+  // would strand the meter at 6/7 once a requirement legitimately disappears.
   const totalCount = requiredFilled.length;
 
   // FIX (ux-round4 #4): inline range errors for boy/kilo (comma-aware for kilo) instead of a
@@ -681,7 +688,12 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
         <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.lg }}>
           {isReOnboarding
             ? 'Bilgilerin mevcut hallerinle dolu geliyor — sadece değişenleri düzelt.'
-            : 'Sadece 5 bilgi ile başlayalım — sonra Koç seni tanımaya başlayacak.'}
+            /* Was "Sadece 5 bilgi ile başlayalım". Live-driven on a fresh account, the meter next
+               to this line read 0/6, then 5/7 after a goal was picked, then 6/6 — three different
+               totals while the copy insisted on a fourth. The count genuinely varies (a
+               lose/gain goal adds a target weight), so the honest fix is to stop naming a number
+               here and let the meter be the single source of truth. */
+            : 'Birkaç bilgiyle başlayalım — sonra Koç seni tanımaya başlayacak.'}
         </Text>
 
         {/* Physical */}
