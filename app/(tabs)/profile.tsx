@@ -20,6 +20,7 @@ import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { goalLabelTR, coachToneLabelTR } from '@/lib/labels';
 import { calculateProfileCompletion, CATEGORY_LABELS } from '@/lib/profile-completion';
@@ -94,7 +95,7 @@ export default function ProfileScreen() {
       {/* FIX (ux-round2 #17): profile is where users instinctively look for a setting — give the
           header a search entry that opens the settings screen with its search box focused. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg }}>
-        <Text accessibilityRole="header" style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text }}>
+        <Text accessibilityRole="header" style={{ ...TYPE.title2, color: colors.text }}>
           Profil
         </Text>
         <TouchableOpacity
@@ -126,7 +127,7 @@ export default function ProfileScreen() {
           }}>
             <Text style={{ color: colors.primary, fontSize: 22, fontWeight: '700' }}>{initials}</Text>
           </View>
-          <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600' }}>{displayName}</Text>
+          <Text style={{ ...TYPE.headline, color: colors.text }}>{displayName}</Text>
         </TouchableOpacity>
         {user?.email && (
           <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2, opacity: 0.7 }} numberOfLines={1}>{user.email}</Text>
@@ -323,7 +324,7 @@ function SectionTitle({ label, colors }: { label: string; colors: any }) {
     // FIX (ux-pass5): textTransform:'uppercase' locale bilmez — 'Veri & gizlilik' iOS/EN-locale
     // Android'de 'VERI & GIZLILIK' oluyordu. Metin tr-TR ile büyütülür, CSS transform kaldırıldı
     // (PlanOverviewCards #11e ile aynı desen).
-    <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+    <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>
       {label.toLocaleUpperCase('tr-TR')}
     </Text>
   );
@@ -352,7 +353,7 @@ function InfoBox({ label, value, unit, colors, small }: { label: string; value: 
       padding: SPACING.lg, alignItems: 'center',
     }}>
       <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: SPACING.xs }}>{label}</Text>
-      <Text style={{ color: colors.text, fontSize: small ? 13 : 20, fontWeight: '700' }}>{value}</Text>
+      <Text style={{ ...(small ? TYPE.caption : TYPE.title3), color: colors.text, fontWeight: '700' }}>{value}</Text>
       {unit ? <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>{unit}</Text> : null}
     </View>
   );
@@ -378,7 +379,10 @@ function MenuRow({ icon, color, label, value, onPress, colors, last, premium }: 
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 }}>
         <Ionicons name={icon as any} size={18} color={color} />
-        <Text style={{ color: label.includes('sil') ? colors.error : colors.text, fontSize: 13, fontWeight: '400' }}>{label}</Text>
+        {/* Settings rows are a long list the user SCANS, and each one is a tap target. At 13px the
+            label was smaller than the app's own reading size, so the densest screen was also the
+            hardest to read. TYPE.body is the reading step. */}
+        <Text style={{ ...TYPE.body, color: label.includes('sil') ? colors.error : colors.text }}>{label}</Text>
       </View>
       {value && <Text style={{ color: colors.textMuted, fontSize: 12, marginRight: SPACING.sm }}>{value}</Text>}
       {premium && (
