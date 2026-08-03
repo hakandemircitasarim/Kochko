@@ -527,6 +527,15 @@ export default function TodayScreen() {
   })();
   const daysLeftInWeek = 7 - weekDowMon;
   const dailyPace = daysLeftInWeek > 0 ? Math.round(weeklyRemaining / daysLeftInWeek) : 0;
+  // The pace is only meaningful if the user has been tracking all week. Someone who STARTED
+  // mid-week carries days of untouched budget they never had the chance to eat, and dividing that
+  // by the days left produces an instruction, not an observation — driven on a fresh account this
+  // rendered "Kalan 1 gün · günde ~13.126 kcal" on a 1827 kcal/day plan. In a calorie app that is
+  // not merely useless: it is a number someone could act on.
+  //
+  // A pace far above the daily target means the weekly frame does not describe this user's week,
+  // so the honest move is to say nothing rather than to say something absurd with confidence.
+  const paceIsCredible = coachTargetMid > 0 && dailyPace <= coachTargetMid * 1.35;
 
   // Show skeleton placeholders only on the very first cold fetch of the session
   // so a real-but-empty day reads as itself instead of a zeroed scaffold flashing
@@ -1156,7 +1165,7 @@ export default function TodayScreen() {
                   bombardımanıydı; oranı bar taşıyor (a11y etiketi tam değerleri korur),
                   eylenebilir bilgi aşağıdaki günlük tempo satırı. */}
               {/* FIX (ux-round2 #7): actionable daily pace from the weekly remaining. */}
-              {weeklyRemaining > 0 && daysLeftInWeek > 0 && (
+              {weeklyRemaining > 0 && daysLeftInWeek > 0 && paceIsCredible && (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
                   Kalan {daysLeftInWeek} gün · günde ~{dailyPace.toLocaleString('tr-TR')} kcal
                 </Text>

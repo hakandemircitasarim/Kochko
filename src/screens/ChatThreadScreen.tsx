@@ -1187,7 +1187,13 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     // clobber a new send because the poll would have already retired.
     startReplyPoll({ mode: 'replace', silent: true });
   };
-  const handleSend = async (retryFrom?: UIMessage) => {
+  /**
+   * `overrideText` sends a message that was never typed into the composer — used by the
+   * complete-intent starter chips. It exists because `input` is React state: `setInput(t)`
+   * followed by `handleSend()` in the same tick would send the PREVIOUS value (usually empty),
+   * which is a silent no-op rather than a visible failure.
+   */
+  const handleSend = async (retryFrom?: UIMessage, overrideText?: string) => {
     if (sendInFlightRef.current || sending) return;
     if (rateLimitedUntil && Date.now() < rateLimitedUntil) return;
     sendInFlightRef.current = true;
@@ -1200,7 +1206,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       // offline is queued for THIS session and replayed on reconnect (processOfflineQueue
       // runs from the reconnect effect below). Photo sends still can't be queued (the queue
       // doesn't carry image bytes), and a retry of an already-failed bubble stays a warning.
-      const offlineText = !retryFrom ? input.trim() : '';
+      const offlineText = !retryFrom ? (overrideText ?? input).trim() : '';
       if (offlineText && !photo) {
         await queueMessageOffline(offlineText, {
           sessionId,
@@ -1240,7 +1246,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         m.id === userMsgId ? { ...m, failed: false, errorMessage: undefined } : m
       ));
     } else {
-      text = input.trim();
+      text = (overrideText ?? input).trim();
       if (!text && !photo) return;
 
       // FIX (audit UX-CHT-05/UX-PRM-02/UX-PRM-05): the SERVER is the authoritative daily
@@ -1485,6 +1491,8 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   const handleSuggestion = (text: string) => {
     setInput(text);
   };
+  /** Complete-intent starter chips send straight away — see StarterSuggestions for why. */
+  const handleStarterSend = (text: string) => { void handleSend(undefined, text); };
 
   // FIX (ux-round2 #16 — adversarial-review): editing a SENT message must not silently discard a
   // non-empty in-progress draft. Read the live input via a ref so this stays a stable callback
@@ -2102,6 +2110,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         <EmptyState
           isOnboarding={!!isOnboarding}
           onSuggestion={handleSuggestion}
+          onSend={handleStarterSend}
           showSuggestions={!taskModeHint}
         />
       ) : (
@@ -2148,7 +2157,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             // Inverted list: ListHeader renders at the VISUAL BOTTOM — starter suggestions
             // sit under the lone first message (FIX audit UX-CHT-03).
             ListHeaderComponent={!taskModeHint && !searchQuery.trim() && messageRows.filter(r => r.kind === 'message').length === 1
-              ? <View style={{ marginTop: SPACING.lg }}><StarterSuggestions isOnboarding={!!isOnboarding} onSuggestion={handleSuggestion} /></View>
+              ? <View style={{ marginTop: SPACING.lg }}><StarterSuggestions isOnboarding={!!isOnboarding} onSuggestion={handleSuggestion} onSend={handleStarterSend} /></View>
               : null}
             contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.sm }}
             onScroll={handleListScroll}
@@ -2732,21 +2741,39 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
 // message container as one FlatList from the first real message on, instead of swapping
 // ScrollView↔FlatList at the 1→2 boundary (which remounted every bubble and replayed
 // all entrance animations at once).
-function StarterSuggestions({ isOnboarding, onSuggestion }: {
+/**
+ * Two kinds of starter, and they must not behave the same way.
+ *
+ * A TEMPLATE contains stand-in specifics ("2 yumurta", "30 yaşında, 80 kilo") that are almost
+ * certainly wrong for this user, so it fills the composer for editing — the earlier decision to
+ * show a pencil rather than a send-arrow was right, for these.
+ *
+ * An INTENT is already complete ("Nereden başlayalım?"). Filling the composer with it and making
+ * the user tap send is a second tap that buys nothing: driven on a device, tapping the row looked
+ * like it had failed, because nothing happened except text appearing somewhere else on screen.
+ *
+ * The icon follows the behaviour: pencil = "you'll edit this", arrow = "this sends".
+ */
+type StarterMode = 'template' | 'intent';
+
+function StarterSuggestions({ isOnboarding, onSuggestion, onSend }: {
   isOnboarding: boolean;
+  /** Fill the composer (templates). */
   onSuggestion: (text: string) => void;
+  /** Send immediately (complete intents). */
+  onSend: (text: string) => void;
 }) {
   const { colors } = useTheme();
   const onboardingSuggestions = [
-    { text: '30 yaşında, 80 kilo, 175 boy erkeğim', icon: 'person-outline' as const, color: colors.success },
-    { text: 'Kilo vermek istiyorum', icon: 'trending-down-outline' as const, color: colors.error },
-    { text: 'Kendimi tanıtmak istiyorum', icon: 'chatbubbles-outline' as const, color: colors.purple },
+    { text: '30 yaşında, 80 kilo, 175 boy erkeğim', icon: 'person-outline' as const, color: colors.success, mode: 'template' as StarterMode },
+    { text: 'Kilo vermek istiyorum', icon: 'trending-down-outline' as const, color: colors.error, mode: 'intent' as StarterMode },
+    { text: 'Kendimi tanıtmak istiyorum', icon: 'chatbubbles-outline' as const, color: colors.purple, mode: 'intent' as StarterMode },
   ];
   const regularSuggestions = [
-    { text: 'Bugün kahvaltıda 2 yumurta yedim', icon: 'restaurant-outline' as const, color: colors.warning },
-    { text: 'Bugünkü planımı oluştur', icon: 'calendar-outline' as const, color: colors.primary },
-    { text: 'Nereden başlayalım?', icon: 'compass-outline' as const, color: colors.purple },
-    { text: 'Evde yapabileceğim antrenman öner', icon: 'barbell-outline' as const, color: colors.pink },
+    { text: 'Bugün kahvaltıda 2 yumurta yedim', icon: 'restaurant-outline' as const, color: colors.warning, mode: 'template' as StarterMode },
+    { text: 'Bugünkü planımı oluştur', icon: 'calendar-outline' as const, color: colors.primary, mode: 'intent' as StarterMode },
+    { text: 'Nereden başlayalım?', icon: 'compass-outline' as const, color: colors.purple, mode: 'intent' as StarterMode },
+    { text: 'Evde yapabileceğim antrenman öner', icon: 'barbell-outline' as const, color: colors.pink, mode: 'intent' as StarterMode },
   ];
   const suggestions = isOnboarding ? onboardingSuggestions : regularSuggestions;
   return (
@@ -2759,7 +2786,7 @@ function StarterSuggestions({ isOnboarding, onSuggestion }: {
           <TouchableOpacity
             key={i}
             accessibilityRole="button"
-            accessibilityLabel={s.text}
+            accessibilityLabel={s.mode === 'intent' ? `${s.text} — gönder` : `${s.text} — düzenlemek için yazı kutusunu doldurur`}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -2771,7 +2798,7 @@ function StarterSuggestions({ isOnboarding, onSuggestion }: {
               borderWidth: 0.5,
               borderColor: colors.border,
             }}
-            onPress={() => { haptics.tap(); onSuggestion(s.text); }}
+            onPress={() => { haptics.tap(); if (s.mode === 'intent') onSend(s.text); else onSuggestion(s.text); }}
           >
             <View
               style={{
@@ -2786,9 +2813,14 @@ function StarterSuggestions({ isOnboarding, onSuggestion }: {
               <Ionicons name={s.icon} size={16} color={s.color} />
             </View>
             <Text style={{ color: colors.text, fontSize: 13, flex: 1 }}>{s.text}</Text>
-            {/* Pencil (not a forward-arrow) so the chip signals "yazı kutusunu doldurur",
-                matching its actual fills-the-composer behavior rather than implying send. */}
-            <Ionicons name="create-outline" size={14} color={colors.textMuted} />
+            {/* The icon states the behaviour: a pencil promises "you get to edit this first",
+                an arrow promises "this sends". Showing a pencil on a chip that sends — or an
+                arrow on one that only fills the box — is the affordance lying about itself. */}
+            <Ionicons
+              name={s.mode === 'intent' ? 'arrow-up-circle-outline' : 'create-outline'}
+              size={14}
+              color={s.mode === 'intent' ? s.color : colors.textMuted}
+            />
           </TouchableOpacity>
         ))}
       </View>
@@ -2800,9 +2832,10 @@ function StarterSuggestions({ isOnboarding, onSuggestion }: {
 // UX-CHT-03): now only used when there are NO real messages; once a session has ≥1
 // message the FlatList renders (with StarterSuggestions as its footer at 1 message),
 // so the message container never changes mount type as the conversation grows.
-function EmptyState({ isOnboarding, onSuggestion, showSuggestions = true }: {
+function EmptyState({ isOnboarding, onSuggestion, onSend, showSuggestions = true }: {
   isOnboarding: boolean;
   onSuggestion: (text: string) => void;
+  onSend: (text: string) => void;
   // In a specific task chat the AI opens with a contextual question, so generic
   // example-starters ("2 yumurta yedim") are irrelevant noise — hide them there.
   showSuggestions?: boolean;
@@ -2837,7 +2870,7 @@ function EmptyState({ isOnboarding, onSuggestion, showSuggestions = true }: {
         </Text>
       </View>
 
-      {showSuggestions && <StarterSuggestions isOnboarding={isOnboarding} onSuggestion={onSuggestion} />}
+      {showSuggestions && <StarterSuggestions isOnboarding={isOnboarding} onSuggestion={onSuggestion} onSend={onSend} />}
     </ScrollView>
   );
 }
