@@ -20,6 +20,7 @@ import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
@@ -400,7 +401,9 @@ export default function ProgressScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load().finally(() => setRefreshing(false)); }} tintColor={colors.primary} />}
     >
       {/* FIX (audit UI-TAB-05): match the shared tab-title pattern (FONT.xl2/700, insets.top+8, accessibilityRole="header") used by profile.tsx + HeroSection. */}
-      <Text accessibilityRole="header" style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
+      {/* A SCREEN title, not a card title — at FONT.xl2 (18) it was barely above the card headings
+          it sits over, so the page had no clear top. */}
+      <Text accessibilityRole="header" style={{ ...TYPE.title2, color: colors.text, marginBottom: SPACING.md }}>Raporlar</Text>
 
       {/* FIX (ux-ideas #11): current streak — the strongest habit/return motivator, previously
           buried in the all-time report only. Big and at-a-glance at the top of Raporlar. */}
@@ -502,8 +505,8 @@ export default function ProgressScreen() {
             <View style={{ width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: colors.pink + '15', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
               <Ionicons name="analytics-outline" size={28} color={colors.pink} />
             </View>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginBottom: 4 }}>Henüz yeterli veri yok</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>En az 2 tartı kaydı gerekli</Text>
+            <Text style={{ ...TYPE.headline, color: colors.text, marginBottom: 4 }}>Henüz yeterli veri yok</Text>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>En az 2 tartı kaydı gerekli</Text>
           </View>
         </Card>
       )}
@@ -557,7 +560,7 @@ export default function ProgressScreen() {
           {/* FIX (ux-round4 #10): legend for the benchmark line. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs, alignSelf: 'flex-start' }}>
             <View style={{ width: 16, height: 2, backgroundColor: 'rgba(48, 209, 88, 0.7)', borderRadius: 1 }} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>İyi: %70+</Text>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>İyi: %70+</Text>
           </View>
         </Card>
       ) : (
@@ -566,8 +569,8 @@ export default function ProgressScreen() {
             <View style={{ width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: colors.success + '15', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
               <Ionicons name="checkmark-circle-outline" size={28} color={colors.success} />
             </View>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginBottom: 4 }}>Henüz yeterli uyum verisi yok</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Kayıt tuttuğun günler burada görünecek</Text>
+            <Text style={{ ...TYPE.headline, color: colors.text, marginBottom: 4 }}>Henüz yeterli uyum verisi yok</Text>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>Kayıt tuttuğun günler burada görünecek</Text>
           </View>
         </Card>
       )}
@@ -615,7 +618,7 @@ export default function ProgressScreen() {
             </View>
             <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', flex: 1 }}>Vücudun uyum sağlıyor</Text>
           </View>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{plateauMsg}</Text>
+          <Text style={{ ...TYPE.body, color: colors.text }}>{plateauMsg}</Text>
 
           {/* D4: Plateau strategy recommendation cards */}
           {strategyRec && (
@@ -708,7 +711,7 @@ export default function ProgressScreen() {
             <View style={{ marginTop: SPACING.sm, flexDirection: 'row', justifyContent: 'space-between', backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.sm }}>
               {/* FIX (ux-pass5): TR virgül ondalık — hemen üstteki maintenanceMsg aynı bandı
                   virgülle ('72,5-75,5') yazarken bu satır noktalıydı; tek kartta iki biçim. */}
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+              <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
                 Band: {maintenanceData.toleranceBand.min.toFixed(1).replace('.', ',')} - {maintenanceData.toleranceBand.max.toFixed(1).replace('.', ',')} kg
               </Text>
               <Text style={{
