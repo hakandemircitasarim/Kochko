@@ -7,6 +7,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getButtonA11yProps } from '@/lib/accessibility';
 
 interface Props {
@@ -82,7 +83,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
         >
           <Ionicons name={icon} size={14} color={color} />
         </View>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{label}</Text>
+        <Text style={{ ...TYPE.callout, color: colors.textSecondary }}>{label}</Text>
         {actionChip ? (
           <View style={{
             marginLeft: 'auto', backgroundColor: color + '22',
@@ -93,7 +94,11 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
         ) : null}
       </View>
       {/* FIX (audit UI-TAB-03) numberOfLines={1} — değer hücresi tek satırda kalsın, taşmayı kırpsın */}
-      <Text numberOfLines={1} style={{ color: valueMuted ? colors.textMuted : color, fontSize: 16, fontWeight: '700' }}>{value}</Text>
+      {/* Each of these cards exists to show ONE figure — litres of water, kilos, hours slept. At 16px
+          that figure was the same weight as the label above it, so the card had no focal point and
+          the grid read as an undifferentiated block of text on a device. TYPE.title3 gives each card
+          something the eye lands on. numberOfLines={1} already guards the long-value case. */}
+      <Text numberOfLines={1} style={{ ...TYPE.title3, color: valueMuted ? colors.textMuted : color }}>{value}</Text>
       {sublabel && <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{sublabel}</Text>}
       {progress !== undefined && (
         <View style={{ height: 4, backgroundColor: colors.progressTrack, borderRadius: 2, overflow: 'hidden', marginTop: SPACING.sm }}>

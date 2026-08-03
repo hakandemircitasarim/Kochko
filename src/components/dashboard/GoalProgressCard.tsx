@@ -13,6 +13,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import type { GoalProgress, PaceStatus } from '@/lib/goal-progress';
 
 interface Props {
@@ -84,7 +85,10 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        {/* TYPE.overline is this exact pattern as a token: small, bold, uppercase, and — the part
+            that was hand-tuned to 0.5 here — POSITIVE tracking, because capitals need air to stay
+            legible at 11px. One definition, so every eyebrow label in the app matches. */}
+        <Text style={{ ...TYPE.overline, color: colors.textMuted, textTransform: 'uppercase' }}>
           Hedef
         </Text>
         {!progress.isGoalReached && (
@@ -105,10 +109,12 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
       ) : (
         <>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>
+            {/* The percentage is this card's figure; at FONT.md (14) it was the same size as the
+                sentence beside it, so "%0" and "Hedefe 8 kg" competed instead of one leading. */}
+            <Text style={{ ...TYPE.title3, color: colors.text }}>
               %{progress.percentComplete}
             </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }} maxFontSizeMultiplier={1.3}>
+            <Text style={{ ...TYPE.callout, color: colors.textSecondary }} maxFontSizeMultiplier={1.3}>
               {progressLine}
             </Text>
           </View>
