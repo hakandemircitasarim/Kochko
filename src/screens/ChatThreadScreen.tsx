@@ -56,6 +56,7 @@ import {
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 import { isActivePremium } from '@/lib/premium-gate';
@@ -275,8 +276,11 @@ function MessageRichText({ content, color, onLongPress }: { content: string; col
           const marker = isNum ? `${listMatch[1].replace(/[.)]/, '')}.` : '•';
           return (
             <View key={idx} style={{ flexDirection: 'row', gap: 6, marginTop: idx === 0 ? 0 : 3, paddingLeft: 2 }}>
-              <Text style={{ color, fontSize: 14, lineHeight: 21, fontWeight: isNum ? '700' : '400' }}>{marker}</Text>
-              <Text selectable onLongPress={onLongPress} style={{ color, fontSize: 14, lineHeight: 21, flex: 1 }}>
+              {/* The conversation is the app. This is its reading size — and 14/21 is a desktop
+                  table size, tight for Turkish, whose descenders (g/ğ/ş/ç/y) crowd the next line.
+                  TYPE.body (15/22) is the scale's designated reading step. */}
+              <Text style={{ ...TYPE.body, color, fontWeight: isNum ? '700' : '400' }}>{marker}</Text>
+              <Text selectable onLongPress={onLongPress} style={{ ...TYPE.body, color, flex: 1 }}>
                 {splitBoldSegments(listMatch[2]).map((seg, i) => (
                   <Text key={i} style={seg.bold ? { fontWeight: '700' } : undefined}>{seg.text}</Text>
                 ))}
@@ -286,7 +290,7 @@ function MessageRichText({ content, color, onLongPress }: { content: string; col
         }
         if (line.trim() === '') return <View key={idx} style={{ height: 6 }} />;
         return (
-          <Text key={idx} selectable onLongPress={onLongPress} style={{ color, fontSize: 14, lineHeight: 21, marginTop: idx === 0 ? 0 : 2 }}>
+          <Text key={idx} selectable onLongPress={onLongPress} style={{ ...TYPE.body, color, marginTop: idx === 0 ? 0 : 2 }}>
             {splitBoldSegments(line).map((seg, i) => (
               <Text key={i} style={seg.bold ? { fontWeight: '700' } : undefined}>{seg.text}</Text>
             ))}
@@ -312,7 +316,7 @@ function CrisisBlock({ text }: { text: string }) {
         <Ionicons name="alert-circle" size={20} color={colors.error} />
         <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '800', letterSpacing: 0.3 }}>ACİL DESTEK</Text>
       </View>
-      <Text selectable style={{ color: colors.text, fontSize: 14, lineHeight: 21 }}>{text}</Text>
+      <Text selectable style={{ ...TYPE.body, color: colors.text }}>{text}</Text>
       <TouchableOpacity
         onPress={() => { haptics.tap(); Linking.openURL('tel:112').catch(() => {}); }}
         accessibilityRole="button"
@@ -2084,7 +2088,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               placeholder="Yüklü mesajlarda ara"
               placeholderTextColor={colors.textMuted}
               autoFocus
-              style={{ flex: 1, color: colors.text, fontSize: FONT.sm, paddingVertical: SPACING.sm }}
+              // The composer must match the bubbles it produces: typing at 13 and reading back at 15
+              // makes your own message look like it changed size when you sent it.
+              style={{ flex: 1, color: colors.text, ...TYPE.body, paddingVertical: SPACING.sm }}
               accessibilityLabel="Sohbette ara"
             />
             {searchQuery.length > 0 && (
