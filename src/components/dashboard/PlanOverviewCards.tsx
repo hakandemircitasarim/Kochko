@@ -13,6 +13,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getActive, getDraft, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
@@ -265,16 +266,21 @@ function PlanCard({
           <Ionicons name={icon} size={26} color={color} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
+          {/* Same eyebrow pattern as GoalProgressCard's "HEDEF", previously re-tuned by hand with a
+              slightly different tracking (1 vs 0.5). Two hand-tuned copies of one idea is how a UI
+              stops looking designed — TYPE.overline is the single definition. */}
+          <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             {/* FIX (ux-pass2 #11e): .toUpperCase() Türkçe i→I bozuyordu ('BU HAFTAKI DIYETIN');
                 tr-TR locale ile i→İ doğru büyür ('BU HAFTAKİ DİYETİN'). */}
             {title.toLocaleUpperCase('tr-TR')}
           </Text>
-          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: 2 }}>
+          {/* The card's headline ("Diyet planın yok" / the plan's name). At FONT.md it sat between
+              two muted lines at almost the same size, so the row read as three equal greys. */}
+          <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }}>
             {primary}
           </Text>
           {secondary ? (
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>
               {secondary}
             </Text>
           ) : null}
