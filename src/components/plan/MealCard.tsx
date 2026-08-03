@@ -8,6 +8,7 @@ import { View, Text, TouchableOpacity, Animated, ActivityIndicator, LayoutAnimat
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { type DietMeal } from '@/services/plan.service';
 
@@ -106,14 +107,16 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>
+              <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
                 {MEAL_TYPE_LABELS_TR[meal.meal_type]}
               </Text>
               {meal.time ? (
                 <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>· {meal.time}</Text>
               ) : null}
             </View>
-            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }} numberOfLines={expanded ? 0 : 1}>
+            {/* The meal's name is what this card IS. At 13px it was smaller than the app's reading
+                size, so a plan read as a wall of small bold text with no entry point per card. */}
+            <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }} numberOfLines={expanded ? 0 : 1}>
               {meal.name}
             </Text>
           </View>
@@ -178,7 +181,8 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                 paddingVertical: 4,
               }}
             >
-              <Text style={{ color: colors.text, fontSize: FONT.xs, flex: 1 }} numberOfLines={1}>
+              {/* Ingredient list — 11px for the actual food a person is meant to shop for and eat. */}
+              <Text style={{ ...TYPE.caption, color: colors.text, flex: 1 }} numberOfLines={1}>
                 {it.name}{' '}
                 <Text style={{ color: colors.textMuted }}>
                   ({it.grams ? `${it.grams}g` : it.portion ?? '-'})

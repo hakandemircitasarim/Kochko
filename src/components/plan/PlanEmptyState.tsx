@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { getOrCreateActiveSession } from '@/services/chat.service';
@@ -96,7 +97,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
         </View>
         <Text
           accessibilityRole="header"
-          style={{ color: colors.text, fontSize: 20, fontWeight: '800', marginTop: SPACING.md }}
+          style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md }}
         >
           {planType === 'diet' ? 'Diyet planın yok' : 'Spor planın yok'}
         </Text>
@@ -171,7 +172,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
       {/* Generation preview — content-shaped placeholder during the slow LLM wait */}
       {creating ? (
         <View style={{ marginTop: SPACING.md, gap: SPACING.xs }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
+          <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             {planType === 'diet' ? 'MENÜN HAZIRLANIYOR' : 'PROGRAMIN HAZIRLANIYOR'}
           </Text>
           <SkeletonCard lines={4} />
@@ -221,7 +222,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
             marginTop: SPACING.sm,
           }}
         >
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1 }}>
+          <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             PLAN DAHA İYİ OLABİLİR
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>
