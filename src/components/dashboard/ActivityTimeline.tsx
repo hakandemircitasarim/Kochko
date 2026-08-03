@@ -7,6 +7,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { mealTypeLabelTR } from '@/lib/labels';
 import { showToast } from '@/components/ui/Toast';
@@ -125,7 +126,10 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
     <View>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-        <Text style={{ fontSize: FONT.md, fontWeight: '700', color: colors.text }}>Aktiviteler</Text>
+        {/* A section heading, not a card title — it labels everything below it, so it sits a step
+            above the row titles it introduces. At FONT.md it was the SAME size as the activity
+            text beneath it and the section had no visible start. */}
+        <Text style={{ ...TYPE.title3, color: colors.text }}>Aktiviteler</Text>
         {totalActivities > 0 && (
           /* FIX (ux-polish): label the count so a screen reader says "3 aktivite", not a bare "3". */
           <View accessible accessibilityLabel={`${totalActivities} aktivite`} style={{ backgroundColor: colors.primary + '18', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 }}>
@@ -246,10 +250,10 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
 
               {/* Content */}
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: FONT.xs, color: colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                <Text style={{ ...TYPE.overline, color: colors.textMuted, textTransform: 'uppercase' }}>
                   {activity.label}
                 </Text>
-                <Text style={{ fontSize: FONT.sm, color: colors.text, marginTop: 1 }} numberOfLines={1}>{activity.text}</Text>
+                <Text style={{ ...TYPE.body, color: colors.text, marginTop: 2 }} numberOfLines={1}>{activity.text}</Text>
               </View>
 
               {/* FIX (ux-pass2 #14): satır başına HH:mm */}
