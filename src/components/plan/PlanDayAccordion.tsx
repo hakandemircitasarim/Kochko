@@ -11,6 +11,7 @@ import { View, Text, TouchableOpacity, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { MealCard } from './MealCard';
 import { ExerciseCard } from './ExerciseCard';
 import { dayLabelTR, type DietPlanData, type WorkoutPlanData, type PlanData } from '@/services/plan.service';
@@ -94,11 +95,13 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
                 gap: SPACING.sm,
               }}
             >
-              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', flex: 1 }}>
+              {/* The day name ("Pazartesi") is the header of a whole collapsible section — it must
+                  outrank the meal rows it contains, not match them. */}
+              <Text style={{ ...TYPE.headline, color: colors.text, flex: 1 }}>
                 {label}
               </Text>
               {isDiet ? (
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
                   {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
                       ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal". */}
                   {Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal
