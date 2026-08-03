@@ -15,6 +15,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { useTheme } from '@/lib/theme';
 import { a11yProgress } from '@/lib/accessibility';
 import { FONT, MAX_FONT_SCALE } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -130,8 +131,21 @@ export function CircularProgress({
       <View style={{ position: 'absolute', alignItems: 'center', justifyContent: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
           {/* FIX (audit ui-circularprogress): cap font scaling so large system fonts don't overflow the fixed-size ring. */}
-          {/* FIX (audit UI-DS-05): the raw 24 duplicated FONT.xxl — use the token. */}
-          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: size > 120 ? FONT.xxl : FONT.xl, fontWeight: '700', color: colors.text, letterSpacing: -1 }}>
+          {/* A HERO ring carries the single most important number on its screen — the calories left
+              for the day. It was rendered at FONT.xxl (24), the same size as a section heading, so
+              on a real device the dashboard's headline figure had no more weight than the words
+              around it. TYPE.display exists for exactly this: one figure per screen, at a size that
+              says "read me first". Small rings (the macro dials inside a chat bubble) are NOT hero
+              figures and keep their original step — blowing those up would flatten the hierarchy in
+              the other direction. */}
+          <Text
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+            style={
+              size > 120
+                ? { ...TYPE.display, color: colors.text }
+                : { fontSize: FONT.xl, fontWeight: '700', color: colors.text, letterSpacing: -1 }
+            }
+          >
             {shownValue}
           </Text>
           {unit && (
