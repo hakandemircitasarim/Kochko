@@ -56,21 +56,23 @@ function MacroBar({ label, value, target, color, emphasize = false }: { label: s
       <View style={{ height: 6, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
         <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 3 }} />
       </View>
-      {emphasize && remaining > 0 ? (
-        <Text
-          style={{ color, fontSize: 11, marginTop: 3, fontWeight: '700' }}
-          maxFontSizeMultiplier={1.3}
-        >
-          {remaining}g kaldı
-        </Text>
-      ) : (
-        <Text
-          style={{ color: colors.textSecondary, fontSize: 11, marginTop: 3 }}
-          maxFontSizeMultiplier={1.3}
-        >
-          {value}/{target}g
-        </Text>
-      )}
+      {/* Emphasis is carried by COLOUR AND WEIGHT ONLY — the readout format stays identical across
+          all three macros. Driven on a device, the old version showed "155g kaldı" next to
+          "0/183g" and "0/61g": three stats in one row, same size, two different sentence shapes.
+          The intent (point at the macro to focus on next) is right, but changing the format as
+          well as the colour makes the odd one out read as a BUG rather than as emphasis — the eye
+          reports "these don't match" before it reports "this one matters". */}
+      <Text
+        style={{
+          color: emphasize && remaining > 0 ? color : colors.textSecondary,
+          fontSize: 11,
+          marginTop: 3,
+          fontWeight: emphasize && remaining > 0 ? '700' : '400',
+        }}
+        maxFontSizeMultiplier={1.3}
+      >
+        {value}/{target}g
+      </Text>
     </View>
   );
 }

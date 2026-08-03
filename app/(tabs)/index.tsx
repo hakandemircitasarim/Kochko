@@ -90,9 +90,13 @@ function deriveCoachLine(a: {
   if (a.waterTarget > 0 && a.hour >= 12 && a.water < a.waterTarget * 0.5) {
     return `Su ${a.water.toFixed(1).replace('.', ',')}/${a.waterTarget.toFixed(1).replace('.', ',')} L — biraz geridesin.`;
   }
-  if (a.targetMid > 0 && remaining > 0) {
-    return `Bugün ~${remaining} kcal bütçen var.`;
-  }
+  // Deliberately NO generic calorie fallback here. It used to return
+  // `Bugün ~${remaining} kcal bütçen var.` — driven on a device, that put the same number on
+  // screen three times in the first viewport: the ring shows it huge ("1827 / kcal kaldı"), the
+  // sub-label repeats it as a fraction ("0 / 1827 kcal"), and then this strip said it a third
+  // time in its own card. A hint strip earns its space only by saying something the screen does
+  // NOT already show; every branch above does that (protein gap, unweighed, water behind).
+  // Showing nothing is better than restating the largest number on the page.
   return null;
 }
 

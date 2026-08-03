@@ -128,7 +128,11 @@ export async function setupAndroidChannel(): Promise<void> {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'Kochko',
       importance: Notifications.AndroidImportance.DEFAULT,
-      sound: 'default',
+      // NO `sound` field. An Android channel's `sound` names a BUNDLED custom sound file, so the
+      // literal string 'default' made the platform hunt for a file called "default" and log
+      // `expo-notifications: Custom sound 'default' not found` — surfaced as a red error toast
+      // over the dashboard on a real device. Omitting the field is what actually selects the
+      // system default notification sound.
     });
   } catch { /* channel setup non-critical */ }
 }
