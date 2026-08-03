@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Dimensions, KeyboardAvoidingView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -577,7 +577,13 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
       // FIX (ux-ideas #16): permission priming — explain the value BEFORE the OS prompt. Cold
       // prompts (the old app-launch behavior) crater accept rates and a denial permanently kills
       // the whole proactive-coaching / re-engagement layer. New users only; not re-onboarding.
-      if (!isReOnboarding) {
+      // WEB: react-native-web does not implement Alert.alert — it is a no-op. This block awaits a
+      // Promise that only resolves from an Alert button's onPress, so on web the await NEVER
+      // returned: `finally { setSaving(false) }` never ran (the submit button stayed hidden), and
+      // the router.replace below never executed. The user landed on a dead form whose data had
+      // already been saved. Push notifications do not exist on web anyway, so the priming prompt
+      // has nothing to prime — skip it rather than block the flow.
+      if (!isReOnboarding && Platform.OS !== 'web') {
         await new Promise<void>((resolve) => {
           Alert.alert(
             'Koçun sana ulaşsın mı?',
