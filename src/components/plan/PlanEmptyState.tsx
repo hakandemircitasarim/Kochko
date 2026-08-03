@@ -95,9 +95,13 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
             />
           </View>
         </View>
+        {/* textAlign was missing here while the subtitle right below it centers — so when the
+            heading wrapped, the second word ("yok") hung left under a centered first line and the
+            block looked broken. Driven on a device that is exactly how it rendered. Centering fixes
+            the alignment; if it still wraps, that is a container-width question, not an alignment one. */}
         <Text
           accessibilityRole="header"
-          style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md }}
+          style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md, textAlign: 'center' }}
         >
           {planType === 'diet' ? 'Diyet planın yok' : 'Spor planın yok'}
         </Text>
