@@ -70,6 +70,21 @@ const corsHeaders = {
 // indefinite spinner (the edge wall-clock would otherwise kill the whole function).
 const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
 const STT_MODEL = Deno.env.get('KOCHKO_MODEL_STT') || 'whisper-1';
+
+/**
+ * The meal-receipt prefix. It is BOTH user-visible copy AND the marker the kcal-consistency net
+ * keys on (`actionFeedback[i].includes(...)`) to tell a real write apart from a dupe-skip/failure.
+ *
+ * It used to be the ASCII literal 'Ogun kaydedildi', written out at three separate sites. Driven
+ * on a device that produced a visibly broken bubble: the client's own badge said "Öğün kaydedildi"
+ * (correct) while the receipt line right beneath it said "Ogun kaydedildi" — the same phrase, one
+ * screen, two spellings, one of them missing the diacritics that VOICE_RULES explicitly requires.
+ *
+ * One constant, so the copy and the marker can never drift apart again: fixing the spelling in one
+ * place while the detector still matched the old literal would have silently disabled the net that
+ * stops the coach quoting a different calorie total than the one it stored.
+ */
+const MEAL_LOGGED_MARK = 'Öğün kaydedildi';
 const STT_TIMEOUT_MS = 45_000;
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = STT_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -2872,7 +2887,7 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
       actions.forEach((a, ai) => {
         const ar = a as Record<string, unknown>;
         if (ar.type !== 'meal_log') return;
-        if (!(actionFeedback[ai] ?? '').includes('Ogun kaydedildi')) return; // dupe-skip/failed → no receipt shown
+        if (!(actionFeedback[ai] ?? '').includes(MEAL_LOGGED_MARK)) return; // dupe-skip/failed → no receipt shown
         // FIX (audit — receipt vs DB split-brain): prefer the EXACT total executeActions persisted
         // (grounding × cooking multiplier, de-duped items, validateMealParse-corrected), stashed on the
         // action as _loggedKcal, so the "Kaydettim: ~X kcal" receipt equals what the dashboard sums.
@@ -4900,9 +4915,9 @@ async function executeActions(
             }).join(' · ');
             const more = mealRows.length > 6 ? ` (+${mealRows.length - 6} kalem)` : '';
             const total = mealRows.reduce((s, r) => s + (Number(r.calories) || 0), 0);
-            mealFeedback.push(`Ogun kaydedildi — ${detail}${more} · toplam ${total} kcal`);
+            mealFeedback.push(`${MEAL_LOGGED_MARK} — ${detail}${more} · toplam ${total} kcal`);
           } else {
-            mealFeedback.push('Ogun kaydedildi');
+            mealFeedback.push(MEAL_LOGGED_MARK);
           }
           // Single entry per action: join allergen + caffeine + low-conf + the itemized receipt.
           pushFb(mealFeedback.join('\n'));
