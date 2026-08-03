@@ -5,6 +5,7 @@ import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
@@ -20,7 +21,7 @@ export function QuickSelectButtons({ options, onSelect, disabled = false }: { op
           <TouchableOpacity key={i} disabled={disabled} onPress={() => { haptics.tap(); onSelect(opt); }}
             accessibilityRole="button" accessibilityLabel={opt} accessibilityState={{ disabled }}
             style={{ paddingVertical: 8, paddingHorizontal: SPACING.md, minHeight: 36, justifyContent: 'center', borderRadius: RADIUS.pill, backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border }}>
-            <Text style={{ color: colors.text, fontSize: FONT.sm }}>{opt}</Text>
+            <Text style={{ ...TYPE.callout, color: colors.text }}>{opt}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -83,15 +84,15 @@ export function MacroRing({ protein, carbs, fat, targets }: { protein: number; c
       <View style={{ flex: 1, gap: 4 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: METRIC_COLORS.protein }} />
-          <Text style={{ color: colors.text, fontSize: FONT.sm }}>Protein {protein}/{targets.protein}g · %{pct(protein, targets.protein)}</Text>
+          <Text style={{ ...TYPE.callout, color: colors.text }}>Protein {protein}/{targets.protein}g · %{pct(protein, targets.protein)}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: METRIC_COLORS.carbs }} />
-          <Text style={{ color: colors.text, fontSize: FONT.sm }}>Karb {carbs}/{targets.carbs}g · %{pct(carbs, targets.carbs)}</Text>
+          <Text style={{ ...TYPE.callout, color: colors.text }}>Karb {carbs}/{targets.carbs}g · %{pct(carbs, targets.carbs)}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: METRIC_COLORS.fat }} />
-          <Text style={{ color: colors.text, fontSize: FONT.sm }}>Yağ {fat}/{targets.fat}g · %{pct(fat, targets.fat)}</Text>
+          <Text style={{ ...TYPE.callout, color: colors.text }}>Yağ {fat}/{targets.fat}g · %{pct(fat, targets.fat)}</Text>
         </View>
       </View>
     </View>
@@ -122,10 +123,11 @@ export function SimulationCard({ foodName, calories, remaining, weeklyImpact }: 
   const { colors } = useTheme();
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, marginTop: SPACING.sm, borderWidth: 0.5, borderColor: colors.border }}>
-      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }}>{foodName}</Text>
+      {/* The food is what this card is ABOUT — it should read before the numbers under it. */}
+      <Text style={{ ...TYPE.headline, color: colors.text }}>{foodName}</Text>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.sm }}>
         <View style={{ alignItems: 'center' }}>
-          <Text style={{ color: METRIC_COLORS.calories, fontSize: FONT.lg, fontWeight: '700' }}>{calories}</Text>
+          <Text style={{ ...TYPE.title2, color: METRIC_COLORS.calories }}>{calories}</Text>
           <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>kcal</Text>
         </View>
         <View style={{ alignItems: 'center' }}>
@@ -133,7 +135,7 @@ export function SimulationCard({ foodName, calories, remaining, weeklyImpact }: 
               eater, red 'error' framing punishes every overshoot. Amber 'warning' conveys
               the same info without the error/shame signal; the label flips to 'üzeri'
               so 'kalan' doesn't sit contradictorily above a negative value. */}
-          <Text style={{ color: remaining >= 0 ? colors.primary : colors.warning, fontSize: FONT.lg, fontWeight: '700' }}>
+          <Text style={{ ...TYPE.title2, color: remaining >= 0 ? colors.primary : colors.warning }}>
             {remaining >= 0 ? remaining : Math.abs(remaining)}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{remaining >= 0 ? 'kalan' : 'üzeri'}</Text>
