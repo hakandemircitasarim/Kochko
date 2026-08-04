@@ -131,6 +131,20 @@ const PLAN_COPY: Record<PlanType, {
   },
 };
 
+/**
+ * Do two plan snapshots carry the same plan? `version` is deliberately ignored: it is
+ * bookkeeping, not content, and including it would make a restore-to-identical-content
+ * look like a change and bump the version forever.
+ */
+function sameplanContent(a: PlanData | null | undefined, b: PlanData | null | undefined): boolean {
+  if (!a || !b) return false;
+  const strip = (p: PlanData) => {
+    const { version: _version, ...rest } = p as PlanData & { version?: number };
+    return JSON.stringify(rest);
+  };
+  return strip(a) === strip(b);
+}
+
 export function PlanManagerScreen({ planType }: { planType: PlanType }) {
   const cfg = PLAN_COPY[planType];
   const insets = useSafeAreaInsets();
@@ -157,6 +171,13 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
   const [fullyViewed, setFullyViewed] = useState(false);
   const [altCandidate, setAltCandidate] = useState<PlanData | null>(null);
   const [showAltModal, setShowAltModal] = useState(false);
+  // The plan as it stood BEFORE "Alternatif gör" ran. Measured on device (04-08): the edge
+  // function PERSISTS the alternative onto the draft row, so handleAlternative's trailing
+  // load() replaced planData with the alternative — and the modal then rendered planA and
+  // planB from the same snapshot. Three generations in a row showed two identical columns
+  // (diet draft went v1→v2 and BOTH sides read the v2 numbers). Freezing the pre-call
+  // snapshot is what makes the comparison a comparison.
+  const [preAltSnapshot, setPreAltSnapshot] = useState<PlanData | null>(null);
   // FIX (fix-pass 07-12, item 7): allergen/health completion lives off-profile
   // (food_preferences / health_events / ai_summary) — fetched in load() so the
   // empty-state weak-spot chips can drop once those tasks are actually done.
@@ -366,8 +387,13 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
     // FIX (ux-pass5): re-entrancy guard — the alt modal's "2 alternatif daha" button used
     // to fire a parallel invokePlanChat per re-tap during the 10-30s LLM wait.
     if (sending) return;
-    // Ask AI for a second-approach snapshot; we capture it client-side without persisting
-    // to the draft row, so the user can pick between current draft and alternative.
+    // Ask AI for a second-approach snapshot. NB the comment below used to say we capture it
+    // "without persisting to the draft row" — on device that is not what happens: the draft
+    // version bumps on every call, so the alternative IS written server-side. Freeze what the
+    // user is currently looking at before that lands, or Plan A becomes Plan B.
+    // Keep the FIRST freeze across repeated "2 alternatif daha" taps — otherwise round 2 would
+    // freeze round 1's alternative and call it "current".
+    setPreAltSnapshot(prev => prev ?? (draft.plan_data as PlanData));
     setSending(true);
     const { data, error } = await invokePlanChat({
       sessionId: chatSessionId,
@@ -394,11 +420,40 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
   };
 
   const pickCurrent = async () => {
-    // FIX (ux-pass5): haptic moved here from the modal — keeping the current draft is a
-    // local, infallible action so immediate success feedback is honest.
+    // "Keep what I had" is NOT a no-op any more, because the alternative has already been
+    // written to the draft by the time this modal opens. Closing without restoring silently
+    // left the user on the alternative they just declined. Restore the frozen snapshot through
+    // the same applySnapshot path the alternative uses, so the revision trail stays honest.
+    const restore = preAltSnapshot;
+    // Compare by CONTENT, not object identity. Whether load() hands back a fresh object is an
+    // implementation detail of the fetch layer; keying "did anything actually change?" on the
+    // reference makes this write fire (or not) for reasons that have nothing to do with the
+    // plan. `version` is excluded because a no-op restore must not bump it.
+    const alreadyCurrent = !restore || !draft || sameplanContent(draft.plan_data as PlanData, restore);
+    if (alreadyCurrent) {
+      haptics.success();
+      setAltCandidate(null);
+      setPreAltSnapshot(null);
+      setShowAltModal(false);
+      return;
+    }
+    const updated = await applySnapshot(draft.id, restore, {
+      from: 'draft v' + ((draft.plan_data as PlanData).version ?? 1),
+      to: 'alternatif reddedildi',
+      reason: 'Kullanıcı mevcut planda kaldı',
+    });
+    if (!updated) {
+      // Same reasoning as pickAlternative: an in-chat bubble would render behind this
+      // fullscreen modal, so surface the failure with an Alert.
+      haptics.error();
+      Alert.alert('Mevcut plana dönülemedi', 'Bağlantını kontrol edip tekrar dene.');
+      return;
+    }
     haptics.success();
     setAltCandidate(null);
+    setPreAltSnapshot(null);
     setShowAltModal(false);
+    await load();
   };
   const pickAlternative = async () => {
     if (!altCandidate || !draft || !user?.id) return;
@@ -417,6 +472,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
     // FIX (ux-pass5): success haptic AFTER the persist succeeded (was fired pre-network in the modal).
     haptics.success();
     setAltCandidate(null);
+    setPreAltSnapshot(null);
     setShowAltModal(false);
     await load();
   };
@@ -825,8 +881,10 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
         {altCandidate ? (
           <AlternativeComparisonModal
             visible={showAltModal}
-            onClose={() => { setShowAltModal(false); setAltCandidate(null); }}
-            planA={planData}
+            // Dismissing is "I did not take the alternative", and the alternative is already
+            // persisted — so X has to restore too, not just hide the modal.
+            onClose={pickCurrent}
+            planA={preAltSnapshot ?? planData}
             planB={altCandidate}
             onPickA={pickCurrent}
             onPickB={pickAlternative}

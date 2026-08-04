@@ -54,32 +54,38 @@ function PlanBadge({ label, accent }: { label: string; accent: string }) {
 /** Shared pick CTA — one definition so the diet and workout cards cannot drift apart. */
 function PickButton({ label, accent, onPick, pickDisabled }: { label: string; accent: string; onPick: () => void; pickDisabled?: boolean }) {
   return (
-    <TouchableOpacity
-      onPress={onPick}
-      // FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
-      // apply a candidate that's about to be swapped under the finger — block it.
-      disabled={pickDisabled}
-      accessibilityRole="button"
-      accessibilityLabel={`Plan ${label}'yı seç`}
-      accessibilityState={{ disabled: !!pickDisabled }}
-      style={{
-        marginTop: SPACING.md,
-        backgroundColor: accent,
-        borderRadius: RADIUS.md,
-        // 8pt padding around a 13px label gave a ~38px target; the reading step plus 12pt
-        // clears 44 without the button growing wider than the half-width card.
-        paddingVertical: SPACING.md,
-        alignItems: 'center',
-        opacity: pickDisabled ? 0.5 : 1,
-      }}
-    >
+    <>
+      {/* The row stretches both cards to the taller one's height, but the CTA followed its own
+          card's content — measured on device the two identical buttons sat ~35px apart. This
+          spacer eats the leftover height in the shorter card (min 12 so the taller card still
+          gets a gap), putting both CTAs on one baseline. */}
+      <View style={{ flexGrow: 1, minHeight: SPACING.md }} />
+      <TouchableOpacity
+        onPress={onPick}
+        // FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
+        // apply a candidate that's about to be swapped under the finger — block it.
+        disabled={pickDisabled}
+        accessibilityRole="button"
+        accessibilityLabel={`Plan ${label}'yı seç`}
+        accessibilityState={{ disabled: !!pickDisabled }}
+        style={{
+          backgroundColor: accent,
+          borderRadius: RADIUS.md,
+          // 8pt padding around a 13px label gave a ~38px target; the reading step plus 12pt
+          // clears 44 without the button growing wider than the half-width card.
+          paddingVertical: SPACING.md,
+          alignItems: 'center',
+          opacity: pickDisabled ? 0.5 : 1,
+        }}
+      >
       <Text
         maxFontSizeMultiplier={MAX_FONT_SCALE}
         style={{ ...TYPE.bodyStrong, fontWeight: '700', color: getContrastColor(accent) }}
       >
-        Bunu seç
-      </Text>
-    </TouchableOpacity>
+          Bunu seç
+        </Text>
+      </TouchableOpacity>
+    </>
   );
 }
 
