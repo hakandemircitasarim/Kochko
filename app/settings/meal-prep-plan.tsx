@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -103,7 +104,7 @@ export default function MealPrepPlanScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
         {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
         <Card>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.md }}>
+          <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.md }}>
             Toplu hazırlık modunu aktif et ve hazırlık gününü seç — haftalık menünden otomatik prep planı çıkaralım.
           </Text>
           <View style={{ flexDirection: 'row', gap: 6, marginBottom: SPACING.lg, flexWrap: 'wrap' }}>
@@ -114,11 +115,11 @@ export default function MealPrepPlanScreen() {
                 accessibilityState={{ selected: prepDay === d.value }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{ paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: 8, backgroundColor: prepDay === d.value ? colors.primary : colors.surfaceLight }}>
-                <Text style={{ color: prepDay === d.value ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>{d.label}</Text>
+                <Text style={{ color: prepDay === d.value ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.caption, fontWeight: '600' }}>{d.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
-          {error && <Text style={{ color: colors.error, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{error}</Text>}
+          {error && <Text style={{ color: colors.error, ...TYPE.body, marginBottom: SPACING.sm }}>{error}</Text>}
           <Button title="Meal Prep Modunu Aktif Et" onPress={handleActivate} loading={loading} />
         </Card>
       </ScrollView>
@@ -128,7 +129,7 @@ export default function MealPrepPlanScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Haftanın yemeklerini önceden hazırla, zamandan ve paradan tasarruf et.
       </Text>
 
@@ -139,11 +140,11 @@ export default function MealPrepPlanScreen() {
           ) : (
             <>
               {error && (
-                <Text style={{ color: colors.error, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.md }}>
+                <Text style={{ color: colors.error, ...TYPE.body, textAlign: 'center', marginBottom: SPACING.md }}>
                   {error}
                 </Text>
               )}
-              <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.lg }}>
+              <Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', marginBottom: SPACING.lg }}>
                 Kayıtlı tariflerine ve haftalık planına göre bir meal prep planı oluşturalım.
               </Text>
               <Button title="Plan Oluştur" onPress={handleGenerate} />
@@ -155,43 +156,43 @@ export default function MealPrepPlanScreen() {
           {/* Total Prep Time */}
           <Card>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Hazırlama</Text>
-              <Text style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '700' }}>{plan.totalPrepTime} dk</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Hazırlama</Text>
+              <Text style={{ color: colors.primary, ...TYPE.title3 }}>{plan.totalPrepTime} dk</Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.xs }}>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Pişirme</Text>
-              <Text style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '700' }}>{plan.totalCookTime} dk</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Pişirme</Text>
+              <Text style={{ color: colors.primary, ...TYPE.title3 }}>{plan.totalCookTime} dk</Text>
             </View>
           </Card>
 
           {/* Prep Items */}
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm, marginTop: SPACING.sm }}>HAZIRLANACAKLAR</Text>
+          <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '600', marginBottom: SPACING.sm, marginTop: SPACING.sm }}>HAZIRLANACAKLAR</Text>
           {plan.items.map((item, i) => (
             <Card key={i}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>{item.recipeName}</Text>
-                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{item.quantity}</Text>
+                  <Text style={{ color: colors.text, ...TYPE.headline }}>{item.recipeName}</Text>
+                  <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>{item.quantity}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ color: colors.success, fontSize: FONT.sm, fontWeight: '600' }}>{item.storageDays} gün</Text>
+                  <Text style={{ color: colors.success, ...TYPE.bodyStrong }}>{item.storageDays} gün</Text>
                 </View>
               </View>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.xs }}>Saklama: {item.storageInstructions}</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: SPACING.xs }}>Saklama: {item.storageInstructions}</Text>
             </Card>
           ))}
 
           {/* Prep Order */}
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm, marginTop: SPACING.sm }}>HAZIRLAMA SIRASI</Text>
+          <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '600', marginBottom: SPACING.sm, marginTop: SPACING.sm }}>HAZIRLAMA SIRASI</Text>
           <Card>
             {plan.prepOrder.map((step, i) => (
               <View key={i} style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: i < plan.prepOrder.length - 1 ? SPACING.sm : 0, alignItems: 'flex-start' }}>
                 <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.xs, fontWeight: '700' }}>{step.order}</Text>
+                  <Text style={{ color: getContrastColor(colors.primary), ...TYPE.caption, fontWeight: '700' }}>{step.order}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{step.action}</Text>
-                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{step.durationMin} dk — {step.reason_tr}</Text>
+                  <Text style={{ color: colors.text, ...TYPE.body, lineHeight: 22 }}>{step.action}</Text>
+                  <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{step.durationMin} dk — {step.reason_tr}</Text>
                 </View>
               </View>
             ))}

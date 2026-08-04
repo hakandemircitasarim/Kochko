@@ -8,6 +8,7 @@ import { getActiveChallenges, getCompletedChallenges, startChallenge, pauseChall
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { usePremium } from '@/hooks/usePremium';
 import { useProfileStore } from '@/stores/profile.store';
@@ -145,11 +146,11 @@ export default function ChallengesScreen() {
 
       {/* Active Challenges */}
       {active.length === 0 ? (
-        <Card><Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Aktif challenge yok.</Text></Card>
+        <Card><Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', paddingVertical: SPACING.md }}>Aktif challenge yok.</Text></Card>
       ) : (
         active.map(c => (
           <Card key={c.id} title={c.title}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>
               {c.target.duration_days} gün · {c.status === 'paused' ? 'Duraklatıldı' : 'Aktif'}
             </Text>
             {/* Progress bar */}
@@ -160,7 +161,7 @@ export default function ChallengesScreen() {
                 backgroundColor: colors.success, borderRadius: 3,
               }} />
             </View>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption, marginBottom: SPACING.sm }}>
               {c.progress.filter(p => p.met).length} / {c.target.duration_days} gün tamamlandı
             </Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
@@ -206,8 +207,8 @@ export default function ChallengesScreen() {
           {/* FIX (final sweep): steps preset hidden on Android — Pedometer is iOS-only, the challenge could never score. */}
           {SYSTEM_CHALLENGES.filter(c => Platform.OS !== 'android' || c.target.metric !== 'steps').map((c, i) => (
             <Card key={i}>
-              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>{c.title}</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4 }}>{c.target.duration_days} gün</Text>
+              <Text style={{ color: colors.text, ...TYPE.headline }}>{c.title}</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>{c.target.duration_days} gün</Text>
               <Button title="Başlat" size="sm" onPress={() => handleStart(c)} style={{ marginTop: SPACING.sm }} />
             </Card>
           ))}
@@ -216,10 +217,10 @@ export default function ChallengesScreen() {
 
       {showCustom && (
         <Card style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginBottom: SPACING.sm }}>
+          <Text style={{ color: colors.text, ...TYPE.headline, marginBottom: SPACING.sm }}>
             Kendi Challenge'ını Tanımla
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+          <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: SPACING.sm }}>
             Başlık (örn. "10 gün şekersiz")
           </Text>
           <TextInput
@@ -227,11 +228,11 @@ export default function ChallengesScreen() {
             placeholder="Challenge başlığı" placeholderTextColor={colors.textMuted}
             style={{
               backgroundColor: colors.surfaceLight, borderRadius: 8,
-              padding: SPACING.sm, color: colors.text, fontSize: FONT.md,
+              padding: SPACING.sm, color: colors.text, ...TYPE.body,
               marginBottom: SPACING.sm,
             }}
           />
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginBottom: SPACING.sm }}>Tip</Text>
+          <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: SPACING.sm }}>Tip</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: SPACING.sm }}>
             {/* FIX (final sweep): steps type hidden on Android — Pedometer is iOS-only, the metric would never fill. */}
             {(['water', 'protein', 'steps', 'sleep', 'custom'] as const).filter(t => Platform.OS !== 'android' || t !== 'steps').map(t => (
@@ -246,19 +247,19 @@ export default function ChallengesScreen() {
           </View>
           <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginBottom: 4 }}>Süre (gün)</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: 4 }}>Süre (gün)</Text>
               {/* FIX (audit a11y): screen readers get the visible label. */}
               <TextInput
                 value={customDays} onChangeText={setCustomDays} keyboardType="numeric"
                 accessibilityLabel="Süre (gün)"
                 style={{
                   backgroundColor: colors.surfaceLight, borderRadius: 8,
-                  padding: SPACING.sm, color: colors.text, fontSize: FONT.md,
+                  padding: SPACING.sm, color: colors.text, ...TYPE.body,
                 }}
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginBottom: 4 }}>Eşik (ops.)</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: 4 }}>Eşik (ops.)</Text>
               {/* FIX (audit a11y): screen readers get the visible label. */}
               <TextInput
                 value={customThreshold} onChangeText={setCustomThreshold} keyboardType="numeric"
@@ -267,7 +268,7 @@ export default function ChallengesScreen() {
                 accessibilityLabel="Eşik"
                 style={{
                   backgroundColor: colors.surfaceLight, borderRadius: 8,
-                  padding: SPACING.sm, color: colors.text, fontSize: FONT.md,
+                  padding: SPACING.sm, color: colors.text, ...TYPE.body,
                 }}
               />
             </View>
@@ -279,15 +280,15 @@ export default function ChallengesScreen() {
       {/* #R2-L4: Completed/abandoned history — previously these vanished from the screen */}
       {completed.length > 0 && (
         <View style={{ marginTop: SPACING.lg }}>
-          <Text style={{ fontSize: FONT.lg, fontWeight: '700', color: colors.text, marginBottom: SPACING.sm }}>Tamamlanan / Geçmiş</Text>
+          <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.sm }}>Tamamlanan / Geçmiş</Text>
           {completed.map(c => {
             const done = c.progress.filter(p => p.met).length;
             return (
               <Card key={c.id}>
-                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>
+                <Text style={{ color: colors.text, ...TYPE.headline }}>
                   {c.status === 'completed' ? '🏆 ' : ''}{c.title}
                 </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4 }}>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>
                   {c.status === 'completed' ? 'Tamamlandı' : 'Bırakıldı'} · {done}/{c.target.duration_days} gün
                 </Text>
                 <View style={{ height: 6, backgroundColor: colors.surfaceLight, borderRadius: 3, overflow: 'hidden', marginTop: SPACING.sm }}>

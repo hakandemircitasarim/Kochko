@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { a11yImage, getContrastColor } from '@/lib/accessibility';
 
@@ -201,7 +202,7 @@ export default function ProgressPhotosScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit ui-settings-duplicate-title): native header (settings/_layout.tsx) renders the title; in-body H1 removed as redundant. */}
       {/* FIX (audit diakritik-sweep): Türkçe diakritik geri yüklendi. */}
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.lg }}>
+      <Text style={{ color: colors.textMuted, ...TYPE.caption, marginBottom: SPACING.lg }}>
         Fotoğraflar sadece senin cihazında saklanır. AI'a veya üçüncü tarafa gönderilmez.
       </Text>
 
@@ -219,7 +220,7 @@ export default function ProgressPhotosScreen() {
               borderWidth: 1, borderColor: selectedPose === pose ? colors.primary : colors.border,
             }}>
             {/* FIX (audit UI-DS-01): seçili poz metni '#fff' yerine getContrastColor(colors.primary) (siyah; teal üzerinde WCAG AA geçer, beyaz 3.39:1 idi). */}
-            <Text style={{ color: selectedPose === pose ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>{POSE_LABELS[pose] ?? pose}</Text>
+            <Text style={{ color: selectedPose === pose ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.bodyStrong }}>{POSE_LABELS[pose] ?? pose}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -245,9 +246,9 @@ export default function ProgressPhotosScreen() {
       <Modal visible={showComparison} animationType="slide" presentationStyle="pageSheet">
         <View style={{ flex: 1, backgroundColor: colors.background, padding: SPACING.md }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
-            <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700' }}>Karşılaştırma ({selectedPose})</Text>
+            <Text style={{ color: colors.text, ...TYPE.title3 }}>Karşılaştırma ({selectedPose})</Text>
             <TouchableOpacity onPress={() => setShowComparison(false)}>
-              <Text style={{ color: colors.primary, fontSize: FONT.md, fontWeight: '600' }}>Kapat</Text>
+              <Text style={{ color: colors.primary, ...TYPE.headline }}>Kapat</Text>
             </TouchableOpacity>
           </View>
           {comparisonPhotos && (
@@ -257,34 +258,34 @@ export default function ProgressPhotosScreen() {
                 {failedPhotoIds.has(comparisonPhotos.earliest.id) ? (
                   <View style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 8 }}>
                     <Ionicons name="image-outline" size={26} color={colors.textMuted} />
-                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
+                    <Text style={{ color: colors.textMuted, ...TYPE.caption, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
                   </View>
                 ) : (
                   <Image source={{ uri: comparisonPhotos.earliest.storage_path }} onError={() => markFailed(comparisonPhotos.earliest.id)} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} {...a11yImage(`Başlangıç fotoğrafı, ${new Date(comparisonPhotos.earliest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`)} />
                 )}
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
+                <Text style={{ color: colors.textSecondary, ...TYPE.caption, textAlign: 'center', marginTop: SPACING.xs }}>
                   {new Date(comparisonPhotos.earliest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center' }}>Başlangıç</Text>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted, textAlign: 'center' }}>Başlangıç</Text>
               </View>
               <View style={{ width: comparisonWidth }}>
                 {/* FIX (ux-round4 #16 + audit ui-a11y-images): missing file → placeholder, not blank. */}
                 {failedPhotoIds.has(comparisonPhotos.latest.id) ? (
                   <View style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 8 }}>
                     <Ionicons name="image-outline" size={26} color={colors.textMuted} />
-                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
+                    <Text style={{ color: colors.textMuted, ...TYPE.caption, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
                   </View>
                 ) : (
                   <Image source={{ uri: comparisonPhotos.latest.storage_path }} onError={() => markFailed(comparisonPhotos.latest.id)} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 12 }} {...a11yImage(`Güncel fotoğraf, ${new Date(comparisonPhotos.latest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`)} />
                 )}
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.xs }}>
+                <Text style={{ color: colors.textSecondary, ...TYPE.caption, textAlign: 'center', marginTop: SPACING.xs }}>
                   {new Date(comparisonPhotos.latest.photo_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center' }}>Güncel</Text>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted, textAlign: 'center' }}>Güncel</Text>
               </View>
             </View>
           )}
-          <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.lg }}>
+          <Text style={{ ...TYPE.caption, color: colors.textMuted, textAlign: 'center', marginTop: SPACING.lg }}>
             Bu fotoğraflar AI'a gönderilmez ve üçüncü taraflarla paylaşılmaz.
           </Text>
         </View>
@@ -305,14 +306,14 @@ export default function ProgressPhotosScreen() {
         </Card>
       ) : photos.length === 0 ? (
         <Card>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center' }}>
+          <Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center' }}>
             Henüz ilerleme fotoğrafı yok. Düzenli foto çekerek değişimini takip et.
           </Text>
         </Card>
       ) : (
         Object.entries(grouped).map(([date, datePhotos]) => (
           <View key={date} style={{ marginBottom: SPACING.lg }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.sm }}>
+            <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong, marginBottom: SPACING.sm }}>
               {new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
@@ -323,7 +324,7 @@ export default function ProgressPhotosScreen() {
                   {failedPhotoIds.has(photo.id) ? (
                     <View style={{ width: '100%', aspectRatio: 3 / 4, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, gap: 4 }}>
                       <Ionicons name="image-outline" size={22} color={colors.textMuted} />
-                      <Text style={{ color: colors.textMuted, fontSize: 9, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
+                      <Text style={{ ...TYPE.footnote, color: colors.textMuted, textAlign: 'center' }}>Fotoğraf bulunamadı</Text>
                     </View>
                   ) : (
                     /* FIX (audit ui-a11y-images): anlamlı <Image> etiketi. */
@@ -339,7 +340,7 @@ export default function ProgressPhotosScreen() {
                   >
                     <Ionicons name="trash-outline" size={15} color="#fff" />
                   </TouchableOpacity>
-                  <Text style={{ color: colors.textMuted, fontSize: 9, textAlign: 'center', marginTop: 2, }}>{POSE_LABELS[photo.pose_type] ?? photo.pose_type}</Text>
+                  <Text style={{ ...TYPE.footnote, color: colors.textMuted, textAlign: 'center', marginTop: 2 }}>{POSE_LABELS[photo.pose_type] ?? photo.pose_type}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -347,7 +348,7 @@ export default function ProgressPhotosScreen() {
         ))
       )}
 
-      <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Sil butonuna dokun veya uzun bas</Text>
+      <Text style={{ ...TYPE.caption, color: colors.textMuted, textAlign: 'center', marginTop: SPACING.md }}>Sil butonuna dokun veya uzun bas</Text>
     </ScrollView>
   );
 }

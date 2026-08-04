@@ -9,6 +9,7 @@ import { getExerciseHistory, estimate1RM, shouldDeload, suggestProgression, dete
 import { Card } from '@/components/ui/Card';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { usePremium } from '@/hooks/usePremium';
 import { useProfileStore } from '@/stores/profile.store';
@@ -83,7 +84,7 @@ export default function StrengthScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): native header (settings/_layout.tsx) zaten "Güç Progresyon"
           başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginBottom: SPACING.lg }}>Temel hareketlerin takibi ve 1RM tahminleri.</Text>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>Temel hareketlerin takibi ve 1RM tahminleri.</Text>
 
       {/* FIX (audit strength-screen): veri gelmeden / hata anında 'kayıt yok' flaşını önle. */}
       {loading ? (
@@ -95,8 +96,8 @@ export default function StrengthScreen() {
             <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
               <Ionicons name="barbell-outline" size={26} color={colors.primary} />
             </View>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz güç kaydın yok</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Koçuna "squat 3x8 80kg yaptım" gibi yazarak kayıt girebilirsin.</Text>
+            <Text style={{ color: colors.text, ...TYPE.headline, textAlign: 'center' }}>Henüz güç kaydın yok</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center' }}>Koçuna "squat 3x8 80kg yaptım" gibi yazarak kayıt girebilirsin.</Text>
           </View>
         </Card>
       ) : (
@@ -109,47 +110,47 @@ export default function StrengthScreen() {
               {/* 1RM and current */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: SPACING.md }}>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ color: colors.primary, fontSize: FONT.xl, fontWeight: '700' }}>{ex.estimated1RM}kg</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Tahmini 1RM</Text>
+                  <Text style={{ color: colors.primary, ...TYPE.title3 }}>{ex.estimated1RM}kg</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>Tahmini 1RM</Text>
                 </View>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.xl, fontWeight: '700' }}>{ex.lastWeight}kg</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Son ağırlık</Text>
+                  <Text style={{ color: colors.text, ...TYPE.title3 }}>{ex.lastWeight}kg</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>Son ağırlık</Text>
                 </View>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.xl, fontWeight: '700' }}>{ex.lastReps}</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Son rep</Text>
+                  <Text style={{ color: colors.text, ...TYPE.title3 }}>{ex.lastReps}</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>Son rep</Text>
                 </View>
               </View>
 
               {/* Progression suggestion */}
               <View style={{ marginBottom: SPACING.md, padding: SPACING.sm, backgroundColor: colors.primary + '10', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: colors.primary }}>
-                <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600', marginBottom: 2 }}>Sonraki hedef: {progression.weight}kg x {progression.reps}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>{progression.note}</Text>
+                <Text style={{ color: colors.primary, ...TYPE.bodyStrong, marginBottom: 2 }}>Sonraki hedef: {progression.weight}kg x {progression.reps}</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>{progression.note}</Text>
               </View>
 
               {/* History */}
               {ex.history.map((h, i) => (
                 <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.body }}>
                     {new Date(h.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                   </Text>
-                  <Text style={{ color: colors.text, fontSize: FONT.sm }}>{h.weight_kg}kg x {h.reps} ({h.sets} set)</Text>
-                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>1RM: {estimate1RM(h.weight_kg, h.reps)}kg</Text>
+                  <Text style={{ color: colors.text, ...TYPE.body }}>{h.weight_kg}kg x {h.reps} ({h.sets} set)</Text>
+                  <Text style={{ color: colors.textMuted, ...TYPE.caption }}>1RM: {estimate1RM(h.weight_kg, h.reps)}kg</Text>
                 </View>
               ))}
 
               {/* Plateau warning */}
               {plateau?.plateau && (
                 <View style={{ marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: colors.error + '10', borderRadius: 8, borderLeftWidth: 3, borderLeftColor: colors.error }}>
-                  <Text style={{ color: colors.error, fontSize: FONT.sm }}>{plateau.message}</Text>
+                  <Text style={{ color: colors.error, ...TYPE.body }}>{plateau.message}</Text>
                 </View>
               )}
 
               {/* Deload warning */}
               {deload.message ? (
                 <View style={{ marginTop: SPACING.sm, padding: SPACING.sm, backgroundColor: colors.surfaceLight, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: deload.needed ? colors.warning : colors.textMuted }}>
-                  <Text style={{ color: deload.needed ? colors.warning : colors.textMuted, fontSize: FONT.sm }}>{deload.message}</Text>
+                  <Text style={{ color: deload.needed ? colors.warning : colors.textMuted, ...TYPE.body }}>{deload.message}</Text>
                 </View>
               ) : null}
             </Card>

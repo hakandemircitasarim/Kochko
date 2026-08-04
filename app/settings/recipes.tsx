@@ -10,6 +10,7 @@ import { getRecipes, deleteRecipe, updateRecipe, scaleRecipe, suggestSubstitutio
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -182,7 +183,7 @@ export default function RecipesScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Koçundan aldığın tarifleri burada bulabilirsin.</Text>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>Koçundan aldığın tarifleri burada bulabilirsin.</Text>
 
       {/* Filter */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
@@ -192,7 +193,7 @@ export default function RecipesScreen() {
           accessibilityState={{ selected: !filter }}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
           style={{ paddingVertical: SPACING.xs, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: !filter ? colors.primary : 'transparent', borderWidth: 1, borderColor: !filter ? colors.primary : colors.border }}>
-          <Text style={{ color: !filter ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>Tümü</Text>
+          <Text style={{ color: !filter ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.caption, fontWeight: '600' }}>Tümü</Text>
         </TouchableOpacity>
         {Object.entries(CAT_LABELS).map(([key, label]) => (
           <TouchableOpacity key={key} onPress={() => { haptics.tap(); setFilter(key); }}
@@ -201,7 +202,7 @@ export default function RecipesScreen() {
             accessibilityState={{ selected: filter === key }}
             hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
             style={{ paddingVertical: SPACING.xs, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: filter === key ? colors.primary : 'transparent', borderWidth: 1, borderColor: filter === key ? colors.primary : colors.border }}>
-            <Text style={{ color: filter === key ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>{label}</Text>
+            <Text style={{ color: filter === key ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.caption, fontWeight: '600' }}>{label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -219,11 +220,11 @@ export default function RecipesScreen() {
           accessibilityRole="button"
           accessibilityLabel="Malzemelere göre tarif ara"
           style={{ paddingHorizontal: SPACING.md, justifyContent: 'center', borderRadius: RADIUS.sm, backgroundColor: colors.primary }}>
-          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Ara</Text>
+          <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Ara</Text>
         </TouchableOpacity>
       </View>
       {ingredientMatches !== null && (
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+        <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: SPACING.sm }}>
           {ingredientMatches.length > 0 ? `${ingredientMatches.length} tarif eşleşti (en az %50 malzeme).` : 'Eşleşen tarif yok. Koçundan bu malzemelerle tarif iste.'}
         </Text>
       )}
@@ -243,8 +244,8 @@ export default function RecipesScreen() {
             <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
               <Ionicons name="book-outline" size={26} color={colors.primary} />
             </View>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz kayıtlı tarifin yok</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Koçundan tarif iste ve "Kaydet" de.</Text>
+            <Text style={{ color: colors.text, ...TYPE.headline, textAlign: 'center' }}>Henüz kayıtlı tarifin yok</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center' }}>Koçundan tarif iste ve "Kaydet" de.</Text>
           </View>
         </Card>
       ) : (
@@ -259,7 +260,7 @@ export default function RecipesScreen() {
               {editingId === r.id ? (
                 /* Edit Mode */
                 <View style={{ gap: SPACING.sm }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>TARİF DÜZENLE</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '600' }}>TARİF DÜZENLE</Text>
                   <TextInput
                     style={inputStyle}
                     value={editTitle}
@@ -287,12 +288,12 @@ export default function RecipesScreen() {
                     <TouchableOpacity onPress={saveEdit}
                       accessibilityRole="button" accessibilityLabel="Tarifi kaydet"
                       style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.success, alignItems: 'center' }}>
-                      <Text style={{ color: getContrastColor(colors.success), fontSize: FONT.sm, fontWeight: '600' }}>Kaydet</Text>
+                      <Text style={{ color: getContrastColor(colors.success), ...TYPE.bodyStrong }}>Kaydet</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => { haptics.tap(); cancelEdit(); }}
                       accessibilityRole="button" accessibilityLabel="Düzenlemeyi iptal et"
                       style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>
-                      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>İptal</Text>
+                      <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>İptal</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -301,12 +302,12 @@ export default function RecipesScreen() {
                 <>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>{r.title}</Text>
+                      <Text style={{ color: colors.text, ...TYPE.headline }}>{r.title}</Text>
                       <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: 4 }}>
-                        {r.total_calories && <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{r.total_calories} kcal</Text>}
-                        {r.total_protein && <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{r.total_protein}g pro</Text>}
-                        {r.prep_time_min && <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{r.prep_time_min + (r.cook_time_min ?? 0)} dk</Text>}
-                        {r.category && <Text style={{ color: colors.primary, fontSize: FONT.xs }}>{CAT_LABELS[r.category] ?? r.category}</Text>}
+                        {r.total_calories && <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{r.total_calories} kcal</Text>}
+                        {r.total_protein && <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{r.total_protein}g pro</Text>}
+                        {r.prep_time_min && <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{r.prep_time_min + (r.cook_time_min ?? 0)} dk</Text>}
+                        {r.category && <Text style={{ color: colors.primary, ...TYPE.caption }}>{CAT_LABELS[r.category] ?? r.category}</Text>}
                       </View>
                     </View>
                     <TouchableOpacity onPress={() => handleToggleFavorite(r)}
@@ -323,7 +324,7 @@ export default function RecipesScreen() {
                       style={{ width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }}>
                       <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
-                    <Text style={{ color: colors.textMuted, fontSize: FONT.md }}>{expanded === r.id ? '−' : '+'}</Text>
+                    <Text style={{ color: colors.textMuted, ...TYPE.body }}>{expanded === r.id ? '−' : '+'}</Text>
                   </View>
 
                   {expanded === r.id && (() => {
@@ -333,7 +334,7 @@ export default function RecipesScreen() {
                     <View style={{ marginTop: SPACING.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: SPACING.md }}>
                       {/* D9: Portion Scaler */}
                       <View style={{ marginBottom: SPACING.md }}>
-                        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.xs }}>PORSİYON</Text>
+                        <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '600', marginBottom: SPACING.xs }}>PORSİYON</Text>
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
                           {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
                             <TouchableOpacity key={n} onPress={() => { haptics.tap(); handleScale(r, n); }}
@@ -345,32 +346,32 @@ export default function RecipesScreen() {
                                 backgroundColor: currentScaling === n ? colors.primary : colors.surfaceLight,
                                 borderWidth: 1, borderColor: currentScaling === n ? colors.primary : colors.border,
                               }}>
-                              <Text style={{ color: currentScaling === n ? getContrastColor(colors.primary) : colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{n}</Text>
+                              <Text style={{ color: currentScaling === n ? getContrastColor(colors.primary) : colors.text, ...TYPE.bodyStrong }}>{n}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
                         {currentScaling !== r.servings && (
-                          <Text style={{ color: colors.primary, fontSize: FONT.xs, marginTop: 4 }}>
+                          <Text style={{ color: colors.primary, ...TYPE.caption, marginTop: 4 }}>
                             {r.servings} porsiyon &rarr; {currentScaling} porsiyon ({display.total_calories ?? '?'} kcal)
                           </Text>
                         )}
                       </View>
 
-                      <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.xs }}>MALZEMELER</Text>
+                      <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '600', marginBottom: SPACING.xs }}>MALZEMELER</Text>
                       {display.ingredients.map((ing, i) => {
                         const subKey = `${r.id}:${ing.name}`;
                         const subs = substitutions[subKey];
                         return (
                           <View key={i}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 2 }}>
-                              <Text style={{ color: colors.text, fontSize: FONT.sm, flex: 1 }}>- {ing.amount} {ing.unit} {ing.name}</Text>
+                              <Text style={{ color: colors.text, ...TYPE.body, flex: 1 }}>- {ing.amount} {ing.unit} {ing.name}</Text>
                               {/* D10: Substitution button */}
                               <TouchableOpacity onPress={() => handleSubstitution(r.id, ing.name)}
                                 accessibilityRole="button"
                                 accessibilityLabel={`${ing.name} için ikame öner`}
                                 hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                                 style={{ paddingVertical: SPACING.xs, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, borderWidth: 1, borderColor: colors.border }}>
-                                <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600' }}>İkame</Text>
+                                <Text style={{ color: colors.primary, ...TYPE.caption, fontWeight: '600' }}>İkame</Text>
                               </TouchableOpacity>
                             </View>
                             {/* D10: Show substitutions */}
@@ -378,8 +379,8 @@ export default function RecipesScreen() {
                               <View style={{ marginLeft: SPACING.md, marginBottom: SPACING.xs }}>
                                 {subs.map((sub, si) => (
                                   <View key={si} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 2 }}>
-                                    <Text style={{ color: colors.success, fontSize: FONT.xs }}>  &rarr; {sub.replacement}</Text>
-                                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginLeft: SPACING.xs }}>({sub.note_tr})</Text>
+                                    <Text style={{ color: colors.success, ...TYPE.caption }}>  &rarr; {sub.replacement}</Text>
+                                    <Text style={{ color: colors.textMuted, ...TYPE.caption, marginLeft: SPACING.xs }}>({sub.note_tr})</Text>
                                   </View>
                                 ))}
                               </View>
@@ -388,21 +389,21 @@ export default function RecipesScreen() {
                         );
                       })}
 
-                      <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.md, marginBottom: SPACING.xs }}>YAPILIŞI</Text>
-                      <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 22 }}>{display.instructions}</Text>
-                      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>{display.servings} porsiyon</Text>
+                      <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '600', marginTop: SPACING.md, marginBottom: SPACING.xs }}>YAPILIŞI</Text>
+                      <Text style={{ color: colors.text, ...TYPE.body, lineHeight: 22 }}>{display.instructions}</Text>
+                      <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.sm }}>{display.servings} porsiyon</Text>
                       <View style={{ flexDirection: 'row', gap: SPACING.lg, marginTop: SPACING.sm }}>
                         <TouchableOpacity onPress={() => { haptics.tap(); startEdit(r); }}
                           accessibilityRole="button" accessibilityLabel="Tarifi düzenle"
                           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                           style={{ paddingVertical: SPACING.xs }}>
-                          <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600' }}>Düzenle</Text>
+                          <Text style={{ color: colors.primary, ...TYPE.bodyStrong }}>Düzenle</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => handleCooked(r)}
                           accessibilityRole="button" accessibilityLabel="Pişirdim olarak işaretle"
                           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
                           style={{ paddingVertical: SPACING.xs }}>
-                          <Text style={{ color: colors.success, fontSize: FONT.sm, fontWeight: '600' }}>Pişirdim ✓</Text>
+                          <Text style={{ color: colors.success, ...TYPE.bodyStrong }}>Pişirdim ✓</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -431,7 +432,7 @@ const makeInputStyle = (c: ThemeColors) => ({
   borderRadius: RADIUS.sm,
   padding: SPACING.sm,
   color: c.text,
-  fontSize: FONT.sm,
+  ...TYPE.body,
   borderWidth: 1,
   borderColor: c.border,
 });
