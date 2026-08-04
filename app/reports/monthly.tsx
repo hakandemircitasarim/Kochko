@@ -206,7 +206,10 @@ export default function MonthlyReportScreen() {
   // the daily_metrics weights already loaded (weightData is ascending by date).
   const firstWeight: number | null = weightData.length > 0 ? weightData[0].value : null;
   const lastWeight: number | null = weightData.length > 0 ? weightData[weightData.length - 1].value : null;
-  const weightChange: number | null = firstWeight !== null && lastWeight !== null ? lastWeight - firstWeight : null;
+  // Ay icinde tek tarti varsa "Ay basi"/"Ay sonu" AYNI olcumdur ve kart uc sutunda ayni
+  // sayiyi yazip "Degisim 0,0 kg" diyordu. Degisim en az iki kayitla vardir.
+  const weightChange: number | null = weightData.length >= 2 && firstWeight !== null && lastWeight !== null
+    ? lastWeight - firstWeight : null;
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>

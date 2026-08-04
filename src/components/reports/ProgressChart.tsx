@@ -37,10 +37,16 @@ export function ProgressChart({ data, color: colorProp, unit = '', height = 180 
   // FIX (theme): varsayılan renk artık varsayılan-parametrede sabitlenmiyor — aktif temadan çözülüyor.
   const color = colorProp ?? colors.primary;
 
-  if (data.length === 0) {
+  // Tek noktayla bu bilesen "En dusuk 85,4 / Son 85,4 / En yuksek 85,4" yazip tek bir nokta
+  // ciziyordu: uc ozdes sayi ve cizgisi olmayan bir cizgi grafigi. Bir olcum bir aralik
+  // degildir. (app/(tabs)/progress.tsx zaten kendi grafigini `>= 2` ile kapatiyordu — bu
+  // esik artik bilesenin kendisinde, yani aylik/haftalik raporlar da ayni kurala uyuyor.)
+  if (data.length < 2) {
     return (
-      <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ ...TYPE.body, color: colors.textMuted }}>Henüz veri yok</Text>
+      <View style={{ height, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.lg }}>
+        <Text style={{ ...TYPE.body, color: colors.textMuted, textAlign: 'center' }}>
+          {data.length === 0 ? 'Henüz veri yok' : 'Trend için en az iki kayıt gerekli'}
+        </Text>
       </View>
     );
   }

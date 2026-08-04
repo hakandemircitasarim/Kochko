@@ -26,6 +26,8 @@ export default function AllTimeReportScreen() {
   const [stats, setStats] = useState<{
     startWeight: number | null;
     currentWeight: number | null;
+    /** Kac AYRI gunde tarti kaydi var. 2'den azsa "degisim" diye bir sey yoktur. */
+    weightDays: number;
     totalMeals: number;
     totalWorkouts: number;
     longestStreak: number;
@@ -33,7 +35,7 @@ export default function AllTimeReportScreen() {
     activeDays: number;
     achievements: number;
   }>({
-    startWeight: null, currentWeight: null, totalMeals: 0,
+    startWeight: null, currentWeight: null, weightDays: 0, totalMeals: 0,
     totalWorkouts: 0, longestStreak: 0, avgCompliance: null as number | null,
     activeDays: 0, achievements: 0,
   });
@@ -48,7 +50,9 @@ export default function AllTimeReportScreen() {
 
     Promise.all([
       supabase.from('profiles').select('weight_kg, created_at').eq('id', user.id).single(),
-      supabase.from('daily_metrics').select('weight_kg, date').eq('user_id', user.id).not('weight_kg', 'is', null).order('date').limit(1).single(),
+      // count:'exact' ile ilk tarti satirini VE toplam tarti gunu sayisini tek istekte al —
+      // "Toplam Ilerleme" ancak en az iki olcum varsa anlamli (bkz. weightDays).
+      supabase.from('daily_metrics').select('weight_kg, date', { count: 'exact' }).eq('user_id', user.id).not('weight_kg', 'is', null).order('date').limit(1),
       supabase.from('meal_logs').select('id', { count: 'exact', head: true }).eq('user_id', user.id).eq('is_deleted', false),
       supabase.from('workout_logs').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
       supabase.from('daily_reports').select('compliance_score, date').eq('user_id', user.id).order('date', { ascending: true }),
@@ -96,8 +100,9 @@ export default function AllTimeReportScreen() {
       const activeDays = new Set(reports.filter(r => r.compliance_score > 0).map(r => r.date)).size;
 
       setStats({
-        startWeight: firstWeightRes.data?.weight_kg ?? null,
+        startWeight: firstWeightRes.data?.[0]?.weight_kg ?? null,
         currentWeight: profile?.weight_kg ?? null,
+        weightDays: firstWeightRes.count ?? 0,
         totalMeals: mealsRes.count ?? 0,
         totalWorkouts: workoutsRes.count ?? 0,
         longestStreak,
@@ -132,7 +137,10 @@ export default function AllTimeReportScreen() {
     );
   }
 
-  const totalWeightChange = stats.startWeight && stats.currentWeight
+  // Tek tarti kaydiyla baslangic ve mevcut AYNI olcumdur: kart "0,0 kg" ve altinda
+  // "85,4 kg -> 85,4 kg" yaziyordu, yani hicbir sey soylemeyen bir manset. Degisim ancak
+  // en az iki ayri gunun kaydi varsa vardir; yoksa kart hic cizilmez.
+  const totalWeightChange = stats.weightDays >= 2 && stats.startWeight != null && stats.currentWeight != null
     ? stats.currentWeight - stats.startWeight : null;
 
   return (

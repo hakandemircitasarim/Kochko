@@ -352,7 +352,11 @@ export default function ProgressScreen() {
   };
   const latestW = weights.length > 0 ? weights[weights.length - 1].weight_kg : null;
   const firstW = weights.length > 0 ? weights[0].weight_kg : null;
-  const wChange = latestW && firstW ? latestW - firstW : null;
+  // Tek tarti kaydiyla latestW === firstW, yani fark 0 cikiyor ve kutucuk YESIL bir "0,0"
+  // basiyordu: olculmemis bir sabitligi olculmus gibi gosteriyor. Ilk kez tartilan biri
+  // "kilom degismedi" diye okuyor — oysa karsilastirilacak ikinci bir gun yok. Degisim
+  // ancak en az iki ayri gunun kaydi varsa vardir. (weights = gunluk metrik satirlari.)
+  const wChange = weights.length >= 2 && latestW != null && firstW != null ? latestW - firstW : null;
   // FIX (ux-pass raporlar #2/#3/#4): only days with real logs feed the uyum average, the
   // trend chart and best/worst — report rows fabricated for unlogged days are excluded.
   const loggedCompliance = filterLoggedCompliance(compliance, metrics);
