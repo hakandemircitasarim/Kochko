@@ -27,13 +27,25 @@ import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { DateTimeField } from '@/components/ui/DateTimeField';
-import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
+import { SPACING, FONT, RADIUS, WATER_INCREMENT, MAX_FONT_SCALE } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 
 type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery' | 'steps';
 
 // Adım hızlı ekleme çipleri — tipik yarım/tam gün değerleri, elle yazmadan tek dokunuş.
 const STEP_CHIPS = [2000, 5000, 8000, 10000] as const;
+
+/**
+ * Text drawn straight onto the camera feed has no controlled background — on device the
+ * scanner header read as light-grey-on-light-wood and nearly vanished. The scan hint already
+ * carried a shadow and the title did not; same surface, two answers. One spec, applied to
+ * everything that sits over live camera.
+ */
+const ON_CAMERA_TEXT = {
+  textShadowColor: 'rgba(0,0,0,0.7)',
+  textShadowRadius: 4,
+  textShadowOffset: { width: 0, height: 1 },
+} as const;
 
 // daily_metrics.muscle_soreness is CHECK-constrained to these text values.
 const SORENESS_LEVELS = [
@@ -700,20 +712,22 @@ export default function QuickLogScreen() {
     if (!cameraPermission?.granted) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-          <Text style={{ color: colors.text, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.md }}>Barkod taramak için kamera izni gerekli</Text>
+          {/* The only sentence on an otherwise empty screen — it is the screen's subject, not a
+              caption, and it was one step below the app's reading size. */}
+          <Text style={{ ...TYPE.headline, color: colors.text, textAlign: 'center', marginBottom: SPACING.xl }}>Barkod taramak için kamera izni gerekli</Text>
           {/* ux-sweep (LOG-03): kalıcı reddedilmiş izinde 'İzin ver' ölü butondu — OS artık
               diyalog göstermiyor; kullanıcıyı ayarlara götür. */}
           <TouchableOpacity
             onPress={() => { if (cameraPermission && !cameraPermission.canAskAgain) { void Linking.openSettings(); } else { void requestCameraPermission(); } }}
             accessibilityRole="button"
             accessibilityLabel={cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
-            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl }}>
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>
+            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl }}>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>
               {cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginTop: SPACING.md }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Geri</Text>
+          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginTop: SPACING.xl }}>
+            <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Geri</Text>
           </TouchableOpacity>
         </View>
       );
@@ -733,7 +747,7 @@ export default function QuickLogScreen() {
         {!pendingProduct && !barcodeLoading && (
           <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
             <View style={{ width: 260, height: 150, borderRadius: RADIUS.lg, borderWidth: 2, borderColor: 'rgba(255,255,255,0.9)', backgroundColor: 'rgba(255,255,255,0.04)' }} />
-            <Text style={{ color: '#fff', fontSize: FONT.sm, marginTop: SPACING.md, textShadowColor: 'rgba(0,0,0,0.7)', textShadowRadius: 4, textShadowOffset: { width: 0, height: 1 } }}>
+            <Text style={{ ...TYPE.body, ...ON_CAMERA_TEXT, color: '#fff', marginTop: SPACING.md }}>
               Barkodu çerçeveye hizala
             </Text>
           </View>
@@ -747,9 +761,11 @@ export default function QuickLogScreen() {
               accessibilityRole="button"
               accessibilityLabel="Kapat"
             >
-              <Ionicons name="close" size={28} color="#fff" />
+              <Ionicons name="close" size={28} color="#fff" style={ON_CAMERA_TEXT} />
             </TouchableOpacity>
-            <Text style={{ color: '#fff', fontSize: FONT.lg, fontWeight: '600' }}>Barkod Tara</Text>
+            {/* "Barkod Tara" was the only Title Case screen title in the app — every other one is
+                sentence case ("Kayıt ekle", "Diyet planı", "Antrenman planı"). */}
+            <Text style={{ ...TYPE.title2, ...ON_CAMERA_TEXT, color: '#fff' }}>Barkod tara</Text>
             <View style={{ width: 28 }} />
           </View>
           {/* Result banner / portion chooser */}
@@ -761,7 +777,7 @@ export default function QuickLogScreen() {
             {barcodeLoading && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center' }}>
                 <ActivityIndicator color="#fff" />
-                <Text style={{ color: '#fff', fontSize: FONT.sm, marginTop: SPACING.sm }}>
+                <Text style={{ ...TYPE.body, color: '#fff', marginTop: SPACING.sm }}>
                   {pendingProduct ? 'Kaydediliyor...' : 'Ürün aranıyor...'}
                 </Text>
               </View>
@@ -769,11 +785,11 @@ export default function QuickLogScreen() {
             {/* FIX (audit HIGH: porsiyon): göndermeden önce tek dokunuşluk porsiyon seçimi */}
             {pendingProduct && !barcodeLoading && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.85)', borderRadius: RADIUS.md, padding: SPACING.lg }}>
-                <Text style={{ color: '#fff', fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>
+                <Text style={{ ...TYPE.headline, color: '#fff', textAlign: 'center' }}>
                   {pendingProduct.result.product_name}
                   {pendingProduct.result.calories_per_100g != null ? ` · ${pendingProduct.result.calories_per_100g} kcal/100g` : ''}
                 </Text>
-                <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs, marginBottom: SPACING.md }}>
+                <Text style={{ ...TYPE.body, color: 'rgba(255,255,255,0.75)', textAlign: 'center', marginTop: SPACING.xs, marginBottom: SPACING.md }}>
                   Ne kadar yedin?
                 </Text>
                 {showCustomGrams ? (() => {
@@ -795,7 +811,7 @@ export default function QuickLogScreen() {
                       placeholder="gram"
                       placeholderTextColor="rgba(255,255,255,0.4)"
                       accessibilityLabel="Gram miktarı"
-                      style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.sm, color: '#fff', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: FONT.md }}
+                      style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.sm, color: '#fff', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, ...TYPE.body }}
                     />
                     <TouchableOpacity
                       onPress={() => { if (!gValid) return; haptics.tap(); void sendBarcodeLog(g); }}
@@ -803,11 +819,11 @@ export default function QuickLogScreen() {
                       accessibilityRole="button" accessibilityLabel="Gramı kaydet"
                       accessibilityState={{ disabled: !gValid }}
                       style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.xl, justifyContent: 'center', opacity: gValid ? 1 : 0.5 }}>
-                      <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Kaydet</Text>
+                      <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>Kaydet</Text>
                     </TouchableOpacity>
                   </View>
                   {preview ? (
-                    <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.sm }}>
+                    <Text style={{ ...TYPE.callout, color: 'rgba(255,255,255,0.85)', textAlign: 'center', marginTop: SPACING.sm }}>
                       ≈ {Math.round(preview.calories)} kcal · {Math.round(preview.protein_g)}g P · {Math.round(preview.carbs_g)}g K · {Math.round(preview.fat_g)}g Y
                     </Text>
                   ) : null}
@@ -820,7 +836,7 @@ export default function QuickLogScreen() {
                         onPress={() => { haptics.tap(); void sendBarcodeLog(pendingProduct.result.serving_size_g as number); }}
                         accessibilityRole="button" accessibilityLabel={`1 porsiyon, ${Math.round(pendingProduct.result.serving_size_g)} gram`}
                         style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
-                        <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>
+                        <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>
                           1 porsiyon ({Math.round(pendingProduct.result.serving_size_g)} g)
                         </Text>
                       </TouchableOpacity>
@@ -829,31 +845,31 @@ export default function QuickLogScreen() {
                       onPress={() => { haptics.tap(); void sendBarcodeLog(100); }}
                       accessibilityRole="button" accessibilityLabel="100 gram"
                       style={{ backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
-                      <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>100 g</Text>
+                      <Text style={{ ...TYPE.bodyStrong, color: '#fff' }}>100 g</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => { haptics.tap(); setShowCustomGrams(true); }}
                       accessibilityRole="button" accessibilityLabel="Özel gram gir"
                       style={{ backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
-                      <Text style={{ color: '#fff', fontSize: FONT.sm, fontWeight: '600' }}>Özel gram</Text>
+                      <Text style={{ ...TYPE.bodyStrong, color: '#fff' }}>Özel gram</Text>
                     </TouchableOpacity>
                   </View>
                 )}
                 {barcodeResult && (
-                  <Text style={{ color: '#FFB4AB', fontSize: FONT.xs, textAlign: 'center', marginTop: SPACING.sm }}>{barcodeResult}</Text>
+                  <Text style={{ ...TYPE.caption, color: '#FFB4AB', textAlign: 'center', marginTop: SPACING.sm }}>{barcodeResult}</Text>
                 )}
                 <TouchableOpacity
                   onPress={() => { haptics.tap(); resetBarcodeState(); }}
                   accessibilityRole="button" accessibilityLabel="Vazgeç"
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   style={{ alignSelf: 'center', marginTop: SPACING.md }}>
-                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: FONT.sm }}>Vazgeç</Text>
+                  <Text style={{ ...TYPE.body, color: 'rgba(255,255,255,0.6)' }}>Vazgeç</Text>
                 </TouchableOpacity>
               </View>
             )}
             {barcodeResult && !pendingProduct && (
               <View style={{ backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: RADIUS.md, padding: SPACING.lg }}>
-                <Text style={{ color: '#fff', fontSize: FONT.sm, textAlign: 'center' }}>{barcodeResult}</Text>
+                <Text style={{ ...TYPE.body, color: '#fff', textAlign: 'center' }}>{barcodeResult}</Text>
               </View>
             )}
           </View>
@@ -883,7 +899,7 @@ export default function QuickLogScreen() {
         {transcribing ? (
           <>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.md, marginTop: SPACING.md }}>Ses tanınıyor...</Text>
+            <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.md }}>Ses tanınıyor...</Text>
           </>
         ) : (
           <>
@@ -900,10 +916,10 @@ export default function QuickLogScreen() {
             >
               <Ionicons name={isRecording ? 'stop' : 'mic'} size={40} color={getContrastColor(isRecording ? colors.error : colors.pink)} />
             </TouchableOpacity>
-            <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginBottom: SPACING.sm }}>
+            <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.sm }}>
               {isRecording ? 'Dinliyorum...' : 'Konuşmaya başla'}
             </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>
+            <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center' }}>
               {isRecording ? 'Bitirince butona tekrar bas' : 'Örnek: "Öğlen yemekte 1 porsiyon mercimek çorbası, pilav ve ayran içtim"'}
             </Text>
           </>
@@ -935,7 +951,7 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.pink + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="scale" size={24} color={colors.pink} />
         </View>
-        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Tartı Kaydı</Text>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Tartı kaydı</Text>
         {/* FIX (ux-ideas #13): +/- steppers flank the input; the input is prefilled with the last
             known weight (set on open) so most weigh-ins are a one-tap tweak, not a full retype. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, width: '85%' }}>
@@ -950,7 +966,10 @@ export default function QuickLogScreen() {
               flex: 1,
               backgroundColor: colors.card, borderRadius: RADIUS.md,
               paddingHorizontal: SPACING.md, paddingVertical: SPACING.lg,
-              color: colors.text, fontSize: FONT.hero, fontWeight: '700',
+              // design.ts names this case outright: display is for "the calorie number, the
+              // weight". This is the one hero figure on the screen; FONT.hero (28) sat between
+              // two scale steps and belonged to neither.
+              ...TYPE.display, color: colors.text,
               textAlign: 'center', borderWidth: 0.5, borderColor: colors.border,
             }}
             // FIX (audit: yanıltıcı 73.5 sabiti): placeholder kullanıcının bilinen son kilosu —
@@ -978,24 +997,24 @@ export default function QuickLogScreen() {
           // FIX (ux-round4 #12): a present-but-out-of-range value gets a soft inline hint here
           // (this same line otherwise shows the delta / plain "kg").
           if (weightOutOfRange) {
-            return <Text style={{ color: colors.error, fontSize: FONT.xs, marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>Geçerli aralık: 20–300 kg</Text>;
+            return <Text style={{ ...TYPE.caption, color: colors.error, marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>Geçerli aralık: 20–300 kg</Text>;
           }
           const cur = parseFloat(weightInput.replace(',', '.'));
           const d = (Number.isFinite(cur) && lastKnownWeight != null) ? Math.round((cur - lastKnownWeight) * 10) / 10 : null;
-          if (d == null || d === 0) return <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>kg</Text>;
+          if (d == null || d === 0) return <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>kg</Text>;
           return (
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600', marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>
+            <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.textSecondary, marginTop: SPACING.sm, marginBottom: SPACING.xxl }}>
               son tartından {d > 0 ? '+' : '−'}{String(Math.abs(d)).replace('.', ',')} kg
             </Text>
           );
         })()}
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500' }}>İptal</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>İptal</Text>
           </TouchableOpacity>
           {/* FIX (ux-round4 #12): disable Kaydet until the value is in range (Alert stays as a net). */}
           <TouchableOpacity onPress={handleWeightSave} disabled={loading || !weightValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !weightValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !weightValid) ? 0.5 : 1 }}>
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1017,7 +1036,7 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.purple + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="moon" size={24} color={colors.purple} />
         </View>
-        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Uyku Kaydı</Text>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Uyku kaydı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%', marginBottom: SPACING.xxl }}>
           {/* FIX (audit Wave3): native time picker instead of free-text TextInput — invalid HH:mm
               becomes impossible to enter (iOS numbers-and-punctuation keyboard lacked ':'). The
@@ -1045,19 +1064,19 @@ export default function QuickLogScreen() {
           const hours = Math.round(((wakeMin - sleepMin) / 60) * 10) / 10;
           const odd = hours < 4 || hours > 12;
           return (
-            <Text style={{ color: odd ? colors.warning : colors.textSecondary, fontSize: FONT.md, fontWeight: '600', marginBottom: SPACING.xl }}>
+            <Text style={{ ...TYPE.headline, color: odd ? colors.warning : colors.textSecondary, marginBottom: SPACING.xl }}>
               {String(hours).replace('.', ',')} saat uyku
             </Text>
           );
         })()}
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500' }}>İptal</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>İptal</Text>
           </TouchableOpacity>
           {/* FIX (ux-round4 #13 review): disable Kaydet until BOTH times are picked — the pickers
               start empty, so the enabled button was a silent no-op (handleSleepSave early-returns). */}
           <TouchableOpacity onPress={handleSleepSave} disabled={loading || !sleepTime || !wakeTime} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !sleepTime || !wakeTime }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !sleepTime || !wakeTime) ? 0.5 : 1 }}>
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1082,8 +1101,8 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.purple + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="footsteps" size={24} color={colors.purple} />
         </View>
-        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.sm }}>Adım Kaydı</Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.xl }}>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.sm }}>Adım kaydı</Text>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.xl }}>
           Bugünün TOPLAM adımı — saatinden veya telefonundan okuduğun sayıyı gir.
         </Text>
         <TextInput
@@ -1091,7 +1110,7 @@ export default function QuickLogScreen() {
             width: '85%',
             backgroundColor: colors.card, borderRadius: RADIUS.md,
             paddingHorizontal: SPACING.md, paddingVertical: SPACING.lg,
-            color: colors.text, fontSize: FONT.hero, fontWeight: '700',
+            ...TYPE.display, color: colors.text,
             textAlign: 'center', borderWidth: 0.5, borderColor: colors.border,
           }}
           placeholder="10000"
@@ -1103,9 +1122,9 @@ export default function QuickLogScreen() {
           accessibilityLabel="Adım sayısı"
         />
         {stepsOutOfRange ? (
-          <Text style={{ color: colors.error, fontSize: FONT.xs, marginTop: SPACING.sm }}>Geçerli aralık: 0 – 100.000 adım</Text>
+          <Text style={{ ...TYPE.caption, color: colors.error, marginTop: SPACING.sm }}>Geçerli aralık: 0 – 100.000 adım</Text>
         ) : (
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm }}>adım</Text>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: SPACING.sm }}>adım</Text>
         )}
         {/* Tek dokunuşla tipik değerler — sayıyı YAZAR (günlük toplam, artış değil). */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.lg, marginBottom: SPACING.xxl }}>
@@ -1116,16 +1135,16 @@ export default function QuickLogScreen() {
               accessibilityRole="button"
               accessibilityLabel={`${n.toLocaleString('tr-TR')} adım`}
               style={{ paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight, borderWidth: 0.5, borderColor: colors.border }}>
-              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{n.toLocaleString('tr-TR')}</Text>
+              <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>{n.toLocaleString('tr-TR')}</Text>
             </TouchableOpacity>
           ))}
         </View>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500' }}>İptal</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>İptal</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleStepsSave} disabled={loading || !stepsValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !stepsValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !stepsValid) ? 0.5 : 1 }}>
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1147,7 +1166,7 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.success + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="fitness" size={24} color={colors.success} />
         </View>
-        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Toparlanma Kaydı</Text>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Toparlanma kaydı</Text>
 
         <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Kas ağrısı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xl }}>
@@ -1163,7 +1182,7 @@ export default function QuickLogScreen() {
                 backgroundColor: soreness === s.value ? colors.warning : colors.card,
                 borderWidth: 0.5, borderColor: soreness === s.value ? colors.warning : colors.border,
               }}>
-              <Text style={{ color: soreness === s.value ? getContrastColor(colors.warning) : colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>{s.label}</Text>
+              <Text style={{ color: soreness === s.value ? getContrastColor(colors.warning) : colors.textSecondary, ...TYPE.bodyStrong }}>{s.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -1181,20 +1200,20 @@ export default function QuickLogScreen() {
                 backgroundColor: recoveryScore === r ? colors.success : colors.card,
                 borderWidth: 0.5, borderColor: recoveryScore === r ? colors.success : colors.border,
               }}>
-              <Text style={{ color: recoveryScore === r ? getContrastColor(colors.success) : colors.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>{r}</Text>
+              <Text style={{ color: recoveryScore === r ? getContrastColor(colors.success) : colors.textSecondary, ...TYPE.headline }}>{r}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500' }}>İptal</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>İptal</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleRecoverySave} disabled={loading || (soreness === null && recoveryScore === null)}
             accessibilityRole="button" accessibilityLabel="Kaydet"
             accessibilityState={{ disabled: loading || (soreness === null && recoveryScore === null) }}
             style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: loading || (soreness === null && recoveryScore === null) ? 0.5 : 1 }}>
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1217,9 +1236,9 @@ export default function QuickLogScreen() {
           <Animated.View style={{ transform: [{ scale: successScale }] }}>
             <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
           </Animated.View>
-          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md }}>{successMsg}</Text>
+          <Text style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md }}>{successMsg}</Text>
           {successDetail ? (
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center' }} numberOfLines={2}>
+            <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, textAlign: 'center' }} numberOfLines={2}>
               {successDetail}
             </Text>
           ) : null}
@@ -1243,7 +1262,9 @@ export default function QuickLogScreen() {
           accessibilityLabel="Geri">
           <Ionicons name="close" size={24} color={colors.textMuted} />
         </TouchableOpacity>
-        <Text style={{ color: colors.text, fontSize: FONT.lg + 2, fontWeight: '600' }}>Kayıt ekle</Text>
+        {/* FONT.lg + 2 — a screen title expressed as arithmetic on a token, which is how a scale
+            stops being a scale. This is a page, so it gets the page-title step. */}
+        <Text style={{ ...TYPE.title2, color: colors.text }}>Kayıt ekle</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -1289,16 +1310,19 @@ export default function QuickLogScreen() {
             <View style={{ width: 36, height: 36, borderRadius: RADIUS.sm, backgroundColor: method.color + '18', alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name={method.icon} size={18} color={method.color} />
             </View>
+            {/* These four rows are the app's main entry points for its most frequent action, and
+                they were the smallest list rows in the app: 14px titles over 11px descriptions.
+                The description is what tells a new user what each method actually does. */}
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }}>{method.title}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{method.desc}</Text>
+              <Text style={{ ...TYPE.headline, color: colors.text }}>{method.title}</Text>
+              <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }}>{method.desc}</Text>
             </View>
             {/* FIX (ux-audit major): lock badge so the paywall is visible BEFORE tapping. */}
             {method.icon === 'mic-outline' && !isPremium
               ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.primary + '18', borderRadius: RADIUS.pill, paddingHorizontal: SPACING.sm, paddingVertical: 2 }}>
-                  <Ionicons name="lock-closed" size={11} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600' }}>Premium</Text>
+                  <Ionicons name="lock-closed" size={12} color={colors.primary} />
+                  <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '600', color: colors.primary }}>Premium</Text>
                 </View>
               )
               : busy
@@ -1313,7 +1337,7 @@ export default function QuickLogScreen() {
           to meal_logs (no AI turn), the fastest path for the highest-frequency action. */}
       {templates.length > 0 && (
         <>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+          <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>
             SIK YEDİKLERİN
           </Text>
           <ScrollView
@@ -1345,8 +1369,8 @@ export default function QuickLogScreen() {
                     ? <ActivityIndicator size="small" color={colors.primary} />
                     : <Ionicons name="add-circle" size={16} color={colors.primary} />}
                   <View>
-                    <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }} numberOfLines={1}>{t.name}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{t.total_calories} kcal</Text>
+                    <Text style={{ ...TYPE.bodyStrong, color: colors.text }} numberOfLines={1}>{t.name}</Text>
+                    <Text style={{ ...TYPE.caption, color: colors.textMuted }}>{t.total_calories} kcal</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -1360,7 +1384,7 @@ export default function QuickLogScreen() {
           repeat doesn't require having built a template first. */}
       {recentMeals.length > 0 && (
         <>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+          <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>
             SON ÖĞÜNLER
           </Text>
           <ScrollView
@@ -1383,7 +1407,10 @@ export default function QuickLogScreen() {
                   accessibilityState={{ busy }}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-                    maxWidth: 240,
+                    // Raised with the label (13→15): 240 was cut to fit the smaller text and
+                    // "Akşam 200g yoğurt ve bir el…" already ellipsised on device. 280 buys the
+                    // characters back and still leaves the next chip peeking as a scroll cue.
+                    maxWidth: 280,
                     backgroundColor: colors.card, borderRadius: RADIUS.pill,
                     borderWidth: 0.5, borderColor: colors.border,
                     paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg,
@@ -1393,8 +1420,8 @@ export default function QuickLogScreen() {
                     ? <ActivityIndicator size="small" color={colors.primary} />
                     : <Ionicons name="repeat" size={16} color={colors.primary} />}
                   <View style={{ flexShrink: 1 }}>
-                    <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }} numberOfLines={1}>{m.rawInput}</Text>
-                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{m.dayLabel} · {m.kcal} kcal</Text>
+                    <Text style={{ ...TYPE.bodyStrong, color: colors.text }} numberOfLines={1}>{m.rawInput}</Text>
+                    <Text style={{ ...TYPE.caption, color: colors.textMuted }}>{m.dayLabel} · {m.kcal} kcal</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -1408,13 +1435,14 @@ export default function QuickLogScreen() {
           üretiyordu (canlıda görüldü). Doğru Türkçe büyük harf (İ/I ayrımı) literal yazıldı. */}
       <Text
         onLayout={(e) => { quickInputY.current = e.nativeEvent.layout.y; }}
-        style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+        style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>
         HIZLI KAYIT
       </Text>
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.xxl }}>
         <TextInput
           ref={quickInputRef}
-          style={{ color: colors.text, fontSize: FONT.sm, minHeight: 50, textAlignVertical: 'top' }}
+          // The reading step: this is free-text the user composes and re-reads before saving.
+          style={{ ...TYPE.body, color: colors.text, minHeight: 50, textAlignVertical: 'top' }}
           placeholder="Örnek: 2 dilim ekmek, 1 yumurta, çay"
           placeholderTextColor={colors.textMuted}
           accessibilityLabel="Hızlı kayıt"
@@ -1426,15 +1454,15 @@ export default function QuickLogScreen() {
             accessibilityRole="button"
             accessibilityLabel="Kaydet"
             accessibilityState={{ disabled: loading, busy: loading }}
-            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.md, opacity: loading ? 0.5 : 1 }}>
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
+            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, alignItems: 'center', marginTop: SPACING.md, opacity: loading ? 0.5 : 1 }}>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         ) : null}
       </View>
 
       {/* FIX (ux-round2 #3): quick water amounts — one tap for a glass / half / full litre,
           instead of opening the +0.25L tile four times. */}
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+      <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>
         SU
       </Text>
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xxl }}>
@@ -1451,14 +1479,14 @@ export default function QuickLogScreen() {
             style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.md, backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border, opacity: (submittingRef.current || waterPendingLiters !== null) ? 0.6 : 1 }}
           >
             {busy ? <ActivityIndicator size="small" color={colors.protein} /> : <Ionicons name="water" size={16} color={colors.protein} />}
-            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{o.label}</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>{o.label}</Text>
           </TouchableOpacity>
           );
         })}
       </View>
 
       {/* Other entries — 2x2 grid */}
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', letterSpacing: 0.5, marginBottom: SPACING.sm }}>
+      <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>
         DİĞER KAYITLAR
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
@@ -1486,7 +1514,7 @@ export default function QuickLogScreen() {
             {busy
               ? <ActivityIndicator size="small" color={action.color} />
               : <Ionicons name={action.icon} size={24} color={action.color} />}
-            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500' }}>{action.label}</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>{action.label}</Text>
           </TouchableOpacity>
           );
         })}
