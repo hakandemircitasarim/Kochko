@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { TempoChart } from '@/components/plan/TempoChart';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -275,22 +276,22 @@ export default function GoalsScreen() {
             başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
 
         {profile?.weight_kg && (
-          <Text style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '600', marginBottom: SPACING.md }}>Mevcut: {profile.weight_kg} kg</Text>
+          <Text style={{ ...TYPE.title3, color: colors.primary, marginBottom: SPACING.md }}>Mevcut: {profile.weight_kg} kg</Text>
         )}
 
         {/* Existing goal progress */}
         {existingGoal && progress && (
           <Card style={{ marginBottom: SPACING.md }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
-              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>Mevcut Hedef</Text>
-              <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>%{progress.percentComplete}</Text>
+              <Text style={{ ...TYPE.headline, color: colors.text }}>Mevcut Hedef</Text>
+              <Text style={{ ...TYPE.bodyStrong, fontWeight: '700', color: colors.primary }}>%{progress.percentComplete}</Text>
             </View>
             <View style={{ height: 8, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.full, overflow: 'hidden', marginBottom: SPACING.sm }}>
               <View style={{ height: '100%', width: `${progress.percentComplete}%`, backgroundColor: colors.primary, borderRadius: RADIUS.full }} />
             </View>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>{summaryText}</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{summaryText}</Text>
             {progress.estimatedCompletionDate && (
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>
+              <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.xs }}>
                 Tahmini tamamlanma: {progress.estimatedCompletionDate}
               </Text>
             )}
@@ -313,7 +314,7 @@ export default function GoalsScreen() {
         {/* Phase timeline */}
         {allPhases.length > 1 && (
           <Card style={{ marginBottom: SPACING.md }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>FAZ PLANI</Text>
+            <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.sm }}>FAZ PLANI</Text>
             {allPhases.map((phase, i) => (
               <View key={phase.id} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: i < allPhases.length - 1 ? SPACING.sm : 0 }}>
                 <View style={{
@@ -321,22 +322,24 @@ export default function GoalsScreen() {
                   backgroundColor: phase.is_active ? colors.primary : colors.surfaceLight,
                   alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Text style={{ color: phase.is_active ? getContrastColor(colors.primary) : colors.textMuted, fontSize: FONT.xs, fontWeight: '700' }}>{i + 1}</Text>
+                  <Text style={{ ...TYPE.caption, fontWeight: '700', color: phase.is_active ? getContrastColor(colors.primary) : colors.textMuted }}>{i + 1}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: phase.is_active ? colors.text : colors.textMuted, fontSize: FONT.sm, fontWeight: phase.is_active ? '600' : '400' }}>
+                  <Text style={{ ...TYPE.body, fontWeight: phase.is_active ? '600' : '400', color: phase.is_active ? colors.text : colors.textMuted }}>
                     {phase.phase_label ?? phase.goal_type}
                   </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{phase.target_weeks ?? '?'} hafta{phase.target_weight_kg ? ` - ${phase.target_weight_kg}kg` : ''}</Text>
+                  <Text style={{ ...TYPE.caption, color: colors.textMuted }}>{phase.target_weeks ?? '?'} hafta{phase.target_weight_kg ? ` - ${phase.target_weight_kg}kg` : ''}</Text>
                 </View>
-                {phase.is_active && <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700' }}>AKTİF</Text>}
+                {phase.is_active && <Text style={{ ...TYPE.overline, color: colors.primary }}>AKTİF</Text>}
               </View>
             ))}
           </Card>
         )}
 
         {/* Goal type selector */}
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Hedef Türü</Text>
+        {/* Hemen altindaki alanlarin etiketleri paylasilan Input'tan geliyor (TYPE.callout/w500);
+            bu elle yazilmis etiket 13'te kalinca ayni formda iki farkli etiket spec'i olusuyordu. */}
+        <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', marginBottom: SPACING.sm }}>Hedef Türü</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.lg }}>
           {(Object.keys(GOAL_LABELS_TR) as GoalType[]).map(g => (
             <Button key={g} title={GOAL_LABELS_TR[g]} variant={goalType === g ? 'primary' : 'outline'} size="sm" onPress={() => setGoalType(g)} />
@@ -349,24 +352,24 @@ export default function GoalsScreen() {
         {/* D19: Goal compatibility warning */}
         {compatWarning && (
           <View style={{ backgroundColor: colors.warning + '15', borderRadius: RADIUS.sm, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: colors.warning }}>
-            <Text style={{ color: colors.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Hedef Uyumsuzluğu</Text>
-            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{compatWarning}</Text>
+            <Text style={{ color: colors.warning, ...TYPE.bodyStrong, marginBottom: 4 }}>Hedef Uyumsuzluğu</Text>
+            <Text style={{ color: colors.text, ...TYPE.body }}>{compatWarning}</Text>
           </View>
         )}
 
         {/* D5: Phase transition info */}
         {phaseTransitionInfo && (
           <View style={{ backgroundColor: colors.primary + '10', borderRadius: RADIUS.sm, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: colors.primary + '40' }}>
-            <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Kademeli Geçiş</Text>
-            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{phaseTransitionInfo}</Text>
+            <Text style={{ color: colors.primary, ...TYPE.bodyStrong, marginBottom: 4 }}>Kademeli Geçiş</Text>
+            <Text style={{ color: colors.text, ...TYPE.body }}>{phaseTransitionInfo}</Text>
           </View>
         )}
 
         {/* Aggressive rate warning from goals service */}
         {aggressiveWarning && (
           <View style={{ backgroundColor: colors.warning + '15', borderRadius: RADIUS.sm, padding: SPACING.md, marginBottom: SPACING.md, borderWidth: 1, borderColor: colors.warning }}>
-            <Text style={{ color: colors.warning, fontSize: FONT.sm, fontWeight: '600', marginBottom: 4 }}>Agresif Tempo</Text>
-            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{aggressiveWarning}</Text>
+            <Text style={{ color: colors.warning, ...TYPE.bodyStrong, marginBottom: 4 }}>Agresif Tempo</Text>
+            <Text style={{ color: colors.text, ...TYPE.body }}>{aggressiveWarning}</Text>
           </View>
         )}
 
@@ -374,14 +377,14 @@ export default function GoalsScreen() {
         {!safety.safe && (
           <View style={{ marginBottom: SPACING.md }}>
             {safety.warnings.map((w, i) => (
-              <Text key={i} style={{ color: colors.error, fontSize: FONT.sm, marginBottom: SPACING.xs }}>{w}</Text>
+              <Text key={i} style={{ ...TYPE.body, color: colors.error, marginBottom: SPACING.xs }}>{w}</Text>
             ))}
           </View>
         )}
 
         {/* Weekly rate display */}
         {weeklyRate > 0 && (
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.md }}>
+          <Text style={{ ...TYPE.caption, color: colors.textMuted, marginBottom: SPACING.md }}>
             {/* FIX (ux-pass5): TR virgül ondalık — aynı ekran virgüllü girdi kabul edip ('70,5')
                 noktalı çıktı ('0.54') gösteriyordu. */}
             Haftalık tempo: {weeklyRate.toFixed(2).replace('.', ',')} kg/hafta
@@ -402,7 +405,7 @@ export default function GoalsScreen() {
         {/* AI Suggestion results */}
         {aiSuggestions.length > 0 && (
           <View style={{ marginTop: SPACING.md }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginBottom: SPACING.sm }}>AI ÖNERİLERİ</Text>
+            <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.sm }}>AI ÖNERİLERİ</Text>
             {aiSuggestions.map((s, i) => (
               <TouchableOpacity key={i}
                 onPress={() => {
@@ -415,7 +418,7 @@ export default function GoalsScreen() {
                 }}
               >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>
+                  <Text style={{ ...TYPE.headline, color: colors.text }}>
                     {goalLabelTR(s.goalType)}
                   </Text>
                   <View style={{
@@ -424,13 +427,13 @@ export default function GoalsScreen() {
                   }}>
                     <Text style={{
                       color: s.priority === 'high' ? colors.primary : s.priority === 'medium' ? colors.warning : colors.textMuted,
-                      fontSize: FONT.xs, fontWeight: '600',
+                      ...TYPE.caption, fontWeight: '600',
                     }}>
                       {s.priority === 'high' ? 'Yüksek' : s.priority === 'medium' ? 'Orta' : 'Düşük'}
                     </Text>
                   </View>
                 </View>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>{s.reasoning}</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{s.reasoning}</Text>
               </TouchableOpacity>
             ))}
           </View>

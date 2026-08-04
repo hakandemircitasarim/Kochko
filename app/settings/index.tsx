@@ -15,7 +15,8 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SyncStatusCard } from '@/components/common/SyncStatusCard';
 import { useTheme, type ThemeColors } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 
 import { FREE_LAUNCH } from '@/lib/premium-gate';
@@ -208,7 +209,7 @@ export default function SettingsScreen() {
               size={18}
               color={isInTrial ? colors.warning : colors.primary}
             />
-            <Text style={{ color: isInTrial ? colors.warning : colors.primary, fontSize: FONT.lg, fontWeight: '600', flexShrink: 1 }}>
+            <Text style={{ ...TYPE.title3, color: isInTrial ? colors.warning : colors.primary, flexShrink: 1 }}>
               {isInTrial ? `Deneme • ${trialDaysLeft} gün kaldı` : isPremium ? 'Premium Aktif' : 'Ücretsiz Plan'}
             </Text>
           </View>
@@ -231,7 +232,7 @@ export default function SettingsScreen() {
           onChangeText={setSearch}
           placeholder="Ayarlarda ara"
           placeholderTextColor={colors.textMuted}
-          style={{ flex: 1, color: colors.text, fontSize: FONT.sm, paddingVertical: SPACING.md }}
+          style={{ ...TYPE.body, flex: 1, color: colors.text, paddingVertical: SPACING.md }}
           autoCorrect={false}
           autoFocus={focusSearch === '1'}
           returnKeyType="search"
@@ -269,7 +270,7 @@ export default function SettingsScreen() {
       {searching && visibleSections.length === 0 && (
         <View style={{ alignItems: 'center', paddingVertical: SPACING.xxl }}>
           <Ionicons name="search-outline" size={28} color={colors.textMuted} />
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.sm }}>"{search.trim()}" için sonuç yok</Text>
+          <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.sm }}>"{search.trim()}" için sonuç yok</Text>
         </View>
       )}
 
@@ -277,7 +278,7 @@ export default function SettingsScreen() {
         <>
           {/* Privacy */}
           <Card title="Gizlilik ve Güvenlik" style={{ marginTop: SPACING.lg }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+            <Text style={{ ...TYPE.body, color: colors.textSecondary }}>
               Verilerin şifrelenerek saklanır. Tüm verilerini dışa aktarabilir veya hesabını silebilirsin. Kochko'nun senin hakkında bildiklerini Profil {'>'} "Kochko Seni Nasıl Tanıyor" bölümünden görebilir, düzeltebilir veya silebilirsin.
             </Text>
           </Card>
@@ -300,7 +301,7 @@ export default function SettingsScreen() {
             <Button title="Hesabımı Sil" variant="danger" onPress={handleDelete} />
           </View>
 
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xxl }}>Kochko v1.0.0</Text>
+          <Text style={{ ...TYPE.caption, color: colors.textMuted, textAlign: 'center', marginTop: SPACING.xxl }}>Kochko v1.0.0</Text>
         </>
       )}
     </ScrollView>
@@ -316,12 +317,12 @@ export default function SettingsScreen() {
         <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.xl }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Ionicons name="warning-outline" size={22} color={colors.error} />
-            <Text style={{ color: colors.text, fontSize: FONT.xl2, fontWeight: '700', flexShrink: 1 }}>Hesabı Sil</Text>
+            <Text style={{ ...TYPE.title3, color: colors.text, flexShrink: 1 }}>Hesabı Sil</Text>
           </View>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.lg }}>
+          <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>
             Hesabın silinmek üzere işaretlenecek. 30 gün içinde tekrar giriş yaparsan hesabın otomatik olarak yeniden aktif olur. 30 gün sonra tüm verilerin kalıcı olarak silinecek.
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary, marginBottom: SPACING.xs + 2 }}>
             {/* FIX (ux-pass5): display the correct Turkish spelling 'SİL' — the copy told users
                 to type an ASCII string the forced-caps TR keyboard can't naturally produce. */}
             Onaylamak için <Text style={{ color: colors.error, fontWeight: '700' }}>SİL</Text> yaz
@@ -339,8 +340,8 @@ export default function SettingsScreen() {
               borderRadius: RADIUS.md,
               paddingHorizontal: SPACING.xl,
               paddingVertical: SPACING.md,
+              ...TYPE.body,
               color: colors.text,
-              fontSize: FONT.sm,
               borderWidth: 0.5,
               borderColor: canDelete ? colors.error : colors.border,
               marginBottom: SPACING.lg,
@@ -373,7 +374,7 @@ function SectionTitle({ label, colors }: { label: string; colors: ThemeColors })
   // dotted-i labels ('PROFIL', 'TAKIP VE ILERLEME', 'TERCIHLER'...); pre-uppercase with
   // tr-TR instead (same fix class as PlanOverviewCards #11e).
   return (
-    <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', marginTop: SPACING.lg, marginBottom: SPACING.sm, letterSpacing: 0.5 }}>
+    <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginTop: SPACING.lg, marginBottom: SPACING.sm }}>
       {label.toLocaleUpperCase('tr-TR')}
     </Text>
   );
@@ -417,17 +418,19 @@ function Row({ icon, iconColor, label, onPress, colors, last, premium, value }: 
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 }}>
         <Ionicons name={icon} size={18} color={iconColor} />
-        <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '400', flexShrink: 1 }}>{label}</Text>
+        {/* Ayarlar merkezinin satir etiketi: ~40 satirin tamami bu tek tanimdan geliyordu ve
+            13px'te, uygulamanin okuma basamaginin bir kademe altindaydi. */}
+        <Text style={{ ...TYPE.body, color: colors.text, flexShrink: 1 }}>{label}</Text>
       </View>
       {premium && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primaryLight, borderRadius: RADIUS.pill, paddingHorizontal: SPACING.sm, paddingVertical: 2, marginRight: SPACING.sm }}>
-          <Ionicons name="lock-closed" size={11} color={colors.primary} />
-          <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600' }}>Premium</Text>
+          <Ionicons name="lock-closed" size={12} color={colors.primary} />
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '600', color: colors.primary }}>Premium</Text>
         </View>
       )}
       {/* FIX (ux-round4 #25): current value (hidden when the row is premium-locked). */}
       {!premium && value ? (
-        <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: FONT.xs, marginRight: SPACING.xs, maxWidth: 120 }}>{value}</Text>
+        <Text numberOfLines={1} style={{ ...TYPE.caption, color: colors.textMuted, marginRight: SPACING.xs, maxWidth: 140 }}>{value}</Text>
       ) : null}
       <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
     </TouchableOpacity>
