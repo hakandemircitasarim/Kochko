@@ -431,7 +431,11 @@ export default function ProgressScreen() {
 
       {/* Summary — FIX (ux-pass raporlar #2): '2 uyum' told the user nothing. compliance_score
           is a 0-100 percent (ai-report clamps it, monthly shows %X) → show it as %X and make
-          every tile's period explicit (son 28 gün penceresi). */}
+          every tile's period explicit (son 28 gun penceresi).
+          08-05: etiket "28 gun ort." diyordu ama degerler yalnizca O METRIGIN kaydedildigi
+          gunlerin ortalamasi (bilerek: bos gunlerin sifirlarini ortalamak "0,0 L/gun" gibi
+          anlamsiz bir kutucuk uretiyordu). Iki gun su girmis biri "28 gun ort. 2,9 L" okuyordu.
+          Etiket artik gercek paydayi yaziyor: "2 gun ort.". */}
       {/* FIX (ux-round4 #21): flexWrap so a 5th (adım) tile wraps to a second row. Each tile keeps
           flexBasis 20% + flexGrow, so the 4-tile case (no step data) still fills one row exactly as
           before — the layout only changes when the steps tile is present. */}
@@ -445,17 +449,17 @@ export default function ProgressScreen() {
           <SummaryBox icon="scale-outline" iconColor={colors.pink} value={`${latestW}`.replace('.', ',')} label="kg" period="son tartı" delta={wChange} />
         )}
         {avgComp != null && (
-          <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={`%${avgComp}`} label="uyum" period="28 gün ort." trend={compTrend} />
+          <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={`%${avgComp}`} label="uyum" period={`${loggedCompliance.length} gün ort.`} trend={compTrend} />
         )}
         {avgWater != null && (
-          <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater} label="L/gün" period="28 gün ort." trend={waterTrend} />
+          <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater} label="L/gün" period={`${waterDays.length} gün ort.`} trend={waterTrend} />
         )}
         {avgSleep != null && (
-          <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep} label="sa/gün" period="28 gün ort." trend={sleepTrend} />
+          <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep} label="sa/gün" period={`${sleepDays.length} gün ort.`} trend={sleepTrend} />
         )}
         {/* FIX (ux-round4 #21): surfaced only when the user actually logs steps. */}
         {avgSteps != null && (
-          <SummaryBox icon="footsteps-outline" iconColor={colors.primary} value={avgSteps} label="adım/gün" period="28 gün ort." trend={stepsTrend} />
+          <SummaryBox icon="footsteps-outline" iconColor={colors.primary} value={avgSteps} label="adım/gün" period={`${stepsDays.length} gün ort.`} trend={stepsTrend} />
         )}
       </View>
       ) : (
