@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { genderLabelTR } from '@/lib/labels';
@@ -159,7 +160,7 @@ export default function HealthExportScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Doktoruna veya diyetisyenine gösterebileceğin formatta bir rapor oluştur. Kilo trendi, beslenme özeti, lab değerleri ve egzersiz bilgileri içerir.
       </Text>
 
@@ -186,7 +187,7 @@ export default function HealthExportScreen() {
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>{chip.label}</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>{chip.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -214,11 +215,11 @@ export default function HealthExportScreen() {
             />
           </View>
         </View>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Boş bırakırsan son 3 ay kullanılır.</Text>
+        <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Boş bırakırsan son 3 ay kullanılır.</Text>
       </Card>
 
       <Card title="Rapor İçeriği">
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+        <Text style={{ color: colors.textSecondary, ...TYPE.body }}>
           - Hasta bilgileri (yaş, cinsiyet, boy, kilo){'\n'}
           - Kilo trendi (başlangıç → son){'\n'}
           - Beslenme özeti (ortalama kalori/protein){'\n'}

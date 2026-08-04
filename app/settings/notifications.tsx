@@ -139,7 +139,7 @@ export default function NotificationsScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Koçunun sana ne zaman, ne sıklıkta mesaj göndereceğini ayarla.
       </Text>
 
@@ -155,7 +155,7 @@ export default function NotificationsScreen() {
           <Ionicons name="notifications-off-outline" size={20} color={colors.warning} />
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.warning, ...TYPE.bodyStrong, fontWeight: '700' }}>Bildirim izni kapalı</Text>
-            <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 2, lineHeight: 18 }}>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 2 }}>
               Telefon ayarlarından izin kapalı olduğu için hiçbir bildirim gönderilemiyor. Açmak için dokun.
             </Text>
           </View>

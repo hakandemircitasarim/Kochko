@@ -390,7 +390,7 @@ export default function RecipesScreen() {
                       })}
 
                       <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '600', marginTop: SPACING.md, marginBottom: SPACING.xs }}>YAPILIŞI</Text>
-                      <Text style={{ color: colors.text, ...TYPE.body, lineHeight: 22 }}>{display.instructions}</Text>
+                      <Text style={{ color: colors.text, ...TYPE.body }}>{display.instructions}</Text>
                       <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.sm }}>{display.servings} porsiyon</Text>
                       <View style={{ flexDirection: 'row', gap: SPACING.lg, marginTop: SPACING.sm }}>
                         <TouchableOpacity onPress={() => { haptics.tap(); startEdit(r); }}

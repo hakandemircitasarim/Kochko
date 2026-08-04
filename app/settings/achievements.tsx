@@ -9,6 +9,7 @@ import { shareMilestone } from '@/services/sharing.service';
 import { shareMilestoneCard, type MilestoneCardData } from '@/services/share-card.service';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -70,10 +71,10 @@ export default function AchievementsScreen() {
         <Card>
           <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
             <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: colors.primary, fontSize: FONT.xl, fontWeight: '800' }}>★</Text>
+              <Text style={{ color: colors.primary, ...TYPE.title3 }}>★</Text>
             </View>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', textAlign: 'center' }}>Henüz başarımın yok</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Kilo, antrenman ve seri kayıtların biriktikçe başarımların burada görünecek. Kayıt girmeye devam et!</Text>
+            <Text style={{ color: colors.text, ...TYPE.headline, textAlign: 'center' }}>Henüz başarımın yok</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center' }}>Kilo, antrenman ve seri kayıtların biriktikçe başarımların burada görünecek. Kayıt girmeye devam et!</Text>
           </View>
         </Card>
       ) : (
@@ -85,10 +86,10 @@ export default function AchievementsScreen() {
               <Ionicons name={(TYPE_ICONS[a.achievement_type] ?? 'ribbon-outline') as never} size={22} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>{a.title}</Text>
-              {a.description && <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{a.description}</Text>}
+              <Text style={{ color: colors.text, ...TYPE.headline }}>{a.title}</Text>
+              {a.description && <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 2 }}>{a.description}</Text>}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+                <Text style={{ color: colors.textMuted, ...TYPE.caption }}>
                   {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </Text>
                 {/* D17: Share button */}
@@ -102,7 +103,7 @@ export default function AchievementsScreen() {
                     backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '40',
                   }}
                 >
-                  <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600' }}>Paylaş</Text>
+                  <Text style={{ color: colors.primary, ...TYPE.caption, fontWeight: '600' }}>Paylaş</Text>
                 </TouchableOpacity>
               </View>
             </View>

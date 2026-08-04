@@ -108,7 +108,7 @@ export default function MealTemplatesScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Sık yediğin kombinasyonları kaydet, tek dokunuşla tekrar gir.
       </Text>
 

@@ -134,7 +134,7 @@ export default function PeriodicStateScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Özel bir dönemdeysen (Ramazan, tatil, hastalık, hamilelik vs.) bunu bildir. Koçun planlarını ve tavsiyelerini buna göre ayarlar.
       </Text>
 
@@ -199,7 +199,7 @@ export default function PeriodicStateScreen() {
       {config && (
         <Card>
           <Text style={{ color: colors.text, ...TYPE.bodyStrong, marginBottom: SPACING.xs }}>{config.label_tr}</Text>
-          <Text style={{ color: colors.textSecondary, ...TYPE.body, lineHeight: 20, marginBottom: SPACING.sm }}>{config.description_tr}</Text>
+          <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>{config.description_tr}</Text>
           {config.calorieAdjustment !== 0 && (
             <Text style={{ color: colors.textMuted, ...TYPE.caption }}>
               Kalori: {config.calorieAdjustment > 0 ? '+' : ''}{config.calorieAdjustment} kcal

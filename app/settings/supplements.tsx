@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -106,7 +107,7 @@ export default function SupplementsScreen() {
               accessibilityRole="button"
               accessibilityLabel={`${s.name} ekle`}
               style={{ paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 8, backgroundColor: colors.surfaceLight }}>
-              <Text style={{ color: colors.text, fontSize: FONT.xs }}>{s.name}</Text>
+              <Text style={{ color: colors.text, ...TYPE.caption }}>{s.name}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -132,14 +133,14 @@ export default function SupplementsScreen() {
           /* FIX (audit empty-vs-error): fetch hatası 'kayıt yok' değil, hata+tekrar dene (shared LoadErrorState). */
           <LoadErrorState embedded title="Kayıtlar yüklenemedi" onRetry={loadLogs} />
         ) : logs.length === 0 ? (
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Bugün supplement kaydı yok.</Text>
+          <Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', paddingVertical: SPACING.md }}>Bugün supplement kaydı yok.</Text>
         ) : (
           logs.map(l => (
             <View key={l.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: SPACING.xs, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <Text style={{ color: colors.text, fontSize: FONT.md, flex: 1 }}>{l.supplement_name}</Text>
+              <Text style={{ color: colors.text, ...TYPE.body, flex: 1 }}>{l.supplement_name}</Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' }}>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{l.amount}</Text>
-                {l.calories > 0 && <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>{l.calories} kcal</Text>}
+                <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{l.amount}</Text>
+                {l.calories > 0 && <Text style={{ color: colors.textMuted, ...TYPE.body }}>{l.calories} kcal</Text>}
                 <TouchableOpacity onPress={() => handleDelete(l)} accessibilityRole="button" accessibilityLabel={`${l.supplement_name} kaydını sil`} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
                 </TouchableOpacity>

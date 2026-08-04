@@ -304,7 +304,7 @@ export default function CoachMemoryScreen() {
           <Ionicons name="eye" size={24} color={colors.purple} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ ...TYPE.caption, color: colors.textSecondary, lineHeight: 18 }}>Her konuşmadan öğrenilenler. Çöp ikonuna dokunarak veya uzun basarak silebilirsin.</Text>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>Her konuşmadan öğrenilenler. Çöp ikonuna dokunarak veya uzun basarak silebilirsin.</Text>
         </View>
       </View>
 

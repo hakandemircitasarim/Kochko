@@ -93,7 +93,7 @@ export default function HealthEventsScreen() {
                   borderColor: type === t ? colors.primary : colors.border,
                   backgroundColor: type === t ? colors.primary : 'transparent' }}>
                 {/* FIX (audit UI-STA-04): seçili chip metni '#fff' yerine getContrastColor(colors.primary) (siyah, teal üzerinde WCAG AA geçer; beyaz 3.39:1 idi). */}
-                <Text style={{ color: type === t ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.xs }}>{EVENT_LABELS[t]}</Text>
+                <Text style={{ color: type === t ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.caption }}>{EVENT_LABELS[t]}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -103,7 +103,7 @@ export default function HealthEventsScreen() {
           {/* FIX (audit ui-toggles): onay kutusuna checkbox rolü + checked state + label. */}
           <TouchableOpacity onPress={() => setOngoing(!ongoing)} accessibilityRole="checkbox" accessibilityState={{ checked: ongoing }} accessibilityLabel="Devam ediyor" style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Text style={{ color: colors.primary }}>{ongoing ? '[x]' : '[ ]'}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Devam ediyor</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Devam ediyor</Text>
           </TouchableOpacity>
           <Button title="Kaydet" onPress={handleAdd} />
         </Card>
@@ -128,8 +128,8 @@ export default function HealthEventsScreen() {
       {/* FIX (audit UI-SET-04): form açıkken boş-durum kartını gizle (form zaten görünüyor). */}
       {!loading && !loadError && events.length === 0 && !showAdd && (
         <Card style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', textAlign: 'center' }}>Henüz sağlık olayın yok</Text>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>Ameliyat, sakatlık, kronik hastalık veya alerji gibi kayıtları buraya ekle; koçun planı bunlara göre güvenli tutar.</Text>
+          <Text style={{ color: colors.text, ...TYPE.headline, textAlign: 'center' }}>Henüz sağlık olayın yok</Text>
+          <Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', marginTop: SPACING.xs }}>Ameliyat, sakatlık, kronik hastalık veya alerji gibi kayıtları buraya ekle; koçun planı bunlara göre güvenli tutar.</Text>
         </Card>
       )}
 
@@ -141,7 +141,7 @@ export default function HealthEventsScreen() {
                 "AMELIYAT" diye cikiyordu (dogrusu DİĞER / ALERJİ / AMELİYAT). */}
             <Text style={{ ...TYPE.overline, color: colors.primary, flex: 1 }}>{(EVENT_LABELS[e.event_type] ?? e.event_type).toLocaleUpperCase('tr-TR')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-              {e.is_ongoing && <Text style={{ color: colors.warning, fontSize: FONT.xs }}>Devam ediyor</Text>}
+              {e.is_ongoing && <Text style={{ color: colors.warning, ...TYPE.caption }}>Devam ediyor</Text>}
               {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}
               <TouchableOpacity
                 onPress={() => handleDelete(e.id)}
@@ -154,8 +154,8 @@ export default function HealthEventsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-          <Text style={{ color: colors.text, fontSize: FONT.md, marginTop: 4 }}>{e.description}</Text>
-          {e.event_date && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{e.event_date}</Text>}
+          <Text style={{ color: colors.text, ...TYPE.body, marginTop: 4 }}>{e.description}</Text>
+          {e.event_date && <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>{e.event_date}</Text>}
         </TouchableOpacity>
       ))}
     </ScrollView>

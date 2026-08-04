@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -106,13 +107,13 @@ export default function SessionViewerScreen() {
       keyExtractor={m => m.id}
       initialNumToRender={20}
       ListHeaderComponent={
-        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, textAlign: 'center', marginBottom: SPACING.md }}>
+        <Text style={{ color: colors.textMuted, ...TYPE.caption, textAlign: 'center', marginBottom: SPACING.md }}>
           Salt okunur kayıt — bu sohbete buradan mesaj yazılamaz.
         </Text>
       }
       ListEmptyComponent={
         <Card>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>
+          <Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', paddingVertical: SPACING.md }}>
             Bu oturumda mesaj yok.
           </Text>
         </Card>
@@ -134,14 +135,14 @@ export default function SessionViewerScreen() {
             }}
             accessibilityLabel={`${isUser ? 'Sen' : 'Kochko'}: ${m.content}`}
           >
-            <Text style={{ color: isUser ? getContrastColor(colors.primary) : colors.text, fontSize: FONT.sm, lineHeight: 20 }}>
+            <Text style={{ color: isUser ? getContrastColor(colors.primary) : colors.text, ...TYPE.body }}>
               {m.content}
             </Text>
             <Text
               style={{
                 color: isUser ? getContrastColor(colors.primary) : colors.textMuted,
                 opacity: isUser ? 0.7 : 1,
-                fontSize: 10,
+                ...TYPE.footnote,   // baloncuk zaman damgasi: olcegin tabani, 10 degil
                 marginTop: 4,
                 textAlign: 'right',
               }}

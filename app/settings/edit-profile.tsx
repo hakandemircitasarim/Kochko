@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
@@ -274,7 +275,7 @@ export default function EditProfileScreen() {
           <Animated.View style={{ transform: [{ scale: successScale }] }}>
             <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
           </Animated.View>
-          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md }}>Profil güncellendi</Text>
+          <Text style={{ color: colors.text, ...TYPE.title3, marginTop: SPACING.md }}>Profil güncellendi</Text>
         </View>
       </TouchableOpacity>
     );
@@ -367,7 +368,7 @@ function ChipSelect({ label, options, selected, onChange }: {
   const { colors } = useTheme();
   return (
     <View style={{ marginBottom: SPACING.md }}>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
+      <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
         {options.map(opt => {
           const isSelected = selected === opt.value;
@@ -382,7 +383,7 @@ function ChipSelect({ label, options, selected, onChange }: {
               style={{ paddingVertical: 10, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
                 borderColor: isSelected ? colors.primary : colors.border,
                 backgroundColor: isSelected ? colors.primary : 'transparent' }}>
-              <Text style={{ color: isSelected ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.sm }}>{opt.label}</Text>
+              <Text style={{ color: isSelected ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.body }}>{opt.label}</Text>
             </TouchableOpacity>
           );
         })}

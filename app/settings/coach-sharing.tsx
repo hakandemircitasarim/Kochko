@@ -17,6 +17,7 @@ import { exportPDF } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { genderLabelTR, goalInfinitiveLabelTR, activityLevelLabelTR, mealTypeLabelTR } from '@/lib/labels';
@@ -231,7 +232,7 @@ export default function CoachSummaryScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Antrenörüne veya diyetisyenine verebileceğin derli toplu bir özet oluştur. Hangi bölümlerin dahil olacağını sen seç — PDF olarak paylaşılır.
       </Text>
 
@@ -250,7 +251,7 @@ export default function CoachSummaryScreen() {
                 backgroundColor: rangeDays === chip.days ? colors.primary + '22' : colors.inputBg,
               }}
             >
-              <Text style={{ color: rangeDays === chip.days ? colors.primary : colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>{chip.label}</Text>
+              <Text style={{ color: rangeDays === chip.days ? colors.primary : colors.textSecondary, ...TYPE.bodyStrong }}>{chip.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -260,8 +261,8 @@ export default function CoachSummaryScreen() {
         {SECTIONS.map((s, i) => (
           <View key={s.key} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderTopWidth: i === 0 ? 0 : 0.5, borderTopColor: colors.border }}>
             <View style={{ flex: 1, marginRight: SPACING.md }}>
-              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{s.label}</Text>
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{s.desc}</Text>
+              <Text style={{ color: colors.text, ...TYPE.bodyStrong }}>{s.label}</Text>
+              <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 1 }}>{s.desc}</Text>
             </View>
             <Switch
               value={included[s.key]}

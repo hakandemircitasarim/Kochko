@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 
 export default function DataImportScreen() {
@@ -50,7 +51,7 @@ export default function DataImportScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         {/* FIX (audit diakritik) */}
         Başka uygulamadan aldığın veriyi AŞAĞIDAKİ örnek formata çevirip yapıştır (şimdilik yalnız bu basit format destekleniyor).
       </Text>
@@ -76,11 +77,11 @@ export default function DataImportScreen() {
       {/* Format info */}
       <Card title="Beklenen Format">
         {importType === 'meals' ? (
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+          <Text style={{ color: colors.textSecondary, ...TYPE.body }}>
             {`tarih,ogun_tipi,yiyecek_adi,kalori,protein\n2024-01-15,breakfast,yumurta,155,13\n2024-01-15,lunch,tavuk gogsu,250,35`}
           </Text>
         ) : (
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>
+          <Text style={{ color: colors.textSecondary, ...TYPE.body }}>
             {`tarih,kilo\n2024-01-15,82.5\n2024-01-16,82.3`}
           </Text>
         )}
@@ -102,17 +103,17 @@ export default function DataImportScreen() {
       {/* Results */}
       {result && (
         <Card title="Sonuç" style={{ marginTop: SPACING.md }}>
-          <Text style={{ color: result.success ? colors.success : colors.error, fontSize: FONT.md, fontWeight: '600' }}>
+          <Text style={{ color: result.success ? colors.success : colors.error, ...TYPE.headline }}>
             {result.recordsImported} kayıt aktarıldı
           </Text>
           {result.errors.length > 0 && (
             <View style={{ marginTop: SPACING.sm }}>
-              <Text style={{ color: colors.warning, fontSize: FONT.sm, fontWeight: '600' }}>Hatalar:</Text>
+              <Text style={{ color: colors.warning, ...TYPE.bodyStrong }}>Hatalar:</Text>
               {result.errors.slice(0, 5).map((err, i) => (
-                <Text key={i} style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{err}</Text>
+                <Text key={i} style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>{err}</Text>
               ))}
               {result.errors.length > 5 && (
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>...ve {result.errors.length - 5} hata daha</Text>
+                <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>...ve {result.errors.length - 5} hata daha</Text>
               )}
             </View>
           )}

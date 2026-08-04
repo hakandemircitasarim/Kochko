@@ -8,6 +8,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 
@@ -89,7 +90,7 @@ export default function CoachToneScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Koçunun seninle nasıl konuşmasını istediğini seç. AI zamanla tepkilerinden otomatik de öğrenir.
       </Text>
 
@@ -100,11 +101,11 @@ export default function CoachToneScreen() {
           accessibilityLabel={tone.label}>
           <Card style={{ borderColor: selected === tone.value ? colors.primary : colors.border, borderWidth: selected === tone.value ? 2 : 1 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs }}>
-              <Text style={{ color: selected === tone.value ? colors.primary : colors.text, fontSize: FONT.lg, fontWeight: '700' }}>{tone.label}</Text>
-              {selected === tone.value && <Text style={{ color: colors.primary, fontSize: FONT.md }}>Seçili</Text>}
+              <Text style={{ color: selected === tone.value ? colors.primary : colors.text, ...TYPE.title3 }}>{tone.label}</Text>
+              {selected === tone.value && <Text style={{ color: colors.primary, ...TYPE.body }}>Seçili</Text>}
             </View>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>{tone.desc}</Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, fontStyle: 'italic', lineHeight: 20 }}>{tone.example}</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>{tone.desc}</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.body, fontStyle: 'italic' }}>{tone.example}</Text>
           </Card>
         </TouchableOpacity>
       ))}

@@ -296,7 +296,7 @@ export default function ChatHistoryScreen() {
                   {new Date(r.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
-              <Text style={{ color: colors.text, ...TYPE.body, lineHeight: 20 }} numberOfLines={3}>{r.content}</Text>
+              <Text style={{ color: colors.text, ...TYPE.body }} numberOfLines={3}>{r.content}</Text>
             </TouchableOpacity>
           ))}
         </Card>

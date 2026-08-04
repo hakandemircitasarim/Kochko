@@ -5,6 +5,7 @@
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 // Açık tema (LIGHT_COLORS) ve sağlayıcı en baştan yazılmıştı; kilit yalnızca 47 ekranın
 // hâlâ statik (koyu) COLORS'ı import etmesindendi — açık seçilince kabuk aydınlanır, o
@@ -44,11 +45,11 @@ export default function ThemeScreen() {
           }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>{opt.label}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{opt.desc}</Text>
+            <Text style={{ color: colors.text, ...TYPE.headline }}>{opt.label}</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 2 }}>{opt.desc}</Text>
           </View>
           {opt.comingSoon && (
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>Yakında</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption, fontWeight: '600' }}>Yakında</Text>
           )}
         </TouchableOpacity>
         );

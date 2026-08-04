@@ -191,7 +191,7 @@ export default function MealPrepPlanScreen() {
                   <Text style={{ color: getContrastColor(colors.primary), ...TYPE.caption, fontWeight: '700' }}>{step.order}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, ...TYPE.body, lineHeight: 22 }}>{step.action}</Text>
+                  <Text style={{ color: colors.text, ...TYPE.body }}>{step.action}</Text>
                   <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{step.durationMin} dk — {step.reason_tr}</Text>
                 </View>
               </View>

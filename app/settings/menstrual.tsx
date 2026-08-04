@@ -15,6 +15,7 @@ import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Card } from '@/components/ui/Card';
 import { ToggleRow } from '@/components/settings/ToggleRow';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -79,7 +80,7 @@ export default function MenstrualScreen() {
       <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): native header (settings/_layout.tsx) zaten "Regl Döngüsü"
           başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>
         Döngü takibi aktif olduğunda koçun beslenme ve antrenman planlarını döngü fazına göre otomatik ayarlar.
       </Text>
 
@@ -106,16 +107,16 @@ export default function MenstrualScreen() {
                 accessibilityLabel={`Mevcut faz: ${PHASE_LABELS[status.currentPhase]}, döngünün ${status.dayOfCycle}. günü, toplam ${status.cycleLength} gün`}
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}
               >
-                <Text style={{ color: PHASE_COLORS[status.currentPhase], fontSize: FONT.md, fontWeight: '700' }}>
+                <Text style={{ color: PHASE_COLORS[status.currentPhase], ...TYPE.headline }}>
                   {PHASE_LABELS[status.currentPhase]}
                 </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Gün {status.dayOfCycle}/{status.cycleLength}</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Gün {status.dayOfCycle}/{status.cycleLength}</Text>
               </View>
               {status.phaseAdvice && (
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20 }}>{status.phaseAdvice}</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{status.phaseAdvice}</Text>
               )}
               {status.nextPeriodEstimate && (
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.sm }}>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: SPACING.sm }}>
                   Tahmini sonraki regl: {status.nextPeriodEstimate}
                 </Text>
               )}
@@ -128,8 +129,8 @@ export default function MenstrualScreen() {
               <View key={phase} style={{ flexDirection: 'row', paddingVertical: SPACING.xs, gap: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <View style={{ width: 3, backgroundColor: PHASE_COLORS[phase], borderRadius: 2 }} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{PHASE_LABELS[phase]}</Text>
-                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>
+                  <Text style={{ color: colors.text, ...TYPE.bodyStrong }}>{PHASE_LABELS[phase]}</Text>
+                  <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 1 }}>
                     {phase === 'menstrual' && 'Düşük enerji. Hafif aktivite.'}
                     {phase === 'follicular' && 'Enerji yükseliyor. Yoğun antrenman uygun.'}
                     {phase === 'ovulation' && 'Güç zirvesi. PR denemesi için uygun.'}

@@ -7,6 +7,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
@@ -54,12 +55,12 @@ export default function DayBoundaryScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): native header (settings/_layout.tsx) zaten "Gün Dönümü"
           başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>
         Senin için "yeni gün" hangi saatte başlasın? Bu saatten önce yaptığın kayıtlar (gece atıştırması gibi) bir önceki güne sayılır. Streak, günlük kalori bütçen ve oruç penceresi bu saate göre hesaplanır.
       </Text>
 
       <Card style={{ marginBottom: SPACING.lg }}>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '600' }}>Gün dönümü saati</Text>
+        <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm, fontWeight: '600' }}>Gün dönümü saati</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
           {HOURS.map(h => (
             <TouchableOpacity
@@ -81,13 +82,13 @@ export default function DayBoundaryScreen() {
               }}
             >
               {/* FIX (audit theme-token): sabit #fff yerine kontrast token'ı */}
-              <Text style={{ color: selected === h ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.md, fontWeight: '700' }}>
+              <Text style={{ color: selected === h ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.headline }}>
                 {String(h).padStart(2, '0')}:00
               </Text>
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.md, lineHeight: 18 }}>
+        <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.md }}>
           Çoğu kişi için 04:00 idealdir — gece geç saatlerde yenenler doğru güne düşer.
         </Text>
       </Card>
