@@ -2,6 +2,7 @@ import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, type ViewStyle } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, MAX_FONT_SCALE, BUTTON_HEIGHTS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 
 interface Props {
@@ -39,7 +40,10 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
 
   // FIX (audit UI-DS-05): consume the BUTTON_HEIGHTS token map instead of inline 32/40/48 literals.
   const height = BUTTON_HEIGHTS[size];
-  const fontSize = size === 'sm' ? FONT.xs : size === 'lg' ? FONT.lg : FONT.sm;
+  // A button's label is the thing a user reads to decide whether to tap it. The default size sat
+  // at FONT.sm (13) — below the app's reading size — so primary actions were quieter than the
+  // paragraphs explaining them. Weight stays with the caller's style below.
+  const labelType = size === 'sm' ? TYPE.caption : size === 'lg' ? TYPE.headline : TYPE.bodyStrong;
 
   // FIX (audit ui-button): sm/md visual heights are < 44dp (WCAG 2.5.5); extend the
   // effective touch target via hitSlop without shifting layout (visual height unchanged).
@@ -81,7 +85,7 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
           {icon}
           {/* FIX (audit UI-PR-04): truncate long Turkish labels (ellipsis) and cap font
               scaling so a raised system font size can't blow out the fixed button height. */}
-          <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ color: textColor, fontSize, fontWeight: '500' }}>{title}</Text>
+          <Text numberOfLines={1} maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...labelType, color: textColor, fontWeight: '600' }}>{title}</Text>
         </>
       )}
     </TouchableOpacity>

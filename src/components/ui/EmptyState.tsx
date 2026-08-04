@@ -7,6 +7,7 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 // FIX (audit ui-emptystate): route the CTA through the shared Button primitive so it
 // inherits Button's touch-target/hitSlop + a11y policy instead of a hand-rolled button.
 import { Button } from '@/components/ui/Button';
@@ -24,11 +25,11 @@ export function EmptyState({ icon = 'sparkles-outline', title, subtitle, ctaLabe
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xxl }}>
       <Ionicons name={icon} size={48} color={colors.textMuted} />
-      <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>
+      <Text style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md, textAlign: 'center' }}>
         {title}
       </Text>
       {subtitle ? (
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, textAlign: 'center', lineHeight: 20 }}>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, textAlign: 'center' }}>
           {subtitle}
         </Text>
       ) : null}

@@ -3,6 +3,7 @@ import { View, TextInput, Text, Pressable, type TextInputProps } from 'react-nat
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 interface Props extends TextInputProps {
   label?: string;
@@ -25,7 +26,7 @@ export const Input = forwardRef<TextInput, Props>(function Input(
   return (
     <View style={{ marginBottom: SPACING.md }}>
       {label && (
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>
+        <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>
           {label}
         </Text>
       )}
@@ -40,7 +41,9 @@ export const Input = forwardRef<TextInput, Props>(function Input(
               paddingVertical: SPACING.md,
               paddingRight: secureToggle ? SPACING.xl + 44 : SPACING.xl,
               color: colors.text,
-              fontSize: FONT.sm,
+              // You TYPE here — 13px is below the app's own reading size, so text you are actively
+              // entering was smaller than text you passively read. TYPE.body is the reading step.
+              ...TYPE.body,
               borderWidth: 0.5,
               borderColor: error ? colors.error : colors.border,
             },
@@ -78,8 +81,10 @@ export const Input = forwardRef<TextInput, Props>(function Input(
           </Pressable>
         )}
       </View>
-      {error && <Text style={{ color: colors.error, fontSize: FONT.xs, marginTop: SPACING.xs }}>{error}</Text>}
-      {hint && !error && <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.xs }}>{hint}</Text>}
+      {/* An error message is the one line a user MUST read to recover — 11px was the smallest step
+          in the app for the most important sentence on the screen. */}
+      {error && <Text style={{ ...TYPE.caption, color: colors.error, marginTop: SPACING.xs }}>{error}</Text>}
+      {hint && !error && <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: SPACING.xs }}>{hint}</Text>}
     </View>
   );
 });

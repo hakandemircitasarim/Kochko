@@ -2,6 +2,7 @@ import React, { type ReactNode } from 'react';
 import { View, Text, type ViewStyle } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 interface Props {
   title?: string;
@@ -29,8 +30,10 @@ export function Card({ title, subtitle, children, style, accent }: Props) {
       {accent && <View style={{ height: 3, backgroundColor: accent, borderTopLeftRadius: RADIUS.md, borderTopRightRadius: RADIUS.md }} />}
       {title && (
         <View style={{ paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg }}>
-          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }}>{title}</Text>
-          {subtitle && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{subtitle}</Text>}
+          {/* Card is used on 32 settings pages — its title is the heading of whatever the card
+              contains, so at FONT.md/500 it barely outranked its own body text. */}
+          <Text style={{ ...TYPE.headline, color: colors.text }}>{title}</Text>
+          {subtitle && <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>{subtitle}</Text>}
         </View>
       )}
       <View style={{ padding: SPACING.lg }}>{children}</View>

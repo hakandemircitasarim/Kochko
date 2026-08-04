@@ -17,6 +17,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { Button } from '@/components/ui/Button';
 
 interface Props {
@@ -55,8 +56,10 @@ export function LoadErrorState({
       >
         <Ionicons name="cloud-offline-outline" size={22} color={colors.textMuted} />
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>{title}</Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>{subtitle}</Text>
+          {/* An error state is read under stress — it is the worst place in the app for the
+              smallest type. Inline variant stays compact but climbs to the reading ladder. */}
+          <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>{title}</Text>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>{subtitle}</Text>
         </View>
         <Ionicons name="refresh" size={16} color={colors.primary} />
       </TouchableOpacity>
@@ -67,10 +70,10 @@ export function LoadErrorState({
     return (
       <View accessibilityRole="alert" style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
         <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
-        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', marginTop: SPACING.sm, textAlign: 'center' }}>
+        <Text style={{ ...TYPE.headline, color: colors.text, marginTop: SPACING.sm, textAlign: 'center' }}>
           {title}
         </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center', lineHeight: 20 }}>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.md, textAlign: 'center' }}>
           {subtitle}
         </Text>
         <Button title={retryLabel} size="sm" onPress={onRetry} />
@@ -81,10 +84,10 @@ export function LoadErrorState({
   return (
     <View accessibilityRole="alert" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl, backgroundColor: colors.background }}>
       <Ionicons name="cloud-offline-outline" size={48} color={colors.textMuted} />
-      <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: SPACING.md, textAlign: 'center' }}>
+      <Text style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md, textAlign: 'center' }}>
         {title}
       </Text>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center', lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, textAlign: 'center' }}>
         {subtitle}
       </Text>
       <Button title={retryLabel} onPress={onRetry} size="lg" />
