@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 
 // Hosted legal documents (KVKK aydınlatma / kullanım koşulları) — same as register.tsx.
@@ -115,8 +116,8 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ alignItems: 'center', marginBottom: SPACING.xl }}>
-          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.primary, letterSpacing: 2 }}>Kochko</Text>
-          <Text style={{ fontSize: FONT.lg, color: colors.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
+          <Text style={{ ...TYPE.title1, color: colors.primary, letterSpacing: 2 }}>Kochko</Text>
+          <Text style={{ ...TYPE.headline, fontWeight: '400', color: colors.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
         </View>
 
         {/* FIX (ux-audit major): a cold-start user landed on a bare returning-user login form with no
@@ -129,8 +130,8 @@ export default function LoginScreen() {
             'Hedefine özel diyet ve antrenman planı',
           ].map((t, i) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm }}>
-              <Text style={{ color: colors.primary, fontSize: FONT.md, fontWeight: '800', lineHeight: 20 }}>•</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20, flex: 1 }}>{t}</Text>
+              <Text style={{ ...TYPE.body, color: colors.primary, fontWeight: '800' }}>•</Text>
+              <Text style={{ ...TYPE.body, color: colors.textSecondary, flex: 1 }}>{t}</Text>
             </View>
           ))}
         </View>
@@ -138,7 +139,7 @@ export default function LoginScreen() {
         {/* FIX (audit UX-ONB-01/HIGH): social sign-in CREATES an account on first use, so the
             KVKK/Terms consent must be shown here too (not only on the register screen) — it sits
             above the social buttons so it's visible before any account is created. */}
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', lineHeight: 19, marginBottom: SPACING.lg }}>
+        <Text style={{ ...TYPE.callout, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.lg }}>
           Devam ederek{' '}
           <Text
             style={{ color: colors.primary, fontWeight: '600' }}
@@ -163,13 +164,13 @@ export default function LoginScreen() {
         {/* Social Login Buttons (Spec 1.1) — Google, provider yapılandırılana dek gizli. */}
         {GOOGLE_LOGIN_ENABLED && (
           <>
-            <Button title="Google ile Giriş Yap" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
+            <Button title="Google ile giriş yap" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
             <View style={{ height: SPACING.sm }} />
           </>
         )}
         {Platform.OS === 'ios' && (
           <>
-            <Button title="Apple ile Giriş Yap" onPress={handleApple} loading={loading} variant="outline" size="lg" />
+            <Button title="Apple ile giriş yap" onPress={handleApple} loading={loading} variant="outline" size="lg" />
             <View style={{ height: SPACING.sm }} />
           </>
         )}
@@ -179,7 +180,7 @@ export default function LoginScreen() {
         {(GOOGLE_LOGIN_ENABLED || Platform.OS === 'ios') && (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
             <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
+            <Text style={{ ...TYPE.callout, color: colors.textMuted, marginHorizontal: SPACING.md }}>veya</Text>
             <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
           </View>
         )}
@@ -219,13 +220,13 @@ export default function LoginScreen() {
           accessibilityRole="button"
           accessibilityLabel="Şifremi unuttum"
         >
-          <Text style={{ color: colors.primary, fontSize: FONT.sm }}>Şifremi Unuttum</Text>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.primary }}>Şifremi unuttum</Text>
         </TouchableOpacity>
 
-        <Button title="Giriş Yap" onPress={handleLogin} loading={loading} size="lg" />
+        <Button title="Giriş yap" onPress={handleLogin} loading={loading} size="lg" />
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.lg }}>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Hesabın yok mu? </Text>
-          <Link href="/(auth)/register" style={{ color: colors.primary, fontSize: FONT.md, fontWeight: '600' }}>Kayıt Ol</Link>
+          <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Hesabın yok mu? </Text>
+          <Link href="/(auth)/register" style={{ ...TYPE.bodyStrong, color: colors.primary }}>Kayıt ol</Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

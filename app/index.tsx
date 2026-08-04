@@ -3,7 +3,8 @@ import { Redirect } from 'expo-router';
 import { View, ActivityIndicator, Text, TouchableOpacity, Alert } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -59,8 +60,8 @@ export default function Index() {
     if (fetchError || spinTimedOut) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl, gap: SPACING.md }}>
-          <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', textAlign: 'center' }}>Profilin yüklenemedi</Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.md }}>
+          <Text style={{ ...TYPE.title3, color: colors.text, textAlign: 'center' }}>Profilin yüklenemedi</Text>
+          <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.md }}>
             {fetchError ? 'İnternet bağlantını kontrol et.' : 'Beklenenden uzun sürdü. Tekrar dene ya da çıkış yapıp yeniden gir.'}
           </Text>
           <TouchableOpacity
@@ -68,10 +69,10 @@ export default function Index() {
             accessibilityRole="button" accessibilityLabel="Tekrar dene"
             style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
           >
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.md, fontWeight: '600' }}>Tekrar dene</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>Tekrar dene</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => { signOut(); }} accessibilityRole="button" accessibilityLabel="Çıkış yap" style={{ paddingVertical: SPACING.sm, minHeight: 44, justifyContent: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Çıkış yap</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>Çıkış yap</Text>
           </TouchableOpacity>
         </View>
       );
@@ -118,10 +119,10 @@ export default function Index() {
 
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: SPACING.xl }}>
-        <Text style={{ color: colors.text, fontSize: FONT.xl, fontWeight: '700', textAlign: 'center', marginBottom: SPACING.lg }}>
+        <Text style={{ ...TYPE.title2, color: colors.text, textAlign: 'center', marginBottom: SPACING.lg }}>
           Hesap silme talebi bekliyor
         </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.md, lineHeight: 22, textAlign: 'center', marginBottom: SPACING.xxl }}>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.xxl }}>
           {requestedStr
             ? `${requestedStr} tarihinde hesabını silmek istedin. Talep ${completesStr} tarihinde tamamlanacak ve tüm verilerin kalıcı olarak silinecek.`
             : `Hesabın silinmek üzere işaretli. Talep tamamlandığında tüm verilerin kalıcı olarak silinecek.`}
@@ -145,7 +146,7 @@ export default function Index() {
           accessibilityLabel="Silmeyi iptal et"
           style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignSelf: 'stretch', alignItems: 'center', marginBottom: SPACING.md }}
         >
-          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.md, fontWeight: '600' }}>Silmeyi iptal et</Text>
+          <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>Silmeyi iptal et</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => { signOut(); }}
@@ -153,7 +154,7 @@ export default function Index() {
           accessibilityLabel="Silmeye devam et"
           style={{ borderColor: colors.error, borderWidth: 1, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignSelf: 'stretch', alignItems: 'center' }}
         >
-          <Text style={{ color: colors.error, fontSize: FONT.md, fontWeight: '600' }}>Silmeye devam et</Text>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.error }}>Silmeye devam et</Text>
         </TouchableOpacity>
       </View>
     );

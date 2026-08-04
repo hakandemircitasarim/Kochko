@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -145,12 +146,12 @@ export default function RegisterScreen() {
       >
         {/* FIX (audit ui-auth-header): login.tsx ile birebir aynı logo/başlık bloğu (letterSpacing/boşluk) */}
         <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
-          <Text style={{ fontSize: FONT.hero, fontWeight: '800', color: colors.primary, letterSpacing: 2 }}>Kochko</Text>
-          <Text style={{ fontSize: FONT.lg, color: colors.textSecondary, marginTop: SPACING.xs }}>Hesap Oluştur</Text>
+          <Text style={{ ...TYPE.title1, color: colors.primary, letterSpacing: 2 }}>Kochko</Text>
+          <Text style={{ ...TYPE.headline, fontWeight: '400', color: colors.textSecondary, marginTop: SPACING.xs }}>Hesap oluştur</Text>
         </View>
 
         {/* KVKK / consent — sits above all signup paths (form + social) so it's visible before any commitment. */}
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', lineHeight: 19, marginBottom: SPACING.xl }}>
+        <Text style={{ ...TYPE.callout, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.xl }}>
           Kayıt olarak{' '}
           <Text
             style={{ color: colors.primary, fontWeight: '600' }}
@@ -175,13 +176,13 @@ export default function RegisterScreen() {
         {/* Social Register Buttons (Spec 1.1) — Google, provider yapılandırılana dek gizli. */}
         {GOOGLE_LOGIN_ENABLED && (
           <>
-            <Button title="Google ile Kayıt Ol" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
+            <Button title="Google ile kayıt ol" onPress={handleGoogle} loading={loading} variant="outline" size="lg" />
             <View style={{ height: SPACING.sm }} />
           </>
         )}
         {Platform.OS === 'ios' && (
           <>
-            <Button title="Apple ile Kayıt Ol" onPress={handleApple} loading={loading} variant="outline" size="lg" />
+            <Button title="Apple ile kayıt ol" onPress={handleApple} loading={loading} variant="outline" size="lg" />
             <View style={{ height: SPACING.sm }} />
           </>
         )}
@@ -190,7 +191,7 @@ export default function RegisterScreen() {
         {(GOOGLE_LOGIN_ENABLED || Platform.OS === 'ios') && (
           <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: SPACING.md }}>
             <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
-            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginHorizontal: SPACING.md }}>veya</Text>
+            <Text style={{ ...TYPE.callout, color: colors.textMuted, marginHorizontal: SPACING.md }}>veya</Text>
             <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
           </View>
         )}
@@ -254,10 +255,10 @@ export default function RegisterScreen() {
           error={passwordsMismatch ? 'Şifreler eşleşmiyor' : undefined}
           hint={passwordsMatch ? 'Şifreler eşleşiyor' : undefined}
         />
-        <Button title="Kayıt Ol" onPress={handleRegister} loading={loading} size="lg" />
+        <Button title="Kayıt ol" onPress={handleRegister} loading={loading} size="lg" />
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.lg }}>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Zaten hesabın var mı? </Text>
-          <Link href="/(auth)/login" style={{ color: colors.primary, fontSize: FONT.md, fontWeight: '600' }}>Giriş Yap</Link>
+          <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Zaten hesabın var mı? </Text>
+          <Link href="/(auth)/login" style={{ ...TYPE.bodyStrong, color: colors.primary }}>Giriş yap</Link>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -20,7 +20,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 
 type LinkState = 'checking' | 'ready' | 'invalid';
@@ -107,7 +108,7 @@ export default function ResetPasswordScreen() {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: SPACING.md }}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Bağlantı doğrulanıyor…</Text>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Bağlantı doğrulanıyor…</Text>
       </View>
     );
   }
@@ -115,10 +116,10 @@ export default function ResetPasswordScreen() {
   if (linkState === 'invalid') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
-        <Text style={{ fontSize: FONT.xl, fontWeight: '700', color: colors.text, marginBottom: SPACING.sm, textAlign: 'center' }}>
+        <Text style={{ ...TYPE.title2, color: colors.text, marginBottom: SPACING.sm, textAlign: 'center' }}>
           Bağlantı geçersiz
         </Text>
-        <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.xl, textAlign: 'center', lineHeight: 22 }}>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.xl, textAlign: 'center' }}>
           Sıfırlama bağlantısının süresi dolmuş ya da bağlantı eksik. Giriş ekranından yeni bir bağlantı isteyebilirsin.
         </Text>
         <Button title="Giriş ekranına dön" onPress={() => router.replace('/(auth)/login')} size="lg" />
@@ -132,17 +133,17 @@ export default function ResetPasswordScreen() {
         contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: SPACING.xl, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.xs }}>
-          Yeni Şifre Belirle
+        <Text style={{ ...TYPE.title2, fontWeight: '800', color: colors.text, marginBottom: SPACING.xs }}>
+          Yeni şifre belirle
         </Text>
-        <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.xl }}>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.xl }}>
           Hesabın için yeni bir şifre gir.
         </Text>
 
         <Input label="Yeni Şifre" value={password} onChangeText={setPassword} secureToggle placeholder="••••••••" />
         <Input label="Yeni Şifre (Tekrar)" value={confirm} onChangeText={setConfirm} secureToggle placeholder="••••••••" />
 
-        <Button title="Şifreyi Güncelle" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.lg }} />
+        <Button title="Şifreyi güncelle" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.lg }} />
           {/* ux-sweep (RST-EXIT-02): tek butonlu ekranda vazgeçme yolu yoktu. */}
           <Button title="Vazgeç" variant="ghost" onPress={() => router.replace('/')} />
       </ScrollView>

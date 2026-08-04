@@ -7,7 +7,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Ionicons } from '@expo/vector-icons';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
@@ -669,9 +669,9 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.pill, backgroundColor: colors.primary + '20' }}>
                 <Ionicons name="flag" size={12} color={colors.primary} />
-                <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: colors.primary }}>Son adım</Text>
+                <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.primary }}>Son adım</Text>
               </View>
-              <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: filledCount === totalCount ? colors.primary : colors.textSecondary }}>
+              <Text style={{ ...TYPE.caption, fontWeight: '700', color: filledCount === totalCount ? colors.primary : colors.textSecondary }}>
                 {filledCount}/{totalCount} hazır
               </Text>
             </View>
@@ -686,7 +686,7 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
           style={{ ...TYPE.title1, color: colors.text, marginBottom: SPACING.xs }}
           accessibilityRole="header"
         >
-          {isReOnboarding ? 'Bilgilerini güncelle' : 'Seni Tanıyalım'}
+          {isReOnboarding ? 'Bilgilerini güncelle' : 'Seni tanıyalım'}
         </Text>
         <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>
           {isReOnboarding
@@ -753,7 +753,7 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
         {/* AI-first promise: bridge the slide-2 "Sohbet Et" hero to the post-submit chat. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.lg, marginBottom: SPACING.sm }}>
           <Ionicons name="chatbubble-ellipses" size={14} color={colors.primary} />
-          <Text style={{ flex: 1, fontSize: FONT.sm, color: colors.textSecondary }}>
+          <Text style={{ ...TYPE.body, flex: 1, color: colors.textSecondary }}>
             {isReOnboarding
               ? 'Kaydettiğinde Koç güncel bilgilerinle devam edecek.'
               : 'Bunlar bitince Koç ile sohbete başlıyoruz.'}
@@ -762,7 +762,7 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
 
         {/* Tell the user *what* is still missing instead of just a dead grey button. */}
         {!isValid && missingLabel && (
-          <Text style={{ fontSize: FONT.sm, color: colors.warning, marginBottom: SPACING.xs }}>
+          <Text style={{ ...TYPE.caption, color: colors.warning, marginBottom: SPACING.xs }}>
             Devam etmek için {missingLabel}.
           </Text>
         )}
@@ -772,17 +772,17 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
           <View style={{ backgroundColor: colors.primary + '12', borderWidth: 1, borderColor: colors.primary + '33', borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
               <Ionicons name="sparkles" size={13} color={colors.primary} />
-              <Text style={{ fontSize: FONT.xs, fontWeight: '700', color: colors.primary, letterSpacing: 0.3 }}>TAHMİNİ BAŞLANGIÇ PLANIN</Text>
+              <Text style={{ ...TYPE.overline, color: colors.primary }}>TAHMİNİ BAŞLANGIÇ PLANIN</Text>
             </View>
-            <Text style={{ fontSize: FONT.lg, fontWeight: '800', color: colors.text }}>
+            <Text style={{ ...TYPE.title3, fontWeight: '800', color: colors.text }}>
               ~{planPreview.kcalMin}–{planPreview.kcalMax} kcal/gün
             </Text>
             {planPreview.showGoal && (
-              <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: 2 }}>
+              <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>
                 {String(planPreview.w).replace('.', ',')} → {String(planPreview.tw).replace('.', ',')} kg · ~12 hafta
               </Text>
             )}
-            <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 4 }}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 4 }}>
               Koç bunları seninle konuşarak inceltecek.
             </Text>
           </View>
@@ -834,7 +834,7 @@ function ChipSelect({ label, options, selected, onChange }: {
                 backgroundColor: isSelected ? colors.primary : 'transparent',
               }}
             >
-              <Text style={{ color: isSelected ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.sm, fontWeight: isSelected ? '600' : '400' }}>
+              <Text style={{ ...TYPE.body, color: isSelected ? getContrastColor(colors.primary) : colors.textSecondary, fontWeight: isSelected ? '600' : '400' }}>
                 {opt.label}
               </Text>
             </TouchableOpacity>
