@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Ionicons } from '@expo/vector-icons';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -183,10 +184,12 @@ function WelcomeSlide({
       }}>
         <Ionicons name={slide.icon} size={36} color={colors.primary} />
       </View>
-      <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: SPACING.md }}>
+      {/* Intro slides are the first thing anyone sees. The heading led at FONT.xl (20) — the same
+          step a card title uses elsewhere — so the app's opening statement carried card weight. */}
+      <Text style={{ ...TYPE.title1, color: colors.text, textAlign: 'center', marginBottom: SPACING.md }}>
         {slide.title}
       </Text>
-      <Text style={{ fontSize: FONT.md, color: colors.textSecondary, textAlign: 'center', lineHeight: 24, marginBottom: SPACING.xxl }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.xxl }}>
         {slide.body}
       </Text>
 
@@ -680,12 +683,12 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
         {/* FIX (audit re-onboarding): mevcut kullanıcıya yeni-kullanıcı kopyası ("Seni
             Tanıyalım") gösterme — bu bir güncelleme ekranı. */}
         <Text
-          style={{ fontSize: FONT.xxl, fontWeight: '800', color: colors.text, marginBottom: SPACING.xs }}
+          style={{ ...TYPE.title1, color: colors.text, marginBottom: SPACING.xs }}
           accessibilityRole="header"
         >
           {isReOnboarding ? 'Bilgilerini güncelle' : 'Seni Tanıyalım'}
         </Text>
-        <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.lg }}>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>
           {isReOnboarding
             ? 'Bilgilerin mevcut hallerinle dolu geliyor — sadece değişenleri düzelt.'
             /* Was "Sadece 5 bilgi ile başlayalım". Live-driven on a fresh account, the meter next
@@ -808,7 +811,8 @@ function ChipSelect({ label, options, selected, onChange }: {
   const { colors } = useTheme();
   return (
     <View style={{ marginBottom: SPACING.md }}>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
+      {/* Field labels tell the user what they are being asked. TYPE.callout, not the smallest step. */}
+      <Text style={{ ...TYPE.callout, color: colors.textSecondary, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
         {options.map(opt => {
           const isSelected = selected === opt.value;
