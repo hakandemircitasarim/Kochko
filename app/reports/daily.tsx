@@ -15,6 +15,7 @@ import { DeviationTag } from '@/components/reports/DeviationTag';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -130,7 +131,7 @@ export default function DailyReportScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
-      <Text style={{ fontSize: FONT.md, color: colors.textSecondary, marginBottom: SPACING.lg }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>
         {new Date(`${reportDate}T00:00:00`).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
       </Text>
 
@@ -140,14 +141,14 @@ export default function DailyReportScreen() {
               show it plainly. Only today offers "Rapor Oluştur". */}
           {isToday ? (
             <>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
               <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
               {generating && (
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm, textAlign: 'center' }}>Koç gününü analiz ediyor, bu birkaç saniye sürebilir…</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: SPACING.sm, textAlign: 'center' }}>Koç gününü analiz ediyor, bu birkaç saniye sürebilir…</Text>
               )}
             </>
           ) : (
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Bu güne ait bir gün sonu raporu yok.</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Bu güne ait bir gün sonu raporu yok.</Text>
           )}
         </Card>
       ) : (
@@ -183,8 +184,8 @@ export default function DailyReportScreen() {
           {/* Impacts */}
           {(report.sleep_impact || report.water_impact) && (
             <Card title="Etkiler">
-              {report.sleep_impact && <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22, marginBottom: SPACING.xs }}>Uyku: {report.sleep_impact}</Text>}
-              {report.water_impact && <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22 }}>Su: {report.water_impact}</Text>}
+              {report.sleep_impact && <Text style={{ color: colors.text, ...TYPE.body, marginBottom: SPACING.xs }}>Uyku: {report.sleep_impact}</Text>}
+              {report.water_impact && <Text style={{ color: colors.text, ...TYPE.body }}>Su: {report.water_impact}</Text>}
             </Card>
           )}
 
@@ -198,18 +199,18 @@ export default function DailyReportScreen() {
           {/* Weekly Budget */}
           {report.weekly_budget_status && (
             <Card title="Haftalık Bütçe">
-              <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 22 }}>{report.weekly_budget_status}</Text>
+              <Text style={{ color: colors.text, ...TYPE.body }}>{report.weekly_budget_status}</Text>
             </Card>
           )}
 
           {/* Full Report */}
           <Card title="Değerlendirme">
-            <Text style={{ color: colors.text, fontSize: FONT.md, lineHeight: 24 }}>{report.full_report}</Text>
+            <Text style={{ color: colors.text, ...TYPE.body }}>{report.full_report}</Text>
           </Card>
 
           {/* Tomorrow */}
           <Card title="Yarın İçin Tek Aksiyon">
-            <Text style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '600', lineHeight: 26 }}>{report.tomorrow_action}</Text>
+            <Text style={{ color: colors.primary, ...TYPE.title3 }}>{report.tomorrow_action}</Text>
           </Card>
 
           {/* ux-sweep (daily-no-regenerate): otomatik gece job'ı satırı yazınca kullanıcı butona
@@ -233,8 +234,8 @@ function CheckItem({ label, met, detail }: { label: string; met: boolean; detail
       accessibilityLabel={`${label}: ${met ? 'hedef tutturuldu' : 'hedef tutturulmadı'}${detail ? `, ${detail}` : ''}`}
     >
       <Ionicons name={met ? 'checkmark-circle' : 'close-circle'} size={24} color={met ? colors.success : colors.error} />
-      <Text style={{ color: colors.text, fontSize: FONT.md, flex: 1 }}>{label}</Text>
-      {detail && <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{detail}</Text>}
+      <Text style={{ color: colors.text, ...TYPE.body, flex: 1 }}>{label}</Text>
+      {detail && <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{detail}</Text>}
     </View>
   );
 }
@@ -244,10 +245,10 @@ function MacroCircle({ label, value, unit, color }: { label: string; value: numb
   return (
     <View style={{ alignItems: 'center' }} accessibilityRole="text" accessibilityLabel={`${label}: ${value} ${unit}`}>
       <View style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 3, borderColor: color, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color, fontSize: FONT.md, fontWeight: '700' }}>{value}</Text>
+        <Text style={{ color, ...TYPE.headline }}>{value}</Text>
       </View>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>{label}</Text>
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{unit}</Text>
+      <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 4 }}>{label}</Text>
+      <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{unit}</Text>
     </View>
   );
 }

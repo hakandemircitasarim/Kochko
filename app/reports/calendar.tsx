@@ -8,6 +8,7 @@ import { getMonthSummaries, type DaySummary } from '@/services/calendar.service'
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -84,16 +85,16 @@ export default function CalendarScreen() {
           accessibilityLabel="Önceki ay"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={{ color: colors.primary, fontSize: FONT.xl }}>{'<'}</Text>
+          <Text style={{ color: colors.primary, ...TYPE.title3 }}>{'<'}</Text>
         </TouchableOpacity>
-        <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '700' }}>{MONTH_NAMES[month - 1]} {year}</Text>
+        <Text style={{ color: colors.text, ...TYPE.title3 }}>{MONTH_NAMES[month - 1]} {year}</Text>
         <TouchableOpacity
           onPress={nextMonth}
           accessibilityRole="button"
           accessibilityLabel="Sonraki ay"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Text style={{ color: colors.primary, fontSize: FONT.xl }}>{'>'}</Text>
+          <Text style={{ color: colors.primary, ...TYPE.title3 }}>{'>'}</Text>
         </TouchableOpacity>
       </View>
 
@@ -101,7 +102,7 @@ export default function CalendarScreen() {
       <View style={{ flexDirection: 'row', marginBottom: SPACING.xs }}>
         {DAY_NAMES.map(d => (
           <View key={d} style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{d}</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{d}</Text>
           </View>
         ))}
       </View>
@@ -144,7 +145,7 @@ export default function CalendarScreen() {
                 justifyContent: 'center', alignItems: 'center',
               }}>
                 {/* FIX (audit UI-DS-01): seçili gün metni '#fff' yerine getContrastColor(colors.primary) (siyah; teal üzerinde WCAG AA geçer, beyaz 3.39:1 idi). */}
-                <Text style={{ color: isSelected ? getContrastColor(colors.primary) : day.hasData ? colors.text : colors.textMuted, fontSize: FONT.sm, fontWeight: isToday ? '700' : '400' }}>{dayNum}</Text>
+                <Text style={{ color: isSelected ? getContrastColor(colors.primary) : day.hasData ? colors.text : colors.textMuted, ...TYPE.body, fontWeight: isToday ? '700' : '400' }}>{dayNum}</Text>
               </View>
               {/* Dot indicator */}
               {day.hasData && !isSelected && (
@@ -171,8 +172,8 @@ export default function CalendarScreen() {
               { value: `${workouts}`, label: 'antrenman', color: colors.text },
             ].map((s) => (
               <View key={s.label} style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={{ color: s.color, fontSize: FONT.xl, fontWeight: '800' }}>{s.value}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{s.label}</Text>
+                <Text style={{ color: s.color, ...TYPE.title3 }}>{s.value}</Text>
+                <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>{s.label}</Text>
               </View>
             ))}
           </View>
@@ -192,12 +193,12 @@ export default function CalendarScreen() {
         ].map(item => (
           <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.color }} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>{item.label}</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>{item.label}</Text>
           </View>
         ))}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
           <View style={{ width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: colors.textMuted }} />
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>Veri yok</Text>
+          <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>Veri yok</Text>
         </View>
       </View>
       )}
@@ -206,34 +207,34 @@ export default function CalendarScreen() {
       {selected && (
         <Card title={new Date(selected.date).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })} style={{ marginTop: SPACING.lg }}>
           {!selected.hasData ? (
-            <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Bu gün için veri yok.</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.body }}>Bu gün için veri yok.</Text>
           ) : (
             <View style={{ gap: 4 }}>
               {selected.compliance_score !== null && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Uyum</Text>
-                  <Text style={{ color: getScoreColor(selected.compliance_score), fontSize: FONT.md, fontWeight: '700' }}>%{selected.compliance_score}</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Uyum</Text>
+                  <Text style={{ color: getScoreColor(selected.compliance_score), ...TYPE.headline }}>%{selected.compliance_score}</Text>
                 </View>
               )}
               {selected.calorie_actual !== null && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Kalori</Text>
-                  <Text style={{ color: colors.text, fontSize: FONT.md }}>{selected.calorie_actual} kcal</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Kalori</Text>
+                  <Text style={{ color: colors.text, ...TYPE.body }}>{selected.calorie_actual} kcal</Text>
                 </View>
               )}
               {selected.weight_kg !== null && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Kilo</Text>
-                  <Text style={{ color: colors.text, fontSize: FONT.md }}>{selected.weight_kg} kg</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Kilo</Text>
+                  <Text style={{ color: colors.text, ...TYPE.body }}>{selected.weight_kg} kg</Text>
                 </View>
               )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Öğün</Text>
-                <Text style={{ color: colors.text, fontSize: FONT.md }}>{selected.meal_count} kayıt</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Öğün</Text>
+                <Text style={{ color: colors.text, ...TYPE.body }}>{selected.meal_count} kayıt</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.md }}>Antrenman</Text>
-                <Text style={{ color: selected.workout_done ? colors.success : colors.textMuted, fontSize: FONT.md }}>{selected.workout_done ? 'Yapıldı' : 'Yapılmadı'}</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Antrenman</Text>
+                <Text style={{ color: selected.workout_done ? colors.success : colors.textMuted, ...TYPE.body }}>{selected.workout_done ? 'Yapıldı' : 'Yapılmadı'}</Text>
               </View>
               {/* FIX (ux-audit major): the tap used to dead-end at this 5-row summary; give it a path
                   to that day's full gün-sonu report (narrative, tomorrow_action, deviation reason).
@@ -246,7 +247,7 @@ export default function CalendarScreen() {
                   accessibilityLabel="Bu günün gün sonu raporunu gör"
                   style={{ marginTop: SPACING.sm, paddingVertical: SPACING.sm, alignSelf: 'flex-start' }}
                 >
-                  <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600' }}>Gün sonu raporunu gör →</Text>
+                  <Text style={{ color: colors.primary, ...TYPE.bodyStrong }}>Gün sonu raporunu gör →</Text>
                 </TouchableOpacity>
               )}
             </View>
