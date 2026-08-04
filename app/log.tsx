@@ -28,6 +28,7 @@ import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery' | 'steps';
 
@@ -934,7 +935,7 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.pink + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="scale" size={24} color={colors.pink} />
         </View>
-        <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Tartı Kaydı</Text>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Tartı Kaydı</Text>
         {/* FIX (ux-ideas #13): +/- steppers flank the input; the input is prefilled with the last
             known weight (set on open) so most weigh-ins are a one-tap tweak, not a full retype. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, width: '85%' }}>
@@ -990,7 +991,7 @@ export default function QuickLogScreen() {
         })()}
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
+            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
           {/* FIX (ux-round4 #12): disable Kaydet until the value is in range (Alert stays as a net). */}
           <TouchableOpacity onPress={handleWeightSave} disabled={loading || !weightValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !weightValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !weightValid) ? 0.5 : 1 }}>
@@ -1016,17 +1017,17 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.purple + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="moon" size={24} color={colors.purple} />
         </View>
-        <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Uyku Kaydı</Text>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Uyku Kaydı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%', marginBottom: SPACING.xxl }}>
           {/* FIX (audit Wave3): native time picker instead of free-text TextInput — invalid HH:mm
               becomes impossible to enter (iOS numbers-and-punctuation keyboard lacked ':'). The
               handleSleepSave split(':') validation stays as a safety net. DateTimeField returns 'HH:mm'. */}
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.sm }}>Yatış</Text>
+            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', marginBottom: SPACING.sm }}>Yatış</Text>
             <DateTimeField mode="time" value={sleepTime} onChange={setSleepTime} placeholder="23:00" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.sm }}>Kalkış</Text>
+            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', marginBottom: SPACING.sm }}>Kalkış</Text>
             <DateTimeField mode="time" value={wakeTime} onChange={setWakeTime} placeholder="07:00" />
           </View>
         </View>
@@ -1051,7 +1052,7 @@ export default function QuickLogScreen() {
         })()}
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
+            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
           {/* FIX (ux-round4 #13 review): disable Kaydet until BOTH times are picked — the pickers
               start empty, so the enabled button was a silent no-op (handleSleepSave early-returns). */}
@@ -1081,7 +1082,7 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.purple + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="footsteps" size={24} color={colors.purple} />
         </View>
-        <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.sm }}>Adım Kaydı</Text>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.sm }}>Adım Kaydı</Text>
         <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginBottom: SPACING.xl }}>
           Bugünün TOPLAM adımı — saatinden veya telefonundan okuduğun sayıyı gir.
         </Text>
@@ -1121,7 +1122,7 @@ export default function QuickLogScreen() {
         </View>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
+            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleStepsSave} disabled={loading || !stepsValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !stepsValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !stepsValid) ? 0.5 : 1 }}>
             <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
@@ -1146,9 +1147,9 @@ export default function QuickLogScreen() {
         <View style={{ width: 48, height: 48, borderRadius: RADIUS.sm, backgroundColor: colors.success + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md }}>
           <Ionicons name="fitness" size={24} color={colors.success} />
         </View>
-        <Text style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.xxl }}>Toparlanma Kaydı</Text>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.xxl }}>Toparlanma Kaydı</Text>
 
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Kas ağrısı</Text>
+        <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Kas ağrısı</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xl }}>
           {SORENESS_LEVELS.map(s => (
             // FIX (ux-round4 #27): tap-again to deselect — a mis-tapped dimension can return to
@@ -1167,7 +1168,7 @@ export default function QuickLogScreen() {
           ))}
         </View>
 
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Genel toparlanma (1 kötü — 5 harika)</Text>
+        <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', alignSelf: 'flex-start', marginBottom: SPACING.sm }}>Genel toparlanma (1 kötü — 5 harika)</Text>
         <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xxl }}>
           {[1, 2, 3, 4, 5].map(r => (
             // FIX (ux-round4 #27): tap-again to deselect (same as the soreness pills above).
@@ -1187,7 +1188,7 @@ export default function QuickLogScreen() {
 
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
           <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
+            <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500' }}>İptal</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleRecoverySave} disabled={loading || (soreness === null && recoveryScore === null)}
             accessibilityRole="button" accessibilityLabel="Kaydet"
