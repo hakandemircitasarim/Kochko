@@ -470,10 +470,19 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           />
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.3 }}>ŞİMDİ SIRADA</Text>
+            {/* This strip crammed meal type + time + name onto ONE line while a "Bunu yedim" button
+                takes the right half, so the name — the only part that says WHAT to eat — was what
+                got cut ("Kahvaltı · 08:30 — Peynirli to…"). Split it: the type/time is a label, the
+                name is the content, and the name gets two lines if it needs them. */}
             {nowNext.kind === 'meal' && (
-              <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }} numberOfLines={1}>
-                {MEAL_TYPE_LABELS_TR[nowNext.meal.meal_type]}{nowNext.meal.time ? ` · ${nowNext.meal.time}` : ''} — {nowNext.meal.name}
-              </Text>
+              <>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>
+                  {MEAL_TYPE_LABELS_TR[nowNext.meal.meal_type]}{nowNext.meal.time ? ` · ${nowNext.meal.time}` : ''}
+                </Text>
+                <Text style={{ ...TYPE.bodyStrong, color: colors.text }} numberOfLines={2}>
+                  {nowNext.meal.name}
+                </Text>
+              </>
             )}
             {nowNext.kind === 'workout' && (
               <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>
