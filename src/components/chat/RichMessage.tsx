@@ -35,8 +35,8 @@ export function MacroBar({ label, current, target, color }: { label: string; cur
   return (
     <View style={{ marginBottom: SPACING.xs }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{label}</Text>
-        <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500' }}>{current} / {target}g</Text>
+        <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{label}</Text>
+        <Text style={{ color: colors.text, ...TYPE.bodyStrong }}>{current} / {target}g</Text>
       </View>
       <View style={{ height: 4, backgroundColor: colors.progressTrack, borderRadius: 2, overflow: 'hidden' }}>
         <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 2 }} />
@@ -108,12 +108,12 @@ export function ConfirmRejectButtons({ onConfirm, onReject, confirmLabel = 'Onay
       <TouchableOpacity disabled={disabled} onPress={() => { haptics.tap(); onConfirm(); }}
         accessibilityRole="button" accessibilityLabel={confirmLabel} accessibilityState={{ disabled }}
         style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}>
-        <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>{confirmLabel}</Text>
+        <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>{confirmLabel}</Text>
       </TouchableOpacity>
       <TouchableOpacity disabled={disabled} onPress={() => { haptics.tap(); onReject(); }}
         accessibilityRole="button" accessibilityLabel={rejectLabel} accessibilityState={{ disabled }}
         style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center' }}>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>{rejectLabel}</Text>
+        <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>{rejectLabel}</Text>
       </TouchableOpacity>
     </View>
   );
@@ -128,7 +128,7 @@ export function SimulationCard({ foodName, calories, remaining, weeklyImpact }: 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.sm }}>
         <View style={{ alignItems: 'center' }}>
           <Text style={{ ...TYPE.title2, color: METRIC_COLORS.calories }}>{calories}</Text>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>kcal</Text>
+          <Text style={{ color: colors.textMuted, ...TYPE.caption }}>kcal</Text>
         </View>
         <View style={{ alignItems: 'center' }}>
           {/* FIX (ux-ideas #5): over-budget no longer paints alarm-red. For an anxious
@@ -138,10 +138,10 @@ export function SimulationCard({ foodName, calories, remaining, weeklyImpact }: 
           <Text style={{ ...TYPE.title2, color: remaining >= 0 ? colors.primary : colors.warning }}>
             {remaining >= 0 ? remaining : Math.abs(remaining)}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{remaining >= 0 ? 'kalan' : 'üzeri'}</Text>
+          <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{remaining >= 0 ? 'kalan' : 'üzeri'}</Text>
         </View>
       </View>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: SPACING.sm }}>{weeklyImpact}</Text>
+      <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: SPACING.sm }}>{weeklyImpact}</Text>
     </View>
   );
 }
@@ -156,11 +156,11 @@ export function RecipeCard({ title, prepTime, servings, ingredients, macros, onS
   const { colors } = useTheme();
   return (
     <View style={{ backgroundColor: colors.cardElevated, borderRadius: RADIUS.sm, padding: SPACING.lg, marginTop: SPACING.sm }}>
-      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }}>{title}</Text>
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{prepTime} dk | {servings} porsiyon</Text>
+      <Text style={{ color: colors.text, ...TYPE.headline }}>{title}</Text>
+      <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>{prepTime} dk | {servings} porsiyon</Text>
       <View style={{ marginTop: SPACING.sm }}>
         {ingredients.map((ing, i) => (
-          <Text key={i} style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>- {ing.amount} {ing.name}</Text>
+          <Text key={i} style={{ color: colors.text, ...TYPE.body }}>- {ing.amount} {ing.name}</Text>
         ))}
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.border }}>
@@ -171,8 +171,8 @@ export function RecipeCard({ title, prepTime, servings, ingredients, macros, onS
           { v: `${macros.fat}g`, l: 'yağ', c: METRIC_COLORS.fat },
         ].map((m, i) => (
           <View key={i} style={{ alignItems: 'center', flex: 1 }}>
-            <Text style={{ color: m.c, fontSize: FONT.md, fontWeight: '600' }}>{m.v}</Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{m.l}</Text>
+            <Text style={{ color: m.c, ...TYPE.headline }}>{m.v}</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{m.l}</Text>
           </View>
         ))}
       </View>
@@ -189,7 +189,7 @@ export function RecipeCard({ title, prepTime, servings, ingredients, macros, onS
             alignItems: 'center',
           }}
         >
-          <Text style={{ color: saved ? colors.primary : getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>
+          <Text style={{ color: saved ? colors.primary : getContrastColor(colors.primary), ...TYPE.bodyStrong }}>
             {saved ? '✓ Kaydedildi' : 'Tarifi Kaydet'}
           </Text>
         </TouchableOpacity>
@@ -206,7 +206,7 @@ export function ActionButtons({ actions, onAction }: { actions: { label: string;
         <TouchableOpacity key={i} onPress={() => { haptics.tap(); onAction(a.action); }}
           accessibilityRole="button" accessibilityLabel={a.label}
           style={{ paddingVertical: 10, paddingHorizontal: SPACING.md, minHeight: 40, justifyContent: 'center', borderRadius: RADIUS.sm, backgroundColor: a.variant === 'primary' ? colors.primary : colors.surfaceLight }}>
-          <Text style={{ color: a.variant === 'primary' ? getContrastColor(colors.primary) : colors.primary, fontSize: FONT.sm, fontWeight: '500' }}>{a.label}</Text>
+          <Text style={{ color: a.variant === 'primary' ? getContrastColor(colors.primary) : colors.primary, ...TYPE.bodyStrong }}>{a.label}</Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -224,7 +224,7 @@ export function ConfidenceBadge({ level }: { level: 'high' | 'medium' | 'low' })
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 2, paddingHorizontal: 8, borderRadius: RADIUS.pill, backgroundColor: c.color + '26', alignSelf: 'flex-start', marginTop: SPACING.xs }}>
       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.color, marginRight: 4 }} />
-      <Text style={{ color: c.color, fontSize: FONT.xs, fontWeight: '600' }}>{c.label}</Text>
+      <Text style={{ color: c.color, ...TYPE.caption, fontWeight: '600' }}>{c.label}</Text>
     </View>
   );
 }
@@ -255,24 +255,24 @@ export function PersonaCard({
   const info = LABELS[persona] ?? { title: persona, desc: 'Koçluk tarzını buna göre ayarladım.' };
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, marginTop: SPACING.sm, borderWidth: 0.5, borderColor: colors.primary }}>
-      <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600', letterSpacing: 0.3 }}>SENİ TANIDIM</Text>
-      <Text style={{ color: colors.text, fontSize: FONT.lg, fontWeight: '600', marginTop: 4 }}>{info.title}</Text>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 18 }}>{info.desc}</Text>
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>Yanlışsa söyle, ayarlarım.</Text>
+      <Text style={{ color: colors.primary, ...TYPE.caption, fontWeight: '600', letterSpacing: 0.3 }}>SENİ TANIDIM</Text>
+      <Text style={{ color: colors.text, ...TYPE.title3, marginTop: 4 }}>{info.title}</Text>
+      <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>{info.desc}</Text>
+      <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.sm }}>Yanlışsa söyle, ayarlarım.</Text>
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
         <TouchableOpacity
           onPress={() => { haptics.tap(); onConfirm(); }}
           accessibilityRole="button" accessibilityLabel="Doğru"
           style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}
         >
-          <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>Doğru</Text>
+          <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Doğru</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => { haptics.tap(); onReject(); }}
           accessibilityRole="button" accessibilityLabel="Ben farklıyım"
           style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center' }}
         >
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>Ben farklıyım</Text>
+          <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Ben farklıyım</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -285,7 +285,7 @@ export function MakeSomethingElseButton({ onPress }: { onPress: () => void }) {
     <TouchableOpacity onPress={() => { haptics.tap(); onPress(); }}
       accessibilityRole="button" accessibilityLabel="Başka bir şey öner"
       style={{ paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', paddingHorizontal: SPACING.md, borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', marginTop: SPACING.sm }}>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Başka bir şey öner</Text>
+      <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Başka bir şey öner</Text>
     </TouchableOpacity>
   );
 }
@@ -306,13 +306,13 @@ export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: 
       {/* ux-pass2: gap + tr-TR thousands — this rendered as the run-together
           "Haftalık Bütçe332 / 15532 kcal" live (the dashboard shows "15.532"). */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm, marginBottom: SPACING.xs }}>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Haftalık Bütçe</Text>
-        <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500' }}>{Math.round(consumed).toLocaleString('tr-TR')} / {Math.round(total).toLocaleString('tr-TR')} kcal</Text>
+        <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Haftalık Bütçe</Text>
+        <Text style={{ color: colors.text, ...TYPE.bodyStrong }}>{Math.round(consumed).toLocaleString('tr-TR')} / {Math.round(total).toLocaleString('tr-TR')} kcal</Text>
       </View>
       <View style={{ height: 6, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
         <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 3 }} />
       </View>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, textAlign: 'right' }}>Kalan: {Math.round(remaining).toLocaleString('tr-TR')} kcal</Text>
+      <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4, textAlign: 'right' }}>Kalan: {Math.round(remaining).toLocaleString('tr-TR')} kcal</Text>
     </View>
   );
 }

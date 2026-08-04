@@ -187,7 +187,7 @@ function DateSeparator({ label }: { label: string }) {
           backgroundColor: colors.surfaceLight,
         }}
       >
-        <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
+        <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
           {label}
         </Text>
       </View>
@@ -211,7 +211,7 @@ function TopicMarker({ label }: { label: string }) {
         }}
       >
         <Ionicons name="chatbubbles-outline" size={11} color={colors.primary} />
-        <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 }}>
+        <Text style={{ ...TYPE.overline, color: colors.primary }}>
           Konu: {label}
         </Text>
       </View>
@@ -314,7 +314,7 @@ function CrisisBlock({ text }: { text: string }) {
     <View style={{ backgroundColor: colors.errorLight, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: colors.error, padding: SPACING.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm }}>
         <Ionicons name="alert-circle" size={20} color={colors.error} />
-        <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '800', letterSpacing: 0.3 }}>ACİL DESTEK</Text>
+        <Text style={{ color: colors.error, ...TYPE.overline }}>ACİL DESTEK</Text>
       </View>
       <Text selectable style={{ ...TYPE.body, color: colors.text }}>{text}</Text>
       <TouchableOpacity
@@ -324,7 +324,7 @@ function CrisisBlock({ text }: { text: string }) {
         style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, minHeight: 48, borderRadius: RADIUS.md, backgroundColor: colors.error }}
       >
         <Ionicons name="call" size={18} color={getContrastColor(colors.error)} />
-        <Text style={{ color: getContrastColor(colors.error), fontSize: FONT.md, fontWeight: '800' }}>Hemen 112'yi Ara</Text>
+        <Text style={{ color: getContrastColor(colors.error), ...TYPE.headline }}>Hemen 112'yi Ara</Text>
       </TouchableOpacity>
     </View>
   );
@@ -2019,7 +2019,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           <Ionicons name="sparkles" size={17} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Kochko</Text>
+          <Text style={{ ...TYPE.title3, color: colors.text }}>Kochko</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             {/* Token-driven presence dot: offline → muted, sending → warning, online+idle → teal.
                 Matches the chat list's colors.primary "active" treatment instead of Tailwind green. */}
@@ -2027,7 +2027,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               width: 6, height: 6, borderRadius: 3,
               backgroundColor: !isOnline ? colors.textMuted : sending ? colors.warning : colors.primary,
             }} />
-            <Text style={{ fontSize: 11, color: colors.textMuted }}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
               {!isOnline ? 'çevrimdışı' : sending ? 'yazıyor…' : 'aktif'}
             </Text>
           </View>
@@ -2154,7 +2154,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                 {loadingOlder
                   ? <ActivityIndicator size="small" color={colors.textSecondary} />
                   : <Ionicons name={olderLoadFailed ? 'refresh' : 'arrow-up'} size={13} color={colors.textSecondary} />}
-                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.textSecondary }}>
                   {/* FIX (ux-pass5): failed page fetch shows a retry cue instead of vanishing */}
                   {loadingOlder ? 'Yükleniyor…' : olderLoadFailed ? 'Yüklenemedi — tekrar dene' : 'Daha eski mesajları yükle'}
                 </Text>
@@ -2177,7 +2177,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               would render upside-down). */}
           {searchQuery.trim().length > 0 && displayRows.length === 0 && (
             <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, alignItems: 'center', paddingTop: SPACING.xxl }}>
-              <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Yüklü mesajlarda sonuç yok</Text>
+              <Text style={{ color: colors.textMuted, ...TYPE.body }}>Yüklü mesajlarda sonuç yok</Text>
             </View>
           )}
 
@@ -2208,7 +2208,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               }}
             >
               {hasNewBelow && (
-                <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', fontSize: FONT.sm, fontWeight: '700' }}>Yeni yanıt</Text>
+                <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', ...TYPE.bodyStrong, fontWeight: '700' }}>Yeni yanıt</Text>
               )}
               <Ionicons name="chevron-down" size={22} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
             </TouchableOpacity>
@@ -2228,7 +2228,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{ paddingVertical: 4, paddingHorizontal: SPACING.sm }}
             >
-              <Text style={{ color: colors.textMuted, fontSize: 12, fontWeight: '600' }}>İptal</Text>
+              <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.textMuted }}>İptal</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -2278,7 +2278,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           >
             <Ionicons name="close" size={14} color={getContrastColor(colors.error) === 'black' ? '#0D0D12' : '#fff'} />
           </TouchableOpacity>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginLeft: SPACING.sm, flex: 1 }}>Foto eklendi. Mesajla birlikte gönderilebilir.</Text>
+          <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginLeft: SPACING.sm, flex: 1 }}>Foto eklendi. Mesajla birlikte gönderilebilir.</Text>
         </View>
       )}
 
@@ -2287,11 +2287,11 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.sm, borderWidth: 0.5, borderColor: colors.warning }}>
             <Ionicons name="calendar" size={14} color={colors.warning} />
-            <Text style={{ color: colors.textSecondary, fontSize: 11, flex: 1 }}>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }}>
               Kayıt tarihi: {new Date(backdateDate).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'short' })}
             </Text>
             <TouchableOpacity onPress={() => setBackdateDate(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Bugüne sıfırla">
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>Bugün</Text>
+              <Text style={{ ...TYPE.caption, color: colors.textMuted }}>Bugün</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2302,11 +2302,11 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.sm, borderWidth: 0.5, borderColor: colors.primary }}>
             <Ionicons name="mic" size={14} color={colors.primary} />
-            <Text style={{ color: colors.textSecondary, fontSize: 11, flex: 1 }} numberOfLines={2}>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }} numberOfLines={2}>
               Duydum: "{voiceConfirmation.text}" — gönder veya düzenle
             </Text>
             <TouchableOpacity onPress={() => { setInput(''); setVoiceConfirmation(null); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="İptal">
-              <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '500' }}>İptal</Text>
+              <Text style={{ ...TYPE.caption, color: colors.textMuted }}>İptal</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2327,7 +2327,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             accessibilityRole="button"
             accessibilityLabel="Son kaydı geri al"
           >
-            <Text style={{ color: getContrastColor(colors.warning) === 'black' ? '#0D0D12' : '#fff', fontSize: 11, fontWeight: '500' }}>Geri Al (10sn)</Text>
+            <Text style={{ ...TYPE.caption, color: getContrastColor(colors.warning) === 'black' ? '#0D0D12' : '#fff' }}>Geri Al (10sn)</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -2345,14 +2345,14 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               }}
             >
               <Ionicons name="lock-closed" size={12} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '600' }}>
+              <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.primary }}>
                 Günlük 50 mesaj hakkın bitti — Premium'a geç
               </Text>
             </TouchableOpacity>
           ) : (
             <Text style={{
               color: remainingMsgs <= 5 ? colors.warning : colors.textMuted,
-              fontSize: 11, textAlign: 'center',
+              ...TYPE.caption, textAlign: 'center',
             }}>
               {remainingMsgs} mesaj hakkı kaldı
             </Text>
@@ -2369,7 +2369,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           flexDirection: 'row', alignItems: 'center', gap: 8,
         }}>
           <Ionicons name="time-outline" size={14} color={colors.warning} />
-          <Text style={{ color: colors.warning, fontSize: 12, flex: 1 }}>
+          <Text style={{ ...TYPE.caption, color: colors.warning, flex: 1 }}>
             Mesaj limiti. {rateLimitCountdown} saniye sonra tekrar deneyebilirsin.
           </Text>
         </View>
@@ -2398,7 +2398,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                 }}
               >
                 <Ionicons name={'add-circle-outline' as keyof typeof Ionicons.glyphMap} size={14} color={colors.primary} />
-                <Text numberOfLines={1} style={{ color: colors.text, fontSize: FONT.xs, fontWeight: '600', maxWidth: 200 }}>
+                {/* maxWidth 200, 11px etikete göre kesilmişti; okuma basamağına çıkınca
+                    "Beslenme alışkanlıklarını anlat" gibi başlıklar sınıra dayanıyordu. Sıra
+                    zaten yatay kaydırmalı — genişlik bedava, kırpılmış görev başlığı değil. */}
+                <Text numberOfLines={1} style={{ color: colors.text, ...TYPE.caption, fontWeight: '600', maxWidth: 240 }}>
                   {item.title}
                 </Text>
               </TouchableOpacity>
@@ -2428,7 +2431,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                 }}
               >
                 <Ionicons name="chatbubble-ellipses-outline" size={13} color={colors.primary} />
-                <Text style={{ color: colors.text, fontSize: FONT.xs, fontWeight: '600' }}>{q}</Text>
+                <Text style={{ color: colors.text, ...TYPE.caption, fontWeight: '600' }}>{q}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -2473,7 +2476,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                   }}
                 >
                   <Ionicons name={chip.icon} size={14} color={backdateActive ? colors.warning : colors.textSecondary} />
-                  <Text style={{ color: colors.text, fontSize: FONT.xs, fontWeight: '600' }}>{chip.label}</Text>
+                  <Text style={{ color: colors.text, ...TYPE.caption, fontWeight: '600' }}>{chip.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -2485,7 +2488,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           <Text style={{
             alignSelf: 'flex-end',
             marginBottom: 4,
-            fontSize: 11,
+            ...TYPE.caption,
             color: input.length >= 2000 ? colors.error : colors.textMuted,
           }}>
             {input.length}/2000
@@ -2502,8 +2505,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           {/* Text input */}
           <TextInput
             style={{
-              flex: 1, color: colors.text, fontSize: 14,
-              paddingVertical: 8, maxHeight: 120, lineHeight: 20,
+              // Diger yazma alani zaten 15/22; ayni rol, ayni basamak.
+              flex: 1, color: colors.text, ...TYPE.body,
+              paddingVertical: 8, maxHeight: 120,
             }}
             // FIX (kullanıcı bulgusu: "chat tıkandı"): 'Bu konu tamamlandı — yukarıdaki
             // karta dokun' kilit placeholder'ı kaldırıldı — tamamlanma yazmayı kapatmaz.
@@ -2592,11 +2596,11 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               <TouchableOpacity onPress={() => setComposeExpanded(false)} accessibilityRole="button" accessibilityLabel="Kapat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </TouchableOpacity>
-              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Mesajını yaz</Text>
-              <Text style={{ color: input.length >= 2000 ? colors.error : colors.textMuted, fontSize: FONT.xs, minWidth: 56, textAlign: 'right' }}>{input.length}/2000</Text>
+              <Text style={{ color: colors.text, ...TYPE.headline }}>Mesajını yaz</Text>
+              <Text style={{ color: input.length >= 2000 ? colors.error : colors.textMuted, ...TYPE.caption, minWidth: 56, textAlign: 'right' }}>{input.length}/2000</Text>
             </View>
             <TextInput
-              style={{ flex: 1, color: colors.text, fontSize: 15, lineHeight: 22, textAlignVertical: 'top', paddingTop: SPACING.sm }}
+              style={{ flex: 1, color: colors.text, ...TYPE.body, textAlignVertical: 'top', paddingTop: SPACING.sm }}
               value={input}
               onChangeText={setInput}
               multiline
@@ -2615,7 +2619,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: SPACING.md, marginTop: SPACING.sm, opacity: sendDisabled ? 0.4 : 1 }}
             >
               <Ionicons name="arrow-up" size={16} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
-              <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', fontSize: FONT.sm, fontWeight: '700' }}>Gönder</Text>
+              <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', ...TYPE.bodyStrong, fontWeight: '700' }}>Gönder</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -2665,7 +2669,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             borderColor: colors.border, padding: SPACING.xl, maxHeight: '78%',
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md }}>
-              <Text style={{ flex: 1, color: colors.text, fontSize: FONT.xl2, fontWeight: '700' }}>Konular</Text>
+              <Text style={{ flex: 1, color: colors.text, ...TYPE.title3 }}>Konular</Text>
               <TouchableOpacity
                 onPress={() => { haptics.tap(); setTopicsModalVisible(false); }}
                 accessibilityRole="button"
@@ -2682,7 +2686,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             ) : topicsError ? (
               // Dürüst hata durumu — ağ hatası asla "hiçbir konu tamamlanmadı" gibi görünmez.
               <View style={{ alignItems: 'center', paddingVertical: SPACING.lg, gap: SPACING.sm }}>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center' }}>
                   Konular yüklenemedi — bağlantını kontrol edip tekrar dene.
                 </Text>
                 <TouchableOpacity
@@ -2694,7 +2698,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                     borderRadius: RADIUS.pill, backgroundColor: colors.primary + '18',
                   }}
                 >
-                  <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>Tekrar dene</Text>
+                  <Text style={{ color: colors.primary, ...TYPE.bodyStrong, fontWeight: '700' }}>Tekrar dene</Text>
                 </TouchableOpacity>
               </View>
             ) : (
@@ -2720,7 +2724,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                     <Text
                       numberOfLines={1}
                       style={{
-                        flex: 1, fontSize: FONT.sm,
+                        flex: 1, ...TYPE.body,
                         color: completed ? colors.textMuted : colors.text,
                         fontWeight: completed ? '400' : '600',
                       }}
@@ -2784,7 +2788,7 @@ function StarterSuggestions({ isOnboarding, onSuggestion, onSend }: {
   const suggestions = isOnboarding ? onboardingSuggestions : regularSuggestions;
   return (
     <>
-      <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm }}>
+      <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>
         ÖRNEK BAŞLANGIÇLAR
       </Text>
       <View style={{ gap: SPACING.sm }}>
@@ -2818,7 +2822,7 @@ function StarterSuggestions({ isOnboarding, onSuggestion, onSend }: {
             >
               <Ionicons name={s.icon} size={16} color={s.color} />
             </View>
-            <Text style={{ color: colors.text, fontSize: 13, flex: 1 }}>{s.text}</Text>
+            <Text style={{ ...TYPE.body, color: colors.text, flex: 1 }}>{s.text}</Text>
             {/* The icon states the behaviour: a pencil promises "you get to edit this first",
                 an arrow promises "this sends". Showing a pencil on a chip that sends — or an
                 arrow on one that only fills the box — is the affordance lying about itself. */}
@@ -2868,10 +2872,10 @@ function EmptyState({ isOnboarding, onSuggestion, onSend, showSuggestions = true
         >
           <Ionicons name="chatbubbles" size={26} color={colors.primary} />
         </View>
-        <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: 4 }}>
+        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: 4 }}>
           Kochko ile konuş
         </Text>
-        <Text style={{ fontSize: 13, color: colors.textSecondary, lineHeight: 20 }}>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary }}>
           Beslenme, antrenman, uyku — ne yedin, nasıl gidiyor, bir sonraki hamle ne olsun.
         </Text>
       </View>
@@ -3049,10 +3053,13 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
           const isLong = !isUser && (clean.length > 600 || clean.split('\n').length > 12);
           const shown = (isLong && !showFullText) ? clampText(clean, 480, 10) : clean;
           // FIX (ux-ideas #27): multi-item replies → indented lists/paragraphs; else original path.
+          // Aynı mesaj, yapısına göre iki farklı boyutta çıkıyordu: madde/liste içeriyorsa
+          // MessageRichText (TYPE.body 15/22), düz paragrafsa aşağıdaki dal (14/21). Önceki geçiş
+          // zengin yolu taşımış, düz yolu atlamış — sohbetin yarısı bir boyutta, yarısı başkaydı.
           const body = hasRichStructure(shown)
             ? <MessageRichText content={shown} color={txtColor} onLongPress={longPress} />
             : (
-              <Text selectable onLongPress={longPress} style={{ color: txtColor, fontSize: 14, lineHeight: 21 }}>
+              <Text selectable onLongPress={longPress} style={{ ...TYPE.body, color: txtColor }}>
                 {splitBoldSegments(shown).map((seg, i) => (
                   <Text key={i} style={seg.bold ? { fontWeight: '700' } : undefined}>{seg.text}</Text>
                 ))}
@@ -3069,7 +3076,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={{ marginTop: 4, alignSelf: 'flex-start' }}
               >
-                <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700' }}>{showFullText ? 'Daha az göster' : 'Devamını oku'}</Text>
+                <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.primary }}>{showFullText ? 'Daha az göster' : 'Devamını oku'}</Text>
               </TouchableOpacity>
             </>
           );
@@ -3101,7 +3108,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
               size={12}
               color={colors.primary}
             />
-            <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.primary }}>
               {message.navigateTo === '/plan/diet'
                 ? 'Diyet planına git'
                 : message.navigateTo === '/plan/workout'
@@ -3134,7 +3141,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
               paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
             }}>
               <Ionicons name="receipt-outline" size={14} color={colors.carbs} style={{ marginTop: 1 }} />
-              <Text style={{ color: colors.textSecondary, fontSize: 12, flex: 1, lineHeight: 17 }}>{receipt}</Text>
+              <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }}>{receipt}</Text>
             </View>
           ) : null;
         })()}
@@ -3249,11 +3256,11 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             return (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                 <Ionicons name={queued ? 'cloud-offline-outline' : 'time-outline'} size={11} color={fg} />
-                <Text style={{ color: fg, fontSize: 11 }}>{queued ? 'Kuyrukta' : 'Gönderiliyor'}</Text>
+                <Text style={{ ...TYPE.footnote, color: fg }}>{queued ? 'Kuyrukta' : 'Gönderiliyor'}</Text>
               </View>
             );
           })()}
-          <Text style={{ color: isUser ? (getContrastColor(colors.primary) === 'black' ? 'rgba(13,13,18,0.6)' : 'rgba(255,255,255,0.6)') : colors.textSecondary, fontSize: 11, alignSelf: 'flex-end' }}>
+          <Text style={{ color: isUser ? (getContrastColor(colors.primary) === 'black' ? 'rgba(13,13,18,0.6)' : 'rgba(255,255,255,0.6)') : colors.textSecondary, ...TYPE.footnote, alignSelf: 'flex-end' }}>
             {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
@@ -3311,7 +3318,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
             <Ionicons name="bulb-outline" size={12} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, textDecorationLine: 'underline' }}>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption, textDecorationLine: 'underline' }}>
               {showReasoning ? 'Düşünce sürecini gizle' : 'Düşünce süreci'}
             </Text>
           </TouchableOpacity>
@@ -3321,7 +3328,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
               backgroundColor: isDark ? '#FFFFFF0A' : '#0000000A',
               borderLeftWidth: 2, borderLeftColor: colors.primary,
             }}>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20, fontStyle: 'italic' }}>
+              <Text style={{ color: colors.textSecondary, ...TYPE.body, fontStyle: 'italic' }}>
                 {message.reasoning}
               </Text>
             </View>
@@ -3332,7 +3339,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
       {isUser && message.failed && message.retryPayload && (
         <View style={{ alignSelf: 'flex-end', marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Ionicons name="alert-circle" size={14} color={colors.error} />
-          <Text style={{ color: colors.error, fontSize: FONT.xs, maxWidth: 200 }} numberOfLines={2}>
+          <Text style={{ color: colors.error, ...TYPE.caption, maxWidth: 200 }} numberOfLines={2}>
             {message.errorMessage ?? 'Gönderilemedi.'}
           </Text>
           <TouchableOpacity
@@ -3345,7 +3352,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             accessibilityRole="button"
             accessibilityLabel="Mesajı yeniden gönder"
           >
-            <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', fontSize: FONT.xs, fontWeight: '600' }}>Yeniden dene</Text>
+            <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', ...TYPE.caption, fontWeight: '600' }}>Yeniden dene</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -3369,7 +3376,7 @@ function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
   const { colors } = useTheme();
   return (
     <View style={{ marginTop: SPACING.sm, gap: SPACING.xs, opacity: disabled ? 0.5 : 1 }}>
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.5 }}>
+      <Text style={{ color: colors.textMuted, ...TYPE.caption, fontWeight: '700', letterSpacing: 0.5 }}>
         Neyi değiştirelim?
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
@@ -3387,7 +3394,7 @@ function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
               backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border,
             }}
           >
-            <Text style={{ color: colors.text, fontSize: FONT.sm }}>{reason.label}</Text>
+            <Text style={{ color: colors.text, ...TYPE.body }}>{reason.label}</Text>
           </TouchableOpacity>
         ))}
         <TouchableOpacity
@@ -3399,7 +3406,7 @@ function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
             justifyContent: 'center', borderRadius: RADIUS.pill,
           }}
         >
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
+          <Text style={{ color: colors.textMuted, ...TYPE.bodyStrong }}>İptal</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -3472,7 +3479,7 @@ function TaskCompletionCard({
         }}
       >
         <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-        <Text style={{ color: colors.success, fontSize: 11, fontWeight: '700' }}>
+        <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.success }}>
           {taskCompletion.summary ? `Kochko seni tanıdı — ${taskCompletion.summary}` : 'Bu konu tamamlandı'}
         </Text>
       </Animated.View>
@@ -3480,7 +3487,7 @@ function TaskCompletionCard({
       {/* Next-task suggestion cards */}
       {suggestionTasks.length > 0 && (
         <View style={{ gap: 6, marginTop: SPACING.xs }}>
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>
+          <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             DEVAM EDEBİLECEĞİN KONULAR
           </Text>
           {suggestionTasks.map((task) => (
@@ -3508,8 +3515,8 @@ function TaskCompletionCard({
                 <Ionicons name={task.icon as keyof typeof Ionicons.glyphMap} size={15} color={task.color} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{task.title}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }} numberOfLines={1}>
+                <Text style={{ ...TYPE.bodyStrong, fontWeight: '700', color: colors.text }}>{task.title}</Text>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }} numberOfLines={1}>
                   {task.description}
                 </Text>
               </View>
@@ -3532,7 +3539,7 @@ function TaskCompletionCard({
       {/* FIX (kullanıcı bulgusu): hiç eksik konu kalmadıysa öneri kartı yerine küçük
           kutlama satırı — boş bir "DEVAM EDEBİLECEĞİN KONULAR" başlığı asla görünmez. */}
       {allTopicsDone && (
-        <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: SPACING.xs }}>
+        <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.xs }}>
           Tüm konular tamamlandı 🎉
         </Text>
       )}
@@ -3550,7 +3557,7 @@ function TaskCompletionCard({
           paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
         }}
       >
-        <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700' }}>Sohbete devam et →</Text>
+        <Text style={{ ...TYPE.bodyStrong, fontWeight: '700', color: colors.primary }}>Sohbete devam et →</Text>
       </TouchableOpacity>
     </View>
   );
@@ -3588,7 +3595,7 @@ function SavedBadge({ icon, label, color }: { icon: string; label: string; color
       }}
     >
       <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={12} color={color} />
-      <Text style={{ color, fontSize: 11, fontWeight: '700' }}>{label}</Text>
+      <Text style={{ ...TYPE.caption, fontWeight: '700', color }}>{label}</Text>
     </Animated.View>
   );
 }
