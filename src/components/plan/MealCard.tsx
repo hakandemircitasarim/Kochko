@@ -116,7 +116,13 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
             </View>
             {/* The meal's name is what this card IS. At 13px it was smaller than the app's reading
                 size, so a plan read as a wall of small bold text with no entry point per card. */}
-            <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }} numberOfLines={expanded ? 0 : 1}>
+            {/* Two lines when collapsed, not one. Raising the name to the reading step made it
+                truncate in the ACTIVE plan view — those rows carry an extra "+" control, so the
+                name has less room there than in the draft view where the same names fit. Driven on
+                a device: "Peynirli tost ve yo…", "Kıymalı kuru fasu…". Giving the name a second
+                line is the honest fix; shrinking it back would trade legibility for a layout
+                constraint that only exists on one of the two surfaces. */}
+            <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }} numberOfLines={expanded ? 0 : 2}>
               {meal.name}
             </Text>
           </View>
