@@ -4,7 +4,7 @@
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import type { WorkoutExercise } from '@/services/plan.service';
 
@@ -50,7 +50,12 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
           <Ionicons name="barbell-outline" size={18} color={colors.purple} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
+          {/* Measured on device against MealCard: there the meal name is `headline` and the kcal
+              figure sits a step below it, so the name reads as what the card IS. Here name and
+              load were both `bodyStrong`, so "3 × 10" competed with the exercise for first glance.
+              Name up one step; load stays at 15 (a workout's load matters more than a meal's kcal,
+              and the right column measured only ~73dp, so this does not squeeze it). */}
+          <Text style={{ ...TYPE.headline, color: colors.text }}>
             {exercise.name}
           </Text>
           {exercise.muscle_groups && exercise.muscle_groups.length > 0 ? (
@@ -71,13 +76,18 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
         </View>
       </View>
 
+      {/* Form cues ("Dizler ayak yönünde, kontrollü in.") are read-to-act content, and the scale
+          reserves 11px for things that are never that. Measured on device it also started at the
+          card's left edge, under the badge, so it read as a stray caption rather than as part of
+          the exercise — indent it to the name column. */}
       {exercise.notes ? (
         <Text
           style={{
+            ...TYPE.caption,
             color: colors.textSecondary,
-            fontSize: FONT.xs,
             fontStyle: 'italic',
             marginTop: SPACING.xs,
+            marginLeft: 36 + SPACING.sm,
           }}
         >
           {exercise.notes}
@@ -114,7 +124,13 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
               color={logStatus === 'done' ? colors.success : colors.purple}
             />
           )}
-          <Text style={{ color: logStatus === 'done' ? colors.success : colors.purple, fontSize: 11, fontWeight: '700' }}>
+          {/* 11px was below the scale's floor for anything you must read to act — and this chip
+              IS the action. Reading-adjacent step; maxFontSizeMultiplier keeps a 150% OS text
+              size from bursting the pill. */}
+          <Text
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+            style={{ ...TYPE.caption, fontWeight: '700', color: logStatus === 'done' ? colors.success : colors.purple }}
+          >
             {logStatus === 'done' ? 'Yapıldı' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yaptım'}
           </Text>
         </TouchableOpacity>

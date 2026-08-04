@@ -13,7 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { TYPE, GUTTER } from '@/lib/design';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
 import { DAY_LABELS_TR } from '@/services/plan.service';
 
@@ -29,6 +30,57 @@ interface Props {
   // modal hides the composer's TypingIndicator — the parent passes its `sending` flag
   // so the button can show an in-flight state and block re-taps.
   loadingMore?: boolean;
+}
+
+/** A/B badge. Was two hand-tuned copies (11px/800/tracking-1) of what `TYPE.overline` already is. */
+function PlanBadge({ label, accent }: { label: string; accent: string }) {
+  return (
+    <View
+      style={{
+        alignSelf: 'flex-start',
+        backgroundColor: accent + '22',
+        paddingHorizontal: 9,
+        paddingVertical: 3,
+        borderRadius: 999,
+      }}
+    >
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.overline, color: accent }}>
+        PLAN {label}
+      </Text>
+    </View>
+  );
+}
+
+/** Shared pick CTA — one definition so the diet and workout cards cannot drift apart. */
+function PickButton({ label, accent, onPick, pickDisabled }: { label: string; accent: string; onPick: () => void; pickDisabled?: boolean }) {
+  return (
+    <TouchableOpacity
+      onPress={onPick}
+      // FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
+      // apply a candidate that's about to be swapped under the finger — block it.
+      disabled={pickDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={`Plan ${label}'yı seç`}
+      accessibilityState={{ disabled: !!pickDisabled }}
+      style={{
+        marginTop: SPACING.md,
+        backgroundColor: accent,
+        borderRadius: RADIUS.md,
+        // 8pt padding around a 13px label gave a ~38px target; the reading step plus 12pt
+        // clears 44 without the button growing wider than the half-width card.
+        paddingVertical: SPACING.md,
+        alignItems: 'center',
+        opacity: pickDisabled ? 0.5 : 1,
+      }}
+    >
+      <Text
+        maxFontSizeMultiplier={MAX_FONT_SCALE}
+        style={{ ...TYPE.bodyStrong, fontWeight: '700', color: getContrastColor(accent) }}
+      >
+        Bunu seç
+      </Text>
+    </TouchableOpacity>
+  );
 }
 
 function DietSummary({ plan, label, accent, onPick, pickDisabled, colors }: { plan: DietPlanData; label: string; accent: string; onPick: () => void; pickDisabled?: boolean; colors: any }) {
@@ -47,61 +99,42 @@ function DietSummary({ plan, label, accent, onPick, pickDisabled, colors }: { pl
         borderRadius: RADIUS.xl,
         borderWidth: 1,
         borderColor: accent + '44',
-        padding: SPACING.md,
+        padding: SPACING.lg,
       }}
     >
-      <View
-        style={{
-          alignSelf: 'flex-start',
-          backgroundColor: accent + '22',
-          paddingHorizontal: 9,
-          paddingVertical: 3,
-          borderRadius: 999,
-        }}
-      >
-        <Text style={{ color: accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 }}>
-          PLAN {label}
-        </Text>
+      <PlanBadge label={label} accent={accent} />
+      {/* The figure is the number, not the sentence. Splitting the unit off lets the digits carry
+          the comparison at title3 while still fitting a half-width card — "2127 kcal/gün" as one
+          20px string wraps here, which is why this was stuck at 14px and read as body copy. */}
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: SPACING.sm }}>
+        <Text style={{ ...TYPE.title3, color: colors.text }}>{avgKcal}</Text>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>kcal/gün</Text>
       </View>
-      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: SPACING.sm }}>
-        {avgKcal} kcal/gün
-      </Text>
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+      <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>
         P {plan.targets?.protein ?? 0}g · K {plan.targets?.carbs ?? 0}g · Y {plan.targets?.fat ?? 0}g
       </Text>
 
       {sampleDay ? (
-        <View style={{ marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
-          <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>
+        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
+          <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             ÖRNEK GÜN ({sampleDay.day_label})
           </Text>
+          {/* Was 11px, single line, ellipsised — i.e. the one thing the user is here to compare was
+              the least readable text on screen. Reading step + a second line; the modal has empty
+              space below to spend, so height is the cheap axis here. */}
           {sampleDay.meals.slice(0, 3).map((m, i) => (
-            <Text key={i} style={{ color: colors.text, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
-              • {m.name}
+            <Text
+              key={i}
+              style={{ ...TYPE.caption, color: colors.text, marginTop: SPACING.sm }}
+              numberOfLines={2}
+            >
+              {m.name}
             </Text>
           ))}
         </View>
       ) : null}
 
-      <TouchableOpacity
-        onPress={onPick}
-        // FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
-        // apply a candidate that's about to be swapped under the finger — block it.
-        disabled={pickDisabled}
-        accessibilityRole="button"
-        accessibilityLabel={`Plan ${label}'yı seç`}
-        accessibilityState={{ disabled: !!pickDisabled }}
-        style={{
-          marginTop: SPACING.md,
-          backgroundColor: accent,
-          borderRadius: RADIUS.md,
-          paddingVertical: SPACING.sm,
-          alignItems: 'center',
-          opacity: pickDisabled ? 0.5 : 1,
-        }}
-      >
-        <Text style={{ color: getContrastColor(accent), fontSize: FONT.sm, fontWeight: '700' }}>Bunu seç</Text>
-      </TouchableOpacity>
+      <PickButton label={label} accent={accent} onPick={onPick} pickDisabled={pickDisabled} />
     </View>
   );
 }
@@ -119,64 +152,44 @@ function WorkoutSummary({ plan, label, accent, onPick, pickDisabled, colors }: {
         borderRadius: RADIUS.xl,
         borderWidth: 1,
         borderColor: accent + '44',
-        padding: SPACING.md,
+        padding: SPACING.lg,
       }}
     >
-      <View
-        style={{
-          alignSelf: 'flex-start',
-          backgroundColor: accent + '22',
-          paddingHorizontal: 9,
-          paddingVertical: 3,
-          borderRadius: 999,
-        }}
-      >
-        <Text style={{ color: accent, fontSize: 11, fontWeight: '800', letterSpacing: 1 }}>
-          PLAN {label}
-        </Text>
+      <PlanBadge label={label} accent={accent} />
+      <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: SPACING.sm }}>
+        <Text style={{ ...TYPE.title3, color: colors.text }}>{active.length}</Text>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>aktif gün</Text>
       </View>
-      <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', marginTop: SPACING.sm }}>
-        {active.length} aktif gün
-      </Text>
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+      <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>
         {total} toplam egzersiz
       </Text>
 
-      <View style={{ marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
-        <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1 }}>
+      <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
+        <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
           HAFTALIK BÖLÜM
         </Text>
         {/* FIX (audit UI-PLN-05): candidate is raw LLM JSON — skip empty days and
             fall back when day_index is out of DAY_LABELS_TR range (0-6) to avoid
             rendering 'undefined: Push'. */}
+        {/* Measured on device: "• Pazartesi: Tam vücut kuvve…" — day and focus fought for one
+            11px line in a half-width card, so every row ellipsised exactly where the answer was.
+            Day on its own line, focus under it with room to wrap. */}
         {active
           .filter(d => (d.exercises?.length ?? 0) > 0)
           .slice(0, 4)
           .map((d, i) => (
-            <Text key={i} style={{ color: colors.text, fontSize: 11, marginTop: 3 }} numberOfLines={1}>
-              • {DAY_LABELS_TR[d.day_index] ?? d.day_label ?? `Gün ${(d.day_index ?? 0) + 1}`}: {d.focus ?? `${d.exercises?.length ?? 0} egzersiz`}
-            </Text>
+            <View key={i} style={{ marginTop: SPACING.sm }}>
+              <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.text }}>
+                {DAY_LABELS_TR[d.day_index] ?? d.day_label ?? `Gün ${(d.day_index ?? 0) + 1}`}
+              </Text>
+              <Text style={{ ...TYPE.caption, color: colors.textMuted }} numberOfLines={2}>
+                {d.focus ?? `${d.exercises?.length ?? 0} egzersiz`}
+              </Text>
+            </View>
           ))}
       </View>
 
-      <TouchableOpacity
-        onPress={onPick}
-        // FIX (ux-pass5): see DietSummary — no picking while a new pair is being generated.
-        disabled={pickDisabled}
-        accessibilityRole="button"
-        accessibilityLabel={`Plan ${label}'yı seç`}
-        accessibilityState={{ disabled: !!pickDisabled }}
-        style={{
-          marginTop: SPACING.md,
-          backgroundColor: accent,
-          borderRadius: RADIUS.md,
-          paddingVertical: SPACING.sm,
-          alignItems: 'center',
-          opacity: pickDisabled ? 0.5 : 1,
-        }}
-      >
-        <Text style={{ color: getContrastColor(accent), fontSize: FONT.sm, fontWeight: '700' }}>Bunu seç</Text>
-      </TouchableOpacity>
+      <PickButton label={label} accent={accent} onPick={onPick} pickDisabled={pickDisabled} />
     </View>
   );
 }
@@ -225,7 +238,7 @@ export function AlternativeComparisonModal({
         <View
           style={{
             paddingTop: Platform.OS === 'web' ? 12 : Math.max(insets.top, 12),
-            paddingHorizontal: SPACING.xl,
+            paddingHorizontal: GUTTER,
             paddingBottom: SPACING.sm,
             flexDirection: 'row',
             alignItems: 'center',
@@ -241,17 +254,17 @@ export function AlternativeComparisonModal({
           >
             <Ionicons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
-          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', flex: 1 }}>
+          <Text style={{ ...TYPE.title2, color: colors.text, flex: 1 }}>
             İki alternatif
           </Text>
         </View>
 
         <Text
           style={{
+            ...TYPE.callout,
             color: colors.textMuted,
-            fontSize: FONT.xs,
-            paddingHorizontal: SPACING.xl,
-            marginBottom: SPACING.md,
+            paddingHorizontal: GUTTER,
+            marginBottom: SPACING.lg,
           }}
         >
           Aynı profilinle iki farklı yaklaşım. Hangisi sana daha uygun?
@@ -259,7 +272,9 @@ export function AlternativeComparisonModal({
 
         <ScrollView
           contentContainerStyle={{
-            padding: SPACING.md,
+            // Was SPACING.md while the header used SPACING.xl, so the cards sat 8px left of the
+            // title above them. One gutter for the whole screen.
+            paddingHorizontal: GUTTER,
             paddingBottom: Math.max(insets.bottom, SPACING.lg) + SPACING.lg,
           }}
         >
@@ -285,8 +300,8 @@ export function AlternativeComparisonModal({
           {/* FIX (ux-round3 #6): the concrete B-vs-A difference so the choice is one glance, not mental math. */}
           {deltaLine ? (
             <View style={{ marginTop: SPACING.md, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 6 }}>
-              <Ionicons name="swap-horizontal" size={13} color={colors.textSecondary} />
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>Plan B, A'ya göre: {deltaLine}</Text>
+              <Ionicons name="swap-horizontal" size={14} color={colors.textSecondary} />
+              <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.textSecondary }}>Plan B, A'ya göre: {deltaLine}</Text>
             </View>
           ) : null}
 
@@ -316,9 +331,9 @@ export function AlternativeComparisonModal({
               {loadingMore ? (
                 <ActivityIndicator size="small" color={colors.textSecondary} style={{ transform: [{ scale: 0.8 }] }} />
               ) : (
-                <Ionicons name="refresh" size={14} color={colors.textSecondary} />
+                <Ionicons name="refresh" size={15} color={colors.textSecondary} />
               )}
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>
+              <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.textSecondary }}>
                 {loadingMore ? 'Yeni alternatifler hazırlanıyor...' : 'Hiçbiri olmadı, 2 alternatif daha göster'}
               </Text>
             </TouchableOpacity>

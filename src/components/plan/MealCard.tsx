@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, Animated, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, FONT, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { type DietMeal } from '@/services/plan.service';
@@ -199,11 +199,12 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
             </View>
           ))}
 
+          {/* Same step as ExerciseCard's note line — one spec for "the coach's aside about this item". */}
           {meal.notes ? (
             <Text
               style={{
+                ...TYPE.caption,
                 color: colors.textSecondary,
-                fontSize: FONT.xs,
                 fontStyle: 'italic',
                 marginTop: SPACING.xs,
               }}
@@ -243,11 +244,15 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                       color={logStatus === 'done' ? colors.success : colors.primary}
                     />
                   )}
+                  {/* Kept in lockstep with ExerciseCard's chip — same control, same spec. 11px is
+                      the scale's "never for anything you must read to act" step, and this is the
+                      flagship one-tap action on both plan cards. */}
                   <Text
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}
                     style={{
-                      color: logStatus === 'done' ? colors.success : colors.primary,
-                      fontSize: 11,
+                      ...TYPE.caption,
                       fontWeight: '700',
+                      color: logStatus === 'done' ? colors.success : colors.primary,
                     }}
                   >
                     {logStatus === 'done' ? 'Günlüğe eklendi' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yedim'}
@@ -272,8 +277,11 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                     paddingVertical: 8,
                   }}
                 >
-                  <Ionicons name="create-outline" size={12} color={colors.textSecondary} />
-                  <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                  <Ionicons name="create-outline" size={13} color={colors.textSecondary} />
+                  <Text
+                    maxFontSizeMultiplier={MAX_FONT_SCALE}
+                    style={{ ...TYPE.caption, fontWeight: '600', color: colors.textSecondary }}
+                  >
                     Bu öğünü değiştir
                   </Text>
                 </TouchableOpacity>
