@@ -5,6 +5,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import type { WorkoutExercise } from '@/services/plan.service';
 
 interface Props {
@@ -49,21 +50,21 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
           <Ionicons name="barbell-outline" size={18} color={colors.purple} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
             {exercise.name}
           </Text>
           {exercise.muscle_groups && exercise.muscle_groups.length > 0 ? (
-            <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 1 }}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }}>
               {exercise.muscle_groups.join(' · ')}
             </Text>
           ) : null}
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
             {loadText}
           </Text>
           {exercise.rest_sec ? (
-            <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
               {exercise.rest_sec}s dinlenme
             </Text>
           ) : null}

@@ -10,6 +10,7 @@ import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { supabase } from '@/lib/supabase';
@@ -340,7 +341,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             color={isDiet ? colors.primary : colors.purple}
           />
           <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800' }}>
+            <Text style={{ ...TYPE.headline, color: colors.text }}>
               {isDiet ? 'Aktif diyet planın' : 'Aktif spor planın'}
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
@@ -357,7 +358,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         {planSummary.kind === 'diet' && planSummary.targetKcal ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: SPACING.sm }}>
             <Ionicons name="flag-outline" size={13} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
               Günlük hedef: ~{Math.round(planSummary.targetKcal)} kcal
               {planSummary.targetProtein ? ` · ${Math.round(planSummary.targetProtein)}g protein` : ''}
               {planSummary.avgKcal ? ` · hafta ort. ${planSummary.avgKcal} kcal` : ''}
@@ -367,7 +368,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         {planSummary.kind === 'workout' && planSummary.training > 0 ? (
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: SPACING.sm }}>
             <Ionicons name="calendar-outline" size={13} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
               {planSummary.training} antrenman · {planSummary.rest} dinlenme
               {planSummary.weeklyMin > 0 ? ` · ~${planSummary.weeklyMin} dk/hafta` : ''}
             </Text>
@@ -470,17 +471,17 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           <View style={{ flex: 1 }}>
             <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.3 }}>ŞİMDİ SIRADA</Text>
             {nowNext.kind === 'meal' && (
-              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }} numberOfLines={1}>
+              <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }} numberOfLines={1}>
                 {MEAL_TYPE_LABELS_TR[nowNext.meal.meal_type]}{nowNext.meal.time ? ` · ${nowNext.meal.time}` : ''} — {nowNext.meal.name}
               </Text>
             )}
             {nowNext.kind === 'workout' && (
-              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }}>
+              <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>
                 Bugünkü antrenman · {nowNext.count} egzersiz{nowNext.doneCount > 0 ? ` · ${nowNext.doneCount} bitti` : ''}
               </Text>
             )}
             {nowNext.kind === 'rest' && (
-              <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginTop: 1 }}>Bugün dinlenme günü</Text>
+              <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>Bugün dinlenme günü</Text>
             )}
           </View>
           {nowNext.kind === 'meal' && (
