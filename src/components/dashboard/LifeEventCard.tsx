@@ -11,7 +11,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 export interface LifeEvent {
   id: string;
@@ -85,10 +86,10 @@ export function LifeEventCard({ event, todayISO, onPress }: Props) {
         <Ionicons name={icon} size={20} color={colors.primary} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }} numberOfLines={1}>
+        <Text style={{ ...TYPE.headline, color: colors.text }} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600', marginTop: 1 }} maxFontSizeMultiplier={1.3}>
+        <Text style={{ ...TYPE.caption, color: colors.primary, fontWeight: '600', marginTop: 1 }} maxFontSizeMultiplier={1.3}>
           {countdown}
         </Text>
       </View>

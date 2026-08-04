@@ -6,7 +6,7 @@ import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-na
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
+import { SPACING, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { mealTypeLabelTR } from '@/lib/labels';
@@ -133,7 +133,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
         {totalActivities > 0 && (
           /* FIX (ux-polish): label the count so a screen reader says "3 aktivite", not a bare "3". */
           <View accessible accessibilityLabel={`${totalActivities} aktivite`} style={{ backgroundColor: colors.primary + '18', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 }}>
-            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700' }}>{totalActivities}</Text>
+            <Text style={{ ...TYPE.caption, color: colors.primary, fontWeight: '700' }}>{totalActivities}</Text>
           </View>
         )}
       </View>
@@ -154,9 +154,9 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
           }}>
             <Ionicons name="restaurant-outline" size={28} color={colors.textMuted} />
           </View>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Bugün henüz kayıt yok</Text>
+          <Text style={{ ...TYPE.body, color: colors.textMuted }}>Bugün henüz kayıt yok</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-            <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600' }}>Koçuna ne yediğini yaz</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.primary }}>Koçuna ne yediğini yaz</Text>
             <Ionicons name="chevron-forward" size={14} color={colors.primary} />
           </View>
         </TouchableOpacity>
@@ -260,7 +260,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
 
               {/* FIX (ux-pass2 #14): satır başına HH:mm */}
               {activity.time ? (
-                <Text style={{ fontSize: FONT.xs, color: colors.textMuted, marginRight: activity.detail ? SPACING.sm : 0 }}>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted, marginRight: activity.detail ? SPACING.sm : 0 }}>
                   {activity.time}
                 </Text>
               ) : null}
@@ -270,7 +270,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
                 <ActivityIndicator size="small" color={activity.color} />
               ) : activity.detail ? (
                 <View style={{ backgroundColor: activity.color + '12', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 3 }}>
-                  <Text style={{ fontSize: FONT.xs, color: activity.color, fontWeight: '700' }}>{activity.detail}</Text>
+                  <Text style={{ ...TYPE.caption, color: activity.color, fontWeight: '700' }}>{activity.detail}</Text>
                 </View>
               ) : null}
             </TouchableOpacity>

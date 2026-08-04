@@ -6,7 +6,8 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
-import { SPACING, RADIUS, FONT } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { OFFER_TRIGGERS } from '@/services/coaching-messages.service';
 import type { CoachingMessage } from '@/services/coaching-messages.service';
 
@@ -85,10 +86,10 @@ export function CoachingNudge({
                   accessible={false} importantForAccessibility="no"
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: 13, lineHeight: 19 }} numberOfLines={3}>
+                  <Text style={{ ...TYPE.body, color: colors.text }} numberOfLines={3}>
                     {msg.content}
                   </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
+                  <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 4 }}>
                     {formatNudgeTime(msg.created_at)}
                   </Text>
                 </View>
@@ -117,7 +118,7 @@ export function CoachingNudge({
                   style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.primary }}
                 >
                   <Ionicons name="checkmark" size={14} color={getContrastColor(colors.primary)} />
-                  <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>Evet</Text>
+                  <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>Evet</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => onDismiss(msg.id)}
@@ -125,7 +126,7 @@ export function CoachingNudge({
                   accessibilityLabel="Sonra"
                   style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight }}
                 >
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '700' }}>Sonra</Text>
+                  <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary, fontWeight: '700' }}>Sonra</Text>
                 </TouchableOpacity>
               </View>
             )}

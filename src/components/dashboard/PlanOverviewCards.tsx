@@ -12,7 +12,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { getActive, getDraft, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
 import { getEffectiveDate } from '@/lib/day-boundary';
@@ -131,7 +131,7 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
         }}
       >
         <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>
+        <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>
           Geçmiş planlar
         </Text>
       </TouchableOpacity>
@@ -298,7 +298,7 @@ function PlanCard({
                 paddingVertical: 2,
               }}
             >
-              <Text style={{ color, fontSize: FONT.xs, fontWeight: '700' }} numberOfLines={1}>
+              <Text style={{ ...TYPE.caption, color, fontWeight: '700' }} numberOfLines={1}>
                 {chip}
               </Text>
             </View>

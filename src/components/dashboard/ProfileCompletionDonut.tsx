@@ -19,7 +19,8 @@ import Svg, { Circle } from 'react-native-svg';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useAuthStore } from '@/stores/auth.store';
 import { getOnboardingProgress, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -190,10 +191,10 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
           />
         </Svg>
         <View style={{ position: 'absolute', alignItems: 'center' }}>
-          <Text style={{ color: colors.text, fontSize: FONT.xxl, fontWeight: '800' }}>
+          <Text style={{ ...TYPE.title2, color: colors.text, fontWeight: '800' }}>
             {pct}%
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600', letterSpacing: 1 }}>
+          <Text style={{ ...TYPE.overline, color: colors.textSecondary }}>
             {/* FIX (ux-pass5): 'PROFIL' noktasız I ile yanlış Türkçe — doğrusu 'PROFİL'. */}
             PROFİL
           </Text>
@@ -202,10 +203,10 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
 
       {/* Right side: hint + CTA */}
       <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>
+        <Text style={{ ...TYPE.headline, color: colors.text }}>
           {pct === 100 ? 'Profilin hazır' : 'Profilini tamamla'}
         </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>
           {hintLine}
         </Text>
         {pct < 100 ? (
@@ -223,7 +224,7 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
             }}
           >
             <Ionicons name="arrow-forward-circle" size={13} color={ringColor} />
-            <Text style={{ color: ringColor, fontSize: FONT.xs, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.caption, color: ringColor, fontWeight: '700' }}>
               Görevlere git
             </Text>
           </View>

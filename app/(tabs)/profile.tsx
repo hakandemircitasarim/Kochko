@@ -19,7 +19,7 @@ import { InsightCard } from '@/components/profile/InsightCard';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
 import { useTheme } from '@/lib/theme';
-import { SPACING, RADIUS, FONT } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { goalLabelTR, coachToneLabelTR } from '@/lib/labels';
@@ -125,15 +125,15 @@ export default function ProfileScreen() {
             backgroundColor: colors.primary + '20',
             alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md,
           }}>
-            <Text style={{ color: colors.primary, fontSize: 22, fontWeight: '700' }}>{initials}</Text>
+            <Text style={{ ...TYPE.title2, color: colors.primary }}>{initials}</Text>
           </View>
           <Text style={{ ...TYPE.headline, color: colors.text }}>{displayName}</Text>
         </TouchableOpacity>
         {user?.email && (
-          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2, opacity: 0.7 }} numberOfLines={1}>{user.email}</Text>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2, opacity: 0.7 }} numberOfLines={1}>{user.email}</Text>
         )}
         {memberDays != null && (
-          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
             {memberDays === 0 ? "Bugün Kochko'ya katıldın" : `${memberDays} gündür Kochko'da`}
           </Text>
         )}
@@ -153,8 +153,8 @@ export default function ProfileScreen() {
             }}
           >
             <Ionicons name="time-outline" size={13} color={colors.warning} />
-            <Text style={{ color: colors.warning, fontSize: 12, fontWeight: '700' }}>Deneme • {trialDaysLeft} gün kaldı</Text>
-            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700', marginLeft: 4 }}>Kalıcı yap</Text>
+            <Text style={{ ...TYPE.caption, color: colors.warning, fontWeight: '700' }}>Deneme • {trialDaysLeft} gün kaldı</Text>
+            <Text style={{ ...TYPE.caption, color: colors.primary, fontWeight: '700', marginLeft: 4 }}>Kalıcı yap</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -187,7 +187,7 @@ export default function ProfileScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                 <Ionicons name="person-circle-outline" size={16} color={colors.primary} />
-                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Profilin %{comp.percentage} tam</Text>
+                <Text style={{ ...TYPE.headline, color: colors.text }}>Profilin %{comp.percentage} tam</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </View>
@@ -195,7 +195,7 @@ export default function ProfileScreen() {
               <View style={{ height: '100%', width: `${comp.percentage}%`, backgroundColor: colors.primary, borderRadius: 4 }} />
             </View>
             {comp.lowestCategory && (
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: SPACING.sm }}>
+              <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: SPACING.sm }}>
                 Sıradaki: {CATEGORY_LABELS[comp.lowestCategory]} ekle — koçun daha isabetli plan yapsın.
               </Text>
             )}
@@ -209,11 +209,11 @@ export default function ProfileScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
               <Ionicons name="ribbon-outline" size={16} color={colors.warning} />
-              <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Sıradaki rozet</Text>
+              <Text style={{ ...TYPE.headline, color: colors.text }}>Sıradaki rozet</Text>
             </View>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{streak}/{nextBadge.target}</Text>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>{streak}/{nextBadge.target}</Text>
           </View>
-          <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: SPACING.sm }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginBottom: SPACING.sm }}>
             {nextBadge.label} · {nextBadge.remaining} gün kaldı
           </Text>
           <View style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}>
@@ -255,7 +255,7 @@ export default function ProfileScreen() {
             Ayarlar bölümünde, scroll gerektirmeden bulunabilir. */}
         {/* FREE LAUNCH: paywall entry hidden while everything is free */}
         {!FREE_LAUNCH && <MenuRow icon="star-outline" color={colors.warning} label="Premium" onPress={() => router.push('/settings/premium')} colors={colors} />}
-        <MenuRow icon="shield-checkmark-outline" color={colors.primary} label="Hesap Güvenliği" onPress={() => router.push('/settings/account-security')} colors={colors} />
+        <MenuRow icon="shield-checkmark-outline" color={colors.primary} label="Hesap güvenliği" onPress={() => router.push('/settings/account-security')} colors={colors} />
         <MenuRow icon="settings-outline" color={colors.textSecondary} label="Tüm ayarlar" onPress={() => router.push('/settings' as never)} colors={colors} last />
       </MenuGroup>
 
@@ -263,7 +263,7 @@ export default function ProfileScreen() {
       <SectionTitle label="Veri & gizlilik" colors={colors} />
       <MenuGroup colors={colors}>
         {/* FIX (audit naming): tek kanonik özellik adı — 'Kochko Seni Nasıl Tanıyor'. */}
-        <MenuRow icon="eye-outline" color={colors.purple} label="Kochko Seni Nasıl Tanıyor" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
+        <MenuRow icon="eye-outline" color={colors.purple} label="Kochko seni nasıl tanıyor" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
         <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi dışa aktar" onPress={() => router.push('/settings/health-export')} colors={colors} />
         <MenuRow icon="create-outline" color={colors.primary} label="Profil düzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
         {/* FIX (audit: tutarsız hesap-silme sürtünmesi) — profil sekmesindeki
@@ -313,7 +313,7 @@ export default function ProfileScreen() {
         onPress={() => Alert.alert('Çıkış', 'Emin misin?', [{ text: 'İptal' }, { text: 'Çıkış', style: 'destructive', onPress: signOut }])}
       >
         <Ionicons name="log-out-outline" size={16} color={colors.textMuted} />
-        <Text style={{ fontSize: 13, color: colors.textMuted, fontWeight: '500' }}>Çıkış Yap</Text>
+        <Text style={{ ...TYPE.bodyStrong, color: colors.textMuted }}>Çıkış yap</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -352,9 +352,9 @@ function InfoBox({ label, value, unit, colors, small }: { label: string; value: 
       flex: 1, backgroundColor: colors.cardElevated, borderRadius: RADIUS.md,
       padding: SPACING.lg, alignItems: 'center',
     }}>
-      <Text style={{ color: colors.textMuted, fontSize: 11, marginBottom: SPACING.xs }}>{label}</Text>
+      <Text style={{ ...TYPE.caption, color: colors.textMuted, marginBottom: SPACING.xs }}>{label}</Text>
       <Text style={{ ...(small ? TYPE.caption : TYPE.title3), color: colors.text, fontWeight: '700' }}>{value}</Text>
-      {unit ? <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>{unit}</Text> : null}
+      {unit ? <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>{unit}</Text> : null}
     </View>
   );
 }
@@ -384,11 +384,11 @@ function MenuRow({ icon, color, label, value, onPress, colors, last, premium }: 
             hardest to read. TYPE.body is the reading step. */}
         <Text style={{ ...TYPE.body, color: label.includes('sil') ? colors.error : colors.text }}>{label}</Text>
       </View>
-      {value && <Text style={{ color: colors.textMuted, fontSize: 12, marginRight: SPACING.sm }}>{value}</Text>}
+      {value && <Text style={{ ...TYPE.caption, color: colors.textMuted, marginRight: SPACING.sm }}>{value}</Text>}
       {premium && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primaryLight, borderRadius: RADIUS.pill, paddingHorizontal: SPACING.sm, paddingVertical: 2, marginRight: SPACING.sm }}>
           <Ionicons name="lock-closed" size={11} color={colors.primary} />
-          <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '600' }}>Premium</Text>
+          <Text style={{ ...TYPE.footnote, color: colors.primary, fontWeight: '600' }}>Premium</Text>
         </View>
       )}
       <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />

@@ -12,7 +12,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import type { GoalProgress, PaceStatus } from '@/lib/goal-progress';
 
@@ -94,7 +94,7 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
         {!progress.isGoalReached && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: badge.color + '22', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 }}>
             <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: badge.color }} />
-            <Text style={{ color: badge.color, fontSize: 11, fontWeight: '700' }} maxFontSizeMultiplier={1.3}>
+            <Text style={{ ...TYPE.caption, color: badge.color, fontWeight: '700' }} maxFontSizeMultiplier={1.3}>
               {badge.label}
             </Text>
           </View>
@@ -104,7 +104,7 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
       {progress.isGoalReached ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
           <Ionicons name="trophy" size={18} color={colors.primary} />
-          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Hedefine ulaştın! 🎉</Text>
+          <Text style={{ ...TYPE.headline, color: colors.text }}>Hedefine ulaştın! 🎉</Text>
         </View>
       ) : (
         <>
@@ -125,7 +125,7 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
             <View style={{ height: '100%', width: `${Math.min(100, Math.max(0, progress.percentComplete))}%`, backgroundColor: barColor, borderRadius: 4 }} />
           </View>
           {etaText && (
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }} maxFontSizeMultiplier={1.3}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.sm }} maxFontSizeMultiplier={1.3}>
               Tahmini bitiş ~{etaText}
             </Text>
           )}

@@ -4,7 +4,7 @@
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 
 interface Pattern { type: string; description: string; trigger?: string; intervention?: string; }
@@ -39,11 +39,11 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
           <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="eye" size={20} color={colors.primary} />
           </View>
-          <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700' }}>Koçun Seni Tanıyor</Text>
+          <Text style={{ ...TYPE.headline, color: colors.text }}>Koçun seni tanıyor</Text>
         </View>
         {onResetAll && (
           <TouchableOpacity onPress={() => Alert.alert('Sıfırla', 'Tüm notlar silinecek.', [{ text: 'İptal' }, { text: 'Sıfırla', style: 'destructive', onPress: onResetAll }])}>
-            <Text style={{ color: colors.error, fontSize: FONT.xs }}>Sıfırla</Text>
+            <Text style={{ ...TYPE.caption, color: colors.error, fontWeight: '600' }}>Sıfırla</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -52,7 +52,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
         // FIX (audit destructive-delete): long-press-only yerine görünür/a11y sil butonu (chat.tsx deseni).
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: SPACING.md }}>
           <TouchableOpacity style={{ flex: 1 }} onLongPress={() => handleDeleteNote(generalSummary)}>
-            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{generalSummary}</Text>
+            <Text style={{ ...TYPE.body, color: colors.text }}>{generalSummary}</Text>
           </TouchableOpacity>
           {onDeleteNote && (
             <TouchableOpacity
@@ -67,7 +67,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
           )}
         </View>
       ) : (
-        <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginBottom: SPACING.md }}>Henüz yeterli bilgi yok.</Text>
+        <Text style={{ ...TYPE.body, color: colors.textMuted, marginBottom: SPACING.md }}>Henüz yeterli bilgi yok.</Text>
       )}
 
       {patterns.length > 0 && (
@@ -78,8 +78,8 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 4, gap: SPACING.xs }}>
               <View style={{ width: 3, height: 14, backgroundColor: PATTERN_COLORS[p.type] ?? colors.textMuted, borderRadius: 2, marginTop: 3 }} />
               <TouchableOpacity style={{ flex: 1 }} onLongPress={() => handleDeleteNote(p.description)}>
-                <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{p.description}</Text>
-                {p.intervention && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>Müdahale: {p.intervention}</Text>}
+                <Text style={{ ...TYPE.body, color: colors.text }}>{p.description}</Text>
+                {p.intervention && <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }}>Müdahale: {p.intervention}</Text>}
               </TouchableOpacity>
               {onDeleteNote && (
                 <TouchableOpacity
@@ -104,7 +104,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
             {Object.entries(portionCalibration).map(([food, grams]) => (
               <View key={food} style={{ backgroundColor: colors.surfaceLight, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 3 }}>
-                <Text style={{ color: colors.text, fontSize: FONT.xs }}>{food}: {String(grams)}g</Text>
+                <Text style={{ ...TYPE.caption, color: colors.text }}>{food}: {String(grams)}g</Text>
               </View>
             ))}
           </View>
@@ -129,7 +129,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
             )}
           </View>
           <TouchableOpacity onLongPress={() => handleDeleteNote(coachingNotes)}>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, lineHeight: 18 }}>{coachingNotes}</Text>
+            <Text style={{ ...TYPE.body, color: colors.textMuted }}>{coachingNotes}</Text>
           </TouchableOpacity>
         </View>
       )}

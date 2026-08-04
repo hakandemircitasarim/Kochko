@@ -6,7 +6,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, WATER_INCREMENT } from '@/lib/constants';
+import { SPACING, RADIUS, WATER_INCREMENT } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { getButtonA11yProps } from '@/lib/accessibility';
 
@@ -89,7 +89,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
             marginLeft: 'auto', backgroundColor: color + '22',
             borderRadius: RADIUS.full, paddingHorizontal: 6, paddingVertical: 2,
           }}>
-            <Text style={{ color, fontSize: 10, fontWeight: '700' }}>{actionChip}</Text>
+            <Text style={{ ...TYPE.footnote, color, fontWeight: '700' }}>{actionChip}</Text>
           </View>
         ) : null}
       </View>
@@ -99,7 +99,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
           the grid read as an undifferentiated block of text on a device. TYPE.title3 gives each card
           something the eye lands on. numberOfLines={1} already guards the long-value case. */}
       <Text numberOfLines={1} style={{ ...TYPE.title3, color: valueMuted ? colors.textMuted : color }}>{value}</Text>
-      {sublabel && <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }}>{sublabel}</Text>}
+      {sublabel && <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>{sublabel}</Text>}
       {progress !== undefined && (
         <View style={{ height: 4, backgroundColor: colors.progressTrack, borderRadius: 2, overflow: 'hidden', marginTop: SPACING.sm }}>
           <View style={{ height: '100%', width: `${Math.min(100, progress * 100)}%`, backgroundColor: color, borderRadius: 2 }} />

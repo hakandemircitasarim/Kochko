@@ -11,7 +11,8 @@ import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { haptics } from '@/lib/haptics'; // FIX (ux-polish): the hero CTAs are the most-prominent buttons but had no tap feedback.
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
-import { SPACING, FONT, RADIUS, HERO } from '@/lib/constants';
+import { SPACING, RADIUS, HERO } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { a11yProgress, formatProgressForScreenReader, getContrastColor } from '@/lib/accessibility';
 
 interface Props {
@@ -48,7 +49,7 @@ function MacroBar({ label, value, target, color, emphasize = false }: { label: s
       accessibilityLabel={`${label}: ${formatProgressForScreenReader(value, target, 'g')}${emphasize && remaining > 0 ? `, ${remaining} gram kaldı` : ''}`}
     >
       <Text
-        style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 4 }}
+        style={{ ...TYPE.caption, color: colors.textSecondary, marginBottom: 4 }}
         maxFontSizeMultiplier={1.3}
       >
         {label}
@@ -64,8 +65,8 @@ function MacroBar({ label, value, target, color, emphasize = false }: { label: s
           reports "these don't match" before it reports "this one matters". */}
       <Text
         style={{
+          ...TYPE.caption,
           color: emphasize && remaining > 0 ? color : colors.textSecondary,
-          fontSize: 11,
           marginTop: 3,
           fontWeight: emphasize && remaining > 0 ? '700' : '400',
         }}
@@ -128,13 +129,13 @@ export function HeroSection({
       {/* Header: Greeting + Streak */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
         <View style={{ flexShrink: 1 }}>
-          {/* FIX (audit: tab başlık tutarlılığı) raw 18 → FONT.xl2 token hijyeni */}
-          <Text style={{ fontSize: FONT.xl2, fontWeight: '700', color: colors.text }}>
+          {/* Selamlama bu ekranin basligi — diger sekmelerin basliklariyla (TYPE.title2) ayni adim. */}
+          <Text style={{ ...TYPE.title2, color: colors.text }}>
             {getGreeting()}{firstName ? `, ${firstName}` : ''}
           </Text>
           {/* FIX (audit: ölü prop) today selamlamanın altına alt-metin olarak render edilir */}
           {today ? (
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }} maxFontSizeMultiplier={1.3}>
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }} maxFontSizeMultiplier={1.3}>
               {today}
             </Text>
           ) : null}
@@ -195,11 +196,11 @@ export function HeroSection({
             style={{ alignItems: 'center', paddingVertical: SPACING.xxl, alignSelf: 'stretch' }}
           >
             <Ionicons name="nutrition-outline" size={36} color={colors.textMuted} />
-            <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: SPACING.md, textAlign: 'center' }}>
+            <Text style={{ ...TYPE.title3, color: colors.textMuted, marginTop: SPACING.md, textAlign: 'center' }}>
               Henüz hedef belirlenmedi
             </Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.sm }}>
-              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
+              <Text style={{ ...TYPE.bodyStrong, color: colors.primary }}>
                 Koçuna hedeflerini anlat
               </Text>
               <Ionicons name="chevron-forward" size={14} color={colors.primary} />
@@ -221,7 +222,7 @@ export function HeroSection({
             style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary }}
           >
             <Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>Öğün ekle</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>Öğün ekle</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { haptics.tap(); router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugün antrenman yaptım: ', taskNonce: String(Date.now()) } }); }}
@@ -230,7 +231,7 @@ export function HeroSection({
             style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight }}
           >
             <Ionicons name="barbell-outline" size={16} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>Antrenman</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.primary, fontWeight: '700' }}>Antrenman</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -246,7 +247,7 @@ export function HeroSection({
         }}>
           <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary }} />
           <Text
-            style={{ color: colors.text, fontSize: 11, fontWeight: '500' }}
+            style={{ ...TYPE.caption, color: colors.text }}
             maxFontSizeMultiplier={1.3}
             accessibilityLabel={`Yeme penceresi: ${ifEatingStart} - ${ifEatingEnd}`}
           >
@@ -267,7 +268,7 @@ export function HeroSection({
           borderLeftWidth: 3,
           borderLeftColor: colors.primary,
         }}>
-          <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 20 }}>{focusMessage}</Text>
+          <Text style={{ ...TYPE.body, color: colors.textSecondary }}>{focusMessage}</Text>
         </View>
       )}
     </View>
