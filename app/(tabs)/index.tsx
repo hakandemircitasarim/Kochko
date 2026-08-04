@@ -26,6 +26,7 @@ import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { setupAutoSync } from '@/services/offline-queue.service';
@@ -1152,8 +1153,8 @@ export default function TodayScreen() {
               padding: SPACING.lg, borderWidth: 0.5, borderColor: colors.border,
             }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  Haftalık bütçe
+                <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+                  HAFTALIK BÜTÇE
                 </Text>
                 <Text style={{ color: weeklyOver ? colors.warning : colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>
                   {weeklyOver

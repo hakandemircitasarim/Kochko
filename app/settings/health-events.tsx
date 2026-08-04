@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -136,7 +137,9 @@ export default function HealthEventsScreen() {
         <TouchableOpacity key={e.id} onLongPress={() => handleDelete(e.id)}
           style={{ backgroundColor: colors.card, borderRadius: 12, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 1, borderColor: colors.border }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase', flex: 1 }}>{EVENT_LABELS[e.event_type] ?? e.event_type}</Text>
+            {/* FIX (TR-i18n): textTransform yerel-kordur — bu etiketler cihazda "DIĞER", "ALERJI",
+                "AMELIYAT" diye cikiyordu (dogrusu DİĞER / ALERJİ / AMELİYAT). */}
+            <Text style={{ ...TYPE.overline, color: colors.primary, flex: 1 }}>{(EVENT_LABELS[e.event_type] ?? e.event_type).toLocaleUpperCase('tr-TR')}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
               {e.is_ongoing && <Text style={{ color: colors.warning, fontSize: FONT.xs }}>Devam ediyor</Text>}
               {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}

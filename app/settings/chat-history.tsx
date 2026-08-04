@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -306,7 +307,7 @@ export default function ChatHistoryScreen() {
 
       {/* Session List */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.md, marginBottom: SPACING.sm }}>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600', textTransform: 'uppercase' }}>Sohbet Oturumları</Text>
+        <Text style={{ ...TYPE.overline, color: colors.textSecondary }}>SOHBET OTURUMLARI</Text>
         {filteredSessions.length > 0 && <Button title="Hepsini Sil" variant="ghost" size="sm" onPress={handleClearAll} />}
       </View>
 

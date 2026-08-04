@@ -250,8 +250,10 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
 
               {/* Content */}
               <View style={{ flex: 1 }}>
-                <Text style={{ ...TYPE.overline, color: colors.textMuted, textTransform: 'uppercase' }}>
-                  {activity.label}
+                <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+                  {/* textTransform yerine tr-TR: etiket dinamik, ileride noktali i tasiyan bir
+                      etiket eklendiginde sessizce bozulmasin. */}
+                  {activity.label.toLocaleUpperCase('tr-TR')}
                 </Text>
                 <Text style={{ ...TYPE.body, color: colors.text, marginTop: 2 }} numberOfLines={1}>{activity.text}</Text>
               </View>

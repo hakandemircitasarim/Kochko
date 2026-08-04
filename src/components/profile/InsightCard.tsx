@@ -5,6 +5,7 @@ import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 interface Pattern { type: string; description: string; trigger?: string; intervention?: string; }
 interface Props {
@@ -71,7 +72,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
 
       {patterns.length > 0 && (
         <View style={{ marginBottom: SPACING.md }}>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', marginBottom: SPACING.xs, textTransform: 'uppercase' }}>Kalıplar</Text>
+          <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.xs }}>KALIPLAR</Text>
           {patterns.map((p, i) => (
             // FIX (audit destructive-delete): görünür/a11y sil butonu ekle, long-press kısayolu korunur.
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 4, gap: SPACING.xs }}>
@@ -98,7 +99,8 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
 
       {Object.keys(portionCalibration).length > 0 && (
         <View style={{ marginBottom: SPACING.md }}>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', marginBottom: SPACING.xs, textTransform: 'uppercase' }}>Porsiyon</Text>
+          {/* FIX (TR-i18n): textTransform bunu cihazda "PORSIYON" yapiyordu — noktali İ gerekli. */}
+          <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.xs }}>PORSİYON</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
             {Object.entries(portionCalibration).map(([food, grams]) => (
               <View key={food} style={{ backgroundColor: colors.surfaceLight, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 3 }}>
@@ -113,7 +115,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
         // FIX (audit destructive-delete): başlık satırına görünür/a11y sil butonu; long-press korunur.
         <View>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', marginBottom: SPACING.xs, textTransform: 'uppercase' }}>Koçluk Notları</Text>
+            <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.xs }}>KOÇLUK NOTLARI</Text>
             {onDeleteNote && (
               <TouchableOpacity
                 onPress={() => handleDeleteNote(coachingNotes)}

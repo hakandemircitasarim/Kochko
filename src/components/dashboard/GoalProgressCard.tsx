@@ -88,8 +88,8 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
         {/* TYPE.overline is this exact pattern as a token: small, bold, uppercase, and — the part
             that was hand-tuned to 0.5 here — POSITIVE tracking, because capitals need air to stay
             legible at 11px. One definition, so every eyebrow label in the app matches. */}
-        <Text style={{ ...TYPE.overline, color: colors.textMuted, textTransform: 'uppercase' }}>
-          Hedef
+        <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+          HEDEF
         </Text>
         {!progress.isGoalReached && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: badge.color + '22', borderRadius: RADIUS.full, paddingHorizontal: 8, paddingVertical: 2 }}>
