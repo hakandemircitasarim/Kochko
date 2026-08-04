@@ -419,8 +419,8 @@ export default function ProgressScreen() {
             <Ionicons name="flame" size={24} color={colors.warning} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontSize: FONT.xl, fontWeight: '800' }}>{streak} günlük seri</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>Aralıksız kayıt tuttuğun gün — bugün de ekle, seriyi büyüt.</Text>
+            <Text style={{ color: colors.text, ...TYPE.title3 }}>{streak} günlük seri</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 1 }}>Aralıksız kayıt tuttuğun gün — bugün de ekle, seriyi büyüt.</Text>
           </View>
         </View>
       )}
@@ -456,7 +456,7 @@ export default function ProgressScreen() {
       </View>
       ) : (
       <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.md }}>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>
+        <Text style={{ color: colors.textSecondary, ...TYPE.body }}>
           Henüz veri yok — öğün, tartı ve uyku kaydettikçe ortalamaların burada birikecek.
         </Text>
       </View>
@@ -495,7 +495,7 @@ export default function ProgressScreen() {
           {targetW != null && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs }}>
               <View style={{ width: 14, height: 2, backgroundColor: colors.primary, borderRadius: 1 }} />
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Hedef: {String(targetW).replace('.', ',')} kg</Text>
+              <Text style={{ color: colors.textMuted, ...TYPE.caption }}>Hedef: {String(targetW).replace('.', ',')} kg</Text>
             </View>
           )}
         </Card>
@@ -589,7 +589,7 @@ export default function ProgressScreen() {
               <>
                 <DayRow label="En iyi" date={best.date} score={best.compliance_score} color={colors.success} />
                 <DayRow label="Zorlu gün" date={worst.date} score={worst.compliance_score} color={colors.warning} />
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs }}>
+                <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.xs }}>
                   Herkesin zorlandığı günler olur — önemli olan devam etmek.
                 </Text>
               </>
@@ -616,15 +616,15 @@ export default function ProgressScreen() {
             <View style={{ width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="pulse-outline" size={20} color={colors.primary} />
             </View>
-            <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', flex: 1 }}>Vücudun uyum sağlıyor</Text>
+            <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>Vücudun uyum sağlıyor</Text>
           </View>
           <Text style={{ ...TYPE.body, color: colors.text }}>{plateauMsg}</Text>
 
           {/* D4: Plateau strategy recommendation cards */}
           {strategyRec && (
             <View style={{ marginTop: SPACING.md }}>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', marginBottom: SPACING.sm, letterSpacing: 1 }}>ÖNERİLEN STRATEJİLER</Text>
-              <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.sm }}>{strategyRec.reasoning}</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '700', marginBottom: SPACING.sm, letterSpacing: 1 }}>ÖNERİLEN STRATEJİLER</Text>
+              <Text style={{ color: colors.text, ...TYPE.body, marginBottom: SPACING.sm }}>{strategyRec.reasoning}</Text>
 
               {/* Primary strategy — FIX (ux-pass5): in-flight'ta disabled + busy + spinner
                   (miniCutLoading butonuyla aynı desen), çift tıklama/çift yazma kapandı. */}
@@ -645,13 +645,13 @@ export default function ProgressScreen() {
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
                   <Ionicons name="flash" size={20} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontSize: FONT.md, fontWeight: '700', flex: 1 }}>{strategyRec.primary.name}</Text>
+                  <Text style={{ color: colors.primary, ...TYPE.headline, flex: 1 }}>{strategyRec.primary.name}</Text>
                 </View>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 20 }}>{strategyRec.primary.description}</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>{strategyRec.primary.description}</Text>
                 <View style={{ backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm }}>
                   {applyingStrategyId === strategyRec.primary.id
                     ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
-                    : <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Onayla</Text>
+                    : <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Onayla</Text>
                   }
                 </View>
               </TouchableOpacity>
@@ -674,13 +674,13 @@ export default function ProgressScreen() {
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
                     <Ionicons name="swap-horizontal" size={20} color={colors.textSecondary} />
-                    <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600', flex: 1 }}>{strategyRec.secondary.name}</Text>
+                    <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>{strategyRec.secondary.name}</Text>
                   </View>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 20 }}>{strategyRec.secondary.description}</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>{strategyRec.secondary.description}</Text>
                   <View style={{ backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm, borderWidth: 1, borderColor: colors.border }}>
                     {applyingStrategyId === strategyRec.secondary.id
                       ? <ActivityIndicator size="small" color={colors.textSecondary} />
-                      : <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Bunu Dene</Text>
+                      : <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Bunu Dene</Text>
                     }
                   </View>
                 </TouchableOpacity>
@@ -689,7 +689,7 @@ export default function ProgressScreen() {
           )}
 
           {!strategyRec && (
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.sm }}>Koçunla konuşarak strateji belirleyebilirsin.</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.sm }}>Koçunla konuşarak strateji belirleyebilirsin.</Text>
           )}
         </Card>
       )}
@@ -702,9 +702,9 @@ export default function ProgressScreen() {
             <View style={{ width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: colors.successLight, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="shield-checkmark" size={20} color={colors.success} />
             </View>
-            <Text style={{ color: colors.success, fontSize: FONT.md, fontWeight: '700', flex: 1 }}>Bakım Modu</Text>
+            <Text style={{ color: colors.success, ...TYPE.headline, flex: 1 }}>Bakım Modu</Text>
           </View>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }}>{maintenanceMsg}</Text>
+          <Text style={{ color: colors.text, ...TYPE.body }}>{maintenanceMsg}</Text>
 
           {/* D6: Tolerance band info */}
           {maintenanceData?.toleranceBand && maintenanceData.toleranceBand.min != null && maintenanceData.toleranceBand.max != null && (
@@ -719,7 +719,7 @@ export default function ProgressScreen() {
                 // <4.5:1; use the lighter `errorText` tone. success/warning already pass AA-small.
                 color: maintenanceData.bandStatus === 'in_band' ? colors.success
                   : maintenanceData.bandStatus === 'approaching_limit' ? colors.warning : colors.errorText,
-                fontSize: FONT.xs, fontWeight: '600',
+                ...TYPE.caption, fontWeight: '600',
               }}>
                 {maintenanceData.bandStatus === 'in_band' ? 'Bandda' : maintenanceData.bandStatus === 'approaching_limit' ? 'Sınıra Yakın' : 'Band Aşıldı'}
               </Text>
@@ -731,9 +731,9 @@ export default function ProgressScreen() {
             <View style={{ marginTop: SPACING.md, backgroundColor: colors.errorLight, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: colors.error }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
                 <Ionicons name="cut" size={18} color={colors.error} />
-                <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '700' }}>Mini-Cut Önerisi</Text>
+                <Text style={{ color: colors.error, ...TYPE.bodyStrong, fontWeight: '700' }}>Mini-Cut Önerisi</Text>
               </View>
-              <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.sm }}>
+              <Text style={{ color: colors.text, ...TYPE.body, marginBottom: SPACING.sm }}>
                 Tolerans bandının dışına çıktın. 2-3 haftalık hafif kalori açığı ile dengeye dönebilirsin.
               </Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
@@ -743,13 +743,13 @@ export default function ProgressScreen() {
                   style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.primary, alignItems: 'center', opacity: miniCutLoading ? 0.6 : 1 }}>
                   {miniCutLoading
                     ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
-                    : <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '600' }}>Mini-Cut Başlat</Text>
+                    : <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Mini-Cut Başlat</Text>
                   }
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { haptics.tap(); setMiniCutOffered(false); }}
                   accessibilityRole="button" accessibilityLabel="Mini-cut önerisini şimdilik kapat"
                   style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Şimdilik Değil</Text>
+                  <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Şimdilik Değil</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -763,17 +763,17 @@ export default function ProgressScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.sm }}>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
               {/* FIX (ux-pass5): TR ondalık virgül ("0,9"). */}
-              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{String(engagement.avgDailyMeals).replace('.', ',')}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 2 }}>Öğün/Gün</Text>
+              <Text style={{ ...TYPE.title3, color: colors.primary }}>{String(engagement.avgDailyMeals).replace('.', ',')}</Text>
+              <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>Öğün/Gün</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
               {/* FIX (ux-pass5): TR ondalık virgül ("9,3"). */}
-              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{String(engagement.avgDailyMessages).replace('.', ',')}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 2 }}>Mesaj/Gün</Text>
+              <Text style={{ ...TYPE.title3, color: colors.primary }}>{String(engagement.avgDailyMessages).replace('.', ',')}</Text>
+              <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>Mesaj/Gün</Text>
             </View>
             <View style={{ flex: 1, backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center' }}>
-              <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.primary }}>{engagement.featureUsage.daily_tracking ?? 0}</Text>
-              <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 2 }}>Aktif Gün</Text>
+              <Text style={{ ...TYPE.title3, color: colors.primary }}>{engagement.featureUsage.daily_tracking ?? 0}</Text>
+              <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>Aktif Gün</Text>
             </View>
           </View>
         </Card>
@@ -800,7 +800,7 @@ function ReportLink({ label, icon, onPress, colors, last }: { label: string; ico
       style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingVertical: SPACING.sm + 2, borderBottomWidth: last ? 0 : 0.5, borderBottomColor: colors.border }}
     >
       <Ionicons name={icon} size={20} color={colors.primary} style={{ marginRight: SPACING.sm }} />
-      <Text style={{ flex: 1, color: colors.text, fontSize: FONT.md }}>{label}</Text>
+      <Text style={{ flex: 1, color: colors.text, ...TYPE.body }}>{label}</Text>
       <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
     </TouchableOpacity>
   );
@@ -844,19 +844,21 @@ function SummaryBox({ icon, iconColor, value, label, period, delta, trend }: { i
       }}>
         <Ionicons name={icon} size={18} color={tint} />
       </View>
-      <Text style={{ fontSize: FONT.xl, fontWeight: '800', color: colors.text }}>{value}</Text>
-      <Text style={{ fontSize: FONT.xs, color: colors.textSecondary, marginTop: 1 }}>{label}</Text>
+      <Text style={{ ...TYPE.title3, color: colors.text }}>{value}</Text>
+      <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 1 }}>{label}</Text>
       {/* FIX (ux-pass raporlar #2): the period the number covers, spelled out on the tile. */}
-      {period != null && <Text style={{ fontSize: 10, color: colors.textMuted, marginTop: 1, textAlign: 'center' }}>{period}</Text>}
+      {/* 10px, olcegin tabaninin (11) altindaydi. Kutucuk 5'e kadar sikisabildigi icin
+          caption(13) degil footnote(11): tasmadan cikilabilecek en yuksek basamak. */}
+      {period != null && <Text style={{ ...TYPE.footnote, color: colors.textMuted, marginTop: 1, textAlign: 'center' }}>{period}</Text>}
       {/* FIX (audit UI-STA-06): at FONT.xs (11px) the base error (#E24B4A) is only 4.39:1 on
           card — below AA-small. Use the lighter `errorText` tone (>=4.5:1). success passes as-is. */}
       {/* FIX (ux-pass5): TR virgül ondalık — kilo farkı rozeti '+1.5' değil '+1,5' okusun. */}
-      {delta != null && <Text style={{ fontSize: FONT.xs, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.errorText }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1).replace('.', ',')}</Text>}
+      {delta != null && <Text style={{ ...TYPE.caption, fontWeight: '700', marginTop: 1, color: delta <= 0 ? colors.success : colors.errorText }}>{delta <= 0 ? '' : '+'}{delta.toFixed(1).replace('.', ',')}</Text>}
       {/* FIX (ux-ideas #12): period trend (up is an improvement for these metrics → green). */}
       {trend && (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 1 }}>
           {trend.dir !== 'flat' && <Ionicons name={trend.dir === 'up' ? 'arrow-up' : 'arrow-down'} size={9} color={trend.positive ? colors.success : colors.warning} />}
-          <Text style={{ fontSize: 10, fontWeight: '700', color: trend.dir === 'flat' ? colors.textMuted : (trend.positive ? colors.success : colors.warning) }}>{trend.value}</Text>
+          <Text style={{ ...TYPE.footnote, fontWeight: '700', color: trend.dir === 'flat' ? colors.textMuted : (trend.positive ? colors.success : colors.warning) }}>{trend.value}</Text>
         </View>
       )}
     </View>
@@ -868,10 +870,10 @@ function DayRow({ label, date, score, color }: { label: string; date: string; sc
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.xs, gap: SPACING.md }}>
       {/* FIX (ux-round3 #4 adversarial-review): widen + single-line so 'Zorlu gün' doesn't wrap. */}
-      <Text numberOfLines={1} style={{ fontSize: FONT.sm, fontWeight: '600', width: 68, color }}>{label}</Text>
-      <Text style={{ color: colors.text, fontSize: FONT.md, flex: 1 }}>{new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}</Text>
+      <Text numberOfLines={1} style={{ ...TYPE.bodyStrong, width: 68, color }}>{label}</Text>
+      <Text style={{ color: colors.text, ...TYPE.body, flex: 1 }}>{new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}</Text>
       {/* FIX (ux-pass raporlar #2): bare '0'/'85' okundu — uyum her yerde yüzde, burada da öyle. */}
-      <Text style={{ fontSize: FONT.lg, fontWeight: '700', color }}>%{score}</Text>
+      <Text style={{ ...TYPE.title3, color }}>%{score}</Text>
     </View>
   );
 }

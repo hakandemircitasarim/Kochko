@@ -563,7 +563,7 @@ export default function TodayScreen() {
               width: '80%', borderWidth: 0.5, borderColor: colors.border,
             }}
           >
-            <Text accessibilityRole="header" style={{ fontSize: FONT.lg, fontWeight: '600', color: colors.text, marginBottom: SPACING.lg, textAlign: 'center' }}>
+            <Text accessibilityRole="header" style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.lg, textAlign: 'center' }}>
               Su Ekle
             </Text>
             {[250, 500, 750].map((ml) => (
@@ -579,7 +579,7 @@ export default function TodayScreen() {
                 }}
               >
                 <Ionicons name="water" size={18} color={METRIC_COLORS.water} />
-                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>{ml} ml</Text>
+                <Text style={{ color: colors.text, ...TYPE.headline }}>{ml} ml</Text>
               </TouchableOpacity>
             ))}
             <TouchableOpacity
@@ -587,7 +587,7 @@ export default function TodayScreen() {
               accessibilityRole="button" accessibilityLabel="İptal"
               style={{ paddingVertical: SPACING.md, alignItems: 'center', marginTop: SPACING.xs }}
             >
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500' }}>İptal</Text>
+              <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>İptal</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -616,10 +616,10 @@ export default function TodayScreen() {
             }}>
               <Ionicons name="trophy" size={44} color={colors.primary} />
             </Animated.View>
-            <Text accessibilityRole="header" style={{ color: colors.text, fontSize: FONT.xl, fontWeight: '800', textAlign: 'center' }}>
+            <Text accessibilityRole="header" style={{ color: colors.text, ...TYPE.title3, textAlign: 'center' }}>
               {celebration}
             </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.xs }}>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center', marginTop: SPACING.xs }}>
               Bu anı hak ettin — paylaşmak ister misin?
             </Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl, width: '100%' }}>
@@ -628,7 +628,7 @@ export default function TodayScreen() {
                 accessibilityRole="button" accessibilityLabel="Kapat"
                 style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
               >
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '600' }}>Kapat</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Kapat</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -654,7 +654,7 @@ export default function TodayScreen() {
                 style={{ flex: 1, flexDirection: 'row', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}
               >
                 <Ionicons name="share-social-outline" size={16} color={getContrastColor(colors.primary)} />
-                <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>Paylaş</Text>
+                <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong, fontWeight: '700' }}>Paylaş</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -676,7 +676,7 @@ export default function TodayScreen() {
             maxWidth: '100%',
           }}>
             <Ionicons name="cloud-offline-outline" size={16} color={colors.warning} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, flexShrink: 1 }}>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption, flexShrink: 1 }}>
               Yenilenemedi — son kaydedilen veriler gösteriliyor
             </Text>
           </View>
@@ -697,7 +697,7 @@ export default function TodayScreen() {
             paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg, maxWidth: '100%',
           }}>
             <Ionicons name="water" size={16} color={METRIC_COLORS.water} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, flexShrink: 1 }}>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, flexShrink: 1 }}>
               {Math.round(waterUndo.amount * 1000)} ml eklendi
             </Text>
             <TouchableOpacity
@@ -706,7 +706,7 @@ export default function TodayScreen() {
               accessibilityLabel="Su eklemeyi geri al"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>Geri al</Text>
+              <Text style={{ color: colors.primary, ...TYPE.bodyStrong, fontWeight: '700' }}>Geri al</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -728,10 +728,10 @@ export default function TodayScreen() {
             padding: SPACING.md, marginTop: insets.top, marginBottom: SPACING.md,
             borderLeftWidth: 3, borderLeftColor: colors.primary,
           }}>
-            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '600', marginBottom: 4 }}>
+            <Text style={{ color: colors.primary, ...TYPE.caption, fontWeight: '600', marginBottom: 4 }}>
               {returnStatus.level === 'very_long_break' ? 'TEKRAR HOŞ GELDİN' : 'HOŞ GELDİN'}
             </Text>
-            <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 18 }}>
+            <Text style={{ color: colors.text, ...TYPE.body }}>
               {welcomeBackMsg ?? returnStatus.welcomeMessage}
             </Text>
             {returnStatus.needsReOnboarding && (
@@ -744,7 +744,7 @@ export default function TodayScreen() {
                   borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center',
                 }}
               >
-                <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '500' }}>Güncelleme yap</Text>
+                <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Güncelleme yap</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -784,10 +784,10 @@ export default function TodayScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Denemen ${trialDaysLeft} gün sonra bitiyor. Premium'a geçmek için dokun`}
             >
-              <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '600', marginBottom: 4 }}>
+              <Text style={{ color: colors.warning, ...TYPE.caption, fontWeight: '600', marginBottom: 4 }}>
                 DENEME SÜRESİ
               </Text>
-              <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 18, paddingRight: 24 }}>
+              <Text style={{ color: colors.text, ...TYPE.body, paddingRight: 24 }}>
                 Denemen {trialDaysLeft} gün sonra bitiyor — Premium'a geç
               </Text>
             </TouchableOpacity>
@@ -870,11 +870,11 @@ export default function TodayScreen() {
             }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                 <Ionicons name="sparkles" size={16} color={colors.primary} />
-                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '800', flex: 1 }}>
+                <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>
                   {userName ? `Hoş geldin, ${userName}!` : 'Kochko\'ya hoş geldin!'}
                 </Text>
               </View>
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4, lineHeight: 18 }}>
+              <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>
                 İlk adımın: bugünkü ilk kaydını ekle ya da koçunla konuşarak başla. Kaydettikçe burası sana özel hâle gelecek.
               </Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
@@ -885,7 +885,7 @@ export default function TodayScreen() {
                   style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary }}
                 >
                   <Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />
-                  <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>İlk kaydını ekle</Text>
+                  <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong, fontWeight: '700' }}>İlk kaydını ekle</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => { haptics.tap(); router.push('/(tabs)/chat' as never); }}
@@ -894,7 +894,7 @@ export default function TodayScreen() {
                   style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight }}
                 >
                   <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>Koçla konuş</Text>
+                  <Text style={{ color: colors.primary, ...TYPE.bodyStrong, fontWeight: '700' }}>Koçla konuş</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -909,7 +909,7 @@ export default function TodayScreen() {
           return (
             <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
               <Ionicons name="ribbon-outline" size={13} color={colors.warning} />
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, flex: 1 }} numberOfLines={1}>
+              <Text style={{ color: colors.textSecondary, ...TYPE.caption, flex: 1 }} numberOfLines={1}>
                 Sıradaki rozet: {nb.label} · {nb.remaining} gün kaldı
               </Text>
               <View style={{ width: 56, height: 5, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
@@ -944,8 +944,8 @@ export default function TodayScreen() {
             >
               <Ionicons name="refresh" size={20} color={colors.warning} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>Yeniden başlayalım</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>Serin sıfırlandı — sorun değil. Bugün tek kayıtla yeni seriyi başlat.</Text>
+                <Text style={{ color: colors.text, ...TYPE.bodyStrong, fontWeight: '700' }}>Yeniden başlayalım</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 1 }}>Serin sıfırlandı — sorun değil. Bugün tek kayıtla yeni seriyi başlat.</Text>
               </View>
               <TouchableOpacity
                 onPress={() => { haptics.tap(); setStreakResetDismissed(true); if (user?.id) markDismissed(user.id, 'streak_reset', 'day', dayBoundaryHour); }}
@@ -976,8 +976,8 @@ export default function TodayScreen() {
             >
               <Ionicons name="flame" size={20} color={colors.warning} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>{streak} günlük serin risk altında</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>Bugün henüz kayıt yok — tek öğün yeter, seriyi koru.</Text>
+                <Text style={{ color: colors.text, ...TYPE.bodyStrong, fontWeight: '700' }}>{streak} günlük serin risk altında</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 1 }}>Bugün henüz kayıt yok — tek öğün yeter, seriyi koru.</Text>
               </View>
               <TouchableOpacity
                 onPress={() => { haptics.tap(); setStreakRiskDismissed(true); if (user?.id) markDismissed(user.id, 'streak_risk', 'day', dayBoundaryHour); }}
@@ -1007,7 +1007,7 @@ export default function TodayScreen() {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                 <Ionicons name="sparkles" size={16} color={colors.primary} />
-                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '700', flex: 1 }}>Haftan hazır</Text>
+                <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>Haftan hazır</Text>
                 <TouchableOpacity
                   onPress={() => {
                     haptics.tap();
@@ -1021,17 +1021,17 @@ export default function TodayScreen() {
                 </TouchableOpacity>
               </View>
               {weeklyRecap.avgCompliance != null && (
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 4 }}>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>
                   Geçen hafta uyum: %{Math.round(weeklyRecap.avgCompliance)}
                 </Text>
               )}
               {weeklyRecap.strategy && (
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginTop: 2 }} numberOfLines={2}>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 2 }} numberOfLines={2}>
                   {weeklyRecap.strategy}
                 </Text>
               )}
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.sm }}>
-                <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>Haftalık raporu aç</Text>
+                <Text style={{ color: colors.primary, ...TYPE.bodyStrong, fontWeight: '700' }}>Haftalık raporu aç</Text>
                 <Ionicons name="chevron-forward" size={14} color={colors.primary} />
               </View>
             </TouchableOpacity>
@@ -1156,7 +1156,7 @@ export default function TodayScreen() {
                 <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
                   HAFTALIK BÜTÇE
                 </Text>
-                <Text style={{ color: weeklyOver ? colors.warning : colors.primary, fontSize: FONT.sm, fontWeight: '700' }}>
+                <Text style={{ color: weeklyOver ? colors.warning : colors.primary, ...TYPE.bodyStrong, fontWeight: '700' }}>
                   {weeklyOver
                     ? `${Math.abs(weeklyRemaining).toLocaleString('tr-TR')} fazla`
                     : `${weeklyRemaining.toLocaleString('tr-TR')} kaldı`}
@@ -1167,7 +1167,7 @@ export default function TodayScreen() {
                   eylenebilir bilgi aşağıdaki günlük tempo satırı. */}
               {/* FIX (ux-round2 #7): actionable daily pace from the weekly remaining. */}
               {weeklyRemaining > 0 && daysLeftInWeek > 0 && paceIsCredible && (
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginBottom: SPACING.sm }}>
+                <Text style={{ color: colors.textMuted, ...TYPE.caption, marginBottom: SPACING.sm }}>
                   Kalan {daysLeftInWeek} gün · günde ~{dailyPace.toLocaleString('tr-TR')} kcal
                 </Text>
               )}
