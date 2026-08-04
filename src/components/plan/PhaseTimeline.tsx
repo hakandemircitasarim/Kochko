@@ -5,7 +5,8 @@
  * Mevcut faz konumunu, geçiş bölgelerini ve gelecek fazları gösterir.
  */
 import { View, Text } from 'react-native';
-import { SPACING, FONT, MAX_FONT_SCALE } from '@/lib/constants';
+import { SPACING, MAX_FONT_SCALE } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { goalShortLabelTR } from '@/lib/labels';
@@ -50,8 +51,8 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
       borderWidth: 1,
       borderColor: colors.border,
     }}>
-      <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700', marginBottom: SPACING.sm }}>
-        Hedef Fazları
+      <Text style={{ ...TYPE.headline, color: colors.text, marginBottom: SPACING.sm }}>
+        Hedef fazları
       </Text>
 
       {/* Timeline bar — FIX (ux-polish): decorative; hidden from screen readers so phase names aren't
@@ -92,7 +93,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
                 // FIX (audit accent-contrast): aktif faz metnini sabit beyaz yerine faz
                 // rengine göre kontrast-güvenli seç (WCAG AA).
                 color: phase.isActive ? (getContrastColor(color) === 'black' ? colors.background : '#fff') : colors.textSecondary,
-                fontSize: FONT.xs,
+                ...TYPE.footnote,
                 fontWeight: phase.isActive ? '700' : '500',
               }}>
                 {goalShortLabelTR(phase.goalType)}
@@ -119,8 +120,8 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
                 // color only, which a screen reader couldn't announce.
                 accessibilityLabel={`${phase.label ? goalShortLabelTR(phase.label) : `${phase.targetWeeks} hafta`}${phase.isActive ? ', şu anki faz' : phase.isCompleted ? ', tamamlandı' : ''}`}
                 style={{
+                  ...TYPE.footnote,
                   color: phase.isActive ? colors.text : colors.textMuted,
-                  fontSize: 10,
                   fontWeight: phase.isActive ? '600' : '400',
                 }}
               >
@@ -136,7 +137,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
       {/* Current position indicator */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm }}>
         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginRight: SPACING.xs }} />
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
           {/* FIX (audit phase-overflow): currentWeek totalWeeks'i aşarsa 'Hafta 20 / 16' yerine
               clamp + aşım ek metni göster. */}
           Hafta {Math.min(currentWeek, totalWeeks)} / {totalWeeks}{currentWeek > totalWeeks ? ` (+${currentWeek - totalWeeks} hafta)` : ''}

@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { MealCard } from './MealCard';
 import { ExerciseCard } from './ExerciseCard';
@@ -96,12 +96,15 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
               }}
             >
               {/* The day name ("Pazartesi") is the header of a whole collapsible section — it must
-                  outrank the meal rows it contains, not match them. */}
-              <Text style={{ ...TYPE.headline, color: colors.text, flex: 1 }}>
+                  outrank the meal rows it contains, not match them.
+                  08-04, cihazda: etiket flex:1 idi ve sagdaki ozet satiri (numberOfLines=1 olmasina
+                  ragmen) tam genisligini talep ettigi icin "Pazartesi" UC satira bolunuyordu
+                  ("Paz/arte/si"). Kirpilmasi gereken ozet satiri; gun adi asla bolunmemeli. */}
+              <Text style={{ ...TYPE.headline, color: colors.text, flexShrink: 0 }}>
                 {label}
               </Text>
               {isDiet ? (
-                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted, flex: 1, textAlign: 'right' }} numberOfLines={1}>
                   {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
                       ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal". */}
                   {Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal
@@ -115,10 +118,10 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
                 // duration in the header — both are AI-authored but were never rendered, so the
                 // review surface showed only "5 egzersiz" (says nothing about what/how long).
                 const wd = day as WorkoutPlanData['days'][number];
-                if (wd.rest_day) return <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>Dinlenme</Text>;
+                if (wd.rest_day) return <Text style={{ ...TYPE.caption, color: colors.textMuted, flex: 1, textAlign: 'right' }} numberOfLines={1}>Dinlenme</Text>;
                 const n = wd.exercises?.length ?? 0;
                 const parts = [wd.focus, `${n} egzersiz`, wd.estimated_duration_min ? `~${wd.estimated_duration_min} dk` : null].filter(Boolean);
-                return <Text style={{ color: colors.textMuted, fontSize: FONT.xs }} numberOfLines={1}>{parts.join(' · ')}</Text>;
+                return <Text style={{ ...TYPE.caption, color: colors.textMuted, flex: 1, textAlign: 'right' }} numberOfLines={1}>{parts.join(' · ')}</Text>;
               })()}
               <Ionicons
                 name={isOpen ? 'chevron-up' : 'chevron-down'}
@@ -133,7 +136,7 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
                     "form odaklı hafif gün") was silently dropped — it carries WHY the day looks the
                     way it does. Surface it at the top of the open body. */}
                 {day.notes ? (
-                  <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontStyle: 'italic', marginBottom: SPACING.sm }}>
+                  <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontStyle: 'italic', marginBottom: SPACING.sm }}>
                     {day.notes}
                   </Text>
                 ) : null}
@@ -141,8 +144,8 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
                   ((day as DietPlanData['days'][number]).meals ?? []).length === 0 ? (
                     <Text
                       style={{
+                        ...TYPE.callout,
                         color: colors.textMuted,
-                        fontSize: FONT.xs,
                         fontStyle: 'italic',
                         textAlign: 'center',
                         paddingVertical: SPACING.md,
@@ -175,8 +178,8 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
                 ) : (day as WorkoutPlanData['days'][number]).rest_day ? (
                   <Text
                     style={{
+                      ...TYPE.callout,
                       color: colors.textMuted,
-                      fontSize: FONT.xs,
                       fontStyle: 'italic',
                       textAlign: 'center',
                       paddingVertical: SPACING.md,

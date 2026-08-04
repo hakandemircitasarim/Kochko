@@ -24,7 +24,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { PlanDayAccordion } from './PlanDayAccordion';
 import { formatWeekStartTR, type PlanData } from '@/services/plan.service';
 
@@ -117,10 +118,10 @@ export function FullPlanModal({
             <Ionicons name="close" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700' }}>
-              {isDiet ? 'Haftalık Diyet' : 'Haftalık Spor'}
+            <Text style={{ ...TYPE.title3, color: colors.text }}>
+              {isDiet ? 'Haftalık diyet' : 'Haftalık spor'}
             </Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
               {/* FIX (fix-pass 07-12, item 4b): '2026-06-15' ham ISO yerine '15 Haziran haftası' */}
               {formatWeekStartTR(weekStart ?? plan.week_start)} · v{plan.version ?? 1}
             </Text>
@@ -140,7 +141,7 @@ export function FullPlanModal({
               }}
             >
               <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-              <Text style={{ color: colors.success, fontSize: FONT.xs, fontWeight: '700' }}>Okundu</Text>
+              <Text style={{ ...TYPE.caption, color: colors.success, fontWeight: '700' }}>Okundu</Text>
             </View>
           ) : null}
         </View>
@@ -178,8 +179,8 @@ export function FullPlanModal({
               <Ionicons name="arrow-down-circle-outline" size={20} color={colors.textMuted} />
               <Text
                 style={{
+                  ...TYPE.caption,
                   color: colors.textMuted,
-                  fontSize: FONT.xs,
                   marginTop: 4,
                   textAlign: 'center',
                 }}

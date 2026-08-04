@@ -9,7 +9,7 @@ import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -107,8 +107,8 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
         </Text>
         <Text
           style={{
+            ...TYPE.body,
             color: colors.textMuted,
-            fontSize: FONT.sm,
             textAlign: 'center',
             marginTop: 4,
             maxWidth: 280,
@@ -134,11 +134,11 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
-            <Text style={{ color: colors.warning, fontSize: FONT.sm, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.warning, fontWeight: '700' }}>
               Plan için eksik bilgiler
             </Text>
           </View>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 4 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 4 }}>
             Şu bilgileri tamamlayınca plan oluşturulabilir:
           </Text>
           <View style={{ marginTop: SPACING.sm, gap: SPACING.xs }}>
@@ -159,10 +159,10 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
               >
                 <Ionicons name="arrow-forward-circle" size={16} color={colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600' }}>
+                  <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
                     {f.field}
                   </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+                  <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
                     {f.taskTitle} kartından tamamla
                   </Text>
                 </View>
@@ -204,8 +204,8 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
           ) : null}
           <Text
             style={{
+              ...TYPE.headline,
               color: ready && !creating ? getContrastColor(colors.primary) : colors.textMuted,
-              fontSize: FONT.md,
               fontWeight: '800',
             }}
           >
@@ -229,7 +229,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
           <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             PLAN DAHA İYİ OLABİLİR
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
             Şunları da konuşursak plan daha kişisel olur:
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm }}>
@@ -250,7 +250,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
                 }}
               >
                 <Ionicons name="add-circle-outline" size={12} color={colors.primary} />
-                <Text style={{ color: colors.text, fontSize: FONT.xs, fontWeight: '600' }}>
+                <Text style={{ ...TYPE.caption, color: colors.text, fontWeight: '600' }}>
                   {f.field}
                 </Text>
               </TouchableOpacity>

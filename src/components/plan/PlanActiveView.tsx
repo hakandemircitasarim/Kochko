@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { getEffectiveDate } from '@/lib/day-boundary';
@@ -344,7 +344,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             <Text style={{ ...TYPE.headline, color: colors.text }}>
               {isDiet ? 'Aktif diyet planın' : 'Aktif spor planın'}
             </Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
               {/* FIX (fix-pass 07-12, item 4a): '2026-06-15 · onaylandı · 19.06.2026' karışık
                   format yerine '15 Haziran haftası · onaylandı 19 Haziran'. */}
               {formatWeekStartTR(plan.week_start)} · onaylandı
@@ -354,11 +354,14 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             </Text>
           </View>
         </View>
-        {/* FIX (ux-round4 #3): daily target / week overview — the yardstick the per-day numbers lacked. */}
+        {/* FIX (ux-round4 #3): daily target / week overview — the yardstick the per-day numbers lacked.
+            08-04, cihazda: metin 13'e cikinca tek satira sigmadi ve flexWrap onu KOMPLE alt satira
+            atti — bayrak ikonu kendi basina bir satirda kaldi. flex:1 metni ikonun yaninda tutar
+            ve sarmayi metnin kendi icinde yapar. */}
         {planSummary.kind === 'diet' && planSummary.targetKcal ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: SPACING.sm }}>
-            <Ionicons name="flag-outline" size={13} color={colors.textSecondary} />
-            <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm }}>
+            <Ionicons name="flag-outline" size={13} color={colors.textSecondary} style={{ marginTop: 3 }} />
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }}>
               Günlük hedef: ~{Math.round(planSummary.targetKcal)} kcal
               {planSummary.targetProtein ? ` · ${Math.round(planSummary.targetProtein)}g protein` : ''}
               {planSummary.avgKcal ? ` · hafta ort. ${planSummary.avgKcal} kcal` : ''}
@@ -366,9 +369,9 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           </View>
         ) : null}
         {planSummary.kind === 'workout' && planSummary.training > 0 ? (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: SPACING.sm }}>
-            <Ionicons name="calendar-outline" size={13} color={colors.textSecondary} />
-            <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm }}>
+            <Ionicons name="calendar-outline" size={13} color={colors.textSecondary} style={{ marginTop: 3 }} />
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }}>
               {planSummary.training} antrenman · {planSummary.rest} dinlenme
               {planSummary.weeklyMin > 0 ? ` · ~${planSummary.weeklyMin} dk/hafta` : ''}
             </Text>
@@ -382,7 +385,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 4,
           }}>
             <Ionicons name="checkmark-done-outline" size={13} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.caption, color: colors.primary, fontWeight: '700' }}>
               Bugün {todayCompletion.done}/{todayCompletion.total} {todayCompletion.unit}
             </Text>
           </View>
@@ -408,7 +411,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             }}
           >
             <Ionicons name="chatbubble-ellipses-outline" size={14} color={getContrastColor(colors.primary)} />
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>
               Kochko ile konuş
             </Text>
           </TouchableOpacity>
@@ -428,7 +431,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             }}
           >
             <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>
               Geçmiş
             </Text>
           </TouchableOpacity>
@@ -446,11 +449,11 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: SPACING.sm }}
           >
             <Ionicons name="bulb-outline" size={14} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, fontWeight: '700', flex: 1 }}>Bu plan neden böyle?</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary, flex: 1 }}>Bu plan neden böyle?</Text>
             <Ionicons name={showReasoning ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
           </TouchableOpacity>
           {showReasoning ? (
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, lineHeight: 18, paddingBottom: SPACING.md }}>
+            <Text style={{ ...TYPE.body, color: colors.textSecondary, paddingBottom: SPACING.md }}>
               {data.reasoning}
             </Text>
           ) : null}
@@ -469,7 +472,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             size={18} color={colors.primary}
           />
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.primary, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.3 }}>ŞİMDİ SIRADA</Text>
+            <Text style={{ ...TYPE.overline, color: colors.primary }}>ŞİMDİ SIRADA</Text>
             {/* This strip crammed meal type + time + name onto ONE line while a "Bunu yedim" button
                 takes the right half, so the name — the only part that says WHAT to eat — was what
                 got cut ("Kahvaltı · 08:30 — Peynirli to…"). Split it: the type/time is a label, the
@@ -508,7 +511,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                 {mealLogState[`0-${nowNext.mi}`] === 'saving'
                   ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} style={{ transform: [{ scale: 0.7 }] }} />
                   : <Ionicons name="add-circle-outline" size={14} color={getContrastColor(colors.primary)} />}
-                <Text style={{ color: getContrastColor(colors.primary), fontSize: 11, fontWeight: '700' }}>Bunu yedim</Text>
+                <Text style={{ ...TYPE.caption, color: getContrastColor(colors.primary), fontWeight: '700' }}>Bunu yedim</Text>
               </TouchableOpacity>
             )
           )}
@@ -531,11 +534,11 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="calendar-outline" size={16} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '700', flex: 1 }}>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.primary, fontWeight: '700', flex: 1 }}>
               Bu plan {Math.max(1, staleWeeks)} hafta önceydi
             </Text>
           </View>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 4 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
             Sana güncel bir haftalık plan hazırlayayım — onayladığında bu plan geçmişe kaydolur.
           </Text>
           <TouchableOpacity
@@ -553,7 +556,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               opacity: creatingRevision ? 0.6 : 1,
             }}
           >
-            <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.sm, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>
               {creatingRevision ? 'Hazırlanıyor...' : 'Yeni haftalık plan hazırla'}
             </Text>
           </TouchableOpacity>
@@ -573,12 +576,12 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="warning" size={16} color={colors.error} />
-            <Text style={{ color: colors.error, fontSize: FONT.sm, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.error, fontWeight: '700' }}>
               Güvenliğin için planı güncelleyelim
             </Text>
           </View>
           {drift.hard.map((m, i) => (
-            <Text key={i} style={{ color: colors.text, fontSize: FONT.xs, marginTop: 4 }}>
+            <Text key={i} style={{ ...TYPE.caption, color: colors.text, marginTop: 4 }}>
               • {m}
             </Text>
           ))}
@@ -592,7 +595,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               marginTop: SPACING.sm,
             }}
           >
-            <Text style={{ color: getContrastColor(colors.error), fontSize: FONT.sm, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.error), fontWeight: '700' }}>
               Planı güncelle
             </Text>
           </TouchableOpacity>
@@ -611,12 +614,12 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Ionicons name="information-circle-outline" size={14} color={colors.warning} />
-            <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.warning, fontWeight: '700' }}>
               Verilerinde değişiklik var
             </Text>
           </View>
           {drift.soft.map((m, i) => (
-            <Text key={i} style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2 }}>
+            <Text key={i} style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>
               • {m}
             </Text>
           ))}
@@ -629,7 +632,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={{ marginTop: SPACING.xs, alignSelf: 'flex-start', paddingVertical: SPACING.sm }}
           >
-            <Text style={{ color: colors.warning, fontSize: FONT.xs, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.warning, fontWeight: '700' }}>
               Planı güncelle →
             </Text>
           </TouchableOpacity>
@@ -638,7 +641,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
 
       {/* Days */}
       {days.length === 0 ? (
-        <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.xl }}>
+        <Text style={{ ...TYPE.body, color: colors.textMuted, textAlign: 'center', paddingVertical: SPACING.xl }}>
           Bu planın içeriği eksik görünüyor. Plan sekmesinden yeni bir plan oluşturabilirsin.
         </Text>
       ) : orderedDays.map((day, dayIdx) => {
@@ -669,11 +672,11 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                 gap: SPACING.sm,
               }}
             >
-              <Text style={{ color: isToday ? colors.primary : colors.text, fontSize: FONT.sm, fontWeight: '700', flex: 1 }}>
+              <Text style={{ ...TYPE.bodyStrong, color: isToday ? colors.primary : colors.text, fontWeight: '700', flex: 1 }}>
                 {isToday ? `Bugün · ${label}` : label}
               </Text>
               {isDiet ? (
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
                   {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
                       ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal". */}
                   {Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal
@@ -684,7 +687,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                     : ''}
                 </Text>
               ) : (
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
                   {(day as WorkoutPlanData['days'][number]).rest_day
                     ? 'Dinlenme'
                     : `${(day as WorkoutPlanData['days'][number]).exercises?.length ?? 0} egzersiz`}
@@ -719,8 +722,8 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
                 ) : (day as WorkoutPlanData['days'][number]).rest_day ? (
                   <Text
                     style={{
+                      ...TYPE.callout,
                       color: colors.textMuted,
-                      fontSize: FONT.xs,
                       fontStyle: 'italic',
                       textAlign: 'center',
                       paddingVertical: SPACING.md,

@@ -12,7 +12,8 @@ import { useMemo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
 import { DAY_LABELS_TR, DAY_SHORT_TR, formatWeekStartTR } from '@/services/plan.service';
 
@@ -57,7 +58,7 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
           >
             <Text
               style={{
-                fontSize: 11,
+                ...TYPE.caption,
                 color: hasMeals ? colors.primary : colors.textMuted,
                 fontWeight: '700',
               }}
@@ -68,7 +69,7 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
           {/* FIX (ux-pass5): fontSize 8 was illegible (smallest text in the app; defeats the
               day-context labels). 10 keeps hierarchy under the 11px chip letter and fits the
               ~40px flex column ('Pzt' at 10/600 ≈ 20px wide). */}
-          <Text style={{ fontSize: 10, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
+          <Text style={{ ...TYPE.footnote, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
             {dayShort(d.day_index, i)}
           </Text>
         </View>
@@ -101,12 +102,12 @@ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ fontSize: 11, color: tone.fg, fontWeight: '700' }}>
+              <Text style={{ ...TYPE.caption, color: tone.fg, fontWeight: '700' }}>
                 {d.rest_day ? '–' : `${d.exercises?.length ?? 0}`}
               </Text>
             </View>
             {/* FIX (ux-pass5): fontSize 8 → 10, see DietStrip. */}
-            <Text style={{ fontSize: 10, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
+            <Text style={{ ...TYPE.footnote, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
               {dayShort(d.day_index, i)}
             </Text>
           </View>
@@ -172,10 +173,10 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
           color={planType === 'diet' ? colors.primary : colors.purple}
         />
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
             {planType === 'diet' ? 'Bu haftaki diyetin' : 'Bu haftaki sporun'}
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 1 }}>
             {/* FIX (fix-pass 07-12, item 4c): 'Hafta 2026-07-12' → '12 Temmuz haftası',
                 driven by the STORED row week_start (not the LLM snapshot's). */}
             {/* ux-sweep (canlı 07-29): '20 Temmuz haftası' etiketi 'Bu haftaki diyetin'
@@ -187,10 +188,10 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
           </Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
             {summary.primary}
           </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>{summary.secondary}</Text>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>{summary.secondary}</Text>
         </View>
         <Ionicons name="expand-outline" size={14} color={colors.textMuted} />
       </View>
@@ -204,8 +205,8 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
 
       <Text
         style={{
+          ...TYPE.caption,
           color: colors.textMuted,
-          fontSize: FONT.xs,
           marginTop: SPACING.xs,
           textAlign: 'center',
         }}

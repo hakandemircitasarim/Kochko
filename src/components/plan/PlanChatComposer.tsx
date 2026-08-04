@@ -20,7 +20,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
@@ -87,11 +88,13 @@ const Chip = ({
       }}
       activeOpacity={0.7}
     >
-      <Ionicons name={icon} size={12} color={fg} />
+      {/* Birincil taahhut (solid) okuma adiminda, kesif cipleri bir adim altinda:
+          ikisi de 11'deydi, yani 'Onayla ve kaydet' ekranin en kucuk metniyle ayni boydaydi. */}
+      <Ionicons name={icon} size={solid ? 15 : 13} color={fg} />
       <Text
         style={{
+          ...(solid ? TYPE.bodyStrong : TYPE.caption),
           color: fg,
-          fontSize: 11,
           fontWeight: solid ? '700' : '600',
         }}
       >
@@ -198,8 +201,8 @@ export function PlanChatComposer({
       {approveHint && !canApprove ? (
         <Text
           style={{
+            ...TYPE.caption,
             color: colors.textMuted,
-            fontSize: 11,
             fontStyle: 'italic',
             marginTop: -2,
           }}
@@ -227,8 +230,9 @@ export function PlanChatComposer({
             flex: 1,
             color: disabled ? colors.textMuted : colors.text,
             // FIX (ux-pass5): raw 13 drifted from the main chat composer's 14 — same
-            // "type to the coach" affordance, same size, via the FONT token.
-            fontSize: FONT.md,
+            // "type to the coach" affordance, same size. 08-04: iki besteci de artik
+            // TYPE.body'de (ChatThreadScreen ile ayni token).
+            ...TYPE.body,
             paddingVertical: 6,
             maxHeight: 120,
           }}

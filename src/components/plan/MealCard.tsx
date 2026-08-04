@@ -7,7 +7,7 @@ import { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, Animated, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { type DietMeal } from '@/services/plan.service';
@@ -111,7 +111,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                 {MEAL_TYPE_LABELS_TR[meal.meal_type]}
               </Text>
               {meal.time ? (
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>· {meal.time}</Text>
+                <Text style={{ ...TYPE.footnote, color: colors.textMuted }}>· {meal.time}</Text>
               ) : null}
             </View>
             {/* The meal's name is what this card IS. At 13px it was smaller than the app's reading
@@ -128,10 +128,12 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             {/* FIX (audit UI-PLN-02): round raw LLM-authored macros so decimals (487.3, 32.5) don't leak into the UI */}
-            <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
               {Math.round(meal.total_kcal)} kcal
             </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+            {/* Dar sag sutun: makro satiri kabin genisligini belirliyor — 13'e cikarmak
+                ogun adini ikinci satirda kirpiyordu, bu yuzden en kucuk okunur adimda kaliyor. */}
+            <Text style={{ ...TYPE.footnote, color: colors.textSecondary }}>
               P{Math.round(meal.total_protein)} · K{Math.round(meal.total_carbs)} · Y{Math.round(meal.total_fat)}
             </Text>
           </View>
@@ -195,7 +197,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                 </Text>
               </Text>
               {/* FIX (audit UI-PLN-02): round per-item kcal (raw LLM JSON may carry decimals) */}
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{Math.round(it.kcal)} kcal</Text>
+              <Text style={{ ...TYPE.caption, color: colors.textMuted }}>{Math.round(it.kcal)} kcal</Text>
             </View>
           ))}
 

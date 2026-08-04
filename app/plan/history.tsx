@@ -12,7 +12,8 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useAuthStore } from '@/stores/auth.store';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
@@ -120,9 +121,8 @@ export default function PlanHistoryScreen() {
             >
               <Text
                 style={{
+                  ...TYPE.bodyStrong,
                   color: active ? colors.background : colors.textSecondary,
-                  fontSize: 13,
-                  fontWeight: '600',
                 }}
               >
                 {t === 'diet' ? 'Diyet' : 'Antrenman'}
@@ -208,10 +208,10 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
             {formatDate(row.generated_at)}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>
             {summary}
           </Text>
         </View>
@@ -223,7 +223,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
             paddingVertical: 3,
           }}
         >
-          <Text style={{ color: reasonColor, fontSize: 11, fontWeight: '700' }}>
+          <Text style={{ ...TYPE.caption, color: reasonColor, fontWeight: '700' }}>
             {reasonLabel}
           </Text>
         </View>
@@ -254,11 +254,11 @@ function DietExpanded({ plan }: { plan: DietPlanData }) {
       {/* FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index */}
       {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map((day, i) => (
         <View key={`${day.day_index}-${i}`} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
             {/* FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled day labels ('Sali') */}
             {dayLabelTR(day.day_index, day.day_label)}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
             {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals) */}
             {day.meals?.length ?? 0} öğün · {Math.round(day.total_kcal ?? 0)} kcal
           </Text>
@@ -275,11 +275,11 @@ function WorkoutExpanded({ plan }: { plan: WorkoutPlanData }) {
       {/* FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index */}
       {(Array.isArray(plan?.days) ? plan.days : []).slice(0, 7).map((day, i) => (
         <View key={`${day.day_index}-${i}`} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
             {/* FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled day labels ('Sali') */}
             {dayLabelTR(day.day_index, day.day_label)}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
             {day.rest_day ? 'Dinlenme' : `${day.focus ?? (day.exercises?.length ?? 0) + ' egzersiz'}`}
           </Text>
         </View>

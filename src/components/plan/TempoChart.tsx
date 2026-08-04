@@ -6,6 +6,7 @@ import { View, Text, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 interface Props {
   startWeight: number;
@@ -87,8 +88,8 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 0.5, borderColor: colors.border }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-        <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>Kilo Tempo</Text>
-        <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+        <Text style={{ ...TYPE.headline, color: colors.text }}>Kilo tempo</Text>
+        <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
           {/* FIX (ux-pass5): Turkish weight idiom — comma decimal + space before kg
               ('81,0 kg'), matching goal-progress/export/plateau formatting. */}
           {startWeight.toFixed(1).replace('.', ',')} kg → {targetWeight.toFixed(1).replace('.', ',')} kg
@@ -131,7 +132,7 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
       />
       </View>
       {etaWeeks !== null && etaWeeks > 0 && (
-        <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: SPACING.xs, textAlign: 'center' }}>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: SPACING.xs, textAlign: 'center' }}>
           Tempo devam ederse ~{etaWeeks} hafta sonra hedefe ulaşırsın.
         </Text>
       )}

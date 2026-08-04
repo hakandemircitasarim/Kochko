@@ -30,7 +30,8 @@ import {
 import { Stack, router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { useAuthStore } from '@/stores/auth.store';
@@ -758,7 +759,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
               accessibilityRole="button"
               accessibilityLabel={active ? 'Revizyondan çık, mevcut plana dön' : 'Taslağı sil'}
             >
-              <Text style={{ color: colors.primary, fontSize: FONT.sm, fontWeight: '600' }}>{active ? 'Çık' : 'İptal'}</Text>
+              <Text style={{ ...TYPE.bodyStrong, color: colors.primary }}>{active ? 'Çık' : 'İptal'}</Text>
             </TouchableOpacity>
           ),
         }} />
@@ -809,7 +810,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
               onLayout={e => { draftHeaderHRef.current = e.nativeEvent.layout.height; }}
               style={{ paddingBottom: SPACING.xs }}
             >
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 1, marginBottom: SPACING.sm }}>
+              <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>
                 HAFTALIK TASLAK — GÖZDEN GEÇİR
               </Text>
               <PlanDayAccordion
@@ -826,7 +827,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
           }
           ListEmptyComponent={
             sending ? null : (
-              <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center', marginTop: SPACING.lg }}>
+              <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginTop: SPACING.lg }}>
                 {cfg.emptyListHint}
               </Text>
             )
@@ -932,7 +933,8 @@ function DraftChatBubble({ msg, accent }: { msg: ChatMsg; accent: string }) {
         borderColor: colors.border,
       }}
     >
-      <Text selectable style={{ color: isUser ? userFg : colors.text, fontSize: 14, lineHeight: 20 }}>
+      {/* Taslak sohbeti ana sohbetle ayni okuma adiminda olmali — 14/20 kendi basina bir spec'ti. */}
+      <Text selectable style={{ ...TYPE.body, color: isUser ? userFg : colors.text }}>
         {displayContent}
       </Text>
       {msg.reasoning ? (
@@ -946,20 +948,17 @@ function DraftChatBubble({ msg, accent }: { msg: ChatMsg; accent: string }) {
         >
           <Text
             style={{
+              ...TYPE.overline,
               color: isUser ? (userFg === 'black' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.75)') : colors.textMuted,
-              fontSize: 11,
-              fontWeight: '700',
-              letterSpacing: 1,
             }}
           >
             GEREKÇE
           </Text>
           <Text
             style={{
+              ...TYPE.callout,
               color: isUser ? (userFg === 'black' ? 'rgba(0,0,0,0.85)' : 'rgba(255,255,255,0.85)') : colors.textSecondary,
-              fontSize: 12,
               marginTop: 3,
-              lineHeight: 17,
             }}
           >
             {msg.reasoning}
