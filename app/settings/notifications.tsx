@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Toggle } from '@/components/settings/ToggleRow'; // FIX (audit UI-DS-03): shared toggle primitive
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { a11ySwitch, getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -138,7 +139,7 @@ export default function NotificationsScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Koçunun sana ne zaman, ne sıklıkta mesaj göndereceğini ayarla.
       </Text>
 
@@ -153,8 +154,8 @@ export default function NotificationsScreen() {
         >
           <Ionicons name="notifications-off-outline" size={20} color={colors.warning} />
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.warning, fontSize: FONT.sm, fontWeight: '700' }}>Bildirim izni kapalı</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 2, lineHeight: 18 }}>
+            <Text style={{ color: colors.warning, ...TYPE.bodyStrong, fontWeight: '700' }}>Bildirim izni kapalı</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 2, lineHeight: 18 }}>
               Telefon ayarlarından izin kapalı olduğu için hiçbir bildirim gönderilemiyor. Açmak için dokun.
             </Text>
           </View>
@@ -166,14 +167,14 @@ export default function NotificationsScreen() {
       <TouchableOpacity onPress={toggleMain} {...a11ySwitch(`Bildirimler ${prefs.enabled ? 'Açık' : 'Kapalı'}`, prefs.enabled)} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg, minHeight: 44 }}>
         {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns the switch role + press). */}
         <Toggle value={prefs.enabled} onToggle={toggleMain} />
-        <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>Bildirimler {prefs.enabled ? 'Açık' : 'Kapalı'}</Text>
+        <Text style={{ color: colors.text, ...TYPE.headline }}>Bildirimler {prefs.enabled ? 'Açık' : 'Kapalı'}</Text>
       </TouchableOpacity>
 
       {prefs.enabled && (
         <>
           {/* Daily limit */}
           <Card title="Günlük Sınır">
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Günde en fazla kaç bildirim almak istiyorsun?</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>Günde en fazla kaç bildirim almak istiyorsun?</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               {[3, 5, 7, 10].map(n => (
                 <TouchableOpacity key={n} onPress={() => persist({ ...prefs, dailyLimit: n })}
@@ -183,7 +184,7 @@ export default function NotificationsScreen() {
                   style={{ flex: 1, minHeight: 44, paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
                     backgroundColor: prefs.dailyLimit === n ? colors.primary : colors.surfaceLight,
                     borderWidth: 1, borderColor: prefs.dailyLimit === n ? colors.primary : colors.border }}>
-                  <Text style={{ color: prefs.dailyLimit === n ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.md, fontWeight: '600' }}>{n}</Text>
+                  <Text style={{ color: prefs.dailyLimit === n ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.headline }}>{n}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -191,7 +192,7 @@ export default function NotificationsScreen() {
 
           {/* Quiet hours */}
           <Card title="Sessiz Saatler">
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, marginBottom: SPACING.sm }}>Bu saatler arasında bildirim gönderilmez.</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>Bu saatler arasında bildirim gönderilmez.</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.md }}>
               <View style={{ flex: 1 }}><DateTimeField label="Başlangıç" mode="time" value={prefs.quietStart} onChange={v => updateQuiet('quietStart', v)} placeholder="23:00" /></View>
               <View style={{ flex: 1 }}><DateTimeField label="Bitiş" mode="time" value={prefs.quietEnd} onChange={v => updateQuiet('quietEnd', v)} placeholder="07:00" /></View>
@@ -210,10 +211,10 @@ export default function NotificationsScreen() {
                 {...a11ySwitch(TYPE_DESCRIPTIONS[key] ? `${label}. ${TYPE_DESCRIPTIONS[key]}` : label, !!isOn)}
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.md, minHeight: 44, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.md }}>{label}</Text>
+                  <Text style={{ color: colors.text, ...TYPE.body }}>{label}</Text>
                   {/* FIX (ux-round3 #15): describe what the type actually does. */}
                   {TYPE_DESCRIPTIONS[key] ? (
-                    <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 1 }}>{TYPE_DESCRIPTIONS[key]}</Text>
+                    <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 1 }}>{TYPE_DESCRIPTIONS[key]}</Text>
                   ) : null}
                 </View>
                 {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns switch role + press). */}

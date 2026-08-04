@@ -235,12 +235,18 @@ export default function ChatHistoryScreen() {
       </View>
 
       {/* Date range filters */}
+      {/* Cihazda görüldü: "Başlangıç (GG.AA.YYYY)" yarım genişlikteki alana tek satıra
+          sığmıyordu, ikinci satıra sarıp alanın alt kenarından KIRPILIYORDU. Sebep bu
+          sayfa değil — paylaşılan Input'un yazı boyutu okuma basamağına çıkarıldığında
+          (13→15) bu iki yer tutucu uzun kaldı. Alan adını label'a al, yer tutucuda
+          yalnız biçim kalsın: hem sığar hem de yazarken de görünür kalır (yer tutucu
+          ilk harfte kaybolur, label kalır). */}
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
         <View style={{ flex: 1 }}>
-          <Input placeholder="Başlangıç (GG.AA.YYYY)" value={dateFrom} onChangeText={setDateFrom} />
+          <Input label="Başlangıç" placeholder="GG.AA.YYYY" value={dateFrom} onChangeText={setDateFrom} />
         </View>
         <View style={{ flex: 1 }}>
-          <Input placeholder="Bitiş (GG.AA.YYYY)" value={dateTo} onChangeText={setDateTo} />
+          <Input label="Bitiş" placeholder="GG.AA.YYYY" value={dateTo} onChangeText={setDateTo} />
         </View>
       </View>
 
@@ -265,7 +271,7 @@ export default function ChatHistoryScreen() {
               }}
             >
               {/* FIX (audit accent-contrast): selected chip text via getContrastColor instead of hardcoded #fff. */}
-              <Text style={{ color: selectedTag === tag ? getContrastColor(colors.primary) : colors.textSecondary, fontSize: FONT.xs }}>{tag}</Text>
+              <Text style={{ color: selectedTag === tag ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.caption }}>{tag}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -283,14 +289,14 @@ export default function ChatHistoryScreen() {
               style={{ paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}
             >
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
-                <Text style={{ color: r.role === 'user' ? colors.primary : colors.textSecondary, fontSize: FONT.xs, fontWeight: '600' }}>
+                <Text style={{ color: r.role === 'user' ? colors.primary : colors.textSecondary, ...TYPE.caption, fontWeight: '600' }}>
                   {r.role === 'user' ? 'Sen' : 'Kochko'}
                 </Text>
-                <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+                <Text style={{ color: colors.textMuted, ...TYPE.caption }}>
                   {new Date(r.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
-              <Text style={{ color: colors.text, fontSize: FONT.sm, lineHeight: 20 }} numberOfLines={3}>{r.content}</Text>
+              <Text style={{ color: colors.text, ...TYPE.body, lineHeight: 20 }} numberOfLines={3}>{r.content}</Text>
             </TouchableOpacity>
           ))}
         </Card>
@@ -299,7 +305,7 @@ export default function ChatHistoryScreen() {
       {/* FIX (audit search-0-results): explicit 'Sonuç bulunamadı' card after a real search. */}
       {hasSearched && !searching && searchResults.length === 0 && (
         <Card>
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>
+          <Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', paddingVertical: SPACING.md }}>
             Sonuç bulunamadı. Farklı bir kelime veya tarih aralığı dene.
           </Text>
         </Card>
@@ -325,7 +331,7 @@ export default function ChatHistoryScreen() {
           <LoadErrorState embedded title="Sohbet geçmişi yüklenemedi" onRetry={loadSessions} />
         </Card>
       ) : filteredSessions.length === 0 ? (
-        <Card><Text style={{ color: colors.textMuted, fontSize: FONT.sm, textAlign: 'center', paddingVertical: SPACING.md }}>Henüz sohbet geçmişi yok.</Text></Card>
+        <Card><Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', paddingVertical: SPACING.md }}>Henüz sohbet geçmişi yok.</Text></Card>
       ) : (
         filteredSessions.map(s => (
           <TouchableOpacity
@@ -338,16 +344,16 @@ export default function ChatHistoryScreen() {
             <Card>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '500' }}>
+                  <Text style={{ color: colors.text, ...TYPE.headline }}>
                     {s.title ?? new Date(s.started_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </Text>
-                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>
+                  <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>
                     {s.message_count} mesaj
                     {s.topic_tags && s.topic_tags.length > 0 ? ` | ${s.topic_tags.join(', ')}` : ''}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
-                  <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+                  <Text style={{ color: colors.textMuted, ...TYPE.caption }}>
                     {new Date(s.started_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                   </Text>
                   <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
@@ -358,7 +364,8 @@ export default function ChatHistoryScreen() {
         ))
       )}
 
-      <Text style={{ color: colors.textMuted, fontSize: 10, textAlign: 'center', marginTop: SPACING.md }}>Dokun: sohbeti aç · Uzun bas: sohbeti sil</Text>
+      {/* 10px, olcegin tabaninin altindaydi — ustelik iki jesti ogreten tek metin. */}
+      <Text style={{ ...TYPE.caption, color: colors.textMuted, textAlign: 'center', marginTop: SPACING.md }}>Dokun: sohbeti aç · Uzun bas: sohbeti sil</Text>
       {/* Spec note: Sohbet silme Katman 2'yi etkilemez */}
     </ScrollView>
   );

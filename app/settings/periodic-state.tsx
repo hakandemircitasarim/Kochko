@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -133,7 +134,7 @@ export default function PeriodicStateScreen() {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior="padding">
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Özel bir dönemdeysen (Ramazan, tatil, hastalık, hamilelik vs.) bunu bildir. Koçun planlarını ve tavsiyelerini buna göre ayarlar.
       </Text>
 
@@ -141,22 +142,22 @@ export default function PeriodicStateScreen() {
       {currentState && (
         <Card style={{ borderColor: colors.warning, borderWidth: 2 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: colors.warning, fontSize: FONT.md, fontWeight: '600' }}>
+            <Text style={{ color: colors.warning, ...TYPE.headline }}>
               Aktif: {PERIODIC_STATE_CONFIG[currentState]?.label_tr ?? currentState}
             </Text>
             {transition?.daysRemaining != null && transition.daysRemaining > 0 && (
               <View style={{ backgroundColor: colors.warning, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: 2 }}>
-                <Text style={{ color: getContrastColor(colors.warning) === 'black' ? '#0D0D12' : '#fff', fontSize: FONT.xs, fontWeight: '700' }}>{transition.daysRemaining} gün kaldı</Text>
+                <Text style={{ color: getContrastColor(colors.warning) === 'black' ? '#0D0D12' : '#fff', ...TYPE.caption, fontWeight: '700' }}>{transition.daysRemaining} gün kaldı</Text>
               </View>
             )}
           </View>
           {transition?.isExpiring && (
-            <Text style={{ color: colors.error, fontSize: FONT.sm, marginTop: SPACING.xs }}>
+            <Text style={{ color: colors.error, ...TYPE.body, marginTop: SPACING.xs }}>
               {transition.transitionMessage_tr}
             </Text>
           )}
           {transition?.isExpired && (
-            <Text style={{ color: colors.error, fontSize: FONT.sm, marginTop: SPACING.xs }}>
+            <Text style={{ color: colors.error, ...TYPE.body, marginTop: SPACING.xs }}>
               {transition.transitionMessage_tr}
             </Text>
           )}
@@ -189,7 +190,7 @@ export default function PeriodicStateScreen() {
               borderColor: selected === key ? colors.primary : colors.border,
               backgroundColor: selected === key ? colors.primary : 'transparent',
             }}>
-            <Text style={{ color: selected === key ? (getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff') : colors.textSecondary, fontSize: FONT.sm }}>{cfg.label_tr}</Text>
+            <Text style={{ color: selected === key ? (getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff') : colors.textSecondary, ...TYPE.body }}>{cfg.label_tr}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -197,15 +198,15 @@ export default function PeriodicStateScreen() {
       {/* Selected state description */}
       {config && (
         <Card>
-          <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '600', marginBottom: SPACING.xs }}>{config.label_tr}</Text>
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, lineHeight: 20, marginBottom: SPACING.sm }}>{config.description_tr}</Text>
+          <Text style={{ color: colors.text, ...TYPE.bodyStrong, marginBottom: SPACING.xs }}>{config.label_tr}</Text>
+          <Text style={{ color: colors.textSecondary, ...TYPE.body, lineHeight: 20, marginBottom: SPACING.sm }}>{config.description_tr}</Text>
           {config.calorieAdjustment !== 0 && (
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption }}>
               Kalori: {config.calorieAdjustment > 0 ? '+' : ''}{config.calorieAdjustment} kcal
             </Text>
           )}
           {!config.ifCompatible && (
-            <Text style={{ color: colors.error, fontSize: FONT.xs }}>IF ile uyumlu değil — otomatik durdurulur</Text>
+            <Text style={{ color: colors.error, ...TYPE.caption }}>IF ile uyumlu değil — otomatik durdurulur</Text>
           )}
         </Card>
       )}
@@ -219,7 +220,7 @@ export default function PeriodicStateScreen() {
         placeholder="YYYY-AA-GG (örn: 2026-04-10)"
       />
       {config?.requiresEndDate && !endDate && (
-        <Text style={{ color: colors.warning, fontSize: FONT.xs, marginTop: -SPACING.sm, marginBottom: SPACING.sm }}>
+        <Text style={{ color: colors.warning, ...TYPE.caption, marginTop: -SPACING.sm, marginBottom: SPACING.sm }}>
           Bu durum için bitiş tarihi gerekli.
         </Text>
       )}

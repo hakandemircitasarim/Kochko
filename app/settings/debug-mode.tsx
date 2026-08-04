@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getRecentErrors, isSentryActive } from '@/lib/sentry';
 
@@ -58,7 +59,7 @@ export default function DebugModeScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>AI sisteminin iç yapısı ve performans metrikleri.</Text>
+      <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>AI sisteminin iç yapısı ve performans metrikleri.</Text>
 
       {/* Profile Summary */}
       <Card title="Katman 1 (Profil)">
@@ -89,12 +90,12 @@ export default function DebugModeScreen() {
       <Card title="Son 10 Mesaj (Görev Modları)">
         {lastMessages.map((m, i) => (
           <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3, borderBottomWidth: i < lastMessages.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
-            <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>{String(m.task_mode ?? '-')}</Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{String(m.model_version ?? '-')}</Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{String(m.token_count ?? '-')} tok</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>{String(m.task_mode ?? '-')}</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{String(m.model_version ?? '-')}</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{String(m.token_count ?? '-')} tok</Text>
           </View>
         ))}
-        {lastMessages.length === 0 && <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Henüz mesaj yok.</Text>}
+        {lastMessages.length === 0 && <Text style={{ color: colors.textMuted, ...TYPE.body }}>Henüz mesaj yok.</Text>}
       </Card>
 
       {/* System Info */}
@@ -114,12 +115,12 @@ export default function DebugModeScreen() {
           hiçbir zaman okunmuyordu. Okuyucusu burası. */}
       <Card title={`Son Hatalar (${recentErrors.length})`}>
         {recentErrors.length === 0 && (
-          <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Bu oturumda kaydedilmiş hata yok.</Text>
+          <Text style={{ color: colors.textMuted, ...TYPE.body }}>Bu oturumda kaydedilmiş hata yok.</Text>
         )}
         {recentErrors.slice(-10).reverse().map((e, i) => (
           <View key={i} style={{ paddingVertical: 4, borderBottomWidth: i < Math.min(10, recentErrors.length) - 1 ? 1 : 0, borderBottomColor: colors.border }}>
-            <Text style={{ color: colors.text, fontSize: FONT.xs }} numberOfLines={2}>{e.message}</Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>{new Date(e.at).toLocaleString('tr-TR')}</Text>
+            <Text style={{ color: colors.text, ...TYPE.caption }} numberOfLines={2}>{e.message}</Text>
+            <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{new Date(e.at).toLocaleString('tr-TR')}</Text>
           </View>
         ))}
       </Card>
@@ -131,8 +132,8 @@ function DebugRow({ label, value }: { label: string; value: string }) {
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>{label}</Text>
-      <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '500', maxWidth: '60%', textAlign: 'right' }} numberOfLines={1}>{value}</Text>
+      <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{label}</Text>
+      <Text style={{ color: colors.text, ...TYPE.bodyStrong, maxWidth: '60%', textAlign: 'right' }} numberOfLines={1}>{value}</Text>
     </View>
   );
 }

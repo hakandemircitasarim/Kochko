@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import {
@@ -172,7 +173,7 @@ export default function HouseholdScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
-      <Text style={{ fontSize: FONT.sm, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg, lineHeight: 20 }}>
         Aile üyelerini ekle, ortak alışveriş listesi oluştur.
       </Text>
 
@@ -217,7 +218,7 @@ export default function HouseholdScreen() {
           <Card title={household.name}>
             <View style={{ gap: SPACING.sm }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>Davet Kodu</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Davet Kodu</Text>
                 {/* ux-sweep (HH-01): kod salt-görüntüydü — 'paylaş' vaadi eylemsizdi. Dokun→paylaş. */}
                 <TouchableOpacity
                   onPress={() => { void Share.share({ message: `KOCHKO aile davet kodum: ${household.inviteCode}` }); }}
@@ -225,11 +226,11 @@ export default function HouseholdScreen() {
                   accessibilityLabel={`Davet kodu ${household.inviteCode}. Paylaşmak için dokun`}
                   style={{ backgroundColor: colors.surfaceLight, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, borderRadius: RADIUS.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
                 >
-                  <Text selectable style={{ color: colors.primary, fontSize: FONT.lg, fontWeight: '700', letterSpacing: 2 }}>{household.inviteCode}</Text>
+                  <Text selectable style={{ color: colors.primary, ...TYPE.title3, letterSpacing: 2 }}>{household.inviteCode}</Text>
                   <Ionicons name="share-social-outline" size={16} color={colors.primary} />
                 </TouchableOpacity>
               </View>
-              <Text style={{ color: colors.textMuted, fontSize: FONT.xs }}>
+              <Text style={{ color: colors.textMuted, ...TYPE.caption }}>
                 Koda dokunarak paylaşabilirsin — aile üyeleri bu kodla katılır.
               </Text>
             </View>
@@ -249,8 +250,8 @@ export default function HouseholdScreen() {
                   borderBottomColor: colors.border,
                 }}
               >
-                <Text style={{ color: colors.text, fontSize: FONT.md }}>{m.displayName}</Text>
-                <Text style={{ color: m.role === 'owner' ? colors.primary : colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>
+                <Text style={{ color: colors.text, ...TYPE.body }}>{m.displayName}</Text>
+                <Text style={{ color: m.role === 'owner' ? colors.primary : colors.textMuted, ...TYPE.caption, fontWeight: '600' }}>
                   {m.role === 'owner' ? 'Kurucu' : 'Üye'}
                 </Text>
               </View>
@@ -260,7 +261,7 @@ export default function HouseholdScreen() {
           {/* Shopping list */}
           <Card title="Ortak Alışveriş Listesi" style={{ marginTop: SPACING.md }}>
             {shoppingList.length === 0 ? (
-              <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>
+              <Text style={{ color: colors.textMuted, ...TYPE.body }}>
                 Henüz alışveriş listesi yok. Haftalık menü oluşturulduğunda burada görünecek.
               </Text>
             ) : (
@@ -299,11 +300,11 @@ export default function HouseholdScreen() {
                       {checked && <Text style={{ color: getContrastColor(colors.primary), fontSize: 12, fontWeight: '700' }}>✓</Text>}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: checked ? colors.textMuted : colors.text, fontSize: FONT.md, textDecorationLine: checked ? 'line-through' : 'none' }}>
+                      <Text style={{ color: checked ? colors.textMuted : colors.text, ...TYPE.body, textDecorationLine: checked ? 'line-through' : 'none' }}>
                         {item.ingredient}
                       </Text>
                     </View>
-                    <Text style={{ color: colors.textSecondary, fontSize: FONT.sm }}>
+                    <Text style={{ color: colors.textSecondary, ...TYPE.body }}>
                       {/* FIX (final sweep): totalAmount = MEMBER COUNT, unit = the full amount string —
                           '{count} {unit}' rendered '1 500 g' as if it were 1500 g. Show the amount,
                           plus how many members need it when shared. */}
