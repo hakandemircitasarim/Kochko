@@ -3,7 +3,8 @@
  */
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useTheme } from '@/lib/theme'; // FIX (audit UI-DS-03): theme-react (was static COLORS snapshot)
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { a11ySwitch, getContrastColor } from '@/lib/accessibility'; // FIX (audit UI-PR-01)
 
 // FIX (audit UI-DS-03): single themed iOS-style toggle primitive. The 48x28 r14 track +
@@ -88,8 +89,8 @@ export function ToggleRow({ label, description, value, onToggle, disabled }: Pro
       }}
     >
       <View style={{ flex: 1, marginRight: SPACING.md }}>
-        <Text style={{ color: colors.text, fontSize: FONT.md }}>{label}</Text>
-        {description && <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{description}</Text>}
+        <Text style={{ ...TYPE.body, color: colors.text }}>{label}</Text>
+        {description && <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>{description}</Text>}
       </View>
       {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns the switch role). */}
       <Toggle value={value} onToggle={onToggle} disabled={disabled} />

@@ -6,7 +6,8 @@
 import React from 'react';
 import { View, Text, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import { SPACING, RADIUS, FONT } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 
 interface DataPoint {
@@ -39,7 +40,7 @@ export function ProgressChart({ data, color: colorProp, unit = '', height = 180 
   if (data.length === 0) {
     return (
       <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: colors.textMuted, fontSize: FONT.sm }}>Henüz veri yok</Text>
+        <Text style={{ ...TYPE.body, color: colors.textMuted }}>Henüz veri yok</Text>
       </View>
     );
   }
@@ -66,13 +67,13 @@ export function ProgressChart({ data, color: colorProp, unit = '', height = 180 
       {/* Summary labels — readable size + AA-contrast textSecondary */}
       {/* FIX (ux-pass5): TR ondalık — virgül ("72,5 kg"), nokta değil. */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
           En düşük {min.toFixed(1).replace('.', ',')}{unit}
         </Text>
-        <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>
+        <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
           Son {last.toFixed(1).replace('.', ',')}{unit}
         </Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs }}>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
           En yüksek {max.toFixed(1).replace('.', ',')}{unit}
         </Text>
       </View>

@@ -137,30 +137,36 @@ export function CircularProgress({
               around it. TYPE.display exists for exactly this: one figure per screen, at a size that
               says "read me first". Small rings (the macro dials inside a chat bubble) are NOT hero
               figures and keep their original step — blowing those up would flatten the hierarchy in
-              the other direction. */}
+              the other direction.
+              08-04: the boundary was `> 120`, which put the 120px compliance ring of the weekly and
+              monthly reports in the SMALL branch — so "%38", the headline figure of those screens,
+              sat at 20px inside a 120px ring with the middle mostly empty. Three steps, not two:
+              a full-page hero ring (dashboard), a report ring, and the macro dials. */}
           <Text
             maxFontSizeMultiplier={MAX_FONT_SCALE}
             style={
               size > 120
                 ? { ...TYPE.display, color: colors.text }
-                : { fontSize: FONT.xl, fontWeight: '700', color: colors.text, letterSpacing: -1 }
+                : size >= 120
+                  ? { ...TYPE.title1, color: colors.text }
+                  : { ...TYPE.title3, color: colors.text, letterSpacing: -1 }
             }
           >
             {shownValue}
           </Text>
           {unit && (
-            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: FONT.sm, fontWeight: '500', color: colors.textSecondary, marginLeft: 2 }}>
+            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, color: colors.textSecondary, marginLeft: 2 }}>
               {unit}
             </Text>
           )}
         </View>
         {label && (
-          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: FONT.sm, color: colors.textSecondary, fontWeight: '400', marginTop: 2 }}>
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.body, color: colors.textSecondary, marginTop: 2 }}>
             {label}
           </Text>
         )}
         {sublabel && (
-          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ fontSize: FONT.xs, color: colors.textMuted, marginTop: 1 }}>
+          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }}>
             {sublabel}
           </Text>
         )}

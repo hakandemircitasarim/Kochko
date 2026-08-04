@@ -19,7 +19,8 @@ import { create } from 'zustand';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 
 export type ToastVariant = 'success' | 'error' | 'info';
@@ -123,7 +124,7 @@ export function ToastHost() {
         }}
       >
         <Ionicons name={icon} size={16} color={accent} />
-        <Text style={{ color: colors.text, fontSize: FONT.sm, flexShrink: 1 }} numberOfLines={2}>{current.message}</Text>
+        <Text style={{ ...TYPE.body, color: colors.text, flexShrink: 1 }} numberOfLines={2}>{current.message}</Text>
         {current.actionLabel ? (
           <TouchableOpacity
             onPress={() => { const a = current.onAction; dismiss(); a?.(); }}
@@ -131,7 +132,7 @@ export function ToastHost() {
             accessibilityRole="button"
             accessibilityLabel={current.actionLabel}
           >
-            <Text style={{ color: accent, fontSize: FONT.sm, fontWeight: '700' }}>{current.actionLabel}</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: accent, fontWeight: '700' }}>{current.actionLabel}</Text>
           </TouchableOpacity>
         ) : null}
       </View>

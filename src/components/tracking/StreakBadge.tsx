@@ -4,7 +4,8 @@
  */
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -37,7 +38,7 @@ export function StreakBadge({ days }: Props) {
         backgroundColor: fill,
       }}>
       <Ionicons name="flame" size={14} color={fg} />
-      <Text style={{ color: fg, fontSize: FONT.xs, fontWeight: '600' }}>{days} gün</Text>
+      <Text style={{ ...TYPE.caption, color: fg, fontWeight: '600' }}>{days} gün</Text>
     </View>
   );
 }

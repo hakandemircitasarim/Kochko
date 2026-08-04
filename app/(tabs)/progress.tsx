@@ -623,7 +623,7 @@ export default function ProgressScreen() {
           {/* D4: Plateau strategy recommendation cards */}
           {strategyRec && (
             <View style={{ marginTop: SPACING.md }}>
-              <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '700', marginBottom: SPACING.sm, letterSpacing: 1 }}>ÖNERİLEN STRATEJİLER</Text>
+              <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.sm }}>ÖNERİLEN STRATEJİLER</Text>
               <Text style={{ color: colors.text, ...TYPE.body, marginBottom: SPACING.sm }}>{strategyRec.reasoning}</Text>
 
               {/* Primary strategy — FIX (ux-pass5): in-flight'ta disabled + busy + spinner

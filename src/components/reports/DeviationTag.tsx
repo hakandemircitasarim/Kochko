@@ -3,7 +3,8 @@
  * Shows why the user deviated from their plan.
  */
 import { View, Text } from 'react-native';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 
 // All deviation reasons are "slip/risk" signals, rendered with on-brand
@@ -47,7 +48,7 @@ export function DeviationTag({ reason }: Props) {
         paddingHorizontal: SPACING.sm, paddingVertical: 4,
         borderLeftWidth: 3, borderLeftColor: info.color,
       }}>
-      <Text style={{ color: info.color, fontSize: FONT.sm, fontWeight: '600' }}>{info.text}</Text>
+      <Text style={{ ...TYPE.caption, color: info.color, fontWeight: '600' }}>{info.text}</Text>
     </View>
   );
 }

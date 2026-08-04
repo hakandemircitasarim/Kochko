@@ -8,7 +8,8 @@ import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 interface Props {
   label?: string;
@@ -56,7 +57,7 @@ export function DateTimeField({ label, mode, value, onChange, placeholder, minim
   return (
     <View style={{ marginBottom: SPACING.md }}>
       {label ? (
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>{label}</Text>
+        <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>{label}</Text>
       ) : null}
       <TouchableOpacity
         onPress={() => setShow(true)}
@@ -69,7 +70,7 @@ export function DateTimeField({ label, mode, value, onChange, placeholder, minim
           borderWidth: 0.5, borderColor: colors.border, minHeight: 48,
         }}
       >
-        <Text style={{ color: value ? colors.text : colors.textSecondary, fontSize: FONT.sm }}>{display}</Text>
+        <Text style={{ ...TYPE.body, color: value ? colors.text : colors.textSecondary }}>{display}</Text>
         <Ionicons name={mode === 'time' ? 'time-outline' : 'calendar-outline'} size={18} color={colors.textSecondary} />
       </TouchableOpacity>
       {show && (

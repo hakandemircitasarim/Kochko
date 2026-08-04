@@ -255,7 +255,7 @@ export function PersonaCard({
   const info = LABELS[persona] ?? { title: persona, desc: 'Koçluk tarzını buna göre ayarladım.' };
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.lg, marginTop: SPACING.sm, borderWidth: 0.5, borderColor: colors.primary }}>
-      <Text style={{ color: colors.primary, ...TYPE.caption, fontWeight: '600', letterSpacing: 0.3 }}>SENİ TANIDIM</Text>
+      <Text style={{ ...TYPE.overline, color: colors.primary }}>SENİ TANIDIM</Text>
       <Text style={{ color: colors.text, ...TYPE.title3, marginTop: 4 }}>{info.title}</Text>
       <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>{info.desc}</Text>
       <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.sm }}>Yanlışsa söyle, ayarlarım.</Text>

@@ -6,7 +6,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
-import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
+import { SPACING, RADIUS, WATER_INCREMENT } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useProfileStore } from '@/stores/profile.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
@@ -91,7 +92,7 @@ function FABButton() {
               paddingTop: SPACING.lg, paddingBottom: insets.bottom + SPACING.lg, paddingHorizontal: SPACING.xl,
             }}
           >
-            <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '700', letterSpacing: 0.5, marginBottom: SPACING.sm }}>HIZLI KAYIT</Text>
+            <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>HIZLI KAYIT</Text>
             {OPTIONS.map((o) => (
               <TouchableOpacity
                 key={o.label}
@@ -103,7 +104,7 @@ function FABButton() {
                 <View style={{ width: 36, height: 36, borderRadius: RADIUS.sm, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name={o.icon} size={18} color={colors.primary} />
                 </View>
-                <Text style={{ color: colors.text, fontSize: FONT.md, fontWeight: '600' }}>{o.label}</Text>
+                <Text style={{ ...TYPE.headline, color: colors.text }}>{o.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -146,7 +147,7 @@ export default function TabLayout() {
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.textSecondary,
       tabBarLabelStyle: {
-        fontSize: 11,
+        ...TYPE.footnote,
         fontWeight: '500',
         marginTop: 0,
       },

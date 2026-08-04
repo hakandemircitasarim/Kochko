@@ -3,7 +3,8 @@
  * Used in daily and weekly reports.
  */
 import { View, Text } from 'react-native';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 import { CircularProgress } from '@/components/ui/CircularProgress';
 
@@ -41,7 +42,7 @@ export function ComplianceScore({ score, label = 'Uyum Puanı', size = 'large' }
         strokeWidth={ringWidth}
         color={color}
       />
-      <Text style={{ color: colors.textSecondary, fontSize: FONT.md, marginTop: SPACING.sm }}>{label}</Text>
+      <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.sm }}>{label}</Text>
     </View>
   );
 }
@@ -55,7 +56,7 @@ export function ComplianceBadge({ score }: { score: number }) {
   return (
     <View style={{ backgroundColor: color + '20', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 }}>
       {/* FIX (ux-pass5): rozet de yüzde formatında — büyük halka ile tutarlı. */}
-      <Text style={{ color, fontSize: FONT.xs, fontWeight: '700' }}>%{score}</Text>
+      <Text style={{ ...TYPE.caption, color, fontWeight: '700' }}>%{score}</Text>
     </View>
   );
 }

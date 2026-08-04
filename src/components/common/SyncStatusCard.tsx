@@ -10,7 +10,8 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { getQueueStatus, syncQueue, isOnline } from '@/services/offline-queue.service';
@@ -63,8 +64,8 @@ export function SyncStatusCard() {
     }}>
       <Ionicons name="cloud-offline-outline" size={20} color={colors.warning} />
       <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.text, fontSize: FONT.sm, fontWeight: '700' }}>{count} kayıt senkronize edilmedi</Text>
-        <Text style={{ color: colors.textSecondary, fontSize: FONT.xs, marginTop: 1 }}>Bu kayıtlar henüz sunucuya ulaşmadı.</Text>
+        <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>{count} kayıt senkronize edilmedi</Text>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 1 }}>Bu kayıtlar henüz sunucuya ulaşmadı.</Text>
       </View>
       <TouchableOpacity
         onPress={retry}
@@ -75,7 +76,7 @@ export function SyncStatusCard() {
       >
         {retrying
           ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
-          : <Text style={{ color: getContrastColor(colors.primary), fontSize: FONT.xs, fontWeight: '700' }}>Şimdi dene</Text>}
+          : <Text style={{ ...TYPE.caption, color: getContrastColor(colors.primary), fontWeight: '700' }}>Şimdi dene</Text>}
       </TouchableOpacity>
     </View>
   );

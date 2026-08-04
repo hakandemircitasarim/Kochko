@@ -3376,7 +3376,7 @@ function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
   const { colors } = useTheme();
   return (
     <View style={{ marginTop: SPACING.sm, gap: SPACING.xs, opacity: disabled ? 0.5 : 1 }}>
-      <Text style={{ color: colors.textMuted, ...TYPE.caption, fontWeight: '700', letterSpacing: 0.5 }}>
+      <Text style={{ ...TYPE.caption, color: colors.textMuted, fontWeight: '700' }}>
         Neyi değiştirelim?
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>

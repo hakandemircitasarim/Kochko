@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react';
 import { View, Animated, Easing, Text } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 const DOT_SIZE = 6;
 const DOT_GAP = 4;
@@ -88,7 +89,7 @@ export function TypingIndicator({ label = 'Kochko yazıyor' }: Props) {
         <Dot delay={160} color={colors.primary} />
         <Dot delay={320} color={colors.primary} />
       </View>
-      <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+      <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
         {label}
       </Text>
     </View>

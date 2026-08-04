@@ -15,7 +15,8 @@ import { syncQueue, getQueueCount } from '@/services/offline-queue.service';
 // ve "senkronize ediliyor" göstergesi yalnız bekleyen kayıt varken çıkmalı.
 import { processOfflineQueue, getOfflineQueueSize } from '@/services/chat.service';
 import { useTheme } from '@/lib/theme';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 
 export function OfflineBanner() {
@@ -101,7 +102,7 @@ export function OfflineBanner() {
       }}
     >
       <Ionicons name={icon} size={14} color={fg} />
-      <Text style={{ color: fg, fontSize: FONT.xs, flex: 1 }} numberOfLines={2}>
+      <Text style={{ ...TYPE.caption, color: fg, flex: 1 }} numberOfLines={2}>
         {label}
       </Text>
     </Animated.View>

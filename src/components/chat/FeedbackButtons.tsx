@@ -8,7 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { submitFeedback, type ContextType, type FeedbackType } from '@/services/feedback.service';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 interface Props {
   contextType: ContextType;
@@ -40,7 +41,7 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
     return (
       // FIX (ux-round3 #19): the confirmation replaces the buttons (focus was on a now-unmounted
       // node), so a screen reader never announces it. Mark it a polite live region.
-      <Text accessible accessibilityLiveRegion="polite" style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
+      <Text accessible accessibilityLiveRegion="polite" style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.xs }}>
         {submitted === 'helpful' ? 'Teşekkürler!' : 'Not edildi, gelecekte daha iyi olacak.'}
       </Text>
     );
@@ -67,7 +68,7 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
           }}
         >
           <Ionicons name="thumbs-up" size={12} color={colors.success} />
-          <Text style={{ color: colors.success, fontSize: FONT.xs, fontWeight: '700' }}>İşe yaradı</Text>
+          <Text style={{ ...TYPE.caption, color: colors.success, fontWeight: '700' }}>İşe yaradı</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => handleFeedback('not_for_me')}
@@ -87,11 +88,11 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
           }}
         >
           <Ionicons name="thumbs-down-outline" size={12} color={colors.textMuted} />
-          <Text style={{ color: colors.textMuted, fontSize: FONT.xs, fontWeight: '600' }}>Bana göre değil</Text>
+          <Text style={{ ...TYPE.caption, color: colors.textMuted, fontWeight: '600' }}>Bana göre değil</Text>
         </TouchableOpacity>
       </View>
       {failed && (
-        <Text accessible accessibilityLiveRegion="polite" style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
+        <Text accessible accessibilityLiveRegion="polite" style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.xs }}>
           Kaydedilemedi, tekrar dene.
         </Text>
       )}

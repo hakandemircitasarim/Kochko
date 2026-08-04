@@ -14,6 +14,7 @@ import { getContrastColor } from '@/lib/accessibility';
 // (Class component can't call useTheme(), but the SPACING/FONT/RADIUS tokens are
 // plain constants and import fine here — only the *colors* need the dark fallback.)
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 
 interface Props {
   children: React.ReactNode;
@@ -78,12 +79,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
         {/* FIX (audit UI-DS-05): tokenize spacing/font/radius literals. `padding: 32` and
             `minWidth: 200` have no scale token so they stay as layout literals; everything
             with an exact token (18->FONT.xl2, 14->FONT.md, 8->SPACING.sm, 24->SPACING.xxl,
-            12->SPACING.md/RADIUS.md, 11->FONT.xs) is replaced. fontSize:10 has no token (xs=11). */}
+            12->SPACING.md/RADIUS.md) is replaced. Metinler TYPE olceginde; 10 -> TYPE.footnote. */}
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-          <Text style={{ color: c.text, fontSize: FONT.xl2, fontWeight: '700', marginBottom: SPACING.sm }}>
+          <Text style={{ ...TYPE.title2, color: c.text, marginBottom: SPACING.sm }}>
             Bir şeyler ters gitti
           </Text>
-          <Text style={{ color: c.textMuted, fontSize: FONT.md, textAlign: 'center', marginBottom: SPACING.xxl }}>
+          <Text style={{ ...TYPE.body, color: c.textMuted, textAlign: 'center', marginBottom: SPACING.xxl }}>
             Beklenmeyen bir hata oluştu. Tekrar deneyebilir ya da hesaptan çıkıp yeniden girebilirsin.
           </Text>
           <TouchableOpacity
@@ -106,11 +107,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
         </View>
         {devDetails && (
           <ScrollView style={{ maxHeight: 200, backgroundColor: c.surface, padding: SPACING.md }}>
-            <Text style={{ color: c.error, fontSize: FONT.xs, fontFamily: 'monospace' }}>
+            <Text style={{ ...TYPE.caption, color: c.error, fontFamily: 'monospace' }}>
               {this.state.error?.message}
             </Text>
             {this.state.errorInfo && (
-              <Text style={{ color: c.textMuted, fontSize: 10, fontFamily: 'monospace', marginTop: SPACING.sm }}>
+              <Text style={{ ...TYPE.footnote, color: c.textMuted, fontFamily: 'monospace', marginTop: SPACING.sm }}>
                 {this.state.errorInfo}
               </Text>
             )}

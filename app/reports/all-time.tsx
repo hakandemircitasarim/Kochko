@@ -12,7 +12,8 @@ import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 
 export default function AllTimeReportScreen() {
@@ -142,10 +143,10 @@ export default function AllTimeReportScreen() {
         <Card title="Toplam İlerleme">
           <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
             {/* FIX (ux-pass5): TR ondalık — virgül ("-4,5 kg"), nokta değil. */}
-            <Text style={{ color: totalWeightChange < 0 ? colors.success : colors.error, fontSize: FONT.hero, fontWeight: '800' }}>
+            <Text style={{ ...TYPE.title1, color: totalWeightChange < 0 ? colors.success : colors.error }}>
               {totalWeightChange > 0 ? '+' : ''}{totalWeightChange.toFixed(1).replace('.', ',')} kg
             </Text>
-            <Text style={{ color: colors.textMuted, fontSize: FONT.sm, marginTop: SPACING.xs }}>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.xs }}>
               {/* FIX (ux-pass5): DB ondalıkları da virgülle ("81,5 kg → 79,5 kg"). */}
               {String(stats.startWeight).replace('.', ',')} kg → {String(stats.currentWeight).replace('.', ',')} kg
             </Text>
@@ -181,7 +182,7 @@ export default function AllTimeReportScreen() {
         {/* FIX (audit UI-PLN-03): only show the empty-state when there is genuinely no kg
             milestone either — otherwise a gaining user with >=1 kg saw an empty card. */}
         {(totalWeightChange === null || Math.abs(totalWeightChange) < 1) && stats.longestStreak < 7 && (
-          <Text style={{ color: colors.textSecondary, fontSize: FONT.sm, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
+          <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
         )}
       </Card>
     </ScrollView>
@@ -199,8 +200,8 @@ function StatCard({ label, value, icon }: { label: string; value: string; icon?:
           <Ionicons name={icon} size={16} color={colors.primary} />
         </View>
       )}
-      <Text style={{ color: colors.primary, fontSize: FONT.xl, fontWeight: '700' }}>{value}</Text>
-      <Text style={{ color: colors.textMuted, fontSize: FONT.xs, marginTop: 2 }}>{label}</Text>
+      <Text style={{ ...TYPE.title3, color: colors.primary }}>{value}</Text>
+      <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>{label}</Text>
     </View>
   );
 }
@@ -211,7 +212,7 @@ function MilestoneRow({ text, done }: { text: string; done: boolean }) {
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm }}>
       {/* FIX (ux-polish): Ionicons to match the daily report's checklist (was bare ✓/○ text glyphs). */}
       <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={done ? colors.success : colors.textMuted} style={{ marginRight: SPACING.sm }} />
-      <Text style={{ color: done ? colors.success : colors.textMuted, fontSize: FONT.md }}>{text}</Text>
+      <Text style={{ ...TYPE.body, color: done ? colors.success : colors.textMuted }}>{text}</Text>
     </View>
   );
 }
