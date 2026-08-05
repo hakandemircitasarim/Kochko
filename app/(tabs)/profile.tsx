@@ -26,6 +26,7 @@ import { goalLabelTR, coachToneLabelTR } from '@/lib/labels';
 import { calculateProfileCompletion, CATEGORY_LABELS } from '@/lib/profile-completion';
 
 import { FREE_LAUNCH } from '@/lib/premium-gate';
+import { formatDecimal } from '@/lib/units';
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -225,7 +226,7 @@ export default function ProfileScreen() {
       {/* 5.4 Goals section */}
       <SectionTitle label="Hedefler" colors={colors} />
       <MenuGroup colors={colors}>
-        <MenuRow icon="flag-outline" color={colors.primary} label={goalLoadError ? 'Hedef yüklenemedi' : goal ? `${goalLabelTR(goal.goal_type)}${goal.target_weight_kg ? ` - ${goal.target_weight_kg} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
+        <MenuRow icon="flag-outline" color={colors.primary} label={goalLoadError ? 'Hedef yüklenemedi' : goal ? `${goalLabelTR(goal.goal_type)}${goal.target_weight_kg ? ` - ${formatDecimal(goal.target_weight_kg)} kg` : ''}` : 'Hedef belirle'} onPress={() => router.push('/settings/goals')} colors={colors} />
         {/* FIX (completeness audit): 'Güç hedefi' now routes to the real strength screen (was the
             weight-goal editor). 'Uyku hedefi' removed — no sleep-goal screen exists, so the row
             promised a feature the app doesn't have and dead-ended in the weight-goal form. */}

@@ -17,6 +17,7 @@ import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 import { GENDER_LABELS_TR, ACTIVITY_LEVEL_LABELS_TR, toOptions } from '@/lib/labels';
+import { formatDecimal } from '@/lib/units';
 import type {
   Gender, ActivityLevel, Equipment, CookingSkill, BudgetLevel,
   TrainingStyle, DietMode, AlcoholFrequency, UnitSystem, PortionLanguage,
@@ -130,7 +131,7 @@ export default function EditProfileScreen() {
   useEffect(() => {
     if (!profile) return;
     if (profile.height_cm) setHeightCm(String(profile.height_cm));
-    if (profile.weight_kg) setWeightKg(String(profile.weight_kg));
+    if (profile.weight_kg) setWeightKg(formatDecimal(profile.weight_kg as number));
     if (profile.birth_year) setBirthYear(String(profile.birth_year));
     if (profile.gender) setGender(profile.gender);
     if (profile.activity_level) setActivity(profile.activity_level);

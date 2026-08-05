@@ -23,6 +23,7 @@ import { genderLabelTR, activityLevelLabelTR, mealTypeLabelTR, goalInfinitiveLab
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { trace } from '@/lib/uiTrace';
+import { formatDecimal } from '@/lib/units';
 
 type SummaryData = NonNullable<Awaited<ReturnType<typeof getAISummaryForReview>>>;
 
@@ -273,8 +274,8 @@ export default function CoachMemoryScreen() {
   if (age) profileRows.push({ label: 'Yaş', value: `${age}` });
   if (profile?.gender) profileRows.push({ label: 'Cinsiyet', value: genderLabelTR(profile.gender as string) });
   if (profile?.height_cm) profileRows.push({ label: 'Boy', value: `${profile.height_cm} cm` });
-  if (profile?.weight_kg) profileRows.push({ label: 'Mevcut kilo', value: `${profile.weight_kg} kg` });
-  if (activeGoal?.target_weight_kg) profileRows.push({ label: 'Hedef kilo', value: `${activeGoal.target_weight_kg} kg` });
+  if (profile?.weight_kg) profileRows.push({ label: 'Mevcut kilo', value: `${formatDecimal(profile.weight_kg as number)} kg` });
+  if (activeGoal?.target_weight_kg) profileRows.push({ label: 'Hedef kilo', value: `${formatDecimal(activeGoal.target_weight_kg as number)} kg` });
   if (activeGoal?.goal_type) profileRows.push({ label: 'Hedef', value: goalInfinitiveLabelTR(activeGoal.goal_type) });
   if (activeGoal?.weekly_rate) profileRows.push({ label: 'Haftalık tempo', value: `${activeGoal.weekly_rate} kg/hafta` });
   if (profile?.activity_level) profileRows.push({ label: 'Aktivite', value: activityLevelLabelTR(profile.activity_level as string) });

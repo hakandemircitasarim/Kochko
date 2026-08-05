@@ -13,6 +13,7 @@ import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { formatDecimal } from '@/lib/units';
 
 interface WeeklyReport {
   week_start: string;
@@ -236,7 +237,7 @@ export default function WeeklyReportScreen() {
                   <Text style={{ color: colors.textSecondary, ...TYPE.body, width: 60 }}>
                     {new Date(w.date).toLocaleDateString('tr-TR', { weekday: 'short', day: 'numeric' })}
                   </Text>
-                  <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>{w.kg} kg</Text>
+                  <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>{formatDecimal(w.kg)} kg</Text>
                   {i > 0 && (
                     <Text style={{ ...TYPE.bodyStrong, color: w.kg < report.weight_trend[i - 1].kg ? colors.success : w.kg > report.weight_trend[i - 1].kg ? colors.error : colors.textMuted }}>
                       {/* FIX (ux-pass5): TR ondalık virgül. */}

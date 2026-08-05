@@ -24,6 +24,7 @@ import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { GOAL_LABELS_TR, goalLabelTR } from '@/lib/labels';
 import type { Goal } from '@/types/database';
+import { formatDecimal } from '@/lib/units';
 
 type GoalType = 'lose_weight' | 'gain_weight' | 'gain_muscle' | 'health' | 'maintain' | 'conditioning';
 
@@ -57,7 +58,7 @@ export default function GoalsScreen() {
       if (active) {
         setExistingGoal(active as unknown as Goal);
         setGoalType(active.goal_type as GoalType);
-        setTargetWeight(String(active.target_weight_kg ?? ''));
+        setTargetWeight(active.target_weight_kg != null ? formatDecimal(active.target_weight_kg as number) : '');
         setTargetWeeks(String(active.target_weeks ?? 12));
 
         // Load tempo data: weight points since goal creation
@@ -276,7 +277,7 @@ export default function GoalsScreen() {
             başlığını gösteriyor; gövdedeki H1 çift başlıktı, kaldırıldı. */}
 
         {profile?.weight_kg && (
-          <Text style={{ ...TYPE.title3, color: colors.primary, marginBottom: SPACING.md }}>Mevcut: {profile.weight_kg} kg</Text>
+          <Text style={{ ...TYPE.title3, color: colors.primary, marginBottom: SPACING.md }}>Mevcut: {formatDecimal(profile.weight_kg as number)} kg</Text>
         )}
 
         {/* Existing goal progress */}
@@ -328,7 +329,7 @@ export default function GoalsScreen() {
                   <Text style={{ ...TYPE.body, fontWeight: phase.is_active ? '600' : '400', color: phase.is_active ? colors.text : colors.textMuted }}>
                     {phase.phase_label ?? phase.goal_type}
                   </Text>
-                  <Text style={{ ...TYPE.caption, color: colors.textMuted }}>{phase.target_weeks ?? '?'} hafta{phase.target_weight_kg ? ` - ${phase.target_weight_kg}kg` : ''}</Text>
+                  <Text style={{ ...TYPE.caption, color: colors.textMuted }}>{phase.target_weeks ?? '?'} hafta{phase.target_weight_kg ? ` - ${formatDecimal(phase.target_weight_kg)}kg` : ''}</Text>
                 </View>
                 {phase.is_active && <Text style={{ ...TYPE.overline, color: colors.primary }}>AKTİF</Text>}
               </View>

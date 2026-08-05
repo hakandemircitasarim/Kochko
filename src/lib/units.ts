@@ -41,6 +41,23 @@ export function celsiusToFahrenheit(c: number): number {
 }
 
 /**
+ * A number written the way this app writes numbers: Turkish decimal comma.
+ *
+ * Every display surface in the app renders "85,4 kg" — Turkish decimal comma — but the
+ * editors behind them were seeded with `String(85.4)`, so opening the weight sheet or
+ * "Profil düzenle" showed "85.4". Same screen, two decimal marks: the weight sheet's own
+ * delta line right underneath said "+0,1 kg" while the field said "85.4".
+ *
+ * Only the WRITING was wrong; every parser already normalises ',' before parseFloat, so a
+ * user typing either form has always worked. Use this wherever a stored number reaches the
+ * screen — an editable field OR a plain label (settings/goals printed "Mevcut: 85.4 kg"
+ * directly above a chart labelled "86,0 kg -> 78,0 kg").
+ */
+export function formatDecimal(n: number): string {
+  return String(n).replace('.', ',');
+}
+
+/**
  * Format weight value based on unit preference.
  */
 export function formatWeight(kg: number, system: UnitSystem): string {

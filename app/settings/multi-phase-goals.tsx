@@ -22,6 +22,7 @@ import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { usePremium } from '@/hooks/usePremium';
 import { useProfileStore } from '@/stores/profile.store';
+import { formatDecimal } from '@/lib/units';
 
 // FIX (tema): modül seviyesinde COLORS okumak koyu paleti her temaya donduruyordu —
 // fabrika fonksiyonu + bileşen içinde useMemo ile aktif temadan çözülüyor.
@@ -189,7 +190,7 @@ export default function MultiPhaseGoalsScreen() {
                     )}
                   </View>
                   <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 1 }}>
-                    {phase.target_weight_kg ? `Hedef: ${phase.target_weight_kg}kg` : 'Koru'} · {phase.target_weeks ?? '?'} hafta
+                    {phase.target_weight_kg ? `Hedef: ${formatDecimal(phase.target_weight_kg)}kg` : 'Koru'} · {phase.target_weeks ?? '?'} hafta
                   </Text>
                 </View>
                 <Text style={{ color: colors.textMuted, ...TYPE.body, marginRight: SPACING.sm }}>#{phase.phase_order}</Text>

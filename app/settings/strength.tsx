@@ -13,6 +13,7 @@ import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { usePremium } from '@/hooks/usePremium';
 import { useProfileStore } from '@/stores/profile.store';
+import { formatDecimal } from '@/lib/units';
 
 const CORE_EXERCISES = ['squat', 'bench_press', 'deadlift', 'overhead_press', 'barbell_row'];
 const EXERCISE_LABELS: Record<string, string> = {
@@ -110,11 +111,11 @@ export default function StrengthScreen() {
               {/* 1RM and current */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginBottom: SPACING.md }}>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ color: colors.primary, ...TYPE.title3 }}>{ex.estimated1RM}kg</Text>
+                  <Text style={{ color: colors.primary, ...TYPE.title3 }}>{formatDecimal(ex.estimated1RM)}kg</Text>
                   <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>Tahmini 1RM</Text>
                 </View>
                 <View style={{ alignItems: 'center' }}>
-                  <Text style={{ color: colors.text, ...TYPE.title3 }}>{ex.lastWeight}kg</Text>
+                  <Text style={{ color: colors.text, ...TYPE.title3 }}>{formatDecimal(ex.lastWeight)}kg</Text>
                   <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>Son ağırlık</Text>
                 </View>
                 <View style={{ alignItems: 'center' }}>

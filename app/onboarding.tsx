@@ -22,6 +22,7 @@ import { GENDER_LABELS_TR, ACTIVITY_LEVEL_LABELS_TR, GOAL_LABELS_INFINITIVE_TR, 
 import { calculateBMR, calculateTDEE, calculateTargets } from '@/lib/tdee';
 
 import { FREE_LAUNCH } from '@/lib/premium-gate';
+import { formatDecimal } from '@/lib/units';
 const { width } = Dimensions.get('window');
 
 // FIX (audit UX-ONB-05): tek bir 18+ doğum yılı kuralı. Bu ekrandaki OAuth doğum-yılı
@@ -270,7 +271,7 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
     if (!isReOnboarding || !profile || profileSeededRef.current) return;
     profileSeededRef.current = true;
     if (profile.height_cm) setHeightCm(String(profile.height_cm));
-    if (profile.weight_kg) setWeightKg(String(profile.weight_kg));
+    if (profile.weight_kg) setWeightKg(formatDecimal(profile.weight_kg as number));
     if (profile.gender) setGender(profile.gender);
     if (profile.activity_level) setActivity(profile.activity_level);
   }, [isReOnboarding, profile]);
@@ -292,7 +293,7 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
         setActiveGoal(g);
         setGoalType(g.goal_type);
         if (g.target_weight_kg && (g.goal_type === 'lose_weight' || g.goal_type === 'gain_muscle')) {
-          setTargetWeightKg(String(g.target_weight_kg));
+          setTargetWeightKg(formatDecimal(g.target_weight_kg as number));
         }
       });
     return () => { cancelled = true; };

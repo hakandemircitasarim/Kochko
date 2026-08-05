@@ -33,6 +33,7 @@ import {
   type WorkoutExercise,
 } from '@/services/plan.service';
 import type { Profile } from '@/types/database';
+import { formatDecimal } from '@/lib/units';
 
 interface Props {
   plan: PlanRow;
@@ -83,7 +84,7 @@ function detectDrift(
   const snapGoal = (snap.goal as { goal_type?: string; target_weight_kg?: number } | null) ?? null;
 
   if (snapWeight && profile.weight_kg && Math.abs(profile.weight_kg - snapWeight) > 3) {
-    soft.push(`Kilon ${snapWeight}kg'dan ${profile.weight_kg}kg'a değişmiş`);
+    soft.push(`Kilon ${formatDecimal(snapWeight as number)}kg'dan ${formatDecimal(profile.weight_kg as number)}kg'a değişmiş`);
   }
   if (snapHeight && profile.height_cm && profile.height_cm !== snapHeight) {
     soft.push('Boy güncellendi');
@@ -101,7 +102,7 @@ function detectDrift(
     snapGoal?.target_weight_kg && currentGoal?.target_weight_kg
     && Math.abs(currentGoal.target_weight_kg - snapGoal.target_weight_kg) > 1
   ) {
-    soft.push(`Hedef kilon ${snapGoal.target_weight_kg}kg → ${currentGoal.target_weight_kg}kg`);
+    soft.push(`Hedef kilon ${formatDecimal(snapGoal.target_weight_kg as number)}kg → ${formatDecimal(currentGoal.target_weight_kg as number)}kg`);
   }
   return { soft, hard };
 }

@@ -11,6 +11,7 @@ import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
+import { formatDecimal } from '@/lib/units';
 
 const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const DAY_NAMES = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
@@ -225,7 +226,7 @@ export default function CalendarScreen() {
               {selected.weight_kg !== null && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Kilo</Text>
-                  <Text style={{ color: colors.text, ...TYPE.body }}>{selected.weight_kg} kg</Text>
+                  <Text style={{ color: colors.text, ...TYPE.body }}>{formatDecimal(selected.weight_kg as number)} kg</Text>
                 </View>
               )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
