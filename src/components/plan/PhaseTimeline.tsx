@@ -52,7 +52,7 @@ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
       borderColor: colors.border,
     }}>
       <Text style={{ ...TYPE.headline, color: colors.text, marginBottom: SPACING.sm }}>
-        Hedef fazları
+        Hedef Fazları
       </Text>
 
       {/* Timeline bar — FIX (ux-polish): decorative; hidden from screen readers so phase names aren't

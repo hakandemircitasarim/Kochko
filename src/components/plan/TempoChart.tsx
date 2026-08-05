@@ -93,7 +93,7 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
   return (
     <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 0.5, borderColor: colors.border }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.sm }}>
-        <Text style={{ ...TYPE.headline, color: colors.text }}>Kilo tempo</Text>
+        <Text style={{ ...TYPE.headline, color: colors.text }}>Kilo Tempo</Text>
         <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
           {/* FIX (ux-pass5): Turkish weight idiom — comma decimal + space before kg
               ('81,0 kg'), matching goal-progress/export/plateau formatting. */}
