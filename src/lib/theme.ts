@@ -71,7 +71,14 @@ export const DARK_COLORS: ThemeColors = {
   warningLight: '#EF9F2720',
   error: '#E24B4A',
   errorLight: '#E24B4A20',
-  border: 'rgba(255,255,255,0.08)',
+  // DEPTH (08-05): design.ts'in dorduncu ayagi golgeyle gelmiyordu. Android yalniz
+  // `elevation` sayisini okur ve #0D0D12 uzerinde siyah golge gorunmez — Card'a
+  // elevation(1) ve (2) verilip cihazda olculdu, hicbir fark yok. Koyu temada bir
+  // yuzeyi kaldiran sey KENARIDIR. 0.08'de kart sinirlari neredeyse gorunmuyordu ve
+  // her sey tek duz yuzey gibi okunuyordu; 0.16'da kart/grup/balon birer nesne oluyor.
+  // `divider` bilerek 0.08'de kaldi: grup sinirinin guclu, IC ayraclarin sessiz olmasi
+  // hiyerarsinin ta kendisi (ayar listelerinde cihazda dogrulandi).
+  border: 'rgba(255,255,255,0.16)',
   divider: 'rgba(255,255,255,0.08)',
   tabBar: '#0D0D12',
   tabBarBorder: 'rgba(255,255,255,0.08)',

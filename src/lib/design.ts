@@ -136,6 +136,20 @@ export const RADII = {
  * the lift comes mostly from a lighter background plus a barely-there shadow; on light surfaces
  * the shadow does the work. Returns a plain style object usable on View.
  *
+ * MEASURED 2026-08-05 — READ THIS BEFORE REACHING FOR elevation() ON THE DARK THEME.
+ * Android ignores shadowColor/shadowOpacity/shadowOffset/shadowRadius entirely; it renders ONLY
+ * the `elevation` number below. On the dark theme's #0D0D12 background a black shadow is
+ * invisible by construction. This was driven on a device: elevation(1) and elevation(2) were
+ * applied to the shared Card and produced NO visible change, so the experiment was reverted.
+ * Raising the card fill instead (card #1A1A24 → cardElevated #22222E) is not free either —
+ * cardElevated is the same tone as surfaceLight, which is what in-card rows/chips already use,
+ * so it would flatten the hierarchy INSIDE cards.
+ *
+ * What actually carries depth on this app's dark theme is the CARD EDGE: colors.border went
+ * 0.08 → 0.16 (see theme.ts) while colors.divider stayed at 0.08, so a group's boundary is
+ * definite and its internal separators stay quiet. Keep elevation() for the light theme and for
+ * surfaces that genuinely float over content; do not expect it to do anything in the dark.
+ *
  * `level`:
  *   0 — flush with the page (list rows, dividers)
  *   1 — resting card
