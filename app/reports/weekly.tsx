@@ -249,7 +249,12 @@ export default function WeeklyReportScreen() {
           )}
 
           {/* Best/Worst Day */}
-          {(report.best_day || report.worst_day) && (
+          {/* Ayni gun hem "En Iyi" hem "Zorlu gun" olarak listeleniyordu (cihazda:
+              "En Iyi 2 Pazar" / "Zorlu gun 2 Pazar"). Bu, haftanin tek kayitli gunu
+              oldugunda oluyor — kiyaslanacak ikinci bir gun yok, ama kart iki uc
+              varmis gibi konusuyor. Tek olcumden fark uydurmama kuralinin ayni
+              ailesi (bkz. §11): iki uc ancak farkli gunlerse gosterilir. */}
+          {(report.best_day || report.worst_day) && report.best_day !== report.worst_day && (
             <Card title="Haftanın Günleri">
               {report.best_day && (
                 <View style={{ flexDirection: 'row', gap: SPACING.md, paddingVertical: SPACING.xs }}>
