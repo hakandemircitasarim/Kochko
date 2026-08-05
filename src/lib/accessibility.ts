@@ -7,6 +7,7 @@
  * and minimum touch target enforcement.
  */
 import { AccessibilityRole } from 'react-native';
+import { formatDecimal } from '@/lib/units';
 
 // ────────────────────────────── Constants ──────────────────────────────
 
@@ -117,7 +118,7 @@ export function a11yLink(label: string, hint?: string) {
 export function a11yProgress(label: string, value: number, max: number) {
   return {
     accessible: true,
-    accessibilityLabel: `${label}: ${value} / ${max}`,
+    accessibilityLabel: `${label}: ${formatDecimal(value)} / ${formatDecimal(max)}`,
     accessibilityRole: 'progressbar' as AccessibilityRole,
     accessibilityValue: {
       min: 0,
@@ -257,7 +258,9 @@ export function formatProgressForScreenReader(
 ): string {
   const spoken = SCREEN_READER_UNITS[unit] ?? unit;
   const pct = target > 0 ? Math.round((current / target) * 100) : 0;
-  return `${current} / ${target} ${spoken}, yüzde ${pct}`;
+  // Ekran okuyucu da uygulamanin yazimini duymali: ham `2.9` TR'de "iki nokta dokuz"
+  // diye okunuyordu, ekranda ise "2,9" yaziyor.
+  return `${formatDecimal(current)} / ${formatDecimal(target)} ${spoken}, yüzde ${pct}`;
 }
 
 // ────────────────────────────── Score Descriptions ──────────────────────────────

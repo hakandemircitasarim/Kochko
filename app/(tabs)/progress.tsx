@@ -23,6 +23,7 @@ import { SPACING, FONT, RADIUS } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
+import { formatDecimal } from '@/lib/units';
 
 interface MetricPt { date: string; weight_kg: number | null; water_liters: number; sleep_hours: number | null; steps: number | null; }
 interface CompPt { date: string; compliance_score: number; calorie_actual: number | null; workout_completed: boolean | null; }
@@ -477,7 +478,7 @@ export default function ProgressScreen() {
           <View
             accessible
             accessibilityRole="image"
-            accessibilityLabel={`Kilo trendi grafiği. ${weights.length} kayıt. İlk ${firstW} kilogramdan son ${latestW} kilograma.${targetW != null ? ` Hedef ${targetW} kilogram.` : ''}`}
+            accessibilityLabel={`Kilo trendi grafiği. ${weights.length} kayıt. İlk ${formatDecimal(firstW as number)} kilogramdan son ${formatDecimal(latestW as number)} kilograma.${targetW != null ? ` Hedef ${formatDecimal(targetW)} kilogram.` : ''}`}
           >
             <LineChart
               data={{
