@@ -61,6 +61,7 @@ import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 import { isActivePremium } from '@/lib/premium-gate';
 import { trace } from '@/lib/uiTrace';
+import { formatISODateTR } from '@/lib/day-boundary';
 
 // Plan-rejection reasons (Spec 7.1 — multi-turn refine). Each entry is the short,
 // human-facing chip label + the fuller engineered instruction sent to the model.
@@ -2466,7 +2467,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                   key={chip.key}
                   onPress={() => { haptics.tap(); setShowAttachTray(false); void chip.onPress(); }}
                   accessibilityRole="button"
-                  accessibilityLabel={backdateActive ? `Kayıt tarihi: ${backdateDate}` : chip.label}
+                  accessibilityLabel={backdateActive ? `Kayıt tarihi: ${formatISODateTR(backdateDate) ?? backdateDate}` : chip.label}
                   hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
                   style={{
                     flexDirection: 'row', alignItems: 'center', gap: 6,

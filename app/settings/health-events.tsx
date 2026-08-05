@@ -14,6 +14,7 @@ import { SPACING, FONT } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
+import { formatISODateTR } from '@/lib/day-boundary';
 
 const EVENT_TYPES = ['surgery', 'injury', 'illness', 'medication', 'allergy', 'other'];
 const EVENT_LABELS: Record<string, string> = { surgery: 'Ameliyat', injury: 'Sakatlık', illness: 'Hastalık', medication: 'İlaç', allergy: 'Alerji', other: 'Diğer' };
@@ -155,7 +156,7 @@ export default function HealthEventsScreen() {
             </View>
           </View>
           <Text style={{ color: colors.text, ...TYPE.body, marginTop: 4 }}>{e.description}</Text>
-          {e.event_date && <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>{e.event_date}</Text>}
+          {formatISODateTR(e.event_date) && <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>{formatISODateTR(e.event_date)}</Text>}
         </TouchableOpacity>
       ))}
     </ScrollView>

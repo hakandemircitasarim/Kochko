@@ -15,6 +15,7 @@ import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import type { GoalProgress, PaceStatus } from '@/lib/goal-progress';
+import { formatISODateTR } from '@/lib/day-boundary';
 
 interface Props {
   progress: GoalProgress;
@@ -50,15 +51,11 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
   };
   const badge = tempo[progress.paceStatus];
 
-  const etaText = (() => {
-    if (progress.isGoalReached || !progress.estimatedCompletionDate) return null;
-    try {
-      const d = new Date(`${progress.estimatedCompletionDate}T12:00:00`);
-      return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
-    } catch {
-      return null;
-    }
-  })();
+  // Ogleye sabitleme + hata toleransi artik ortak bicimleyicide (formatISODateTR);
+  // ayni veriyi basan settings/goals ham ISO yaziyordu, ikisi tek kaynaga bagli.
+  const etaText = progress.isGoalReached
+    ? null
+    : formatISODateTR(progress.estimatedCompletionDate, 'short');
 
   const barColor = progress.paceStatus === 'stalled'
     ? colors.errorText

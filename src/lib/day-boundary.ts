@@ -18,6 +18,37 @@ function toLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Render a stored `YYYY-MM-DD` for a human to read.
+ *
+ * The app stores dates as ISO calendar strings — correct — but several surfaces printed
+ * them straight into the UI. Driven on a device: "Sağlık Geçmişi" listed an event as
+ * "2026-08-05" while the very field that created it, one screen earlier, said
+ * "5 Ağustos 2026"; and settings/goals said "Tahmini tamamlanma: 2026-10-30" while the
+ * dashboard card showed the SAME datum as "30 Eki".
+ *
+ * Anchored at noon on purpose: `new Date('2026-08-05')` parses as UTC midnight, which in
+ * UTC+3 is still the 5th but in any negative offset rolls back to the 4th. Noon is safe
+ * in every zone the app ships to.
+ *
+ * Returns null for a missing/unparseable value so callers can hide the row instead of
+ * printing "Invalid Date".
+ */
+export function formatISODateTR(
+  iso: string | null | undefined,
+  style: 'short' | 'long' = 'long',
+): string | null {
+  if (!iso) return null;
+  const d = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(
+    'tr-TR',
+    style === 'short'
+      ? { day: 'numeric', month: 'short' }
+      : { day: 'numeric', month: 'long', year: 'numeric' },
+  );
+}
+
 export function getEffectiveDate(
   currentTime: Date,
   dayBoundaryHour: number = 4 // 04:00 default

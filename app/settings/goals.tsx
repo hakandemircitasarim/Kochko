@@ -25,6 +25,7 @@ import { haptics } from '@/lib/haptics';
 import { GOAL_LABELS_TR, goalLabelTR } from '@/lib/labels';
 import type { Goal } from '@/types/database';
 import { formatDecimal } from '@/lib/units';
+import { formatISODateTR } from '@/lib/day-boundary';
 
 type GoalType = 'lose_weight' | 'gain_weight' | 'gain_muscle' | 'health' | 'maintain' | 'conditioning';
 
@@ -293,7 +294,7 @@ export default function GoalsScreen() {
             <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{summaryText}</Text>
             {progress.estimatedCompletionDate && (
               <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.xs }}>
-                Tahmini tamamlanma: {progress.estimatedCompletionDate}
+                Tahmini tamamlanma: {formatISODateTR(progress.estimatedCompletionDate)}
               </Text>
             )}
           </Card>
