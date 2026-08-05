@@ -8,11 +8,12 @@
  * reason the person is doing this, made visible. Tap → chat, prefilled.
  */
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE } from '@/lib/design';
+import { PressableCard } from '@/components/ui/PressableCard';
 
 export interface LifeEvent {
   id: string;
@@ -60,9 +61,8 @@ export function LifeEventCard({ event, todayISO, onPress }: Props) {
   const title = cap(event.title);
 
   return (
-    <TouchableOpacity
+    <PressableCard
       onPress={onPress}
-      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${title}, ${countdown}. Koçunla konuşmak için dokun`}
       style={{
@@ -94,6 +94,6 @@ export function LifeEventCard({ event, todayISO, onPress }: Props) {
         </Text>
       </View>
       <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-    </TouchableOpacity>
+    </PressableCard>
   );
 }

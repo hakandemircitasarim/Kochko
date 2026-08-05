@@ -9,13 +9,14 @@
  * approving.
  */
 import { useMemo } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE } from '@/lib/design';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
 import { DAY_LABELS_TR, DAY_SHORT_TR, formatWeekStartTR } from '@/services/plan.service';
+import { PressableCard } from '@/components/ui/PressableCard';
 
 interface Props {
   plan: PlanData;
@@ -154,9 +155,8 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
   }, [plan]);
 
   return (
-    <TouchableOpacity
+    <PressableCard
       onPress={onPress}
-      activeOpacity={MOTION.pressOpacity}
       style={{
         backgroundColor: colors.card,
         borderRadius: RADIUS.xl,
@@ -213,6 +213,6 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
       >
         Detayı görmek için dokun
       </Text>
-    </TouchableOpacity>
+    </PressableCard>
   );
 }

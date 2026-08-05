@@ -17,6 +17,7 @@ import { TYPE, MOTION } from '@/lib/design';
 import { getActive, getDraft, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
+import { PressableCard } from '@/components/ui/PressableCard';
 
 interface Props {
   userId: string | undefined;
@@ -236,9 +237,8 @@ function PlanCard({
   })();
 
   return (
-    <TouchableOpacity
+    <PressableCard
       onPress={onPress}
-      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${primary}. ${secondary}`}
       accessibilityHint={plan ? 'Plan detayları için aç' : hasDraft ? 'Taslağı gözden geçir' : 'Yeni plan oluştur'}
@@ -306,6 +306,6 @@ function PlanCard({
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
       </View>
-    </TouchableOpacity>
+    </PressableCard>
   );
 }

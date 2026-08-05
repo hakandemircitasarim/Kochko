@@ -9,13 +9,14 @@
  * goals have no meaningful "distance to target").
  */
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE } from '@/lib/design';
 import type { GoalProgress, PaceStatus } from '@/lib/goal-progress';
 import { formatISODateTR } from '@/lib/day-boundary';
+import { PressableCard } from '@/components/ui/PressableCard';
 
 interface Props {
   progress: GoalProgress;
@@ -64,9 +65,8 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
       : colors.primary;
 
   return (
-    <TouchableOpacity
+    <PressableCard
       onPress={onPress}
-      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={
         progress.isGoalReached
@@ -128,6 +128,6 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
           )}
         </>
       )}
-    </TouchableOpacity>
+    </PressableCard>
   );
 }
