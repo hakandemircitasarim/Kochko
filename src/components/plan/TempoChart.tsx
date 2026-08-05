@@ -57,10 +57,15 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
   }
   // Weeks WITHOUT a real measurement → hide their dots. Week 0 keeps its dot: the
   // goal's start weight is a real datum, not a carry-forward.
+  //
+  // Bunu `hidePointsAtIndex` ile yapiyorduk ve zaman ekseni okunmaz haldeydi: chart-kit
+  // ayni listeyi EKSEN ETIKETLERINI silmek icin de kullaniyor
+  // (AbstractChart.js renderVerticalLabels: `if (hidePointsAtIndex.includes(i)) return null`).
+  // Tek olcumlu bir hedefte 13 etiketten 12'si birden yok oluyor, ekranda sadece "0h"
+  // kaliyordu — 12 haftalik plan tek haftalik gibi gorunuyor. `getDotColor` noktayi
+  // etiketten bagimsiz gizler: olculmeyen haftalarin dolgusu saydam.
   const measuredWeeks = new Set(Object.keys(actualByWeek).map(Number));
   measuredWeeks.add(0);
-  const hiddenDotIndexes = Array.from({ length: weeks + 1 }, (_, i) => i)
-    .filter(i => !measuredWeeks.has(i));
 
   // ETA: project based on pace of last 3 weeks.
   // FIX (audit ui-tempochart): carry-forward'lu actualSeries yerine yalnızca GERÇEK ölçüm
@@ -124,7 +129,7 @@ export function TempoChart({ startWeight, targetWeight, targetWeeks, actualPoint
           labelColor: () => colors.textMuted,
           propsForDots: { r: '3' },
         }}
-        hidePointsAtIndex={hiddenDotIndexes}
+        getDotColor={(_value, i) => (measuredWeeks.has(i) ? colors.primary : 'transparent')}
         bezier
         style={{ borderRadius: RADIUS.sm, marginLeft: -SPACING.sm }}
         withInnerLines={false}
