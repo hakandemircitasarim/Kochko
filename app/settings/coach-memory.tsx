@@ -17,7 +17,7 @@ import { PERIODIC_LABELS, type PeriodicState } from '@/services/periodic.service
 import { supabase } from '@/lib/supabase';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 import { SPACING, RADIUS, CARD_SHADOW } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { genderLabelTR, activityLevelLabelTR, mealTypeLabelTR, goalInfinitiveLabelTR, coachToneLabelTR } from '@/lib/labels';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
@@ -366,7 +366,7 @@ export default function CoachMemoryScreen() {
               {healthFacts.map((h, i) => {
                 const KIND_LABEL: Record<string, string> = { surgery: 'Ameliyat', condition: 'Kronik durum', injury: 'Sakatlık', medication: 'İlaç' };
                 return (
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     key={i}
                     onLongPress={() => handleDeleteConstraint(h.kind, h.subject, h.text)}
                     accessibilityRole="button"
@@ -383,7 +383,7 @@ export default function CoachMemoryScreen() {
                     {/* FIX (audit KVKK-visibility): every other section has a VISIBLE trash icon —
                         health rows (the most sensitive data) relied on a hidden long-press only.
                         Same 44x44 visible pattern as health-events / food-preferences. */}
-                    <TouchableOpacity
+                    <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                       onPress={() => handleDeleteConstraint(h.kind, h.subject, h.text)}
                       accessibilityRole="button"
                       accessibilityLabel={`${KIND_LABEL[h.kind] ?? h.kind} kaydını sil: ${h.text}`}
@@ -430,7 +430,7 @@ export default function CoachMemoryScreen() {
               {data.userPersona && (
                 <View style={cardStyle}>
                   <SectionHeader icon="sparkles" color={colors.purple} title="Kişilik Tipi" colors={colors} deletable onDelete={() => handleClearField('user_persona', 'Kişilik Tipi')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('user_persona', 'Kişilik Tipi')}
                     accessibilityRole="button"
                     accessibilityLabel="Kişilik Tipi — silmek için uzun bas"
@@ -450,7 +450,7 @@ export default function CoachMemoryScreen() {
               {data.learnedTonePreference && (
                 <View style={cardStyle}>
                   <SectionHeader icon="chatbubbles" color={colors.protein} title="İletişim Tercihi" colors={colors} deletable onDelete={() => handleClearField('learned_tone_preference', 'İletişim Tercihi')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('learned_tone_preference', 'İletişim Tercihi')}
                     accessibilityRole="button"
                     accessibilityLabel="İletişim Tercihi — silmek için uzun bas"
@@ -487,7 +487,7 @@ export default function CoachMemoryScreen() {
               <View style={cardStyle}>
                 <SectionHeader icon="analytics" color={colors.coral} title="Tespit Edilen Kalıplar" colors={colors} badge={`${data.patterns.length}`} deletable onDelete={() => handleClearField('behavioral_patterns', 'Tespit Edilen Kalıplar')} />
                 {data.patterns.map((p, i) => (
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     key={i}
                     onLongPress={() => handleDeleteNote('behavioral_patterns', p.description)}
                     accessibilityRole="button"
@@ -536,7 +536,7 @@ export default function CoachMemoryScreen() {
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
                     {Object.entries(data.portionCalibration).map(([food, grams]) => (
-                      <TouchableOpacity
+                      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                         key={food}
                         onLongPress={() => handleDeleteNote('portion_calibration', food)}
                         accessibilityRole="button"
@@ -559,7 +559,7 @@ export default function CoachMemoryScreen() {
               {data.learnedMealTimes && Object.keys(data.learnedMealTimes).length > 0 && (
                 <View style={cardStyle}>
                   <SectionHeader icon="time" color={colors.success} title="Öğrenilen Öğün Saatleri" colors={colors} deletable onDelete={() => handleClearField('learned_meal_times', 'Öğün Saatleri')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('learned_meal_times', 'Öğün Saatleri')}
                     accessibilityRole="button"
                     accessibilityLabel="Öğün Saatleri — silmek için uzun bas"
@@ -580,7 +580,7 @@ export default function CoachMemoryScreen() {
               {data.caffeineSleepNotes && (
                 <View style={cardStyle}>
                   <SectionHeader icon="cafe" color={colors.coral} title="Kafein-Uyku" colors={colors} deletable onDelete={() => handleClearField('caffeine_sleep_notes', 'Kafein-Uyku')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('caffeine_sleep_notes', 'Kafein-Uyku')}
                     accessibilityRole="button"
                     accessibilityLabel="Kafein-Uyku notu — silmek için uzun bas"
@@ -594,7 +594,7 @@ export default function CoachMemoryScreen() {
               {data.alcoholPattern && (
                 <View style={cardStyle}>
                   <SectionHeader icon="wine" color={colors.purple} title="Alkol Kalıbı" colors={colors} deletable onDelete={() => handleClearField('alcohol_pattern', 'Alkol Kalıbı')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('alcohol_pattern', 'Alkol Kalıbı')}
                     accessibilityRole="button"
                     accessibilityLabel="Alkol Kalıbı — silmek için uzun bas"
@@ -628,7 +628,7 @@ export default function CoachMemoryScreen() {
               {data.socialEatingNotes && (
                 <View style={cardStyle}>
                   <SectionHeader icon="people" color={colors.protein} title="Sosyal Yeme" colors={colors} deletable onDelete={() => handleClearField('social_eating_notes', 'Sosyal Yeme')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('social_eating_notes', 'Sosyal Yeme')}
                     accessibilityRole="button"
                     accessibilityLabel="Sosyal Yeme notu — silmek için uzun bas"
@@ -653,7 +653,7 @@ export default function CoachMemoryScreen() {
               {data.recoveryPattern && (
                 <View style={cardStyle}>
                   <SectionHeader icon="fitness" color={colors.pink} title="Toparlanma Deseni" colors={colors} deletable onDelete={() => handleClearField('recovery_pattern', 'Toparlanma Deseni')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('recovery_pattern', 'Toparlanma Deseni')}
                     accessibilityRole="button"
                     accessibilityLabel="Toparlanma Deseni — silmek için uzun bas"
@@ -667,7 +667,7 @@ export default function CoachMemoryScreen() {
               {menstrualTracking && data.menstrualNotes && (
                 <View style={cardStyle}>
                   <SectionHeader icon="calendar" color={colors.pink} title="Regl Notları" colors={colors} deletable onDelete={() => handleClearField('menstrual_notes', 'Regl Notları')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('menstrual_notes', 'Regl Notları')}
                     accessibilityRole="button"
                     accessibilityLabel="Regl Notları — silmek için uzun bas"
@@ -683,7 +683,7 @@ export default function CoachMemoryScreen() {
                   <SectionHeader icon="warning" color={colors.warning} title="Mikro Besin Riskleri" colors={colors} badge={`${data.microNutrientRisks.length}`} deletable onDelete={() => handleClearField('micro_nutrient_risks', 'Mikro Besin Riskleri')} />
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
                     {data.microNutrientRisks.map((r, i) => (
-                      <TouchableOpacity
+                      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                         key={i}
                         onLongPress={() => handleDeleteNote('micro_nutrient_risks', r.nutrient)}
                         accessibilityRole="button"
@@ -712,7 +712,7 @@ export default function CoachMemoryScreen() {
               {data.supplementNotes && (
                 <View style={cardStyle}>
                   <SectionHeader icon="medkit" color={colors.primary} title="Supplement Notları" colors={colors} deletable onDelete={() => handleClearField('supplement_notes', 'Supplement Notları')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('supplement_notes', 'Supplement Notları')}
                     accessibilityRole="button"
                     accessibilityLabel="Supplement Notları — silmek için uzun bas"
@@ -739,7 +739,7 @@ export default function CoachMemoryScreen() {
                   {data.habitProgress.map((h, i) => {
                     const statusInfo = HABIT_STATUS_ICON[h.status] ?? { icon: 'ellipse', color: colors.textMuted };
                     return (
-                      <TouchableOpacity
+                      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                         key={i}
                         onLongPress={() => handleDeleteNote('habit_progress', h.habit)}
                         accessibilityRole="button"
@@ -790,7 +790,7 @@ export default function CoachMemoryScreen() {
               {data.weeklyBudgetPattern && (
                 <View style={cardStyle}>
                   <SectionHeader icon="wallet" color={colors.purple} title="Haftalık Bütçe Kalıbı" colors={colors} deletable onDelete={() => handleClearField('weekly_budget_pattern', 'Haftalık Bütçe Kalıbı')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('weekly_budget_pattern', 'Haftalık Bütçe Kalıbı')}
                     accessibilityRole="button"
                     accessibilityLabel="Haftalık Bütçe Kalıbı — silmek için uzun bas"
@@ -837,7 +837,7 @@ export default function CoachMemoryScreen() {
               {data.seasonalNotes && (
                 <View style={cardStyle}>
                   <SectionHeader icon="leaf" color={colors.success} title="Mevsimsel Notlar" colors={colors} deletable onDelete={() => handleClearField('seasonal_notes', 'Mevsimsel Notlar')} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleClearField('seasonal_notes', 'Mevsimsel Notlar')}
                     accessibilityRole="button"
                     accessibilityLabel="Mevsimsel Notlar — silmek için uzun bas"
@@ -851,7 +851,7 @@ export default function CoachMemoryScreen() {
               {data.coachingNotes && (
                 <View style={cardStyle}>
                   <SectionHeader icon="journal" color={colors.warning} title="Koçluk Notları" colors={colors} deletable onDelete={() => handleDeleteNote('coaching_notes', data.coachingNotes)} />
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onLongPress={() => handleDeleteNote('coaching_notes', data.coachingNotes)}
                     accessibilityRole="button"
                     accessibilityLabel="Koçluk Notları — silmek için uzun bas"
@@ -864,7 +864,7 @@ export default function CoachMemoryScreen() {
           )}
 
           {/* Reset button */}
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={handleResetAll}
             accessibilityRole="button"
             accessibilityLabel="Tüm hafızayı sıfırla"
@@ -1032,7 +1032,7 @@ function SectionHeader({ icon, color, title, colors, badge, deletable, onDelete 
       )}
       {/* FIX (audit ui-destructive-delete): dekoratif trash ikonu gerçek onPress'li görünür/erişilebilir sil butonuna çevrildi. */}
       {deletable && onDelete ? (
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={onDelete}
           accessibilityRole="button"
           accessibilityLabel={`${title} sil`}

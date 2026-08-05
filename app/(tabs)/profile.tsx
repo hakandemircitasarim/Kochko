@@ -20,7 +20,7 @@ import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { goalLabelTR, coachToneLabelTR } from '@/lib/labels';
 import { calculateProfileCompletion, CATEGORY_LABELS } from '@/lib/profile-completion';
@@ -98,7 +98,7 @@ export default function ProfileScreen() {
         <Text accessibilityRole="header" style={{ ...TYPE.title2, color: colors.text }}>
           Profil
         </Text>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { haptics.tap(); router.push('/settings?focusSearch=1' as never); }}
           accessibilityRole="button"
           accessibilityLabel="Ayarlarda ara"
@@ -115,7 +115,7 @@ export default function ProfileScreen() {
             this tab before — so "am I on the right account?" is answerable at a glance. */}
         <TouchableOpacity
           onPress={() => { haptics.tap(); router.push('/settings/edit-profile'); }}
-          activeOpacity={0.8}
+          activeOpacity={MOTION.pressOpacity}
           accessibilityRole="button"
           accessibilityLabel="Profili düzenle"
           style={{ alignItems: 'center' }}
@@ -143,7 +143,7 @@ export default function ProfileScreen() {
         {isInTrial && (
           <TouchableOpacity
             onPress={() => { haptics.tap(); router.push('/settings/premium'); }}
-            activeOpacity={0.8}
+            activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel={`Deneme ${trialDaysLeft} gün sonra bitiyor. Premium'a geçmek için dokun`}
             style={{
@@ -179,7 +179,7 @@ export default function ProfileScreen() {
         return (
           <TouchableOpacity
             onPress={() => { haptics.tap(); router.push('/settings/edit-profile'); }}
-            activeOpacity={0.8}
+            activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel={`Profilin yüzde ${comp.percentage} tamamlandı.${comp.lowestCategory ? ` Sıradaki: ${CATEGORY_LABELS[comp.lowestCategory]}.` : ''} Düzenlemek için dokun`}
             style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.xxl }}
@@ -307,7 +307,7 @@ export default function ProfileScreen() {
       {/* Logout */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, paddingVertical: SPACING.xl }}
-        activeOpacity={0.7}
+        activeOpacity={MOTION.pressOpacity}
         accessibilityRole="button"
         accessibilityLabel="Çıkış yap"
         onPress={() => Alert.alert('Çıkış', 'Emin misin?', [{ text: 'İptal' }, { text: 'Çıkış', style: 'destructive', onPress: signOut }])}
@@ -373,7 +373,7 @@ function MenuRow({ icon, color, label, value, onPress, colors, last, premium }: 
         borderBottomWidth: last ? 0 : 0.5, borderBottomColor: colors.border,
       }}
       onPress={() => { haptics.tap(); onPress(); }}
-      activeOpacity={0.6}
+      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={premium ? `${label}, Premium özellik` : value ? `${label}, ${value}` : label}
     >

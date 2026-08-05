@@ -14,7 +14,7 @@ import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE, GUTTER } from '@/lib/design';
+import { TYPE, GUTTER, MOTION } from '@/lib/design';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
 import { DAY_LABELS_TR } from '@/services/plan.service';
 
@@ -60,7 +60,7 @@ function PickButton({ label, accent, onPick, pickDisabled }: { label: string; ac
           spacer eats the leftover height in the shorter card (min 12 so the taller card still
           gets a gap), putting both CTAs on one baseline. */}
       <View style={{ flexGrow: 1, minHeight: SPACING.md }} />
-      <TouchableOpacity
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
         onPress={onPick}
         // FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
         // apply a candidate that's about to be swapped under the finger — block it.
@@ -251,7 +251,7 @@ export function AlternativeComparisonModal({
             gap: SPACING.md,
           }}
         >
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={onClose}
             accessibilityRole="button"
             accessibilityLabel="Kapat"
@@ -315,7 +315,7 @@ export function AlternativeComparisonModal({
             // FIX (ux-pass5): the 10-30s LLM call had ZERO in-flight indication inside this
             // fullscreen modal (the composer's TypingIndicator is occluded) and re-taps fired
             // parallel generations — spinner + disabled while loadingMore.
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); onRequestMore(); }}
               disabled={loadingMore}
               accessibilityRole="button"

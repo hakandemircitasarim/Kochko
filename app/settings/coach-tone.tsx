@@ -8,7 +8,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 
@@ -95,7 +95,7 @@ export default function CoachToneScreen() {
       </Text>
 
       {TONES.map(tone => (
-        <TouchableOpacity key={tone.value} onPress={() => setSelected(tone.value)}
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={tone.value} onPress={() => setSelected(tone.value)}
           accessibilityRole="radio"
           accessibilityState={{ selected: selected === tone.value }}
           accessibilityLabel={tone.label}>

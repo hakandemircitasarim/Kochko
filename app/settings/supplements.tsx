@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -103,7 +103,7 @@ export default function SupplementsScreen() {
       <Card title="Hızlı Ekle">
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
           {QUICK_SUPPS.map((s, i) => (
-            <TouchableOpacity key={i} onPress={() => { haptics.tap(); handleQuickAdd(s.name, s.amount); }}
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={i} onPress={() => { haptics.tap(); handleQuickAdd(s.name, s.amount); }}
               accessibilityRole="button"
               accessibilityLabel={`${s.name} ekle`}
               style={{ paddingVertical: 6, paddingHorizontal: SPACING.sm, borderRadius: 8, backgroundColor: colors.surfaceLight }}>
@@ -141,7 +141,7 @@ export default function SupplementsScreen() {
               <View style={{ flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' }}>
                 <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{l.amount}</Text>
                 {l.calories > 0 && <Text style={{ color: colors.textMuted, ...TYPE.body }}>{l.calories} kcal</Text>}
-                <TouchableOpacity onPress={() => handleDelete(l)} accessibilityRole="button" accessibilityLabel={`${l.supplement_name} kaydını sil`} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => handleDelete(l)} accessibilityRole="button" accessibilityLabel={`${l.supplement_name} kaydını sil`} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                   <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>

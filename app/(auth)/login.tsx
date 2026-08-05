@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SPACING } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 
 // Hosted legal documents (KVKK aydınlatma / kullanım koşulları) — same as register.tsx.
@@ -213,7 +213,7 @@ export default function LoginScreen() {
 
         {/* Forgot Password (Spec 1.2) */}
         {/* FIX (audit a11y): min 44dp dokunma hedefi + erişilebilirlik etiketi */}
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={handleForgotPassword}
           style={{ alignSelf: 'flex-end', marginBottom: SPACING.md, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}

@@ -14,7 +14,7 @@ import { getContrastColor } from '@/lib/accessibility';
 // (Class component can't call useTheme(), but the SPACING/FONT/RADIUS tokens are
 // plain constants and import fine here — only the *colors* need the dark fallback.)
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 
 interface Props {
   children: React.ReactNode;
@@ -87,7 +87,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <Text style={{ ...TYPE.body, color: c.textMuted, textAlign: 'center', marginBottom: SPACING.xxl }}>
             Beklenmeyen bir hata oluştu. Tekrar deneyebilir ya da hesaptan çıkıp yeniden girebilirsin.
           </Text>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={this.handleRetry}
             style={{ backgroundColor: c.primary, paddingHorizontal: SPACING.xxl, paddingVertical: SPACING.md, borderRadius: RADIUS.md, minWidth: 200, alignItems: 'center' }}
             accessibilityRole="button"
@@ -96,7 +96,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
             {/* FIX (audit ui-errorboundary): contrast-correct foreground (matches Button primitive). */}
             <Text style={{ color: getContrastColor(c.primary), fontWeight: '600' }}>Tekrar Dene</Text>
           </TouchableOpacity>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={this.handleSignOut}
             style={{ marginTop: SPACING.md, paddingHorizontal: SPACING.xxl, paddingVertical: SPACING.md, borderRadius: RADIUS.md, borderWidth: 1, borderColor: c.border, minWidth: 200, alignItems: 'center' }}
             accessibilityRole="button"

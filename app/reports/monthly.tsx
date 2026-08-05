@@ -16,7 +16,7 @@ import { ProgressChart } from '@/components/reports/ProgressChart';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { METRIC_COLORS, useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -219,7 +219,7 @@ export default function MonthlyReportScreen() {
           month the query uses (raw new Date() could name a different month pre-boundary on the 1st). */}
       {/* ux-sweep: < Ay > navigasyonu (calendar.tsx kalıbı) — geçmiş ay raporları erişilir. */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); }}
           accessibilityRole="button" accessibilityLabel="Önceki ay"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -229,7 +229,7 @@ export default function MonthlyReportScreen() {
         <Text style={{ ...TYPE.body, color: colors.text, fontWeight: '700' }}>
           {new Date(viewYear, viewMonth - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
         </Text>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { if (!isViewingCurrentMonth) { if (viewMonth === 12) { setViewMonth(1); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); } }}
           disabled={isViewingCurrentMonth}
           accessibilityRole="button" accessibilityLabel="Sonraki ay"

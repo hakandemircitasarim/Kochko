@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { mealTypeLabelTR } from '@/lib/labels';
 import { showToast } from '@/components/ui/Toast';
@@ -142,7 +142,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
       {totalActivities === 0 && !hideEmptyCta && (
         <TouchableOpacity
           onPress={() => router.push('/(tabs)/chat' as never)}
-          activeOpacity={0.7}
+          activeOpacity={MOTION.pressOpacity}
           accessibilityRole="button"
           accessibilityLabel="Bugün henüz kayıt yok. Koçuna ne yediğini yazmak için dokun"
           style={{ alignItems: 'center', paddingVertical: SPACING.xl }}
@@ -176,7 +176,7 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
           {activities.map((activity, idx) => (
             <TouchableOpacity
               key={activity.id}
-              activeOpacity={0.7}
+              activeOpacity={MOTION.pressOpacity}
               // FIX (ux-pass5): silme sürerken satır devre dışı — çift tetikleme ve
               // 'ölü satır' yeniden-dokunuşları engellenir.
               disabled={deletingId === activity.id}

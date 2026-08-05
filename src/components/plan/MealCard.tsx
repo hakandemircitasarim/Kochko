@@ -8,7 +8,7 @@ import { View, Text, TouchableOpacity, Animated, ActivityIndicator, LayoutAnimat
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { type DietMeal } from '@/services/plan.service';
 
@@ -87,7 +87,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
         <TouchableOpacity
           onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); onToggle(); }}
-          activeOpacity={0.7}
+          activeOpacity={MOTION.pressOpacity}
           accessibilityRole="button"
           accessibilityLabel={`${MEAL_TYPE_LABELS_TR[meal.meal_type]}, ${meal.name}, ${Math.round(meal.total_kcal)} kalori, ${expanded ? 'açık' : 'aç'}`}
           accessibilityState={{ expanded }}
@@ -148,7 +148,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
             collapsed; expanding reveals the full labelled chip below. Icon-only to fit the dense
             header, with a full-intent a11y label. Reflects saving / done state at a glance. */}
         {onLogPress && !expanded ? (
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={onLogPress}
             disabled={!!logStatus}
             accessibilityRole="button"
@@ -218,7 +218,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
           {(onEditPress || onLogPress) ? (
             <View style={{ marginTop: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
               {onLogPress ? (
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={onLogPress}
                   disabled={!!logStatus}
                   accessibilityRole="button"
@@ -262,7 +262,7 @@ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, o
                 </TouchableOpacity>
               ) : null}
               {onEditPress ? (
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={onEditPress}
                   // FIX (ux-pass5): same undersized target as the log chip + TalkBack read it
                   // as plain text — add role/label and grow to ≥44px effective.

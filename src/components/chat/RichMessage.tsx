@@ -5,7 +5,7 @@ import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
@@ -18,7 +18,7 @@ export function QuickSelectButtons({ options, onSelect, disabled = false }: { op
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: SPACING.sm }}>
       <View style={{ flexDirection: 'row', gap: 6, opacity: disabled ? 0.5 : 1 }}>
         {options.map((opt, i) => (
-          <TouchableOpacity key={i} disabled={disabled} onPress={() => { haptics.tap(); onSelect(opt); }}
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={i} disabled={disabled} onPress={() => { haptics.tap(); onSelect(opt); }}
             accessibilityRole="button" accessibilityLabel={opt} accessibilityState={{ disabled }}
             style={{ paddingVertical: 8, paddingHorizontal: SPACING.md, minHeight: 36, justifyContent: 'center', borderRadius: RADIUS.pill, backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border }}>
             <Text style={{ ...TYPE.callout, color: colors.text }}>{opt}</Text>
@@ -105,12 +105,12 @@ export function ConfirmRejectButtons({ onConfirm, onReject, confirmLabel = 'Onay
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm, opacity: disabled ? 0.5 : 1 }}>
-      <TouchableOpacity disabled={disabled} onPress={() => { haptics.tap(); onConfirm(); }}
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity} disabled={disabled} onPress={() => { haptics.tap(); onConfirm(); }}
         accessibilityRole="button" accessibilityLabel={confirmLabel} accessibilityState={{ disabled }}
         style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}>
         <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>{confirmLabel}</Text>
       </TouchableOpacity>
-      <TouchableOpacity disabled={disabled} onPress={() => { haptics.tap(); onReject(); }}
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity} disabled={disabled} onPress={() => { haptics.tap(); onReject(); }}
         accessibilityRole="button" accessibilityLabel={rejectLabel} accessibilityState={{ disabled }}
         style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center' }}>
         <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>{rejectLabel}</Text>
@@ -177,7 +177,7 @@ export function RecipeCard({ title, prepTime, servings, ingredients, macros, onS
         ))}
       </View>
       {onSave && (
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={saved ? undefined : () => { haptics.success(); onSave(); }}
           disabled={saved}
           accessibilityRole="button"
@@ -203,7 +203,7 @@ export function ActionButtons({ actions, onAction }: { actions: { label: string;
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm }}>
       {actions.map((a, i) => (
-        <TouchableOpacity key={i} onPress={() => { haptics.tap(); onAction(a.action); }}
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={i} onPress={() => { haptics.tap(); onAction(a.action); }}
           accessibilityRole="button" accessibilityLabel={a.label}
           style={{ paddingVertical: 10, paddingHorizontal: SPACING.md, minHeight: 40, justifyContent: 'center', borderRadius: RADIUS.sm, backgroundColor: a.variant === 'primary' ? colors.primary : colors.surfaceLight }}>
           <Text style={{ color: a.variant === 'primary' ? getContrastColor(colors.primary) : colors.primary, ...TYPE.bodyStrong }}>{a.label}</Text>
@@ -260,14 +260,14 @@ export function PersonaCard({
       <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>{info.desc}</Text>
       <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.sm }}>Yanlışsa söyle, ayarlarım.</Text>
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { haptics.tap(); onConfirm(); }}
           accessibilityRole="button" accessibilityLabel="Doğru"
           style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center' }}
         >
           <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Doğru</Text>
         </TouchableOpacity>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { haptics.tap(); onReject(); }}
           accessibilityRole="button" accessibilityLabel="Ben farklıyım"
           style={{ flex: 1, paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center' }}
@@ -282,7 +282,7 @@ export function PersonaCard({
 export function MakeSomethingElseButton({ onPress }: { onPress: () => void }) {
   const { colors } = useTheme();
   return (
-    <TouchableOpacity onPress={() => { haptics.tap(); onPress(); }}
+    <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => { haptics.tap(); onPress(); }}
       accessibilityRole="button" accessibilityLabel="Başka bir şey öner"
       style={{ paddingVertical: SPACING.md, minHeight: 44, justifyContent: 'center', paddingHorizontal: SPACING.md, borderRadius: RADIUS.sm, borderWidth: 0.5, borderColor: colors.border, alignItems: 'center', marginTop: SPACING.sm }}>
       <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Başka bir şey öner</Text>

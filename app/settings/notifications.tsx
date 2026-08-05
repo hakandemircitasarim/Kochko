@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Toggle } from '@/components/settings/ToggleRow'; // FIX (audit UI-DS-03): shared toggle primitive
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { a11ySwitch, getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -146,7 +146,7 @@ export default function NotificationsScreen() {
       {/* FIX (ux-round4 #5): OS permission revoked while in-app notifications are still "on" —
           nothing gets delivered and nothing signalled it. Surface it with a one-tap route to settings. */}
       {prefs.enabled && permStatus && permStatus !== 'granted' && (
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => Linking.openSettings().catch(() => {})}
           accessibilityRole="button"
           accessibilityLabel="Bildirim izni kapalı. Telefon ayarlarını açmak için dokun."
@@ -164,7 +164,7 @@ export default function NotificationsScreen() {
       )}
 
       {/* Main toggle */}
-      <TouchableOpacity onPress={toggleMain} {...a11ySwitch(`Bildirimler ${prefs.enabled ? 'Açık' : 'Kapalı'}`, prefs.enabled)} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg, minHeight: 44 }}>
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={toggleMain} {...a11ySwitch(`Bildirimler ${prefs.enabled ? 'Açık' : 'Kapalı'}`, prefs.enabled)} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg, minHeight: 44 }}>
         {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns the switch role + press). */}
         <Toggle value={prefs.enabled} onToggle={toggleMain} />
         <Text style={{ color: colors.text, ...TYPE.headline }}>Bildirimler {prefs.enabled ? 'Açık' : 'Kapalı'}</Text>
@@ -177,7 +177,7 @@ export default function NotificationsScreen() {
             <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>Günde en fazla kaç bildirim almak istiyorsun?</Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
               {[3, 5, 7, 10].map(n => (
-                <TouchableOpacity key={n} onPress={() => persist({ ...prefs, dailyLimit: n })}
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={n} onPress={() => persist({ ...prefs, dailyLimit: n })}
                   accessibilityRole="button"
                   accessibilityLabel={`Günde en fazla ${n} bildirim`}
                   accessibilityState={{ selected: prefs.dailyLimit === n }}
@@ -207,7 +207,7 @@ export default function NotificationsScreen() {
               // FIX (ux-round3 #15 adversarial-review): fold the description into the switch's a11y
               // label so screen-reader users hear it too (the visible Text is otherwise suppressed
               // by the parent's explicit accessibilityLabel).
-              <TouchableOpacity key={key} onPress={() => toggleType(key)}
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={key} onPress={() => toggleType(key)}
                 {...a11ySwitch(TYPE_DESCRIPTIONS[key] ? `${label}. ${TYPE_DESCRIPTIONS[key]}` : label, !!isOn)}
                 style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.md, minHeight: 44, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
                 <View style={{ flex: 1 }}>

@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { TempoChart } from '@/components/plan/TempoChart';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -407,7 +407,7 @@ export default function GoalsScreen() {
           <View style={{ marginTop: SPACING.md }}>
             <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.sm }}>AI ÖNERİLERİ</Text>
             {aiSuggestions.map((s, i) => (
-              <TouchableOpacity key={i}
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={i}
                 onPress={() => {
                   setGoalType(s.goalType as GoalType);
                   setAiSuggestions([]);

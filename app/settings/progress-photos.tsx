@@ -20,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { a11yImage, getContrastColor } from '@/lib/accessibility';
 
@@ -210,7 +210,7 @@ export default function ProgressPhotosScreen() {
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
         {POSE_TYPES.map(pose => (
           // FIX (audit ui-chip-a11y): seçilebilir poz chip'ine radio rolü + selected state + label.
-          <TouchableOpacity key={pose} onPress={() => setSelectedPose(pose)}
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={pose} onPress={() => setSelectedPose(pose)}
             accessibilityRole="radio"
             accessibilityState={{ selected: selectedPose === pose }}
             accessibilityLabel={POSE_LABELS[pose] ?? pose}
@@ -247,7 +247,7 @@ export default function ProgressPhotosScreen() {
         <View style={{ flex: 1, backgroundColor: colors.background, padding: SPACING.md }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
             <Text style={{ color: colors.text, ...TYPE.title3 }}>Karşılaştırma ({selectedPose})</Text>
-            <TouchableOpacity onPress={() => setShowComparison(false)}>
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setShowComparison(false)}>
               <Text style={{ color: colors.primary, ...TYPE.headline }}>Kapat</Text>
             </TouchableOpacity>
           </View>
@@ -318,7 +318,7 @@ export default function ProgressPhotosScreen() {
             </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
               {datePhotos.map(photo => (
-                <TouchableOpacity key={photo.id} onLongPress={() => deletePhoto(photo.id)}
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={photo.id} onLongPress={() => deletePhoto(photo.id)}
                   style={{ width: (screenWidth - SPACING.md * 2 - SPACING.sm * 2) / 3, borderRadius: 8, overflow: 'hidden' }}>
                   {/* FIX (ux-round4 #16): missing on-device file → explanatory placeholder, not a blank tile. */}
                   {failedPhotoIds.has(photo.id) ? (
@@ -331,7 +331,7 @@ export default function ProgressPhotosScreen() {
                     <Image source={{ uri: photo.storage_path }} onError={() => markFailed(photo.id)} style={{ width: '100%', aspectRatio: 3 / 4 }} {...a11yImage(`${photo.pose_type} pozu`)} />
                   )}
                   {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onPress={() => deletePhoto(photo.id)}
                     accessibilityRole="button"
                     accessibilityLabel={`${photo.pose_type} pozu fotoğrafını sil`}

@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -181,7 +181,7 @@ export default function PeriodicStateScreen() {
       {/* State selection */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md }}>
         {states.map(([key, cfg]) => (
-          <TouchableOpacity key={key} onPress={() => { haptics.tap(); setSelected(key); }}
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={key} onPress={() => { haptics.tap(); setSelected(key); }}
             accessibilityRole="radio"
             accessibilityState={{ selected: selected === key }}
             accessibilityLabel={cfg.label_tr}

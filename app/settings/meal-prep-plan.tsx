@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -109,7 +109,7 @@ export default function MealPrepPlanScreen() {
           </Text>
           <View style={{ flexDirection: 'row', gap: 6, marginBottom: SPACING.lg, flexWrap: 'wrap' }}>
             {PREP_DAY_OPTIONS.map(d => (
-              <TouchableOpacity key={d.value} onPress={() => { haptics.tap(); setPrepDay(d.value); }}
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={d.value} onPress={() => { haptics.tap(); setPrepDay(d.value); }}
                 accessibilityRole="button"
                 accessibilityLabel={`Hazırlık günü: ${d.label}`}
                 accessibilityState={{ selected: prepDay === d.value }}

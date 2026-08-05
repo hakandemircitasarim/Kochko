@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -112,7 +112,7 @@ export default function LabValuesScreen() {
             {COMMON_LAB_PARAMS.map(p => {
               const selected = paramName === p.name;
               return (
-                <TouchableOpacity key={p.name} onPress={() => { haptics.tap(); selectParam(p); }}
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={p.name} onPress={() => { haptics.tap(); selectParam(p); }}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                   accessibilityLabel={p.name}
@@ -148,7 +148,7 @@ export default function LabValuesScreen() {
               <Text style={{ color: e.is_out_of_range ? colors.error : colors.text, ...TYPE.headline, flex: 1 }}>{e.value} {e.unit}</Text>
               {e.is_out_of_range && <Text style={{ color: colors.error, ...TYPE.title3 }}>!</Text>}
               {/* ux-sweep (LV-01): yanlış girilen değerin hiçbir silme yolu yoktu. */}
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => {
                   Alert.alert('Sil', `${param} · ${e.value} ${e.unit} silinsin mi?`, [
                     { text: 'İptal', style: 'cancel' },

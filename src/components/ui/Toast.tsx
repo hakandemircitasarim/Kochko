@@ -20,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 
 export type ToastVariant = 'success' | 'error' | 'info';
@@ -126,7 +126,7 @@ export function ToastHost() {
         <Ionicons name={icon} size={16} color={accent} />
         <Text style={{ ...TYPE.body, color: colors.text, flexShrink: 1 }} numberOfLines={2}>{current.message}</Text>
         {current.actionLabel ? (
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { const a = current.onAction; dismiss(); a?.(); }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityRole="button"

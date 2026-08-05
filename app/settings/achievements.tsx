@@ -9,7 +9,7 @@ import { shareMilestone } from '@/services/sharing.service';
 import { shareMilestoneCard, type MilestoneCardData } from '@/services/share-card.service';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -93,7 +93,7 @@ export default function AchievementsScreen() {
                   {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </Text>
                 {/* D17: Share button */}
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={async () => { haptics.tap(); const ok = await shareMilestoneCard(achievementToCard(a)); if (!ok) shareMilestone(a.title, a.description ?? ''); }}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   accessibilityRole="button"

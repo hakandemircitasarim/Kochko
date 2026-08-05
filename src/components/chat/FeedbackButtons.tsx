@@ -9,7 +9,7 @@ import { submitFeedback, type ContextType, type FeedbackType } from '@/services/
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 
 interface Props {
   contextType: ContextType;
@@ -50,7 +50,7 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
   return (
     <View style={{ marginTop: SPACING.sm }}>
       <View style={{ flexDirection: 'row', gap: SPACING.xs }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => handleFeedback('helpful')}
           accessibilityRole="button"
           accessibilityLabel="Bu öneri işe yaradı"
@@ -70,7 +70,7 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
           <Ionicons name="thumbs-up" size={12} color={colors.success} />
           <Text style={{ ...TYPE.caption, color: colors.success, fontWeight: '700' }}>İşe yaradı</Text>
         </TouchableOpacity>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => handleFeedback('not_for_me')}
           accessibilityRole="button"
           accessibilityLabel="Bu öneri bana göre değil"

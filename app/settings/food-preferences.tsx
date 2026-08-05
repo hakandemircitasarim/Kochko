@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -105,7 +105,7 @@ export default function FoodPreferencesScreen() {
             {(Object.keys(PREF_LABELS) as Pref[]).map(p => {
               const active = newPref === p;
               return (
-                <TouchableOpacity key={p} onPress={() => { haptics.tap(); setNewPref(p); }}
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={p} onPress={() => { haptics.tap(); setNewPref(p); }}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: active }}
                   accessibilityLabel={`Tercih: ${PREF_LABELS[p]}`}
@@ -117,7 +117,7 @@ export default function FoodPreferencesScreen() {
               );
             })}
           </View>
-          <TouchableOpacity onPress={() => { haptics.tap(); setIsAllergen(!isAllergen); }}
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => { haptics.tap(); setIsAllergen(!isAllergen); }}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: isAllergen }}
             accessibilityLabel="Alerjen / İntolerans"
@@ -135,11 +135,11 @@ export default function FoodPreferencesScreen() {
             <View key={pref} style={{ marginBottom: SPACING.md }}>
               <Text style={{ color: colors[PREF_COLOR_TOKENS[pref]], ...TYPE.bodyStrong, fontWeight: '700', marginBottom: SPACING.xs }}>{PREF_LABELS[pref]} ({group.length})</Text>
               {group.map(item => (
-                <TouchableOpacity key={item.id} onLongPress={() => confirmDelete(item.id, item.food_name)}
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={item.id} onLongPress={() => confirmDelete(item.id, item.food_name)}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: 8, paddingVertical: SPACING.sm, paddingLeft: SPACING.sm, paddingRight: SPACING.xs, marginBottom: 4 }}>
                   <Text style={{ color: colors.text, ...TYPE.body, flex: 1, textTransform: 'capitalize' }}>{item.food_name}</Text>
                   {item.is_allergen && <Text style={{ color: colors.warning, ...TYPE.caption }}>alerjen</Text>}
-                  <TouchableOpacity onPress={() => confirmDelete(item.id, item.food_name)}
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => confirmDelete(item.id, item.food_name)}
                     accessibilityRole="button"
                     accessibilityLabel={`${item.food_name} tercihini sil`}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}

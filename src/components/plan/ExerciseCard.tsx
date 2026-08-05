@@ -5,7 +5,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import type { WorkoutExercise } from '@/services/plan.service';
 
 interface Props {
@@ -96,7 +96,7 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
 
       {/* FIX (ux-ideas #19): "Bunu yaptım" — closes the track→mark loop on the workout side. */}
       {onLogPress ? (
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={onLogPress}
           disabled={!!logStatus}
           accessibilityRole="button"

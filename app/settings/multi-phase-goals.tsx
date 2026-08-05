@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { goalLabelTR } from '@/lib/labels';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
@@ -171,7 +171,7 @@ export default function MultiPhaseGoalsScreen() {
             // var (labels.ts/goalLabelTR, bilinmeyen anahtarı da tolere eder).
             const info = PHASE_LABELS[phase.phase_label ?? ''] ?? { label: phase.phase_label ?? goalLabelTR(phase.goal_type), color: colors.textMuted };
             return (
-              <TouchableOpacity key={phase.id} onLongPress={() => handleDelete(phase.id)}
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={phase.id} onLongPress={() => handleDelete(phase.id)}
                 style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderBottomWidth: i < phases.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
                 {/* Phase indicator */}
                 <View style={{ width: 24, alignItems: 'center', marginRight: SPACING.sm }}>
@@ -194,7 +194,7 @@ export default function MultiPhaseGoalsScreen() {
                 </View>
                 <Text style={{ color: colors.textMuted, ...TYPE.body, marginRight: SPACING.sm }}>#{phase.phase_order}</Text>
                 {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu; long-press kısayolu korundu. */}
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => handleDelete(phase.id)}
                   accessibilityRole="button"
                   accessibilityLabel={`${info.label} fazını sil`}
@@ -222,7 +222,7 @@ export default function MultiPhaseGoalsScreen() {
           <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>Faz Tipi</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
             {Object.entries(PHASE_LABELS).map(([key, info]) => (
-              <TouchableOpacity key={key} onPress={() => { haptics.tap(); setNewPhaseLabel(key); }}
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={key} onPress={() => { haptics.tap(); setNewPhaseLabel(key); }}
                 style={{ paddingVertical: 6, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
                   borderColor: newPhaseLabel === key ? info.color : colors.border,
                   backgroundColor: newPhaseLabel === key ? info.color : 'transparent' }}>

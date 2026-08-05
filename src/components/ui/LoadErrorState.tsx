@@ -17,7 +17,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { Button } from '@/components/ui/Button';
 
 interface Props {
@@ -45,7 +45,7 @@ export function LoadErrorState({
     return (
       <TouchableOpacity
         onPress={onRetry}
-        activeOpacity={0.7}
+        activeOpacity={MOTION.pressOpacity}
         accessibilityRole="button"
         accessibilityLabel={`${title}. ${subtitle}. ${retryLabel}.`}
         style={{

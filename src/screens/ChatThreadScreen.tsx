@@ -56,7 +56,7 @@ import {
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 import { isActivePremium } from '@/lib/premium-gate';
@@ -317,7 +317,7 @@ function CrisisBlock({ text }: { text: string }) {
         <Text style={{ color: colors.error, ...TYPE.overline }}>ACİL DESTEK</Text>
       </View>
       <Text selectable style={{ ...TYPE.body, color: colors.text }}>{text}</Text>
-      <TouchableOpacity
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
         onPress={() => { haptics.tap(); Linking.openURL('tel:112').catch(() => {}); }}
         accessibilityRole="button"
         accessibilityLabel="Hemen 112'yi ara"
@@ -2034,7 +2034,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         </View>
         {/* FIX (kullanıcı bulgusu: "toplam kartları görmeliyiz — hangileri bitti hangileri
             bitmedi"): tüm konuların durum dökümünü açan genel bakış düğmesi. */}
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={openTopicsModal}
           style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight }}
           accessibilityRole="button"
@@ -2043,7 +2043,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         >
           <Ionicons name="list-circle-outline" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={handleCopyConversation}
           style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight }}
           accessibilityRole="button"
@@ -2056,7 +2056,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             Koçun kalıcı hatırladıklarını (hedef, alerji/sakatlık, sevilmeyen yemekler, persona)
             tam da sohbet ederken tek dokunuşla görünür/düzeltilebilir kıl — kanonik
             'Kochko Seni Nasıl Tanıyor' ekranına köprü. */}
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { haptics.tap(); router.push('/settings/coach-memory' as never); }}
           style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: colors.surfaceLight }}
           accessibilityRole="button"
@@ -2066,7 +2066,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           <Ionicons name="sparkles-outline" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
         {/* FIX (ux-round2 #8): in-thread search toggle. */}
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { haptics.tap(); setSearchOpen(v => { if (v) setSearchQuery(''); return !v; }); }}
           style={{ padding: 6, borderRadius: RADIUS.full, backgroundColor: searchOpen ? colors.primary + '22' : colors.surfaceLight }}
           accessibilityRole="button"
@@ -2094,7 +2094,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               accessibilityLabel="Sohbette ara"
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Temizle">
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Temizle">
                 <Ionicons name="close-circle" size={15} color={colors.textMuted} />
               </TouchableOpacity>
             )}
@@ -2139,7 +2139,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             // Inverted list: ListFooter renders at the VISUAL TOP — that's where the
             // "load older" control belongs (FIX audit UX-CHT-06).
             ListFooterComponent={!searchQuery.trim() && hasMoreOlder ? (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={handleLoadOlder}
                 disabled={loadingOlder}
                 accessibilityRole="button"
@@ -2187,7 +2187,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           {showScrollToBottom && (
             <TouchableOpacity
               onPress={() => scrollToBottom(true)}
-              activeOpacity={0.85}
+              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel={hasNewBelow ? 'Yeni yanıt geldi, en sona git' : 'En sona git'}
               style={{
@@ -2221,7 +2221,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
           <TypingIndicator label={typingStages[typingStageIdx] ?? typingLabel} />
           {showTypingCancel && (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={handleCancelTyping}
               accessibilityRole="button"
               accessibilityLabel="Beklemeyi iptal et"
@@ -2244,7 +2244,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               if (result.data) handleBarcodeScan(result.data);
             }}
           />
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => setShowBarcodeScanner(false)}
             accessibilityRole="button"
             accessibilityLabel="Barkod tarayıcıyı kapat"
@@ -2266,10 +2266,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           borderTopColor: colors.border,
           backgroundColor: colors.surface,
         }}>
-          <TouchableOpacity onPress={() => setFullscreenPhoto(photo)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="Fotoğrafı büyüt">
+          <TouchableOpacity onPress={() => setFullscreenPhoto(photo)} activeOpacity={MOTION.pressOpacity} accessibilityRole="button" accessibilityLabel="Fotoğrafı büyüt">
             <Image source={{ uri: photo }} style={{ width: 60, height: 60, borderRadius: RADIUS.md }} />
           </TouchableOpacity>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => setPhoto(null)}
             accessibilityRole="button"
             accessibilityLabel="Fotoğrafı kaldır"
@@ -2290,7 +2290,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }}>
               Kayıt tarihi: {new Date(backdateDate).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'short' })}
             </Text>
-            <TouchableOpacity onPress={() => setBackdateDate(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Bugüne sıfırla">
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setBackdateDate(null)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="Bugüne sıfırla">
               <Text style={{ ...TYPE.caption, color: colors.textMuted }}>Bugün</Text>
             </TouchableOpacity>
           </View>
@@ -2305,7 +2305,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }} numberOfLines={2}>
               Duydum: "{voiceConfirmation.text}" — gönder veya düzenle
             </Text>
-            <TouchableOpacity onPress={() => { setInput(''); setVoiceConfirmation(null); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="İptal">
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => { setInput(''); setVoiceConfirmation(null); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }} accessibilityRole="button" accessibilityLabel="İptal">
               <Text style={{ ...TYPE.caption, color: colors.textMuted }}>İptal</Text>
             </TouchableOpacity>
           </View>
@@ -2315,7 +2315,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       {/* Undo banner */}
       {undoAction && Date.now() < undoAction.expiresAt && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             // FIX (audit UX-CHT-02): route undo through handleUndo (visible send
             // path with typing + AI bubble + dashboard refresh + error surfacing)
             // instead of a fire-and-forget request that discarded its result.
@@ -2336,7 +2336,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       {!isPremium && remainingMsgs != null && remainingMsgs <= 10 && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: 2 }}>
           {remainingMsgs === 0 ? (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => router.push('/settings/premium')}
               style={{
                 flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -2387,7 +2387,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ gap: SPACING.xs }}
             renderItem={({ item }) => (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => { haptics.tap(); openTaskTopic(item); }}
                 accessibilityRole="button"
                 accessibilityLabel={`Koçuna anlat: ${item.title}`}
@@ -2419,7 +2419,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.xs }} keyboardShouldPersistTaps="handled">
             {QUICK_REPLIES.map((q) => (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 key={q}
                 onPress={() => handleQuickSelect(q)}
                 accessibilityRole="button"
@@ -2462,7 +2462,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             ] as const).map((chip) => {
               const backdateActive = chip.key === 'backdate' && !!backdateDate;
               return (
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   key={chip.key}
                   onPress={() => { haptics.tap(); setShowAttachTray(false); void chip.onPress(); }}
                   accessibilityRole="button"
@@ -2530,7 +2530,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
             {/* FIX (ux-round4 #24): expand-to-full-screen appears once the draft outgrows the box. */}
             {input.length > 200 && (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => { haptics.tap(); setComposeExpanded(true); }}
                 accessibilityRole="button"
                 accessibilityLabel="Tam ekran yaz"
@@ -2539,7 +2539,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                 <Ionicons name="expand-outline" size={16} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); setShowAttachTray(v => !v); }}
               accessibilityRole="button"
               accessibilityLabel={showAttachTray ? 'Ek seçenekleri gizle' : 'Ek seçenekleri göster: fotoğraf, galeriden seç, barkod, geçmiş tarih'}
@@ -2553,7 +2553,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               <Ionicons name="add-circle-outline" size={18}
                 color={showAttachTray ? colors.primary : colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={handleVoiceToggle}
               accessibilityRole="button"
               accessibilityLabel={isRecordingVoice ? 'Ses kaydını durdur' : 'Sesli giriş başlat'}
@@ -2566,7 +2566,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               <Ionicons name={isRecordingVoice ? 'stop' : 'mic-outline'} size={16}
                 color={isRecordingVoice ? (getContrastColor(colors.error) === 'black' ? '#0D0D12' : '#fff') : colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               style={{
                 width: 32, height: 32, borderRadius: 16,
                 backgroundColor: colors.primary,
@@ -2593,7 +2593,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: colors.background }}>
           <View style={{ flex: 1, paddingTop: insets.top + SPACING.sm, paddingHorizontal: SPACING.md, paddingBottom: insets.bottom + SPACING.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACING.sm }}>
-              <TouchableOpacity onPress={() => setComposeExpanded(false)} accessibilityRole="button" accessibilityLabel="Kapat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setComposeExpanded(false)} accessibilityRole="button" accessibilityLabel="Kapat" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close" size={24} color={colors.textMuted} />
               </TouchableOpacity>
               <Text style={{ color: colors.text, ...TYPE.headline }}>Mesajını yaz</Text>
@@ -2610,7 +2610,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               placeholderTextColor={colors.textMuted}
               accessibilityLabel="Mesajını yaz, tam ekran"
             />
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); setComposeExpanded(false); void handleSend(); }}
               disabled={sendDisabled}
               accessibilityRole="button"
@@ -2637,7 +2637,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           {fullscreenPhoto && (
             <Image source={{ uri: fullscreenPhoto }} accessibilityLabel="Fotoğraf" style={{ width: '92%', height: '80%', resizeMode: 'contain' }} />
           )}
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => setFullscreenPhoto(null)}
             accessibilityRole="button"
             accessibilityLabel="Kapat"
@@ -2670,7 +2670,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md }}>
               <Text style={{ flex: 1, color: colors.text, ...TYPE.title3 }}>Konular</Text>
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => { haptics.tap(); setTopicsModalVisible(false); }}
                 accessibilityRole="button"
                 accessibilityLabel="Kapat"
@@ -2689,7 +2689,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                 <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center' }}>
                   Konular yüklenemedi — bağlantını kontrol edip tekrar dene.
                 </Text>
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => { haptics.tap(); void loadTopicsList(); }}
                   accessibilityRole="button"
                   accessibilityLabel="Tekrar dene"
@@ -2704,7 +2704,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             ) : (
               <ScrollView showsVerticalScrollIndicator={false}>
                 {topicsList.map(({ task, completed }) => (
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     key={task.key}
                     disabled={completed}
                     onPress={() => { haptics.tap(); setTopicsModalVisible(false); openTaskTopic(task); }}
@@ -2793,7 +2793,7 @@ function StarterSuggestions({ isOnboarding, onSuggestion, onSend }: {
       </Text>
       <View style={{ gap: SPACING.sm }}>
         {suggestions.map((s, i) => (
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             key={i}
             accessibilityRole="button"
             accessibilityLabel={s.mode === 'intent' ? `${s.text} — gönder` : `${s.text} — düzenlemek için yazı kutusunu doldurur`}
@@ -3018,7 +3018,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             optimistic message (localPhotoUri); persisted/loaded messages have no
             URI and fall back to the placeholder text below. */}
         {isUser && message.localPhotoUri && (
-          <TouchableOpacity onPress={() => onOpenPhoto(message.localPhotoUri!)} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel="Fotoğrafı tam ekran aç">
+          <TouchableOpacity onPress={() => onOpenPhoto(message.localPhotoUri!)} activeOpacity={MOTION.pressOpacity} accessibilityRole="button" accessibilityLabel="Fotoğrafı tam ekran aç">
             <Image
               source={{ uri: message.localPhotoUri }}
               accessibilityLabel="Gönderilen fotoğraf"
@@ -3069,7 +3069,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
           return (
             <>
               {body}
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => { haptics.tap(); setShowFullText(v => !v); }}
                 accessibilityRole="button"
                 accessibilityLabel={showFullText ? 'Daha az göster' : 'Devamını oku'}
@@ -3086,7 +3086,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
         {!isUser && message.navigateTo && (
           <TouchableOpacity
             onPress={() => { haptics.tap(); router.push(message.navigateTo as never); }}
-            activeOpacity={0.8}
+            activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel={message.navigateTo === '/plan/diet' ? 'Diyet planına git' : message.navigateTo === '/plan/workout' ? 'Spor planına git' : 'Aç'}
             style={{
@@ -3235,7 +3235,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
         {/* Timestamp + TTS button */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 6 }}>
           {!isUser && (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); onTTSToggle(message.id, message.content); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
@@ -3309,7 +3309,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
           taşımaz ama reasoning taşır (toUIMessage) — panel reload sonrası da çalışmalı. */}
       {!isUser && message.reasoning && (
         <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs }}>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { haptics.tap(); setShowReasoning(v => { if (!v) trace('reasoning_opened'); return !v; }); }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
@@ -3342,7 +3342,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
           <Text style={{ color: colors.error, ...TYPE.caption, maxWidth: 200 }} numberOfLines={2}>
             {message.errorMessage ?? 'Gönderilemedi.'}
           </Text>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { haptics.tap(); onRetry(message); }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             style={{
@@ -3381,7 +3381,7 @@ function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         {PLAN_REJECT_REASONS.map((reason) => (
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             key={reason.label}
             disabled={disabled}
             onPress={() => { haptics.tap(); onPick(reason); }}
@@ -3397,7 +3397,7 @@ function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
             <Text style={{ color: colors.text, ...TYPE.body }}>{reason.label}</Text>
           </TouchableOpacity>
         ))}
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { haptics.tap(); onCancel(); }}
           accessibilityRole="button"
           accessibilityLabel="İptal"
@@ -3494,7 +3494,7 @@ function TaskCompletionCard({
             <TouchableOpacity
               key={task.key}
               onPress={() => { haptics.tap(); handleTap(task); }}
-              activeOpacity={0.85}
+              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel={`${task.title}: ${task.description}`}
               style={{
@@ -3547,7 +3547,7 @@ function TaskCompletionCard({
           suggestionTasks.length === 0 gate meant that whenever next-task cards DID render
           (the common case) a user who wanted none of them was locked out of their own
           composer with no in-screen exit. Clearing the task params in place unlocks it. */}
-      <TouchableOpacity
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
         onPress={() => { haptics.tap(); router.setParams({ taskModeHint: '', taskNonce: '', prefill: '' }); }}
         accessibilityRole="button"
         accessibilityLabel="Sohbete devam et"

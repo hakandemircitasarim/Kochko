@@ -25,7 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { PlanDayAccordion } from './PlanDayAccordion';
 import { formatWeekStartTR, type PlanData } from '@/services/plan.service';
 
@@ -106,7 +106,7 @@ export function FullPlanModal({
             borderBottomColor: colors.divider,
           }}
         >
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={onClose}
             accessibilityRole="button"
             accessibilityLabel="Kapat"

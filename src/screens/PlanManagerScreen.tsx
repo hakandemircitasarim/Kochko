@@ -31,7 +31,7 @@ import { Stack, router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { useAuthStore } from '@/stores/auth.store';
@@ -753,7 +753,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
         <Stack.Screen options={{
           ...screenOptions(cfg.draftHeaderTitle),
           headerRight: () => (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={handleDiscardDraft}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"

@@ -4,7 +4,7 @@ import { View, ActivityIndicator, Text, TouchableOpacity, Alert } from 'react-na
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -64,14 +64,14 @@ export default function Index() {
           <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.md }}>
             {fetchError ? 'İnternet bağlantını kontrol et.' : 'Beklenenden uzun sürdü. Tekrar dene ya da çıkış yapıp yeniden gir.'}
           </Text>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { setSpinTimedOut(false); if (session?.user?.id) fetchProfile(session.user.id); }}
             accessibilityRole="button" accessibilityLabel="Tekrar dene"
             style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
           >
             <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>Tekrar dene</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { signOut(); }} accessibilityRole="button" accessibilityLabel="Çıkış yap" style={{ paddingVertical: SPACING.sm, minHeight: 44, justifyContent: 'center' }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => { signOut(); }} accessibilityRole="button" accessibilityLabel="Çıkış yap" style={{ paddingVertical: SPACING.sm, minHeight: 44, justifyContent: 'center' }}>
             <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>Çıkış yap</Text>
           </TouchableOpacity>
         </View>
@@ -127,7 +127,7 @@ export default function Index() {
             ? `${requestedStr} tarihinde hesabını silmek istedin. Talep ${completesStr} tarihinde tamamlanacak ve tüm verilerin kalıcı olarak silinecek.`
             : `Hesabın silinmek üzere işaretli. Talep tamamlandığında tüm verilerin kalıcı olarak silinecek.`}
         </Text>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={async () => {
             if (!session?.user?.id) return;
             setReactivating(true);
@@ -148,7 +148,7 @@ export default function Index() {
         >
           <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>Silmeyi iptal et</Text>
         </TouchableOpacity>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { signOut(); }}
           accessibilityRole="button"
           accessibilityLabel="Silmeye devam et"

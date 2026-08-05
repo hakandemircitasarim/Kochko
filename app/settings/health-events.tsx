@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -85,7 +85,7 @@ export default function HealthEventsScreen() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.md }}>
             {EVENT_TYPES.map(t => (
               // FIX (audit ui-chip-a11y): seçilebilir tür chip'ine radio rolü + selected state + label.
-              <TouchableOpacity key={t} onPress={() => setType(t)}
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={t} onPress={() => setType(t)}
                 accessibilityRole="radio"
                 accessibilityState={{ selected: type === t }}
                 accessibilityLabel={EVENT_LABELS[t]}
@@ -101,7 +101,7 @@ export default function HealthEventsScreen() {
           {/* ux-sweep (HE-02): serbest metin tarih doğrulamasızdı — takvim alanı ISO üretir. */}
           <DateTimeField label="Tarih (opsiyonel)" mode="date" value={date} onChange={setDate} placeholder="2022-06-15" maximumDate={new Date()} />
           {/* FIX (audit ui-toggles): onay kutusuna checkbox rolü + checked state + label. */}
-          <TouchableOpacity onPress={() => setOngoing(!ongoing)} accessibilityRole="checkbox" accessibilityState={{ checked: ongoing }} accessibilityLabel="Devam ediyor" style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setOngoing(!ongoing)} accessibilityRole="checkbox" accessibilityState={{ checked: ongoing }} accessibilityLabel="Devam ediyor" style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Text style={{ color: colors.primary }}>{ongoing ? '[x]' : '[ ]'}</Text>
             <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Devam ediyor</Text>
           </TouchableOpacity>
@@ -134,7 +134,7 @@ export default function HealthEventsScreen() {
       )}
 
       {events.map(e => (
-        <TouchableOpacity key={e.id} onLongPress={() => handleDelete(e.id)}
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={e.id} onLongPress={() => handleDelete(e.id)}
           style={{ backgroundColor: colors.card, borderRadius: 12, padding: SPACING.md, marginTop: SPACING.sm, borderWidth: 1, borderColor: colors.border }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             {/* FIX (TR-i18n): textTransform yerel-kordur — bu etiketler cihazda "DIĞER", "ALERJI",
@@ -143,7 +143,7 @@ export default function HealthEventsScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
               {e.is_ongoing && <Text style={{ color: colors.warning, ...TYPE.caption }}>Devam ediyor</Text>}
               {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu (Alert onaylı); long-press kısayolu korundu. */}
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => handleDelete(e.id)}
                 accessibilityRole="button"
                 accessibilityLabel={`${EVENT_LABELS[e.event_type] ?? e.event_type} kaydını sil`}

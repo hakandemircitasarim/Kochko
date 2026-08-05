@@ -8,7 +8,7 @@ import { getCurrentWeeklyPlan, generateWeeklyPlan, toggleShoppingItem, type Week
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -98,12 +98,12 @@ export default function WeeklyMenuScreen() {
         <>
           {/* Tabs */}
           <View style={{ flexDirection: 'row', marginBottom: SPACING.md, gap: SPACING.sm }}>
-            <TouchableOpacity onPress={() => { haptics.tap(); setTab('menu'); }}
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => { haptics.tap(); setTab('menu'); }}
               accessibilityRole="tab" accessibilityLabel="Menü" accessibilityState={{ selected: tab === 'menu' }}
               style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center', backgroundColor: tab === 'menu' ? colors.primary : colors.card }}>
               <Text style={{ color: tab === 'menu' ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.bodyStrong }}>Menü</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => { haptics.tap(); setTab('shopping'); }}
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => { haptics.tap(); setTab('shopping'); }}
               accessibilityRole="tab" accessibilityLabel="Alışveriş" accessibilityState={{ selected: tab === 'shopping' }}
               style={{ flex: 1, minHeight: 44, justifyContent: 'center', paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center', backgroundColor: tab === 'shopping' ? colors.primary : colors.card }}>
               <Text style={{ color: tab === 'shopping' ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.bodyStrong }}>Alışveriş</Text>
@@ -138,7 +138,7 @@ export default function WeeklyMenuScreen() {
               ).map(([category, items]) => (
                 <Card key={category} title={CATEGORY_LABELS[category] ?? category}>
                   {items.map(({ item, index }) => (
-                    <TouchableOpacity key={index} onPress={() => handleToggleItem(index)}
+                    <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={index} onPress={() => handleToggleItem(index)}
                       accessibilityRole="checkbox" accessibilityLabel={`${item.name} ${item.amount}`} accessibilityState={{ checked: item.checked }}
                       style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingVertical: 4, gap: SPACING.sm }}>
                       <View style={{ width: 20, height: 20, borderRadius: 4, borderWidth: 1.5, borderColor: item.checked ? colors.success : colors.border, backgroundColor: item.checked ? colors.success : 'transparent', justifyContent: 'center', alignItems: 'center' }}>

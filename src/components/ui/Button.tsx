@@ -2,7 +2,7 @@ import React from 'react';
 import { TouchableOpacity, Text, ActivityIndicator, type ViewStyle } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS, MAX_FONT_SCALE, BUTTON_HEIGHTS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 
 interface Props {
@@ -70,7 +70,7 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
       }, style]}
       onPress={onPress}
       disabled={disabled || loading}
-      activeOpacity={0.7}
+      activeOpacity={MOTION.pressOpacity}
       hitSlop={hitSlop}
       accessibilityRole="button"
       accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}

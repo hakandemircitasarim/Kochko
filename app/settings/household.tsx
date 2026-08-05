@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import {
@@ -220,7 +220,7 @@ export default function HouseholdScreen() {
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Davet Kodu</Text>
                 {/* ux-sweep (HH-01): kod salt-görüntüydü — 'paylaş' vaadi eylemsizdi. Dokun→paylaş. */}
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => { void Share.share({ message: `KOCHKO aile davet kodum: ${household.inviteCode}` }); }}
                   accessibilityRole="button"
                   accessibilityLabel={`Davet kodu ${household.inviteCode}. Paylaşmak için dokun`}
@@ -269,7 +269,7 @@ export default function HouseholdScreen() {
                 const key = `${item.ingredient}|${item.unit}`;
                 const checked = checkedItems.has(key);
                 return (
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     key={key}
                     onPress={() => toggleCheck(key)}
                     accessibilityRole="checkbox"

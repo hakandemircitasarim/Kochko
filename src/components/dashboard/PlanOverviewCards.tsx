@@ -13,7 +13,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { getActive, getDraft, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
@@ -117,7 +117,7 @@ export function PlanOverviewCards({ userId, dayBoundaryHour = 4 }: Props) {
       )}
       <TouchableOpacity
         onPress={() => router.push('/plan/history' as never)}
-        activeOpacity={0.7}
+        activeOpacity={MOTION.pressOpacity}
         accessibilityRole="button"
         accessibilityLabel="Geçmiş planlar"
         accessibilityHint="Önceki diyet ve antrenman planlarını gör"
@@ -238,7 +238,7 @@ function PlanCard({
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.85}
+      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${primary}. ${secondary}`}
       accessibilityHint={plan ? 'Plan detayları için aç' : hasDraft ? 'Taslağı gözden geçir' : 'Yeni plan oluştur'}

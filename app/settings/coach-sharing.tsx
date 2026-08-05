@@ -17,7 +17,7 @@ import { exportPDF } from '@/services/export.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { genderLabelTR, goalInfinitiveLabelTR, activityLevelLabelTR, mealTypeLabelTR } from '@/lib/labels';
@@ -239,7 +239,7 @@ export default function CoachSummaryScreen() {
       <Card title="Dönem">
         <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
           {[{ label: 'Son 30 gün', days: 30 }, { label: 'Son 90 gün', days: 90 }].map(chip => (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={chip.days}
               onPress={() => { haptics.tap(); setRangeDays(chip.days); }}
               accessibilityRole="button"

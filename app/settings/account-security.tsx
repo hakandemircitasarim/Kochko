@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { SectionHeader } from '@/components/settings/SectionHeader';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -347,7 +347,7 @@ function ProviderRow({
       ) : comingSoon ? (
         // Launch inventory: the provider is NOT configured in Supabase — this was a live dead
         // button dropping users on a broken OAuth page. "Yakında" chip + explanation instead.
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => Alert.alert('Yakında', `${name} ile hesap bağlama çok yakında aktif olacak. Şimdilik e-posta girişin kullanılıyor.`)}
           accessibilityRole="button"
           accessibilityState={{ disabled: true }}

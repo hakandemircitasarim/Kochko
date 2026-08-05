@@ -11,7 +11,7 @@ import { View, Text, TouchableOpacity, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { MealCard } from './MealCard';
 import { ExerciseCard } from './ExerciseCard';
 import { dayLabelTR, type DietPlanData, type WorkoutPlanData, type PlanData } from '@/services/plan.service';
@@ -81,7 +81,7 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
               // Keep at least one day expanded: re-tapping the open day is a no-op
               // so the user can't collapse into a blank screen with nothing to re-open.
               onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(dayIdx); viewedRef.current.add(dayIdx); checkAllViewed(); }}
-              activeOpacity={0.8}
+              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel={`${label}, ${isOpen ? 'açık' : 'aç'}`}
               accessibilityState={{ expanded: isOpen }}

@@ -12,7 +12,7 @@ import { haptics } from '@/lib/haptics'; // FIX (ux-polish): the hero CTAs are t
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { SPACING, RADIUS, HERO } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { a11yProgress, formatProgressForScreenReader, getContrastColor } from '@/lib/accessibility';
 
 interface Props {
@@ -190,7 +190,7 @@ export function HeroSection({
                 taskNonce: String(Date.now()),
               },
             }); }}
-            activeOpacity={0.7}
+            activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel="Henüz hedef belirlenmedi. Koçuna hedeflerini anlatmak için dokun"
             style={{ alignItems: 'center', paddingVertical: SPACING.xxl, alignSelf: 'stretch' }}
@@ -215,7 +215,7 @@ export function HeroSection({
           user gets the goal CTA inside the ring card instead). */}
       {hasTargets && (
         <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { haptics.tap(); router.push('/log'); }}
             accessibilityRole="button"
             accessibilityLabel="Öğün ekle"
@@ -224,7 +224,7 @@ export function HeroSection({
             <Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />
             <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>Öğün ekle</Text>
           </TouchableOpacity>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { haptics.tap(); router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugün antrenman yaptım: ', taskNonce: String(Date.now()) } }); }}
             accessibilityRole="button"
             accessibilityLabel="Antrenman ekle"

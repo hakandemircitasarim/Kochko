@@ -9,7 +9,7 @@ import { DateTimeField } from '@/components/ui/DateTimeField';
 import { Card } from '@/components/ui/Card';
 import { Toggle } from '@/components/settings/ToggleRow'; // FIX (audit UI-DS-03): shared toggle primitive
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { a11ySwitch } from '@/lib/accessibility'; // FIX (audit UI-DS-03): getContrastColor moved into shared <Toggle/>
@@ -123,7 +123,7 @@ export default function IFSettingsScreen() {
       })()}
 
       {/* Toggle */}
-      <TouchableOpacity
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
         {...a11ySwitch(`IF ${active ? 'Aktif' : 'Kapalı'}`, active)}
         onPress={() => {
           const ps = profile?.periodic_state as PeriodicState | null;
@@ -147,7 +147,7 @@ export default function IFSettingsScreen() {
           {/* Window Selection */}
           <View style={{ gap: SPACING.sm, marginBottom: SPACING.lg }}>
             {IF_WINDOWS.map(w => (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 key={w.label}
                 onPress={() => handleSelectWindow(w)}
                 accessibilityRole="radio"

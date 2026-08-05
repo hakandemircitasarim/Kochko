@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
@@ -373,7 +373,7 @@ function ChipSelect({ label, options, selected, onChange }: {
         {options.map(opt => {
           const isSelected = selected === opt.value;
           return (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={opt.value}
               onPress={() => { haptics.tap(); onChange(opt.value); }}
               hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}

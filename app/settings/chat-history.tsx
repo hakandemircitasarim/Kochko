@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -254,7 +254,7 @@ export default function ChatHistoryScreen() {
       {allTags.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING.md }} contentContainerStyle={{ gap: SPACING.xs }}>
           {allTags.map(tag => (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={tag}
               onPress={() => setSelectedTag(prev => prev === tag ? null : tag)}
               accessibilityRole="button"
@@ -281,7 +281,7 @@ export default function ChatHistoryScreen() {
       {searchResults.length > 0 && (
         <Card title={`Sonuçlar (${searchResults.length})`}>
           {searchResults.map(r => (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={r.id}
               onPress={() => { haptics.tap(); openSession(r.session_id); }}
               accessibilityRole="button"
@@ -334,7 +334,7 @@ export default function ChatHistoryScreen() {
         <Card><Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', paddingVertical: SPACING.md }}>Henüz sohbet geçmişi yok.</Text></Card>
       ) : (
         filteredSessions.map(s => (
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             key={s.id}
             onPress={() => { haptics.tap(); openSession(s.id); }}
             onLongPress={() => handleDeleteSession(s.id)}

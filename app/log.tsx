@@ -28,7 +28,7 @@ import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 
 type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery' | 'steps';
 
@@ -717,7 +717,7 @@ export default function QuickLogScreen() {
           <Text style={{ ...TYPE.headline, color: colors.text, textAlign: 'center', marginBottom: SPACING.xl }}>Barkod taramak için kamera izni gerekli</Text>
           {/* ux-sweep (LOG-03): kalıcı reddedilmiş izinde 'İzin ver' ölü butondu — OS artık
               diyalog göstermiyor; kullanıcıyı ayarlara götür. */}
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { if (cameraPermission && !cameraPermission.canAskAgain) { void Linking.openSettings(); } else { void requestCameraPermission(); } }}
             accessibilityRole="button"
             accessibilityLabel={cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
@@ -726,7 +726,7 @@ export default function QuickLogScreen() {
               {cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginTop: SPACING.xl }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginTop: SPACING.xl }}>
             <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Geri</Text>
           </TouchableOpacity>
         </View>
@@ -755,7 +755,7 @@ export default function QuickLogScreen() {
         {/* Overlay */}
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: SPACING.xl, paddingTop: insets.top + 12 }}>
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { setScreen('main'); resetBarcodeState(); }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
@@ -813,7 +813,7 @@ export default function QuickLogScreen() {
                       accessibilityLabel="Gram miktarı"
                       style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.sm, color: '#fff', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, ...TYPE.body }}
                     />
-                    <TouchableOpacity
+                    <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                       onPress={() => { if (!gValid) return; haptics.tap(); void sendBarcodeLog(g); }}
                       disabled={!gValid}
                       accessibilityRole="button" accessibilityLabel="Gramı kaydet"
@@ -832,7 +832,7 @@ export default function QuickLogScreen() {
                 })() : (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center' }}>
                     {pendingProduct.result.serving_size_g && pendingProduct.result.serving_size_g > 0 ? (
-                      <TouchableOpacity
+                      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                         onPress={() => { haptics.tap(); void sendBarcodeLog(pendingProduct.result.serving_size_g as number); }}
                         accessibilityRole="button" accessibilityLabel={`1 porsiyon, ${Math.round(pendingProduct.result.serving_size_g)} gram`}
                         style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
@@ -841,13 +841,13 @@ export default function QuickLogScreen() {
                         </Text>
                       </TouchableOpacity>
                     ) : null}
-                    <TouchableOpacity
+                    <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                       onPress={() => { haptics.tap(); void sendBarcodeLog(100); }}
                       accessibilityRole="button" accessibilityLabel="100 gram"
                       style={{ backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
                       <Text style={{ ...TYPE.bodyStrong, color: '#fff' }}>100 g</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity
+                    <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                       onPress={() => { haptics.tap(); setShowCustomGrams(true); }}
                       accessibilityRole="button" accessibilityLabel="Özel gram gir"
                       style={{ backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: RADIUS.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg }}>
@@ -858,7 +858,7 @@ export default function QuickLogScreen() {
                 {barcodeResult && (
                   <Text style={{ ...TYPE.caption, color: '#FFB4AB', textAlign: 'center', marginTop: SPACING.sm }}>{barcodeResult}</Text>
                 )}
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => { haptics.tap(); resetBarcodeState(); }}
                   accessibilityRole="button" accessibilityLabel="Vazgeç"
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -883,7 +883,7 @@ export default function QuickLogScreen() {
   if (screen === 'voice') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           // ux-sweep (LOG-01): kayıt sürerken X yalnız state'i sıfırlıyordu — modül seviyesindeki
           // Recording nesnesi AÇIK kalıyor (Android yeşil mikrofon göstergesi yanık), bir sonraki
           // denemede createAsync 'Only one Recording...' ile patlayıp yanlış 'izin ver' teşhisine
@@ -903,7 +903,7 @@ export default function QuickLogScreen() {
           </>
         ) : (
           <>
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); void handleVoiceToggle(); }}
               accessibilityRole="button"
               accessibilityLabel={isRecording ? 'Kaydı durdur' : 'Kayda başla'}
@@ -940,7 +940,7 @@ export default function QuickLogScreen() {
       // centering. The autoFocused decimal-pad keyboard opens immediately and, in this modal, its top
       // edge reaches above center on small devices and would cover the İptal/Kaydet buttons.
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'flex-start', alignItems: 'center', padding: SPACING.xl, paddingTop: insets.top + 64 }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => setScreen('main')}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
@@ -955,7 +955,7 @@ export default function QuickLogScreen() {
         {/* FIX (ux-ideas #13): +/- steppers flank the input; the input is prefilled with the last
             known weight (set on open) so most weigh-ins are a one-tap tweak, not a full retype. */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, width: '85%' }}>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => stepWeight(-0.1)}
             accessibilityRole="button" accessibilityLabel="0,1 kilogram azalt"
             style={{ width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: colors.border }}>
@@ -984,7 +984,7 @@ export default function QuickLogScreen() {
             maxLength={5}
             accessibilityLabel="Kilo (kg)"
           />
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => stepWeight(0.1)}
             accessibilityRole="button" accessibilityLabel="0,1 kilogram artır"
             style={{ width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: colors.border }}>
@@ -1009,11 +1009,11 @@ export default function QuickLogScreen() {
           );
         })()}
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
-          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
             <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>İptal</Text>
           </TouchableOpacity>
           {/* FIX (ux-round4 #12): disable Kaydet until the value is in range (Alert stays as a net). */}
-          <TouchableOpacity onPress={handleWeightSave} disabled={loading || !weightValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !weightValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !weightValid) ? 0.5 : 1 }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={handleWeightSave} disabled={loading || !weightValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !weightValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !weightValid) ? 0.5 : 1 }}>
             <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
@@ -1025,7 +1025,7 @@ export default function QuickLogScreen() {
   if (screen === 'sleep') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => setScreen('main')}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
@@ -1070,12 +1070,12 @@ export default function QuickLogScreen() {
           );
         })()}
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
-          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
             <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>İptal</Text>
           </TouchableOpacity>
           {/* FIX (ux-round4 #13 review): disable Kaydet until BOTH times are picked — the pickers
               start empty, so the enabled button was a silent no-op (handleSleepSave early-returns). */}
-          <TouchableOpacity onPress={handleSleepSave} disabled={loading || !sleepTime || !wakeTime} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !sleepTime || !wakeTime }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !sleepTime || !wakeTime) ? 0.5 : 1 }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={handleSleepSave} disabled={loading || !sleepTime || !wakeTime} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !sleepTime || !wakeTime }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !sleepTime || !wakeTime) ? 0.5 : 1 }}>
             <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
@@ -1090,7 +1090,7 @@ export default function QuickLogScreen() {
     const stepsOutOfRange = stepsInput.trim() !== '' && !stepsValid;
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'flex-start', alignItems: 'center', padding: SPACING.xl, paddingTop: insets.top + 64 }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => setScreen('main')}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
@@ -1129,7 +1129,7 @@ export default function QuickLogScreen() {
         {/* Tek dokunuşla tipik değerler — sayıyı YAZAR (günlük toplam, artış değil). */}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'center', marginTop: SPACING.lg, marginBottom: SPACING.xxl }}>
           {STEP_CHIPS.map(n => (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={n}
               onPress={() => { haptics.tap(); setStepsInput(String(n)); }}
               accessibilityRole="button"
@@ -1140,10 +1140,10 @@ export default function QuickLogScreen() {
           ))}
         </View>
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '70%' }}>
-          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
             <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>İptal</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleStepsSave} disabled={loading || !stepsValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !stepsValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !stepsValid) ? 0.5 : 1 }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={handleStepsSave} disabled={loading || !stepsValid} accessibilityRole="button" accessibilityLabel="Kaydet" accessibilityState={{ disabled: loading || !stepsValid }} style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: (loading || !stepsValid) ? 0.5 : 1 }}>
             <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>{loading ? 'Kaydediliyor...' : 'Kaydet'}</Text>
           </TouchableOpacity>
         </View>
@@ -1155,7 +1155,7 @@ export default function QuickLogScreen() {
   if (screen === 'recovery') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => setScreen('main')}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
@@ -1173,7 +1173,7 @@ export default function QuickLogScreen() {
           {SORENESS_LEVELS.map(s => (
             // FIX (ux-round4 #27): tap-again to deselect — a mis-tapped dimension can return to
             // unanswered without cancelling the whole sheet (Save-disabled guard covers both-null).
-            <TouchableOpacity key={s.value} onPress={() => { haptics.tap(); setSoreness(prev => prev === s.value ? null : s.value); }}
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={s.value} onPress={() => { haptics.tap(); setSoreness(prev => prev === s.value ? null : s.value); }}
               accessibilityRole="button"
               accessibilityLabel={`Kas ağrısı: ${s.label}`}
               accessibilityState={{ selected: soreness === s.value }}
@@ -1191,7 +1191,7 @@ export default function QuickLogScreen() {
         <View style={{ flexDirection: 'row', gap: SPACING.sm, width: '100%', marginBottom: SPACING.xxl }}>
           {[1, 2, 3, 4, 5].map(r => (
             // FIX (ux-round4 #27): tap-again to deselect (same as the soreness pills above).
-            <TouchableOpacity key={r} onPress={() => { haptics.tap(); setRecoveryScore(prev => prev === r ? null : r); }}
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={r} onPress={() => { haptics.tap(); setRecoveryScore(prev => prev === r ? null : r); }}
               accessibilityRole="button"
               accessibilityLabel={`Toparlanma puanı: ${r}`}
               accessibilityState={{ selected: recoveryScore === r }}
@@ -1206,10 +1206,10 @@ export default function QuickLogScreen() {
         </View>
 
         <View style={{ flexDirection: 'row', gap: SPACING.md, width: '80%' }}>
-          <TouchableOpacity onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="İptal" style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}>
             <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>İptal</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleRecoverySave} disabled={loading || (soreness === null && recoveryScore === null)}
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={handleRecoverySave} disabled={loading || (soreness === null && recoveryScore === null)}
             accessibilityRole="button" accessibilityLabel="Kaydet"
             accessibilityState={{ disabled: loading || (soreness === null && recoveryScore === null) }}
             style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', opacity: loading || (soreness === null && recoveryScore === null) ? 0.5 : 1 }}>
@@ -1255,7 +1255,7 @@ export default function QuickLogScreen() {
     <ScrollView ref={scrollRef} style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.xl, paddingTop: insets.top + 12, paddingBottom: 40 + insets.bottom }} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xxl }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => router.back()}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           accessibilityRole="button"
@@ -1288,7 +1288,7 @@ export default function QuickLogScreen() {
           return (
           <TouchableOpacity
             key={i}
-            activeOpacity={0.7}
+            activeOpacity={MOTION.pressOpacity}
             disabled={navigatingIndex !== null}
             accessibilityRole="button"
             accessibilityLabel={`${method.title}. ${method.desc}`}
@@ -1354,7 +1354,7 @@ export default function QuickLogScreen() {
                   key={t.id}
                   onPress={() => { haptics.tap(); void logTemplate(t); }}
                   disabled={submittingRef.current}
-                  activeOpacity={0.7}
+                  activeOpacity={MOTION.pressOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`${t.name}, ${t.total_calories} kalori ekle`}
                   accessibilityState={{ busy }}
@@ -1401,7 +1401,7 @@ export default function QuickLogScreen() {
                   key={m.id}
                   onPress={() => { haptics.tap(); void logRecentMeal(m); }}
                   disabled={submittingRef.current}
-                  activeOpacity={0.7}
+                  activeOpacity={MOTION.pressOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`${m.dayLabel} · ${m.rawInput}, ${m.kcal} kalori, tekrar ekle`}
                   accessibilityState={{ busy }}
@@ -1450,7 +1450,7 @@ export default function QuickLogScreen() {
         />
         {text.trim() ? (
           <TouchableOpacity onPress={handleLog} disabled={loading}
-            activeOpacity={0.7}
+            activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel="Kaydet"
             accessibilityState={{ disabled: loading, busy: loading }}
@@ -1473,7 +1473,7 @@ export default function QuickLogScreen() {
             key={o.label}
             onPress={() => { haptics.tap(); handleWaterAddAmount(o.liters); }}
             disabled={submittingRef.current || waterPendingLiters !== null}
-            activeOpacity={0.7}
+            activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel={`${o.label} su ekle`}
             style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.md, backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border, opacity: (submittingRef.current || waterPendingLiters !== null) ? 0.6 : 1 }}
@@ -1500,7 +1500,7 @@ export default function QuickLogScreen() {
           const busy = navigatingIndex === 100 + i || action.pending;
           return (
           <TouchableOpacity key={i}
-            activeOpacity={0.7}
+            activeOpacity={MOTION.pressOpacity}
             disabled={navigatingIndex !== null || waterPendingLiters !== null}
             accessibilityRole="button"
             accessibilityLabel={action.label}

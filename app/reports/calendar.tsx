@@ -8,7 +8,7 @@ import { getMonthSummaries, type DaySummary } from '@/services/calendar.service'
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 
@@ -79,7 +79,7 @@ export default function CalendarScreen() {
 
       {/* Month navigation */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={prevMonth}
           accessibilityRole="button"
           accessibilityLabel="Önceki ay"
@@ -88,7 +88,7 @@ export default function CalendarScreen() {
           <Text style={{ color: colors.primary, ...TYPE.title3 }}>{'<'}</Text>
         </TouchableOpacity>
         <Text style={{ color: colors.text, ...TYPE.title3 }}>{MONTH_NAMES[month - 1]} {year}</Text>
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={nextMonth}
           accessibilityRole="button"
           accessibilityLabel="Sonraki ay"
@@ -133,7 +133,7 @@ export default function CalendarScreen() {
           const isSelected = selected?.date === day.date;
 
           return (
-            <TouchableOpacity key={day.date} onPress={() => setSelected(day)}
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={day.date} onPress={() => setSelected(day)}
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
               accessibilityLabel={`${dayNum} ${MONTH_NAMES[month - 1]}${isToday ? ', bugün' : ''}${day.hasData && day.compliance_score !== null ? `, uyum yüzde ${day.compliance_score}` : day.hasData ? '' : ', veri yok'}`}
@@ -241,7 +241,7 @@ export default function CalendarScreen() {
                   ux-readiness: only when a report actually exists (compliance_score!=null) — a
                   meal/weight-only day has no daily_reports row and the link would soft-dead-end. */}
               {selected.compliance_score !== null && (
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => router.push(`/reports/daily?date=${selected.date}`)}
                   accessibilityRole="button"
                   accessibilityLabel="Bu günün gün sonu raporunu gör"

@@ -187,6 +187,22 @@ export const MOTION = {
   spring: { damping: 18, stiffness: 220, mass: 0.9 },
   /** Scale a card drops to while pressed. Subtle — 0.98, not 0.9. */
   pressScale: 0.98,
+  /**
+   * Opacity a tappable drops to while pressed.
+   *
+   * MEASURED 2026-08-05. React Native's TouchableOpacity defaults `activeOpacity` to **0.2**
+   * (TouchableOpacity.js: `this.props.activeOpacity ?? 0.2`). 224 of the app's 272 tappables
+   * never set it, so the app's dominant press feedback was an accident, not a decision: driven
+   * on a device, pressing "Öğün ekle" — the most-used action in the product — made the button
+   * and its label all but vanish. It reads as "this broke", not as "I heard you". The 48 that
+   * DID set it had drifted across 0.6 / 0.7 / 0.8 / 0.85 / 0.9, so even the deliberate ones
+   * disagreed.
+   *
+   * 0.7 is the app's own most common choice and it acknowledges a tap without erasing the
+   * control. One number, everywhere. `activeOpacity={1}` stays a valid explicit opt-out for
+   * surfaces that must not react (scrims, wrappers around their own pressable children).
+   */
+  pressOpacity: 0.7,
 } as const;
 
 /* ───────────────────────────── SURFACES ───────────────────────────── */

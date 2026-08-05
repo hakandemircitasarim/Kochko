@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -103,7 +103,7 @@ export default function VenuesScreen() {
         </Card>
       ) : (
         venues.map(v => (
-          <TouchableOpacity key={v.id} onLongPress={() => handleDelete(v.id)}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={v.id} onLongPress={() => handleDelete(v.id)}>
             <Card>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm }}>
                 <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>{v.venue_name}</Text>
@@ -111,7 +111,7 @@ export default function VenuesScreen() {
                   {v.venue_type && <Text style={{ color: colors.primary, ...TYPE.caption }}>{TYPE_LABELS[v.venue_type] ?? v.venue_type}</Text>}
                   <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{v.visit_count}x</Text>
                   {/* FIX (audit ui-destructive-delete): görünür/erişilebilir sil butonu; long-press kısayolu korundu. */}
-                  <TouchableOpacity
+                  <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                     onPress={() => handleDelete(v.id)}
                     accessibilityRole="button"
                     accessibilityLabel={`${v.venue_name} mekanını sil`}

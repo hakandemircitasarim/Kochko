@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { OFFER_TRIGGERS } from '@/services/coaching-messages.service';
 import type { CoachingMessage } from '@/services/coaching-messages.service';
 
@@ -74,7 +74,7 @@ export function CoachingNudge({
             <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
               <TouchableOpacity
                 onPress={() => onTap(msg)}
-                activeOpacity={0.7}
+                activeOpacity={MOTION.pressOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={msg.content}
                 accessibilityHint="İlgili ekranı açmak için dokun"
@@ -95,7 +95,7 @@ export function CoachingNudge({
                 </View>
               </TouchableOpacity>
               {/* FIX (ux-polish): 16px icon + hitSlop 14 ≈ 44dp min touch target (was ~36dp). */}
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => onDismiss(msg.id)}
                 hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
                 accessibilityRole="button"
@@ -111,7 +111,7 @@ export function CoachingNudge({
                 into a single tap so the habit-stacking loop actually closes. */}
             {showOffer && (
               <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => onAccept!(msg)}
                   accessibilityRole="button"
                   accessibilityLabel="Evet, uygulayalım"
@@ -120,7 +120,7 @@ export function CoachingNudge({
                   <Ionicons name="checkmark" size={14} color={getContrastColor(colors.primary)} />
                   <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>Evet</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => onDismiss(msg.id)}
                   accessibilityRole="button"
                   accessibilityLabel="Sonra"

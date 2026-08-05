@@ -5,7 +5,7 @@ import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 
 interface Pattern { type: string; description: string; trigger?: string; intervention?: string; }
 interface Props {
@@ -42,7 +42,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
           <Text style={{ ...TYPE.headline, color: colors.text }}>Koçun seni tanıyor</Text>
         </View>
         {onResetAll && (
-          <TouchableOpacity onPress={() => Alert.alert('Sıfırla', 'Tüm notlar silinecek.', [{ text: 'İptal' }, { text: 'Sıfırla', style: 'destructive', onPress: onResetAll }])}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => Alert.alert('Sıfırla', 'Tüm notlar silinecek.', [{ text: 'İptal' }, { text: 'Sıfırla', style: 'destructive', onPress: onResetAll }])}>
             <Text style={{ ...TYPE.caption, color: colors.error, fontWeight: '600' }}>Sıfırla</Text>
           </TouchableOpacity>
         )}
@@ -51,11 +51,11 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
       {generalSummary ? (
         // FIX (audit destructive-delete): long-press-only yerine görünür/a11y sil butonu (chat.tsx deseni).
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: SPACING.md }}>
-          <TouchableOpacity style={{ flex: 1 }} onLongPress={() => handleDeleteNote(generalSummary)}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} style={{ flex: 1 }} onLongPress={() => handleDeleteNote(generalSummary)}>
             <Text style={{ ...TYPE.body, color: colors.text }}>{generalSummary}</Text>
           </TouchableOpacity>
           {onDeleteNote && (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => handleDeleteNote(generalSummary)}
               accessibilityRole="button"
               accessibilityLabel="Özet notunu sil"
@@ -77,12 +77,12 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
             // FIX (audit destructive-delete): görünür/a11y sil butonu ekle, long-press kısayolu korunur.
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 4, gap: SPACING.xs }}>
               <View style={{ width: 3, height: 14, backgroundColor: PATTERN_COLORS[p.type] ?? colors.textMuted, borderRadius: 2, marginTop: 3 }} />
-              <TouchableOpacity style={{ flex: 1 }} onLongPress={() => handleDeleteNote(p.description)}>
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity} style={{ flex: 1 }} onLongPress={() => handleDeleteNote(p.description)}>
                 <Text style={{ ...TYPE.body, color: colors.text }}>{p.description}</Text>
                 {p.intervention && <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }}>Müdahale: {p.intervention}</Text>}
               </TouchableOpacity>
               {onDeleteNote && (
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => handleDeleteNote(p.description)}
                   accessibilityRole="button"
                   accessibilityLabel="Kalıbı sil"
@@ -117,7 +117,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.xs }}>KOÇLUK NOTLARI</Text>
             {onDeleteNote && (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => handleDeleteNote(coachingNotes)}
                 accessibilityRole="button"
                 accessibilityLabel="Koçluk notlarını sil"
@@ -128,7 +128,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
               </TouchableOpacity>
             )}
           </View>
-          <TouchableOpacity onLongPress={() => handleDeleteNote(coachingNotes)}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onLongPress={() => handleDeleteNote(coachingNotes)}>
             <Text style={{ ...TYPE.body, color: colors.textMuted }}>{coachingNotes}</Text>
           </TouchableOpacity>
         </View>

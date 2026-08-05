@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 
 interface Props {
   label?: string;
@@ -59,7 +59,7 @@ export function DateTimeField({ label, mode, value, onChange, placeholder, minim
       {label ? (
         <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontWeight: '500', marginBottom: SPACING.xs + 2 }}>{label}</Text>
       ) : null}
-      <TouchableOpacity
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
         onPress={() => setShow(true)}
         accessibilityRole="button"
         accessibilityLabel={`${label ?? (mode === 'time' ? 'Saat' : 'Tarih')}: ${formatDisplay(value, mode) || 'seçilmedi'}`}

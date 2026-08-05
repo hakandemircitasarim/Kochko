@@ -7,7 +7,7 @@ import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { SPACING, RADIUS, WATER_INCREMENT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useProfileStore } from '@/stores/profile.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
@@ -68,7 +68,7 @@ function FABButton() {
             router.push('/log');
           }}
           onLongPress={() => { haptics.tap(); setMenuOpen(true); }}
-          activeOpacity={0.85}
+          activeOpacity={MOTION.pressOpacity}
           accessibilityRole="button"
           accessibilityLabel="Hızlı kayıt — öğün, su, tartı, antrenman. Uzun bas: hızlı menü"
         >
@@ -94,7 +94,7 @@ function FABButton() {
           >
             <Text style={{ ...TYPE.overline, color: colors.textMuted, marginBottom: SPACING.sm }}>HIZLI KAYIT</Text>
             {OPTIONS.map((o) => (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 key={o.label}
                 onPress={() => { haptics.tap(); setMenuOpen(false); o.run(); }}
                 accessibilityRole="button"

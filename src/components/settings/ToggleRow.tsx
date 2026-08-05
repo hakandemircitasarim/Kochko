@@ -4,7 +4,7 @@
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useTheme } from '@/lib/theme'; // FIX (audit UI-DS-03): theme-react (was static COLORS snapshot)
 import { SPACING } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { a11ySwitch, getContrastColor } from '@/lib/accessibility'; // FIX (audit UI-PR-01)
 
 // FIX (audit UI-DS-03): single themed iOS-style toggle primitive. The 48x28 r14 track +
@@ -56,7 +56,7 @@ export function Toggle({ value, onToggle, disabled, accessibilityLabel }: Toggle
 
   if (accessibilityLabel) {
     return (
-      <TouchableOpacity {...a11yProps} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity} {...a11yProps} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
         {track}
       </TouchableOpacity>
     );
@@ -76,7 +76,7 @@ interface Props {
 export function ToggleRow({ label, description, value, onToggle, disabled }: Props) {
   const { colors } = useTheme(); // FIX (audit UI-DS-03): react to theme changes (was static COLORS)
   return (
-    <TouchableOpacity
+    <TouchableOpacity activeOpacity={MOTION.pressOpacity}
       onPress={() => onToggle(!value)}
       disabled={disabled} // FIX (audit UI-PR-01)
       // FIX (audit UI-PR-01 / UX-A11-02): announce as a switch with on/off state to screen readers

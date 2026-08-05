@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Ionicons } from '@expo/vector-icons';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
@@ -140,7 +140,7 @@ export default function OnboardingScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {body}
-      <TouchableOpacity
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
         onPress={handleExit}
         accessibilityRole="button"
         accessibilityLabel="Kapat ve geri dön"
@@ -817,7 +817,7 @@ function ChipSelect({ label, options, selected, onChange }: {
         {options.map(opt => {
           const isSelected = selected === opt.value;
           return (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={opt.value}
               onPress={() => { haptics.tap(); onChange(opt.value); }}
               accessibilityRole="radio"

@@ -10,7 +10,7 @@ import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { supabase } from '@/lib/supabase';
@@ -391,7 +391,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           </View>
         )}
         <View style={{ flexDirection: 'row', gap: SPACING.xs, marginTop: SPACING.sm }}>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={onStartRevision}
             disabled={creatingRevision}
             // FIX (ux-pass5): announce as a button with busy/disabled state (was a text blob).
@@ -415,7 +415,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               Kochko ile konuş
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={onOpenHistory}
             // FIX (ux-pass5): announce as a button (was a text blob to TalkBack).
             accessibilityRole="button"
@@ -441,7 +441,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
       {/* FIX (ux-round4 #11): the coach's rationale, kept available after approval (collapsed). */}
       {data.reasoning ? (
         <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: SPACING.md }}>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setShowReasoning(v => !v); }}
             accessibilityRole="button"
             accessibilityLabel="Bu plan neden böyle"
@@ -500,7 +500,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             nowNext.done ? (
               <Ionicons name="checkmark-circle" size={20} color={colors.success} />
             ) : (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => handleLogMeal(`0-${nowNext.mi}`, nowNext.meal)}
                 disabled={mealLogState[`0-${nowNext.mi}`] === 'saving'}
                 accessibilityRole="button"
@@ -541,7 +541,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
             Sana güncel bir haftalık plan hazırlayayım — onayladığında bu plan geçmişe kaydolur.
           </Text>
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={onCreateFresh}
             disabled={creatingRevision}
             accessibilityRole="button"
@@ -585,7 +585,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               • {m}
             </Text>
           ))}
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={onStartRevision}
             style={{
               backgroundColor: colors.error,
@@ -625,7 +625,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           ))}
           {/* FIX (ux-pass5): the banner's only action was a bare ~15px text link with no
               role — padding + hitSlop lift it to ≥44px effective and TalkBack gets a button. */}
-          <TouchableOpacity
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={onStartRevision}
             accessibilityRole="button"
             accessibilityLabel="Planı güncelle"
@@ -654,7 +654,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           <View key={`${day.day_index}-${dayIdx}`}>
             <TouchableOpacity
               onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(isOpen ? -1 : dayIdx); }}
-              activeOpacity={0.8}
+              activeOpacity={MOTION.pressOpacity}
               // FIX (ux-pass5): same a11y treatment as the visually identical draft accordion
               // (PlanDayAccordion) — role + label + expanded state for the daily-use plan.
               accessibilityRole="button"

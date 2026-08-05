@@ -5,7 +5,7 @@
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useTheme, type ThemeMode } from '@/lib/theme';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 
 // Açık tema (LIGHT_COLORS) ve sağlayıcı en baştan yazılmıştı; kilit yalnızca 47 ekranın
 // hâlâ statik (koyu) COLORS'ı import etmesindendi — açık seçilince kabuk aydınlanır, o
@@ -31,7 +31,7 @@ export default function ThemeScreen() {
         <TouchableOpacity
           key={opt.mode}
           disabled={opt.comingSoon}
-          activeOpacity={opt.comingSoon ? 1 : 0.7}
+          activeOpacity={MOTION.pressOpacity}
           onPress={() => { if (!opt.comingSoon) setMode(opt.mode); }}
           accessibilityRole="radio"
           accessibilityState={{ selected: active, disabled: !!opt.comingSoon }}

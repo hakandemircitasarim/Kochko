@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { genderLabelTR } from '@/lib/labels';
@@ -171,7 +171,7 @@ export default function HealthExportScreen() {
             { label: 'Son 3 ay', months: 3 },
             { label: 'Son 6 ay', months: 6 },
           ].map(chip => (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={chip.months}
               onPress={() => applyQuickRange(chip.months)}
               accessibilityRole="button"

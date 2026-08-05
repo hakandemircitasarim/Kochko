@@ -16,7 +16,7 @@ import { Card } from '@/components/ui/Card';
 import { SyncStatusCard } from '@/components/common/SyncStatusCard';
 import { useTheme, type ThemeColors } from '@/lib/theme';
 import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 
 import { FREE_LAUNCH } from '@/lib/premium-gate';
@@ -239,7 +239,7 @@ export default function SettingsScreen() {
           accessibilityLabel="Ayarlarda ara"
         />
         {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Aramayı temizle">
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Aramayı temizle">
             <Ionicons name="close-circle" size={16} color={colors.textMuted} />
           </TouchableOpacity>
         )}
@@ -412,7 +412,7 @@ function Row({ icon, iconColor, label, onPress, colors, last, premium, value }: 
     <TouchableOpacity
       style={rowStyle}
       onPress={() => { haptics.tap(); onPress(); }}
-      activeOpacity={0.6}
+      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={premium ? `${label}, Premium özellik` : label}
     >

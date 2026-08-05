@@ -26,7 +26,7 @@ import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { setupAutoSync } from '@/services/offline-queue.service';
@@ -567,7 +567,7 @@ export default function TodayScreen() {
               Su Ekle
             </Text>
             {[250, 500, 750].map((ml) => (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 key={ml}
                 onPress={() => { setWaterMenu(false); addWaterAmount(ml / 1000); }}
                 accessibilityRole="button"
@@ -582,7 +582,7 @@ export default function TodayScreen() {
                 <Text style={{ color: colors.text, ...TYPE.headline }}>{ml} ml</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); setWaterMenu(false); }}
               accessibilityRole="button" accessibilityLabel="İptal"
               style={{ paddingVertical: SPACING.md, alignItems: 'center', marginTop: SPACING.xs }}
@@ -623,14 +623,14 @@ export default function TodayScreen() {
               Bu anı hak ettin — paylaşmak ister misin?
             </Text>
             <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl, width: '100%' }}>
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => { haptics.tap(); setCelebration(null); }}
                 accessibilityRole="button" accessibilityLabel="Kapat"
                 style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
               >
                 <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Kapat</Text>
               </TouchableOpacity>
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => {
                   haptics.tap();
                   const t = celebration ?? 'Kochko';
@@ -700,7 +700,7 @@ export default function TodayScreen() {
             <Text style={{ color: colors.textSecondary, ...TYPE.body, flexShrink: 1 }}>
               {Math.round(waterUndo.amount * 1000)} ml eklendi
             </Text>
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={undoWater}
               accessibilityRole="button"
               accessibilityLabel="Su eklemeyi geri al"
@@ -735,7 +735,7 @@ export default function TodayScreen() {
               {welcomeBackMsg ?? returnStatus.welcomeMessage}
             </Text>
             {returnStatus.needsReOnboarding && (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => router.push('/onboarding?mode=re_onboarding')}
                 accessibilityRole="button"
                 accessibilityLabel="Güncelleme yap"
@@ -747,7 +747,7 @@ export default function TodayScreen() {
                 <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Güncelleme yap</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); setReturnBannerDismissed(true); if (user?.id) markDismissed(user.id, 'return_banner', 'day', dayBoundaryHour); }}
               accessibilityRole="button"
               accessibilityLabel="Kapat"
@@ -764,7 +764,7 @@ export default function TodayScreen() {
         {isInTrial && trialDaysLeft <= 3 && trialBannerDismissed === false && (
           <TouchableOpacity
             onPress={() => { haptics.tap(); router.push('/settings/premium'); }}
-            activeOpacity={0.8}
+            activeOpacity={MOTION.pressOpacity}
             // FIX (ux-pass5): dış dokunulabilir accessible varsayılanıyla alt öğeleri tek a11y
             // düğümüne düzleştiriyordu — 'Kapat' ekran okuyucuya çıkmıyor, banner kapatılamayan
             // bir upsell'e dönüyordu. Dış katman kapsayıcı değil; gövde ve Kapat ayrı düğmeler.
@@ -780,7 +780,7 @@ export default function TodayScreen() {
           >
             <TouchableOpacity
               onPress={() => { haptics.tap(); router.push('/settings/premium'); }}
-              activeOpacity={0.8}
+              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel={`Denemen ${trialDaysLeft} gün sonra bitiyor. Premium'a geçmek için dokun`}
             >
@@ -791,7 +791,7 @@ export default function TodayScreen() {
                 Denemen {trialDaysLeft} gün sonra bitiyor — Premium'a geç
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); setTrialBannerDismissed(true); if (user?.id) markDismissed(user.id, 'trial_countdown', 'day', dayBoundaryHour); }}
               accessibilityRole="button"
               accessibilityLabel="Kapat"
@@ -878,7 +878,7 @@ export default function TodayScreen() {
                 İlk adımın: bugünkü ilk kaydını ekle ya da koçunla konuşarak başla. Kaydettikçe burası sana özel hâle gelecek.
               </Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => { haptics.tap(); router.push('/log'); }}
                   accessibilityRole="button"
                   accessibilityLabel="İlk kaydını ekle"
@@ -887,7 +887,7 @@ export default function TodayScreen() {
                   <Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />
                   <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong, fontWeight: '700' }}>İlk kaydını ekle</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => { haptics.tap(); router.push('/(tabs)/chat' as never); }}
                   accessibilityRole="button"
                   accessibilityLabel="Koçla konuş"
@@ -932,7 +932,7 @@ export default function TodayScreen() {
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <TouchableOpacity
               onPress={() => { haptics.tap(); router.push('/log'); }}
-              activeOpacity={0.85}
+              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel="Serin sıfırlandı. Yeniden başlamak için kayıt ekle"
               style={{
@@ -947,7 +947,7 @@ export default function TodayScreen() {
                 <Text style={{ color: colors.text, ...TYPE.bodyStrong, fontWeight: '700' }}>Yeniden başlayalım</Text>
                 <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 1 }}>Serin sıfırlandı — sorun değil. Bugün tek kayıtla yeni seriyi başlat.</Text>
               </View>
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => { haptics.tap(); setStreakResetDismissed(true); if (user?.id) markDismissed(user.id, 'streak_reset', 'day', dayBoundaryHour); }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityRole="button" accessibilityLabel="Kapat"
@@ -964,7 +964,7 @@ export default function TodayScreen() {
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <TouchableOpacity
               onPress={() => { haptics.tap(); router.push('/log'); }}
-              activeOpacity={0.85}
+              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel={`${streak} günlük serin bugün risk altında. Kayıt eklemek için dokun`}
               style={{
@@ -979,7 +979,7 @@ export default function TodayScreen() {
                 <Text style={{ color: colors.text, ...TYPE.bodyStrong, fontWeight: '700' }}>{streak} günlük serin risk altında</Text>
                 <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 1 }}>Bugün henüz kayıt yok — tek öğün yeter, seriyi koru.</Text>
               </View>
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => { haptics.tap(); setStreakRiskDismissed(true); if (user?.id) markDismissed(user.id, 'streak_risk', 'day', dayBoundaryHour); }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityRole="button" accessibilityLabel="Kapat"
@@ -996,7 +996,7 @@ export default function TodayScreen() {
           <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.md }}>
             <TouchableOpacity
               onPress={() => { haptics.tap(); router.push('/reports/weekly'); }}
-              activeOpacity={0.85}
+              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel="Haftalık raporun hazır. Açmak için dokun"
               style={{
@@ -1008,7 +1008,7 @@ export default function TodayScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
                 <Ionicons name="sparkles" size={16} color={colors.primary} />
                 <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>Haftan hazır</Text>
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => {
                     haptics.tap();
                     if (user?.id) safeSetString(`@kochko_weekly_recap_dismissed:${user.id}`, weeklyRecap.weekStart);

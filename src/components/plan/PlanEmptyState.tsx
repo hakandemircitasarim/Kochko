@@ -10,7 +10,7 @@ import { router } from 'expo-router';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { SkeletonCard } from '@/components/ui/Skeleton';
 import { getOrCreateActiveSession } from '@/services/chat.service';
@@ -143,7 +143,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
           </Text>
           <View style={{ marginTop: SPACING.sm, gap: SPACING.xs }}>
             {missingCore.map((f, i) => (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 key={i}
                 onPress={() => openTaskChat(f.taskKey, f.taskTitle)}
                 accessibilityRole="button"
@@ -184,7 +184,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
       ) : null}
 
       {/* CTA */}
-      <TouchableOpacity
+      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
         onPress={onCreate}
         disabled={!ready || creating}
         accessibilityRole="button"
@@ -234,7 +234,7 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
           </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm }}>
             {weakSpots.slice(0, 4).map((f, i) => (
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 key={i}
                 onPress={() => openTaskChat(f.taskKey, f.taskTitle)}
                 accessibilityRole="button"

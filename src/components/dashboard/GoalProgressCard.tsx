@@ -13,7 +13,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import type { GoalProgress, PaceStatus } from '@/lib/goal-progress';
 
 interface Props {
@@ -69,7 +69,7 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={
         progress.isGoalReached

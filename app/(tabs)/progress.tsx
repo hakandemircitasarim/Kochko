@@ -20,7 +20,7 @@ import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
@@ -636,7 +636,7 @@ export default function ProgressScreen() {
 
               {/* Primary strategy — FIX (ux-pass5): in-flight'ta disabled + busy + spinner
                   (miniCutLoading butonuyla aynı desen), çift tıklama/çift yazma kapandı. */}
-              <TouchableOpacity
+              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                 onPress={() => { haptics.tap(); handleApplyStrategy(strategyRec.primary.id); }}
                 disabled={applyingStrategyId != null}
                 accessibilityRole="button"
@@ -666,7 +666,7 @@ export default function ProgressScreen() {
 
               {/* Secondary strategy */}
               {strategyRec.secondary && (
-                <TouchableOpacity
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
                   onPress={() => { haptics.tap(); handleApplyStrategy(strategyRec.secondary!.id); }}
                   disabled={applyingStrategyId != null}
                   accessibilityRole="button"
@@ -745,7 +745,7 @@ export default function ProgressScreen() {
                 Tolerans bandının dışına çıktın. 2-3 haftalık hafif kalori açığı ile dengeye dönebilirsin.
               </Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-                <TouchableOpacity onPress={handleMiniCut} disabled={miniCutLoading}
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={handleMiniCut} disabled={miniCutLoading}
                   accessibilityRole="button" accessibilityLabel="Mini-cut başlat"
                   accessibilityState={{ disabled: miniCutLoading, busy: miniCutLoading }}
                   style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.primary, alignItems: 'center', opacity: miniCutLoading ? 0.6 : 1 }}>
@@ -754,7 +754,7 @@ export default function ProgressScreen() {
                     : <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Mini-Cut Başlat</Text>
                   }
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => { haptics.tap(); setMiniCutOffered(false); }}
+                <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => { haptics.tap(); setMiniCutOffered(false); }}
                   accessibilityRole="button" accessibilityLabel="Mini-cut önerisini şimdilik kapat"
                   style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>
                   <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Şimdilik Değil</Text>
@@ -801,7 +801,7 @@ export default function ProgressScreen() {
 
 function ReportLink({ label, icon, onPress, colors, last }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; colors: any; last?: boolean }) {
   return (
-    <TouchableOpacity
+    <TouchableOpacity activeOpacity={MOTION.pressOpacity}
       onPress={() => { haptics.tap(); onPress(); }}
       accessibilityRole="button"
       accessibilityLabel={`${label} raporunu aç`}

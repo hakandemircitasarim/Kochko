@@ -7,7 +7,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
@@ -63,7 +63,7 @@ export default function DayBoundaryScreen() {
         <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm, fontWeight: '600' }}>Gün dönümü saati</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
           {HOURS.map(h => (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={h}
               onPress={() => setSelected(h)}
               // FIX (audit a11y): seçim rolü/durumu + min 44dp dokunma hedefi

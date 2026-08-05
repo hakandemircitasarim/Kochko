@@ -20,7 +20,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useAuthStore } from '@/stores/auth.store';
 import { getOnboardingProgress, getIncompleteTasks, type OnboardingTask } from '@/services/onboarding-tasks.service';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -153,7 +153,7 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
           router.push('/(tabs)/chat' as never);
         }
       }}
-      activeOpacity={0.8}
+      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={`Profil tamamlama yüzdesi ${pct}. ${hintLine}`}
       accessibilityHint="Görevleri açmak için dokun"

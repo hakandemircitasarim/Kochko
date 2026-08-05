@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useAuthStore } from '@/stores/auth.store';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
@@ -106,7 +106,7 @@ export default function PlanHistoryScreen() {
         {(['diet', 'workout'] as const).map(t => {
           const active = planType === t;
           return (
-            <TouchableOpacity
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               key={t}
               onPress={() => setPlanType(t)}
               accessibilityRole="button"
@@ -195,7 +195,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
   return (
     <TouchableOpacity
       onPress={() => setExpanded(e => !e)}
-      activeOpacity={0.85}
+      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${formatDate(row.generated_at)} planı, ${reasonLabel}`}
       style={{

@@ -12,7 +12,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 
 export interface LifeEvent {
   id: string;
@@ -62,7 +62,7 @@ export function LifeEventCard({ event, todayISO, onPress }: Props) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${title}, ${countdown}. Koçunla konuşmak için dokun`}
       style={{

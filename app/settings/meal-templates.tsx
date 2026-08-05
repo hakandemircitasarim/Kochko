@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { SPACING, FONT } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 
 export default function MealTemplatesScreen() {
@@ -157,7 +157,7 @@ export default function MealTemplatesScreen() {
         </Card>
       ) : (
         templates.map(t => (
-          <TouchableOpacity key={t.id} onPress={() => handleUse(t)} onLongPress={() => handleDelete(t.id)}>
+          <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={t.id} onPress={() => handleUse(t)} onLongPress={() => handleDelete(t.id)}>
             <Card style={{ marginTop: SPACING.sm }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xs }}>
                 <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>{t.name}</Text>

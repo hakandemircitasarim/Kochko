@@ -21,7 +21,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { TYPE, MOTION } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
@@ -86,7 +86,7 @@ const Chip = ({
         minHeight: 44,
         opacity: disabled ? 0.5 : 1,
       }}
-      activeOpacity={0.7}
+      activeOpacity={MOTION.pressOpacity}
     >
       {/* Birincil taahhut (solid) okuma adiminda, kesif cipleri bir adim altinda:
           ikisi de 11'deydi, yani 'Onayla ve kaydet' ekranin en kucuk metniyle ayni boydaydi. */}
@@ -244,7 +244,7 @@ export function PlanChatComposer({
           maxLength={2000}
           editable={!disabled && !sending}
         />
-        <TouchableOpacity
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={handleSend}
           disabled={!text.trim() || disabled || sending}
           accessibilityRole="button"
