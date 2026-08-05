@@ -105,16 +105,21 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
     // FIX (audit: donut 13-görev vs 24-alan çelişkisi) headline pct=100 iken
     // gap-ipucu (24-alan calc) hâlâ "X tamamla" diyebiliyordu. Headline tek
     // kaynak (13-görev) olduğundan pct=100'de ipucunu olumlu metne sabitle.
-    if (pct === 100) return 'Profilin tamam — Koçko seni tam tanıyor';
-    if (!result) return 'Profil yükleniyor…';
+    // 08-05: ipucu 24-alan hesabindan geliyordu ama dokununca acilan sey SIRADAKI
+    // GOREV'di — kart "Program Bilgileri tamamla" deyip baska bir konuyu aciyordu.
+    // Artik ipucu da CTA ile ayni kaynagi kullaniyor; alan-doluluk yalnizca gorev
+    // henuz yuklenmediginde yedek.
+    if (pct === 100) return 'Hepsi tamam — Koçko seni tam tanıyor';
+    if (nextTask) return `Sıradaki: ${nextTask.title}`;
+    if (!result) return 'Yükleniyor…';
     if (result.missingRequired.length > 0) {
       return `${result.missingRequired.length} temel bilgi eksik`;
     }
     if (result.lowestCategory) {
       return `${CATEGORY_LABELS[result.lowestCategory as ProfileCategory]} tamamla`;
     }
-    return 'Profilin tamam — Koçko seni tam tanıyor';
-  }, [result, pct]);
+    return 'Hepsi tamam — Koçko seni tam tanıyor';
+  }, [result, pct, nextTask]);
 
   // Until the 13-task progress lands, show a skeleton instead of flashing a
   // misleading 0% / red ring on every cold load.
@@ -194,9 +199,12 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
           <Text style={{ ...TYPE.title2, color: colors.text, fontWeight: '800' }}>
             {pct}%
           </Text>
+          {/* 08-05: etiket 'PROFİL' idi ama halkanin sayisi 13-gorev ilerlemesi; profil
+               sekmesi ayni anda alan dolulugundan '%68' diyordu, yani kullanici iki farkli
+               'profil yuzdesi' goruyordu. Kart artik olctugu seyi soyluyor: gorevler.
+               (Profil sekmesi alan dolulugunu olcmeye devam ediyor — ayri sey, ayri isim.) */}
           <Text style={{ ...TYPE.overline, color: colors.textSecondary }}>
-            {/* FIX (ux-pass5): 'PROFIL' noktasız I ile yanlış Türkçe — doğrusu 'PROFİL'. */}
-            PROFİL
+            GÖREVLER
           </Text>
         </View>
       </View>
@@ -204,7 +212,7 @@ export function ProfileCompletionDonut({ profile, size = 120, stroke = 10 }: Pro
       {/* Right side: hint + CTA */}
       <View style={{ flex: 1 }}>
         <Text style={{ ...TYPE.headline, color: colors.text }}>
-          {pct === 100 ? 'Profilin hazır' : 'Profilini tamamla'}
+          {pct === 100 ? 'Görevlerin bitti' : 'Görevlerini tamamla'}
         </Text>
         <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>
           {hintLine}
