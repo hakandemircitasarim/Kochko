@@ -182,7 +182,7 @@ export default function QuickLogScreen() {
   // straight to a sub-screen (one tap instead of open-then-pick a tile).
   const { to } = useLocalSearchParams<{ to?: string }>();
   useEffect(() => {
-    if (to === 'weight') { setWeightInput(lastKnownWeight != null ? String(lastKnownWeight) : ''); setScreen('weight'); }
+    if (to === 'weight') { setWeightInput(lastKnownWeight != null ? trNum(lastKnownWeight) : ''); setScreen('weight'); }
     else if (to === 'sleep') setScreen('sleep');
     else if (to === 'recovery') setScreen('recovery');
     else if (to === 'steps') { setStepsInput(stepsToday != null && stepsToday > 0 ? String(stepsToday) : ''); setScreen('steps'); }
@@ -565,6 +565,12 @@ export default function QuickLogScreen() {
     }
   };
 
+  // Girise yazilan sayi da TR yazimiyla olmali. Uygulama her yerde "85,4 kg" diyor ama
+  // editor `String(85.4)` ile besleniyordu ve "85.4" aciliyordu — ayni ekranda iki ayri
+  // ondalik isareti. Ayristirma tarafi zaten ikisini de kabul ediyor (parseFloat oncesi
+  // replace), yani sorun yalnizca YAZIMDA.
+  const trNum = (n: number) => String(n).replace('.', ',');
+
   // FIX (ux-ideas #13): +/- 0.1 kg steppers — weight usually moves in tenths, so tapping beats
   // retyping the whole number. Clamps to the same 20-300 kg guard as save.
   const stepWeight = (d: number) => {
@@ -573,7 +579,7 @@ export default function QuickLogScreen() {
     const next = Math.round((cur + d) * 10) / 10;
     if (next < 20 || next > 300) return;
     haptics.tap();
-    setWeightInput(String(next));
+    setWeightInput(trNum(next));
   };
 
   const handleWeightSave = async () => {
@@ -1492,7 +1498,7 @@ export default function QuickLogScreen() {
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
         {[
           { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, navigates: true, pending: false, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
-          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, pending: false, onPress: () => { setWeightInput(lastKnownWeight != null ? String(lastKnownWeight) : ''); setScreen('weight'); } },
+          { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, pending: false, onPress: () => { setWeightInput(lastKnownWeight != null ? trNum(lastKnownWeight) : ''); setScreen('weight'); } },
           { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, navigates: false, pending: false, onPress: () => setScreen('sleep') },
           { icon: 'footsteps-outline' as const, label: 'Adım', color: colors.purple, navigates: false, pending: false, onPress: () => { setStepsInput(stepsToday != null && stepsToday > 0 ? String(stepsToday) : ''); setScreen('steps'); } },
           { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, navigates: false, pending: false, onPress: () => setScreen('recovery') },
