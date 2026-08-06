@@ -100,10 +100,16 @@ export default function RootLayout() {
 
   useEffect(() => {
     safeGetString(THEME_KEY).then(saved => {
-      // Light/system are gated until Settings/Reports screens are migrated off the
-      // static dark COLORS (#R3-6). Honor only 'dark' so a previously-saved light/
-      // system pref can't load the app into the broken split-theme state.
-      if (saved === 'dark') setThemeMode(saved);
+      // Bu satir `if (saved === 'dark')` idi ve bu bir KILITTI: light/system, Ayarlar ve
+      // Raporlar ekranlari statik koyu COLORS'tan tasinana kadar bilerek yok sayiliyordu
+      // (#R3-6). Ama yazan taraf (handleSetMode) her modu kaydediyordu — yani kullanici
+      // "Her Zaman Acik"i seciyor, tema aninda aciliyor, uygulama her yeniden baslayisinda
+      // SESSIZCE koyuya donuyordu. Secim kayboluyor ve hicbir yer sebebini soylemiyor.
+      //
+      // Kilidin sarti 2026-07-31'de saglandi (47 dosya useTheme()'e tasindi). 08-06'da
+      // olculdu: statik `COLORS` import eden dosya sayisi 0. Kilit artik yalnizca
+      // kullanicinin secimini yiyordu.
+      if (saved === 'dark' || saved === 'light' || saved === 'system') setThemeMode(saved);
     });
   }, []);
 
