@@ -25,7 +25,7 @@ import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { formatDecimal } from '@/lib/units';
 
-interface MetricPt { date: string; weight_kg: number | null; water_liters: number; sleep_hours: number | null; steps: number | null; }
+interface MetricPt { date: string; weight_kg: number | null; water_liters: number; sleep_hours: number | null; steps: number | null; recovery_score: number | null; }
 interface CompPt { date: string; compliance_score: number; calorie_actual: number | null; workout_completed: boolean | null; }
 
 // FIX (ux-pass raporlar): daily_reports rows can exist for days the user logged NOTHING
@@ -142,7 +142,7 @@ export default function ProgressScreen() {
     const from = new Date(Date.now() - 28 * 86400000).toISOString().split('T')[0];
     try {
       const [m, c, plateau, maintenance, timeline, engagementData, goalRes, streakVal] = await Promise.all([
-        supabase.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps').eq('user_id', user.id).gte('date', from).order('date'),
+        supabase.from('daily_metrics').select('date, weight_kg, water_liters, sleep_hours, steps, recovery_score').eq('user_id', user.id).gte('date', from).order('date'),
         // calorie_actual + workout_completed: needed to tell a REAL 0-compliance day from a
         // report row generated for a day the user never opened the app (see filterLoggedCompliance).
         supabase.from('daily_reports').select('date, compliance_score, calorie_actual, workout_completed').eq('user_id', user.id).gte('date', from).order('date'),
@@ -367,6 +367,13 @@ export default function ProgressScreen() {
   // FIX (ux-pass5): TR virgül ondalık — tarih/adım tr-TR iken tile'lar '2.3'/'7.5' basıyordu.
   const waterDays = metrics.filter(m => (m.water_liters ?? 0) > 0);
   const avgWater = waterDays.length > 0 ? (waterDays.reduce((s, m) => s + m.water_liters, 0) / waterDays.length).toFixed(1).replace('.', ',') : null;
+  // BITMEMISLIK envanteri (E): toparlanma ekrani 1-5 skorunu daily_metrics'e YAZIYOR ama
+  // hicbir yuzey okumuyordu — sorgu kolonu secmiyordu bile. Kullaniciya sorulan ve
+  // kaydedilen bir sey geri gosterilmiyorsa o soru bosuna soruluyor.
+  const recoveryDays = metrics.filter(m => m.recovery_score != null);
+  const avgRecovery = recoveryDays.length > 0
+    ? (recoveryDays.reduce((s, m) => s + (m.recovery_score ?? 0), 0) / recoveryDays.length).toFixed(1).replace('.', ',')
+    : null;
   const sleepDays = metrics.filter(m => m.sleep_hours != null);
   const avgSleep = sleepDays.length > 0 ? (sleepDays.reduce((s, m) => s + (m.sleep_hours ?? 0), 0) / sleepDays.length).toFixed(1).replace('.', ',') : null;
   // FIX (ux-round4 #21): adımlar her gün toplanıyor ama hiçbir yerde gösterilmiyordu. Ortalamayı
@@ -390,6 +397,10 @@ export default function ProgressScreen() {
     avgList(waterDays.filter(m => m.date >= trendCutoff).map(m => m.water_liters)),
     avgList(waterDays.filter(m => m.date < trendCutoff).map(m => m.water_liters)),
   ), 1, (m) => `${m} L`);
+  const recoveryTrend = mkTrend(deltaOf(
+    avgList(recoveryDays.filter(m => m.date >= trendCutoff).map(m => (m.recovery_score ?? 0))),
+    avgList(recoveryDays.filter(m => m.date < trendCutoff).map(m => (m.recovery_score ?? 0))),
+  ), 1, (m) => `${m}/5`);
   const sleepTrend = mkTrend(deltaOf(
     avgList(sleepDays.filter(m => m.date >= trendCutoff).map(m => (m.sleep_hours ?? 0))),
     avgList(sleepDays.filter(m => m.date < trendCutoff).map(m => (m.sleep_hours ?? 0))),
@@ -442,7 +453,7 @@ export default function ProgressScreen() {
           before — the layout only changes when the steps tile is present. */}
       {/* ux-defect pass (D3): veri olmayan kutu ÇIZILMEZ (adım kutusuyla aynı kural) — ilk gün
           kullanıcısı dört çıplak '-' yerine tek dürüst satır görür. */}
-      {(latestW || avgComp != null || avgWater != null || avgSleep != null || avgSteps != null) ? (
+      {(latestW || avgComp != null || avgWater != null || avgSleep != null || avgSteps != null || avgRecovery != null) ? (
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: SPACING.md, gap: SPACING.sm }}>
         {/* FIX (ux-pass5): kilo değeri de virgül ondalık — aynı tile'daki delta rozeti virgüle
             çevrildi, '74.5' + '+1,5' karışımı olmasın. */}
@@ -454,6 +465,12 @@ export default function ProgressScreen() {
         )}
         {avgWater != null && (
           <SummaryBox icon="water-outline" iconColor={METRIC_COLORS.water} value={avgWater} label="L/gün" period={`${waterDays.length} gün ort.`} trend={waterTrend} />
+        )}
+        {/* Kardes kutucuklarin etiketi bir BIRIM ("kg", "L/gun", "sa/gun") ve slot dar:
+            4 kutucuk bir satiri paylasinca "toparlanma" kelime ORTASINDAN bolunuyordu
+            ("toparlanm/a"). Kelime, sarmasi zararsiz olan alt satira tasindi. */}
+        {avgRecovery != null && (
+          <SummaryBox icon="pulse-outline" iconColor={colors.success} value={avgRecovery} label="/5" period={`toparlanma · ${recoveryDays.length} gün`} trend={recoveryTrend} />
         )}
         {avgSleep != null && (
           <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep} label="sa/gün" period={`${sleepDays.length} gün ort.`} trend={sleepTrend} />
