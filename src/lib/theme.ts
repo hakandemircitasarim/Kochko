@@ -49,9 +49,9 @@ export interface ThemeColors {
 }
 
 export const DARK_COLORS: ThemeColors = {
-  primary: '#1D9E75',
-  primaryDark: '#17805E',
-  primaryLight: '#1D9E7520',
+  primary: '#C2F04A',
+  primaryDark: '#9BCC28',
+  primaryLight: '#C2F04A1F',
   secondary: '#7F77DD',
   accent: '#7F77DD',
   background: '#0D0D12',
@@ -96,9 +96,12 @@ export const DARK_COLORS: ThemeColors = {
 };
 
 export const LIGHT_COLORS: ThemeColors = {
-  primary: '#1D9E75',
-  primaryDark: '#17805E',
-  primaryLight: '#1D9E7520',
+  // Ayni marka ailesi, ZEMINE gore ayarli: koyu temadaki parlak lime beyaz uzerinde
+  // okunmaz (kontrast ~1.3:1). Acik temada ayni hue daha koyu bir chartreuse olarak
+  // yasiyor; getContrastColor buton metnini zaten dinamik seciyor.
+  primary: '#4F7A00',
+  primaryDark: '#3D5F00',
+  primaryLight: '#4F7A001F',
   secondary: '#7F77DD',
   accent: '#7F77DD',
   background: '#F5F7FA',

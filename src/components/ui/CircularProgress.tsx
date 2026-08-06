@@ -1,6 +1,15 @@
 /**
  * Circular Progress Component
- * SVG-based ring progress indicator — flat design, no gradients.
+ * SVG-based ring progress indicator.
+ *
+ * GORSEL DIL (2026-08-06): "duz, gradyansiz" ilkesi ekranin KAHRAMANINI oldurmustu.
+ * Ana sayfada bu halka 170px ve gunun tek odak noktasi; duz tek renk bir yay olarak
+ * cizildiginde ve ilerleme 0 iken ekranda TAMAMEN sonuk gri bir cember kaliyordu —
+ * uygulama "yer tutucu" gibi okunuyordu. Uc degisiklik:
+ *   1. Yay gradyanli (ayni renk, 1.0 -> 0.55 opaklik). Tek renkte "boyanmis" degil,
+ *      isik alan bir yuzey gibi okunuyor.
+ *   2. Iz (track) biraz daha tanimli: halka, ilerleme sifirken bile bilincli bir NESNE.
+ *   3. Yayin ucunda kucuk bir nokta: gozun "buradayim" diyecegi bir isaret.
  *
  * FIX (ux-ideas #5): the ring now ANIMATES — the arc sweeps from empty to its
  * target with Easing.out(cubic) and, when `value` is numeric, the centre number
@@ -11,7 +20,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Animated, Easing, AccessibilityInfo } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useTheme } from '@/lib/theme';
 import { a11yProgress } from '@/lib/accessibility';
 import { FONT, MAX_FONT_SCALE } from '@/lib/constants';
@@ -56,7 +65,16 @@ export function CircularProgress({
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const clampedProgress = Math.min(1, Math.max(0, progress));
-  const track = trackColor || colors.progressTrack;
+  // Iz, ilerleme 0 iken ekranda kalan TEK sey. rgba(255,255,255,0.08) bir kahraman
+  // icin fazla sessizdi: 170px'lik halka "silik bir daire" gibi duruyordu. Kahramanda
+  // biraz daha tanimli, kucuk halkalarda eskisi gibi sessiz.
+  // Iz KART RENGINDEN bagimsiz olmali: kahraman kart cardElevated'e tasindiginda
+  // `surfaceLight` ile ayni hex'e (#22222E) dustu ve iz tamamen kayboldu — cihazda
+  // yalnizca yesil yay kalmisti. Beyaz-alfa her yuzeyde calisir.
+  const isHero = size >= 150;
+  const track = trackColor || (isHero ? 'rgba(255,255,255,0.12)' : colors.progressTrack);
+  // Ayni ekranda birden fazla halka olabilir (rapor kartlari) — gradyan id'si benzersiz olmali.
+  const gradId = useRef(`ring-${Math.random().toString(36).slice(2, 9)}`).current;
 
   // Reduce-motion: snap instead of animate. Resolved once on mount + kept in sync.
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -115,13 +133,21 @@ export function CircularProgress({
     <View style={{ alignItems: 'center', justifyContent: 'center' }} {...a11yProps}>
       {/* Decorative ring — the numbers are exposed via the Text nodes / a11yProps */}
       <Svg width={size} height={size} accessible={false}>
+        <Defs>
+          {/* Ayni renkten iki durak: ust-sol tam, alt-sag yariya yakin. Renk matematigi
+              yok — hangi metrik rengi gelirse gelsin dogru sonucu verir. */}
+          <LinearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0" stopColor={color} stopOpacity="1" />
+            <Stop offset="1" stopColor={color} stopOpacity="0.55" />
+          </LinearGradient>
+        </Defs>
         <Circle
           cx={size / 2} cy={size / 2} r={radius}
           stroke={track} strokeWidth={strokeWidth} fill="none"
         />
         <AnimatedCircle
           cx={size / 2} cy={size / 2} r={radius}
-          stroke={color} strokeWidth={strokeWidth} fill="none"
+          stroke={`url(#${gradId})`} strokeWidth={strokeWidth} fill="none"
           strokeDasharray={`${circumference} ${circumference}`}
           strokeDashoffset={strokeDashoffset}
           strokeLinecap="round"

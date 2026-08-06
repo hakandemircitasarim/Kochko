@@ -54,8 +54,8 @@ function MacroBar({ label, value, target, color, emphasize = false }: { label: s
       >
         {label}
       </Text>
-      <View style={{ height: 6, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
-        <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 3 }} />
+      <View style={{ height: 8, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 4, overflow: 'hidden' }}>
+        <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 4 }} />
       </View>
       {/* Emphasis is carried by COLOUR AND WEIGHT ONLY — the readout format stays identical across
           all three macros. Driven on a device, the old version showed "155g kaldı" next to
@@ -147,14 +147,19 @@ export function HeroSection({
           tek kaynak: global common/OfflineBanner (app/_layout.tsx) */}
 
       {/* Calorie Ring Card */}
+      {/* KATMANLAMA: butun kartlar ayni dolgu, ayni yaricap, ayni kenardaydi — hicbiri
+          "ben onemliyim" demiyordu. Gunun tek kahraman figuru burada, o yuzden bir ton
+          ustte (cardElevated) ve daha genis yaricapta duruyor; ikincil kartlar geride
+          kaliyor. Koyu temada bir yuzeyi kaldiran sey golge degil TON + KENAR (bkz.
+          theme.ts DEPTH notu). */}
       <View style={{
-        backgroundColor: colors.card,
-        borderRadius: RADIUS.md,
+        backgroundColor: colors.cardElevated,
+        borderRadius: RADIUS.xl,
         borderWidth: 0.5,
         borderColor: colors.border,
-        padding: SPACING.lg,
+        padding: SPACING.xl,
         alignItems: 'center',
-        marginBottom: SPACING.md,
+        marginBottom: SPACING.xl,
       }}>
         {hasTargets ? (
           <>
