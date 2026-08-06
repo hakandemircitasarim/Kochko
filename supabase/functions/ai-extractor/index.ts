@@ -14,6 +14,7 @@ import { supabaseAdmin } from '../shared/supabase-admin.ts';
 import { evolvePatternConfidence, inferTonePreference, refreshCorrectionMemory, detectSnackingHours, calibrateActivityMultiplier, analyzeLateMealSleep, updateLayer2, detectDayOfWeekDrift, detectDerailFoods } from '../shared/memory.ts';
 import { composeGeneralSummary } from '../shared/memory-mirror.ts';
 import { denyIfNotCron } from '../shared/cron-auth.ts';
+import { selectFleetBatch, type CheckpointMap } from '../shared/fleet-rotation.ts';
 import { chatCompletion, EFFORT } from '../shared/openai.ts';
 
 // FIX (audit AI-MDL-01): route the extractor's model through KOCHKO_MODEL_FAST so a backend
@@ -164,12 +165,24 @@ serve(async (req: Request) => {
     if (singleUserId) {
       userIds = [singleUserId];
     } else {
+      // Bu sorgu `.limit(100)` diyordu ama `.order()` DEMIYORDU: ORDER BY'siz Postgres
+      // satirlari fiziksel sirada dondurur, yani pratikte her kosuda AYNI ilk 100 profil.
+      // 101'inci profilden sonrasi hic islenmiyordu — yavaslama degil, sessiz aclik: o
+      // kullanicilarin AI ozeti hic guncellenmiyor ve hicbir yer bunu soylemiyordu.
+      // Fonksiyon zaten kullanici+tier basina checkpoint tutuyor; rotasyon anahtari o.
       const { data: profiles } = await supabaseAdmin
         .from('profiles')
         .select('id')
-        .eq('onboarding_completed', true)
-        .limit(100);
-      userIds = (profiles ?? []).map(p => p.id);
+        .eq('onboarding_completed', true);
+      const allIds = (profiles ?? []).map(p => p.id);
+      const { data: sums } = await supabaseAdmin
+        .from('ai_summary')
+        .select('user_id, extraction_checkpoint');
+      const checkpoints = new Map<string, CheckpointMap>(
+        (sums ?? []).map((r: { user_id: string; extraction_checkpoint: unknown }) =>
+          [r.user_id, (r.extraction_checkpoint ?? {}) as CheckpointMap]),
+      );
+      userIds = selectFleetBatch(allIds, checkpoints, checkpointKey, 100);
     }
 
     let totalProcessed = 0;
