@@ -103,9 +103,19 @@ export async function getMealPrepPrefs(userId: string): Promise<{
     .eq('id', userId)
     .single();
 
+  // `meal_prep_days` semada TEXT[] (001_profiles_and_goals.sql) ve database.ts de string[]
+  // diyor — ama burasi number[] diye cast ediyordu. Yazilan 3, geri '3' olarak geliyor ve
+  // ekrandaki `prepDay === d.value` karsilastirmasi ('3' === 3) tutmuyordu: HICBIR gun cipi
+  // secili gorunmuyordu. Kusur gizliydi cunku aktivasyondan sonra gun degistirilemiyordu,
+  // yani deger hep varsayilanda kaliyordu. Servisin disari acik API'si sayisal kaliyor
+  // (UI hafta-gunu indeksi istiyor), donusum sinirda yapiliyor.
+  const rawDays = (data?.meal_prep_days ?? null) as unknown;
+  const parsed = Array.isArray(rawDays)
+    ? rawDays.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6)
+    : [];
   return {
     active: data?.meal_prep_active ?? false,
-    prepDays: (data?.meal_prep_days as number[]) ?? [0],
+    prepDays: parsed.length > 0 ? parsed : [0],
   };
 }
 
@@ -116,7 +126,8 @@ export async function setMealPrepPrefs(
 ): Promise<{ error: string | null }> {
   const { error } = await supabase
     .from('profiles')
-    .update({ meal_prep_active: active, meal_prep_days: prepDays })
+    // TEXT[] kolonu: sayilari string olarak yaz ki geri okurken de tutarli olsun.
+    .update({ meal_prep_active: active, meal_prep_days: prepDays.map(String) })
     .eq('id', userId);
   return { error: error?.message ?? null };
 }

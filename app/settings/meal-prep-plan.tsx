@@ -2,7 +2,7 @@
  * Meal Prep Plan Screen
  * Package 9: Displays generated meal prep plans with prep order, storage info, and timing.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -65,6 +65,36 @@ export default function MealPrepPlanScreen() {
     setLoading(false);
   };
 
+  // Aktivasyon TEK YONLU bir kapiydi: handleActivate yalnizca `true` yaziyor ve aktif
+  // olunca aktivasyon karti bir daha hic cizilmiyordu. Sonuc: kullanici toplu hazirligi
+  // KAPATAMIYOR ve sectigi hazirlik gununu bir daha DEGISTIREMIYORDU — servis ikisini de
+  // destekledigi halde. (setMealPrepPrefs zaten active=false aliyor.)
+  const handleChangeDay = async (day: number) => {
+    if (!user?.id) return;
+    const prev = prepDay;
+    setPrepDay(day);
+    haptics.tap();
+    const { error: err } = await setMealPrepPrefs(user.id, true, [day]);
+    if (err) {
+      setPrepDay(prev); // yazim basarisizsa secimi geri al — sessizce yalan soyleme
+      setError('Hazırlık günü kaydedilemedi, tekrar dene.');
+      haptics.error();
+      return;
+    }
+    setError(null);
+    // Hazirlik gunu planin uzerinde yaziyor; yeni gunle yeniden turet.
+    if (plan) void handleGenerate();
+  };
+
+  const handleDeactivate = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    const { error: err } = await setMealPrepPrefs(user.id, false, [prepDay]);
+    if (err) { setError('Kapatılamadı, tekrar dene.'); haptics.error(); }
+    else { setActive(false); setPlan(null); setError(null); haptics.success(); }
+    setLoading(false);
+  };
+
   const handleGenerate = async () => {
     if (!user?.id) return;
     setLoading(true);
@@ -91,6 +121,18 @@ export default function MealPrepPlanScreen() {
       setLoading(false);
     }
   };
+
+  // Plan yalnizca yerel state'te yasiyordu: ekrandan cikip donunce kayboluyor ve kullanici
+  // her seferinde "Plan Olustur"a basiyordu. Uretim saf bir turetme (LLM yok, iki DB okumasi),
+  // bu yuzden kalici depolama (= migration, kullanicinin alani) gerekmiyor: acilista uret.
+  const autoGenRef = useRef(false);
+  useEffect(() => {
+    if (!prefsLoaded || !active || plan || loading || autoGenRef.current) return;
+    autoGenRef.current = true;
+    void handleGenerate();
+    // handleGenerate kasitli olarak deps disinda: bu yalnizca mount-ani bir yoklama.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefsLoaded, active]);
 
   // FIX (audit UX-PRM-06): premium olmayan kullanıcıya içerik gösterme — yönlendirme efekti devredeyken boş ekran.
   if (!isPremium && profile !== null && !profileLoading) {
@@ -132,6 +174,29 @@ export default function MealPrepPlanScreen() {
       <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg }}>
         Haftanın yemeklerini önceden hazırla, zamandan ve paradan tasarruf et.
       </Text>
+
+      {/* Tercih seridi — aktivasyondan SONRA da erisilebilir olmasi gereken tek yer. */}
+      <Card>
+        <Text style={{ color: colors.textSecondary, ...TYPE.callout, fontWeight: '500', marginBottom: SPACING.sm }}>Hazırlık günü</Text>
+        <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+          {PREP_DAY_OPTIONS.map(d => (
+            <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={d.value} onPress={() => handleChangeDay(d.value)}
+              accessibilityRole="button"
+              accessibilityLabel={`Hazırlık günü: ${d.label}`}
+              accessibilityState={{ selected: prepDay === d.value }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: 8, backgroundColor: prepDay === d.value ? colors.primary : colors.surfaceLight }}>
+              <Text style={{ color: prepDay === d.value ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.caption, fontWeight: '600' }}>{d.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={handleDeactivate}
+          accessibilityRole="button" accessibilityLabel="Toplu hazırlığı kapat"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{ marginTop: SPACING.md, alignSelf: 'flex-start' }}>
+          <Text style={{ color: colors.textMuted, ...TYPE.caption, fontWeight: '600' }}>Toplu hazırlığı kapat</Text>
+        </TouchableOpacity>
+      </Card>
 
       {!plan ? (
         <View style={{ alignItems: 'center', paddingVertical: SPACING.xl }}>
