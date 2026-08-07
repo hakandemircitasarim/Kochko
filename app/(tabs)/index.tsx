@@ -3,7 +3,7 @@
  * Kalori halkasi, hizli istatistikler, haftalik butce, diyet/spor planlari
  */
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal, Animated, AppState } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Alert, TextInput, Modal, Animated, AppState, LayoutAnimation } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -1181,7 +1181,14 @@ export default function TodayScreen() {
         {/* ── DETAYLAR: olcum ve gecmis. Gunluk karar icin gerekli DEGIL, o yuzden
             varsayilan olarak kapali. Tek dokunusla acilir, hicbir bilgi kaybolmaz. ── */}
         <TouchableOpacity
-          onPress={() => { haptics.tap(); setShowDetails(v => !v); }}
+          onPress={() => {
+            haptics.tap();
+            // Aç/kapa artık ZIPLAMIYOR: mevcut 4 preset kullanıcısıyla aynı kalıp
+            // (LayoutAnimation.Presets.easeInEaseOut, devir §12). Reduce-motion'ı
+            // OS zaten LayoutAnimation için sistem düzeyinde kısar.
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setShowDetails(v => !v);
+          }}
           activeOpacity={MOTION.pressOpacity}
           accessibilityRole="button"
           accessibilityLabel={showDetails ? 'Detayları gizle' : 'Detayları göster'}

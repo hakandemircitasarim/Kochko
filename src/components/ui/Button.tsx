@@ -58,10 +58,15 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
       style={[{
         backgroundColor: bgColor,
         // Dolu butonlarda kalin bir ALT RAF: dugmeye fiziksel bir govde hissi verir
-        // (Yazio/Duolingo imzasi). Cerceve degil golge de degil — rengin koyusu.
+        // (Yazio/Duolingo imzasi). Cerceve degil golge de degil — rengin KOYUSU.
+        // Raf, dolgudan AYRISMALI: eski hâli danger'da colors.error (dolguyla ayni hex)
+        // ve secondary'de colors.secondary (o da primary ile ayni) kullaniyordu — iki
+        // varyantta imza gorunmezdi. Danger yeni errorDark token'ini alir (errorText
+        // OLMAZ: koyu temada dolgudan aciktir); primary/secondary ayni hue oldugundan
+        // ikisi de primaryDark alir.
         ...(isGhost || isOutline ? {} : {
           borderBottomWidth: 4,
-          borderBottomColor: isDanger ? colors.error : variant === 'secondary' ? colors.secondary : colors.primaryDark,
+          borderBottomColor: isDanger ? colors.errorDark : colors.primaryDark,
         }),
         borderRadius: RADIUS.md,
         height,

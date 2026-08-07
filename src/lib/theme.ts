@@ -42,6 +42,9 @@ export interface ThemeColors {
   // The base `error` (#E24B4A) is only 4.39:1 on card → fails AA for small text;
   // this tone reaches >=4.5:1 on card/cardElevated/surfaceLight.
   errorText: string;
+  /** error'un koyusu — dolu danger butonunun 4px alt rafı (gövdeli buton imzası).
+   *  errorText OLMAZ: koyu temada errorText dolgudan AÇIKTIR, raf koyu ister. */
+  errorDark: string;
   // Utility colors
   purple: string;
   pink: string;
@@ -96,6 +99,7 @@ export const DARK_COLORS: ThemeColors = {
   fat: '#D85A30',
   // FIX (audit UI-STA-06): lighter error for small text → 5.82:1 on card, 5.30:1 on cardElevated/surfaceLight.
   errorText: '#EE6E6B',
+  errorDark: '#B23230',
   // Utility
   purple: '#7F77DD',
   pink: '#D4537E',
@@ -138,6 +142,7 @@ export const LIGHT_COLORS: ThemeColors = {
   fat: '#D85A30',
   // FIX (audit UI-STA-06): darker error for small text → 5.17:1 on white card, 4.61:1 on surfaceLight (base #E24B4A was only 3.93:1).
   errorText: '#C93634',
+  errorDark: '#B23230',
   // Utility
   purple: '#7F77DD',
   pink: '#D4537E',
