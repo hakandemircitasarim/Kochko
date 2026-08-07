@@ -424,12 +424,14 @@ export default function ProgressScreen() {
       {/* FIX (ux-ideas #11): current streak — the strongest habit/return motivator, previously
           buried in the all-time report only. Big and at-a-glance at the top of Raporlar. */}
       {streak > 0 && (
+        // Seri bir DURUM bildirimi, dokunulabilir nesne degil — kutusu ekranin en
+        // ustunde gereksiz bir cerceve olarak duruyordu. Satira indi: sol aksan
+        // cizgisi ve ikon kalir, dolgu ve cerceve gider.
         <View style={{
           flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-          backgroundColor: colors.card, borderRadius: RADIUS.md,
-          borderWidth: 0.5, borderColor: colors.border,
           borderLeftWidth: 3, borderLeftColor: colors.warning,
-          padding: SPACING.lg, marginBottom: SPACING.md,
+          paddingLeft: SPACING.md, paddingVertical: SPACING.xs,
+          marginBottom: SPACING.lg,
         }}>
           <View style={{ width: 44, height: 44, borderRadius: RADIUS.md, backgroundColor: colors.warning + '18', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="flame" size={24} color={colors.warning} />
@@ -845,8 +847,10 @@ function SummaryBox({ icon, iconColor, value, label, period, delta, trend }: { i
       accessible
       accessibilityLabel={a11yLabel}
       style={{
-      backgroundColor: isDark ? colors.card : tint + '08',
-      borderRadius: RADIUS.md,
+      // KUTUSUZLASTIRMA: bu kutucuklar SALT OKUNUR (onPress yok) — kutuya hicbir
+      // ihtiyaclari yoktu ve rapor ekraninin ust yarisini bes ayri cerceveye
+      // boluyorlardi. Artik sayfanin uzerinde duran sutunlar; ayrim boslukla.
+      // Kural: kutu yalnizca DOKUNULABILIR nesnede.
       padding: SPACING.sm + 2,
       alignItems: 'center',
       // FIX (ux-round4 #21): flexBasis 20% + grow so 4 tiles fill one row (unchanged) and a 5th
@@ -859,8 +863,10 @@ function SummaryBox({ icon, iconColor, value, label, period, delta, trend }: { i
       maxWidth: '48%',
       minWidth: 64,
       minHeight: 95,
-      justifyContent: 'center',
-      borderWidth: 0.5, borderColor: colors.border,
+      // Kutu kalkinca gizlenmis bir hizalama kusuru ortaya cikti: dikey ORTALAMA,
+      // metni iki satira saran kutucugun ikonunu komsularindan yukari kaydiriyordu.
+      // Ustten hizala — ikonlar ayni cizgide dursun.
+      justifyContent: 'flex-start',
     }}>
       <View style={{
         width: 36, height: 36, borderRadius: RADIUS.sm,
