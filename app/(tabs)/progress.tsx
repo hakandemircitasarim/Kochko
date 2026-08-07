@@ -20,7 +20,7 @@ import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, alpha } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { formatDecimal } from '@/lib/units';
@@ -123,14 +123,16 @@ export default function ProgressScreen() {
     backgroundGradientFrom: colors.card,
     backgroundGradientTo: colors.card,
     decimalPlaces: 1,
-    color: (o = 1) => `rgba(29, 158, 117, ${o})`,
+    // Teal çağından kalan son çizgi rengiydi (rgba 29,158,117) — yeşil YASAK (§0-A);
+    // uyum grafiği artık marka menekşesini konuşuyor, tema değişince de doğru ton.
+    color: (o = 1) => alpha(colors.primary, o),
     labelColor: () => colors.textSecondary,
     propsForDots: { r: '3', strokeWidth: '1.5', stroke: colors.primary },
     propsForBackgroundLines: { stroke: colors.border },
   };
 
   // FIX (audit weight-chart-color): kilo trendi her yerde METRIC_COLORS.weight (pembe)
-  // ile gösterilsin (özet ikonu colors.pink ile tutarlı). Uyum grafiği teal'de kalır.
+  // ile gösterilsin (özet ikonu colors.pink ile tutarlı).
   const weightChartConfig = {
     ...chartConfig,
     color: (o = 1) => `rgba(212, 83, 126, ${o})`, // #D4537E (METRIC_COLORS.weight)
@@ -508,7 +510,8 @@ export default function ProgressScreen() {
                   { data: weights.map(w => w.weight_kg as number) },
                   ...(targetW != null ? [{
                     data: weights.map(() => targetW),
-                    color: (o = 1) => `rgba(29, 158, 117, ${o * 0.55})`, // teal target reference
+                    // Hedef referans çizgisi: "yolunda" gök mavisi (teal yasak, §0-A).
+                    color: (o = 1) => alpha(colors.success, o * 0.55),
                     withDots: false,
                     strokeWidth: 1.5,
                   }] : []),
@@ -566,7 +569,8 @@ export default function ProgressScreen() {
                   // already treats as good (green tiles/weekly/monthly/calendar) — so a run of ~%58
                   // reads as below-par at a glance. Mirrors the weight chart's target overlay;
                   // withShadow={false} below already suppresses the phantom area fill.
-                  { data: loggedCompliance.map(() => 70), color: (o = 1) => `rgba(48, 209, 88, ${o * 0.5})`, withDots: false, strokeWidth: 1.5 },
+                  // "İyi" eşiği yeşildi (rgba 48,209,88 — iOS yeşili) → "yolunda" gök mavisi (§0-A yeşil yasak).
+                  { data: loggedCompliance.map(() => 70), color: (o = 1) => alpha(colors.success, o * 0.5), withDots: false, strokeWidth: 1.5 },
                   // Invisible 0/100 anchor dataset: pins chart-kit's auto-scale to the full
                   // percent range (the lib has no explicit yMin/yMax API).
                   { data: [0, 100], withDots: false, strokeWidth: 0, color: () => 'transparent' },
@@ -587,7 +591,7 @@ export default function ProgressScreen() {
           </View>
           {/* FIX (ux-round4 #10): legend for the benchmark line. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs, alignSelf: 'flex-start' }}>
-            <View style={{ width: 16, height: 2, backgroundColor: 'rgba(48, 209, 88, 0.7)', borderRadius: 1 }} />
+            <View style={{ width: 16, height: 2, backgroundColor: alpha(colors.success, 0.7), borderRadius: 1 }} />
             <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>İyi: %70+</Text>
           </View>
         </Card>

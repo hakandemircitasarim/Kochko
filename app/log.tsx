@@ -23,12 +23,12 @@ import { useDashboardStore } from '@/stores/dashboard.store';
 import { supabase } from '@/lib/supabase';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
-import { useTheme } from '@/lib/theme';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, alpha } from '@/lib/design';
 import { formatDecimal } from '@/lib/units';
 
 type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery' | 'steps';
@@ -92,7 +92,7 @@ type RecentMealRow = { id: string; raw_input: string; meal_type: string; input_m
 type RecentMeal = { id: string; rawInput: string; mealType: string; inputMethod: string; dayLabel: string; kcal: number; items: MealLogItemInput[] };
 
 export default function QuickLogScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { isPremium } = usePremium();
@@ -1469,6 +1469,9 @@ export default function QuickLogScreen() {
       <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.xxl }}>
         {([{ liters: WATER_INCREMENT, label: '1 bardak' }, { liters: 0.5, label: '0,5 L' }, { liters: 1, label: '1 L' }] as const).map((o) => {
           const busy = waterPendingLiters === o.liters;
+          // Panodaki su kartıyla aynı dil: su-mavisi pastel yastık (nötr beyaz kart değil).
+          // İkon da METRIC_COLORS.water — colors.protein (#378ADD) görsel olarak yakın ama
+          // farklı hex'ti; aynı metrik iki ekranda iki ayrı maviyle çizilmesin.
           return (
           <TouchableOpacity
             key={o.label}
@@ -1477,9 +1480,9 @@ export default function QuickLogScreen() {
             activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel={`${o.label} su ekle`}
-            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.md, backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border, opacity: (submittingRef.current || waterPendingLiters !== null) ? 0.6 : 1 }}
+            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.md, backgroundColor: alpha(METRIC_COLORS.water, isDark ? 0.18 : 0.13), opacity: (submittingRef.current || waterPendingLiters !== null) ? 0.6 : 1 }}
           >
-            {busy ? <ActivityIndicator size="small" color={colors.protein} /> : <Ionicons name="water" size={16} color={colors.protein} />}
+            {busy ? <ActivityIndicator size="small" color={METRIC_COLORS.water} /> : <Ionicons name="water" size={16} color={METRIC_COLORS.water} />}
             <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>{o.label}</Text>
           </TouchableOpacity>
           );
@@ -1495,7 +1498,8 @@ export default function QuickLogScreen() {
           { icon: 'barbell-outline' as const, label: 'Antrenman', color: colors.purple, navigates: true, pending: false, onPress: () => router.dismissTo({ pathname: '/(tabs)/chat', params: { prefill: 'Antrenman yaptım: ' } }) },
           { icon: 'scale-outline' as const, label: 'Tartı', color: colors.pink, navigates: false, pending: false, onPress: () => { setWeightInput(lastKnownWeight != null ? formatDecimal(lastKnownWeight) : ''); setScreen('weight'); } },
           { icon: 'moon-outline' as const, label: 'Uyku', color: colors.purple, navigates: false, pending: false, onPress: () => setScreen('sleep') },
-          { icon: 'footsteps-outline' as const, label: 'Adım', color: colors.purple, navigates: false, pending: false, onPress: () => { setStepsInput(stepsToday != null && stepsToday > 0 ? String(stepsToday) : ''); setScreen('steps'); } },
+          // Adım panoda kehribar (METRIC_COLORS.steps) — aynı metrik iki ekranda iki renk olmasın.
+          { icon: 'footsteps-outline' as const, label: 'Adım', color: METRIC_COLORS.steps, navigates: false, pending: false, onPress: () => { setStepsInput(stepsToday != null && stepsToday > 0 ? String(stepsToday) : ''); setScreen('steps'); } },
           { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, navigates: false, pending: false, onPress: () => setScreen('recovery') },
         ].map((action, i) => {
           const busy = navigatingIndex === 100 + i || action.pending;

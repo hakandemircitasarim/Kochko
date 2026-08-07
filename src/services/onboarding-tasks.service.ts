@@ -34,7 +34,7 @@ const ONBOARDING_TASKS: TaskDef[] = [
     title: 'Kendini tanıt',
     description: 'Boy, kilo, yaş ve cinsiyet bilgilerini paylaş',
     icon: 'person-outline',
-    color: '#1D9E75',
+    color: '#6D3FE0', // teal kalıntısıydı — marka menekşe (§0-A yeşil yasak)
     prefillMessage: 'Merhaba! Kendimi tanıtmak istiyorum.',
     taskModeHint: 'onboarding_intro',
     checkCompletion: (d) =>
@@ -46,7 +46,7 @@ const ONBOARDING_TASKS: TaskDef[] = [
     title: 'Hedefini belirle',
     description: 'Ne istiyorsun ve neden? Hedef kilon ne?',
     icon: 'flag-outline',
-    color: '#1D9E75',
+    color: '#6D3FE0', // teal kalıntısıydı — marka menekşe (§0-A yeşil yasak)
     prefillMessage: 'Hedeflerimi konuşmak istiyorum.',
     taskModeHint: 'onboarding_goal',
     checkCompletion: (d) =>
@@ -74,7 +74,7 @@ const ONBOARDING_TASKS: TaskDef[] = [
     title: 'Beslenme alışkanlıklarını anlat',
     description: 'Öğün sayısı, saatleri, dışarıda yeme, atıştırma',
     icon: 'restaurant-outline',
-    color: '#1D9E75',
+    color: '#6D3FE0', // teal kalıntısıydı — marka menekşe (§0-A yeşil yasak)
     prefillMessage: 'Beslenme alışkanlıklarım ve günlük yeme düzenim hakkında konuşalım.',
     taskModeHint: 'onboarding_eating',
     checkCompletion: (d) =>

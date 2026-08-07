@@ -6,6 +6,7 @@ import { useState, useCallback, type ReactNode } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
@@ -264,7 +265,8 @@ export default function ProfileScreen() {
       <SectionTitle label="Veri & gizlilik" colors={colors} />
       <MenuGroup colors={colors}>
         {/* FIX (audit naming): tek kanonik özellik adı — 'Kochko Seni Nasıl Tanıyor'. */}
-        <MenuRow icon="eye-outline" color={colors.purple} label="Kochko seni nasıl tanıyor" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
+        {/* Koçun kendi satırı — soyut göz ikonu yerine Koçko'nun yüzü (§0-A karakter). */}
+        <MenuRow icon="eye-outline" mascot color={colors.purple} label="Kochko seni nasıl tanıyor" onPress={() => router.push('/settings/coach-memory')} colors={colors} />
         <MenuRow icon="download-outline" color={colors.primary} label="Verilerimi dışa aktar" onPress={() => router.push('/settings/health-export')} colors={colors} />
         <MenuRow icon="create-outline" color={colors.primary} label="Profil düzenle" onPress={() => router.push('/settings/edit-profile')} colors={colors} />
         {/* FIX (audit: tutarsız hesap-silme sürtünmesi) — profil sekmesindeki
@@ -362,9 +364,11 @@ function InfoBox({ label, value, unit, colors, small }: { label: string; value: 
 
 // FIX (audit premium-parity): `premium` prop renders the same lock+Premium pill the settings
 // index rows use, so gated rows are recognizable BEFORE the tap instead of frame-flashing.
-function MenuRow({ icon, color, label, value, onPress, colors, last, premium }: {
+function MenuRow({ icon, color, label, value, onPress, colors, last, premium, mascot }: {
   icon: string; color: string; label: string; value?: string;
   onPress: () => void; colors: any; last?: boolean; premium?: boolean;
+  /** true → ikon yerine mini Koçko (koçun kendisiyle ilgili satırlar için). */
+  mascot?: boolean;
 }) {
   return (
     <TouchableOpacity
@@ -379,7 +383,7 @@ function MenuRow({ icon, color, label, value, onPress, colors, last, premium }: 
       accessibilityLabel={premium ? `${label}, Premium özellik` : value ? `${label}, ${value}` : label}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 }}>
-        <Ionicons name={icon as any} size={18} color={color} />
+        {mascot ? <KochkoMascot size={22} /> : <Ionicons name={icon as any} size={18} color={color} />}
         {/* Settings rows are a long list the user SCANS, and each one is a tap target. At 13px the
             label was smaller than the app's own reading size, so the densest screen was also the
             hardest to read. TYPE.body is the reading step. */}

@@ -162,8 +162,10 @@ export async function exportPDF(report: PDFReportData): Promise<void> {
     )
     .join('');
 
+  // Dışa aktarılan raporda da marka dili: "iyi" durumu uygulamadaki success gibi gök
+  // mavisi (yeşil yasak, §0-A) — kehribar/kırmızı uyarı basamakları aynı kaldı.
   const complianceColor =
-    report.compliance >= 80 ? '#22c55e' : report.compliance >= 50 ? '#f59e0b' : '#ef4444';
+    report.compliance >= 80 ? '#0EA5E9' : report.compliance >= 50 ? '#f59e0b' : '#ef4444';
 
   const weightChangeText =
     report.weightChange != null

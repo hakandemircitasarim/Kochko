@@ -17,7 +17,9 @@ export interface MilestoneCardData {
 }
 
 const THEME_COLORS: Record<NonNullable<MilestoneCardData['theme']>, { bg: string; text: string; accent: string }> = {
-  success:  { bg: '#D1FAE5', text: '#065F46', accent: '#10B981' },
+  // Dışarı PAYLAŞILAN kart markanın yüzü — success teması yeşildi (teal çağı kalıntısı,
+  // §0-A yeşil yasak); marka menekşe ailesine çekildi.
+  success:  { bg: '#EDE9FE', text: '#4C1D95', accent: '#6D3FE0' },
   streak:   { bg: '#FEF3C7', text: '#92400E', accent: '#F59E0B' },
   milestone:{ bg: '#DBEAFE', text: '#1E3A8A', accent: '#3B82F6' },
   neutral:  { bg: '#F3F4F6', text: '#1F2937', accent: '#6B7280' },
