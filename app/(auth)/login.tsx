@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { SPACING } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 
 // Hosted legal documents (KVKK aydınlatma / kullanım koşulları) — same as register.tsx.
 // launch 2026-07-29: pages are LIVE on the public legal edge function (source: store/*.html)
@@ -116,7 +117,9 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ alignItems: 'center', marginBottom: SPACING.xl }}>
-          <Text style={{ ...TYPE.title1, color: colors.primary, letterSpacing: 2 }}>Kochko</Text>
+          {/* Koçko: markanın ilk izlenimi artık soyut bir kelime-mark değil, karakter (§0-A). */}
+          <KochkoMascot size={84} animated />
+          <Text style={{ ...TYPE.title1, color: colors.primary, letterSpacing: 2, marginTop: SPACING.sm }}>Kochko</Text>
           <Text style={{ ...TYPE.headline, fontWeight: '400', color: colors.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
         </View>
 

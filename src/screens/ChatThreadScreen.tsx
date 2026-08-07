@@ -45,6 +45,7 @@ import { speak, stopSpeaking } from '@/services/tts.service';
 import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { SkeletonBlock } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import {
@@ -2858,20 +2859,11 @@ function EmptyState({ isOnboarding, onSuggestion, onSend, showSuggestions = true
       contentContainerStyle={{ padding: SPACING.xl, paddingTop: SPACING.xxl, flexGrow: 1 }}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Fresh chat header */}
+      {/* Fresh chat header — koçun kendi sekmesinde karşılayan, soyut ikon değil
+          KARAKTERİN kendisi (§0-A). */}
       <View style={{ marginBottom: SPACING.lg }}>
-        <View
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 18,
-            backgroundColor: colors.primary + '22',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: SPACING.md,
-          }}
-        >
-          <Ionicons name="chatbubbles" size={26} color={colors.primary} />
+        <View style={{ marginBottom: SPACING.md, alignSelf: 'flex-start' }}>
+          <KochkoMascot size={76} animated />
         </View>
         <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: 4 }}>
           Kochko ile konuş

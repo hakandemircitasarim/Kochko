@@ -143,7 +143,7 @@ export default function PlanHistoryScreen() {
         <LoadErrorState title="Geçmiş yüklenemedi" onRetry={load} />
       ) : rows.length === 0 ? (
         <EmptyState
-          icon="archive-outline"
+          mascot="happy"
           title="Henüz arşivde plan yok."
           subtitle="Onayladığın planlar burada birikecek."
         />

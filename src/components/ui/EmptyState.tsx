@@ -1,6 +1,9 @@
 /**
  * EmptyState — shared empty-state primitive (icon + title + subtitle + optional CTA).
  * Replaces the ~10 hand-rolled empty states. Flat dark design, WCAG-AA copy colors.
+ *
+ * `mascot` verilirse ikon yerine Koçko çizilir (görsel dil §0-A: boş durumlar
+ * karakterin doğal sahnesi). Statik — boş durumda dikkat kopya + CTA'da kalmalı.
  */
 import React from 'react';
 import { View, Text } from 'react-native';
@@ -11,20 +14,27 @@ import { TYPE } from '@/lib/design';
 // FIX (audit ui-emptystate): route the CTA through the shared Button primitive so it
 // inherits Button's touch-target/hitSlop + a11y policy instead of a hand-rolled button.
 import { Button } from '@/components/ui/Button';
+import { KochkoMascot, type MascotMood } from '@/components/mascot/KochkoMascot';
 
 interface Props {
   icon?: keyof typeof Ionicons.glyphMap;
+  /** Verilirse ikon yerine Koçko (belirtilen ruh hâliyle) çizilir. */
+  mascot?: MascotMood;
   title: string;
   subtitle?: string;
   ctaLabel?: string;
   onPressCta?: () => void;
 }
 
-export function EmptyState({ icon = 'sparkles-outline', title, subtitle, ctaLabel, onPressCta }: Props) {
+export function EmptyState({ icon = 'sparkles-outline', mascot, title, subtitle, ctaLabel, onPressCta }: Props) {
   const { colors } = useTheme();
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.xxl }}>
-      <Ionicons name={icon} size={48} color={colors.textMuted} />
+      {mascot ? (
+        <KochkoMascot size={88} mood={mascot} />
+      ) : (
+        <Ionicons name={icon} size={48} color={colors.textMuted} />
+      )}
       <Text style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md, textAlign: 'center' }}>
         {title}
       </Text>

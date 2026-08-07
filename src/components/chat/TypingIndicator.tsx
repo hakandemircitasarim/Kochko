@@ -10,6 +10,7 @@ import { View, Animated, Easing, Text } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { SPACING } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 
 const DOT_SIZE = 6;
 const DOT_GAP = 4;
@@ -84,6 +85,9 @@ export function TypingIndicator({ label = 'Kochko yazıyor' }: Props) {
         borderColor: colors.border,
       }}
     >
+      {/* Yazan kişi görünür olsun: mini Koçko (statik — bu boyda idle animasyon titrer;
+          canlılığı zaten zıplayan noktalar taşıyor). */}
+      <KochkoMascot size={24} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: DOT_GAP }}>
         <Dot delay={0} color={colors.primary} />
         <Dot delay={160} color={colors.primary} />

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SPACING } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
@@ -146,7 +147,9 @@ export default function RegisterScreen() {
       >
         {/* FIX (audit ui-auth-header): login.tsx ile birebir aynı logo/başlık bloğu (letterSpacing/boşluk) */}
         <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
-          <Text style={{ ...TYPE.title1, color: colors.primary, letterSpacing: 2 }}>Kochko</Text>
+          {/* login.tsx ile aynı blok: maskot + kelime-mark (§0-A karakter). */}
+          <KochkoMascot size={84} animated />
+          <Text style={{ ...TYPE.title1, color: colors.primary, letterSpacing: 2, marginTop: SPACING.sm }}>Kochko</Text>
           <Text style={{ ...TYPE.headline, fontWeight: '400', color: colors.textSecondary, marginTop: SPACING.xs }}>Hesap oluştur</Text>
         </View>
 

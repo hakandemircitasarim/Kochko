@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -178,6 +179,13 @@ function WelcomeSlide({
   const { colors } = useTheme();
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
+      {/* İlk slayt uygulamanın EN İLK karesi — soyut ikon değil karakter karşılasın (§0-A).
+          Sonraki slaytlar konu ikonlarını koruyor (her karede maskot tekrar etmesin). */}
+      {stepIndex === 0 ? (
+        <View style={{ marginBottom: SPACING.xl }}>
+          <KochkoMascot size={112} mood="cheer" animated />
+        </View>
+      ) : (
       <View style={{
         width: 80, height: 80, borderRadius: 40,
         backgroundColor: colors.primary + '20',
@@ -185,6 +193,7 @@ function WelcomeSlide({
       }}>
         <Ionicons name={slide.icon} size={36} color={colors.primary} />
       </View>
+      )}
       {/* Intro slides are the first thing anyone sees. The heading led at FONT.xl (20) — the same
           step a card title uses elsewhere — so the app's opening statement carried card weight. */}
       <Text style={{ ...TYPE.title1, color: colors.text, textAlign: 'center', marginBottom: SPACING.md }}>
