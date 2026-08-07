@@ -2006,6 +2006,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       }}>
         {/* ux-pass2: no back chevron — this is a TAB now, the tab bar below is the
             navigation. (Hardware back still exits to the home tab via handleBack.) */}
+        {/* Başlıktaki kimlik plakası soyut ✨ değil KOÇKO — sohbetin muhatabı karakter (§0-A). */}
         <View
           style={{
             width: 36,
@@ -2018,7 +2019,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             borderColor: colors.primary + '44',
           }}
         >
-          <Ionicons name="sparkles" size={17} color={colors.primary} />
+          <KochkoMascot size={28} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ ...TYPE.title3, color: colors.text }}>Kochko</Text>
