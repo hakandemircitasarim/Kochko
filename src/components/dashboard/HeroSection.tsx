@@ -156,8 +156,14 @@ export function HeroSection({
           gruplanacak bir listesi yok, yalnizca cerceve. Kaldirildi: halka artik
           dogrudan sayfanin uzerinde duruyor ve etrafindaki bosluk onu one cikariyor.
           Kutular yalnizca DOKUNULABILIR nesnelerde kaliyor (plan kartlari, kutucuklar). */}
+      {/* Kahraman KUTUSUZ birakilinca "asiri bos ve sacma" duruyordu — dogru tepki:
+          referans dilde (Yazio/Duolingo) kahraman bir kutudur, ama SICAK ve DOLU bir
+          kutu. Marka renginin acik tonunda, genis yaricapli, dolgun bir yastik. */}
       <View style={{
-        paddingVertical: SPACING.md,
+        backgroundColor: colors.primaryLight,
+        borderRadius: RADIUS.xxl,
+        paddingVertical: SPACING.xl,
+        paddingHorizontal: SPACING.lg,
         alignItems: 'center',
         marginBottom: SPACING.xl,
       }}>
@@ -226,7 +232,7 @@ export function HeroSection({
             onPress={() => { haptics.tap(); router.push('/log'); }}
             accessibilityRole="button"
             accessibilityLabel="Öğün ekle"
-            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: colors.primary }}
+            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: colors.primary, borderBottomWidth: 4, borderBottomColor: colors.primaryDark }}
           >
             <Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />
             <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>Öğün ekle</Text>
@@ -235,7 +241,7 @@ export function HeroSection({
             onPress={() => { haptics.tap(); router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugün antrenman yaptım: ', taskNonce: String(Date.now()) } }); }}
             accessibilityRole="button"
             accessibilityLabel="Antrenman ekle"
-            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: colors.surfaceLight }}
+            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: colors.surfaceLight, borderBottomWidth: 4, borderBottomColor: colors.border }}
           >
             <Ionicons name="barbell-outline" size={16} color={colors.primary} />
             <Text style={{ ...TYPE.bodyStrong, color: colors.primary, fontWeight: '700' }}>Antrenman</Text>

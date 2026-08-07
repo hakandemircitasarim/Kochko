@@ -57,7 +57,13 @@ export function Button({ title, onPress, variant = 'primary', size = 'md', loadi
     <TouchableOpacity
       style={[{
         backgroundColor: bgColor,
-        borderRadius: RADIUS.sm,
+        // Dolu butonlarda kalin bir ALT RAF: dugmeye fiziksel bir govde hissi verir
+        // (Yazio/Duolingo imzasi). Cerceve degil golge de degil — rengin koyusu.
+        ...(isGhost || isOutline ? {} : {
+          borderBottomWidth: 4,
+          borderBottomColor: isDanger ? colors.error : variant === 'secondary' ? colors.secondary : colors.primaryDark,
+        }),
+        borderRadius: RADIUS.md,
         height,
         paddingHorizontal: size === 'sm' ? SPACING.md : SPACING.xl,
         alignItems: 'center',

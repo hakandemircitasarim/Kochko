@@ -26,7 +26,11 @@ export const FONT = { xs: 11, sm: 13, md: 14, lg: 16, xl2: 18, xl: 20, xxl: 24, 
 // RE-TUNED 2026-08. Rounder by one step across the board: at 12 a card reads as "a box", at 18 it
 // reads as "a surface". `xxl` is no longer a duplicate of `xl` — it now has its own value for
 // sheets and modals. `pill`/`full` both mean fully-round and both remain in live use.
-export const RADIUS = { sm: 10, md: 14, lg: 18, xl: 24, xxl: 32, pill: 999, full: 999 } as const;
+// YUVARLAK FORMLAR (2026-08-07). Kullanicinin verdigi referans: Yazio/Duolingo dili —
+// buyuk yuvarlak formlar, kalin basilabilir butonlar, canli renk, az sayi cok tesvik.
+// Onceki olcek (10/14/18/24) editoryal ve serindi; bir basamak yukari cikarildi ki
+// formlar "kutu" degil "yastik" gibi okusun.
+export const RADIUS = { sm: 14, md: 20, lg: 26, xl: 32, xxl: 40, pill: 999, full: 999 } as const;
 export const WATER_INCREMENT = 0.25;
 
 /**

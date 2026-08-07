@@ -61,7 +61,7 @@ export function CircularProgress({
   a11yLabel,
   a11yMax,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const clampedProgress = Math.min(1, Math.max(0, progress));
@@ -71,8 +71,12 @@ export function CircularProgress({
   // Iz KART RENGINDEN bagimsiz olmali: kahraman kart cardElevated'e tasindiginda
   // `surfaceLight` ile ayni hex'e (#22222E) dustu ve iz tamamen kayboldu — cihazda
   // yalnizca yesil yay kalmisti. Beyaz-alfa her yuzeyde calisir.
+  // Iz hem KART RENGINDEN hem TEMADAN bagimsiz olmali. Beyaz-alfa koyu temada
+  // dogruydu ama kahraman kart acik lavantaya tasininca iz TAMAMEN kayboldu —
+  // ayni sinif hata ikinci kez. Koyuda beyaz-alfa, acikta siyah-alfa.
   const isHero = size >= 150;
-  const track = trackColor || (isHero ? 'rgba(255,255,255,0.12)' : colors.progressTrack);
+  const heroTrack = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
+  const track = trackColor || (isHero ? heroTrack : colors.progressTrack);
   // Ayni ekranda birden fazla halka olabilir (rapor kartlari) — gradyan id'si benzersiz olmali.
   const gradId = useRef(`ring-${Math.random().toString(36).slice(2, 9)}`).current;
 
