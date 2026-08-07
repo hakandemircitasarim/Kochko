@@ -29,10 +29,13 @@ export default function RootLayout() {
   const authInitialized = useAuthStore((s) => s.initialized);
   const segments = useSegments();
   const systemScheme = useColorScheme();
-  // App is designed as a flat dark theme (teal accent). Default to dark so a
-  // light-mode device doesn't render authed screens light while the hardcoded
-  // auth screens stay dark. Users can still override in settings (persisted).
-  const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
+  // Varsayilan ACIK (2026-08-07). Eski gerekce ("auth ekranlari sabit koyu") artik
+  // gecersiz: 07-31'de 47 dosya useTheme()'e tasindi, statik COLORS import eden dosya
+  // sayisi 0 — yani her ekran temayi dogru izliyor.
+  // Karar kullanicinin sozune dayaniyor: "asiri ic karartici buluyorum, uygulama
+  // gercekten boguyor". #0D0D12 neredeyse siyah bir zemin bir KOCLUK urunu icin agir.
+  // Koyu tema kayboldu degil — Ayarlar > Tema'da duruyor ve secim kalici (a8bb18f).
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
 
   useEffect(() => { initialize(); }, [initialize]);
 

@@ -32,6 +32,9 @@ interface Props {
   ifEatingStart: string | null;
   ifEatingEnd: string | null;
   userName?: string;
+  /** Makro cubuklari OLCUM bilgisi; gunluk karar icin gerekli degil. Ana sayfa
+   *  varsayilan olarak sakin kalsin diye yalnizca "Detaylar" acikken gosteriliyor. */
+  showMacros?: boolean;
 }
 
 function MacroBar({ label, value, target, color, emphasize = false }: { label: string; value: number; target: number; color: string; emphasize?: boolean }) {
@@ -90,7 +93,7 @@ export function HeroSection({
   today, streak, focusMessage,
   consumed, targetMin, targetMax, protein, proteinTarget,
   carbs, carbsTarget = 200, fat, fatTarget = 65,
-  ifActive, ifEatingStart, ifEatingEnd, userName,
+  ifActive, ifEatingStart, ifEatingEnd, userName, showMacros = true,
 }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
@@ -174,11 +177,13 @@ export function HeroSection({
                 sublabel={ringSub}
               />
             </View>
+            {showMacros && (
             <View style={{ flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xl, width: '100%' }}>
               <MacroBar label="Protein" value={protein} target={proteinTarget} color={METRIC_COLORS.protein} emphasize={macroBehindKey === 'protein'} />
               <MacroBar label="Karbonhidrat" value={carbs} target={carbsTarget} color={METRIC_COLORS.carbs} emphasize={macroBehindKey === 'carbs'} />
               <MacroBar label="Yağ" value={fat} target={fatTarget} color={METRIC_COLORS.fat} emphasize={macroBehindKey === 'fat'} />
             </View>
+            )}
           </>
         ) : (
           /* FIX (ux-pass2 #13): boş durum eylemsiz bir View'dı — artık hedef-belirleme

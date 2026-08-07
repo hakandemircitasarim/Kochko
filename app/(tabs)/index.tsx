@@ -519,6 +519,15 @@ export default function TodayScreen() {
   // "-320 kaldı" in positive teal. Mirrors the hero ring's amber/red over-target state.
   const weeklyOver = weeklyRemaining < 0;
   const weeklyPct = weeklyBudgetTotal > 0 ? Math.min(1, weeklyConsumed / weeklyBudgetTotal) : 0;
+
+  // ANA SAYFA 16 BLOK gosteriyordu ve tipik bir kullanici bunlarin 8-12'sini AYNI ANDA
+  // goruyordu: kalori halkasi, uc makro, rozet satiri, koc notu, hedef karti, dort
+  // kutucuk, haftalik butce, iki plan karti, aktivite listesi, profil halkasi...
+  // Sonuc bir KOCLUK ekrani degil, bir tablo: 12'den fazla sayi yan yana ve hicbiri
+  // "simdi ne yapmaliyim"i soylemiyor — karari kullaniciya birakiyor.
+  // Cozum silmek DEGIL katlamak: gunluk karar icin gerekenler ustte kalir (halka,
+  // birincil eylemler, kocun TEK notu, plan), olcum/gecmis blogu tek dokunusla acilir.
+  const [showDetails, setShowDetails] = useState(false);
   // FIX (ux-round2 #7): turn the raw "X kaldı" into an actionable per-remaining-day pace so the
   // user can decide tonight's meal. Monday-based week, includes today.
   const weekDowMon = (() => {
@@ -838,6 +847,7 @@ export default function TodayScreen() {
         <>
         {/* 1. Hero: Greeting + Calorie Ring + Macros */}
         <HeroSection
+          showMacros={showDetails}
           // FIX (ux-pass2 #12): başlık tarihi de veriyle aynı efektif-gün mantığını kullanır —
           // gece 00:00-04:00 arasında günlük hâlâ "bugün"ü sayarken başlık yarını gösteremez.
           today={new Date(`${getEffectiveDate(new Date(), dayBoundaryHour)}T12:00:00`).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -1089,6 +1099,33 @@ export default function TodayScreen() {
           </View>
         )}
 
+        {/* Plan: "bugun ne yiyecegim / ne yapacagim"in cevabi — yani ekranin sordugu
+            sorunun ta kendisi. Detaylarin ICINDE degil, USTUNDE olmali. */}
+        <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
+          <PlanOverviewCards userId={user?.id} dayBoundaryHour={dayBoundaryHour} />
+        </View>
+
+        {/* ── DETAYLAR: olcum ve gecmis. Gunluk karar icin gerekli DEGIL, o yuzden
+            varsayilan olarak kapali. Tek dokunusla acilir, hicbir bilgi kaybolmaz. ── */}
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); setShowDetails(v => !v); }}
+          activeOpacity={MOTION.pressOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={showDetails ? 'Detayları gizle' : 'Detayları göster'}
+          accessibilityState={{ expanded: showDetails }}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+            marginTop: SPACING.xl, marginHorizontal: SPACING.xl,
+            paddingVertical: SPACING.md,
+          }}
+        >
+          <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>
+            {showDetails ? 'Detayları gizle' : 'Detaylar'}
+          </Text>
+          <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
+        </TouchableOpacity>
+
+        {showDetails && (<>
         {/* 1.2 Goal north-star card (ux-ideas #10) — the user's actual motivation,
             surfaced from goalProgress the store already computes. */}
         {/* FIX (ux-readiness): require a target weight — a gain_muscle goal saved without one has no
@@ -1190,10 +1227,6 @@ export default function TodayScreen() {
             completion donut. The donut is an onboarding artefact that hides itself at 100%;
             the most actionable content ("bugün ne yapmalıyım / ne logladım") shouldn't be
             buried beneath it for active, returning users. */}
-        {/* Plan overview cards (Phase 4) — replaces the old diet/workout tab selector */}
-        <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
-          <PlanOverviewCards userId={user?.id} dayBoundaryHour={dayBoundaryHour} />
-        </View>
 
         {/* Activity Timeline (meals + workouts logged today) */}
         <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
@@ -1212,6 +1245,7 @@ export default function TodayScreen() {
             View kaldırıldı — donut %100'de null dönerken marginTop'lu sarmalayıcı ekranın dibinde
             ölü boşluk bırakıyordu; boşluklar artık komponentin kendi kökünde. */}
         <ProfileCompletionDonut profile={profile as Record<string, unknown> | null} />
+        </>)}
         </>
         )}
 
