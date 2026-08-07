@@ -61,12 +61,12 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
       {...(onPress && onLongPress ? { onLongPress } : {})}
       {...a11yProps}
       style={{
+        // KUTUSUZLASTIRMA: bu dort kutucuk ekranda dort AYRI kutuydu ve "kutu kutu"
+        // hissinin en yogun oldugu yerdi. Artik hepsi TEK bir yuzeyin icinde birer
+        // hucre: kendi dolgusu/kenarligi yok, ayrim ic ayraclarla yapiliyor.
+        // Dokunulabilirlik aynen duruyor — kaybolan tek sey cerceve.
         flex: 1,
-        backgroundColor: colors.card,
-        borderRadius: RADIUS.md,
         padding: SPACING.md,
-        borderWidth: 0.5,
-        borderColor: colors.border,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.sm }}>
@@ -112,12 +112,20 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
 // FIX (audit: ölü prop) sleepHours/weightKg artık imzada destructure edilip
 // 2x2 grid'de render ediliyor (eskiden tanımlı ama hiç gösterilmiyordu).
 export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightKg, lastKnownWeightKg, onAddWater, onWaterLongPress, onWeightPress, onSleepPress, onStepsPress }: Props) {
+  const { colors } = useTheme();
   const waterPct = waterTarget > 0 ? waterLiters / waterTarget : 0;
   const noWeighInToday = weightKg == null && lastKnownWeightKg != null;
 
   return (
-    <View style={{ paddingHorizontal: SPACING.xl, gap: SPACING.sm }}>
-      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+    <View style={{ paddingHorizontal: SPACING.xl }}>
+    <View style={{
+      backgroundColor: colors.card,
+      borderRadius: RADIUS.lg,
+      borderWidth: 0.5,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    }}>
+      <View style={{ flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: colors.divider }}>
         <StatCard
           icon="water"
           // FIX (ux-pass5): TR ondalık — toFixed her zaman '.' basar; koç/servis yüzeyleri
@@ -145,7 +153,7 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
           a11yHint="Adım kaydı girmek için dokun"
         />
       </View>
-      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+      <View style={{ flexDirection: 'row' }}>
         <StatCard
           icon="moon"
           // FIX (audit UI-TAB-03) ham DB sayısını biçimlendir — diğer kartlarla tutarlı (DECIMAL(3,1) → 1 ondalık)
@@ -175,6 +183,7 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
           a11yHint="Tartı kaydı girmek için dokun"
         />
       </View>
+    </View>
     </View>
   );
 }
