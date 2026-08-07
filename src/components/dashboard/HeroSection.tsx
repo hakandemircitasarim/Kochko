@@ -260,13 +260,13 @@ export function HeroSection({
 
       {/* Focus Message */}
       {focusMessage && (
+        // Bu bir MESAJ, dokunulabilir bir nesne degil — kutu olmasi icin hicbir sebep
+        // yoktu ve ekrandaki kutu yigmini bir tane daha uzatiyordu. Artik satir:
+        // dolgu ve cerceve yok, yalnizca sol aksan cizgisi "bu koctan bir not" diyor.
         <View style={{
-          backgroundColor: colors.card,
-          borderRadius: RADIUS.md,
-          padding: SPACING.lg,
-          marginBottom: SPACING.md,
-          borderWidth: 0.5,
-          borderColor: colors.border,
+          paddingLeft: SPACING.md,
+          paddingVertical: SPACING.xs,
+          marginBottom: SPACING.lg,
           borderLeftWidth: 3,
           borderLeftColor: colors.primary,
         }}>

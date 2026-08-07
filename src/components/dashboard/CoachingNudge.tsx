@@ -62,13 +62,13 @@ export function CoachingNudge({
           <View
             key={msg.id}
             style={{
-              backgroundColor: colors.card,
-              borderRadius: RADIUS.md,
-              padding: SPACING.md,
+              // Kocun notu bir MESAJ; kutusu ekranin kutu yigmina katiliyordu. Satira
+              // indirildi: sol aksan cizgisi kalir, cerceve ve dolgu gider. Icindeki
+              // Evet/Sonra dugmeleri zaten kendi dokunulabilir yuzeyleri.
+              paddingLeft: SPACING.md,
+              paddingVertical: SPACING.xs,
               borderLeftWidth: 3,
               borderLeftColor: accentColor,
-              borderWidth: 0.5,
-              borderColor: colors.border,
             }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
