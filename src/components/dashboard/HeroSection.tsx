@@ -146,18 +146,15 @@ export function HeroSection({
       {/* FIX (audit: üç offline banner) inline offline çip kaldırıldı —
           tek kaynak: global common/OfflineBanner (app/_layout.tsx) */}
 
-      {/* Calorie Ring Card */}
-      {/* KATMANLAMA: butun kartlar ayni dolgu, ayni yaricap, ayni kenardaydi — hicbiri
-          "ben onemliyim" demiyordu. Gunun tek kahraman figuru burada, o yuzden bir ton
-          ustte (cardElevated) ve daha genis yaricapta duruyor; ikincil kartlar geride
-          kaliyor. Koyu temada bir yuzeyi kaldiran sey golge degil TON + KENAR (bkz.
-          theme.ts DEPTH notu). */}
+      {/* KAHRAMAN — KUTUSUZ.
+          Ekran bastan sona kenarlikli yuvarlak dikdortgen yigmiydi ve gunun manset
+          figuru de bunlardan biriydi: halka bir kutunun icinde, kutu da digerlerinin
+          arasinda kayboluyordu. Kutu burada hicbir is yapmiyor — tiklanabilir degil,
+          gruplanacak bir listesi yok, yalnizca cerceve. Kaldirildi: halka artik
+          dogrudan sayfanin uzerinde duruyor ve etrafindaki bosluk onu one cikariyor.
+          Kutular yalnizca DOKUNULABILIR nesnelerde kaliyor (plan kartlari, kutucuklar). */}
       <View style={{
-        backgroundColor: colors.cardElevated,
-        borderRadius: RADIUS.xl,
-        borderWidth: 0.5,
-        borderColor: colors.border,
-        padding: SPACING.xl,
+        paddingVertical: SPACING.md,
         alignItems: 'center',
         marginBottom: SPACING.xl,
       }}>
@@ -224,7 +221,7 @@ export function HeroSection({
             onPress={() => { haptics.tap(); router.push('/log'); }}
             accessibilityRole="button"
             accessibilityLabel="Öğün ekle"
-            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary }}
+            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: colors.primary }}
           >
             <Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />
             <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>Öğün ekle</Text>
@@ -233,7 +230,7 @@ export function HeroSection({
             onPress={() => { haptics.tap(); router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugün antrenman yaptım: ', taskNonce: String(Date.now()) } }); }}
             accessibilityRole="button"
             accessibilityLabel="Antrenman ekle"
-            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight }}
+            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: colors.surfaceLight }}
           >
             <Ionicons name="barbell-outline" size={16} color={colors.primary} />
             <Text style={{ ...TYPE.bodyStrong, color: colors.primary, fontWeight: '700' }}>Antrenman</Text>

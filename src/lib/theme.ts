@@ -49,11 +49,16 @@ export interface ThemeColors {
 }
 
 export const DARK_COLORS: ThemeColors = {
-  primary: '#C2F04A',
-  primaryDark: '#9BCC28',
-  primaryLight: '#C2F04A1F',
-  secondary: '#7F77DD',
-  accent: '#7F77DD',
+  // MARKA AKSANI (2026-08-06). Uygulamada yesil KALMADI — istek uzerine tamamen cikti.
+  // Menekse secildi cunku urunun kimligi "AI koc": bu ton teknoloji/zeka okur ve
+  // uygulamanin zaten var olan ikincil moruyla ayni ailede, yani yamali durmuyor.
+  // Tek aksan + FARKLI ISLEMLER (dolu buton / tintli cip / duz metin) ilkesi: ayni
+  // hue'yu birden fazla anlam icin kullanmak sorun degil, AYNI GORUNMESI sorundu.
+  primary: '#8B5CF6',
+  primaryDark: '#6D3FE0',
+  primaryLight: '#8B5CF61F',
+  secondary: '#8B5CF6',
+  accent: '#8B5CF6',
   background: '#0D0D12',
   surface: '#1A1A24',
   surfaceLight: '#22222E',
@@ -65,8 +70,10 @@ export const DARK_COLORS: ThemeColors = {
   // #ux-audit: bumped from #66667A (2.8-3.5:1, WCAG AA FAIL for body text on every surface)
   // to #8E8EA3 → ≥4.9:1 on bg/surface/surfaceLight. One global token fix → app-wide legibility.
   textMuted: '#8E8EA3',
-  success: '#1D9E75',
-  successLight: '#1D9E7520',
+  // "Yolunda / tamamlandi" artik gok mavisi: yesilsiz bir sistemde olumlu durumu
+  // tasiyabilecek, markadan da ayrisan tek soguk ton.
+  success: '#38BDF8',
+  successLight: '#38BDF820',
   warning: '#EF9F27',
   warningLight: '#EF9F2720',
   error: '#E24B4A',
@@ -96,14 +103,13 @@ export const DARK_COLORS: ThemeColors = {
 };
 
 export const LIGHT_COLORS: ThemeColors = {
-  // Ayni marka ailesi, ZEMINE gore ayarli: koyu temadaki parlak lime beyaz uzerinde
-  // okunmaz (kontrast ~1.3:1). Acik temada ayni hue daha koyu bir chartreuse olarak
-  // yasiyor; getContrastColor buton metnini zaten dinamik seciyor.
-  primary: '#4F7A00',
-  primaryDark: '#3D5F00',
-  primaryLight: '#4F7A001F',
-  secondary: '#7F77DD',
-  accent: '#7F77DD',
+  // Ayni marka ailesi, ZEMINE gore ayarli: koyu temadaki parlak menekse beyaz
+  // uzerinde yeterli kontrast vermiyor. getContrastColor buton metnini dinamik seciyor.
+  primary: '#6D3FE0',
+  primaryDark: '#5A32BD',
+  primaryLight: '#6D3FE01F',
+  secondary: '#6D3FE0',
+  accent: '#6D3FE0',
   background: '#F5F7FA',
   surface: '#FFFFFF',
   surfaceLight: '#F0F2F5',
@@ -114,8 +120,8 @@ export const LIGHT_COLORS: ThemeColors = {
   textSecondary: '#5A6478',
   // FIX (audit: light textMuted WCAG-AA) #94A3B8 ~2.56:1 on white (AA FAIL) → #64748B ~4.8:1.
   textMuted: '#64748B',
-  success: '#1D9E75',
-  successLight: '#1D9E7520',
+  success: '#0EA5E9',
+  successLight: '#0EA5E920',
   // FIX (audit: light warning WCAG-AA) #EF9F27 ~2.17:1 as text on white (AA FAIL) → darker #B26A00 ~4.6:1.
   warning: '#B26A00',
   warningLight: '#B26A0020',
@@ -140,18 +146,21 @@ export const LIGHT_COLORS: ThemeColors = {
 
 /** Flat accent colors for metric cards (replaces gradients) */
 export const METRIC_COLORS = {
-  calories: '#1D9E75',
-  protein: '#378ADD',
-  carbs: '#EF9F27',
-  fat: '#D85A30',
-  water: '#378ADD',
-  sleep: '#7F77DD',
-  mood: '#D4537E',
-  steps: '#7F77DD',
-  weight: '#D4537E',
-  streak: '#EF9F27',
-  workout: '#7F77DD',
-  challenge: '#7F77DD',
+  // Kalori = gunun MANSET figuru, o yuzden marka tonunu tasir: kahraman halka
+  // uygulamanin imzasi. Kalan metrikler uc ayirt edilebilir tona indirildi
+  // (mavi / kehribar / gul) — once alti farkli hue vardi ve ekran karnaval gibiydi.
+  calories: '#8B5CF6',
+  protein: '#4C8DFF',
+  carbs: '#FFB020',
+  fat: '#FF5C7A',
+  water: '#4C8DFF',
+  sleep: '#8B5CF6',
+  mood: '#FF5C7A',
+  steps: '#8B5CF6',
+  weight: '#FF5C7A',
+  streak: '#FFB020',
+  workout: '#8B5CF6',
+  challenge: '#8B5CF6',
 } as const;
 
 // FIX (audit UI-DS-07): removed no-op GRADIENTS/HERO_GRADIENTS exports — they were

@@ -49,7 +49,8 @@ export const CARD_SHADOW = CARD_BORDER;
 
 /** Hero section sizing */
 export const HERO = {
-  RING_SIZE: 170,
+  // Halka kutusundan cikinca nefes alacak yeri oldu; manset figuru buyudu.
+  RING_SIZE: 196,
   RING_STROKE: 12,
   STAT_CARD_WIDTH: 110,
   STAT_CARD_HEIGHT: 84,
