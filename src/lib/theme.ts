@@ -156,7 +156,10 @@ export const METRIC_COLORS = {
   water: '#4C8DFF',
   sleep: '#8B5CF6',
   mood: '#FF5C7A',
-  steps: '#8B5CF6',
+  // 2x2 stat ızgarası bölüm başına DOLGULU renkli kart oldu (§0-A): su mavi, uyku
+  // mor, kilo gül — adım morda kalsaydı ızgarada iki mor kart yan yana dururdu.
+  // Kehribar mevcut 3-hue paletinin içinden (yeni hue eklenmedi); tek tüketicisi StatStrip.
+  steps: '#FFB020',
   weight: '#FF5C7A',
   streak: '#FFB020',
   workout: '#8B5CF6',

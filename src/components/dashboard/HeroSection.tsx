@@ -11,6 +11,8 @@ import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { haptics } from '@/lib/haptics'; // FIX (ux-polish): the hero CTAs are the most-prominent buttons but had no tap feedback.
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
+import { Reveal } from '@/components/ui/Reveal';
+import { CoachBubble } from '@/components/dashboard/CoachBubble';
 import { SPACING, RADIUS, HERO } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { a11yProgress, formatProgressForScreenReader, getContrastColor } from '@/lib/accessibility';
@@ -18,7 +20,10 @@ import { a11yProgress, formatProgressForScreenReader, getContrastColor } from '@
 interface Props {
   today: string;
   streak: number;
+  /** Koçun notu — Koçko'nun balonunda söylenir (görsel dil §0-A: karakter). */
   focusMessage: string | null;
+  /** Ekranda ayrıca bir koç nudge'ı varken false — maskot iki şey birden söylemesin. */
+  allowBubbleFallback?: boolean;
   consumed: number;
   targetMin: number;
   targetMax: number;
@@ -38,8 +43,12 @@ interface Props {
 }
 
 function MacroBar({ label, value, target, color, emphasize = false }: { label: string; value: number; target: number; color: string; emphasize?: boolean }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const pct = target > 0 ? Math.min(1, value / target) : 0;
+  // İz, yüzeyden VE temadan bağımsız olmalı (DEVIR §0-A tuzağı — bu dosyada da
+  // vardı): sabit beyaz-alfa, açık temadaki lavanta kart üstünde 1,02:1 ile fiilen
+  // görünmezdi. Koyuda beyaz-alfa, açıkta siyah-alfa.
+  const trackColor = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
   // FIX (ux-ideas #1): the single most-behind macro gets a "kaldı" (remaining)
   // hint in its own accent colour — a glanceable "focus this next" cue — while
   // the others keep the neutral value/target readout.
@@ -57,7 +66,7 @@ function MacroBar({ label, value, target, color, emphasize = false }: { label: s
       >
         {label}
       </Text>
-      <View style={{ height: 8, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 4, overflow: 'hidden' }}>
+      <View style={{ height: 8, backgroundColor: trackColor, borderRadius: 4, overflow: 'hidden' }}>
         <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 4 }} />
       </View>
       {/* Emphasis is carried by COLOUR AND WEIGHT ONLY — the readout format stays identical across
@@ -90,7 +99,7 @@ function getGreeting(): string {
 }
 
 export function HeroSection({
-  today, streak, focusMessage,
+  today, streak, focusMessage, allowBubbleFallback = true,
   consumed, targetMin, targetMax, protein, proteinTarget,
   carbs, carbsTarget = 200, fat, fatTarget = 65,
   ifActive, ifEatingStart, ifEatingEnd, userName, showMacros = true,
@@ -149,6 +158,16 @@ export function HeroSection({
       {/* FIX (audit: üç offline banner) inline offline çip kaldırıldı —
           tek kaynak: global common/OfflineBanner (app/_layout.tsx) */}
 
+      {/* KOÇKO + konuşma balonu — koçun notu artık karakterin ağzından (§0-A).
+          Eski sol-aksan-çizgili satırın yerine geçti; dokununca koç sohbeti açılır. */}
+      <Reveal>
+        <CoachBubble
+          line={focusMessage}
+          allowFallback={allowBubbleFallback}
+          onPress={() => { haptics.tap(); router.push('/(tabs)/chat' as never); }}
+        />
+      </Reveal>
+
       {/* KAHRAMAN — KUTUSUZ.
           Ekran bastan sona kenarlikli yuvarlak dikdortgen yigmiydi ve gunun manset
           figuru de bunlardan biriydi: halka bir kutunun icinde, kutu da digerlerinin
@@ -159,6 +178,7 @@ export function HeroSection({
       {/* Kahraman KUTUSUZ birakilinca "asiri bos ve sacma" duruyordu — dogru tepki:
           referans dilde (Yazio/Duolingo) kahraman bir kutudur, ama SICAK ve DOLU bir
           kutu. Marka renginin acik tonunda, genis yaricapli, dolgun bir yastik. */}
+      <Reveal delay={60}>
       <View style={{
         backgroundColor: colors.primaryLight,
         borderRadius: RADIUS.xxl,
@@ -221,12 +241,14 @@ export function HeroSection({
           </TouchableOpacity>
         )}
       </View>
+      </Reveal>
 
       {/* FIX (ux-ideas #6): the app's most-repeated action — logging a meal — had NO quick path
           from the dashboard (only water/weight did). The ring's "kcal kaldı" already invites
           "let me log what I ate"; give it a primary button. Only when targets exist (a no-target
           user gets the goal CTA inside the ring card instead). */}
       {hasTargets && (
+        <Reveal delay={120}>
         <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
           <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { haptics.tap(); router.push('/log'); }}
@@ -247,6 +269,7 @@ export function HeroSection({
             <Text style={{ ...TYPE.bodyStrong, color: colors.primary, fontWeight: '700' }}>Antrenman</Text>
           </TouchableOpacity>
         </View>
+        </Reveal>
       )}
 
       {/* IF Timer */}
@@ -269,21 +292,7 @@ export function HeroSection({
         </View>
       )}
 
-      {/* Focus Message */}
-      {focusMessage && (
-        // Bu bir MESAJ, dokunulabilir bir nesne degil — kutu olmasi icin hicbir sebep
-        // yoktu ve ekrandaki kutu yigmini bir tane daha uzatiyordu. Artik satir:
-        // dolgu ve cerceve yok, yalnizca sol aksan cizgisi "bu koctan bir not" diyor.
-        <View style={{
-          paddingLeft: SPACING.md,
-          paddingVertical: SPACING.xs,
-          marginBottom: SPACING.lg,
-          borderLeftWidth: 3,
-          borderLeftColor: colors.primary,
-        }}>
-          <Text style={{ ...TYPE.body, color: colors.textSecondary }}>{focusMessage}</Text>
-        </View>
-      )}
+      {/* Focus message artık yukarıdaki CoachBubble'da — koçun notunu karakter söylüyor. */}
     </View>
   );
 }

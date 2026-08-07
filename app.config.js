@@ -58,8 +58,11 @@ export default {
       // Android bildirim ikonu SİLUET olmak zorunda: sistem saydam olmayan her pikseli
       // beyaza boyar. Yapılandırma yokken expo-notifications uygulama ikonunu kullanıyordu
       // ve renkli/kare logo durum çubuğunda BEYAZ BİR KAREYE dönüşüyordu. Monokrom varlık
-      // zaten siluet — onu ver, tint rengi de markanın teali olsun.
-      ['expo-notifications', { icon: './assets/android-icon-monochrome.png', color: '#1D9E75' }],
+      // zaten siluet — onu ver. Tint 2026-08-07'de teal→menekşe: yeşil YASAK (görsel dil
+      // §0-A), depodaki son yeşil hex buydu.
+      ['expo-notifications', { icon: './assets/android-icon-monochrome.png', color: '#6D3FE0' }],
+      // Natif metin-seçim vurgusu markaya çekildi (turkuaz sızıntısı) — bkz. plugin dosyası.
+      './plugins/withBrandAccent',
       // Durum/gezinme çubuğu ikon rengini edge-to-edge altında ayarlayabilmek için
       // (app/_layout.tsx → <SystemBars>). Android 15'te edge-to-edge zorunlu olduğundan
       // RN'in kendi StatusBar stil çağrıları yok sayılıyor.

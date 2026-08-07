@@ -26,7 +26,7 @@ import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, alpha } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { setupAutoSync } from '@/services/offline-queue.service';
@@ -42,6 +42,8 @@ import { isDismissed, markDismissed } from '@/lib/dismissals';
 // FIX (audit: üç offline banner) ui/OfflineBanner inline render kaldırıldı —
 // global common/OfflineBanner (app/_layout.tsx) tek kaynak.
 import { SkeletonBlock } from '@/components/ui/Skeleton';
+import { Reveal } from '@/components/ui/Reveal';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { showToast } from '@/components/ui/Toast';
 import { usePremium } from '@/hooks/usePremium';
 import { checkAndScheduleTrialReminder, routeForNotificationType } from '@/services/notifications.service';
@@ -147,6 +149,11 @@ export default function TodayScreen() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   // ux-defect pass: bespoke tartı modalının state'leri silindi — tartı girişi tek sahipte (/log?to=weight).
   const [coachingMessages, setCoachingMessages] = useState<CoachingMessage[]>([]);
+  // Maskot fallback cümlesi, bildirim-yuvası verileri ÇÖZÜLMEDEN gösterilmez —
+  // yoksa balon belirip nudge fetch'i dönünce animasyonsuz sökülüyor, sayfa
+  // sıçrıyordu (adversarial review). İki bayrak + dismissal hydration'ı kapı olur.
+  const [coachingFetched, setCoachingFetched] = useState(false);
+  const [recapChecked, setRecapChecked] = useState(false);
   const [returnStatus, setReturnStatus] = useState<ReturnStatus | null>(null);
   // FIX (ux-ideas #20): a genuinely brand-new user (never logged a meal OR workout) gets a
   // "buradan başla" card instead of a wall of zeros that reads like data loss / a locked
@@ -314,7 +321,7 @@ export default function TodayScreen() {
       .catch((err) => console.warn('fetchToday failed:', err))
       .finally(() => setHasLoadedOnce(true));
     checkForMilestones();
-    getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {});
+    getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {}).finally(() => setCoachingFetched(true));
   }, [user?.id, fetchToday, checkForMilestones, dayBoundaryHour]);
   refreshRef.current = () => refresh();
 
@@ -330,7 +337,7 @@ export default function TodayScreen() {
       await Promise.all([
         fetchToday(user.id, dayBoundaryHour).finally(() => setHasLoadedOnce(true)),
         checkForMilestones(),
-        getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {}),
+        getUnreadCoachingMessages(user.id).then(setCoachingMessages).catch(() => {}).finally(() => setCoachingFetched(true)),
       ]);
       // FIX (ux-pass5): fetchToday hatayı içeride yutar ve store.fetchError'a yazar —
       // elde önceki veri varken (lastFetchedAt != null) başarısız yenilemeyi sessiz
@@ -378,6 +385,16 @@ export default function TodayScreen() {
     && returnResolved && (!returnStatus || returnStatus.level === 'active') && streakResetDismissed === false;
   const showWeeklyRecap = !!weeklyRecap && !showStreakRisk && !showStreakReset;
   const showCoachNudge = coachingMessages.length > 0 && !showStreakRisk && !showStreakReset && !showWeeklyRecap;
+  // TEK KOÇ SESİ (adversarial review): yuvada HERHANGİ bir kart varken maskot
+  // türetilmiş satırı da fallback'i de söylemez — yalnız sunucunun gerçek
+  // focus_message'ı kalır (iki gerçek içerik yan yana durabilir). Fallback ayrıca
+  // yuva verileri çözülene dek kapalı ki balon belirip geri sökülmesin.
+  // returnResolved/isBrandNew bilerek kapıda DEĞİL: ikisi de hata durumunda
+  // sonsuza dek çözülmemiş kalabilir, kapıya girselerdi balon hiç açılmazdı.
+  const anySlotCard = showStreakRisk || showStreakReset || showWeeklyRecap || showCoachNudge;
+  const slotsSettled = coachingFetched && recapChecked && streakRiskDismissed !== null;
+  const heroLine = anySlotCard ? (focusMessage ?? null) : coachLine;
+  const allowBubbleFallback = slotsSettled && !anySlotCard;
 
   // FIX (audit: üç offline banner) inline isOffline state kaldırıldı; offline
   // göstergesi global common/OfflineBanner'a bırakıldı. NetInfo dinleyici yalnız
@@ -415,7 +432,7 @@ export default function TodayScreen() {
         avgCompliance: (data.avg_compliance as number | null) ?? null,
         strategy: strat ? strat.split(/\n|(?<=\.)\s/)[0].slice(0, 120) : null,
       });
-    })();
+    })().catch(() => {}).finally(() => { if (!cancelled) setRecapChecked(true); });
     return () => { cancelled = true; };
   }, [user?.id]);
 
@@ -618,12 +635,13 @@ export default function TodayScreen() {
               padding: SPACING.xxl, alignItems: 'center', width: '100%', maxWidth: 360,
             }}
           >
+            {/* Kupa ikonu → kollarını havaya kaldırmış Koçko: kutlamayı karakter yapar (§0-A). */}
             <Animated.View style={{
               transform: [{ scale: celebrationScale }],
-              width: 84, height: 84, borderRadius: 42, backgroundColor: colors.primary + '20',
+              width: 116, height: 116, borderRadius: 58, backgroundColor: alpha(colors.primary, 0.12),
               alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.lg,
             }}>
-              <Ionicons name="trophy" size={44} color={colors.primary} />
+              <KochkoMascot size={92} mood="cheer" />
             </Animated.View>
             <Text accessibilityRole="header" style={{ color: colors.text, ...TYPE.title3, textAlign: 'center' }}>
               {celebration}
@@ -851,7 +869,8 @@ export default function TodayScreen() {
           // gece 00:00-04:00 arasında günlük hâlâ "bugün"ü sayarken başlık yarını gösteremez.
           today={new Date(`${getEffectiveDate(new Date(), dayBoundaryHour)}T12:00:00`).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
           streak={streak}
-          focusMessage={coachLine}
+          focusMessage={heroLine}
+          allowBubbleFallback={allowBubbleFallback}
           consumed={totalCalories}
           targetMin={calorieTargetMin}
           targetMax={calorieTargetMax}
@@ -1100,9 +1119,9 @@ export default function TodayScreen() {
 
         {/* Plan: "bugun ne yiyecegim / ne yapacagim"in cevabi — yani ekranin sordugu
             sorunun ta kendisi. Detaylarin ICINDE degil, USTUNDE olmali. */}
-        <View style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
+        <Reveal delay={180} style={{ paddingHorizontal: SPACING.xl, marginTop: SPACING.xxl }}>
           <PlanOverviewCards userId={user?.id} dayBoundaryHour={dayBoundaryHour} />
-        </View>
+        </Reveal>
 
         {/* 1.2 Goal north-star card (ux-ideas #10) — the user's actual motivation,
             surfaced from goalProgress the store already computes. */}
@@ -1141,7 +1160,7 @@ export default function TodayScreen() {
         )}
 
         {/* 2. Quick Stats: Su + Adım / Uyku + Kilo (2x2) */}
-        <View style={{ marginTop: SPACING.md }}>
+        <Reveal delay={240} style={{ marginTop: SPACING.md }}>
           <StatStrip
             waterLiters={waterLiters}
             waterTarget={waterTarget}
@@ -1157,7 +1176,7 @@ export default function TodayScreen() {
             onSleepPress={() => { haptics.tap(); router.push('/log?to=sleep'); }}
             onStepsPress={() => { haptics.tap(); router.push('/log?to=steps'); }}
           />
-        </View>
+        </Reveal>
 
         {/* ── DETAYLAR: olcum ve gecmis. Gunluk karar icin gerekli DEGIL, o yuzden
             varsayilan olarak kapali. Tek dokunusla acilir, hicbir bilgi kaybolmaz. ── */}

@@ -10,6 +10,7 @@ import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { OFFER_TRIGGERS } from '@/services/coaching-messages.service';
 import type { CoachingMessage } from '@/services/coaching-messages.service';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 
 // FIX (ux-ideas #17): trigger types that are an accept/decline OFFER — these get inline
 // "Evet / Sonra" buttons so the user can act in one tap instead of open-chat-then-type-"evet".
@@ -80,11 +81,11 @@ export function CoachingNudge({
                 accessibilityHint="İlgili ekranı açmak için dokun"
                 style={{ flex: 1, flexDirection: 'row', alignItems: 'flex-start' }}
               >
-                <Ionicons
-                  name="chatbubble-ellipses-outline" size={18} color={accentColor}
-                  style={{ marginRight: SPACING.sm, marginTop: 1 }}
-                  accessible={false} importantForAccessibility="no"
-                />
+                {/* Soyut sohbet ikonu → mini Koçko avatarı: nudge'ı da aynı karakter söylüyor
+                    (hero balonuyla tek ses). Statik — küçük boyda idle animasyon titrek durur. */}
+                <View style={{ marginRight: SPACING.sm }} accessible={false} importantForAccessibility="no-hide-descendants">
+                  <KochkoMascot size={30} />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ ...TYPE.body, color: colors.text }} numberOfLines={3}>
                     {msg.content}
