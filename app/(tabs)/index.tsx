@@ -847,7 +847,6 @@ export default function TodayScreen() {
         <>
         {/* 1. Hero: Greeting + Calorie Ring + Macros */}
         <HeroSection
-          showMacros={showDetails}
           // FIX (ux-pass2 #12): başlık tarihi de veriyle aynı efektif-gün mantığını kullanır —
           // gece 00:00-04:00 arasında günlük hâlâ "bugün"ü sayarken başlık yarını gösteremez.
           today={new Date(`${getEffectiveDate(new Date(), dayBoundaryHour)}T12:00:00`).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -1105,27 +1104,6 @@ export default function TodayScreen() {
           <PlanOverviewCards userId={user?.id} dayBoundaryHour={dayBoundaryHour} />
         </View>
 
-        {/* ── DETAYLAR: olcum ve gecmis. Gunluk karar icin gerekli DEGIL, o yuzden
-            varsayilan olarak kapali. Tek dokunusla acilir, hicbir bilgi kaybolmaz. ── */}
-        <TouchableOpacity
-          onPress={() => { haptics.tap(); setShowDetails(v => !v); }}
-          activeOpacity={MOTION.pressOpacity}
-          accessibilityRole="button"
-          accessibilityLabel={showDetails ? 'Detayları gizle' : 'Detayları göster'}
-          accessibilityState={{ expanded: showDetails }}
-          style={{
-            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-            marginTop: SPACING.xl, marginHorizontal: SPACING.xl,
-            paddingVertical: SPACING.md,
-          }}
-        >
-          <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>
-            {showDetails ? 'Detayları gizle' : 'Detaylar'}
-          </Text>
-          <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
-        </TouchableOpacity>
-
-        {showDetails && (<>
         {/* 1.2 Goal north-star card (ux-ideas #10) — the user's actual motivation,
             surfaced from goalProgress the store already computes. */}
         {/* FIX (ux-readiness): require a target weight — a gain_muscle goal saved without one has no
@@ -1181,6 +1159,27 @@ export default function TodayScreen() {
           />
         </View>
 
+        {/* ── DETAYLAR: olcum ve gecmis. Gunluk karar icin gerekli DEGIL, o yuzden
+            varsayilan olarak kapali. Tek dokunusla acilir, hicbir bilgi kaybolmaz. ── */}
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); setShowDetails(v => !v); }}
+          activeOpacity={MOTION.pressOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={showDetails ? 'Detayları gizle' : 'Detayları göster'}
+          accessibilityState={{ expanded: showDetails }}
+          style={{
+            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+            marginTop: SPACING.xl, marginHorizontal: SPACING.xl,
+            paddingVertical: SPACING.md,
+          }}
+        >
+          <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>
+            {showDetails ? 'Detayları gizle' : 'Detaylar'}
+          </Text>
+          <Ionicons name={showDetails ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
+        </TouchableOpacity>
+
+        {showDetails && (<>
         {/* 3. Weekly Budget Bar — ux-defect pass: ilk kayıttan önce '0 / 17.045' gibi dev ve
             anlamsız sayılar basıyordu; hafta içinde tüketim başlayınca görünür. */}
         {weeklyBudgetTotal > 0 && weeklyConsumed > 0 && (
