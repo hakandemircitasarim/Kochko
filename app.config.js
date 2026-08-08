@@ -10,7 +10,10 @@ export default {
     splash: {
       image: './assets/splash-icon.png',
       resizeMode: 'contain',
-      backgroundColor: '#1a1a2e',
+      // 2026-08-09: koyu lacivert açılış, varsayılan AÇIK temaya koyu→açık flaş yaptırıyordu;
+      // zemin açık temanın kendisi, logo da menekşeye boyandı (yeşil yasak — logo yeşilin
+      // son sığınağıydı, PNG piksellerini hex grep göremiyor).
+      backgroundColor: '#F5F7FA',
     },
     ios: {
       supportsTablet: true,
