@@ -42,8 +42,22 @@ export function detectTaskMode(message: string, isOnboarding: boolean): TaskMode
   // iyi") still logs below. The cue list is deliberately about STATES OF STRUGGLE, not feelings.
   if (/bunald[ıi]m|t[üu]kendim|dayanam[ıi]yorum|bo[gğ]uluyorum|kayg[ıi]l[ıi]y[ıi]m|panik|a[gğ]lamak|a[gğ]l[ıi]yorum|kendimi (k[öo]t[üu]|bo[şs]|yaln[ıi]z) hissediyorum|hi[çc]bir [şs]ey (yapmak )?istemiyorum|cok stresliyim|çok stresliyim|stresliyim ve|moralim (cok )?bozuk|psikolojim bozuk/.test(lower)) return 'coaching';
 
-  // Simulation mode - intent question, must win over bare logging keywords
-  if (/yesem|yersem|icsem|içsem|olur mu|yer miyim|ice bilir|içe bilir|ne olur/.test(lower)) return 'simulation';
+  // Low motivation is the minimum-viable-day contract, whatever else the sentence mentions
+  // ("bu hafta çok kötü geçti, motivasyonum sıfır" used to fall through to analyst via "bu hafta").
+  if (/motivasyon(um)? (yok|s[ıi]f[ıi]r|kalmad[ıi]|d[üu][şs]t[üu]|bitti)|her [şs]eyi b[ıi]rakt[ıi]m/.test(lower)) return 'mvd';
+
+  // A request for a meal IDEA is a suggestion, not a what-if: "öğlen ne yesem?" ran as simulation
+  // (medium effort, projection maths, invented dates) — measured live 2026-10-04.
+  if (/\bne (yesem|yesek|yiyeyim|yiyelim|yemeliyim|pi[şs]ireyim)\b/.test(lower)) return 'coaching';
+
+  // A question about TODAY'S TOTALS is a question, not a log: "bugün toplam kaç kalori aldım?"
+  // matched the register regex on "aldım" and the model re-estimated the total instead of reading it.
+  if (/(ka[çc]|ne kadar|toplam)[^.!?]*(kalori|kcal|protein|karbonhidrat|ya[gğ])/.test(lower) && (/\?|toplam/.test(lower) || /(^|\s)m[ıiuü](\s|$)/.test(lower))) return 'qa';
+
+  // Simulation mode - intent question, must win over bare logging keywords. "olur mu" next to a
+  // PAST eat/drink verb ("dün cacık yedim, sorun olur mu?") is a report with a worry: it must log.
+  const pastEat = /\b(yedim|yemi[şs]tim|i[çc]tim|i[çc]mi[şs]tim|at[ıi][şs]t[ıi]rd[ıi]m)\b/.test(lower);
+  if (/yesem|yersem|icsem|içsem|yer miyim|ice bilir|içe bilir/.test(lower) || (!pastEat && /olur mu|ne olur/.test(lower))) return 'simulation';
 
   // Goal-setting intent must win over the bare "N kilo" weigh-in match below —
   // "3 ayda 5 kilo vermek istiyorum, hedefim 70 kilo" is a GOAL conversation
@@ -365,7 +379,7 @@ Hamilelik/emzirmede destekleyici ve sabırli ol.`;
       return `## MOD: DIYET PLANI (plan_diet)
 Bu sohbet kullanicinin haftalik diyet planini olusturmak ve uzerinde pazarlik yapmak icin acildi.
 SELAMLAMA ve TANITIM YAPMA (sohbet zaten devam ediyor — "Merhaba"/"Hos geldin"/"Ben Kochko..." YASAK).
-Ilk cumlen dogrudan ise girsin: "Profiline bakarak 7 gunluk menunu hazirladim — iste plan:" gibi.
+Ilk cumlen dogrudan ise girsin: "Profiline bakarak 7 günlük menünü hazırladım — işte plan:" gibi.
 TDEE ve makro hedeflerini kullanicinin profilinden hesapla (Mifflin-St Jeor, activity_level carpani).
 
 ### ILK MESAJ: PLAN SNAPSHOT URET (ZORUNLU — BU YANITTA)
@@ -478,7 +492,7 @@ Kullanici "diyet listesi istiyorum", "spor programi istiyorum" gibi plan talep e
       return `## MOD: SPOR PLANI (plan_workout)
 Bu sohbet kullanicinin haftalik antrenman programini olusturmak icin acildi.
 SELAMLAMA ve TANITIM YAPMA (sohbet zaten devam ediyor — "Merhaba"/"Hos geldin"/"Ben Kochko..." YASAK).
-Ilk cumlen dogrudan ise girsin: "Seviyene ve ekipmanina gore haftalik programini hazirladim — iste plan:" gibi.
+Ilk cumlen dogrudan ise girsin: "Seviyene ve ekipmanına göre haftalık programını hazırladım — işte plan:" gibi.
 
 ### ILK MESAJ: PLAN SNAPSHOT URET (ZORUNLU — BU YANITTA)
 ASLA "plani hazirliyorum / birazdan sunacagim / bekle" DEME ve bu adimda SORU SORMA.

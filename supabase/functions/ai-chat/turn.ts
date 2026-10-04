@@ -48,7 +48,11 @@ export interface ResolveModeInput {
   rawMode: TaskMode;
   taskModeHint?: unknown;
   /** chat_sessions.active_intent — an open piece of work, e.g. {kind:'plan', plan_type:'diet'}. */
-  activeIntent?: { kind?: string; plan_type?: string } | null;
+  activeIntent?: { kind?: string; plan_type?: string; opened_at?: string } | null;
+  /** The user's message — an open plan only claims turns that could plausibly be about it. */
+  message?: string | null;
+  /** Clock for the intent TTL (tests inject it). */
+  nowMs?: number;
   isOnboarding: boolean;
   /** True when the ALGI-01 fix (onboarding hints win over keyword detection) is enabled. */
   onboardingHintEnabled: boolean;
@@ -60,8 +64,15 @@ export function resolveTurnMode(input: ResolveModeInput): ModeResolution {
   const { rawMode, taskModeHint, activeIntent, isOnboarding } = input;
 
   // 1. An open piece of work outranks this message's surface form — but never during onboarding,
-  //    where the profile-collection contract owns the turn.
-  if (input.activeIntentEnabled && !isOnboarding && activeIntent?.kind === 'plan') {
+  //    where the profile-collection contract owns the turn, and only for a turn that could be ABOUT
+  //    the plan. Measured live 2026-10-04: with a diet draft open, "bu hafta çok kötü geçti,
+  //    motivasyonum sıfır" was forced into plan_diet and paid a 52-second regeneration that silently
+  //    overwrote the draft. The intent now claims only WEAK detections (a keyword-less follow-up the
+  //    matcher could only file as coaching/qa/plan), never a distress or low-motivation message, and
+  //    it expires after an hour so one plan request cannot capture the eternal thread for good.
+  if (input.activeIntentEnabled && !isOnboarding && activeIntent?.kind === 'plan'
+    && PLAN_INTENT_CLAIMS.has(rawMode) && !isDistressOrLowMotivation(input.message)
+    && !intentExpired(activeIntent.opened_at, input.nowMs)) {
     const mode = (activeIntent.plan_type === 'workout' ? 'plan_workout' : 'plan_diet') as TaskMode;
     return { mode, rawMode, source: 'active_intent' };
   }
@@ -81,6 +92,23 @@ export function resolveTurnMode(input: ResolveModeInput): ModeResolution {
 
   // 4/5. Promotion is applied by the caller (it needs DB preconditions); until then, detection.
   return { mode: rawMode, rawMode, source: 'detected' };
+}
+
+/** Detected modes an open plan negotiation may claim: the matcher found nothing specific. */
+const PLAN_INTENT_CLAIMS: ReadonlySet<string> = new Set(['coaching', 'qa', 'plan']);
+const PLAN_INTENT_TTL_MS = 60 * 60 * 1000;
+
+const DISTRESS_LOW_MOTIVATION_RE =
+  /(stres|bunald|a[gğ]la|k[öo]t[üu] hisset|t[üu]ken|dayanam|motivasyon|b[ıi]rakt[ıi]m|k[öo]t[üu] ge[çc]ti|yapam[ıi]yorum|[üu]zg[üu]n|moralim)/i;
+
+function isDistressOrLowMotivation(message: string | null | undefined): boolean {
+  return typeof message === 'string' && DISTRESS_LOW_MOTIVATION_RE.test(message.toLocaleLowerCase('tr'));
+}
+
+function intentExpired(openedAt: string | undefined, nowMs?: number): boolean {
+  if (!openedAt) return false; // legacy rows without a stamp keep the old behaviour
+  const t = Date.parse(openedAt);
+  return Number.isFinite(t) && (nowMs ?? Date.now()) - t > PLAN_INTENT_TTL_MS;
 }
 
 /**
@@ -124,5 +152,8 @@ export function classifyPlanIntent(
   // Order matters: "kahvaltıyı neden yumurta yaptın, değiştir" is a revision, not a question.
   if (hasActiveDraft && REVISE_RE.test(m)) return 'revise';
   if (hasActiveDraft && EXPLAIN_RE.test(m)) return 'explain';
-  return hasActiveDraft ? 'revise' : 'generate';
+  // With a draft open, a message that asks for no change is conversation about the plan, not a
+  // change request. Defaulting to 'revise' regenerated (and overwrote) the whole 7-day draft on
+  // any unmatched sentence.
+  return hasActiveDraft ? 'explain' : 'generate';
 }

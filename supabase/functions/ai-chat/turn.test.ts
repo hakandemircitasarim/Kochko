@@ -137,3 +137,41 @@ Deno.test('D4: distress routes to coaching, a plain mood report still logs', () 
     assertEquals(detectTaskMode(m, false), 'register', m);
   }
 });
+
+
+Deno.test('an open plan does not hijack distress, low motivation, or logging turns (live 2026-10-04)', () => {
+  const intent = { kind: 'plan', plan_type: 'diet' };
+  for (const m of ['bu hafta aslında çok kötü geçti, motivasyonum sıfır', 'çok stresliyim, bunaldım', 'öğlen tavuk yedim']) {
+    const rawMode = detectTaskMode(m, false);
+    const r = resolveTurnMode({ ...base, rawMode, activeIntent: intent, message: m });
+    assertEquals(r.source, 'detected', m);
+  }
+  // A keyword-less follow-up still stays in the negotiation.
+  const q = 'peki neden 1900 kalori?';
+  assertEquals(resolveTurnMode({ ...base, rawMode: detectTaskMode(q, false), activeIntent: intent, message: q }).mode, 'plan_diet');
+});
+
+Deno.test('an open plan intent expires after an hour', () => {
+  const opened = '2026-10-04T10:00:00Z';
+  const fresh = resolveTurnMode({ ...base, rawMode: 'coaching', activeIntent: { kind: 'plan', plan_type: 'diet', opened_at: opened }, nowMs: Date.parse('2026-10-04T10:30:00Z') });
+  assertEquals(fresh.mode, 'plan_diet');
+  const stale = resolveTurnMode({ ...base, rawMode: 'coaching', activeIntent: { kind: 'plan', plan_type: 'diet', opened_at: opened }, nowMs: Date.parse('2026-10-04T11:30:00Z') });
+  assertEquals(stale.source, 'detected');
+});
+
+Deno.test('with a draft open, an unmatched sentence is conversation, not a revision', () => {
+  assertEquals(classifyPlanIntent('bu hafta aslında çok kötü geçti', true), 'explain');
+  assertEquals(classifyPlanIntent('tamam olur', true), 'explain');
+});
+
+
+Deno.test('routing fixes measured live 2026-10-04', () => {
+  assertEquals(detectTaskMode('bu hafta aslında çok kötü geçti, motivasyonum sıfır', false), 'mvd');
+  assertEquals(detectTaskMode('öğlen ne yesem, pratik bir şey öner', false), 'coaching');
+  assertEquals(detectTaskMode('bugün toplam kaç kalori aldım?', false), 'qa');
+  assertEquals(detectTaskMode('dün gece biraz cacık yedim, sorun olur mu?', false), 'register');
+  // unchanged behaviour
+  assertEquals(detectTaskMode('akşam baklava yesem ne olur', false), 'simulation');
+  assertEquals(detectTaskMode('öğlen 1 kase yulaf yedim', false), 'register');
+  assertEquals(detectTaskMode('çok yedim bugün', false), 'recovery');
+});

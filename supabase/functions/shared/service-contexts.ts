@@ -352,14 +352,14 @@ export async function getReturnFlowContext(userId: string): Promise<string> {
       parts.push(`Gecmis basari: ${goodDays}/${totalDays} gun hedeflerini tutturmustu`);
     }
     if (planLightening > 0) {
-      parts.push(`Plan hafifletme: %${planLightening} — ilk 3 gun hedefler dusuruldu`);
+      parts.push(`Plan hafifletme ONERISI: ilk 3 gun hedefleri ~%${planLightening} hafif tutmak (HENUZ UYGULANMADI — hedefler degismedi)`);
     }
 
     parts.push(`\nKURALLAR:`);
     parts.push(`1. YARGILAMA. "Neredesin?" deme.`);
     parts.push(`2. Sicak ve samimi "hosgeldin" tonu kullan.`);
     parts.push(`3. Gecmis basarilarina referans ver.`);
-    parts.push(`4. Ilk 3 gun plan hafifletildi — bunu belirt.`);
+    parts.push(`4. Ilk 3 gun daha hafif baslamayi ONER; "hafiflettim/dusurdum" DEME — hedefler henuz degismedi.`);
     if (needsReOnboarding) {
       parts.push(`5. MINI RE-ONBOARDING gerekli: mevcut kilo, hedef, yasam tarzi guncellemesi sor.`);
     }
@@ -1062,7 +1062,8 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
  */
 export async function getSituationalSnapshot(userId: string, effectiveToday?: string): Promise<string> {
   try {
-    const [profRes, goalRes, metricsRes, reportsRes, sumRes, eventRes, planRes, nudgeRes, openerRes] = await Promise.all([
+    const todayKey = effectiveToday ?? new Date().toISOString().split('T')[0];
+    const [profRes, goalRes, metricsRes, reportsRes, sumRes, eventRes, planRes, nudgeRes, openerRes, todayMealsRes, lastMealRes] = await Promise.all([
       supabaseAdmin.from('profiles').select('weight_kg, calorie_range_rest_min, calorie_range_rest_max, onboarding_completed').eq('id', userId).maybeSingle(),
       supabaseAdmin.from('goals').select('goal_type, start_weight_kg, target_weight_kg, target_weeks, created_at, phase_label').eq('user_id', userId).eq('is_active', true).order('phase_order').limit(1),
       supabaseAdmin.from('daily_metrics').select('date, weight_kg, sleep_hours, water_liters').eq('user_id', userId).order('date', { ascending: false }).limit(21),
@@ -1084,6 +1085,14 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
       // phrasing (register turns see only 3 messages of history, so it cannot notice).
       supabaseAdmin.from('chat_messages').select('content').eq('user_id', userId).eq('role', 'assistant')
         .order('created_at', { ascending: false }).limit(6),
+      // LIVE intake for today, from the stored items. The old "BUGÜN" line read daily_reports, which
+      // only the NIGHTLY report writes — so during the day the coach had no total at all and, asked
+      // "bugün kaç kalori aldım?", re-estimated from raw text (said ~330 while the DB held 354).
+      supabaseAdmin.from('meal_logs').select('meal_log_items(calories, protein_g, carbs_g, fat_g)')
+        .eq('user_id', userId).eq('logged_for_date', todayKey).eq('is_deleted', false),
+      // Newest meal date — a meal is activity too (the "son kayıt N gün önce" gap ignored meals).
+      supabaseAdmin.from('meal_logs').select('logged_for_date').eq('user_id', userId).eq('is_deleted', false)
+        .order('logged_for_date', { ascending: false }).limit(1).maybeSingle(),
     ]);
     const p = profRes.data;
     if (!p || !p.onboarding_completed) return '';
@@ -1147,7 +1156,14 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
 
     // Weight trend DIRECTION (first-third vs last-third of the weigh-in window)
     const weighed = metrics.filter(m => m.weight_kg != null);
-    if (weighed.length >= 2) {
+    // A trend is only "current" if the newest weigh-in is recent. With a last weigh-in months ago
+    // the coach told a low-motivation user "kilo trendin hâlâ aşağı yönlü" — a stale fact presented
+    // as today's. Old data is still shown, labelled with its age.
+    const lastWeighAgeDays = weighed.length > 0
+      ? Math.round((todayMs - Date.parse(`${weighed[0].date}T00:00:00Z`)) / 86400000) : null;
+    if (lastWeighAgeDays != null && lastWeighAgeDays > 14) {
+      lines.push(`SON TARTI: ${weighed[0].weight_kg}kg (${lastWeighAgeDays} gün önce) — güncel kilo trendi YOK; trend hakkında konuşma, yeni bir tartı iste.`);
+    } else if (weighed.length >= 2) {
       const asc = [...weighed].reverse();
       const k = Math.max(1, Math.floor(asc.length / 3));
       const oldMean = asc.slice(0, k).reduce((s, m) => s + (m.weight_kg as number), 0) / k;
@@ -1164,9 +1180,19 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
     const todayRep = reports.find(r => r.date === today);
     const targetMid = p.calorie_range_rest_min && p.calorie_range_rest_max
       ? Math.round(((p.calorie_range_rest_min as number) + (p.calorie_range_rest_max as number)) / 2) : null;
-    if (todayRep && todayRep.calorie_actual > 0) {
-      const over = targetMid ? (todayRep.calorie_actual > targetMid * 1.15 ? ' (hedefin ÜSTÜNDE)' : todayRep.calorie_actual < targetMid * 0.6 ? ' (çok az — günü tamamlamamış olabilir)' : '') : '';
-      lines.push(`BUGÜN: ~${Math.round(todayRep.calorie_actual)} kcal${targetMid ? ` (hedef ~${targetMid})` : ''}${over}`);
+    const todayLogs = (todayMealsRes.data ?? []) as { meal_log_items: { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null }[] | null }[];
+    if (todayLogs.length > 0) {
+      const sum = { kcal: 0, p: 0, c: 0, f: 0 };
+      for (const log of todayLogs) for (const it of log.meal_log_items ?? []) {
+        sum.kcal += Number(it.calories) || 0; sum.p += Number(it.protein_g) || 0;
+        sum.c += Number(it.carbs_g) || 0; sum.f += Number(it.fat_g) || 0;
+      }
+      const kcal = Math.round(sum.kcal);
+      lines.push(`BUGÜN ALINAN (kayıtlı ${todayLogs.length} öğünün kalemlerinden — KESİN): ${kcal} kcal | protein ${Math.round(sum.p)}g, karb ${Math.round(sum.c)}g, yağ ${Math.round(sum.f)}g${targetMid ? ` (hedef ~${targetMid}, kalan ~${Math.max(0, targetMid - kcal)})` : ''}. Günlük toplam sorulursa YALNIZCA bu rakamı söyle; öğünlerden yeniden hesaplama, "sapma olabilir" deme.`);
+    } else if (todayRep && todayRep.calorie_actual > 0) {
+      lines.push(`BUGÜN: ~${Math.round(todayRep.calorie_actual)} kcal${targetMid ? ` (hedef ~${targetMid})` : ''}`);
+    } else {
+      lines.push('BUGÜN ALINAN: henüz öğün kaydı yok.');
     }
 
     // Recent sleep + week adherence + last-active
@@ -1183,7 +1209,8 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
     if (recentBits.length > 0) lines.push(`DURUM: ${recentBits.join(' | ')}`);
 
     // Last-active (gap since most recent log of ANY kind)
-    const lastDates = [metrics[0]?.date, reports[0]?.date].filter(Boolean).map(d => Date.parse(`${d}T00:00:00Z`));
+    const lastMealDate = (lastMealRes.data as { logged_for_date?: string } | null)?.logged_for_date;
+    const lastDates = [metrics[0]?.date, reports[0]?.date, lastMealDate].filter(Boolean).map(d => Date.parse(`${d}T00:00:00Z`));
     if (lastDates.length > 0) {
       const gapDays = Math.round((todayMs - Math.max(...lastDates)) / 86400000);
       if (gapDays >= 2) lines.push(`⚠ SON KAYIT ${gapDays} GÜN ÖNCE — geri dönüş anı, sıcak karşıla, suçlama, "nasılsın" diye başla.`);
@@ -1372,8 +1399,17 @@ export async function getAdviceOutcomeContext(userId: string): Promise<string> {
       }
     }
 
-    const rep = ((repairRes.data ?? []) as { repair_type: string | null; original_text: string | null; corrected_text: string | null; food_name: string | null }[])[0];
-    if (rep) {
+    const rep = ((repairRes.data ?? []) as { repair_type: string | null; original_text: string | null; corrected_text: string | null; food_name: string | null; created_at: string }[])[0];
+    // ONE-SHOT: "own the miss" applies to the first reply after the correction only. Injected on
+    // every turn for 48h, it made the coach re-apologise for the same oats in three unrelated
+    // replies (live 2026-10-04). If the coach has already spoken since the repair, it is done.
+    let alreadyOwned = false;
+    if (rep?.created_at) {
+      const { count } = await supabaseAdmin.from('chat_messages').select('id', { count: 'exact', head: true })
+        .eq('user_id', userId).eq('role', 'assistant').gt('created_at', rep.created_at);
+      alreadyOwned = (count ?? 0) > 0;
+    }
+    if (rep && !alreadyOwned) {
       const what = rep.food_name ? `"${rep.food_name}"` : 'bir kaydi';
       parts.push(`## SON DUZELTMEN (48s icinde): ${what} icin duzeltme yaptin${rep.corrected_text ? ` → "${String(rep.corrected_text).slice(0, 80)}"` : ''}.\nBu turda BIR KEZ, tek cumleyle kendi hatani SAHIPLEN ve bundan sonra onun degerini kullandigini soyle. Ozur dizisi YAPMA, tekrar etme.`);
     }

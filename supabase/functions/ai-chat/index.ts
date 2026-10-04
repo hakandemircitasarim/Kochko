@@ -568,7 +568,7 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
       const { data: sRow } = await (session_id
         ? q.eq('id', session_id as string).maybeSingle()
         : q.eq('user_id', userId).eq('is_active', true).maybeSingle());
-      activeIntent = (sRow?.active_intent as { kind?: string; plan_type?: string } | null) ?? null;
+      activeIntent = (sRow?.active_intent as { kind?: string; plan_type?: string; opened_at?: string } | null) ?? null;
       intentSessionId = (sRow?.id as string | undefined) ?? null;
     }
     const resolution = resolveTurnMode({
@@ -578,6 +578,7 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
       isOnboarding,
       onboardingHintEnabled: gateOnbHint === 'on',
       activeIntentEnabled: gateIntent === 'on',
+      message: typeof message === 'string' ? message : null,
     });
     if (gateOnbHint === 'shadow' && isOnboardingHint(task_mode_hint) && taskMode !== 'onboarding') {
       console.log('[shadow][b1a_onboarding_hint] would switch mode', { from: taskMode, to: 'onboarding', hint: task_mode_hint });
@@ -2005,7 +2006,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     let persistedDraftId: string | null = null;
     let planPersistError: string | null = null;
     let projectionFailed = false; // audit #6: surface a silent daily_plans projection failure to the user
-    if (planSnapshot && planTurn) {
+    // A snapshot the model emitted on a turn that asked for no change (a question, a mood message
+    // while a draft is open) must not overwrite the draft the user is reading.
+    if (planSnapshot && planTurn && planIntent !== 'explain') {
       const expectedType = planKind;
       // Diet snapshot processing (Spec 12.4): ALLERGEN guardrail FIRST (with exclusion
       // regen), THEN calorie reconciliation on the final snapshot.
@@ -2173,7 +2176,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
               // Monday-of-today — a split-brain where the plan claimed "13 Temmuz
               // haftası" yet showed today's meals as "Bugün". The projection at
               // getWeekStart(requestToday) does exactly this; persist to match it.
-              week_start: getWeekStart(effectiveToday),
+              week_start: planWeekAnchor(effectiveToday),
               plan_data: { ...planSnapshot, version: 1 },
               user_revisions: [],
             })
@@ -2385,7 +2388,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
         // week_start'ı BUGÜNÜN haftasına çek (projeksiyon + taze-üretim ile aynı ankraj).
         if (!planPersistError) {
           await supabaseAdmin.from('weekly_plans')
-            .update({ week_start: getWeekStart(effectiveToday) })
+            .update({ week_start: planWeekAnchor(effectiveToday) })
             .eq('id', draft.id);
         }
         const { data: activatedId, error: promoteErr } = planPersistError
@@ -2442,12 +2445,8 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
               // fewer than 2 days remain in the current week, anchor the projection to NEXT week (the
               // plan the user just approved is for the week ahead). Today's existing row is left
               // untouched on purpose — we do not clobber the day already in progress.
-              const daysLeftInWeek = Math.round(
-                (Date.parse(`${addCalendarDays(getWeekStart(requestToday), 6)}T00:00:00Z`) - Date.parse(`${requestToday}T00:00:00Z`)) / 86400000);
-              const weekStart = daysLeftInWeek < 2
-                ? getWeekStart(addCalendarDays(requestToday, 1))
-                : getWeekStart(requestToday);
-              if (daysLeftInWeek < 2) console.log('[approve][projection] late-week approval → anchoring to next week', { requestToday, weekStart });
+              const weekStart = planWeekAnchor(requestToday);
+              if (weekStart !== getWeekStart(requestToday)) console.log('[approve][projection] late-week approval → anchoring to next week', { requestToday, weekStart });
 
               // c. Profile + this week's consumed kcal (mirrors ai-plan/index.ts logic).
               const { data: profForProj } = await supabaseAdmin
@@ -2989,6 +2988,12 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
       }
     }
 
+    // What the MODEL wrote, before the deterministic echoes below ("Doğru anladıysam: 2 adet
+    // yumurta…") are appended. The allergen scan reads THIS: the echo repeats the user's own input
+    // back, and scanning it made a logged egg look like a coach-recommended egg (live 2026-10-04:
+    // a severe-egg-allergy user's breakfast log was replaced by "öneride alerjen vardı").
+    const modelProseForScan = assistantMessage;
+
     // A8: Low confidence proactive verification — append confirmation question.
     // 0-kcal kusuru (canlı, 'kase yoğurt (~0 kcal)'): bu satır HAM model item'ından basıyordu —
     // DB yolu aynı öğeyi food-reference'la 122'ye temellendirirken kullanıcı '~0 kcal' görüyor,
@@ -3030,7 +3035,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
       // returned separately as plan_reasoning, so a food/exercise rationale there (e.g. "peanut
       // butter for protein" to a peanut-allergic user) reached the user UN-scanned. Scan the
       // reasoning too — detection runs over the combined text; warnings still append to the reply.
-      const scanText = planReasoning ? `${assistantMessage}\n${planReasoning}` : assistantMessage;
+      const scanText = planReasoning ? `${modelProseForScan}\n${planReasoning}` : modelProseForScan;
       // #arch L1 (step 1b): the output-side safety scan reads the typed SAFETY SPINE
       // (user_constraints), UNIONed with the legacy stores so nothing un-migrated slips through.
       const [{ data: allergenRows }, { data: injuryRows }, spineAllergens, spineInjuries] = await Promise.all([
@@ -3064,8 +3069,15 @@ Doğru anladıysam: ${parsed}.${tail}`;
       // #live-L4: the scan never skips on a blanket /alerj/ substring — a model "(alerjisi yoksa)"
       // disclaimer is dangerous, not a decline; only a real avoidance phrase next to EVERY
       // occurrence of the allergen counts as addressed (see scanReplyForAllergens fail-safe rule).
-      if (allergensSev.length > 0) {
-        const scan = scanReplyForAllergens(scanText, allergensSev);
+      // Allergens the USER reported eating this turn are not coach recommendations: they are a
+      // safety event that needs a reaction check (ALERJEN CELISKISI below), not a redaction of the
+      // whole reply. The same inflection-aware matcher decides what the user's message contains.
+      const userReported = new Set(
+        message ? scanReplyForAllergens(message, allergensSev).matched.map((n) => n.toLocaleLowerCase('tr')) : [],
+      );
+      const allergensToScan = allergensSev.filter((a) => !userReported.has(a.name.toLocaleLowerCase('tr')));
+      if (allergensToScan.length > 0) {
+        const scan = scanReplyForAllergens(scanText, allergensToScan);
         if (scan.violated) {
           if (scan.worstSeverity === 'severe') {
             // HARD BLOCK (anaphylaxis risk): redact the whole reply AND the reasoning panel (which
@@ -3145,7 +3157,9 @@ Doğru anladıysam: ${parsed}.${tail}`;
         const alreadyRaised = /(hani\s|sevmiyordun|sevmezdin|fikrin mi deg|fikrin mi değ|canın mı çek|canin mi cek|çelişki|celiski)/.test(lowerReply);
         // ALERJEN CELISKISI (user logged an allergen food) — urgent, always surface.
         const allergenHits = [...conflictStr.matchAll(/ALERJEN CELISKISI: "([^"]+)" alerjenin var/g)].map(m => m[1]);
-        if (allergenHits.length > 0 && !/(alerj|intolerans)/.test(lowerReply)) {
+        // Suppressed only by an actual REACTION CHECK in the reply — a bare mention of "alerji"
+        // (e.g. a block template or "alerjin kayıtlı") is not one, and used to silence this net.
+        if (allergenHits.length > 0 && !/(iyi misin|belirti|reaksiyon|112|nefes darl|şişme|sisme)/.test(lowerReply)) {
           assistantMessage += `\n\n⚠️ Bir saniye — profilinde ${[...new Set(allergenHits)].join(', ')} alerjin/intoleransın kayıtlı ama şimdi bunu içeren bir şey girdin. İyi misin? Alerjin geçtiyse ya da yanlış kaydettiysem söyle, güncelleyeyim.`;
         }
         // SEVMEME CELISKISI (user logged a disliked food) — gentle nudge.
@@ -3549,6 +3563,18 @@ async function failRequest(userId: string, key: string): Promise<void> {
     await supabaseAdmin.from('processed_chat_requests').update({ state: 'failed', updated_at: new Date().toISOString() })
       .eq('user_id', userId).eq('idempotency_key', key).eq('state', 'in_flight');
   } catch { /* best-effort */ }
+}
+
+/**
+ * The ONE week a plan made "today" belongs to. Draft insert, approval re-anchor and the daily
+ * projection used to disagree: a plan drafted on a Sunday was stored under the week ending that day
+ * while the projection anchored to next week — so the morning after approval the app called the
+ * fresh plan stale. With fewer than 2 days left in the current week the plan is for the week ahead.
+ */
+function planWeekAnchor(today: string): string {
+  const ws = getWeekStart(today);
+  const daysLeft = Math.round((Date.parse(`${addCalendarDays(ws, 6)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+  return daysLeft < 2 ? getWeekStart(addCalendarDays(today, 1)) : ws;
 }
 
 /** Monday-anchored week start for a 'YYYY-MM-DD' date (UTC). Mirrors ai-plan/index.ts. */
@@ -4800,7 +4826,7 @@ async function executeActions(
               );
               if (matched.length > 0) {
                 const warns = matched.map(m =>
-                  `${m.food_name}${m.allergen_severity === 'severe' ? ' (CIDDI ALERJI!)' : ' (alerjen)'}`
+                  `${m.food_name}${m.allergen_severity === 'severe' ? ' (CİDDİ ALERJİ!)' : ' (alerjen)'}`
                 );
                 mealFeedback.push(`⚠️ ALERJEN UYARISI: ${warns.join(', ')} — yine de kaydedildi`);
               }
