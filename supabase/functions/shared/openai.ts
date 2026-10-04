@@ -27,6 +27,10 @@ const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 // (model-router.ts) this lets the operator swap the whole LLM backend in seconds,
 // e.g. to recover from a quota outage without waiting on a deploy.
 const OPENAI_BASE_URL = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
+// prompt_cache_key is an OpenAI parameter. Strict OpenAI-compatible gateways (the documented incident
+// rollback path via OPENAI_BASE_URL) can 400 on unknown arguments, and a 400 has no fallback — so
+// the hint is only sent to OpenAI itself.
+const SENDS_CACHE_KEY = (() => { try { return new URL(OPENAI_BASE_URL).hostname === 'api.openai.com'; } catch { return false; } })();
 
 // FIX (audit AI-MDL-01): drive MODELS from env so a non-OpenAI gateway swap is a single
 // secret-set, not a code edit. The transient/empty-content fallback below uses MODELS.fallback —
@@ -369,7 +373,7 @@ export async function chatCompletion<T = string>(
       reasoning: { effort },
     };
     if (wantsJson) body.text = { format: { type: 'json_object' } };
-    if (options?.cacheKey) body.prompt_cache_key = options.cacheKey;
+    if (options?.cacheKey && SENDS_CACHE_KEY) body.prompt_cache_key = options.cacheKey;
   } else {
     endpoint = `${OPENAI_BASE_URL}/chat/completions`;
     body = {
@@ -379,7 +383,7 @@ export async function chatCompletion<T = string>(
       max_tokens: requestedMaxTokens,
     };
     if (wantsJson) body.response_format = { type: 'json_object' };
-    if (options?.cacheKey) body.prompt_cache_key = options.cacheKey;
+    if (options?.cacheKey && SENDS_CACHE_KEY) body.prompt_cache_key = options.cacheKey;
   }
 
   // FIX (audit AI-MDL-02): wrap in AbortController. On a timeout, fall back ONCE to the

@@ -8,7 +8,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE, EFFORT } from '../shared/openai.ts';
-import { nudgeTriggerKeys } from '../shared/nudge-triggers.ts';
+import { nudgeTriggerKeys, triggerSlug } from '../shared/nudge-triggers.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
 import { writeTurnLog } from '../shared/turn-log.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
@@ -1395,7 +1395,9 @@ serve(async (req: Request) => {
       // so no dedupe ever matched. Skipping here removes the spam AND the cost; the deterministic
       // side effects computed above (phase advance, maintenance, reinforcement) have already run.
       const hoursSinceActivity = Math.min(hoursSinceChat, hoursSinceMeal);
-      if (hoursSinceActivity >= 72) continue;
+      // 999 is the 'never logged anything' sentinel, not evidence of silence: a just-onboarded user
+      // with no chat/meal yet must still get nudges.
+      if (hoursSinceActivity >= 72 && hoursSinceActivity < 999) continue;
 
       // Cycle phase transition notification (Phase 3: Kadın kullanıcılara özel)
       let cycleTransitionInfo = '';
@@ -1687,13 +1689,27 @@ ${sentTodayContext}`;
       // Now the reasons are computed first, deterministically, as canonical keys. No trigger → no call.
       const triggerKeys = nudgeTriggerKeys(context);
       if (triggerKeys.length === 0) continue;
+      // Keys the user switched off can never be delivered (insertCoachingMessage drops them) — and a
+      // dropped key never enters cooldown, so without this filter it would cost an LLM call every hour.
+      const nPrefs = (profile.notification_prefs ?? {}) as Record<string, unknown>;
+      if (nPrefs.inAppEnabled === false) continue;
+      const nTypes = nPrefs.types as Record<string, unknown> | undefined;
+      const allowedKeys = triggerKeys.filter(k => !(nTypes && TRIGGER_TO_PREF[k] && nTypes[TRIGGER_TO_PREF[k]] === false));
+      if (allowedKeys.length === 0) continue;
+      // Hard daily ceiling on LLM evaluations per user: a "send:false" verdict leaves no cooldown
+      // row, so an open key could otherwise be re-asked every hour. Four looks a day is plenty.
+      const { count: nudgeCallsToday } = await supabaseAdmin
+        .from('ai_turn_log').select('id', { count: 'exact', head: true })
+        .eq('user_id', profile.id).eq('function_name', 'ai-proactive').eq('system_mode', 'nudge')
+        .gte('created_at', localDayStartIso(nudgeTz, now));
+      if ((nudgeCallsToday ?? 0) >= 4) continue;
       // Cross-day cooldown by CANONICAL key: the same reason may surface at most once per 20h.
       const { data: recentRows } = await supabaseAdmin
         .from('coaching_messages').select('trigger_type')
         .eq('user_id', profile.id)
         .gte('created_at', new Date(now.getTime() - 20 * 3600_000).toISOString());
       const recentKeys = new Set(((recentRows ?? []) as { trigger_type: string | null }[]).map(r => r.trigger_type ?? ''));
-      const openKeys = triggerKeys.filter(k => !recentKeys.has(k));
+      const openKeys = allowedKeys.filter(k => !recentKeys.has(k));
       if (openKeys.length === 0) continue;
       const keyLine = `
 GECERLI TETIK ANAHTARLARI: ${openKeys.join(', ')}
@@ -1709,8 +1725,12 @@ GECERLI TETIK ANAHTARLARI: ${openKeys.join(', ')}
 
       if (result.send && result.message) {
         const { clean } = sanitizeText(result.message);
-        // Never store a free-text reason: clamp to the canonical key set offered this run.
-        result.trigger = openKeys.includes(result.trigger ?? '') ? result.trigger : openKeys[0];
+        // Never store a free-text reason. Normalise the model's label; if it is not one of the keys
+        // offered this run, DROP the message rather than relabel it (relabelling would file a
+        // different topic under an open key and bypass that topic's cooldown and opt-out).
+        const normTrigger = triggerSlug(result.trigger ?? '');
+        if (!openKeys.includes(normTrigger)) continue;
+        result.trigger = normTrigger;
 
         // Hard dupe guard: the LLM's trigger label is free text ("3+ gün sessiz"
         // vs "30+ GÜN SESSİZ"), so normalize before comparing; also catch
@@ -2357,6 +2377,11 @@ const TRIGGER_TO_PREF: Record<string, string> = {
   alkol_sapma_riski: 'daily_report',
   motivasyon_dususu: 'reengagement',
   taahhut_takibi: 'commitment_followup',
+  '2_gundur_sessiz': 'reengagement',
+  prediktif_risk: 'reengagement',
+  uzun_suredir_ogun_yok: 'meal_reminder',
+  hastalik_beslenme: 'meal_reminder',
+  kapasite_uyumsuzlugu: 'morning_plan',
   periodic_end: 'morning_plan',
   periodic_transition_3d: 'morning_plan',
   habit_introduce: 'morning_plan',

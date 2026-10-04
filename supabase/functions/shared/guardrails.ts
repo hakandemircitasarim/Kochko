@@ -678,7 +678,9 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
   // A refusal only cancels a trigger when it belongs to the SAME clause. Turkish contrast markers
   // ("ama", "fakat", "ancak") and a comma end the clause: "kustum ama bir daha istemiyorum" is a
   // real report followed by a wish, and must still fire.
-  const CLAUSE_BREAK = /(,|\bama\b|\bfakat\b|\bancak\b|\byine de\b)/;
+  // Unicode-aware word edges: JS word-boundary only knows ASCII letters, so the old ama-boundary regex matched inside "amaç",
+  // "aşama", "yaşama" and cut the clause in the wrong place.
+  const CLAUSE_BREAK = /(,|(?<![\p{L}\p{N}_])(?:ama|fakat|ancak|yine de)(?![\p{L}\p{N}_]))/u;
   const isNegated = (idx: number): boolean => {
     if (idx < 0) return false;
     let win = lower.slice(idx, idx + 30);

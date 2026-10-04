@@ -143,9 +143,9 @@ export function checkHabitFromChat(
   // canonical KEY instead of fuzzy label text.
   const CUES: Record<string, RegExp> = {
     daily_meal_log: /yedim|içtim|ictim|kahvalt|öğün|ogun|atıştır|atistir|kaydet/i,
-    water_tracking: /su\s*(içtim|ictim)|bardak|litre|\bml\b|su\s*bardağı/i,
+    water_tracking: /su\s*(içtim|ictim)|bardak|litre|\d\s*ml(?![\p{L}])|(?<![\p{L}])ml(?![\p{L}])|su\s*bardağı/iu,
     weight_tracking: /tartıld|tartild|tartıya|tartiya|\d+\s*k(g|ilo)/i,
-    protein_target: /protein|tavuk|yumurta|yoğurt|yogurt|et\b|balık|balik/i,
+    protein_target: /protein|tavuk|yumurta|yoğurt|yogurt|(?<![\p{L}])et(?:i|li|ler)?(?![\p{L}])|kıyma|kiyma|köfte|kofte|balık|balik/iu,
     sleep_tracking: /uyku|uyudum|yattım|yattim|kalktım|kalktim/i,
     workout_routine: /antrenman|egzersiz|spor|koştum|kostum|yürüdüm|yurudum|salon|bisiklet|yüzdüm|yuzdum/i,
   };

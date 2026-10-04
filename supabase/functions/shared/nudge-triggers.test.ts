@@ -21,3 +21,8 @@ Deno.test('nudgeTriggerKeys: em-dash separated labels and Turkish letters fold t
   assertEquals(nudgeTriggerKeys('TETIK: HAFTALIK BUTCE UYARISI — Haftanin ortasinda'), ['haftalik_butce_uyarisi']);
   assertEquals(nudgeTriggerKeys('TETIK: GEÇİŞ YAKLAŞIYOR - 2 gun'), ['gecis_yaklasiyor']);
 });
+
+Deno.test('nudgeTriggerKeys: a quoted TETIK inside the "already sent today" list is not fresh evidence', () => {
+  const ctx = 'Saat: 9:00\nGece riski: yok\n\nBUGUN ZATEN GONDERILEN MESAJLAR:\n- [plateau] TETIK: PLATEAU - eski';
+  assertEquals(nudgeTriggerKeys(ctx), []);
+});

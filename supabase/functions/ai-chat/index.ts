@@ -1077,8 +1077,8 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     // place every turn-scoped instruction passes through. (Embedded tags are still harvested
     // defensively after the call, so nothing breaks if a model ignores this.)
     const turnSystemOneContract = turnSystem
-      .replace(/<actions>([^<\n]*?)<\/actions>/g, '"actions" alanina: $1') // same-line example blocks only
-      .replace(/<actions>/g, '"actions" alani');
+      .replace(/<actions>([^\n]*?)<\/actions>/g, '"actions" alanina: $1') // same-line example blocks only
+      .replace(/<\/?actions>/g, '"actions" alani'); // bare or orphan tags (e.g. recovery's <placeholder> example)
 
     // Build messages array: stable system → transcript → this turn's context → the user's message.
     const gptMessages: { role: string; content: string | unknown[] }[] = [
@@ -2754,7 +2754,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     // water; caffeinated/alcoholic drinks are not.
     if (message) {
       const mL = message.toLocaleLowerCase('tr');
-      const mentionsWater = /\bsu\b|litre|bardak su|su bardağ/i.test(mL);
+      // Unicode-aware edges + a drinking/amount context: a bare /\bsu\b/ also matched "suşi", "suç"
+      // and ASCII-typed "şu an", which kept a coffee's water_log alive.
+      const mentionsWater = /(?<![\p{L}\p{N}])su(?![\p{L}\p{N}])\s*(?:da\s+|de\s+)?(?:i[çc]tim|i[çc]tik|i[çc]iyorum)|\d+(?:[.,]\d+)?\s*(?:ml|lt|litre)(?![\p{L}])|bardak su|su bardağ|şişe su|su şişe/iu.test(mL);
       const mentionsOtherDrink = /kahve|çay|\bcay\b|kola|bira|şarap|sarap|ayran|soda|latte|espresso/i.test(mL);
       if (mentionsOtherDrink && !mentionsWater) {
         const kept = actions.filter(a => (a as Record<string, unknown>).type !== 'water_log');
@@ -3247,6 +3249,10 @@ Doğru anladıysam: ${parsed}.${tail}`;
         completion_tokens: rc?.completionTokens ?? 0,
         total_tokens: rc?.totalTokens ?? 0,
         latency_ms: rc?.latencyMs ?? 0,
+        // migrations 104/105: this is the ONE call that sends prompt_cache_key — without these two
+        // columns the cache-hit rate of the main chat turn was unmeasurable.
+        reasoning_tokens: rc?.reasoningTokens ?? 0,
+        cached_tokens: rc?.cachedTokens ?? 0,
         finish_reason: rc?.finishReason ?? null,
         fallback_reason: rc?.fallbackReason ?? null,
         attempts: rc?.attempts ?? 1,
@@ -4964,7 +4970,11 @@ async function executeActions(
           // NOTE: assistantMessage is not in scope here; pass via closure via the outer variable.
           // We check the action's items for suspicious calorie totals.
           if (mealItems?.length) {
-            const totalMealCal = mealItems.reduce((s, i) => s + (i.calories ?? 0), 0);
+            // Judge (and print) the PERSISTED total — the itemized receipt below prints that one, and
+            // the model's raw item calories can differ after grounding; one receipt, one total.
+            const totalMealCal = (mealRows && mealRows.length > 0)
+              ? mealRows.reduce((s, r) => s + (Number(r.calories) || 0), 0)
+              : mealItems.reduce((s, i) => s + (Number(i.calories) || 0), 0);
             if (totalMealCal > 1500 || (totalMealCal > 0 && totalMealCal < 50)) {
               // This line is shown to the USER as part of the receipt. It used to be an instruction
               // meant for the model ("NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste."),
