@@ -72,12 +72,14 @@ function num(v: unknown): number | null { const n = Number(v); return Number.isF
  * so a missing store never blanks the whole mirror.
  */
 export async function buildMemoryMirror(userId: string): Promise<string> {
-  const [profileRes, goalRes, constraintsRes, prefsRes, summaryRes] = await Promise.all([
+  const [profileRes, goalRes, constraintsRes, prefsRes, summaryRes, retractedDietRes] = await Promise.all([
     supabaseAdmin.from('profiles').select('weight_kg, height_cm, gender, birth_year, activity_level, dietary_restriction, diet_mode, alcohol_frequency, caffeine_intake, if_active, if_eating_start, if_eating_end, periodic_state, disliked_foods').eq('id', userId).maybeSingle(),
     supabaseAdmin.from('goals').select('goal_type, start_weight_kg, target_weight_kg, target_weeks, weekly_rate, phase_label').eq('user_id', userId).eq('is_active', true).maybeSingle(),
     supabaseAdmin.from('user_constraints').select('kind, subject, severity, body_parts, source, confirmed_at').eq('user_id', userId).eq('active', true),
     supabaseAdmin.from('food_preferences').select('food_name, preference, is_allergen').eq('user_id', userId),
     supabaseAdmin.from('ai_summary').select('behavioral_patterns, habit_progress, general_summary, learned_tone_preference').eq('user_id', userId).maybeSingle(),
+    // A dietary restriction the user retracted (spine row inactive) must not reappear from profile text.
+    supabaseAdmin.from('user_constraints').select('subject').eq('user_id', userId).eq('kind', 'dietary').eq('active', false),
   ]);
 
   const p = (profileRes.data ?? {}) as Record<string, unknown>;
@@ -116,7 +118,9 @@ export async function buildMemoryMirror(userId: string): Promise<string> {
     return `${label}${beliefLabel(i.source, i.confirmed_at)}`;
   }).join(', '));
   if (conditions.length) safety.push('Sağlık durumu: ' + conditions.map(c => `${c.subject}${beliefLabel(c.source, c.confirmed_at)}`).join(', '));
-  const dietaryProfile = (p.dietary_restriction as string | null)?.trim();
+  const retractedDiet = new Set(((retractedDietRes?.data ?? []) as { subject: string }[]).map((r) => (r.subject ?? '').toLocaleLowerCase('tr')));
+  const dietaryProfileRaw = (p.dietary_restriction as string | null)?.trim();
+  const dietaryProfile = dietaryProfileRaw && !retractedDiet.has(dietaryProfileRaw.toLocaleLowerCase('tr')) ? dietaryProfileRaw : undefined;
   const dietaryAll = [...new Set([...dietaryC.map(d => d.subject), ...(dietaryProfile ? [dietaryProfile] : [])])];
   if (dietaryAll.length) safety.push('Beslenme kısıtı: ' + dietaryAll.join(', '));
   if (safety.length) lines.push('\n**Sağlığın & güvenliğin (bunlara her zaman uyarım):**\n- ' + safety.join('\n- '));
@@ -212,12 +216,13 @@ export async function buildMemoryMirror(userId: string): Promise<string> {
  * truncation keeps the most important lines. Output ≤ ~1600 chars.
  */
 export async function composeGeneralSummary(userId: string): Promise<string> {
-  const [profileRes, goalRes, constraintsRes, prefsRes, summaryRes] = await Promise.all([
+  const [profileRes, goalRes, constraintsRes, prefsRes, summaryRes, retractedDietRes] = await Promise.all([
     supabaseAdmin.from('profiles').select('weight_kg, activity_level, dietary_restriction, diet_mode, alcohol_frequency, caffeine_intake, if_active, if_eating_start, if_eating_end, periodic_state, meal_count_preference, meal_prep_time, occupation, motivation_source, biggest_challenge, sleep_quality, disliked_foods').eq('id', userId).maybeSingle(),
     supabaseAdmin.from('goals').select('goal_type, target_weight_kg, target_weeks, weekly_rate, phase_label').eq('user_id', userId).eq('is_active', true).maybeSingle(),
     supabaseAdmin.from('user_constraints').select('kind, subject, severity').eq('user_id', userId).eq('active', true),
     supabaseAdmin.from('food_preferences').select('food_name, preference, is_allergen').eq('user_id', userId),
     supabaseAdmin.from('ai_summary').select('behavioral_patterns, habit_progress').eq('user_id', userId).maybeSingle(),
+    supabaseAdmin.from('user_constraints').select('subject').eq('user_id', userId).eq('kind', 'dietary').eq('active', false),
   ]);
   // A failed READ must throw (caller catches → the stale-but-good summary survives) — otherwise
   // an empty compose would CLOBBER a meaningful summary through the merge.
@@ -253,7 +258,8 @@ export async function composeGeneralSummary(userId: string): Promise<string> {
   if (saf.length) out.push('Sağlık: ' + saf.join(' | ') + '.');
   // 3) Routine
   const rout: string[] = [];
-  if (p.dietary_restriction) rout.push(String(p.dietary_restriction));
+  const retractedDiet2 = new Set(((retractedDietRes?.data ?? []) as { subject: string }[]).map((r) => (r.subject ?? '').toLocaleLowerCase('tr')));
+  if (p.dietary_restriction && !retractedDiet2.has(String(p.dietary_restriction).toLocaleLowerCase('tr'))) rout.push(String(p.dietary_restriction));
   if (p.diet_mode && p.diet_mode !== 'standard' && p.diet_mode !== 'none') rout.push(`${p.diet_mode} beslenme`);
   if (p.if_active === true && p.if_eating_start) rout.push(`IF ${p.if_eating_start}–${p.if_eating_end}`);
   if (p.activity_level) rout.push(`aktivite: ${p.activity_level}`);

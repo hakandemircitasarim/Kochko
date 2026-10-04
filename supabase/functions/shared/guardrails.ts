@@ -83,6 +83,26 @@ export const ALLERGEN_FOODS: Record<string, string[]> = {
 };
 
 /**
+ * Dishes that OFTEN HIDE an allergen (binder, glaze, marinade, sauce). Deliberately separate from
+ * ALLERGEN_FOODS: those hard-block a severe allergen on sight, while a köfte only MAY contain egg —
+ * the right behaviour is "don't recommend it, or recommend it with 'içinde yumurta var mı diye sor'".
+ * Live 2026-10-04: a severe-egg-allergy user was told "köfte de olur" at a kebab place, no warning.
+ * Keyed like ALLERGEN_FOODS (both spellings).
+ */
+const HIDDEN_EGG = ['köfte', 'kadınbudu köfte', 'şnitzel', 'pane', 'mayonez', 'börek', 'poğaça (yumurta sürülür)', 'mantı', 'kek', 'pasta', 'krep', 'hamburger köftesi'];
+const HIDDEN_MILK = ['iskender (tereyağı/yoğurt)', 'yoğurtlu kebaplar', 'tavuk şiş marinesi (yoğurt)', 'mantı (yoğurt)', 'beşamel', 'püre', 'kremalı çorbalar'];
+const HIDDEN_GLUTEN = ['köfte (ekmek içi)', 'lavaş/pide', 'pane', 'bulgur pilavı', 'kızartma unu', 'soslar (un)'];
+const HIDDEN_NUTS = ['baklava', 'kadayıf', 'pesto', 'muhammara', 'bazı soslar/marinasyonlar'];
+const HIDDEN_FISH = ['sezar sos (ançüez)', 'bazı Asya sosları'];
+export const HIDDEN_ALLERGEN_DISHES: Record<string, string[]> = {
+  yumurta: HIDDEN_EGG,
+  süt: HIDDEN_MILK, sut: HIDDEN_MILK, laktoz: HIDDEN_MILK,
+  gluten: HIDDEN_GLUTEN,
+  fındık: HIDDEN_NUTS, findik: HIDDEN_NUTS, fıstık: HIDDEN_NUTS, fistik: HIDDEN_NUTS,
+  balık: HIDDEN_FISH, balik: HIDDEN_FISH,
+};
+
+/**
  * Dietary-restriction → forbidden foods. THE single owner (was inline in service-contexts
  * getConflictContext; repair-propagation needs the same map to detect when an active plan violates
  * a newly-declared restriction). Keyed by the canonical dietary_restriction value.

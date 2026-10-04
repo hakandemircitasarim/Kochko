@@ -8,6 +8,10 @@
 
 import { supabaseAdmin } from './supabase-admin.ts';
 
+/** User-facing Turkish label for a meal_type enum ("dinner: …" leaked into the undo receipt). */
+const MEAL_TYPE_TR: Record<string, string> = { breakfast: 'Kahvaltı', lunch: 'Öğle yemeği', dinner: 'Akşam yemeği', snack: 'Ara öğün' };
+function mealTypeTr(t: unknown): string { return MEAL_TYPE_TR[String(t ?? '')] ?? 'Öğün'; }
+
 // ─── Types ───
 
 export type RepairType = 'correction' | 'undo' | 'clarification' | 'confirmation_yes' | 'confirmation_no' | 'none';
@@ -161,7 +165,7 @@ export async function handleUndo(userId: string, intendedType: UndoTargetType | 
       id: lastMeal.id as string,
       logged_at: lastMeal.logged_at as string,
       type: 'meal',
-      label: `${lastMeal.meal_type}: ${lastMeal.raw_input}`,
+      label: `${mealTypeTr(lastMeal.meal_type)}: ${lastMeal.raw_input}`,
     });
   }
   if (lastWorkout) {
@@ -330,7 +334,7 @@ export async function revertLastTurnWrite(
   type Cand = { id: string; logged_at: string; type: UndoTargetType; label: string };
   const candidates: Cand[] = [];
   const meal = mealRes.data as { id: string; raw_input: string; meal_type: string; logged_at: string } | null;
-  if (meal) candidates.push({ id: meal.id, logged_at: meal.logged_at, type: 'meal', label: `${meal.meal_type}: ${meal.raw_input}` });
+  if (meal) candidates.push({ id: meal.id, logged_at: meal.logged_at, type: 'meal', label: `${mealTypeTr(meal.meal_type)}: ${meal.raw_input}` });
   const workout = workoutRes.data as { id: string; raw_input: string; logged_at: string } | null;
   if (workout) candidates.push({ id: workout.id, logged_at: workout.logged_at, type: 'workout', label: workout.raw_input });
   const supp = supplementRes.data as { id: string; supplement_name: string; logged_at: string } | null;

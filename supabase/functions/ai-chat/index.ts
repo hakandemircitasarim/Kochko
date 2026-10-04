@@ -652,7 +652,10 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
             .eq('id', intentSessionId).then(() => {}, () => {});
         }
         console.log('[active_intent] drop requested', { gate: gateIntent });
-      } else if (planTurn && isPlanMode(effectiveMode) && !drop) {
+      // Only a NEW plan request (promotion / client hint) opens or refreshes the intent. A turn the
+      // intent itself captured must not re-stamp opened_at (that slid the 1-hour TTL forever), and
+      // the approval turn closes the negotiation below instead of re-opening it.
+      } else if (planTurn && isPlanMode(effectiveMode) && !drop && user_approved !== true && modeSource !== 'active_intent') {
         const next = { kind: 'plan', plan_type: planKind, opened_at: new Date().toISOString() };
         if (gateIntent === 'on') {
           await supabaseAdmin.from('chat_sessions').update({ active_intent: next })
@@ -1859,6 +1862,16 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       }
     }
 
+    // Dietary-restriction RETRACTION net: "vegan değilim artık" / "vejetaryenliği bıraktım". The model
+    // can now emit dietary_restriction:'none'; if it doesn't, the stated retraction still lands
+    // (the profile_update handler only clears a restriction that actually exists).
+    if (message
+      && !actions.some(a => a.type === 'profile_update' && 'dietary_restriction' in (a as Record<string, unknown>))
+      && /(vegan|vejetaryen|vejeteryan|pesketaryen|glutensiz|laktozsuz)\w*[^.!?]{0,25}(de[gğ]ilim|b[ıi]rakt[ıi]m|kalmad[ıi]|art[ıi]k de[gğ]il|yapm[ıi]yorum)/i.test(message.toLocaleLowerCase('tr'))) {
+      actions.push({ type: 'profile_update', dietary_restriction: 'none' });
+      console.warn('[dietary_retract_net] dietary_restriction:none injected');
+    }
+
     // Maintenance safety net — deterministic (#R2-H1): the model verbally confirms
     // "bakım moduna geçiyoruz" but reliably omits the maintenance_start action, so the
     // reverse-diet / maintenance flow never persists. Fire on a clear maintenance intent.
@@ -2435,6 +2448,12 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
           planPersistError = `promote failed: ${promoteErr.message}`;
         } else {
           planApproved = activatedId ? { id: activatedId as string } : null;
+          // The negotiation is over once the plan is approved: close the intent, otherwise the next
+          // unrelated question ("3 haftadır kilo vermiyorum, neden?") was still forced into plan mode.
+          if (planApproved && gateIntent !== 'off' && intentSessionId) {
+            await supabaseAdmin.from('chat_sessions').update({ active_intent: null })
+              .eq('id', intentSessionId).then(() => {}, () => {});
+          }
             // plans_used_free was already incremented atomically by consume_free_plan_slot above.
 
             // ROOT FIX (Option A): project the now-active weekly_plans snapshot(s) into
@@ -4289,11 +4308,16 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
 
   // Goal type from Turkish phrases. Priority: explicit wins; combos (weight AND muscle)
   // resolve to lose_weight if body mass suggests deficit is the first move.
-  const wantsLose = /kilo\s*(verme|ver\w*)|zayiflama|zayıflama/.test(lower);
-  const wantsMuscle = /kas\s*(kazan|yapma|yapım)|kasl[iı]/.test(lower);
-  const wantsGain = /kilo\s*(alma|al\w*)\s/.test(lower);
-  const wantsHealth = /sagl[iı]kl[iı]\s*(ol|yasa|yaşa|kal)/.test(lower) && !wantsLose && !wantsGain;
-  const wantsCondition = /kondisyon|dayanikl[iı]/.test(lower);
+  // DESIRE forms only. The old /kilo\s*ver\w*/ also matched "vermiyorum", "verdim", "veremiyorum":
+  // live 2026-10-04, the QUESTION "3 haftadır kilo vermiyorum, neden?" became a goal write that
+  // force-recalculated the calorie bands. Outside onboarding a goal is only read from a real goal
+  // statement (looksLikeGoalIntent rejects questions and needs a "want" phrasing).
+  const goalAllowed = !safeOnly || looksLikeGoalIntent(msg);
+  const wantsLose = goalAllowed && /kilo\s*verme(k|y[ie]|m\s+laz[ıi]m)|kilo\s*ver(eyim|elim|mek)|zay[ıi]fla(mak|may[ıi]|y[ıi]m)/.test(lower);
+  const wantsMuscle = goalAllowed && /kas\s*(kazan(mak|may[ıi])|yapma(k|y[ıi])|yap[ıi]m)|kasl[iı]\s*(olmak|bir)/.test(lower);
+  const wantsGain = goalAllowed && /kilo\s*alma(k|y[ıi])\s?/.test(lower);
+  const wantsHealth = goalAllowed && /sagl[iı]kl[iı]\s*(ol|yasa|yaşa|kal)/.test(lower) && !wantsLose && !wantsGain;
+  const wantsCondition = goalAllowed && /kondisyon(umu|u)?\s*(art[ıi]r|geli[şs]tir|y[üu]kselt)|dayan[ıi]kl[ıi]l[ıi][gğ][ıi]?\s*(art[ıi]r|geli[şs]tir)/.test(lower);
   if (wantsLose) result.goal_type = 'lose_weight';
   else if (wantsMuscle && !wantsLose) result.goal_type = 'gain_muscle';
   else if (wantsGain) result.goal_type = 'gain_weight';
@@ -5387,8 +5411,8 @@ async function executeActions(
             { user_id: userId, date: actionDate, steps: stepCount, steps_source: 'manual', water_liters: await waterFor(actionDate), synced: true },
             { onConflict: 'user_id,date' }
           );
-          if (stepErr) { console.error('[step_log] upsert failed:', stepErr.message); pushFb('Adim kaydi basarisiz', { ok: false, failureClass: 'write_failed' }); break; }
-          pushFb(`${stepCount} adim kaydedildi`);
+          if (stepErr) { console.error('[step_log] upsert failed:', stepErr.message); pushFb('Adım kaydı başarısız', { ok: false, failureClass: 'write_failed' }); break; }
+          pushFb(`${stepCount.toLocaleString('tr-TR')} adım kaydedildi`);
           break;
         }
         case 'supplement_log': {
@@ -5520,7 +5544,21 @@ async function executeActions(
           // Nutrition preferences
           if (action.cooking_skill) updates.cooking_skill = action.cooking_skill;
           if (action.budget_level) updates.budget_level = action.budget_level;
-          if (action.dietary_restriction) updates.dietary_restriction = action.dietary_restriction;
+          // Retraction path: "vegan değilim artık" must be able to CLEAR the field. Only truthy values
+          // were written, the enum had no "none", so the retraction was acknowledged with a "Profil
+          // güncellendi" receipt while vegan stayed everywhere (live 2026-10-04).
+          let dietaryCleared: string | null = null;
+          if ('dietary_restriction' in action) {
+            const rawDr = action.dietary_restriction;
+            const vDr = typeof rawDr === 'string' ? rawDr.trim().toLocaleLowerCase('tr') : rawDr;
+            if (vDr === null || vDr === '' || ['none', 'yok', 'hiçbiri', 'hicbiri', 'standard', 'normal'].includes(vDr as string)) {
+              const { data: prevDrRow } = await supabaseAdmin.from('profiles').select('dietary_restriction').eq('id', userId).maybeSingle();
+              const prevDr = (prevDrRow?.dietary_restriction as string | null) ?? null;
+              if (prevDr) { updates.dietary_restriction = null; dietaryCleared = prevDr; }
+            } else if (rawDr) {
+              updates.dietary_restriction = rawDr;
+            }
+          }
           if (action.diet_mode) updates.diet_mode = action.diet_mode;
           if (action.eating_out_frequency) updates.eating_out_frequency = action.eating_out_frequency;
           if (action.fastfood_frequency) updates.fastfood_frequency = action.fastfood_frequency;
@@ -5625,13 +5663,21 @@ async function executeActions(
                 water_target_liters: 'su hedefi', step_target: 'adım hedefi', display_name: 'isim',
               };
               const named = Object.keys(updates)
-                .filter(k => k !== 'updated_at' && FIELD_TR[k])
+                .filter(k => k !== 'updated_at' && FIELD_TR[k] && (updates as Record<string, unknown>)[k] != null)
                 .map(k => `${FIELD_TR[k]}: ${String((updates as Record<string, unknown>)[k])}`);
               pfMessages.push(named.length > 0 ? `Güncellendi — ${named.slice(0, 4).join(', ')}` : 'Profil güncellendi');
-              // A weight or goal change silently re-cuts the whole calorie band; say so.
-              if ('weight_kg' in updates || 'target_weight_kg' in updates) {
+              // A TARGET change re-cuts the band (forced recalc in the goal branch) — say so. A weight
+              // update does NOT always: recalculateTDEEIfNeeded only runs past its 2.5 kg / 30-day gates
+              // and announces itself (coaching message with before/after) when it actually does. The old
+              // line claimed a recalculation on every weigh-in, including when nothing changed.
+              if ('target_weight_kg' in updates) {
                 pfMessages.push('Kalori hedefin bu değişikliğe göre yeniden hesaplandı.');
               }
+            }
+            if (!pfErr && dietaryCleared) {
+              await deactivateConstraints(userId, 'dietary');
+              await logBelief(userId, { belief_key: 'dietary_restriction', subject: dietaryCleared.toLocaleLowerCase('tr'), operation: 'retract', new_value: null, source: 'user_stated' });
+              pfMessages.push(`Beslenme kısıtı kaldırıldı (${dietaryCleared}).`);
             }
             // #arch L1: mirror a dietary restriction into the typed safety spine.
             if (!pfErr && typeof updates.dietary_restriction === 'string' && updates.dietary_restriction) {
@@ -5670,7 +5716,7 @@ async function executeActions(
           if (action.goal_type || action.target_weight_kg) {
             const { data: existingRows } = await supabaseAdmin
               .from('goals')
-              .select('id, start_weight_kg, target_weight_kg, target_weeks')
+              .select('id, goal_type, start_weight_kg, target_weight_kg, target_weeks')
               .eq('user_id', userId)
               .eq('is_active', true)
               .limit(1);
@@ -5721,6 +5767,19 @@ async function executeActions(
               }
             } else if (!existing) {
               goalPatch.goal_type = 'lose_weight'; // only set default on brand-new row
+            }
+
+            // IDEMPOTENT: re-stating the goal the user already has is not a goal change. Live
+            // 2026-10-04 a no-op lose_weight write still logged a 'correct' belief, chipped "Hedef tipi
+            // kaydedildi" and FORCE-recalculated the calorie bands (bypassing the 2.5 kg / 30-day gates).
+            const goalUnchanged = !!existing
+              && (goalPatch.goal_type === undefined || goalPatch.goal_type === existing.goal_type)
+              && (!action.target_weight_kg || Number(action.target_weight_kg) === Number(existing.target_weight_kg))
+              && !clearWeightTarget;
+            if (goalUnchanged) {
+              console.log('[profile_update] goal unchanged — no write, no chip, no recalc');
+              pushFb(pfMessages.length > 0 ? pfMessages.join(' · ') : null);
+              break;
             }
 
             const derivedRate = (startW && targetW && weeks > 0 && !clearWeightTarget)

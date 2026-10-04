@@ -72,6 +72,7 @@ export function resolveTurnMode(input: ResolveModeInput): ModeResolution {
   //    it expires after an hour so one plan request cannot capture the eternal thread for good.
   if (input.activeIntentEnabled && !isOnboarding && activeIntent?.kind === 'plan'
     && PLAN_INTENT_CLAIMS.has(rawMode) && !isDistressOrLowMotivation(input.message)
+    && (rawMode !== 'coaching' || input.message == null || mentionsPlanTopic(input.message))
     && !intentExpired(activeIntent.opened_at, input.nowMs)) {
     const mode = (activeIntent.plan_type === 'workout' ? 'plan_workout' : 'plan_diet') as TaskMode;
     return { mode, rawMode, source: 'active_intent' };
@@ -100,6 +101,15 @@ const PLAN_INTENT_TTL_MS = 60 * 60 * 1000;
 
 const DISTRESS_LOW_MOTIVATION_RE =
   /(stres|bunald|a[gğ]la|k[öo]t[üu] hisset|t[üu]ken|dayanam|motivasyon|b[ıi]rakt[ıi]m|k[öo]t[üu] ge[çc]ti|yapam[ıi]yorum|[üu]zg[üu]n|moralim)/i;
+
+// A bare 'coaching' detection is anything the matcher could not name; it belongs to the open plan
+// only when it is about the plan's content. "3 haftadır kilo vermiyorum, neden?" is not.
+const PLAN_TOPIC_RE =
+  /(plan|program|liste|men[üu]|[öo][ğg][üu]n|kahvalt|[öo][ğg]le|ak[şs]am|ara [öo][ğg][üu]n|kalori|kcal|protein|karbonhidrat|ya[ğg]|egzersiz|hareket|set|tekrar|pazartesi|sal[ıi]|[çc]ar[şs]amba|per[şs]embe|cuma|cumartesi|pazar|yumurta|tavuk|et |bal[ıi]k|sebze|meyve)/i;
+
+function mentionsPlanTopic(message: string | null | undefined): boolean {
+  return typeof message === 'string' && PLAN_TOPIC_RE.test(message.toLocaleLowerCase('tr'));
+}
 
 function isDistressOrLowMotivation(message: string | null | undefined): boolean {
   return typeof message === 'string' && DISTRESS_LOW_MOTIVATION_RE.test(message.toLocaleLowerCase('tr'));

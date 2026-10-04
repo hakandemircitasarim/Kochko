@@ -8,6 +8,7 @@
  */
 
 import { supabaseAdmin } from './supabase-admin.ts';
+import { HIDDEN_ALLERGEN_DISHES } from './guardrails.ts';
 import { getLocalParts, getEffectiveDateForUser, shiftDateString } from './day-boundary.ts';
 import type {
   RetrievalPlan, Layer1Focus, Layer2Focus, Layer3DataType,
@@ -75,7 +76,7 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
   }
 
   // For 'focused' and 'full', fetch profile but filter output
-  const [profileRes, goalRes, prefsRes, healthRes] = await Promise.all([
+  const [profileRes, goalRes, prefsRes, healthRes, retractedDietRes] = await Promise.all([
     supabaseAdmin.from('profiles').select('*').eq('id', userId).maybeSingle(),
     plan.layer1Focus.includes('nutrition') || plan.layer1Focus.includes('training') || plan.layer1 === 'full'
       ? supabaseAdmin.from('goals').select('*').eq('user_id', userId).eq('is_active', true).order('phase_order').limit(3)
@@ -86,7 +87,10 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
     plan.layer1Focus.includes('health') || plan.layer1 === 'full'
       ? supabaseAdmin.from('health_events').select('event_type, description, is_ongoing').eq('user_id', userId)
       : Promise.resolve({ data: [] }),
+    // Retracted dietary restrictions (spine row inactive) must not be presented as current.
+    supabaseAdmin.from('user_constraints').select('subject').eq('user_id', userId).eq('kind', 'dietary').eq('active', false),
   ]);
+  const retractedDietary = new Set(((retractedDietRes.data ?? []) as { subject: string }[]).map((r) => (r.subject ?? '').toLocaleLowerCase('tr')));
 
   const p = profileRes.data;
   if (!p) return 'Profil henuz olusturulmamis.';
@@ -150,7 +154,7 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
   // Nutrition details
   if (plan.layer1Focus.includes('nutrition') || plan.layer1 === 'full') {
     const nutItems = [`Yemek becerisi: ${p.cooking_skill ?? '?'} | Butce: ${p.budget_level ?? '?'} | Porsiyon dili: ${p.portion_language ?? 'household'}`];
-    nutItems.push(`Diyet modu: ${p.diet_mode ?? 'standard'}${p.dietary_restriction ? ` | Kisitlama: ${p.dietary_restriction}` : ''}${p.if_active ? ` | IF: ${p.if_window} (${p.if_eating_start}-${p.if_eating_end})` : ''}`);
+    nutItems.push(`Diyet modu: ${p.diet_mode ?? 'standard'}${p.dietary_restriction && !retractedDietary.has(String(p.dietary_restriction).toLocaleLowerCase('tr')) ? ` | Kisitlama: ${p.dietary_restriction}` : ''}${p.if_active ? ` | IF: ${p.if_window} (${p.if_eating_start}-${p.if_eating_end})` : ''}`);
     nutItems.push(`Koc tonu: ${p.coach_tone ?? 'balanced'}`);
     if (p.meal_count_preference) nutItems.push(`Ogun sayisi: ${p.meal_count_preference}`);
     if (p.eating_out_frequency) nutItems.push(`Disarida yeme: ${p.eating_out_frequency}`);
@@ -364,16 +368,34 @@ async function weightAgeSuffix(userId: string): Promise<string> {
 }
 
 async function buildPersistentHealthBlock(userId: string): Promise<string> {
-  const { data } = await supabaseAdmin
-    .from('user_constraints')
-    .select('kind, subject, note, severity, source, confirmed_at, stated_at, created_at')
-    .eq('user_id', userId).eq('active', true)
-    .in('kind', ['surgery', 'condition', 'injury', 'allergen', 'intolerance']);
+  const [{ data }, { data: retractedRows }] = await Promise.all([
+    supabaseAdmin
+      .from('user_constraints')
+      .select('kind, subject, note, severity, source, confirmed_at, stated_at, created_at')
+      .eq('user_id', userId).eq('active', true)
+      .in('kind', ['surgery', 'condition', 'injury', 'allergen', 'intolerance']),
+    supabaseAdmin
+      .from('user_constraints')
+      .select('kind, subject')
+      .eq('user_id', userId).eq('active', false)
+      .in('kind', ['allergen', 'intolerance', 'dietary']),
+  ]);
   const rows = (data ?? []) as Array<{
     kind: string; subject: string; note: string | null; severity: string | null;
     source: string | null; confirmed_at: string | null; stated_at: string | null; created_at: string | null;
   }>;
-  if (!rows.length) return '';
+  // RETRACTED facts (the user said "süt alerjim yok artık" / "vegan değilim"): the spine marks them
+  // inactive, but older coaching notes, digestive text and profile fields still mention them — and
+  // the coach kept citing a retracted milk allergy (live 2026-10-04). Name them explicitly as void,
+  // unless the same subject is ALSO active (then the active row wins).
+  const activeSubjects = new Set(rows.map((r) => `${r.kind}:${(r.subject ?? '').toLocaleLowerCase('tr')}`));
+  const retracted = [...new Set(((retractedRows ?? []) as { kind: string; subject: string }[])
+    .filter((r) => r.subject && !activeSubjects.has(`${r.kind}:${r.subject.toLocaleLowerCase('tr')}`))
+    .map((r) => `${r.subject}${r.kind === 'dietary' ? ' (beslenme kısıtı)' : ' alerjisi/intoleransı'}`))];
+  const retractedLine = retracted.length
+    ? `\nGERI ALINANLAR (kullanıcı geri aldı — artık GEÇERSİZ; eski notlarda/profil metninde geçse bile alerji/kısıt olarak ANMA): ${retracted.slice(0, 6).join(', ')}`
+    : '';
+  if (!rows.length) return retractedLine ? `## KALICI SAGLIK${retractedLine}` : '';
   const LABEL: Record<string, string> = {
     surgery: 'Ameliyat', condition: 'Kronik durum', injury: 'Sakatlik', allergen: 'Alerji', intolerance: 'Intolerans',
   };
@@ -396,6 +418,14 @@ async function buildPersistentHealthBlock(userId: string): Promise<string> {
     !r.confirmed_at && (r.source === 'inferred' || r.source === 'imported');
   const lines = rows.map((r) =>
     `- ${LABEL[r.kind] ?? r.kind}: ${((r.note || r.subject) ?? '').slice(0, 100)}${r.severity ? ` (${r.severity})` : ''}${isUnconfirmed(r) ? ' [ÇIKARIM — doğrulanmadı]' : ''}`);
+  // Hidden sources: dishes that often CONTAIN the allergen without naming it (köfte → yumurta).
+  const hidden = rows
+    .filter((r) => (r.kind === 'allergen' || r.kind === 'intolerance'))
+    .map((r) => ({ name: r.subject, dishes: HIDDEN_ALLERGEN_DISHES[(r.subject ?? '').toLocaleLowerCase('tr')] }))
+    .filter((h) => h.dishes && h.dishes.length > 0);
+  if (hidden.length) {
+    lines.push(`- GİZLİ KAYNAKLAR (dışarıda yemek/tarif/plan önerirken): ${hidden.map((h) => `${h.name} → ${h.dishes.slice(0, 8).join(', ')}`).join(' | ')}. Bunları önerme; önereceksen AYNI cümlede "içinde ${hidden[0].name} var mı diye sor/teyit et" uyarısını ver.`);
+  }
   const notes: string[] = [];
   if (rows.some(isUnconfirmed)) {
     notes.push('[ÇIKARIM] etiketli kayıtları kesin gerçek gibi SUNMA ("biliyorum ki..." deme); uygun bir anda tek doğal soruyla doğrula. Doğrulanana kadar güvenlik açısından yine de geçerli say.');
@@ -405,7 +435,7 @@ async function buildPersistentHealthBlock(userId: string): Promise<string> {
     const names = stale.slice(0, 3).map((r) => (r.note || r.subject).slice(0, 40)).join('; ');
     notes.push(`Şu kayıt(lar) 60+ gündür güncellenmedi: ${names}. Uygun bir anda TEK doğal soruyla hâlâ geçerli mi diye sor (her turda değil, bir kez). Cevap gelene kadar geçerli say. Alerji ve ameliyat asla eskimez — onları sorgulama.`);
   }
-  return `## KALICI SAGLIK (her zaman dikkate al, unutma)\n${lines.join('\n')}${notes.length ? '\n' + notes.map((n) => `(${n})`).join('\n') : ''}`;
+  return `## KALICI SAGLIK (her zaman dikkate al, unutma)\n${lines.join('\n')}${notes.length ? '\n' + notes.map((n) => `(${n})`).join('\n') : ''}${retractedLine}`;
 }
 
 // ─── Layer 2: Scoped AI Summary ───

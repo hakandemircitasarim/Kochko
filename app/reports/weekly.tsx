@@ -19,7 +19,7 @@ import { formatDecimal } from '@/lib/units';
 interface WeeklyReport {
   week_start: string;
   weight_trend: { date: string; kg: number }[];
-  avg_compliance: number;
+  avg_compliance: number | null;
   weekly_budget_compliance: boolean | null;
   top_deviation: string | null;
   best_day: string | null;
@@ -194,9 +194,11 @@ export default function WeeklyReportScreen() {
               {/* FIX (ux-round2 #14): '%' unit (was a bare '68') + trend vs last week.
                   ux-polish: the compliance ring (same as daily/monthly) instead of a flat number,
                   so all three reports open with the shared hero treatment. */}
-              <CircularProgress progress={report.avg_compliance / 100} value={`%${report.avg_compliance}`} size={120} strokeWidth={8} color={compColor} a11yLabel="Ortalama uyum" />
-              <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.sm }}>Ortalama Uyum</Text>
-              {prevCompliance != null && (() => {
+              {/* A week with no logged days has NO average (server stores null) — say so instead of
+                  painting a red "%0" ring at someone who simply didn't log. */}
+              <CircularProgress progress={(report.avg_compliance ?? 0) / 100} value={report.avg_compliance == null ? '—' : `%${report.avg_compliance}`} size={120} strokeWidth={8} color={report.avg_compliance == null ? colors.textMuted : compColor} a11yLabel="Ortalama uyum" />
+              <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.sm }}>{report.avg_compliance == null ? 'Bu hafta kayıt yok' : 'Ortalama Uyum'}</Text>
+              {prevCompliance != null && report.avg_compliance != null && (() => {
                 const d = report.avg_compliance - prevCompliance;
                 if (d === 0) return <Text style={{ color: colors.textMuted, ...TYPE.body, marginTop: SPACING.xs }}>geçen haftayla aynı</Text>;
                 return (

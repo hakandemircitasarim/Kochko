@@ -190,7 +190,7 @@ Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylas
    // Beslenme
    "cooking_skill": "none|basic|good", "budget_level": "low|medium|high",
    "diet_mode": "standard|low_carb|keto|high_protein",
-   "dietary_restriction": "vegan|vegetarian|pescatarian|halal|kosher|gluten_free|lactose_free",
+   "dietary_restriction": "vegan|vegetarian|pescatarian|halal|kosher|gluten_free|lactose_free|none",  // "none" = kullanici kisitlamayi BIRAKTI ("vegan degilim artik", "vejetaryenligi biraktim") — bu durumda MUTLAKA "none" gonder
    "eating_out_frequency": "never|rare|weekly|frequent",
    "fastfood_frequency": "never|rare|weekly|frequent",
    "skipped_meals": "kahvaltiyi atlarim", "night_eating_habit": "gece atistirma", "emotional_eating": "stresli olunca", "snacking_habit": "ikindi 4-5 arasi atistirma",

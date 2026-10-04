@@ -242,9 +242,13 @@ async function generateDailyReport(userId: string, date?: string, force = false)
     // a component only counts when its input exists.
     let raw = 0, totalW = 0;
     const add = (w: number, credit: number, present: boolean) => { if (w > 0 && present) { raw += w * credit; totalW += w; } };
-    add(weights.calorie, calCredit, calMin > 0 || totalCal > 0);
-    add(weights.protein, proCredit, proTarget > 0 || totalPro > 0);
-    add(weights.workout, workoutCredit, true); // "no workout logged" IS the datum
+    // MISSING DATA IS NOT FAILURE: food components count only when food was LOGGED that day (a
+    // plan target alone scored a no-log day 8/100). "No workout" is a datum only on a day the user
+    // otherwise engaged with — on a fully empty day it is just absence.
+    const loggedFood = mealIds.length > 0;
+    add(weights.calorie, calCredit, loggedFood);
+    add(weights.protein, proCredit, loggedFood);
+    add(weights.workout, workoutCredit, workoutCredit === 1 || loggedFood || hasMetrics);
     add(weights.water, waterCredit, hasMetrics && Number(metrics?.water_liters) > 0);
     add(weights.sleep, sleepCredit, hasMetrics && Number(metrics?.sleep_hours) > 0);
     add(weights.mood, moodCredit, hasMetrics && Number(metrics?.mood_score) > 0);
@@ -463,13 +467,16 @@ ${alcoholLine}`;
   // avg_compliance + weekly_budget_compliance computed DETERMINISTICALLY (the LLM was
   // guessing both — and the weekly prompt contains NO calorie/budget data at all, so its
   // budget verdict was a coin-flip). Mirrors the monthly path + the Progress tab.
-  const avgCompliance = reports.length
+  // A week with no daily reports has NO average — storing 0 told the user "%0 uyum" for a week the
+  // app simply had no data on. The client renders null as "veri yok".
+  const avgCompliance: number | null = reports.length
     ? Math.max(0, Math.min(100, Math.round(reports.reduce((s: number, r: { compliance_score?: number }) => s + (r.compliance_score ?? 0), 0) / reports.length)))
-    : 0;
+    : null;
   const weekConsumed = reports.reduce((s: number, r: { calorie_actual?: number }) => s + (r.calorie_actual ?? 0), 0);
   const { data: budgetProfile } = await supabaseAdmin.from('profiles').select('weekly_calorie_budget').eq('id', userId).maybeSingle();
   const weeklyBudget = budgetProfile?.weekly_calorie_budget as number | null;
-  const weeklyBudgetCompliance = (weeklyBudget != null && weeklyBudget > 0) ? (weekConsumed <= weeklyBudget) : null;
+  // "Budget kept" needs consumption data: 0 kcal consumed in a week with no logs is not compliance.
+  const weeklyBudgetCompliance = (weeklyBudget != null && weeklyBudget > 0 && weekConsumed > 0) ? (weekConsumed <= weeklyBudget) : null;
 
   const { error: wrErr } = await supabaseAdmin.from('weekly_reports').upsert({
     user_id: userId, week_start: wsStr,

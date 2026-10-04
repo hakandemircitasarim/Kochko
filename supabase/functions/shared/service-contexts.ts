@@ -1146,7 +1146,10 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
     const plan = planRes?.data as { calorie_target_min: number | null; calorie_target_max: number | null; focus_message: string | null; plan_type: string | null } | null | undefined;
     if (plan && (plan.calorie_target_min || plan.focus_message)) {
       const tgt = plan.calorie_target_min && plan.calorie_target_max ? `${plan.calorie_target_min}-${plan.calorie_target_max} kcal` : '';
-      lines.push(`BUGÜNKÜ PLAN: ${[tgt, plan.focus_message].filter(Boolean).join(' | ')}`);
+      // focus_message is free text written when the plan was projected; it can quote calorie/TDEE
+      // figures from an OLDER band. The structured target is the only number source.
+      const focus = plan.focus_message && !/(tdee|\d{3,4}\s*(kcal|kalori))/i.test(plan.focus_message) ? plan.focus_message : null;
+      lines.push(`BUGÜNKÜ PLAN: ${[tgt, focus].filter(Boolean).join(' | ')}`);
     }
 
     // #arch step 12: repair propagation surfaces here. If a belief change (new diet/allergen/dislike)

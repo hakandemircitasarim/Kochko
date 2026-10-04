@@ -182,3 +182,13 @@ Deno.test('with a draft open, an explicit new-plan request regenerates (not expl
   assertEquals(classifyPlanIntent('planı baştan oluştur', true), 'revise');
   assertEquals(classifyPlanIntent('peki neden 1900 kalori?', true), 'explain');
 });
+
+
+Deno.test('an open plan does not claim an off-topic coaching question (live 2026-10-04)', () => {
+  const intent = { kind: 'plan', plan_type: 'workout' };
+  const m = '3 haftadır kilo vermiyorum, neden?';
+  const r = resolveTurnMode({ ...base, rawMode: detectTaskMode(m, false), activeIntent: intent, message: m });
+  assertEquals(r.source, 'detected');
+  const q = 'cuma günü yerine cumartesi olsun';
+  assertEquals(resolveTurnMode({ ...base, rawMode: detectTaskMode(q, false), activeIntent: intent, message: q }).source, 'active_intent');
+});
