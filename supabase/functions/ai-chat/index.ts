@@ -2174,9 +2174,11 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
         if (existing) {
           const prevVersion = ((existing.plan_data as Record<string, unknown>)?.version as number | undefined) ?? 0;
           const nextSnapshot = { ...planSnapshot, version: prevVersion + 1 };
+          // A revised draft is a plan made TODAY — re-anchor its week too (planWeekAnchor), otherwise
+          // a draft first written last week keeps last week's week_start through every revision.
           const { error } = await supabaseAdmin
             .from('weekly_plans')
-            .update({ plan_data: nextSnapshot })
+            .update({ plan_data: nextSnapshot, week_start: planWeekAnchor(effectiveToday) })
             .eq('id', existing.id);
           if (error) planPersistError = error.message;
           else { persistedPlan = nextSnapshot; persistedDraftId = existing.id as string; }
