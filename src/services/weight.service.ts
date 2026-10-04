@@ -52,4 +52,15 @@ export async function updateCurrentWeight(
   ]);
   if (metricsRes.error) throw metricsRes.error;
   if (profileRes.error) throw profileRes.error;
+
+  // diff#6: bugünün tartısı bekleyen "N gündür tartı kaydı yok" kartını kapatır (sohbetteki
+  // tartı yolları da aynısını yapıyor). Tartı kaydı zaten yazıldı — bu adım başarısız olursa
+  // kayıt geri alınmaz, yalnız uyarı düşülür.
+  const { error: reminderErr } = await supabase
+    .from('coaching_messages')
+    .update({ read: true })
+    .eq('user_id', userId)
+    .eq('trigger_type', 'weight_reminder')
+    .eq('read', false);
+  if (reminderErr) console.warn('[weight] weight_reminder kapatılamadı:', reminderErr.message);
 }

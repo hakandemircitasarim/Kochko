@@ -58,6 +58,7 @@ import { getCalorieFloor } from '../shared/clinical-rules.ts';
 import { extractLifeEvent } from '../shared/life-events.ts';
 import { syncConstraint, confirmConstraint, deactivateConstraints, syncInjuryFromText, resolveInjuryConstraints, getActiveConstraints, type ConstraintKind } from '../shared/constraints.ts';
 import { getEffectiveDateForUser, shiftDateString, getLocalParts, getLocalHour } from '../shared/day-boundary.ts';
+import { judgeTodayWeighIn } from '../shared/weigh-in-guard.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
 
 const corsHeaders = {
@@ -1311,6 +1312,25 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
           if (Object.keys(pa).filter(k => k !== 'type').length === 0) actions.splice(pi, 1);
         }
       }
+      // mem#9: a model-emitted weight_log was never checked against the message at all — a plateau
+      // QUESTION ("3 haftadır 82.5'ta takıldım, neden olabilir?") became today's weigh-in plus a TDEE
+      // recalc. A weight that would land on TODAY needs the message to be a weigh-in (cue wins; a
+      // question or plateau/past frame without one is not). Backdated writes (days_ago) are history,
+      // not today's weight, and onboarding answers ARE the current weight — both pass.
+      if (message && !fullExtraction) {
+        const verdict = judgeTodayWeighIn(message);
+        for (let wi = actions.length - 1; wi >= 0 && !verdict.keep; wi--) {
+          const wa = actions[wi] as Record<string, unknown>;
+          const isWeightLog = wa.type === 'weight_log';
+          if (!isWeightLog && !(wa.type === 'profile_update' && wa.weight_kg != null)) continue;
+          const dAgo = Number(wa.days_ago);
+          if (Number.isFinite(dAgo) && dAgo >= 1 && dAgo <= 7) continue;
+          console.warn('[weight_guard] dropped non-weigh-in weight', { type: wa.type, value: isWeightLog ? wa.value : wa.weight_kg, reason: verdict.reason, mode: effectiveMode });
+          if (isWeightLog) { actions.splice(wi, 1); continue; }
+          delete wa.weight_kg;
+          if (Object.keys(wa).filter(k => k !== 'type').length === 0) actions.splice(wi, 1);
+        }
+      }
     }
 
     // Meal-log safety net (Part B): the model intermittently reports a meal verbally
@@ -1417,7 +1437,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       const bodyIntent = strongBodyIntent || /sabah/.test(mW);
       // GOAL/target statements ("hedefim 80 kiloya inmek") are NOT a weigh-in.
       const goalCtx = /(hedef|inmek ist|olmak ist|ula[sş]mak|vermek ist|atmak ist)/.test(mW);
-      if (!exerciseCtx && !goalCtx && bodyIntent) {
+      // mem#9: the same weigh-in verdict as the model-emitted path — "sabah 82 kg, neden düşmüyor?"
+      // must not be re-injected here after the guard above dropped it.
+      if (!exerciseCtx && !goalCtx && bodyIntent && (fullExtraction || judgeTodayWeighIn(message).keep)) {
         // Unit present (kg / standalone "kilo"), OR a unitless number when a strong
         // body-weight verb is present ("85 oldum", "86.5 kiloyum" where "kilo" has no
         // word boundary so the unit regex can't see it).
@@ -5538,6 +5560,10 @@ async function executeActions(
               if (actionDate === today) {
                 updates.weight_kg = action.weight_kg;
                 recalculateTDEEIfNeeded(userId, wv).then(() => {}, () => {});
+                // diff#6: this is the COMMON chat weigh-in path, so it must close the pending
+                // "N gündür tartı kaydı yok" card too (only the weight_log branch did).
+                await supabaseAdmin.from('coaching_messages').update({ read: true })
+                  .eq('user_id', userId).eq('trigger_type', 'weight_reminder').eq('read', false);
               }
             }
           }

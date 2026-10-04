@@ -170,7 +170,7 @@ Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylas
  {"type": "workout_log", "raw": "metin", "workout_type": "cardio|strength|flexibility|sports",
   "duration_min": sayi, "intensity": "low|moderate|high", "calories_burned": sayi,
   "strength_sets": [{"exercise": "squat|bench_press|deadlift|overhead_press|barbell_row|pull_up|veya_snake_case_adi", "sets": sayi, "reps": sayi, "weight_kg": sayi}]},
- {"type": "weight_log", "value": sayi},
+ {"type": "weight_log", "value": sayi},   // SADECE tartildigini soyluyorsa. Soru / plato / gecmis kilo ("neden?", "takildim", "3 haftadir 82") tarti kaydi DEGILDIR — yazma; gerekirse "bugun tartildin mi?" diye sor.
  {"type": "water_log", "liters": sayi},   // SADECE su icin. Kahve/cay/kola/bira su DEGILDIR — onlar icin water_log YAZMA.
  {"type": "sleep_log", "hours": sayi, "quality": "good|ok|bad"},
  {"type": "mood_log", "score": 1-5, "note": "metin"},

@@ -18,6 +18,7 @@ import { appendCoachingNote } from '../shared/coaching-notes.ts';
 import { gateUserText, loadUserSafety } from '../shared/output-gate.ts';
 
 import { VOICE_RULES } from '../shared/voice.ts';
+import { goalPromptLine, partialFoodLog, resolveWaterTarget, workoutPromptLine } from './report-facts.ts';
 
 // Goal-type-based compliance weights (Spec 8.1 deepening)
 function getComplianceWeights(goalType: string): Record<string, number> {
@@ -147,8 +148,10 @@ async function generateDailyReport(userId: string, date?: string, force = false)
 
   // Fetch today's data
   const [planRes, mealsRes, workoutsRes, metricsRes, goalRes] = await Promise.all([
-    supabaseAdmin.from('daily_plans').select('plan_type, calorie_target_min, calorie_target_max, protein_target_g, water_target_liters').eq('user_id', userId).eq('date', reportDate).limit(1).maybeSingle(),
-    supabaseAdmin.from('meal_logs').select('id').eq('user_id', userId).eq('logged_for_date', reportDate).eq('is_deleted', false),
+    // final2#16: the NEWEST plan version — the chat snapshot and the dashboard read that one; an
+    // unordered pick could score the day against a superseded version's targets.
+    supabaseAdmin.from('daily_plans').select('plan_type, calorie_target_min, calorie_target_max, protein_target_g, water_target_liters').eq('user_id', userId).eq('date', reportDate).order('version', { ascending: false }).limit(1).maybeSingle(),
+    supabaseAdmin.from('meal_logs').select('id, meal_type').eq('user_id', userId).eq('logged_for_date', reportDate).eq('is_deleted', false),
     supabaseAdmin.from('workout_logs').select('duration_min').eq('user_id', userId).eq('logged_for_date', reportDate),
     supabaseAdmin.from('daily_metrics').select('*').eq('user_id', userId).eq('date', reportDate).maybeSingle(),
     supabaseAdmin.from('goals').select('goal_type, target_weight_kg, weekly_rate, target_weeks, created_at').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle(),
@@ -185,10 +188,12 @@ async function generateDailyReport(userId: string, date?: string, force = false)
   // week's actual intake (week-to-date including today).
   let weeklyBudgetStatus: string | null = null;
   let waterTargetLiters: number | null = null;
+  let usualMeals: unknown = null; // final2#17: profiles.meal_count_preference
   {
-    const { data: budgetProfile } = await supabaseAdmin.from('profiles').select('weekly_calorie_budget, water_target_liters').eq('id', userId).maybeSingle();
+    const { data: budgetProfile } = await supabaseAdmin.from('profiles').select('weekly_calorie_budget, water_target_liters, meal_count_preference').eq('id', userId).maybeSingle();
     const weeklyBudget = budgetProfile?.weekly_calorie_budget as number | null;
     waterTargetLiters = (budgetProfile?.water_target_liters as number | null) ?? null;
+    usualMeals = budgetProfile?.meal_count_preference ?? null;
     if (weeklyBudget && weeklyBudget > 0) {
       const rd = new Date(reportDate + 'T00:00:00Z');
       const dow = rd.getUTCDay();
@@ -231,8 +236,9 @@ async function generateDailyReport(userId: string, date?: string, force = false)
     const calMax = Number(plan?.calorie_target_max) || 0;
     const proTarget = Number(plan?.protein_target_g) || 0;
     // Prefer the DAY'S plan target (what the dashboard shows) over the profile default.
-    const waterTarget = Number(plan?.water_target_liters) > 0 ? Number(plan!.water_target_liters)
-      : Number(waterTargetLiters) > 0 ? Number(waterTargetLiters) : 2.5;
+    // diff#9: the 2.5 L default still scores, but is marked unknown so the prompt doesn't call it theirs.
+    const water = resolveWaterTarget(plan?.water_target_liters, waterTargetLiters);
+    const waterTarget = water.liters;
     const frac = (v: number) => Math.max(0, Math.min(1, v));
     const hasMetrics = !!metrics;
     // Calorie: full credit inside the band; outside, credit decays with relative distance.
@@ -263,8 +269,13 @@ async function generateDailyReport(userId: string, date?: string, force = false)
     // working (live: a rest-day water+weight log scored 26/100 for "antrenman yok").
     const loggedFood = mealIds.length > 0;
     const trainingDay = plan?.plan_type === 'training';
-    add(weights.calorie, calCredit, loggedFood);
-    add(weights.protein, proCredit, loggedFood);
+    // final2#17: a PARTIAL food log (fewer meals than usual, under the floor) is missing data, not
+    // under-eating: calorie/protein get the same NEUTRAL half credit as a plan-less day instead of
+    // ~0 (one logged dinner scored 19/100). Dropping them outright would swing the score to 0 or 100
+    // on whatever else happened to be logged.
+    const partial = partialFoodLog((mealsRes.data ?? []).map((m: { meal_type: string | null }) => m.meal_type), usualMeals, totalCal, calMin);
+    add(weights.calorie, partial.partial ? Math.max(calCredit, 0.5) : calCredit, loggedFood);
+    add(weights.protein, partial.partial ? Math.max(proCredit, 0.5) : proCredit, loggedFood);
     add(weights.workout, workoutCredit, workoutCredit === 1 || (trainingDay && (loggedFood || hasMetrics)));
     add(weights.water, waterCredit, hasMetrics && Number(metrics?.water_liters) > 0);
     add(weights.sleep, sleepCredit, hasMetrics && Number(metrics?.sleep_hours) > 0);
@@ -273,6 +284,8 @@ async function generateDailyReport(userId: string, date?: string, force = false)
     return {
       score,
       waterTarget,
+      waterTargetKnown: water.known,
+      partial,
       calorie_target_met: calCredit === 1,
       protein_target_met: proTarget > 0 && totalPro >= proTarget,
       workout_completed: workoutCredit === 1,
@@ -283,9 +296,10 @@ async function generateDailyReport(userId: string, date?: string, force = false)
   const prompt = `Tarih: ${reportDate}
 UYUM PUANI (KOD TARAFINDAN HESAPLANDI — BU SAYIYI AYNEN KULLAN, KENDIN HESAPLAMA): ${detCompliance.score}
 AGIRLIKLAR: Kalori=%${weights.calorie} Protein=%${weights.protein} Antrenman=%${weights.workout} Su=%${weights.water} Uyku=%${weights.sleep} Mood=%${weights.mood} (Hedef: ${goalType})
-Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g | Su ${detCompliance.waterTarget}L
-Gerceklesen: ${mealIds.length > 0 ? `Kalori ${Math.round(totalCal)} kcal | Protein ${Math.round(totalPro)}g | Karb ${Math.round(totalCarb)}g | Yag ${Math.round(totalFat)}g | Alkol ${Math.round(totalAlcCal)} kcal` : 'YEMEK KAYDI YOK (yemedi demek DEGIL — girilmedi; kalori/protein yorumu yapma)'}
-Antrenman: ${workouts.length > 0 ? `${workouts.length} seans, ${totalWorkoutMin} dk` : plan?.plan_type === 'training' ? 'planli antrenman gunu, kayit yok' : 'dinlenme gunu (antrenman beklenmiyor)'}
+Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g | Su ${detCompliance.waterTargetKnown ? `${detCompliance.waterTarget}L` : `hedef tanimli degil (puanlamada ${detCompliance.waterTarget}L varsayilan; bunu kullanicinin hedefi diye sunma)`}
+Gerceklesen: ${mealIds.length > 0 ? `Kalori ${Math.round(totalCal)} kcal | Protein ${Math.round(totalPro)}g | Karb ${Math.round(totalCarb)}g | Yag ${Math.round(totalFat)}g | Alkol ${Math.round(totalAlcCal)} kcal` : 'YEMEK KAYDI YOK (yemedi demek DEGIL — girilmedi; kalori/protein yorumu yapma)'}${detCompliance.partial.partial ? `
+KAYIT EKSIK OLABILIR: ${detCompliance.partial.logged} farkli ogun girildi (kullanici genelde ${detCompliance.partial.usual} ogun yer) ve alim plan alt sinirinin altinda. Bunu az yeme / hedefin X kcal altinda diye YORUMLAMA, acik veya eksik sayisi verme; kalori/protein puana notr (yarim) katildi. Eksik ogunleri girmesini nazikce hatirlat.` : ''}
+Antrenman: ${workoutPromptLine(workouts.length, totalWorkoutMin, plan)}
 Su: ${Number(metrics?.water_liters) > 0 ? `${metrics!.water_liters}L` : 'kayit yok'} | Uyku: ${Number(metrics?.sleep_hours) > 0 ? `${metrics!.sleep_hours}sa` : 'kayit yok'} | Adim: ${Number(metrics?.steps) > 0 ? metrics!.steps : 'kayit yok'} | Mood: ${Number(metrics?.mood_score) > 0 ? `${metrics!.mood_score}/5` : 'kayit yok'}
 KURAL: "kayit yok" = veri girilmedi; bunu 0 / yapmadi / icmedi diye yorumlama. Eksik alan icin yorum alani null olabilir.
 ${(() => {
@@ -293,16 +307,11 @@ ${(() => {
   if (!g || !g.target_weight_kg || !metrics?.weight_kg) return '';
   const tw = g.target_weight_kg as number;
   const cw = metrics.weight_kg as number;
-  const kgLeft = Math.abs(cw - tw);
   const created = new Date(g.created_at as string);
   const weeksElapsed = Math.max(1, Math.round((Date.now() - created.getTime()) / (7*24*60*60*1000)));
   const targetWeeks = (g.target_weeks as number) ?? 12;
-  const weeksLeft = Math.max(0, targetWeeks - weeksElapsed);
-  // An unknown pace ('?') made the model ramble about "net hafta sayısı"; state the case instead.
-  const paceTxt = kgLeft <= 0 ? 'hedefe ulasildi'
-    : weeksLeft > 0 ? `Gereken tempo: ${(kgLeft / weeksLeft).toFixed(2)}kg/hafta`
-    : 'hedef suresi doldu (tempo yorumu yapma; yeni sure konusulabilir)';
-  return `HEDEF: ${g.goal_type} -> ${tw}kg | Simdi: ${cw}kg | ${kgLeft.toFixed(1)}kg kaldi | ${Math.min(weeksElapsed, targetWeeks)}/${targetWeeks} hafta | ${paceTxt}`;
+  // diff#10: signed by goal direction, so a passed lose/gain goal reads "hedefe ulasildi".
+  return goalPromptLine(g.goal_type as string, tw, cw, weeksElapsed, targetWeeks);
 })()}`;
 
   let rc: UsageReceipt | null = null;

@@ -12,6 +12,7 @@ import { normalizeHabitEntry, deriveHabitStats, readyForNextHabit, type HabitEnt
 import { getRelationshipPhase, relationshipGuidance } from './relationship-state.ts';
 import { rolloutMode } from './rollout.ts';
 import { activePatterns } from './patterns.ts';
+import { simulationTargetDay, type DayReference } from './day-reference.ts';
 
 // FIX (audit AI/HIGH): recovery/eating-out/MVD used raw UTC "today"
 // (new Date().toISOString()) while ai-chat writes meal_logs.logged_for_date on the
@@ -394,25 +395,47 @@ export interface BudgetSnapshot {
   daysLeftInWeek: number;
   /** Earlier days of this week with NO meal log. > 0 → weekly intake is unknown, not low. */
   unloggedPastDays: number;
+  /**
+   * diff#4: set only when the what-if is about a FUTURE day — then todayConsumed / dailyTarget /
+   * dailyRemaining are THAT day's, and the week is THAT day's ISO week.
+   */
+  dayLabel?: string;
+  day?: string;
+  /** That future day falls in a later ISO week: its weekly budget is untouched so far. */
+  laterWeek?: boolean;
+}
+
+/**
+ * diff#4: the ISO week a budget day belongs to, and how many of its days are already LIVED (Monday …
+ * yesterday). A future day in a later week has none — its whole week is still ahead.
+ */
+export function budgetWeekWindow(today: string, day: string): { weekStart: string; pastDays: number; laterWeek: boolean } {
+  const d = new Date(`${day}T00:00:00Z`);
+  const mondayOffset = d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1;
+  const ws = new Date(d); ws.setUTCDate(d.getUTCDate() - mondayOffset);
+  const weekStart = ws.toISOString().split('T')[0];
+  const laterWeek = weekStart > today;
+  const pastDays = laterWeek ? 0 : Math.round((Date.parse(`${today}T00:00:00Z`) - ws.getTime()) / 86400000);
+  return { weekStart, pastDays, laterWeek };
 }
 
 /**
  * Today's and this week's calorie position from the LOGS (not from daily_reports, which only exist
  * for days whose report was generated). Simulation's weeklyImpact was the model's own guess with
  * no weekly data in the prompt; eating-out quoted a day budget only.
+ * diff#4: `target` (a FUTURE day from simulationTargetDay) measures the what-if against that day's
+ * plan target and that day's week instead of today's leftover.
  */
-export async function getBudgetSnapshot(userId: string, effectiveToday?: string): Promise<BudgetSnapshot | null> {
+export async function getBudgetSnapshot(userId: string, effectiveToday?: string, target?: DayReference | null): Promise<BudgetSnapshot | null> {
   try {
     const today = await resolveEffectiveToday(userId, effectiveToday);
-    const d = new Date(`${today}T00:00:00Z`);
-    const mondayOffset = d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1;
-    const ws = new Date(d); ws.setUTCDate(d.getUTCDate() - mondayOffset);
-    const weekStart = ws.toISOString().split('T')[0];
+    const day = target && target.date > today ? target.date : today;
+    const { weekStart, pastDays, laterWeek } = budgetWeekWindow(today, day);
     const [logsRes, profRes, planRes] = await Promise.all([
       supabaseAdmin.from('meal_logs').select('id, logged_for_date').eq('user_id', userId)
-        .gte('logged_for_date', weekStart).lte('logged_for_date', today).eq('is_deleted', false),
+        .gte('logged_for_date', weekStart).lte('logged_for_date', day).eq('is_deleted', false),
       supabaseAdmin.from('profiles').select('calorie_range_rest_min, calorie_range_rest_max, weekly_calorie_budget').eq('id', userId).maybeSingle(),
-      supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max').eq('user_id', userId).eq('date', today).limit(1).maybeSingle(),
+      supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max').eq('user_id', userId).eq('date', day).order('version', { ascending: false }).limit(1).maybeSingle(),
     ]);
     const logs = (logsRes.data ?? []) as { id: string; logged_for_date: string }[];
     const dayOf = new Map(logs.map((l) => [l.id, l.logged_for_date]));
@@ -422,7 +445,7 @@ export async function getBudgetSnapshot(userId: string, effectiveToday?: string)
       for (const i of (items ?? []) as { meal_log_id: string; calories: number | null }[]) {
         const c = Number(i.calories) || 0;
         weeklyConsumed += c;
-        if (dayOf.get(i.meal_log_id) === today) todayConsumed += c;
+        if (dayOf.get(i.meal_log_id) === day) todayConsumed += c;
       }
     }
     const prof = profRes.data as Record<string, number | null> | null;
@@ -434,8 +457,9 @@ export async function getBudgetSnapshot(userId: string, effectiveToday?: string)
     return {
       todayConsumed, dailyTarget, dailyRemaining: dailyTarget - todayConsumed,
       weeklyBudget, weeklyConsumed, weeklyRemaining: weeklyBudget != null ? weeklyBudget - weeklyConsumed : null,
-      daysLeftInWeek: 7 - mondayOffset,
-      unloggedPastDays: mondayOffset - new Set(logs.map((l) => l.logged_for_date).filter((x) => x < today)).size,
+      daysLeftInWeek: 7 - pastDays,
+      unloggedPastDays: pastDays - new Set(logs.map((l) => l.logged_for_date).filter((x) => x < today)).size,
+      ...(day !== today && target ? { dayLabel: target.label, day, laterWeek } : {}),
     };
   } catch {
     return null;
@@ -443,11 +467,18 @@ export async function getBudgetSnapshot(userId: string, effectiveToday?: string)
 }
 
 export function renderBudgetSnapshot(b: BudgetSnapshot): string {
+  // diff#4: a future-day what-if gets THAT day's numbers, announced as such — "bu sayilari kullan"
+  // with today's leftover skewed the prose exactly like the card.
+  const dayLine = b.dayLabel
+    ? `SORU BUGUN HAKKINDA DEGIL — ${b.dayLabel} (${b.day}) icin: o gunun hedefi ${b.dailyTarget} kcal | o gune kayitli: ${b.todayConsumed} kcal | o gun kalan: ${b.dailyRemaining} kcal. Bugun yenileni bu hesaba KATMA.`
+    : `Bugun yenilen: ${b.todayConsumed} kcal | Gunluk hedef: ${b.dailyTarget} kcal | Gunluk kalan: ${b.dailyRemaining} kcal`;
   return [
     'BUTCE (SUNUCU — KESIN; bu sayilari kullan, kendin hesaplama):',
-    `Bugun yenilen: ${b.todayConsumed} kcal | Gunluk hedef: ${b.dailyTarget} kcal | Gunluk kalan: ${b.dailyRemaining} kcal`,
+    dayLine,
     b.weeklyBudget != null && b.unloggedPastDays > 0
       ? `Haftalik butce: ${b.weeklyBudget} kcal | Bu haftanin ${b.unloggedPastDays} gunu KAYITSIZ — haftalik kalan BILINMIYOR; haftalik kalan/marjin sayisi VERME`
+      : b.weeklyBudget != null && b.laterWeek
+      ? `Haftalik butce: ${b.weeklyBudget} kcal | ${b.dayLabel} YENI haftaya dusuyor — o haftanin butcesi henuz el degmemis: ${b.weeklyRemaining} kcal (7 gun); bu haftanin kalanini kullanma`
       : b.weeklyBudget != null
       ? `Haftalik butce: ${b.weeklyBudget} kcal | Bu hafta yenilen (bugun dahil): ${b.weeklyConsumed} kcal | Haftalik kalan: ${b.weeklyRemaining} kcal | Haftanin kalan gunu (bugun dahil): ${b.daysLeftInWeek}`
       : 'Haftalik butce: tanimli degil (haftalik etki icin sayi uydurma)',
@@ -458,17 +489,28 @@ export function renderBudgetSnapshot(b: BudgetSnapshot): string {
 export function simulationNumbers(b: BudgetSnapshot, calories: number): { remaining: number; weeklyImpact: string } {
   const fmt = (n: number) => Math.round(n).toLocaleString('tr-TR');
   const remaining = Math.round(b.dailyRemaining - calories);
+  // diff#4: a future-day what-if speaks about THAT day, never "bugün".
+  const label = b.dayLabel;
+  const cap = (s: string) => s.charAt(0).toLocaleUpperCase('tr') + s.slice(1);
   let weeklyImpact: string;
   if (b.weeklyRemaining != null && b.unloggedPastDays > 0) {
     // Unlogged days are unknown intake, not zero: "14.913 kcal kalır" for a Sunday was a fiction.
-    weeklyImpact = `Bu hafta ${b.unloggedPastDays} gün kayıtsız, haftalık etki hesaplanamadı; bugün ${remaining >= 0 ? `${fmt(remaining)} kcal kalır` : `hedefi ${fmt(-remaining)} kcal aşar`}.`;
+    weeklyImpact = `Bu hafta ${b.unloggedPastDays} gün kayıtsız, haftalık etki hesaplanamadı; ${label ? `${label} için` : 'bugün'} ${remaining >= 0 ? `${fmt(remaining)} kcal kalır` : `hedefi ${fmt(-remaining)} kcal aşar`}.`;
   } else if (b.weeklyRemaining == null) {
-    weeklyImpact = remaining >= 0
+    weeklyImpact = label
+      ? (remaining >= 0
+        ? `Haftalık bütçe tanımlı değil; ${label} için ${fmt(remaining)} kcal kalır.`
+        : `Haftalık bütçe tanımlı değil; ${label} için günlük hedefi ${fmt(-remaining)} kcal aşar.`)
+      : remaining >= 0
       ? `Haftalık bütçe tanımlı değil; bugün ${fmt(remaining)} kcal kalır.`
       : `Haftalık bütçe tanımlı değil; bugünkü hedefi ${fmt(-remaining)} kcal aşar.`;
   } else {
     const after = b.weeklyRemaining - calories;
-    weeklyImpact = after >= 0
+    weeklyImpact = label && b.laterWeek
+      ? (after >= 0
+        ? `${cap(label)} yeni haftaya düşüyor; o haftanın bütçesinde ${fmt(after)} kcal kalır.`
+        : `${cap(label)} yeni haftaya düşüyor; o haftanın bütçesini ${fmt(-after)} kcal aşar.`)
+      : after >= 0
       ? `Haftalık bütçende ${fmt(after)} kcal kalır (haftanın kalan ${b.daysLeftInWeek} günü için).`
       : `Haftalık bütçeyi ${fmt(-after)} kcal aşar.`;
   }
@@ -1166,6 +1208,30 @@ export async function getTravelContext(userId: string, clientTimezone?: string):
   }
 }
 
+/**
+ * final2#16: the target clause of the "BUGÜN ALINAN" line. With a plan row the verdict follows the
+ * PLAN band and the plan's protein (what the daily report scores against): "Kalori aralığının
+ * içindesin" at 2001 kcal against a 2003 plan floor came from the profile band. No plan → the old
+ * profile-midpoint wording.
+ */
+export function intakeTargetNote(
+  kcal: number, proteinG: number,
+  planBand: { min: number; max: number } | null, planProtein: number | null, fallbackMid: number | null,
+): string {
+  const bits: string[] = [];
+  if (planBand) {
+    const pos = kcal < planBand.min ? `alt sınıra ${planBand.min - kcal} kcal var`
+      : kcal > planBand.max ? `üst sınırı ${kcal - planBand.max} kcal aştı` : 'aralığın içinde';
+    bits.push(`plan aralığı ${planBand.min}-${planBand.max} kcal, ${pos}`);
+  } else if (fallbackMid) {
+    bits.push(`hedef ~${fallbackMid}, kalan ~${Math.max(0, fallbackMid - kcal)}`);
+  }
+  if (planProtein) {
+    bits.push(`protein hedefi ${planProtein}g, ${proteinG >= planProtein ? 'ulaşıldı' : `kalan ${planProtein - proteinG}g`}`);
+  }
+  return bits.length > 0 ? ` (${bits.join(' | ')})` : '';
+}
+
 // ─────────────────────────────────────────────
 // SITUATIONAL SNAPSHOT — "who is this person, right now"
 // ─────────────────────────────────────────────
@@ -1192,7 +1258,7 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
       supabaseAdmin.from('life_events').select('title, event_type, event_date').eq('user_id', userId).eq('is_active', true).gte('event_date', (effectiveToday ?? new Date().toISOString().split('T')[0])).order('event_date', { ascending: true }).limit(1),
       // #arch S1: the CHAT coach was structurally plan-blind — it never read daily_plans, so it
       // couldn't reference today's actual plan when the user asks "bugün ne yesem?". Load it here.
-      supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, focus_message, plan_type').eq('user_id', userId).eq('date', (effectiveToday ?? new Date().toISOString().split('T')[0])).order('version', { ascending: false }).limit(1).maybeSingle(),
+      supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, protein_target_g, focus_message, plan_type').eq('user_id', userId).eq('date', (effectiveToday ?? new Date().toISOString().split('T')[0])).order('version', { ascending: false }).limit(1).maybeSingle(),
       // AI-behaviour #5 (ONE coach, ONE memory): ai-proactive pushes 20+ user-visible nudges into
       // coaching_messages, and the CHAT coach never read them — so it would push an offer, the user
       // would tap "Evet", and the coach had no idea which offer existed. Its own words are now part
@@ -1253,13 +1319,20 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
     }
 
     // #arch S1: today's active plan — the coach can now coach AGAINST its own plan.
-    const plan = planRes?.data as { calorie_target_min: number | null; calorie_target_max: number | null; focus_message: string | null; plan_type: string | null } | null | undefined;
-    if (plan && (plan.calorie_target_min || plan.focus_message)) {
-      const tgt = plan.calorie_target_min && plan.calorie_target_max ? `${plan.calorie_target_min}-${plan.calorie_target_max} kcal` : '';
+    const plan = planRes?.data as { calorie_target_min: number | null; calorie_target_max: number | null; protein_target_g: number | null; focus_message: string | null; plan_type: string | null } | null | undefined;
+    // final2#16: the day's plan is the ONE target source (the daily report scores against it). The
+    // chat only saw the profile's g/kg protein and rest band, so it said "25 g gerisindesin" against
+    // 141 g while the report said 29 g against the plan's 135 g.
+    const planProtein = Number(plan?.protein_target_g) > 0 ? Math.round(Number(plan!.protein_target_g)) : null;
+    const planBand = plan?.calorie_target_min && plan?.calorie_target_max
+      ? { min: Number(plan.calorie_target_min), max: Number(plan.calorie_target_max) } : null;
+    if (plan && (plan.calorie_target_min || plan.focus_message || planProtein)) {
+      const tgt = planBand ? `${planBand.min}-${planBand.max} kcal` : '';
+      const pro = planProtein ? `protein ${planProtein}g` : '';
       // focus_message is free text written when the plan was projected; it can quote calorie/TDEE
       // figures from an OLDER band. The structured target is the only number source.
       const focus = plan.focus_message && !/(tdee|\d{3,4}\s*(kcal|kalori))/i.test(plan.focus_message) ? plan.focus_message : null;
-      lines.push(`BUGÜNKÜ PLAN: ${[tgt, focus].filter(Boolean).join(' | ')}`);
+      lines.push(`BUGÜNKÜ PLAN${tgt || pro ? ' (bugünün hedefi BU — profildeki aralık/g-kg değil)' : ''}: ${[tgt, pro, focus].filter(Boolean).join(' | ')}`);
     }
 
     // #arch step 12: repair propagation surfaces here. If a belief change (new diet/allergen/dislike)
@@ -1300,7 +1373,9 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
     // Today's intake
     const reports = (reportsRes.data ?? []) as { date: string; calorie_actual: number; compliance_score: number }[];
     const todayRep = reports.find(r => r.date === today);
-    const targetMid = p.calorie_range_rest_min && p.calorie_range_rest_max
+    // final2#16: the plan band wins; the profile rest band is only the fallback when no plan exists.
+    const targetMid = planBand ? Math.round((planBand.min + planBand.max) / 2)
+      : p.calorie_range_rest_min && p.calorie_range_rest_max
       ? Math.round(((p.calorie_range_rest_min as number) + (p.calorie_range_rest_max as number)) / 2) : null;
     const todayLogs = (todayMealsRes.data ?? []) as { meal_log_items: { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null }[] | null }[];
     if (todayLogs.length > 0) {
@@ -1310,7 +1385,7 @@ export async function getSituationalSnapshot(userId: string, effectiveToday?: st
         sum.c += Number(it.carbs_g) || 0; sum.f += Number(it.fat_g) || 0;
       }
       const kcal = Math.round(sum.kcal);
-      lines.push(`BUGÜN ALINAN (kayıtlı ${todayLogs.length} öğünün kalemlerinden — KESİN): ${kcal} kcal | protein ${Math.round(sum.p)}g, karb ${Math.round(sum.c)}g, yağ ${Math.round(sum.f)}g${targetMid ? ` (hedef ~${targetMid}, kalan ~${Math.max(0, targetMid - kcal)})` : ''}. Günlük toplam sorulursa YALNIZCA bu rakamı söyle; öğünlerden yeniden hesaplama, "sapma olabilir" deme.`);
+      lines.push(`BUGÜN ALINAN (kayıtlı ${todayLogs.length} öğünün kalemlerinden — KESİN): ${kcal} kcal | protein ${Math.round(sum.p)}g, karb ${Math.round(sum.c)}g, yağ ${Math.round(sum.f)}g${intakeTargetNote(kcal, Math.round(sum.p), planBand, planProtein, targetMid)}. Günlük toplam sorulursa YALNIZCA bu rakamı söyle; öğünlerden yeniden hesaplama, "sapma olabilir" deme.`);
     } else if (todayRep && todayRep.calorie_actual > 0) {
       lines.push(`BUGÜN: ~${Math.round(todayRep.calorie_actual)} kcal${targetMid ? ` (hedef ~${targetMid})` : ''}`);
     } else {
@@ -1609,7 +1684,10 @@ export async function getAllServiceContexts(
   }
   let simulation: ServiceContexts['simulation'] = { prompt: '', budget: null };
   if (taskMode === 'simulation') {
-    const budget = await getBudgetSnapshot(userId, options?.effectiveToday);
+    // diff#4: "yarın akşam pizza yesem?" is measured against TOMORROW's target and week, not today's
+    // leftover. The card rewrite in ai-chat uses this same snapshot, so card and prose agree.
+    const simToday = await resolveEffectiveToday(userId, options?.effectiveToday);
+    const budget = await getBudgetSnapshot(userId, simToday, simulationTargetDay(options?.message ?? '', simToday));
     if (budget) simulation = { prompt: `## SIMULASYON BUTCESI\n${renderBudgetSnapshot(budget)}\nKarttaki remaining ve weeklyImpact sunucuda bu sayilardan yeniden hesaplanir; yazida da ayni sayilari kullan.`, budget };
   }
 

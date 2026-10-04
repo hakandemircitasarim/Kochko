@@ -377,6 +377,17 @@ export default function TodayScreen() {
     setCoachingMessages(prev => prev.filter(m => !hideIds.has(m.id)));
   }, [totalCalories, meals, coachingMessages]);
 
+  // diff#6: bugün tartı girildiyse "N gündür tartı kaydı yok" kartı bayattır. Yazım yolları
+  // sunucuda okundu işaretliyor; tartı ekranından dönünce odak yenilemesi (<60 sn) atlandığı
+  // için ekranda kalan kopyayı burada düşür.
+  useEffect(() => {
+    if (weightKg == null || coachingMessages.length === 0) return;
+    const stale = coachingMessages.filter(m => m.trigger_type === 'weight_reminder');
+    if (stale.length === 0) return;
+    for (const m of stale) markMessageRead(m.id);
+    setCoachingMessages(prev => prev.filter(m => m.trigger_type !== 'weight_reminder'));
+  }, [weightKg, coachingMessages]);
+
   // ── TEK BİLDİRİM YUVASI bayrakları (ux-defect pass): dismissable bildirimler tek yuvada,
   // öncelik: streak-risk (bugün kritik) > streak-reset > haftalık özet > koç nudge'ı.
   // Kapatmalar güne-kalıcı (src/lib/dismissals.ts); biri kapanınca sıradaki görünür.
