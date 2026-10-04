@@ -141,6 +141,10 @@ const EXPLAIN_RE =
 const REVISE_RE =
   /(de[ğg]i[şs]tir|ba[şs]ka|olmas[ıi]n|sevmiyorum|yerine|ekle|[çc][ıi]kar|azalt|artt?[ıi]r|yenile|g[üu]ncelle|olmaz|istemiyorum)/i;
 
+/** An explicit request for a (new) plan — with a draft open this means "regenerate", not "explain". */
+const GENERATE_RE =
+  /(haz[ıi]rla|olu[şs]tur|yeni (bir )?(plan|liste|men[üu]|program)|ba[şs]tan|yeniden (yap|haz[ıi]rla|olu[şs]tur)|tekrar (yap|haz[ıi]rla))/i;
+
 export function classifyPlanIntent(
   message: string | null | undefined,
   hasActiveDraft: boolean,
@@ -150,7 +154,7 @@ export function classifyPlanIntent(
   const m = (message ?? '').toLocaleLowerCase('tr');
   if (!m.trim()) return hasActiveDraft ? 'explain' : 'generate';
   // Order matters: "kahvaltıyı neden yumurta yaptın, değiştir" is a revision, not a question.
-  if (hasActiveDraft && REVISE_RE.test(m)) return 'revise';
+  if (hasActiveDraft && (REVISE_RE.test(m) || GENERATE_RE.test(m))) return 'revise';
   if (hasActiveDraft && EXPLAIN_RE.test(m)) return 'explain';
   // With a draft open, a message that asks for no change is conversation about the plan, not a
   // change request. Defaulting to 'revise' regenerated (and overwrote) the whole 7-day draft on

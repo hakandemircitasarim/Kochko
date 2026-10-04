@@ -175,3 +175,10 @@ Deno.test('routing fixes measured live 2026-10-04', () => {
   assertEquals(detectTaskMode('öğlen 1 kase yulaf yedim', false), 'register');
   assertEquals(detectTaskMode('çok yedim bugün', false), 'recovery');
 });
+
+
+Deno.test('with a draft open, an explicit new-plan request regenerates (not explain)', () => {
+  assertEquals(classifyPlanIntent('bana yeni bir haftalık diyet listesi hazırla', true), 'revise');
+  assertEquals(classifyPlanIntent('planı baştan oluştur', true), 'revise');
+  assertEquals(classifyPlanIntent('peki neden 1900 kalori?', true), 'explain');
+});
