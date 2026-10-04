@@ -8,7 +8,7 @@ import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
 import { edgeHeaders } from '@/lib/edgeHeaders';
 import { getEffectiveDate } from '@/lib/day-boundary';
-import { deriveNutritionTargets } from '@/lib/nutrition-targets';
+import { deriveNutritionTargets, type PlanTargetOverrides } from '@/lib/nutrition-targets';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ComplianceScore } from '@/components/reports/ComplianceScore';
@@ -70,14 +70,23 @@ export default function DailyReportScreen() {
   // FIX (ux-round2 #6): the report showed bare actuals ('1850 kcal') with no target, so a green/red
   // tick had no "how close was I" context. Derive the current targets (the row doesn't store them —
   // an approximation if the band changed since, but the met-boolean stays authoritative).
-  const targets = deriveNutritionTargets(profile, { calorieMin: null, calorieMax: null, proteinG: null, carbsG: null, fatG: null });
+  // final2#16: that day's PLAN targets first — ai-report scores against them; the profile band and
+  // g/kg protein showed "/ 141 g" beside a report that said 135 g. Profile only when no plan row.
+  const [planTargets, setPlanTargets] = useState<PlanTargetOverrides | null>(null);
+  const targets = deriveNutritionTargets(profile, planTargets);
 
   const loadReport = useCallback(async () => {
     if (!user?.id) return;
     setLoading(true);
     setError(false);
     try {
-      const { data, error: loadError } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', reportDate).single();
+      const pos = (v: unknown) => (Number(v) > 0 ? Number(v) : null);
+      const [{ data, error: loadError }, { data: planRow }] = await Promise.all([
+        supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', reportDate).single(),
+        supabase.from('daily_plans').select('calorie_target_min, calorie_target_max, protein_target_g')
+          .eq('user_id', user.id).eq('date', reportDate).order('version', { ascending: false }).limit(1).maybeSingle(),
+      ]);
+      setPlanTargets(planRow ? { calorieMin: pos(planRow.calorie_target_min), calorieMax: pos(planRow.calorie_target_max), proteinG: pos(planRow.protein_target_g) } : null);
       // FIX (ux-pass5): supabase-js never rejects — failures resolve as { data: null, error }, so the
       // catch below never fired and an offline open showed "Rapor henüz oluşturulmamış." over an
       // existing report. PGRST116 (.single() with 0 rows) is the legit "rapor yok" case, not a failure.
@@ -164,7 +173,7 @@ export default function DailyReportScreen() {
             {/* FIX (adversarial-review): proteinG ALWAYS falls back to 120 (deriveNutritionTargets),
                 so `proteinG > 0` never hides it — a fabricated '/ 120 g' could contradict the
                 authoritative met-tick. Only show the target when the user has real protein data. */}
-            <CheckItem label="Protein" met={report.protein_target_met} detail={(profile?.protein_per_kg && profile?.weight_kg) ? `${report.protein_actual} / ${targets.proteinG} g` : `${report.protein_actual}g`} />
+            <CheckItem label="Protein" met={report.protein_target_met} detail={(planTargets?.proteinG || (profile?.protein_per_kg && profile?.weight_kg)) ? `${report.protein_actual} / ${targets.proteinG} g` : `${report.protein_actual}g`} />
             <CheckItem label="Antrenman" met={report.workout_completed} />
             <CheckItem label="Su" met={report.water_target_met ?? false} />
           </Card>

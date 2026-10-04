@@ -175,8 +175,8 @@ async function buildLayer1Scoped(userId: string, plan: RetrievalPlan): Promise<s
     if (p.meal_prep_active) kitchenItems.push(`Meal prep: ${p.meal_prep_days?.join(', ') ?? 'aktif'}`);
     if (kitchenItems.length > 0) parts.push(`\n## MUTFAK\n${kitchenItems.join('\n')}`);
 
-    // Calorie targets
-    parts.push(`\n## KALORI\nAntrenman gunu: ${p.calorie_range_training_min ?? '?'}-${p.calorie_range_training_max ?? '?'} kcal`);
+    // Calorie targets — final2#16: these are the PROFILE defaults; a day's plan (BUGÜNKÜ PLAN) overrides them.
+    parts.push(`\n## KALORI (profil varsayilani — bugunun hedefi BUGUNKU PLAN satirinda, varsa o gecerli)\nAntrenman gunu: ${p.calorie_range_training_min ?? '?'}-${p.calorie_range_training_max ?? '?'} kcal`);
     parts.push(`Dinlenme gunu: ${p.calorie_range_rest_min ?? '?'}-${p.calorie_range_rest_max ?? '?'} kcal`);
     parts.push(`Protein: ${p.protein_per_kg ?? '?'}g/kg (${p.weight_kg && p.protein_per_kg ? Math.round(p.weight_kg * p.protein_per_kg) : '?'}g)`);
     parts.push(`Su: ${p.water_target_liters ?? '?'}L${p.step_target ? ` | Adim hedefi: ${p.step_target}` : ''}`);
@@ -724,6 +724,22 @@ async function buildLayer3Scoped(userId: string, plan: RetrievalPlan, effectiveT
   return formatLayer3(data, today, detailLevel, daysBack);
 }
 
+/**
+ * final2#7: the report whose tomorrow_action the coach follows up today. A report dated D carries the
+ * step for D+1, so only reports from the last two days BEFORE today qualify (yesterday's = today's
+ * step, the day before = yesterday's). Today's report is tomorrow's step; older ones are stale.
+ */
+export function pickFollowUpAction<T extends { date: string; tomorrow_action: string | null }>(
+  reports: T[], today: string,
+): (T & { tomorrow_action: string }) | null {
+  const oldest = shiftDateString(today, -2);
+  const hit = [...reports]
+    .filter(r => r.date < today && r.date >= oldest)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .find(r => typeof r.tomorrow_action === 'string' && r.tomorrow_action.trim() && r.tomorrow_action.trim() !== '-');
+  return (hit as T & { tomorrow_action: string }) ?? null;
+}
+
 function formatLayer3(
   data: Record<string, unknown[]>,
   today: string,
@@ -830,9 +846,11 @@ function formatLayer3(
     // daily_reports.tomorrow_action every night, SELECTs it into Layer 3 and then never renders it —
     // so the coach was blind to its own prescription the next morning and could never close the loop.
     // Surface the most recent real one at ANY detail level.
-    const lastAction = [...reports].reverse().find(r => typeof r.tomorrow_action === 'string' && r.tomorrow_action.trim() && r.tomorrow_action.trim() !== '-');
+    // final2#7: only a report dated BEFORE today — today's own report holds the step for TOMORROW,
+    // and the coach was asking "dün konuştuğumuz X'i yaptın mı?" about it every turn that evening.
+    const lastAction = pickFollowUpAction(reports, today);
     if (lastAction) {
-      parts.push(`\n## DUNKU AKSIYON (senin verdigin tek adim — bugun BUNU sor/takip et, yenisini vermeden once)\n${lastAction.date.slice(5)}: ${lastAction.tomorrow_action.trim()}`);
+      parts.push(`\n## DUNKU AKSIYON (senin verdigin tek adim — once kullanicinin sorusunu cevapla; bu konusmada sormadiysan BIR KEZ, kisaca sor/takip et)\n${lastAction.date.slice(5)} raporu (adimin gunu ${shiftDateString(lastAction.date, 1).slice(5)}): ${lastAction.tomorrow_action.trim()}`);
     }
   }
 
