@@ -755,7 +755,12 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
     // the client refreshes the dashboard and shows it — before, only the prose said it happened.
     let correctionReverted: { type: string; label: string } | null = null;
     if (isCorrectionTurn) {
-      const reverted = await revertLastTurnWrite(userId, session_id ?? null);
+      // STOPGAP (2026-10-04, until the model picks the record by id): a free-text correction is
+      // about ANYTHING — an occupation, a water amount, a misunderstanding — yet this reverted the
+      // newest meal/workout/supplement regardless (live: a job correction deleted a coffee log). Only
+      // an explicit delete cue reverts ("Yanlış, düzelt" button text carries "son kaydı sil").
+      const explicitDelete = /(?<![\p{L}])(sil|geri al)(?![\p{L}])/u.test(message!.toLocaleLowerCase('tr'));
+      const reverted = explicitDelete ? await revertLastTurnWrite(userId, session_id ?? null) : null;
       if (reverted) console.log('[correction][reverted]', reverted.type, reverted.label.slice(0, 60));
       correctionReverted = reverted;
       correctionCtx = buildCorrectionContext(reverted);

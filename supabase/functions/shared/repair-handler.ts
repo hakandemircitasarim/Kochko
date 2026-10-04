@@ -87,8 +87,11 @@ export function detectRepairIntent(message: string): RepairDetection {
     }
   }
 
+  // Whole words/phrases only: a substring match counted "düzeltebilirim" / "düzeltmek" in an
+  // ordinary question as a correction, and correction turns used to revert the last record
+  // (live 2026-10-04: "uyku düzenimi nasıl düzeltebilirim?" deleted the meal logged a turn earlier).
   for (const phrase of REPAIR_PHRASES) {
-    if (lower.includes(phrase)) {
+    if (new RegExp(`(?<![\\p{L}])${phrase}(?![\\p{L}])`, 'u').test(lower)) {
       return { type: 'correction', confidence: 0.9, matchedPhrase: phrase };
     }
   }
@@ -200,6 +203,29 @@ export async function handleUndo(userId: string, intendedType: UndoTargetType | 
   // Sort by most recent
   candidates.sort((a, b) => new Date(b.logged_at).getTime() - new Date(a.logged_at).getTime());
   const target = candidates[0];
+
+  // STOPGAP (2026-10-04, until the model picks the record by id): "geri al" means the write that
+  // JUST happened. Without a window it deleted the newest row of all time — live: right after a
+  // water log (not undoable here) it removed a dinner logged 45 minutes earlier. logged_at is the
+  // insert time (DB default), so anything older than the window is not "the last thing I said".
+  // Tighter still: only rows written by the LAST turn. The undo message itself is not stored yet,
+  // so the newest user row is the previous turn's message; a meal logged before it belongs to an
+  // older turn (after "2 bardak su içtim", "geri al" must not take the meal logged one turn earlier).
+  const UNDO_WINDOW_MS = 15 * 60 * 1000;
+  const { data: lastUserRow } = await supabaseAdmin
+    .from('chat_messages').select('created_at')
+    .eq('user_id', userId).eq('role', 'user')
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  const lastTurnStart = lastUserRow?.created_at ? new Date(lastUserRow.created_at as string).getTime() - 5_000 : 0;
+  const windowStart = Math.max(Date.now() - UNDO_WINDOW_MS, lastTurnStart);
+  if (new Date(target.logged_at).getTime() < windowStart) {
+    return {
+      handled: true,
+      response: 'Son mesajında geri alabileceğim bir öğün, antrenman ya da takviye kaydı yok. Eski bir kaydı silmek istersen Bugün ekranından kaydın üzerinden silebilir ya da hangi kaydı kastettiğini yazabilirsin.',
+      undoneAction: null,
+      shouldContinueNormal: false,
+    };
+  }
 
   // Soft delete based on type
   let mutationError: unknown = null;
