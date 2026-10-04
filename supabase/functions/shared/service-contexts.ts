@@ -203,6 +203,31 @@ export async function getProgressiveDisclosureContext(userId: string): Promise<s
 // 3. RECOVERY CONTEXT (recovery.service.ts)
 // ─────────────────────────────────────────────
 
+/**
+ * diff#8: the two weekly lines of the recovery prompt follow ONE rule. weeklyRemaining is the budget
+ * minus the LOGGED days only, so an unlogged earlier day counts as 0 kcal and the remainder comes
+ * out too high — "Hafta kurtarilabilir: EVET" was printed from exactly the number the line above
+ * had just called BILINMIYOR. With an unknown week there is no weekly verdict at all.
+ */
+export function recoveryWeekLines(o: {
+  weeklyRemaining: number;
+  excess: number;
+  daysLeftInWeek: number;
+  severity: string;
+  unloggedPastDays: number;
+}): { weekLine: string; verdictLine: string } {
+  if (o.unloggedPastDays > 0) {
+    return {
+      weekLine: `Haftalik kalan: BILINMIYOR (bu haftanin ${o.unloggedPastDays} gunu kayitsiz — haftalik marjin sayisi verme) | Haftada ${o.daysLeftInWeek} gun kaldi`,
+      verdictLine: `Ciddiyet: ${o.severity}`,
+    };
+  }
+  return {
+    weekLine: `Haftalik kalan: ${o.weeklyRemaining} kcal | Haftada ${o.daysLeftInWeek} gun kaldi`,
+    verdictLine: `Ciddiyet: ${o.severity} | Hafta kurtarilabilir: ${o.weeklyRemaining > 0 || o.excess < 500 ? 'EVET' : 'HAYIR'}`,
+  };
+}
+
 export async function getRecoveryContext(userId: string, effectiveToday?: string): Promise<string> {
   try {
     // FIX (audit AI/HIGH): user-effective day, not raw UTC.
@@ -272,13 +297,13 @@ export async function getRecoveryContext(userId: string, effectiveToday?: string
     // Unlogged earlier days are unknown intake, not zero — "haftalık bütçende hala X marjin var" off
     // a mostly-empty week is a promise the data can't back.
     const snap = await getBudgetSnapshot(userId, today);
-    const weekLine = snap && snap.unloggedPastDays > 0
-      ? `Haftalik kalan: BILINMIYOR (bu haftanin ${snap.unloggedPastDays} gunu kayitsiz — haftalik marjin sayisi verme) | Haftada ${daysLeftInWeek} gun kaldi`
-      : `Haftalik kalan: ${weeklyRemaining} kcal | Haftada ${daysLeftInWeek} gun kaldi`;
+    const { weekLine, verdictLine } = recoveryWeekLines({
+      weeklyRemaining, excess, daysLeftInWeek, severity, unloggedPastDays: snap?.unloggedPastDays ?? 0,
+    });
     return `## KURTARMA MODU AKTIF
 Bugunun fazlasi: ${excess} kcal | Toplam bugun: ${todayCalories} kcal | Hedef: ${dailyTarget} kcal
 ${weekLine}
-Ciddiyet: ${severity} | Hafta kurtarilabilir: ${weeklyRemaining > 0 || excess < 500 ? 'EVET' : 'HAYIR'}
+${verdictLine}
 Son 30 gunde recovery: ${recoveryCount ?? 0} kez
 
 KURALLAR:

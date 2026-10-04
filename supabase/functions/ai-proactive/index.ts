@@ -155,7 +155,10 @@ serve(async (req: Request) => {
                 band: { restMin: rrMin, restMax: rrMax, trainingMin: tMin, trainingMax: tMax, weeklyBudget: budget },
                 source: 'proactive_recalc',
                 reason: `Haftalık roll-forward: TDEE ${tdee} kcal @ ${curW}kg (hedef ${gType})`,
-                profileExtras: { tdee_calculated: tdee, tdee_last_weight: curW, tdee_last_date: today },
+                // mem#5: the TDEE itself is a measurement and is stored even on a refusal; only the
+                // retry stamps stay stale.
+                baselineExtras: { tdee_calculated: tdee },
+                profileExtras: { tdee_last_weight: curW, tdee_last_date: today },
               });
               if (adj.ok && adj.allowed) { rMin = adj.newRestMin ?? rrMin; rMax = adj.newRestMax ?? rrMax; }
             }
