@@ -16,7 +16,12 @@ const BASE = (Deno.env.get('OPENAI_BASE_URL') ?? 'https://api.openai.com/v1').re
 const SR = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
 serve(async (req) => {
-  if ((req.headers.get('Authorization') ?? '') !== `Bearer ${SR}` || !SR) return new Response('forbidden', { status: 403 });
+  // verify_jwt is ON for this function (not listed in config.toml), so the gateway has already
+  // checked the signature; here we only require that the verified token is the service role.
+  const tok = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  let role = '';
+  try { role = JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).role ?? ''; } catch { /* not a JWT */ }
+  if (role !== 'service_role' && !(SR && tok === SR)) return new Response('forbidden', { status: 403 });
   const { user_id, message, mode, model, effort, max_tokens } = await req.json();
   const analysis = analyzeMessage(message, mode as TaskMode);
   const plan = getRetrievalPlan(analysis);

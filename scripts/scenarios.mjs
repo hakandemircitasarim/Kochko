@@ -81,12 +81,14 @@ const SCENARIOS = [
   {
     id: 'S3-internal-instruction-leak',
     finding: 'EYLEM-05',
-    status: 'pending',
+    // ENFORCED 2026-10-04: the receipt now carries a user-facing sentence (ai-chat, 421fdbb, live
+    // since 04:15 UTC). Historic rows before the fix stay in the archive, so the window starts there.
+    status: 'enforced',
     owner: 'F2 · A5',
     why: 'An instruction addressed to the MODEL ("NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste.") is pushed into the meal receipt and rendered verbatim to the user.',
     corpus: `select count(*)::int as n from chat_messages where created_at > now() - interval '90 days'`,
     query: `select count(*)::int as n from chat_messages
-            where created_at > now() - interval '90 days'
+            where created_at > timestamptz '2026-10-04 04:15:00+00'
               and (content like '%Dusuk guvenli tahmin%' or content like '%Düşük güvenli tahmin — kullanıcıdan%')`,
     expect: 0,
   },

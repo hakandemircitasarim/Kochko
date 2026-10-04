@@ -1153,6 +1153,15 @@ serve(async (req: Request) => {
                 console.error('[phase-advance] atomic swap failed', swapErr?.message);
               } else {
                 maintenanceInfo += ` | FAZ GECISI: Sonraki faz aktif edildi: ${nextPhase.phase_label ?? nextPhase.goal_type}`;
+                // The swap rewrites the user's goal (and, below, their calorie band). The only notice
+                // used to be this TETIK line for the LLM nudge — which the dormancy/evidence gates can
+                // legitimately skip. A target change is a RECEIPT, not a nudge: always tell the user.
+                await insertCoachingMessage({
+                  user_id: profile.id,
+                  trigger_type: 'phase_advanced',
+                  priority: 'medium',
+                  content: `Hedefine ulaştın, tebrikler! Planındaki sonraki aşamaya geçtim: ${nextPhase.phase_label ?? nextPhase.goal_type}. Kalori hedefin önümüzdeki 7 gün kademeli olarak yeni aşamaya göre ayarlanacak.`,
+                });
               }
 
               // Gradual 7-day calorie transition (ONLY when the atomic swap actually advanced
@@ -2404,7 +2413,7 @@ const TRIGGER_TO_PREF: Record<string, string> = {
  *  NOT nudges — they must neither consume the coaching budget nor be blocked by it. */
 const RECEIPT_TRIGGERS = new Set([
   'caffeine_water_bump', 'tdee_recalculated', 'activity_level_recalibrated',
-  'maintenance_auto_started', 'plan_projected',
+  'maintenance_auto_started', 'plan_projected', 'phase_advanced',
 ]);
 
 /** Honest per-request nudge tallies (reset at the top of the handler). */

@@ -27,7 +27,10 @@ const FUNCTION_REGION = process.env.EXPO_PUBLIC_SUPABASE_FUNCTION_REGION || 'ap-
  * Kept deliberately tiny: no device id, no locale, nothing that turns a debugging aid into a
  * tracking surface.
  */
-export function edgeHeaders(): Record<string, string> {
+export function edgeHeaders(opts: { pinRegion?: boolean } = {}): Record<string, string> {
   const version = (Constants.expoConfig?.version as string | undefined) ?? 'unknown';
+  // Pinning disables Supabase's own failover to another region. Callers with a retry loop pass
+  // pinRegion:false on their LAST attempt, so a regional outage costs latency, not the reply.
+  if (opts.pinRegion === false) return { 'x-app-version': version };
   return { 'x-app-version': version, 'x-region': FUNCTION_REGION };
 }

@@ -7,6 +7,7 @@
  * Weekly: weight trend, compliance avg, budget uyumu, strategy, plan revision.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { withCors } from '../shared/cors.ts';
 import { chatCompletion, TEMPERATURE, EFFORT } from '../shared/openai.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
 import { writeTurnLog } from '../shared/turn-log.ts';
@@ -97,7 +98,7 @@ JSON formatinda:
 Kullaniciya gorunen her metin alani (yorumlar, tomorrow_action, ozet) su ses kurallarina uyar:
 ${VOICE_RULES}`;
 
-serve(async (req: Request) => {
+serve(withCors(async (req: Request) => {
   try {
     const userId = await getUserId(req);
     const { report_type, date, force } = await req.json();
@@ -117,7 +118,7 @@ serve(async (req: Request) => {
   } catch (err) {
     return respond({ error: (err as Error).message }, 500);
   }
-});
+}));
 
 /**
  * Server-side report cache (cost control): every authed JWT could previously

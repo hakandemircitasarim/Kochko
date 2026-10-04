@@ -232,8 +232,10 @@ async function invokeChat(
     // request may continue, but the UI unblocks — and a second attempt won't
     // be queued past the retry loop below.
     let timedOut = false;
+    // Final attempt goes unpinned: if the pinned region is what is failing, let Supabase route it.
+    const pinRegion = attempt < maxRetries;
     const result = await Promise.race([
-      supabase.functions.invoke('ai-chat', { body, headers: edgeHeaders() }),
+      supabase.functions.invoke('ai-chat', { body, headers: edgeHeaders({ pinRegion }) }),
       new Promise<{ data: unknown; error: { message: string } }>((resolve) =>
         setTimeout(() => {
           timedOut = true;

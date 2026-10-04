@@ -6,6 +6,7 @@
  * Called when user requests plan or on morning schedule.
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { withCors } from '../shared/cors.ts';
 import { chatCompletion, TEMPERATURE, EFFORT } from '../shared/openai.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2 } from '../shared/memory.ts';
@@ -129,7 +130,7 @@ JSON formati:
 Kullaniciya gorunen her metin (ogun/egzersiz notlari, aciklamalar) su ses kurallarina uyar:
 ${VOICE_RULES}`;
 
-serve(async (req: Request) => {
+serve(withCors(async (req: Request) => {
   try {
     const userId = await getUserId(req);
     const today = new Date().toISOString().split('T')[0];
@@ -874,7 +875,7 @@ serve(async (req: Request) => {
   } catch (err) {
     return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
   }
-});
+}));
 
 /**
  * Generate a 7-day weekly plan with shopping list.

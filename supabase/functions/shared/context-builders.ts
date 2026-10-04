@@ -526,8 +526,13 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
         const r = Number(v?.last_reps);
         if (Number.isFinite(oneRm) && oneRm > 0) return `${k}: 1RM=${oneRm}kg`;
         if (Number.isFinite(w) && w > 0 && Number.isFinite(r) && r > 0) {
-          return `${k}: son ${w}kg x ${r} (tahmini 1RM ~${Math.round(w * (1 + r / 30))}kg)`;
+          // Epley is only meaningful for low-to-moderate reps; past ~12 it overestimates badly.
+          return r <= 12
+            ? `${k}: son ${w}kg x ${r} (tahmini 1RM ~${Math.round(w * (1 + r / 30))}kg)`
+            : `${k}: son ${w}kg x ${r}`;
         }
+        // Bodyweight movements (barfiks, şınav) carry reps but no load.
+        if (Number.isFinite(r) && r > 0) return `${k}: son ${r} tekrar (vucut agirligi)`;
         return null;
       }).filter(Boolean);
       if (lines.length > 0) parts.push(`## GUC KAYITLARI\n${lines.join(', ')}`);
