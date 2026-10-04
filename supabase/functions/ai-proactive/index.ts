@@ -72,7 +72,7 @@ serve(async (req: Request) => {
 
     const { data: profiles } = await supabaseAdmin
       .from('profiles')
-      .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone, day_boundary_hour, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length')
+      .select('id, gender, night_eating_habit, coach_tone, if_active, if_eating_start, if_eating_end, periodic_state, periodic_state_start, periodic_state_end, push_token, notification_prefs, weekly_calorie_budget, wake_time, sleep_time, work_start, home_timezone, active_timezone, day_boundary_hour, menstrual_tracking, menstrual_last_period_start, menstrual_cycle_length, created_at')
       .eq('onboarding_completed', true)
       .order('id'); // #L19: stable order so the rotating window below covers the whole fleet
 
@@ -1394,10 +1394,14 @@ serve(async (req: Request) => {
       // (333 messages in 14 days, 0 read) — the free-text trigger label changed wording each time,
       // so no dedupe ever matched. Skipping here removes the spam AND the cost; the deterministic
       // side effects computed above (phase advance, maintenance, reinforcement) have already run.
-      const hoursSinceActivity = Math.min(hoursSinceChat, hoursSinceMeal);
-      // 999 is the 'never logged anything' sentinel, not evidence of silence: a just-onboarded user
-      // with no chat/meal yet must still get nudges.
-      if (hoursSinceActivity >= 72 && hoursSinceActivity < 999) continue;
+      // Last activity = newest of (chat, meal) TIMESTAMPS; with neither, fall back to when the account
+      // was created. The first version took min() over the hour values, where 999 doubles as the "no
+      // row" sentinel — so anyone silent longer than 999 h (~41 days) read as 999, slipped past the
+      // gate and still got hourly LLM nudges ("2 gündür sessiz" sent to an account dormant since June).
+      const activityTimes = [lastMealRes.data?.logged_at, lastChatRes.data?.created_at, (profile as { created_at?: string | null }).created_at]
+        .map((t) => (t ? Date.parse(t as string) : NaN)).filter(Number.isFinite);
+      const hoursSinceActivity = activityTimes.length > 0 ? (now.getTime() - Math.max(...activityTimes)) / 3600000 : 0;
+      if (hoursSinceActivity >= 72) continue;
 
       // Cycle phase transition notification (Phase 3: Kadın kullanıcılara özel)
       let cycleTransitionInfo = '';
