@@ -137,7 +137,12 @@ export function selectModel(analysis: MessageAnalysis, hasImage: boolean, taskMo
       tier: 'smart',
       model: MODEL_CONFIG.smart.model,
       maxTokens: 8000,
-      effort: 'medium',
+      // Diet plans no longer DERIVE their numbers — the server hands over fixed calorie/protein/
+      // meal-count targets (shared/plan-targets.ts) and reconciles portions afterwards. Measured
+      // 2026-10-04: at 'medium' the model spent ~1,400 reasoning tokens re-deriving them (plan turn
+      // 36.7 s); the remaining judgement is menu composition, which 'low' handles. Workout plans keep
+      // 'medium' (load/volume against injury constraints is real deliberation).
+      effort: planMode === 'plan_diet' ? 'low' : 'medium',
       reason: `plan_generation_${planMode}`,
     };
   }

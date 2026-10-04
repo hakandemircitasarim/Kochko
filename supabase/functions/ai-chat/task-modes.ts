@@ -399,28 +399,11 @@ JSON SADECE ham olmali: markdown (\`\`\`) KULLANMA, blok disina aciklama yazma, 
       "day_label": "Pazartesi",
       "target_kcal": GUNUN_HEDEFI,
       "meals": [
-        {
-          "meal_type": "breakfast",
-          "time": "08:00",
-          "name": "Yulaf ve yumurta",
-          "items": [
-            { "name": "yulaf", "grams": 60, "kcal": 220, "protein": 8, "carbs": 38, "fat": 4 },
-            { "name": "yumurta", "grams": 100, "kcal": 150, "protein": 13, "carbs": 1, "fat": 10 }
-          ],
-          "total_kcal": 370, "total_protein": 21, "total_carbs": 39, "total_fat": 14
-        },
-        {
-          "meal_type": "lunch",
-          "time": "13:00",
-          "name": "Tavuklu bulgur pilavi",
-          "items": [
-            { "name": "tavuk gogsu", "grams": 150, "kcal": 248, "protein": 47, "carbs": 0, "fat": 5 },
-            { "name": "bulgur pilavi", "grams": 200, "kcal": 280, "protein": 8, "carbs": 56, "fat": 2 }
-          ],
-          "total_kcal": 528, "total_protein": 55, "total_carbs": 56, "total_fat": 7
-        }
-      ],
-      "total_kcal": 1950, "total_protein": 148, "total_carbs": 198, "total_fat": 64
+        { "meal_type": "breakfast", "time": "08:00", "name": "Yulaf ve yumurta",
+          "items": [["yulaf", 60, 220, 8, 38, 4], ["yumurta", 100, 150, 13, 1, 10]] },
+        { "meal_type": "lunch", "time": "13:00", "name": "Tavuklu bulgur pilavi",
+          "items": [["tavuk gogsu", 150, 248, 47, 0, 5], ["bulgur pilavi", 200, 280, 8, 56, 2]] }
+      ]
     }
   ],
   "version": 1
@@ -429,10 +412,11 @@ JSON SADECE ham olmali: markdown (\`\`\`) KULLANMA, blok disina aciklama yazma, 
 
 ZORUNLU JSON KURALLARI (uymazsan plan parse edilemez ve KAYBOLUR):
 - "days" dizisinde TAM 7 gun olmali: day_index 0,1,2,3,4,5,6 (Pazartesi..Pazar). Yukarida yalnizca 1 gun ornek verildi; sen 7 GUNUN HEPSINI ayni yapida ve eksiksiz yaz.
-- Her gun 3-4 ogun (breakfast, lunch, dinner + opsiyonel snack); her ogun "items" listesi + makro toplamlari ile DOLU olsun.
+- KOMPAKT KALEM BICIMI (ZORUNLU): her kalem bir dizi: ["ad", gram, kcal, protein, karbonhidrat, yag]. Ogun ve gun TOPLAMLARINI YAZMA — sunucu kalemlerden hesaplar. Bu bicim cevabi hizlandirir; anahtarli nesne yazma.
+- Ogun sayisi: "PLAN HEDEFLERI" blogunda ogun sayisi varsa ona uy; yoksa gunde 3-4 ogun (breakfast, lunch, dinner + opsiyonel snack). Her ogunun "items" listesi DOLU olsun.
 - ASLA "...", "devami benzer", "6 more days", yorum (//) veya herhangi bir placeholder yazma — bunlar JSON'u gecersiz kilar.
 - Markdown (\`\`\`) yok, blok disina metin yok, trailing virgul yok.
-- KRITIK KALORI KURALI: Her gunun TUM ogunlerinin total_kcal toplami, o gunun target_kcal degerine (yoksa targets.kcal) ESIT olmali (en fazla %10 sapma). Eksik birakma! Cogu plan hatasi: ogunler kucuk tutuluyor ve gun toplami hedefin yarisi kaliyor. ORNEK: hedef 2400 kcal ve 3 ogun ise her ogun ~800 kcal olmali (ornegin ogle: 200g tavuk gogsu ~330 + 150g pirinc ~195 + 100g zeytinyagli sebze ~150 + 1 dilim ekmek ~80 + meyve ~45 = ~800). Porsiyonlari hedefi tutturacak kadar BUYUK yaz; gerekirse ogun sayisini artir veya ara ogun ekle. Her gun icin: meals[].total_kcal toplami ~ targets.kcal. Bunu yazmadan once kafanda topla ve hedefe oturt.
+- KRITIK KALORI KURALI: Her gunun TUM kalemlerinin kcal toplami, o gunun target_kcal degerine (yoksa targets.kcal) ESIT olmali (en fazla %10 sapma). Eksik birakma! Cogu plan hatasi: ogunler kucuk tutuluyor ve gun toplami hedefin yarisi kaliyor. ORNEK: hedef 2400 kcal ve 3 ogun ise her ogun ~800 kcal olmali (ornegin ogle: 200g tavuk gogsu ~330 + 150g pirinc ~195 + 100g zeytinyagli sebze ~150 + 1 dilim ekmek ~80 + meyve ~45 = ~800). Porsiyonlari hedefi tutturacak kadar BUYUK yaz; gerekirse ogun sayisini artir veya ara ogun ekle. Her gun icin: kalem kcal toplami ~ target_kcal. Bunu yazmadan once kafanda topla ve hedefe oturt.
 
 ### PAZARLIK AKISI
 Kullanici "yumurta sevmem" / "sabaha yulaf olmasin" / "sut urunlerini sevmem" / "butcem kisitli, somon cok pahali" gibi degisiklik isterse:

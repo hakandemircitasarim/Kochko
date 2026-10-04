@@ -29,6 +29,7 @@ import { ACTIVE_ROLLOUT_STEPS, rolloutMode, rolloutStamp } from '../shared/rollo
 import { sanitizeUiMarkers } from '../shared/ui-markers.ts';
 import { createTurnTimer, type TurnTimer } from '../shared/turn-timer.ts';
 import { computePlanTargets, renderPlanTargets, applyPlanTargets, type PlanTargets } from '../shared/plan-targets.ts';
+import { expandCompactDietSnapshot } from '../shared/plan-compact.ts';
 import { resolveTurnMode, isOnboardingHint, isPlanMode, wantsToDropIntent, classifyPlanIntent } from './turn.ts';
 import { failureLine, guardVerdictOf, type GuardFlag, type TurnFailureClass } from '../shared/turn-failures.ts';
 import { appendCoachingNote } from '../shared/coaching-notes.ts';
@@ -2004,6 +2005,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
           const nested = Object.values(candidate).find(v => v && typeof v === 'object' && Array.isArray((v as Record<string, unknown>).days));
           if (nested) candidate = nested as Record<string, unknown>;
         }
+        candidate = expandCompactDietSnapshot(candidate);
         if (snapshotUsable(candidate)) { planSnapshot = candidate; snapshotParseError = undefined; }
         else { snapshotParseError = 'json_object regen still missing days/targets'; planSnapshot = null; }
       } catch (e) {
@@ -4340,12 +4342,15 @@ function reconcileDietCalories(snap: Record<string, unknown>): void {
     // Rescale meals/items toward the day target ONLY when the meal sum drifts >12% and the
     // target is valid (under-fill correction, #R2-H3). Skipping this when already on-target
     // is correct — but the day-rollup recompute below must still run.
-    if (Number.isFinite(tgt) && tgt > 0 && daySum > 0 && Math.abs(daySum - tgt) / tgt > 0.12) {
+    // 7% (was 12%): with server-fixed day targets a day 10% over its target is a real miss, not noise.
+    if (Number.isFinite(tgt) && tgt > 0 && daySum > 0 && Math.abs(daySum - tgt) / tgt > 0.07) {
       const factor = Math.max(0.5, Math.min(2.5, tgt / daySum));
       const sc = (v: unknown) => Math.round((Number(v) || 0) * factor);
+      // Scaled portions read as kitchen amounts ("300 g", not "301 g"): grams snap to 5 g.
+      const scG = (v: unknown) => Math.max(5, Math.round(((Number(v) || 0) * factor) / 5) * 5);
       for (const m of meals) {
         for (const it of (m.items as Array<Record<string, unknown>> | undefined) ?? []) {
-          if (it.grams != null) it.grams = sc(it.grams);
+          if (it.grams != null) it.grams = scG(it.grams);
           if (it.kcal != null) it.kcal = sc(it.kcal);
           if (it.protein != null) it.protein = sc(it.protein);
           if (it.carbs != null) it.carbs = sc(it.carbs);
@@ -4398,7 +4403,9 @@ function extractPlanSnapshot(text: string): { cleanMessage: string; snapshot: Re
   }
   return {
     cleanMessage: text.replace(/<plan_snapshot>[\s\S]*?<\/plan_snapshot>/, '').trim(),
-    snapshot: parsed,
+    // Diet plans are written with compact item rows (shared/plan-compact.ts) — expand to the stored
+    // schema here so every downstream reader (validators, allergen scan, client) sees objects.
+    snapshot: expandCompactDietSnapshot(parsed),
     parseError,
   };
 }

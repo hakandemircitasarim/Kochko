@@ -101,7 +101,8 @@ Deno.test('plan generation keeps its large visible budget and deliberates', () =
   for (const mode of ['plan', 'plan_diet', 'plan_workout']) {
     const sel = selectModel(analysis({ subtype: 'default_subtype' }), false, mode);
     assertEquals(sel.maxTokens, 8000, `${mode} must keep room for the whole 7-day snapshot`);
-    assertEquals(sel.effort, 'medium');
+    // diet plans get server-fixed targets (plan-targets.ts) → 'low'; the rest still deliberate
+    assertEquals(sel.effort, mode === 'plan_diet' ? 'low' : 'medium');
   }
 });
 
@@ -110,7 +111,8 @@ Deno.test('the plan override wins over an unrelated analysed subtype', () => {
   // that is actually a plan request must not fall into the greeting fast path.
   const sel = selectModel(analysis({ subtype: 'pure_greeting', taskMode: 'daily_log' }), false, 'plan_diet');
   assertEquals(sel.maxTokens, 8000);
-  assertEquals(sel.effort, 'medium');
+  assertEquals(sel.effort, 'low');
+  assertEquals(sel.reason, 'plan_generation_plan_diet');
 });
 
 Deno.test('a photo estimates portions, so it thinks a little', () => {
