@@ -22,6 +22,7 @@
     "supabase/functions/ai-*",
     "supabase/functions/cleanup-scheduled",
     "supabase/functions/legal",
+    "supabase/functions/model-bench",
     "supabase/functions/shared/*.ts"
   ]
 }
