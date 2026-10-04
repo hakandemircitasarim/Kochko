@@ -23,7 +23,7 @@ import { chatCompletion, EFFORT } from '../shared/openai.ts';
 //
 // This names the MECHANICAL tier (see model-router.mechanicalModel): the output is a fixed JSON
 // shape the parse below validates, so the cheap model cannot drift undetected.
-const EXTRACTOR_MODEL = Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-5.6-luna';
+const EXTRACTOR_MODEL = Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-6-luna';
 
 // The provider knobs (OPENAI_API_KEY / OPENAI_BASE_URL) and the timeout+retry wrapper that used
 // to live here now belong to shared/openai.ts, which this function calls instead of hand-rolling

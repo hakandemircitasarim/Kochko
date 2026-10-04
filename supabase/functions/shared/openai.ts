@@ -42,10 +42,17 @@ const SENDS_CACHE_KEY = (() => { try { return new URL(OPENAI_BASE_URL).hostname 
 // luna is the cheap tier reserved for schema-constrained mechanical calls. Luna is deliberately
 // NOT the primary: its long-context recall degrades to ~41%, which is precisely the axis this
 // app lives on (full profile + person summary + 30-message history every single turn).
+//
+// 2026-10-04 benchmark (production-shaped prompt, 5 Turkish coaching scenarios × 2 reps, 15 blind
+// judges): gpt-6.1-sol scored best (7.9 vs terra 7.3) but produced output ~2.5× slower (meal-log
+// turns 10–13 s vs 3–4 s; plans would roughly double), so terra stays the chat tier. gpt-6-luna at
+// effort `none` was fastest/cheapest but ignored a recorded allergy and injury — unfit to answer
+// the user. The fast tier (extraction + fallback) moved to gpt-6-luna: half the price of
+// gpt-5.6-luna and it scored highest on memory use at effort `low`.
 const MODELS = {
   primary: Deno.env.get('KOCHKO_MODEL_SMART') || 'gpt-5.6-terra',
   vision: Deno.env.get('KOCHKO_MODEL_VISION') || 'gpt-5.6-terra',
-  fallback: Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-5.6-luna',
+  fallback: Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-6-luna',
 };
 
 /**

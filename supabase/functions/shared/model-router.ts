@@ -49,7 +49,7 @@ export interface ModelSelection {
 // weakest link in the family and this app puts the full profile + person summary in every prompt.
 const MODEL_CONFIG = {
   fast: {
-    model: Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-5.6-luna',
+    model: Deno.env.get('KOCHKO_MODEL_FAST') || 'gpt-6-luna',
     maxTokens: 1500,
   },
   smart: {
