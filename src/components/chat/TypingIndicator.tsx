@@ -16,7 +16,7 @@ const DOT_SIZE = 6;
 const DOT_GAP = 4;
 const CYCLE_MS = 900;
 
-function Dot({ delay, color }: { delay: number; color: string }) {
+export function Dot({ delay, color, cycleMs = CYCLE_MS }: { delay: number; color: string; cycleMs?: number }) {
   const t = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -25,13 +25,13 @@ function Dot({ delay, color }: { delay: number; color: string }) {
         Animated.delay(delay),
         Animated.timing(t, {
           toValue: 1,
-          duration: CYCLE_MS / 2,
+          duration: cycleMs / 2,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(t, {
           toValue: 0,
-          duration: CYCLE_MS / 2,
+          duration: cycleMs / 2,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: true,
         }),
@@ -39,7 +39,7 @@ function Dot({ delay, color }: { delay: number; color: string }) {
     );
     loop.start();
     return () => loop.stop();
-  }, [t, delay]);
+  }, [t, delay, cycleMs]);
 
   const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [0, -4] });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });

@@ -20,6 +20,7 @@ import { SPACING, FONT } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { METRIC_COLORS, useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
+import { ThinkingFor } from '@/components/chat/ThinkingIndicator';
 
 interface MonthlyAIReport {
   monthly_summary?: string;
@@ -318,11 +319,7 @@ export default function MonthlyReportScreen() {
             loading={generating}
             disabled={generating}
           />
-          {generating && (
-            <Text style={{ color: colors.textSecondary, ...TYPE.caption, textAlign: 'center', marginTop: SPACING.sm }}>
-              Koç ayını analiz ediyor, bu birkaç saniye sürebilir…
-            </Text>
-          )}
+          {generating && <ThinkingFor kind="report_monthly" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
         </Card>
       )}
 
@@ -416,11 +413,7 @@ export default function MonthlyReportScreen() {
             disabled={generating}
             style={{ marginTop: SPACING.sm }}
           />
-          {generating && (
-            <Text style={{ color: colors.textSecondary, ...TYPE.caption, textAlign: 'center', marginTop: SPACING.sm }}>
-              Koç ayını analiz ediyor, bu birkaç saniye sürebilir…
-            </Text>
-          )}
+          {generating && <ThinkingFor kind="report_monthly" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
         </>
       )}
 

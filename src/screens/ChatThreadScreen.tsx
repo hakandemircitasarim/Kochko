@@ -45,6 +45,8 @@ import { speak, stopSpeaking } from '@/services/tts.service';
 import { detectRepairIntent, type RepairDetection } from '@/services/repair.service';
 import { FeedbackButtons } from '@/components/chat/FeedbackButtons';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
+import { ThinkingIndicator } from '@/components/chat/ThinkingIndicator';
+import { buildThinkingScript, predictTurnKind, type ThinkingScript, type TurnKind } from '@/lib/thinking-stages';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { SkeletonBlock } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
@@ -583,10 +585,23 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // Intentional, context-aware label under the typing dots so long LLM waits read
   // as purposeful ("Planını hazırlıyorum…") instead of a blank spinner.
   const [typingLabel, setTypingLabel] = useState<string | undefined>(undefined);
-  // FIX (ux-ideas #7): rotating typing stages + a cancel affordance after a long wait.
-  const [typingStages, setTypingStages] = useState<string[]>([]);
-  const [typingStageIdx, setTypingStageIdx] = useState(0);
+  // Narrated wait (src/lib/thinking-stages.ts): the reply is never streamed (the server's safety
+  // nets need the full text), so the turn's predicted kind drives animated, varied stages instead.
+  const [thinking, setThinking] = useState<{ script: ThinkingScript; startedAt: number } | null>(null);
   const [showTypingCancel, setShowTypingCancel] = useState(false);
+  // Personal numbers for the stage lines ("Günlük ~2.059 kcal hedefini hesaplıyorum") — same
+  // source as the dashboard ring: today's plan targets first, profile bands otherwise.
+  const startThinking = useCallback((kind: TurnKind) => {
+    const dash = useDashboardStore.getState();
+    const t = deriveNutritionTargets(profile, {
+      calorieMin: dash.calorieTargetMin, calorieMax: dash.calorieTargetMax, proteinG: dash.proteinTarget,
+    });
+    const hasProtein = !!(dash.proteinTarget || (profile?.protein_per_kg && profile?.weight_kg));
+    setThinking({
+      script: buildThinkingScript(kind, { calorieTarget: t.calorieTargetMid > 0 ? t.calorieTargetMid : null, proteinG: hasProtein ? t.proteinG : null }, Math.random()),
+      startedAt: Date.now(),
+    });
+  }, [profile]);
   const cancelledSendRef = useRef(false);
   const [loading, setLoading] = useState(true);
   // FIX (audit UX-CHT-06): upward pagination state. hasMoreOlder is set when the initial
@@ -871,6 +886,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         setHasMoreOlder(data.length >= 50);
         setLoading(false);
         setTypingLabel(typingLabelFor(taskModeHint, false));
+        startThinking('opener');
         setSending(true);
         const { data: response, error } = await sendMessageToSession(
           sessionId,
@@ -1087,13 +1103,10 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // FIX (ux-ideas #7): advance the typing label through its stages as the wait grows, and
   // reveal a Cancel affordance after ~40s so a very long turn is escapable.
   useEffect(() => {
-    if (!sending) { setTypingStageIdx(0); setShowTypingCancel(false); return; }
-    const rot = setInterval(() => {
-      setTypingStageIdx(i => Math.min(i + 1, Math.max(0, typingStages.length - 1)));
-    }, 9000);
+    if (!sending) { setShowTypingCancel(false); setThinking(null); return; }
     const cancelT = setTimeout(() => setShowTypingCancel(true), 40000);
-    return () => { clearInterval(rot); clearTimeout(cancelT); };
-  }, [sending, typingStages.length]);
+    return () => clearTimeout(cancelT);
+  }, [sending]);
 
   // FIX (ux-audit blockers #1/#2/#4): concurrency + slow-turn plumbing.
   // sessionIdRef tracks the live session so a running poll self-cancels when the session changes.
@@ -1185,7 +1198,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     sendInFlightRef.current = false;
     setSending(false);
     setTypingLabel(undefined);
-    setTypingStages([]);
+    setThinking(null);
     setShowTypingCancel(false);
     // review fix: use 'replace' (not 'merge'). The poller is generation-aware and retires the moment
     // a new send bumps the gen, so it only ever delivers while idle — a full replace then reconciles
@@ -1302,8 +1315,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
     }
 
     setTypingLabel(typingLabelFor(effectiveTaskMode, !!img));
-    setTypingStages(typingStagesFor(effectiveTaskMode, !!img)); // ux-ideas #7: rotating stages
-    setTypingStageIdx(0);
+    startThinking(predictTurnKind(text, effectiveTaskMode, !!img));
     cancelledSendRef.current = false;
     setSending(true);
     scrollToBottom(true); // user's own send — always follow
@@ -1570,6 +1582,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       };
       setMessages(prev => [...prev, userMsg]);
       setTypingLabel(undefined);
+      startThinking(predictTurnKind(option, null, false));
       setSending(true);
       scrollToBottom(true); // user's own tap — always follow
       const { data, error } = await (sendOverride ? sendOverride(sessionId, option) : sendMessageToSession(sessionId, option));
@@ -1798,6 +1811,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       };
       setMessages(prev => [...prev, userMsg]);
       setTypingLabel(undefined);
+      startThinking('correction');
       setSending(true);
       scrollToBottom(true);
 
@@ -2222,7 +2236,9 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       {/* Typing indicator — ux-ideas #7: rotating stage label + cancel after a long wait */}
       {sending && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-          <TypingIndicator label={typingStages[typingStageIdx] ?? typingLabel} />
+          {thinking
+            ? <ThinkingIndicator script={thinking.script} startedAt={thinking.startedAt} />
+            : <TypingIndicator label={typingLabel} />}
           {showTypingCancel && (
             <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={handleCancelTyping}

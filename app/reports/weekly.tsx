@@ -15,6 +15,7 @@ import { haptics } from '@/lib/haptics';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { formatDecimal } from '@/lib/units';
+import { ThinkingFor } from '@/components/chat/ThinkingIndicator';
 
 interface WeeklyReport {
   week_start: string;
@@ -179,11 +180,7 @@ export default function WeeklyReportScreen() {
             <Text style={{ color: colors.text, ...TYPE.headline, textAlign: 'center' }}>Henüz haftalık rapor yok</Text>
             <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center', marginBottom: SPACING.sm }}>Haftanı özetleyeyim — birkaç saniye sürer.</Text>
             <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
-            {generating && (
-              <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center', marginTop: SPACING.md }}>
-                Koç haftanı analiz ediyor, bu birkaç saniye sürebilir…
-              </Text>
-            )}
+            {generating && <ThinkingFor kind="report_weekly" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
           </View>
         </Card>
       ) : (
@@ -343,11 +340,7 @@ export default function WeeklyReportScreen() {
           )}
 
           <Button title="Yeniden Oluştur" variant="outline" onPress={handleGenerate} loading={generating} />
-          {generating && (
-            <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center', marginTop: SPACING.md }}>
-              Koç haftanı analiz ediyor, bu birkaç saniye sürebilir…
-            </Text>
-          )}
+          {generating && <ThinkingFor kind="report_weekly" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
         </>
       )}
     </ScrollView>

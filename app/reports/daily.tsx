@@ -19,6 +19,7 @@ import { SPACING, FONT } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
+import { ThinkingFor } from '@/components/chat/ThinkingIndicator';
 
 interface DailyReport {
   compliance_score: number;
@@ -144,9 +145,7 @@ export default function DailyReportScreen() {
             <>
               <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
               <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
-              {generating && (
-                <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: SPACING.sm, textAlign: 'center' }}>Koç gününü analiz ediyor, bu birkaç saniye sürebilir…</Text>
-              )}
+              {generating && <ThinkingFor kind="report_daily" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
             </>
           ) : (
             <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Bu güne ait bir gün sonu raporu yok.</Text>

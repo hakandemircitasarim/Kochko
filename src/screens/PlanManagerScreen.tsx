@@ -59,6 +59,9 @@ import { PlanDayAccordion } from '@/components/plan/PlanDayAccordion';
 import { AlternativeComparisonModal } from '@/components/plan/AlternativeComparisonModal';
 import { PlanChatComposer } from '@/components/plan/PlanChatComposer';
 import { TypingIndicator } from '@/components/chat/TypingIndicator';
+import { ThinkingIndicator } from '@/components/chat/ThinkingIndicator';
+import { buildThinkingScript, planChatKind, type ThinkingScript, type TurnKind } from '@/lib/thinking-stages';
+import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 
 // FIX (audit Wave3): 'error' state for network-failure recovery (was missing → infinite spinner).
@@ -168,6 +171,26 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
   chatSessionIdRef.current = chatSessionId;
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [sending, setSending] = useState(false);
+  // Narrated wait (src/lib/thinking-stages.ts): a plan turn takes ~20-26 s — show the work.
+  const [thinking, setThinking] = useState<{ script: ThinkingScript; startedAt: number } | null>(null);
+  const planKind: TurnKind = planType === 'diet' ? 'plan_diet' : 'plan_workout';
+  const beginThinking = useCallback((kind: TurnKind) => {
+    const t = deriveNutritionTargets(profile);
+    const hasProtein = !!(profile?.protein_per_kg && profile?.weight_kg);
+    setThinking({
+      script: buildThinkingScript(kind, { calorieTarget: t.calorieTargetMid > 0 ? t.calorieTargetMid : null, proteinG: hasProtein ? t.proteinG : null }, Math.random()),
+      startedAt: Date.now(),
+    });
+  }, [profile]);
+  // Any busy period not narrated explicitly (draft open, alternative, revision setup) gets the
+  // plan narration; idle clears it.
+  useEffect(() => {
+    if (!sending) { setThinking(null); return; }
+    setThinking((prev) => prev ?? {
+      script: buildThinkingScript(planKind, { calorieTarget: deriveNutritionTargets(profile).calorieTargetMid || null }, Math.random()),
+      startedAt: Date.now(),
+    });
+  }, [sending, planKind, profile]);
   const [showFullModal, setShowFullModal] = useState(false);
   const [fullyViewed, setFullyViewed] = useState(false);
   const [altCandidate, setAltCandidate] = useState<PlanData | null>(null);
@@ -365,6 +388,8 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
       }
       setChatSessionId(sid);
     }
+    // A question about the plan is answered, not rebuilt — narrate accordingly.
+    beginThinking(planChatKind(text, planKind));
     setSending(true);
     const { data, error } = await invokePlanChat({
       sessionId: sid,
@@ -497,6 +522,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
       router.push('/settings/premium' as never);
       return;
     }
+    beginThinking('plan_approve');
     setSending(true);
     const { data, error } = await invokePlanChat({
       sessionId: chatSessionId,
@@ -837,7 +863,9 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
           ListFooterComponent={
             planType === 'diet' && sending ? (
               <View style={{ paddingTop: SPACING.xs }}>
-                <TypingIndicator label="Koç düşünüyor" />
+                {thinking
+                  ? <ThinkingIndicator script={thinking.script} startedAt={thinking.startedAt} />
+                  : <TypingIndicator label="Koç düşünüyor" />}
               </View>
             ) : null
           }
@@ -845,7 +873,9 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
 
         {planType === 'workout' && sending ? (
           <View style={{ paddingHorizontal: SPACING.md, paddingBottom: SPACING.xs }}>
-            <TypingIndicator label="Koç düşünüyor" />
+            {thinking
+              ? <ThinkingIndicator script={thinking.script} startedAt={thinking.startedAt} />
+              : <TypingIndicator label="Koç düşünüyor" />}
           </View>
         ) : null}
 

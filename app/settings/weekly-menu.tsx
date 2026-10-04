@@ -13,6 +13,7 @@ import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { mealTypeLabelTR } from '@/lib/labels';
+import { ThinkingFor } from '@/components/chat/ThinkingIndicator';
 
 const CATEGORY_LABELS: Record<string, string> = { protein: 'Protein', vegetable: 'Sebze', fruit: 'Meyve', dairy: 'Süt Ürünü', grain: 'Tahıl', other: 'Diğer' };
 
@@ -93,6 +94,7 @@ export default function WeeklyMenuScreen() {
             {error ? error : 'Haftalık menü henüz oluşturulmamış.'}
           </Text>
           <Button title="Menü Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
+          {generating && <ThinkingFor kind="weekly_menu" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
         </Card>
       ) : (
         <>
@@ -161,6 +163,7 @@ export default function WeeklyMenuScreen() {
               { text: 'Yeniden Oluştur', onPress: handleGenerate },
             ]);
           }} />
+          {generating && <ThinkingFor kind="weekly_menu" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
         </>
       )}
     </ScrollView>
