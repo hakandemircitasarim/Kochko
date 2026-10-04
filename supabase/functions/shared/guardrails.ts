@@ -297,7 +297,9 @@ export function scanReplyForAllergens(
       let i = lowerReply.indexOf(t);
       while (i >= 0) {
         anyFound = true;
-        if (!ALLERGEN_DECLINE_RE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50))
+        // '-sız/-siz/-suz/-süz' = WITHOUT: "yumurtasız", "sütsüz" name the SAFE option, not the allergen.
+        const isWithout = /^s[ıiuü]z/.test(lowerReply.slice(i + t.length, i + t.length + 3));
+        if (!isWithout && !ALLERGEN_DECLINE_RE.test(lowerReply.slice(Math.max(0, i - 50), i + t.length + 50))
           && !isAllergyNaming(i, t.length)) {
           return lowerReply.slice(Math.max(0, i - 40), i + t.length + 40);
         }

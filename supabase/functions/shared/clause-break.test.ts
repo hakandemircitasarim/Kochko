@@ -28,3 +28,9 @@ Deno.test('allergen scan: an ask/may-contain caveat counts as addressed', () => 
   assertEquals(scanReplyForAllergens('Şnitzel pane harcı yumurta içerebilir, şiş tercih et.', allergens).violated, false);
   assertEquals(scanReplyForAllergens('Kahvaltıda menemen ye, yumurta proteini iyi gelir.', allergens).violated, true);
 });
+
+Deno.test('allergen scan: "-sız" (without) names the safe option, not the allergen', () => {
+  const allergens = [{ name: 'yumurta', severity: 'severe' as const }];
+  assertEquals(scanReplyForAllergens('Şiş kebap iyi bir seçim, yumurtasız ve yağı az.', allergens).violated, false);
+  assertEquals(scanReplyForAllergens('Akşam yumurtalı pide yiyebilirsin.', allergens).violated, true);
+});
