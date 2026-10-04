@@ -750,9 +750,13 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
     // "Hayır, yanlış anladın — son kaydı sil" 5 kelimeden uzun olduğu için undo kapısına
     // takılmıyor, correction olarak buraya geliyordu ve hiçbir şey silinmiyordu.)
     let correctionCtx = '';
+    // The revert is a real write: it rides in the envelope as an 'undo' action + receipt (below), so
+    // the client refreshes the dashboard and shows it — before, only the prose said it happened.
+    let correctionReverted: { type: string; label: string } | null = null;
     if (isCorrectionTurn) {
       const reverted = await revertLastTurnWrite(userId, session_id ?? null);
       if (reverted) console.log('[correction][reverted]', reverted.type, reverted.label.slice(0, 60));
+      correctionReverted = reverted;
       correctionCtx = buildCorrectionContext(reverted);
       serviceReadsP = startServiceReads(); // post-revert state
     }
@@ -3457,6 +3461,12 @@ Doğru anladıysam: ${parsed}.${tail}`;
         feedback: personaJustDetected,
       });
     }
+    const outReceipts = [...actionReceipts];
+    if (correctionReverted) {
+      const undoLine = `Geri alındı: ${correctionReverted.label.slice(0, 80)}`;
+      outActions.unshift({ type: 'undo', feedback: undoLine });
+      outReceipts.unshift({ action_type: 'undo', ok: true, rows_affected: 1, user_line: undoLine, failure_class: null });
+    }
 
     // If a plan was meant to be saved but persistence FAILED, the AI's prose may
     // still claim success ("planını oluşturdum"). Append a Turkish caveat so the
@@ -3474,7 +3484,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
       // B2a: typed per-action receipts — the structure behind the prose chips. The client's badge
       // row keys on action_type and finally knows a FAILED write from a successful one instead of
       // green-stamping every executed action.
-      receipts: actionReceipts.length > 0 ? actionReceipts : null,
+      receipts: outReceipts.length > 0 ? outReceipts : null,
       // #ux-fix (per-message feedback linkage): the persisted assistant chat_messages row id.
       // Additive — clients that don't read it are unaffected; the feedback buttons use it so
       // votes link to the real message row instead of a client-minted id.

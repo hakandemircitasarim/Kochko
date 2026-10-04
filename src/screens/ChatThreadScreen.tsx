@@ -2979,6 +2979,8 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
     workout_log: { icon: 'fitness-outline', done: 'Antrenman kaydedildi', failed: 'Antrenman kaydedilemedi', color: colors.success },
     supplement_log: { icon: 'medical-outline', done: 'Takviye kaydedildi', failed: 'Takviye kaydedilemedi', color: colors.primary },
     goal_suggestion: { icon: 'flag-outline', done: 'Hedef eklendi', failed: 'Hedef eklenemedi', color: colors.warning },
+    // A correction turn reverts the previous write server-side; this is its visible receipt.
+    undo: { icon: 'arrow-undo-outline', done: 'Kayıt geri alındı', failed: 'Geri alınamadı', color: colors.textSecondary },
   };
   for (const a of allActions) {
     if (seen.has(a.type)) continue;
