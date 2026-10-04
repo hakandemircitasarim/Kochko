@@ -193,6 +193,10 @@ export interface UsageReceipt {
   // Reasoning tokens are invisible in the output but ARE billed as output tokens. Without this
   // field a cost review cannot explain why output tokens tripled after the GPT-5.6 migration.
   reasoningTokens: number;
+  // Input tokens served from OpenAI's prompt cache (billed at ~5–10% of the input rate). The whole
+  // context spine (base prompt + profile + memory + history) is resent every turn, so this number IS
+  // the cost/latency story of the app — and it was invisible before migration 105.
+  cachedTokens: number;
 }
 
 interface CompletionOptions {
@@ -210,6 +214,10 @@ interface CompletionOptions {
   // UsageReceipt spanning all retries/fallbacks. Non-breaking — callers that don't set it are
   // unaffected. Carried across the recursive fallback calls so the receipt reports the whole turn.
   onReceipt?: (r: UsageReceipt) => void;
+  // Routing hint for OpenAI's prompt cache (`prompt_cache_key`). Requests that share a key AND a
+  // prefix land on the same cache shard, so per-user keys let one user's long, stable prefix stay
+  // warm between their turns. Purely an optimisation: omitting it changes nothing but hit rate.
+  cacheKey?: string;
   // FIX (audit AI-MDL-03) internal recursion flag: true once the current model
   // has already been retried once for a transient failure. Callers never set this.
   _sameModelRetried?: boolean;
@@ -350,6 +358,7 @@ export async function chatCompletion<T = string>(
       reasoning: { effort },
     };
     if (wantsJson) body.text = { format: { type: 'json_object' } };
+    if (options?.cacheKey) body.prompt_cache_key = options.cacheKey;
   } else {
     endpoint = `${OPENAI_BASE_URL}/chat/completions`;
     body = {
@@ -359,6 +368,7 @@ export async function chatCompletion<T = string>(
       max_tokens: requestedMaxTokens,
     };
     if (wantsJson) body.response_format = { type: 'json_object' };
+    if (options?.cacheKey) body.prompt_cache_key = options.cacheKey;
   }
 
   // FIX (audit AI-MDL-02): wrap in AbortController. On a timeout, fall back ONCE to the
@@ -416,7 +426,7 @@ export async function chatCompletion<T = string>(
   // Normalise both wire formats to one shape before any decision is made about them.
   let content: string;
   let finishReason: string;
-  let usage: { input: number; output: number; total: number; reasoning: number };
+  let usage: { input: number; output: number; total: number; reasoning: number; cached: number };
 
   if (responsesApi) {
     content = extractResponsesText(data);
@@ -433,23 +443,26 @@ export async function chatCompletion<T = string>(
       output_tokens?: number;
       total_tokens?: number;
       output_tokens_details?: { reasoning_tokens?: number };
+      input_tokens_details?: { cached_tokens?: number };
     };
     usage = {
       input: u.input_tokens ?? 0,
       output: u.output_tokens ?? 0,
       total: u.total_tokens ?? ((u.input_tokens ?? 0) + (u.output_tokens ?? 0)),
       reasoning: u.output_tokens_details?.reasoning_tokens ?? 0,
+      cached: u.input_tokens_details?.cached_tokens ?? 0,
     };
   } else {
     const choice = data.choices?.[0];
     content = choice?.message?.content ?? '';
     finishReason = choice?.finish_reason ?? 'stop';
-    const u = (data.usage ?? {}) as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    const u = (data.usage ?? {}) as { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
     usage = {
       input: u.prompt_tokens ?? 0,
       output: u.completion_tokens ?? 0,
       total: u.total_tokens ?? ((u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0)),
       reasoning: 0,
+      cached: u.prompt_tokens_details?.cached_tokens ?? 0,
     };
   }
 
@@ -495,6 +508,7 @@ export async function chatCompletion<T = string>(
         fallbackReason: options._fallbackReason ?? null,
         attempts: attempt,
         reasoningTokens: usage.reasoning,
+        cachedTokens: usage.cached,
       });
     } catch (_e) { /* receipt sink must never break the turn */ }
   }

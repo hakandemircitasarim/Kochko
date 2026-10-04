@@ -8,6 +8,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { chatCompletion, TEMPERATURE, EFFORT } from '../shared/openai.ts';
+import { nudgeTriggerKeys } from '../shared/nudge-triggers.ts';
 import type { UsageReceipt } from '../shared/openai.ts';
 import { writeTurnLog } from '../shared/turn-log.ts';
 import { supabaseAdmin } from '../shared/supabase-admin.ts';
@@ -54,7 +55,7 @@ ${VOICE_RULES}
 
 Yanitini yalnizca JSON olarak ver:
 Gerekli degilse: {"send": false}
-Gerekli ise: {"send": true, "message": "mesaj", "trigger": "neden", "priority": "low|medium|high"}`;
+Gerekli ise: {"send": true, "message": "mesaj", "trigger": "GECERLI TETIK ANAHTARLARI listesinden biri", "priority": "low|medium|high"}`;
 
 serve(async (req: Request) => {
   const denied = denyIfNotCron(req);
@@ -1386,16 +1387,15 @@ serve(async (req: Request) => {
         } catch { /* reinforcement check non-critical */ }
       }
 
-      // Return flow detection (Phase 3: Geri dönüş akışı)
-      let returnFlowInfo = '';
-      const daysSinceChat = Math.round(hoursSinceChat / 24);
-      if (daysSinceChat >= 3 && daysSinceChat < 7) {
-        returnFlowInfo = 'TETIK: 3+ GUN SESSIZ - hafif, yargilamayan bildirim gonder';
-      } else if (daysSinceChat >= 7 && daysSinceChat < 30) {
-        returnFlowInfo = 'TETIK: 7+ GUN SESSIZ - kisisel bildirim, gecmis basarilarina referans ver';
-      } else if (daysSinceChat >= 30) {
-        returnFlowInfo = 'TETIK: 30+ GUN SESSIZ - "Seni ozledik" mesaji, geri donus plani hazirla';
-      }
+      // DORMANCY GATE (2026-10-04). A user silent for 3+ days is owned by the deterministic
+      // re-engagement tiers above (exactly 3/7/30 days, once each per 60 days). This loop used to
+      // ALSO hand them to the LLM every hour with a "30+ GUN SESSIZ" trigger: measured live, 19
+      // dormant accounts cost ~305 LLM calls/day and received the same win-back every single day
+      // (333 messages in 14 days, 0 read) — the free-text trigger label changed wording each time,
+      // so no dedupe ever matched. Skipping here removes the spam AND the cost; the deterministic
+      // side effects computed above (phase advance, maintenance, reinforcement) have already run.
+      const hoursSinceActivity = Math.min(hoursSinceChat, hoursSinceMeal);
+      if (hoursSinceActivity >= 72) continue;
 
       // Cycle phase transition notification (Phase 3: Kadın kullanıcılara özel)
       let cycleTransitionInfo = '';
@@ -1504,7 +1504,6 @@ ${hoursSinceChat > 48 ? 'TETIK: 2+ gundur sessiz' : ''}
 ${plateauInfo}
 ${maintenanceInfo}
 ${goalTempoInfo}
-${returnFlowInfo}
 ${cycleTransitionInfo}
 ${await (async () => {
   // Weekend Risk (Spec 5.35) - Friday evening check
@@ -1683,9 +1682,26 @@ ${sentTodayContext}`;
 
       interface NudgeResult { send: boolean; message?: string; trigger?: string; priority?: string; }
 
+      // EVIDENCE GATE (2026-10-04): the LLM used to be the gatekeeper — called every hour for every
+      // user just to answer "send anything?", and free to invent a reason when the context had none.
+      // Now the reasons are computed first, deterministically, as canonical keys. No trigger → no call.
+      const triggerKeys = nudgeTriggerKeys(context);
+      if (triggerKeys.length === 0) continue;
+      // Cross-day cooldown by CANONICAL key: the same reason may surface at most once per 20h.
+      const { data: recentRows } = await supabaseAdmin
+        .from('coaching_messages').select('trigger_type')
+        .eq('user_id', profile.id)
+        .gte('created_at', new Date(now.getTime() - 20 * 3600_000).toISOString());
+      const recentKeys = new Set(((recentRows ?? []) as { trigger_type: string | null }[]).map(r => r.trigger_type ?? ''));
+      const openKeys = triggerKeys.filter(k => !recentKeys.has(k));
+      if (openKeys.length === 0) continue;
+      const keyLine = `
+GECERLI TETIK ANAHTARLARI: ${openKeys.join(', ')}
+"trigger" alanina YALNIZCA bu listeden birini yaz. Listede olmayan bir konu icin mesaj uretme.`;
+
       let nudgeRc: UsageReceipt | null = null;
       const result = await chatCompletion<NudgeResult>(
-        [{ role: 'system', content: NUDGE_PROMPT }, { role: 'user', content: context }],
+        [{ role: 'system', content: NUDGE_PROMPT }, { role: 'user', content: context + keyLine }],
         { temperature: TEMPERATURE.coaching, reasoningEffort: EFFORT.coaching, maxTokens: 200, jsonMode: true, onReceipt: (r) => { nudgeRc = r; } }
       );
       // #arch step 5 (audit ledger-gap): the per-user proactive LLM call was completely untracked.
@@ -1693,6 +1709,8 @@ ${sentTodayContext}`;
 
       if (result.send && result.message) {
         const { clean } = sanitizeText(result.message);
+        // Never store a free-text reason: clamp to the canonical key set offered this run.
+        result.trigger = openKeys.includes(result.trigger ?? '') ? result.trigger : openKeys[0];
 
         // Hard dupe guard: the LLM's trigger label is free text ("3+ gün sessiz"
         // vs "30+ GÜN SESSİZ"), so normalize before comparing; also catch
@@ -2328,6 +2346,17 @@ const TRIGGER_TO_PREF: Record<string, string> = {
   reengagement_soft: 'reengagement',
   reengagement_medium: 'reengagement',
   reengagement_hard: 'reengagement',
+  // The tiers the re-engagement loop actually writes are short/medium/long — short and long were
+  // unmapped, so opting out of "geri dönüş" messages silently failed for two of the three tiers.
+  reengagement_short: 'reengagement',
+  reengagement_long: 'reengagement',
+  // Canonical keys of the LLM nudge loop (shared/nudge-triggers.ts).
+  sabah_uyanma_saati: 'morning_plan',
+  gece_riski: 'night_risk',
+  atistirma_riski: 'night_risk',
+  alkol_sapma_riski: 'daily_report',
+  motivasyon_dususu: 'reengagement',
+  taahhut_takibi: 'commitment_followup',
   periodic_end: 'morning_plan',
   periodic_transition_3d: 'morning_plan',
   habit_introduce: 'morning_plan',

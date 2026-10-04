@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
+import { edgeHeaders } from '@/lib/edgeHeaders';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 import { Button } from '@/components/ui/Button';
@@ -97,7 +98,7 @@ export default function DailyReportScreen() {
     // are only written to the row). Re-read the persisted row so the UI shows real
     // numbers instead of "undefined".
     try {
-      const { error: invokeError } = await supabase.functions.invoke('ai-report', { body: { report_type: 'daily', date: reportDate, force: true } });
+      const { error: invokeError } = await supabase.functions.invoke('ai-report', { body: { report_type: 'daily', date: reportDate, force: true }, headers: edgeHeaders() });
       if (invokeError) throw invokeError;
       const { data } = await supabase.from('daily_reports').select('*').eq('user_id', user.id).eq('date', reportDate).single();
       if (data) {

@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
+import { edgeHeaders } from '@/lib/edgeHeaders';
 import { Button } from '@/components/ui/Button';
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { Card } from '@/components/ui/Card';
@@ -127,7 +128,7 @@ export default function WeeklyReportScreen() {
       // The ai-report response omits persisted fields (weight_trend, actuals); reading
       // the raw response left report.weight_trend undefined → crash at the .length check.
       // Re-read the stored row (NOT NULL weight_trend default []) so the UI is safe + complete.
-      const { error: invokeError } = await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly', force: true } });
+      const { error: invokeError } = await supabase.functions.invoke('ai-report', { body: { report_type: 'weekly', force: true }, headers: edgeHeaders() });
       if (invokeError) throw invokeError;
       const { data } = await supabase.from('weekly_reports').select('*').eq('user_id', user.id).order('week_start', { ascending: false }).limit(1).single();
       if (data) {

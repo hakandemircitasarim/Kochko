@@ -27,6 +27,7 @@ import { writeTurnLog, writeFactReceipts, type FactReceipt } from '../shared/tur
 import { logBelief } from '../shared/belief-log.ts';
 import { ACTIVE_ROLLOUT_STEPS, rolloutMode, rolloutStamp } from '../shared/rollout.ts';
 import { sanitizeUiMarkers } from '../shared/ui-markers.ts';
+import { createTurnTimer, type TurnTimer } from '../shared/turn-timer.ts';
 import { resolveTurnMode, isOnboardingHint, isPlanMode, wantsToDropIntent, classifyPlanIntent } from './turn.ts';
 import { failureLine, guardVerdictOf, type GuardFlag, type TurnFailureClass } from '../shared/turn-failures.ts';
 import { appendCoachingNote } from '../shared/coaching-notes.ts';
@@ -58,7 +59,8 @@ import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-app-version, x-region',
+  'Access-Control-Expose-Headers': 'x-kochko-timings',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -97,6 +99,15 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = STT_
 }
 
 serve(async (req: Request) => {
+  const timer = createTurnTimer();
+  const res = await handleChat(req, timer);
+  const timings = timer.summary();
+  if (req.method !== 'OPTIONS') console.log('[timing]', timings);
+  try { res.headers.set('x-kochko-timings', timings); } catch { /* immutable headers — log line still has it */ }
+  return res;
+});
+
+async function handleChat(req: Request, timer: TurnTimer): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -122,6 +133,7 @@ serve(async (req: Request) => {
 
     const validation = validateChatRequest(body);
     if (!validation.valid) return respond({ error: validation.error }, 400);
+    timer.mark('auth');
 
     const { message, image_base64, target_date: target_date_raw, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id, idempotency_key, ui_markers: ui_markers_raw, accepted_nudge_id } = body;
 
@@ -496,6 +508,7 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
       }
     }
 
+    timer.mark('gates');
     // Check onboarding status
     const { data: profile } = await supabaseAdmin
       .from('profiles').select('onboarding_completed, gender, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, protein_per_kg, weight_kg, birth_year, height_cm, home_timezone, active_timezone, day_boundary_hour, periodic_state, menstrual_tracking')
@@ -671,27 +684,49 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
       const upd = sess?.updated_at ? Date.parse(sess.updated_at as string) : 0;
       sessionRecentlyActive = Number.isFinite(upd) && (Date.now() - upd) < 6 * 3600_000;
     }
+    timer.mark('mode');
+    // SPEED (2026-10-04): these reads are independent of each other and of the context layers, yet
+    // ran one after another (persona → message count → tone → repair → service contexts), each a
+    // database round-trip. Start them together; await below where each value is first needed.
+    // A correction turn is the one exception: it REVERTS the previous write first, so the service
+    // contexts must read the post-revert state — they stay sequential on that path only.
+    const isCorrectionTurn = !!message && detectRepairIntent(message).type === 'correction';
+    const personaP = (async () => {
+      if (!(await shouldDetectPersona(userId))) return { needed: false, prompt: '' };
+      const msgCount = await getMessageCount(userId);
+      return { needed: true, prompt: msgCount >= 100 ? buildPersonaDetectionPrompt(msgCount) : '' };
+    })();
+    const toneP = getToneContext(userId);
+    const repairCtxP = getRepairContext(userId);
+    const startServiceReads = () => Promise.all([
+      // F1/B1b: the CANONICAL mode, not the raw keyword guess. On a promoted plan turn the raw
+      // value is 'coaching'/'plan', which silently loaded the wrong service-context set for the
+      // turn actually being run. For every non-hint, non-promoted turn the two are identical.
+      getAllServiceContexts(userId, effectiveMode, {
+        message: message ?? '',
+        clientTimezone: client_timezone as string | undefined,
+        // FIX (audit AI/HIGH day-boundary): pass the already-computed user-effective "today" so
+        // recovery/eating-out/MVD contexts share ONE day definition (no redundant profile query,
+        // no UTC off-by-one vs the rest of the request).
+        effectiveToday,
+      }),
+      getSituationalSnapshot(userId, effectiveToday),
+    ]);
+    let serviceReadsP = isCorrectionTurn ? null : startServiceReads();
+    // Never let an early-started read surface as an unhandled rejection if we return before awaiting it.
+    for (const p of [personaP, toneP, repairCtxP, serviceReadsP]) p?.catch(() => {});
     const ctx = await buildContextFromPlan(userId, retrievalPlan, effectiveSessionId);
+    timer.mark('context');
 
     // Assemble system prompt = base + mode instructions + confidence note + persona/tone/repair context
     const modeInstructions = getModeInstructions(effectiveMode);
     const confidenceNote = buildConfidenceNote(ctx.contextMeta);
 
-    // Persona detection trigger (Spec 5.15: after 100+ messages)
-    let personaPrompt = '';
-    const personaNeeded = await shouldDetectPersona(userId);
-    if (personaNeeded) {
-      const msgCount = await getMessageCount(userId);
-      if (msgCount >= 100) {
-        personaPrompt = buildPersonaDetectionPrompt(msgCount);
-      }
-    }
-
-    // Tone context from learned preferences (Spec 5.9)
-    const toneContext = await getToneContext(userId);
-
-    // Repair context — frequent corrections (Spec 5.32)
-    const repairContext = await getRepairContext(userId);
+    // Persona detection trigger (Spec 5.15: after 100+ messages), tone (Spec 5.9) and repair
+    // context (Spec 5.32) — started in parallel above.
+    const [persona, toneContext, repairContext] = await Promise.all([personaP, toneP, repairCtxP]);
+    const personaNeeded = persona.needed;
+    const personaPrompt = persona.prompt;
 
     // Correction mode — if user said "yanlış anladın"
     // Artık yalnızca prompt metni enjekte etmiyoruz: önce koçun ÖNCEKİ turda yazdığı
@@ -701,13 +736,11 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
     // "Hayır, yanlış anladın — son kaydı sil" 5 kelimeden uzun olduğu için undo kapısına
     // takılmıyor, correction olarak buraya geliyordu ve hiçbir şey silinmiyordu.)
     let correctionCtx = '';
-    if (message) {
-      const repairCheck = detectRepairIntent(message);
-      if (repairCheck.type === 'correction') {
-        const reverted = await revertLastTurnWrite(userId, session_id ?? null);
-        if (reverted) console.log('[correction][reverted]', reverted.type, reverted.label.slice(0, 60));
-        correctionCtx = buildCorrectionContext(reverted);
-      }
+    if (isCorrectionTurn) {
+      const reverted = await revertLastTurnWrite(userId, session_id ?? null);
+      if (reverted) console.log('[correction][reverted]', reverted.type, reverted.label.slice(0, 60));
+      correctionCtx = buildCorrectionContext(reverted);
+      serviceReadsP = startServiceReads(); // post-revert state
     }
 
     // Household size for recipe scaling (Spec 7.7)
@@ -808,20 +841,7 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
     // #organism: the ALWAYS-ON situational snapshot ("who is this person right now") is fetched
     // for EVERY turn regardless of task mode, so the coach never feels amnesiac on a thin
     // register/mood turn. Runs in parallel with the mode-scoped service contexts.
-    const [serviceCtx, situationalSnapshot] = await Promise.all([
-      // F1/B1b: the CANONICAL mode, not the raw keyword guess. On a promoted plan turn the raw
-      // value is 'coaching'/'plan', which silently loaded the wrong service-context set for the
-      // turn actually being run. For every non-hint, non-promoted turn the two are identical.
-      getAllServiceContexts(userId, effectiveMode, {
-        message: message ?? '',
-        clientTimezone: client_timezone as string | undefined,
-        // FIX (audit AI/HIGH day-boundary): pass the already-computed user-effective "today" so
-        // recovery/eating-out/MVD contexts share ONE day definition (no redundant profile query,
-        // no UTC off-by-one vs the rest of the request).
-        effectiveToday,
-      }),
-      getSituationalSnapshot(userId, effectiveToday),
-    ]);
+    const [serviceCtx, situationalSnapshot] = await serviceReadsP!;
 
     // Task card context: when user taps an onboarding card, inject topic-specific instructions.
     // Each topic has a MINIMUM CHECKLIST — as soon as those fields are collected (via conversation
@@ -982,28 +1002,47 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       } catch { /* net her zaman opsiyonel — açılışı asla bloklamaz */ }
     }
 
-    const systemPrompt = [
+    timer.mark('prompt_inputs');
+    // PROMPT LAYOUT — stable first, volatile last (2026-10-04).
+    // OpenAI reuses the longest previously-seen PREFIX of a prompt from cache (≈10× cheaper input,
+    // faster first token). The old single system message put per-turn material (mode instructions,
+    // the live situational snapshot, the current minute) ahead of the profile and memory, so the
+    // cacheable prefix ended at the base prompt and everything after it — profile, memory and the
+    // whole transcript — was re-billed at the full rate on every turn.
+    //   1) STABLE system message: identity rules + who this user is (changes rarely)
+    //   2) the transcript (append-only between sticky-window steps — see buildLayer4Scoped)
+    //   3) TURN system message: everything that is true only for THIS turn, placed right before
+    //      the user's words, where the model also weighs it most.
+    // Content is unchanged; only its position moved. The current time leaves layer 1 because a
+    // minute-resolution clock at the top of the profile would break the prefix every turn.
+    const zamanMatch = ctx.layer1.match(/## ZAMAN\n[^\n]*\n?/);
+    const profileStable = zamanMatch ? ctx.layer1.replace(zamanMatch[0], '').trim() : ctx.layer1;
+    const stableSystem = [
       BASE_SYSTEM_PROMPT,
       // #arch step 9 (token budget): situational guidance blocks are included ONLY when their
-      // signal is present, instead of shipping ~870 dead tokens on every ordinary turn. Each gate
-      // is the EXACT condition under which the block is actionable, so behavior is unchanged:
-      image_base64 ? PHOTO_ANALYSIS_PROMPT : '',                                   // photo protocol — only with an image (~320 tok)
+      // signal is present. These two depend on the user's long-lived state, so they are stable.
       profile?.periodic_state ? PERIODIC_STATE_PROMPT : '',                         // per-state detail — only with an active period (~550 tok)
       (profile?.gender === 'female' && profile?.menstrual_tracking) ? CYCLE_PROMPT : '', // cycle coaching — only when tracking (~180 tok)
-      serviceCtx.returnFlow ? RETURN_FLOW_PROMPT : '',                              // return-flow tone — only when returning (~140 tok)
-      // #ux-fix: continuity outranks every mode/opener instruction below — no mid-thread re-greeting.
+      // #ux-fix: continuity outranks every mode/opener instruction — no mid-thread re-greeting.
       continuityNote,
+      profileStable ? `--- KULLANICI HAKKINDA ---\n\n${profileStable}` : '',
+      ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
+    ].filter(Boolean).join('\n\n');
+
+    const turnSystem = [
+      '--- BU TURUN BAGLAMI (yalnizca bu mesaj icin gecerli; yukaridaki kurallar aynen gecerli) ---',
+      zamanMatch ? zamanMatch[0].trim() : '',
+      image_base64 ? PHOTO_ANALYSIS_PROMPT : '',                                   // photo protocol — only with an image (~320 tok)
+      serviceCtx.returnFlow ? RETURN_FLOW_PROMPT : '',                              // return-flow tone — only when returning (~140 tok)
       antiRepeatNote,
-      // Task card instructions come right after BASE so they are prominent — they override
-      // default onboarding-mode ambition and keep the session narrowly scoped.
+      // Task card instructions: they override default onboarding-mode ambition and keep the
+      // session narrowly scoped — last-in-prompt is the most prominent position.
       taskCardCtx,
       modeInstructions,
-      // #organism: always-on situational snapshot — placed high so it frames EVERY response with
-      // "who this person is right now", even on thin register/mood turns. This is what makes the
-      // coach feel like it truly knows you and responds to the moment, not a generic bot.
+      // #organism: always-on situational snapshot — frames EVERY response with "who this person
+      // is right now", even on thin register/mood turns.
       situationalSnapshot,
-      // #S4: a data contradiction detected this turn MUST be resolved in the reply — placed high
-      // so it outranks routine coaching guidance.
+      // #S4: a data contradiction detected this turn MUST be resolved in the reply.
       contradictionPrompt,
       acceptedOfferCtx,
       confidenceNote,
@@ -1024,8 +1063,6 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       serviceCtx.travel,               // 11. Travel/timezone context
       serviceCtx.foodRepertoire,       // 12. AI-behaviour #13: THEIR foods/templates/recipes — suggest from these first
       serviceCtx.adviceOutcome,        // 13. AI-behaviour #9: rejected advice + last correction — change approach, own the miss
-      ctx.layer1 ? `--- KULLANICI HAKKINDA ---\n\n${ctx.layer1}` : '',
-      ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
       repairContext,
       remainingMacrosNote,
@@ -1033,15 +1070,17 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       householdNote,
     ].filter(Boolean).join('\n\n');
 
-    // Build messages array
+    // Build messages array: stable system → transcript → this turn's context → the user's message.
     const gptMessages: { role: string; content: string | unknown[] }[] = [
-      { role: 'system', content: systemPrompt },
+      { role: 'system', content: stableSystem },
     ];
 
     // Add chat history (Layer 4)
     for (const msg of ctx.layer4) {
       gptMessages.push({ role: msg.role, content: msg.content });
     }
+
+    gptMessages.push({ role: 'system', content: turnSystem });
 
     // Add current message
     if (image_base64) {
@@ -1084,6 +1123,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       reservedUserMessageId = reservation.reservedMessageId;
     }
 
+    timer.mark('reserve');
     // Call OpenAI (Spec 5.27: temperature by mode; the router now selects REASONING EFFORT —
     // one model, one memory, only the pause before answering varies. See model-router.ts.)
     const modelSelection = selectModel(analysis, !!image_base64, effectiveMode);
@@ -1104,8 +1144,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     let turnReceipt: UsageReceipt | null = null;
     const rawModelOut = await chatCompletion<string>(
       gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[],
-      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, reasoningEffort: modelSelection.effort, jsonRaw: true, onReceipt: (r) => { turnReceipt = r; } }
+      { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, reasoningEffort: modelSelection.effort, jsonRaw: true, cacheKey: `kochko-chat:${userId}`, onReceipt: (r) => { turnReceipt = r; } }
     );
+    timer.mark('llm');
     let assistantMessage: string;
     let actions: Record<string, unknown>[];
     let envelope: { reply?: unknown; actions?: unknown } | null = null;
@@ -2779,6 +2820,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     }
 
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
+    timer.mark('nets');
     const { feedback: actionFeedback, receipts: actionReceipts } = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz);
 
     // #S2 RECEIPTS: verify that captured identity facts REALLY landed in the canonical store and
@@ -3157,6 +3199,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
       .map((a, i: number) => ({ a, fb: actionFeedback[i] ?? null }))
       .filter((p) => p.fb !== DUP_SKIP);
     const persistedActions = persistedPairs.map((p) => p.a);
+    timer.mark('actions_post');
     const assistantMessageId = await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, persistedActions, session_id, reservedUserMessageId);
     // FIX (audit AI-MDL-05): the turn is now persisted (assistant reply appended to the reserved
     // row's conversation). Clear the handle so a throw in the post-store steps below does NOT
@@ -3337,6 +3380,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
       // (premium, onboarding, or record-parse) — the client treats that as "don't show".
       remaining: rateLimit.remaining,
     };
+    timer.mark('store');
     // #arch step 4: commit the exact response so a still-in-flight retry replays THIS, not a re-run.
     return await commitAndRespond(responseData);
   } catch (err) {
@@ -3363,7 +3407,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
     }
     return respond({ error: 'Beklenmeyen bir hata oluştu. Lütfen tekrar dene.', code: 'AI_INTERNAL' }, 500);
   }
-});
+}
 
 // --- Helper Functions ---
 
@@ -3739,8 +3783,23 @@ async function forceWorkoutLogAction(
 /** Goal-setting statement? ("3 ayda 5 kilo vermek istiyorum, hedefim 70") */
 function looksLikeGoalIntent(msg: string): boolean {
   const m = msg.toLocaleLowerCase('tr');
+  // A QUESTION about a goal ("protein hedefim ne kadar?") is not a goal statement. Measured live
+  // 2026-10-04: that exact question fired this net and paid a second LLM call (~1.5 s) on a turn
+  // that could never produce a goal write.
+  if (isQuestionLike(m)) return false;
   return /(hedefim|hedef koy|yeni hedef|hedefimi)\b/.test(m)
     || /(kilo vermek|kilo almak|kas kazanmak|zayiflamak|zayıflamak|formda olmak)\s+isti/.test(m);
+}
+
+/**
+ * Is this message asking rather than telling? Turkish marks questions with a separate particle
+ * (mı/mi/mu/mü + person endings) or a wh-word, and users often drop the '?'. Keeps the
+ * forced-extraction nets — each one a second LLM call — off turns that cannot contain a fact to save.
+ */
+function isQuestionLike(lowerMsg: string): boolean {
+  if (lowerMsg.includes('?')) return true;
+  if (/(^|\s)(m[ıiuü](s[ıiuü]n|y[ıiuü]m|d[ıiuü]r|s[ıiuü]n[ıiuü]z|y[ıiuü]z)?)(\s|$|[.,!])/.test(lowerMsg)) return true;
+  return /(^|\s)(ne kadar|kaç|kac|nasıl|nasil|neden|niye|niçin|hangi|nedir|neydi)(\s|$|[.,!])/.test(lowerMsg);
 }
 
 /** Forced extraction of goal fields into a profile_update action. */

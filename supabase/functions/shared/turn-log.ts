@@ -16,7 +16,7 @@ export async function writeTurnLog(
   guardVerdict = 'clean',
 ): Promise<void> {
   try {
-    await supabaseAdmin.from('ai_turn_log').insert({
+    const { error } = await supabaseAdmin.from('ai_turn_log').insert({
       user_id: userId,
       function_name: functionName,
       system_mode: systemMode,
@@ -28,12 +28,17 @@ export async function writeTurnLog(
       // migration 104: thinking is billed as output, so without this column an expensive ANSWER
       // and expensive THINKING are indistinguishable — and thinking is the lever we control.
       reasoning_tokens: receipt?.reasoningTokens ?? 0,
+      // migration 105: prompt-cache hits — the cost/latency lever of a full-context-every-turn app.
+      cached_tokens: receipt?.cachedTokens ?? 0,
       latency_ms: receipt?.latencyMs ?? 0,
       finish_reason: receipt?.finishReason ?? null,
       fallback_reason: receipt?.fallbackReason ?? null,
       attempts: receipt?.attempts ?? 1,
       guard_verdict: guardVerdict,
     });
+    // supabase-js REPORTS errors, it does not throw them — without this check a schema drift (a
+    // column the deploy expects but the database lacks) silently stopped the whole ledger.
+    if (error) console.error(`[ai_turn_log] ${functionName} write failed:`, error.message);
   } catch (e) { console.error(`[ai_turn_log] ${functionName} write failed:`, (e as Error).message); }
 }
 

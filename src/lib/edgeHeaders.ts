@@ -1,6 +1,22 @@
 import Constants from 'expo-constants';
 
 /**
+ * The region every edge-function invocation is pinned to: the DATABASE's region.
+ *
+ * WHY (measured 2026-10-04): by default Supabase runs a function in the region nearest the CALLER.
+ * For a phone in Turkey that is eu-central-1 (Frankfurt), while this project's Postgres lives in
+ * ap-southeast-1 (Singapore). ai-chat makes dozens of database round-trips per turn, and every one
+ * of them crossed Frankfurt↔Singapore: the same turn spent ~10.5 s outside the LLM call when it ran
+ * in Frankfurt and ~2.5 s when pinned here. Paying the long hop ONCE (phone → Singapore) instead of
+ * once per query is the single biggest latency lever this app has.
+ *
+ * Supabase has no project-wide default for this — it can only be chosen per request — so the pin
+ * lives here, next to the other header every invocation carries. Override with
+ * EXPO_PUBLIC_SUPABASE_FUNCTION_REGION if the database ever moves.
+ */
+const FUNCTION_REGION = process.env.EXPO_PUBLIC_SUPABASE_FUNCTION_REGION || 'ap-southeast-1';
+
+/**
  * Headers every edge-function invocation carries (plan v2, F0 · A00).
  *
  * WHY: an APK stays on a phone for weeks. The server therefore talks to several client versions at
@@ -13,5 +29,5 @@ import Constants from 'expo-constants';
  */
 export function edgeHeaders(): Record<string, string> {
   const version = (Constants.expoConfig?.version as string | undefined) ?? 'unknown';
-  return { 'x-app-version': version };
+  return { 'x-app-version': version, 'x-region': FUNCTION_REGION };
 }

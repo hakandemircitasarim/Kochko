@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
 import { supabase } from '@/lib/supabase';
+import { edgeHeaders } from '@/lib/edgeHeaders';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -155,6 +156,7 @@ export default function MonthlyReportScreen() {
     try {
       const { data, error } = await supabase.functions.invoke('ai-report', {
         body: { report_type: 'monthly', force: true },
+        headers: edgeHeaders(),
       });
       if (error) throw error;
       setAiReport(data as MonthlyAIReport);

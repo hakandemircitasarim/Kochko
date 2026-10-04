@@ -865,23 +865,35 @@ function trimLayer3ToBudget(layer1: string, layer2: string, layer3: string): str
 }
 
 async function buildLayer4Scoped(userId: string, plan: RetrievalPlan, sessionId?: string): Promise<{ role: string; content: string }[]> {
-  const limit = plan.layer4MaxMessages;
-  if (limit === 0) return [];
+  const minMessages = plan.layer4MaxMessages;
+  if (minMessages === 0) return [];
 
-  let query = supabaseAdmin
+  // PROMPT-CACHE STICKY WINDOW (2026-10-04). A plain "last N messages" window slides by two
+  // messages every turn, so the history's first message changes every turn and the provider's
+  // prefix cache can never cover it — the whole transcript was re-billed at the full input rate on
+  // every single turn. Instead the window's START moves in steps of HISTORY_STEP: it shows between
+  // N and N+HISTORY_STEP-1 messages, and between steps the transcript is append-only, so the
+  // previous turn's prompt is an exact prefix of this one. The model never sees LESS than before.
+  const HISTORY_STEP = 10;
+  let rowsQuery = supabaseAdmin
     .from('chat_messages')
     .select('role, content')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-    .limit(limit);
-
+    .limit(minMessages + HISTORY_STEP - 1);
+  let countQuery = supabaseAdmin
+    .from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId);
   if (sessionId) {
-    query = query.eq('session_id', sessionId);
+    rowsQuery = rowsQuery.eq('session_id', sessionId);
+    countQuery = countQuery.eq('session_id', sessionId);
   }
-
-  const { data } = await query;
-
-  if (!data || data.length === 0) return [];
+  const [{ data: rows }, { count }] = await Promise.all([rowsQuery, countQuery]);
+  if (!rows || rows.length === 0) return [];
+  const total = count ?? rows.length;
+  const limit = total > minMessages ? minMessages + ((total - minMessages) % HISTORY_STEP) : minMessages;
+  const data = rows.slice(0, limit);
 
   // Drop messages from newest-first so the most recent turns survive when the
   // session is long. Without this, long sessions overflow the model's context
