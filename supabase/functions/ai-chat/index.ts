@@ -50,7 +50,7 @@ import {
   shouldDetectPersona, buildPersonaDetectionPrompt, getMessageCount,
   getToneContext, buildKnowledgeSummary, getRepairContext,
 } from '../shared/repair-handler.ts';
-import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot } from '../shared/service-contexts.ts';
+import { getAllServiceContexts, checkHabitFromChat, getSituationalSnapshot, simulationNumbers } from '../shared/service-contexts.ts';
 import { normalizeHabitEntry } from '../shared/habits.ts'; // AI-behaviour #14: one habit identity
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
 import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
@@ -1089,6 +1089,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       serviceCtx.progressiveDisclosure,// 2. Progressive disclosure (features to introduce)
       serviceCtx.recovery,             // 3. Recovery (only in recovery mode)
       serviceCtx.eatingOut,            // 5. Eating out (only in eating_out mode)
+      serviceCtx.simulation.prompt,    // 5b. Simulation budget (only in simulation mode)
       serviceCtx.mvd,                  // 6. MVD (only in mvd mode)
       freshOpener ? '' : serviceCtx.predictiveRisk.prompt,// 7. Predictive risk — suppressed on a cold opener (#R3-4)
       serviceCtx.caffeineSleep,        // 8. Caffeine-sleep correlation
@@ -1977,7 +1978,15 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     // SimulationCard via parseSimulationData(message) on BOTH live and history paths and strips
     // it from the displayed text itself. (FIX audit regression: stripping server-side removed the
     // card AND lost it on history reload since the stored message would no longer carry the block.)
-    const { simulation } = extractSimulation(assistantMessage);
+    let { simulation } = extractSimulation(assistantMessage);
+    // The card's "kalan" and weekly line are FACTS about the user's budget: recompute them from the
+    // server snapshot (the model guessed weeklyImpact with no weekly data). The block is rewritten
+    // IN the message because the client parses the card from the stored text.
+    if (simulation && serviceCtx.simulation.budget && Number.isFinite(simulation.calories) && simulation.calories > 0) {
+      simulation = { ...simulation, ...simulationNumbers(serviceCtx.simulation.budget, simulation.calories) };
+      const block = `<simulation>${JSON.stringify(simulation)}</simulation>`;
+      assistantMessage = assistantMessage.replace(/<simulation>[\s\S]*?<\/simulation>/, () => block);
+    }
 
     // A snapshot is only USABLE if it has a non-empty days array (and, for diet, a
     // targets object). A structurally-incomplete-but-valid-JSON snapshot would be

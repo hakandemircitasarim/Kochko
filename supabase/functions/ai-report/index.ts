@@ -147,7 +147,7 @@ async function generateDailyReport(userId: string, date?: string, force = false)
 
   // Fetch today's data
   const [planRes, mealsRes, workoutsRes, metricsRes, goalRes] = await Promise.all([
-    supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max, protein_target_g, water_target_liters').eq('user_id', userId).eq('date', reportDate).limit(1).maybeSingle(),
+    supabaseAdmin.from('daily_plans').select('plan_type, calorie_target_min, calorie_target_max, protein_target_g, water_target_liters').eq('user_id', userId).eq('date', reportDate).limit(1).maybeSingle(),
     supabaseAdmin.from('meal_logs').select('id').eq('user_id', userId).eq('logged_for_date', reportDate).eq('is_deleted', false),
     supabaseAdmin.from('workout_logs').select('duration_min').eq('user_id', userId).eq('logged_for_date', reportDate),
     supabaseAdmin.from('daily_metrics').select('*').eq('user_id', userId).eq('date', reportDate).maybeSingle(),
@@ -198,7 +198,8 @@ async function generateDailyReport(userId: string, date?: string, force = false)
       // Prior days come from the MEAL LOGS, not from daily_reports: a day the user logged food but
       // never opened its report had no row, so its intake silently vanished from the week.
       const { data: weekMeals } = await supabaseAdmin.from('meal_logs')
-        .select('id').eq('user_id', userId).gte('logged_for_date', wsStr).lt('logged_for_date', reportDate).eq('is_deleted', false);
+        .select('id, logged_for_date').eq('user_id', userId).gte('logged_for_date', wsStr).lt('logged_for_date', reportDate).eq('is_deleted', false);
+      const unloggedPastDays = mondayOffset - new Set((weekMeals ?? []).map((m: { logged_for_date: string }) => m.logged_for_date)).size;
       const weekMealIds = (weekMeals ?? []).map((m: { id: string }) => m.id);
       let priorConsumed = 0;
       if (weekMealIds.length > 0) {
@@ -209,8 +210,12 @@ async function generateDailyReport(userId: string, date?: string, force = false)
       const remaining = weeklyBudget - weekConsumed;
       const pct = Math.round((weekConsumed / weeklyBudget) * 100);
       // No intake logged all week is ABSENCE, not "%0 used, full margin left".
+      // Unlogged earlier days are unknown intake: "%20 kullandın, 12.000 kcal pay kaldı" off a
+      // week with 4 empty days is a fiction.
       weeklyBudgetStatus = weekConsumed <= 0
         ? 'Bu hafta henüz kalori kaydı yok; haftalık bütçe durumu hesaplanamadı.'
+        : unloggedPastDays > 0
+          ? `Bu haftanın ${unloggedPastDays} günü kayıtsız; haftalık bütçe durumu hesaplanamadı.`
         : remaining >= 0
           ? `Bu hafta haftalık bütçenin %${pct}'ini kullandın, ${remaining.toLocaleString('tr-TR')} kcal pay kaldı.`
           : `Bu hafta haftalık bütçeyi ${Math.abs(remaining).toLocaleString('tr-TR')} kcal aştın (%${pct}).`;
@@ -253,12 +258,14 @@ async function generateDailyReport(userId: string, date?: string, force = false)
     let raw = 0, totalW = 0;
     const add = (w: number, credit: number, present: boolean) => { if (w > 0 && present) { raw += w * credit; totalW += w; } };
     // MISSING DATA IS NOT FAILURE: food components count only when food was LOGGED that day (a
-    // plan target alone scored a no-log day 8/100). "No workout" is a datum only on a day the user
-    // otherwise engaged with — on a fully empty day it is just absence.
+    // plan target alone scored a no-log day 8/100). "No workout" is a datum only on a PLANNED
+    // training day the user otherwise engaged with — a rest day without a workout is the plan
+    // working (live: a rest-day water+weight log scored 26/100 for "antrenman yok").
     const loggedFood = mealIds.length > 0;
+    const trainingDay = plan?.plan_type === 'training';
     add(weights.calorie, calCredit, loggedFood);
     add(weights.protein, proCredit, loggedFood);
-    add(weights.workout, workoutCredit, workoutCredit === 1 || loggedFood || hasMetrics);
+    add(weights.workout, workoutCredit, workoutCredit === 1 || (trainingDay && (loggedFood || hasMetrics)));
     add(weights.water, waterCredit, hasMetrics && Number(metrics?.water_liters) > 0);
     add(weights.sleep, sleepCredit, hasMetrics && Number(metrics?.sleep_hours) > 0);
     add(weights.mood, moodCredit, hasMetrics && Number(metrics?.mood_score) > 0);
@@ -278,7 +285,7 @@ UYUM PUANI (KOD TARAFINDAN HESAPLANDI — BU SAYIYI AYNEN KULLAN, KENDIN HESAPLA
 AGIRLIKLAR: Kalori=%${weights.calorie} Protein=%${weights.protein} Antrenman=%${weights.workout} Su=%${weights.water} Uyku=%${weights.sleep} Mood=%${weights.mood} (Hedef: ${goalType})
 Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g | Su ${detCompliance.waterTarget}L
 Gerceklesen: ${mealIds.length > 0 ? `Kalori ${Math.round(totalCal)} kcal | Protein ${Math.round(totalPro)}g | Karb ${Math.round(totalCarb)}g | Yag ${Math.round(totalFat)}g | Alkol ${Math.round(totalAlcCal)} kcal` : 'YEMEK KAYDI YOK (yemedi demek DEGIL — girilmedi; kalori/protein yorumu yapma)'}
-Antrenman: ${workouts.length > 0 ? `${workouts.length} seans, ${totalWorkoutMin} dk` : 'kayit yok'}
+Antrenman: ${workouts.length > 0 ? `${workouts.length} seans, ${totalWorkoutMin} dk` : plan?.plan_type === 'training' ? 'planli antrenman gunu, kayit yok' : 'dinlenme gunu (antrenman beklenmiyor)'}
 Su: ${Number(metrics?.water_liters) > 0 ? `${metrics!.water_liters}L` : 'kayit yok'} | Uyku: ${Number(metrics?.sleep_hours) > 0 ? `${metrics!.sleep_hours}sa` : 'kayit yok'} | Adim: ${Number(metrics?.steps) > 0 ? metrics!.steps : 'kayit yok'} | Mood: ${Number(metrics?.mood_score) > 0 ? `${metrics!.mood_score}/5` : 'kayit yok'}
 KURAL: "kayit yok" = veri girilmedi; bunu 0 / yapmadi / icmedi diye yorumlama. Eksik alan icin yorum alani null olabilir.
 ${(() => {
@@ -291,8 +298,11 @@ ${(() => {
   const weeksElapsed = Math.max(1, Math.round((Date.now() - created.getTime()) / (7*24*60*60*1000)));
   const targetWeeks = (g.target_weeks as number) ?? 12;
   const weeksLeft = Math.max(0, targetWeeks - weeksElapsed);
-  const pace = kgLeft > 0 && weeksLeft > 0 ? (kgLeft / weeksLeft).toFixed(2) : '?';
-  return `HEDEF: ${g.goal_type} -> ${tw}kg | Simdi: ${cw}kg | ${kgLeft.toFixed(1)}kg kaldi | ${weeksElapsed}/${targetWeeks} hafta | Gereken tempo: ${pace}kg/hafta`;
+  // An unknown pace ('?') made the model ramble about "net hafta sayısı"; state the case instead.
+  const paceTxt = kgLeft <= 0 ? 'hedefe ulasildi'
+    : weeksLeft > 0 ? `Gereken tempo: ${(kgLeft / weeksLeft).toFixed(2)}kg/hafta`
+    : 'hedef suresi doldu (tempo yorumu yapma; yeni sure konusulabilir)';
+  return `HEDEF: ${g.goal_type} -> ${tw}kg | Simdi: ${cw}kg | ${kgLeft.toFixed(1)}kg kaldi | ${Math.min(weeksElapsed, targetWeeks)}/${targetWeeks} hafta | ${paceTxt}`;
 })()}`;
 
   let rc: UsageReceipt | null = null;

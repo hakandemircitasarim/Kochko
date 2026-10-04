@@ -269,9 +269,15 @@ export async function getRecoveryContext(userId: string, effectiveToday?: string
       .from('chat_messages').select('id', { count: 'exact', head: true })
       .eq('user_id', userId).eq('task_mode', 'recovery').gte('created_at', thirtyDaysAgo);
 
+    // Unlogged earlier days are unknown intake, not zero — "haftalık bütçende hala X marjin var" off
+    // a mostly-empty week is a promise the data can't back.
+    const snap = await getBudgetSnapshot(userId, today);
+    const weekLine = snap && snap.unloggedPastDays > 0
+      ? `Haftalik kalan: BILINMIYOR (bu haftanin ${snap.unloggedPastDays} gunu kayitsiz — haftalik marjin sayisi verme) | Haftada ${daysLeftInWeek} gun kaldi`
+      : `Haftalik kalan: ${weeklyRemaining} kcal | Haftada ${daysLeftInWeek} gun kaldi`;
     return `## KURTARMA MODU AKTIF
 Bugunun fazlasi: ${excess} kcal | Toplam bugun: ${todayCalories} kcal | Hedef: ${dailyTarget} kcal
-Haftalik kalan: ${weeklyRemaining} kcal | Haftada ${daysLeftInWeek} gun kaldi
+${weekLine}
 Ciddiyet: ${severity} | Hafta kurtarilabilir: ${weeklyRemaining > 0 || excess < 500 ? 'EVET' : 'HAYIR'}
 Son 30 gunde recovery: ${recoveryCount ?? 0} kez
 
@@ -371,6 +377,105 @@ export async function getReturnFlowContext(userId: string): Promise<string> {
 }
 
 // ─────────────────────────────────────────────
+// BUDGET SNAPSHOT — the one place day/week calorie numbers come from for what-if turns
+// ─────────────────────────────────────────────
+
+export interface BudgetSnapshot {
+  todayConsumed: number;
+  dailyTarget: number;
+  /** May be negative (already over today). */
+  dailyRemaining: number;
+  weeklyBudget: number | null;
+  /** Monday → today, today included. */
+  weeklyConsumed: number;
+  /** May be negative. null when the profile has no weekly budget. */
+  weeklyRemaining: number | null;
+  /** Days left in the ISO week, today included (7 on Monday … 1 on Sunday). */
+  daysLeftInWeek: number;
+  /** Earlier days of this week with NO meal log. > 0 → weekly intake is unknown, not low. */
+  unloggedPastDays: number;
+}
+
+/**
+ * Today's and this week's calorie position from the LOGS (not from daily_reports, which only exist
+ * for days whose report was generated). Simulation's weeklyImpact was the model's own guess with
+ * no weekly data in the prompt; eating-out quoted a day budget only.
+ */
+export async function getBudgetSnapshot(userId: string, effectiveToday?: string): Promise<BudgetSnapshot | null> {
+  try {
+    const today = await resolveEffectiveToday(userId, effectiveToday);
+    const d = new Date(`${today}T00:00:00Z`);
+    const mondayOffset = d.getUTCDay() === 0 ? 6 : d.getUTCDay() - 1;
+    const ws = new Date(d); ws.setUTCDate(d.getUTCDate() - mondayOffset);
+    const weekStart = ws.toISOString().split('T')[0];
+    const [logsRes, profRes, planRes] = await Promise.all([
+      supabaseAdmin.from('meal_logs').select('id, logged_for_date').eq('user_id', userId)
+        .gte('logged_for_date', weekStart).lte('logged_for_date', today).eq('is_deleted', false),
+      supabaseAdmin.from('profiles').select('calorie_range_rest_min, calorie_range_rest_max, weekly_calorie_budget').eq('id', userId).maybeSingle(),
+      supabaseAdmin.from('daily_plans').select('calorie_target_min, calorie_target_max').eq('user_id', userId).eq('date', today).limit(1).maybeSingle(),
+    ]);
+    const logs = (logsRes.data ?? []) as { id: string; logged_for_date: string }[];
+    const dayOf = new Map(logs.map((l) => [l.id, l.logged_for_date]));
+    let todayConsumed = 0, weeklyConsumed = 0;
+    if (logs.length > 0) {
+      const { data: items } = await supabaseAdmin.from('meal_log_items').select('meal_log_id, calories').in('meal_log_id', logs.map((l) => l.id));
+      for (const i of (items ?? []) as { meal_log_id: string; calories: number | null }[]) {
+        const c = Number(i.calories) || 0;
+        weeklyConsumed += c;
+        if (dayOf.get(i.meal_log_id) === today) todayConsumed += c;
+      }
+    }
+    const prof = profRes.data as Record<string, number | null> | null;
+    const plan = planRes.data as Record<string, number | null> | null;
+    const planMid = plan?.calorie_target_min && plan?.calorie_target_max ? (plan.calorie_target_min + plan.calorie_target_max) / 2 : null;
+    const dailyTarget = Math.round(planMid ?? (((prof?.calorie_range_rest_min ?? 1800) + (prof?.calorie_range_rest_max ?? 2200)) / 2));
+    const weeklyBudget = prof?.weekly_calorie_budget && prof.weekly_calorie_budget > 0 ? Math.round(prof.weekly_calorie_budget) : null;
+    todayConsumed = Math.round(todayConsumed); weeklyConsumed = Math.round(weeklyConsumed);
+    return {
+      todayConsumed, dailyTarget, dailyRemaining: dailyTarget - todayConsumed,
+      weeklyBudget, weeklyConsumed, weeklyRemaining: weeklyBudget != null ? weeklyBudget - weeklyConsumed : null,
+      daysLeftInWeek: 7 - mondayOffset,
+      unloggedPastDays: mondayOffset - new Set(logs.map((l) => l.logged_for_date).filter((x) => x < today)).size,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function renderBudgetSnapshot(b: BudgetSnapshot): string {
+  return [
+    'BUTCE (SUNUCU — KESIN; bu sayilari kullan, kendin hesaplama):',
+    `Bugun yenilen: ${b.todayConsumed} kcal | Gunluk hedef: ${b.dailyTarget} kcal | Gunluk kalan: ${b.dailyRemaining} kcal`,
+    b.weeklyBudget != null && b.unloggedPastDays > 0
+      ? `Haftalik butce: ${b.weeklyBudget} kcal | Bu haftanin ${b.unloggedPastDays} gunu KAYITSIZ — haftalik kalan BILINMIYOR; haftalik kalan/marjin sayisi VERME`
+      : b.weeklyBudget != null
+      ? `Haftalik butce: ${b.weeklyBudget} kcal | Bu hafta yenilen (bugun dahil): ${b.weeklyConsumed} kcal | Haftalik kalan: ${b.weeklyRemaining} kcal | Haftanin kalan gunu (bugun dahil): ${b.daysLeftInWeek}`
+      : 'Haftalik butce: tanimli degil (haftalik etki icin sayi uydurma)',
+  ].join('\n');
+}
+
+/** The SimulationCard's numbers, recomputed from the server budget (the model guessed both). */
+export function simulationNumbers(b: BudgetSnapshot, calories: number): { remaining: number; weeklyImpact: string } {
+  const fmt = (n: number) => Math.round(n).toLocaleString('tr-TR');
+  const remaining = Math.round(b.dailyRemaining - calories);
+  let weeklyImpact: string;
+  if (b.weeklyRemaining != null && b.unloggedPastDays > 0) {
+    // Unlogged days are unknown intake, not zero: "14.913 kcal kalır" for a Sunday was a fiction.
+    weeklyImpact = `Bu hafta ${b.unloggedPastDays} gün kayıtsız, haftalık etki hesaplanamadı; bugün ${remaining >= 0 ? `${fmt(remaining)} kcal kalır` : `hedefi ${fmt(-remaining)} kcal aşar`}.`;
+  } else if (b.weeklyRemaining == null) {
+    weeklyImpact = remaining >= 0
+      ? `Haftalık bütçe tanımlı değil; bugün ${fmt(remaining)} kcal kalır.`
+      : `Haftalık bütçe tanımlı değil; bugünkü hedefi ${fmt(-remaining)} kcal aşar.`;
+  } else {
+    const after = b.weeklyRemaining - calories;
+    weeklyImpact = after >= 0
+      ? `Haftalık bütçende ${fmt(after)} kcal kalır (haftanın kalan ${b.daysLeftInWeek} günü için).`
+      : `Haftalık bütçeyi ${fmt(-after)} kcal aşar.`;
+  }
+  return { remaining, weeklyImpact };
+}
+
+// ─────────────────────────────────────────────
 // 5. EATING OUT CONTEXT (eating-out.service.ts)
 // ─────────────────────────────────────────────
 
@@ -415,11 +520,16 @@ export async function getEatingOutContext(userId: string, effectiveToday?: strin
       }
     }
 
-    parts.push(`\nGUN AYARLAMASI: Aksam disarida yemek icin ${Math.round(remaining * 0.6)} kcal ayir. Gun icinde hafif ye.`);
+    // A SUGGESTION, not a done allocation: "1.430 kcal ayırdık" claimed a budget move nothing made.
+    parts.push(`\nGUN AYARLAMASI (ONERI — sistemde bir ayirma YAPILMADI): Disarida yemek icin ~${Math.round(remaining * 0.6)} kcal birakmak mantikli, gun icinde hafif ye. "ayirdik/ayirdim/ayarladim" DEME; "~X kcal birakabilirsin" diye oner.`);
+    const wk = await getBudgetSnapshot(userId, today);
+    const weekKnown = wk?.weeklyRemaining != null && wk.unloggedPastDays === 0;
+    if (weekKnown) parts.push(`Haftalik kalan: ${wk!.weeklyRemaining} kcal (haftanin kalan ${wk!.daysLeftInWeek} gunu, bugun dahil)`);
+    else if (wk && wk.unloggedPastDays > 0) parts.push(`Haftalik kalan: BILINMIYOR (bu haftanin ${wk.unloggedPastDays} gunu kayitsiz) — haftalik marjin/kalan sayisi VERME, profildeki haftalik butceyi "kalan" diye sunma`);
     parts.push(`\nKURALLAR:
 1. En az hasarli secenekleri oner
 2. Sosyal baski koclugu yap (yargilamadan)
-3. Haftalik butce perspektifi ver
+3. ${weekKnown ? 'Haftalik butce perspektifi ver' : 'Gunluk perspektif ver (haftalik veri eksik)'}
 4. Porsiyon kontrolu ipuclari ver
 5. Mekan biliyorsan gecmis verileri kullan`);
 
@@ -1439,6 +1549,8 @@ export interface ServiceContexts {
   returnFlow: string;
   eatingOut: string;
   mvd: string;
+  /** simulation mode only: the budget block (prompt) + numbers to rewrite the SimulationCard. */
+  simulation: { prompt: string; budget: BudgetSnapshot | null };
   predictiveRisk: { prompt: string; overallRisk: string; factors: string[] };
   caffeineSleep: string;
   adaptiveDifficulty: string;
@@ -1495,6 +1607,11 @@ export async function getAllServiceContexts(
   if (taskMode === 'mvd') {
     mvd = await getMVDContext(userId, options?.effectiveToday);
   }
+  let simulation: ServiceContexts['simulation'] = { prompt: '', budget: null };
+  if (taskMode === 'simulation') {
+    const budget = await getBudgetSnapshot(userId, options?.effectiveToday);
+    if (budget) simulation = { prompt: `## SIMULASYON BUTCESI\n${renderBudgetSnapshot(budget)}\nKarttaki remaining ve weeklyImpact sunucuda bu sayilardan yeniden hesaplanir; yazida da ayni sayilari kullan.`, budget };
+  }
 
   return {
     habits: { prompt: habits.prompt, activeHabits: habits.activeHabits },
@@ -1505,6 +1622,7 @@ export async function getAllServiceContexts(
     returnFlow,
     eatingOut,
     mvd,
+    simulation,
     predictiveRisk: { prompt: predictiveRisk.prompt, overallRisk: predictiveRisk.overallRisk, factors: predictiveRisk.factors },
     caffeineSleep,
     adaptiveDifficulty,

@@ -298,6 +298,7 @@ ONEMLI: Yanıtının sonuna asagidaki formatta bir <simulation> blogu ekle:
    - Erken yat
 3. HAFTALIK BUTCE perspektifi MUTLAKA ver:
    "Bugun X kcal fazla yedin ama haftalik butcende hala Y kcal marjin var."
+   (Baglamda "Haftalik kalan: BILINMIYOR" yaziyorsa Y sayisi VERME; perspektifi sayisiz ver.)
 4. "Bugun bozuldu ama HAFTA BITMEDI" mesajini AKTIF ver.
 5. Yarin ve sonraki gunler icin DENGELEME stratejisi oner:
    "Kalan Z gunde gunluk W kcal azaltirsan hafta dengelenir."
