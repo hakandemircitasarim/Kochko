@@ -1049,12 +1049,21 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     // minute-resolution clock at the top of the profile would break the prefix every turn.
     const zamanMatch = ctx.layer1.match(/## ZAMAN\n[^\n]*\n?/);
     const profileStable = zamanMatch ? ctx.layer1.replace(zamanMatch[0], '').trim() : ctx.layer1;
-    const stableSystem = [
+    // PROMPT CACHE (2026-10-04, measured live): the provider only reuses a prefix that ends at a
+    // message boundary near the END of an earlier request — never a mid-prompt one. With
+    // [rules+profile][history][turn][user], any profile/summary/focus change (a weigh-in, the
+    // background summary refresh, a simulation turn's narrower layer-1 focus) wiped the whole cache:
+    // rules AND history (live: 0 cached on the turn after a weigh-in, even with rules in their own
+    // message). Order is now [rules][history][user state][turn][user]: rules + the append-only
+    // history form the reusable prefix; the volatile user block rides with the per-turn context.
+    const rulesSystem = [
       BASE_SYSTEM_PROMPT,
       // #arch step 9 (token budget): situational guidance blocks are included ONLY when their
       // signal is present. These two depend on the user's long-lived state, so they are stable.
       profile?.periodic_state ? PERIODIC_STATE_PROMPT : '',                         // per-state detail — only with an active period (~550 tok)
       (profile?.gender === 'female' && profile?.menstrual_tracking) ? CYCLE_PROMPT : '', // cycle coaching — only when tracking (~180 tok)
+    ].filter(Boolean).join('\n\n');
+    const userStateSystem = [
       // #ux-fix: continuity outranks every mode/opener instruction — no mid-thread re-greeting.
       continuityNote,
       profileStable ? `--- KULLANICI HAKKINDA ---\n\n${profileStable}` : '',
@@ -1122,7 +1131,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
 
     // Build messages array: stable system → transcript → this turn's context → the user's message.
     const gptMessages: { role: string; content: string | unknown[] }[] = [
-      { role: 'system', content: stableSystem },
+      { role: 'system', content: rulesSystem },
     ];
 
     // Add chat history (Layer 4)
@@ -1130,6 +1139,8 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       gptMessages.push({ role: msg.role, content: msg.content });
     }
 
+    // User state AFTER the history (see PROMPT CACHE above): it changes too often to sit in the prefix.
+    if (userStateSystem) gptMessages.push({ role: 'system', content: userStateSystem });
     gptMessages.push({ role: 'system', content: turnSystemOneContract });
 
     // Add current message
