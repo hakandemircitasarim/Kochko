@@ -36,6 +36,7 @@ import { isActivePremium } from '../shared/premium.ts';
 import { appendCoachingNote } from '../shared/coaching-notes.ts';
 
 import { VOICE_RULES } from '../shared/voice.ts';
+import { computePlanTargets } from '../shared/plan-targets.ts';
 
 // FIX (audit AI-PLN-02): master switch for the DORMANT daily-plan generator. Daily plans are now
 // produced by the chat plan flow → shared/plan-projection.ts (the single source of truth for
@@ -919,7 +920,10 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
     strengthContext = `\nGUC GECMISI:\n${lines.join('\n')}`;
   }
 
-  const weekStart = getWeekStart(today);
+  // Same anchor rule as the chat plans (ai-chat planWeekAnchor): with fewer than 2 days left in the
+  // current week, a menu made "today" is for the week ahead — a Sunday menu used to cover the week
+  // that ended that same day. The menu screen accepts a menu starting tomorrow (weekly-plan.service).
+  const weekStart = menuWeekAnchor(today);
 
   // Fetch user's favorite and frequently used recipes to include in plan prompt
   let savedRecipesContext = '';
@@ -976,7 +980,25 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
     ? `\n\nMENU DEGISIKLIK TALEBI: "${modificationRequest}". Bu talebi dikkate alarak sadece ilgili ogun/gunleri degistir, kalanlari koru.`
     : '';
 
-  const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${strengthContext}${savedRecipesContext}${modLine}\n\nHafta baslangici: ${weekStart}. 7 gunluk menu ve alisveris listesi olustur.`;
+  // Same server-fixed targets as the chat diet plan (shared/plan-targets.ts): calorie bands, the
+  // user's training days, protein and saved meal count — the menu renders around them instead of
+  // re-deriving its own numbers from the profile text.
+  let targetsLine = '';
+  try {
+    const [{ data: tp }, { data: wk }] = await Promise.all([
+      supabaseAdmin.from('profiles').select('tdee_calculated, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, weight_kg, protein_per_kg, meal_count_preference, available_training_times').eq('id', userId).maybeSingle(),
+      supabaseAdmin.from('weekly_plans').select('plan_data').eq('user_id', userId).eq('plan_type', 'workout').eq('status', 'active').is('plan_subtype', null).limit(1).maybeSingle(),
+    ]);
+    const wDays = ((wk?.plan_data as { days?: { day_index?: number; rest_day?: boolean }[] } | null)?.days ?? [])
+      .filter((d) => d && d.rest_day === false && Number.isInteger(d.day_index)).map((d) => d.day_index as number);
+    const t = tp ? computePlanTargets(tp, wDays.length > 0 ? wDays : null) : null;
+    if (t) {
+      const names = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
+      targetsLine = `\n\nSABIT HEDEFLER (sunucu — kendin hesaplama): dinlenme gunu ~${t.restKcal} kcal, antrenman gunu ~${t.trainingKcal} kcal; antrenman gunleri: ${t.trainingDays.length ? t.trainingDays.map((i) => names[i]).join(', ') : 'yok'} (bu gunlerde is_training_day=true)${t.proteinG ? `; protein ~${t.proteinG} g/gun` : ''}${t.mealsPerDay ? `; gunde TAM ${t.mealsPerDay} ana ogun (+en fazla 1 ara ogun)` : ''}. Her gunun ogun kalorileri toplami o gunun hedefine otursun.`;
+    }
+  } catch (e) { console.warn('[weekly_plan] targets skipped:', (e as Error).message); }
+
+  const prompt = `${ctx.layer1}\n\n${ctx.layer2}\n\n${ctx.layer3}\n\n${periodicContext}\n${seasonalLine}${strengthContext}${savedRecipesContext}${modLine}${targetsLine}\n\nHafta baslangici: ${weekStart}. 7 gunluk menu ve alisveris listesi olustur.`;
 
   let weeklyRc: UsageReceipt | null = null;
   const weeklyPlan = await chatCompletion<Record<string, unknown>>(
@@ -984,7 +1006,8 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
       { role: 'system', content: WEEKLY_PLAN_SYSTEM },
       { role: 'user', content: prompt },
     ],
-    { temperature: TEMPERATURE.plan, reasoningEffort: EFFORT.plan, maxTokens: 5000, jsonMode: true, onReceipt: (r) => { weeklyRc = r; } }
+    // 'low': the numbers are server-fixed above (SABIT HEDEFLER); the model composes the menu.
+    { temperature: TEMPERATURE.plan, reasoningEffort: 'low', maxTokens: 5000, jsonMode: true, onReceipt: (r) => { weeklyRc = r; } }
   );
   // #arch step 5: log the weekly plan generation cost/model/latency.
   writeTurnLog(userId, 'ai-plan', 'plan_weekly', weeklyRc).then(() => {}, () => {});
@@ -1051,6 +1074,15 @@ async function generateWeeklyPlan(userId: string, today: string, modificationReq
 // runtime TZ'ye duyarlıydı ve istemcinin (cihaz-yerel) hesabıyla ayrışabiliyordu. UTC-noon
 // ankrajı gece-yarısı/DST kaymasını eler; istemci de aynı algoritmayı kullanacak şekilde
 // hizalandı (weekly-plan.service.ts) ve aralık sorgusuyla küçük TZ kaymalarını tolere eder.
+function menuWeekAnchor(today: string): string {
+  const ws = getWeekStart(today);
+  const end = new Date(`${ws}T12:00:00.000Z`); end.setUTCDate(end.getUTCDate() + 6);
+  const daysLeft = Math.round((end.getTime() - Date.parse(`${today}T12:00:00.000Z`)) / 86400000);
+  if (daysLeft >= 2) return ws;
+  const t = new Date(`${today}T12:00:00.000Z`); t.setUTCDate(t.getUTCDate() + 1);
+  return getWeekStart(t.toISOString().split('T')[0]);
+}
+
 function getWeekStart(dateStr: string): string {
   const d = new Date(`${dateStr}T12:00:00.000Z`);
   const day = d.getUTCDay(); // 0=Sun..6=Sat

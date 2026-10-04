@@ -138,11 +138,13 @@ export async function getCurrentWeeklyPlan(): Promise<WeeklyPlan | null> {
   // ama gün-sınırı/TZ kaymasında bir gün ayrışabilir; aralık + generated_at DESC en güncel,
   // başlamış haftalık menüyü güvenle döndürür. status='active' zaten arşivlenmiş eski satırları
   // eler, dolayısıyla geçmiş bir haftanın aktif menüsünü yanlışlıkla seçme riski yok.
-  const today = getLocalToday();
+  // A menu generated on a Sunday is anchored to the week starting TOMORROW (ai-plan menuWeekAnchor),
+  // so accept week_start up to tomorrow — otherwise a Sunday user generates a menu and sees nothing.
+  const tomorrow = getLocalDatePlus(1);
   const { data, error } = await supabase
     .from('weekly_plans')
     .select('*')
-    .lte('week_start', today)
+    .lte('week_start', tomorrow)
     .eq('status', 'active')
     .eq('plan_type', 'diet') // this path is the diet menu
     // FIX (audit AI/CRITICAL coord — migration 055): the legacy weekly MENU now lives in its own
@@ -250,6 +252,12 @@ export async function toggleShoppingItem(planId: string, itemIndex: number, chec
 // ayrışıyor, .eq eşleşmiyor ve menü ekranı boş kalıyordu. Artık sunucu (ai-plan) ile aynı
 // UTC-noon ankrajlı Pazartesi mantığı kullanılıyor ve getCurrentWeeklyPlan eşitlik yerine
 // aralık (week_start <= today) ile sorguluyor.
+function getLocalDatePlus(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function getLocalToday(): string {
   const now = new Date();
   const y = now.getFullYear();
