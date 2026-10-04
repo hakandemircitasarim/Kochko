@@ -21,6 +21,7 @@ import { isActivePremium } from '../shared/premium.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, scanReplyForAllergens, buildAllergenBlockMessage, type AllergenSeverity, detectTaskSkipIntent, normalizeClockTime, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
+import { nextWaterLiters, waterIsDailyTotal } from '../shared/water-intent.ts';
 import { computeItemNutrition, isZeroCaloriePlausible } from '../shared/food-reference.ts';
 import { isMemoryMirrorIntent, buildMemoryMirror, composeGeneralSummary } from '../shared/memory-mirror.ts';
 import { writeTurnLog, writeFactReceipts, type FactReceipt } from '../shared/turn-log.ts';
@@ -1056,6 +1057,11 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
     ].filter(Boolean).join('\n\n');
 
+    // Day-total water statement: the server SETS the day's water (water-intent.ts); the prose must not
+    // claim it was added on top ("2 litre suyu ekledim" contradicted the stored total).
+    const waterTotalNote = message && waterIsDailyTotal(message) && /(?<![\p{L}])su(?![\p{L}])|litre|bardak/u.test(message.toLocaleLowerCase('tr'))
+      ? 'SU: Kullanici GUNUN TOPLAMINI soyluyor. Sunucu bugunku suyu bu degere AYARLAR, uzerine EKLEMEZ. "ekledim" deme; "bugunku toplamini ... L olarak kaydettim" de.'
+      : '';
     const turnSystem = [
       '--- BU TURUN BAGLAMI (yalnizca bu mesaj icin gecerli; yukaridaki kurallar aynen gecerli) ---',
       zamanMatch ? zamanMatch[0].trim() : '',
@@ -1094,6 +1100,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
       repairContext,
       remainingMacrosNote,
+      waterTotalNote,
       pantryRecipesNote,
       householdNote,
     ].filter(Boolean).join('\n\n');
@@ -1457,6 +1464,13 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
         else if (bardakM) liters = parseInt(bardakM[1]) * 0.25;
         if (liters > 0 && liters <= 15) { actions.push({ type: 'water_log', liters }); console.warn('[water_safety_net] water_log injected', { liters }); }
       }
+    }
+
+    // Day-total vs one-more-drink (shared/water-intent.ts owns it): "bugün 2 litre içtim" SETS the
+    // day's water; "2 bardak su içtim" ADDS. Only a single water_log can carry a stated total.
+    {
+      const waterActs = actions.filter(a => a.type === 'water_log');
+      if (waterActs.length === 1) (waterActs[0] as Record<string, unknown>).total = waterIsDailyTotal(message);
     }
 
     // Supplement-log safety net — deterministic (#R1-H6): "her sabah kreatin alıyorum".
@@ -5305,7 +5319,7 @@ async function executeActions(
               { user_id: userId, date: actionDate, weight_kg: w, water_liters: await waterFor(actionDate), synced: true },
               { onConflict: 'user_id,date' }
             );
-            if (weightErr) { console.error('[weight_log] upsert failed:', weightErr.message); pushFb('Tarti kaydi basarisiz', { ok: false, failureClass: 'write_failed' }); break; }
+            if (weightErr) { console.error('[weight_log] upsert failed:', weightErr.message); pushFb('Tartı kaydı başarısız', { ok: false, failureClass: 'write_failed' }); break; }
             // weight_history is the canonical measurement store (export + trend source)
             // but was never written by any code path before (#R1-M2). Record each weigh-in.
             await supabaseAdmin.from('weight_history').upsert({ user_id: userId, weight_kg: w, recorded_at: actionDate }, { onConflict: 'user_id,recorded_at' });
@@ -5321,6 +5335,10 @@ async function executeActions(
               await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
               // T1.19: Check if TDEE recalculation needed
               recalculateTDEEIfNeeded(userId, w).then(() => {}, () => {});
+              // The weigh-in answers any pending "N gündür tartı kaydı yok" card — leaving it unread
+              // showed the reminder on the dashboard right above the fresh weight.
+              await supabaseAdmin.from('coaching_messages').update({ read: true })
+                .eq('user_id', userId).eq('trigger_type', 'weight_reminder').eq('read', false);
             }
 
             // Creatine water retention check
@@ -5332,9 +5350,9 @@ async function executeActions(
               .gte('logged_for_date', new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0])
               .limit(1);
             if (recentCreatine && recentCreatine.length > 0) {
-              pushFb('Tarti kaydedildi (kreatin kullaniyorsun — olasi su tutulumunu goz onunde bulundur)');
+              pushFb('Tartı kaydedildi (kreatin kullanıyorsun — olası su tutulumunu göz önünde bulundur)');
             } else {
-              pushFb('Tarti kaydedildi');
+              pushFb('Tartı kaydedildi');
             }
           } else {
             // Out-of-range value (parse error) — push a placeholder so feedback[]
@@ -5346,7 +5364,9 @@ async function executeActions(
         case 'water_log': {
           const l = action.liters as number;
           if (l > 0) {
-            const next = (await waterFor(actionDate)) + l;
+            const prevWater = await waterFor(actionDate);
+            const isTotal = action.total === true;
+            const next = nextWaterLiters(prevWater, l, isTotal);
             setWaterFor(actionDate, next); // keep running totals so later metric upserts preserve them
             // FIX (audit HIGH — swallowed upsert → false "Su +XL"): stop on failure, don't claim success.
             const { error: waterErr } = await supabaseAdmin.from('daily_metrics').upsert(
@@ -5356,10 +5376,13 @@ async function executeActions(
             if (waterErr) {
               // Revert the in-memory running total (bumped BEFORE the upsert) so a later same-turn
               // metric upsert doesn't silently persist the water we just told the user FAILED.
-              setWaterFor(actionDate, next - l);
-              console.error('[water_log] upsert failed:', waterErr.message); pushFb('Su kaydi basarisiz', { ok: false, failureClass: 'write_failed' }); break;
+              setWaterFor(actionDate, prevWater);
+              console.error('[water_log] upsert failed:', waterErr.message); pushFb('Su kaydı başarısız', { ok: false, failureClass: 'write_failed' }); break;
             }
-            pushFb(`Su +${l}L`);
+            const fmtL = (v: number) => `${v.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} L`;
+            const dayWord = actionDate === today ? 'Bugünkü' : 'O günkü';
+            // The running total is in the receipt so a double count is visible the moment it happens.
+            pushFb(isTotal ? `${dayWord} su toplamı ${fmtL(next)} olarak kaydedildi` : `Su +${fmtL(l)} (${dayWord.toLocaleLowerCase('tr')} toplam ${fmtL(next)})`);
           } else {
             pushFb(null); // alignment (#R2-6)
           }

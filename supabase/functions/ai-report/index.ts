@@ -195,15 +195,25 @@ async function generateDailyReport(userId: string, date?: string, force = false)
       const mondayOffset = dow === 0 ? 6 : dow - 1;
       const ws = new Date(rd); ws.setUTCDate(rd.getUTCDate() - mondayOffset);
       const wsStr = ws.toISOString().split('T')[0];
-      const { data: weekRows } = await supabaseAdmin.from('daily_reports')
-        .select('calorie_actual').eq('user_id', userId).gte('date', wsStr).lt('date', reportDate);
-      const priorConsumed = (weekRows ?? []).reduce((s: number, r: { calorie_actual: number | null }) => s + (Number(r.calorie_actual) || 0), 0);
-      const weekConsumed = priorConsumed + totalCal;
+      // Prior days come from the MEAL LOGS, not from daily_reports: a day the user logged food but
+      // never opened its report had no row, so its intake silently vanished from the week.
+      const { data: weekMeals } = await supabaseAdmin.from('meal_logs')
+        .select('id').eq('user_id', userId).gte('logged_for_date', wsStr).lt('logged_for_date', reportDate).eq('is_deleted', false);
+      const weekMealIds = (weekMeals ?? []).map((m: { id: string }) => m.id);
+      let priorConsumed = 0;
+      if (weekMealIds.length > 0) {
+        const { data: weekItems } = await supabaseAdmin.from('meal_log_items').select('calories').in('meal_log_id', weekMealIds);
+        priorConsumed = (weekItems ?? []).reduce((s: number, r: { calories: number | null }) => s + (Number(r.calories) || 0), 0);
+      }
+      const weekConsumed = Math.round(priorConsumed + totalCal);
       const remaining = weeklyBudget - weekConsumed;
       const pct = Math.round((weekConsumed / weeklyBudget) * 100);
-      weeklyBudgetStatus = remaining >= 0
-        ? `Bu hafta haftalik butcenin %${pct}'ini kullandin, ${remaining} kcal marjin kaldi.`
-        : `Bu hafta haftalik butceyi ${Math.abs(remaining)} kcal astin (%${pct}).`;
+      // No intake logged all week is ABSENCE, not "%0 used, full margin left".
+      weeklyBudgetStatus = weekConsumed <= 0
+        ? 'Bu hafta henüz kalori kaydı yok; haftalık bütçe durumu hesaplanamadı.'
+        : remaining >= 0
+          ? `Bu hafta haftalık bütçenin %${pct}'ini kullandın, ${remaining.toLocaleString('tr-TR')} kcal pay kaldı.`
+          : `Bu hafta haftalık bütçeyi ${Math.abs(remaining).toLocaleString('tr-TR')} kcal aştın (%${pct}).`;
     }
   }
 
@@ -255,6 +265,7 @@ async function generateDailyReport(userId: string, date?: string, force = false)
     const score = Math.max(0, Math.min(100, Math.round(totalW > 0 ? (raw / totalW) * 100 : 0)));
     return {
       score,
+      waterTarget,
       calorie_target_met: calCredit === 1,
       protein_target_met: proTarget > 0 && totalPro >= proTarget,
       workout_completed: workoutCredit === 1,
@@ -265,10 +276,11 @@ async function generateDailyReport(userId: string, date?: string, force = false)
   const prompt = `Tarih: ${reportDate}
 UYUM PUANI (KOD TARAFINDAN HESAPLANDI — BU SAYIYI AYNEN KULLAN, KENDIN HESAPLAMA): ${detCompliance.score}
 AGIRLIKLAR: Kalori=%${weights.calorie} Protein=%${weights.protein} Antrenman=%${weights.workout} Su=%${weights.water} Uyku=%${weights.sleep} Mood=%${weights.mood} (Hedef: ${goalType})
-Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g
-Gerceklesen: Kalori ${totalCal} kcal | Protein ${Math.round(totalPro)}g | Karb ${Math.round(totalCarb)}g | Yag ${Math.round(totalFat)}g | Alkol ${totalAlcCal} kcal
-Antrenman: ${workouts.length > 0 ? `${workouts.length} seans, ${totalWorkoutMin} dk` : 'yapilmadi'}
-Su: ${metrics?.water_liters ?? 0}L | Uyku: ${metrics?.sleep_hours ?? '?'}sa | Adim: ${metrics?.steps ?? '?'} | Mood: ${metrics?.mood_score ?? '?'}/5
+Hedefler: Kalori ${plan?.calorie_target_min ?? '?'}-${plan?.calorie_target_max ?? '?'} kcal | Protein ${plan?.protein_target_g ?? '?'}g | Su ${detCompliance.waterTarget}L
+Gerceklesen: ${mealIds.length > 0 ? `Kalori ${Math.round(totalCal)} kcal | Protein ${Math.round(totalPro)}g | Karb ${Math.round(totalCarb)}g | Yag ${Math.round(totalFat)}g | Alkol ${Math.round(totalAlcCal)} kcal` : 'YEMEK KAYDI YOK (yemedi demek DEGIL — girilmedi; kalori/protein yorumu yapma)'}
+Antrenman: ${workouts.length > 0 ? `${workouts.length} seans, ${totalWorkoutMin} dk` : 'kayit yok'}
+Su: ${Number(metrics?.water_liters) > 0 ? `${metrics!.water_liters}L` : 'kayit yok'} | Uyku: ${Number(metrics?.sleep_hours) > 0 ? `${metrics!.sleep_hours}sa` : 'kayit yok'} | Adim: ${Number(metrics?.steps) > 0 ? metrics!.steps : 'kayit yok'} | Mood: ${Number(metrics?.mood_score) > 0 ? `${metrics!.mood_score}/5` : 'kayit yok'}
+KURAL: "kayit yok" = veri girilmedi; bunu 0 / yapmadi / icmedi diye yorumlama. Eksik alan icin yorum alani null olabilir.
 ${(() => {
   const g = goalRes.data;
   if (!g || !g.target_weight_kg || !metrics?.weight_kg) return '';
@@ -329,8 +341,10 @@ KISITLAR (tomorrow_action ve yorumlarda ASLA ihlal etme): ${[
 
   // steps_actual is an integer column written straight from the model — coerce so a
   // non-numeric/absurd value can't 22P02/22003 the whole report upsert (#R5-8).
-  const rawSteps = Number(report.steps_actual ?? metrics?.steps);
-  report.steps_actual = Number.isFinite(rawSteps) ? Math.max(0, Math.min(2_000_000, Math.round(rawSteps))) : null;
+  // Steps are a FACT from daily_metrics, never the model's guess: the model wrote 0 for a day with
+  // no step entry and the report showed "0 adım". No entry → null ("veri yok").
+  const rawSteps = Number(metrics?.steps);
+  report.steps_actual = metrics?.steps != null && Number.isFinite(rawSteps) && rawSteps > 0 ? Math.min(2_000_000, Math.round(rawSteps)) : null;
 
   // Backfill NOT NULL columns so a model omission can't violate the constraint
   if (typeof report.tomorrow_action !== 'string' || !report.tomorrow_action) report.tomorrow_action = '-';
@@ -368,7 +382,8 @@ KISITLAR (tomorrow_action ve yorumlarda ASLA ihlal etme): ${[
     sleep_impact: report.sleep_impact,
     water_impact: report.water_impact,
     deviation_reason: report.deviation_reason,
-    weekly_budget_status: weeklyBudgetStatus ?? report.weekly_budget_status,
+    // Deterministic only: with no budget configured the model has no data to state a status from.
+    weekly_budget_status: weeklyBudgetStatus,
     tomorrow_action: report.tomorrow_action,
     full_report: report.full_report,
     generated_at: new Date().toISOString(),
