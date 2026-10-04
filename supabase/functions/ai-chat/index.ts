@@ -28,6 +28,7 @@ import { logBelief } from '../shared/belief-log.ts';
 import { ACTIVE_ROLLOUT_STEPS, rolloutMode, rolloutStamp } from '../shared/rollout.ts';
 import { sanitizeUiMarkers } from '../shared/ui-markers.ts';
 import { createTurnTimer, type TurnTimer } from '../shared/turn-timer.ts';
+import { computePlanTargets, renderPlanTargets, applyPlanTargets, type PlanTargets } from '../shared/plan-targets.ts';
 import { resolveTurnMode, isOnboardingHint, isPlanMode, wantsToDropIntent, classifyPlanIntent } from './turn.ts';
 import { failureLine, guardVerdictOf, type GuardFlag, type TurnFailureClass } from '../shared/turn-failures.ts';
 import { appendCoachingNote } from '../shared/coaching-notes.ts';
@@ -1003,6 +1004,20 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       } catch { /* net her zaman opsiyonel — açılışı asla bloklamaz */ }
     }
 
+    // Diet plan turns get their numbers from the SERVER (see shared/plan-targets.ts): calorie bands,
+    // training days, protein and the saved meal count — the model renders a plan around them.
+    let planTargets: PlanTargets | null = null;
+    if (planTurn && planKind === 'diet') {
+      try {
+        const [{ data: ptProfile }, { data: wkRow }] = await Promise.all([
+          supabaseAdmin.from('profiles').select('tdee_calculated, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, weight_kg, protein_per_kg, meal_count_preference, available_training_times').eq('id', userId).maybeSingle(),
+          supabaseAdmin.from('weekly_plans').select('plan_data').eq('user_id', userId).eq('plan_type', 'workout').eq('status', 'active').is('plan_subtype', null).limit(1).maybeSingle(),
+        ]);
+        const wDays = ((wkRow?.plan_data as { days?: { day_index?: number; rest_day?: boolean }[] } | null)?.days ?? [])
+          .filter((d) => d && d.rest_day === false && Number.isInteger(d.day_index)).map((d) => d.day_index as number);
+        if (ptProfile) planTargets = computePlanTargets(ptProfile, wDays.length > 0 ? wDays : null);
+      } catch (e) { console.warn('[plan_targets] skipped:', (e as Error).message); }
+    }
     timer.mark('prompt_inputs');
     // PROMPT LAYOUT — stable first, volatile last (2026-10-04).
     // OpenAI reuses the longest previously-seen PREFIX of a prompt from cache (≈10× cheaper input,
@@ -1040,6 +1055,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       // session narrowly scoped — last-in-prompt is the most prominent position.
       taskCardCtx,
       modeInstructions,
+      planTargets ? renderPlanTargets(planTargets) : '',
       // #organism: always-on situational snapshot — frames EVERY response with "who this person
       // is right now", even on thin register/mood turns.
       situationalSnapshot,
@@ -2067,7 +2083,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
             }
           }
         }
-        // Calorie reconciliation on the FINAL (possibly regenerated) snapshot (#R2-H3).
+        // Server-fixed targets first (the model may still drift), then calorie reconciliation on the
+        // FINAL (possibly regenerated) snapshot (#R2-H3) — which now reconciles each day to ITS target.
+        if (!planPersistError && planTargets) applyPlanTargets(planSnapshot, planTargets);
         if (!planPersistError) reconcileDietCalories(planSnapshot);
       } else if (expectedType === 'workout') {
         // Spec 12.2/15.7: code-enforced INJURY filter for chat-generated workout plans —
@@ -2746,6 +2764,16 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
           }
         }
       }
+      // SLEEP BELONGS TO THE DAY YOU WAKE UP — the rule the app's own sleep screen (app/log.tsx)
+      // uses. "dün gece 7 saat uyudum" said this morning is LAST NIGHT's sleep, i.e. today's row;
+      // the generic "dün → 1 day back" rule filed it under yesterday, so chat and the sleep screen
+      // put the same night on two different dates (live 2026-10-04). Applies whatever the model said.
+      if (/((dun|dün)\s+(gece|ak[sş]am)|ge[cç]en\s+gece|bu\s+gece)/.test(mLower)) {
+        for (const a of actions) {
+          const act = a as Record<string, unknown>;
+          if (act.type === 'sleep_log') act.days_ago = 0;
+        }
+      }
     }
 
     // F-SIM2 (hafta simülasyonu): "3. kahvemi içtim" arrived as water_log — coffee inflated the
@@ -2965,7 +2993,10 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
           if (/^\d{1,3}(?:[.,]\d{3})+$/.test(raw)) return parseFloat(raw.replace(/[.,]/g, ''));
           return parseFloat(raw.replace(',', '.'));
         };
-        const sentences = assistantMessage.split(/(?<=[.!?\n])/);
+        // Split at real sentence ends only: a '.' between digits ("3.4 g", "1.250 kcal") is a decimal
+        // or thousands mark, and splitting there stripped half a sentence (live 2026-10-04).
+        // <simulation> blocks are kept intact — they are machine payload, not prose.
+        const sentences = assistantMessage.split(/(?<=(?<!\d)[.!?](?!\d)|\n)(?![^<]*<\/simulation>)/);
         let strippedAny = false;
         const kept = sentences.filter((s) => {
           const nums = [...s.matchAll(KCAL_NUM)].map((mm) => parseKcal(mm[1]));
@@ -3014,7 +3045,7 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
         // Sıfır-kalorili yenilebilir öğe DOĞASI GEREĞİ düşük güvendir — confidence ne derse desin sor.
         if ((lowConf.length > 0 || unknowns.length > 0) && !/[Dd]o[gğ]ru anlad[iı]ysam/.test(assistantMessage)) {
           const parsed = enriched
-            .map(i => i.unknown ? `${i.portion} ${i.name}` : `${i.portion} ${i.name} (~${Math.round(i.kcal)} kcal)`)
+            .map(i => i.unknown ? itemLabel(i.name, i.portion) : `${itemLabel(i.name, i.portion)} (~${Math.round(i.kcal)} kcal)`)
             .join(', ');
           const tail = unknowns.length > 0
             ? ` ${unknowns.map(u => u.name).join(' ve ')} için kaloriyi kestiremedim — kaç gram olduğunu ya da nasıl hazırlandığını söylersen netleştiririm.`
@@ -3575,6 +3606,19 @@ function planWeekAnchor(today: string): string {
   const ws = getWeekStart(today);
   const daysLeft = Math.round((Date.parse(`${addCalendarDays(ws, 6)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
   return daysLeft < 2 ? getWeekStart(addCalendarDays(today, 1)) : ws;
+}
+
+/**
+ * "portion + name" for receipts, without saying the food twice: the model often writes the name
+ * into the portion ("1 kase (yaklaşık 50 g kuru yulaf)") and the receipt then read
+ * "1 kase (yaklaşık 50 g kuru yulaf) yulaf".
+ */
+function itemLabel(name: string | null | undefined, portion: string | null | undefined): string {
+  const n = (name ?? '').trim();
+  const pt = (portion ?? '').trim();
+  if (!pt) return n;
+  if (!n) return pt;
+  return pt.toLocaleLowerCase('tr').includes(n.toLocaleLowerCase('tr')) ? pt : `${pt} ${n}`;
 }
 
 /** Monday-anchored week start for a 'YYYY-MM-DD' date (UTC). Mirrors ai-plan/index.ts. */
@@ -4284,9 +4328,11 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
 // Rescale each diet day's item portions (grams + kcal + macros) so the day total hits
 // targets.kcal — the model reliably under-fills (#R2-H3). Mutates the snapshot in place.
 function reconcileDietCalories(snap: Record<string, unknown>): void {
-  const tgt = Number((snap.targets as Record<string, unknown> | undefined)?.kcal);
+  const weekTgt = Number((snap.targets as Record<string, unknown> | undefined)?.kcal);
   for (const day of (snap.days as Array<Record<string, unknown>> | undefined) ?? []) {
     const meals = (day.meals as Array<Record<string, unknown>> | undefined) ?? [];
+    // Training and rest days have different targets (plan-targets.ts sets day.target_kcal).
+    const tgt = Number(day.target_kcal) > 0 ? Number(day.target_kcal) : weekTgt;
     if (meals.length === 0) continue;
     const daySum = meals.reduce((s, m) => s + (Number(m.total_kcal) || 0), 0);
     // Rescale meals/items toward the day target ONLY when the meal sum drifts >12% and the
@@ -4956,6 +5002,9 @@ async function executeActions(
                 carbs_g: clampDec(carb, 9999.9),
                 fat_g: clampDec(fat * multiplier, 9999.9),
                 data_source: grounded ? 'reference' : 'ai_estimate',
+                // The grams the grounding actually used — without them a vague 'biraz domates' looked like
+                // an exact reference value and could never be checked or corrected.
+                portion_grams: grounded ? clampDec(grounded.grams, 99999.9) : null,
               };
             });
             const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(rows);
@@ -5019,7 +5068,7 @@ async function executeActions(
           if (mealRows && mealRows.length > 0) {
             const detail = mealRows.slice(0, 6).map((r) => {
               const est = r.data_source === 'ai_estimate' ? '~' : '';
-              return `${r.portion_text} ${r.food_name} ${est}${r.calories} kcal`;
+              return `${itemLabel(r.food_name, r.portion_text)} ${est}${r.calories} kcal`;
             }).join(' · ');
             const more = mealRows.length > 6 ? ` (+${mealRows.length - 6} kalem)` : '';
             const total = mealRows.reduce((s, r) => s + (Number(r.calories) || 0), 0);

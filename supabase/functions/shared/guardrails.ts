@@ -197,7 +197,7 @@ export function checkAllergens(
  * Shared with the output-side scan so the "warn vs recommend" call has one definition.
  */
 export const ALLERGEN_DECLINE_RE =
-  /(önermiyor|onermiyor|öneremem|oneremem|kaçın|kacin|içermez|icermez|yerine|uygun değil|uygun degil|uzak dur|tüketme|tuketme|çıkar|cikar|eklemedim|kullanmad|hariç|haric|kullanma)/;
+  /(önermiyor|onermiyor|öneremem|oneremem|kaçın|kacin|içermez|icermez|yerine|uygun değil|uygun degil|uzak dur|tüketme|tuketme|çıkar|cikar|eklemedim|kullanmad|hariç|haric|kullanma|kullanılmad|kullanilmad|kullanılmay|kullanilmay|eklenmed|eklenmey|konmad|konulmad|içermiyor|icermiyor|içermeyen|icermeyen|yer verilmed|yer vermed|dışarıda bırak|disarida birak|dışında|disinda|olmadan|uzak tut)/;
 
 export type AllergenSeverity = 'mild' | 'moderate' | 'severe';
 

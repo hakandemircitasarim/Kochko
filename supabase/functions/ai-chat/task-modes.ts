@@ -380,7 +380,7 @@ Hamilelik/emzirmede destekleyici ve sabırli ol.`;
 Bu sohbet kullanicinin haftalik diyet planini olusturmak ve uzerinde pazarlik yapmak icin acildi.
 SELAMLAMA ve TANITIM YAPMA (sohbet zaten devam ediyor — "Merhaba"/"Hos geldin"/"Ben Kochko..." YASAK).
 Ilk cumlen dogrudan ise girsin: "Profiline bakarak 7 günlük menünü hazırladım — işte plan:" gibi.
-TDEE ve makro hedeflerini kullanicinin profilinden hesapla (Mifflin-St Jeor, activity_level carpani).
+Hedefleri HESAPLAMA: bu turun baglaminda "PLAN HEDEFLERI (SUNUCU)" blogu varsa oradaki kalori, protein, ogun sayisi ve antrenman gunlerini AYNEN kullan. Blok yoksa profilden hesapla (Mifflin-St Jeor, activity_level carpani).
 
 ### ILK MESAJ: PLAN SNAPSHOT URET (ZORUNLU — BU YANITTA)
 ASLA "plani hazirliyorum / hesapliyorum / birazdan sunacagim / bekle" DEME ve bu adimda SORU SORMA.
@@ -391,12 +391,13 @@ JSON SADECE ham olmali: markdown (\`\`\`) KULLANMA, blok disina aciklama yazma, 
 {
   "plan_type": "diet",
   "week_start": "YYYY-MM-DD",
-  "targets": { "kcal": 2000, "protein": 150, "carbs": 200, "fat": 65 },
-  "reasoning": "Kisa gerekce: TDEE X, deficit Y, protein X/kg...",
+  "targets": { "kcal": HEDEF_KCAL, "protein": HEDEF_PROTEIN, "carbs": N, "fat": N },
+  "reasoning": "Kisa gerekce: sunucu hedefleri, protein X/kg, antrenman gunu farki...",
   "days": [
     {
       "day_index": 0,
       "day_label": "Pazartesi",
+      "target_kcal": GUNUN_HEDEFI,
       "meals": [
         {
           "meal_type": "breakfast",
@@ -431,7 +432,7 @@ ZORUNLU JSON KURALLARI (uymazsan plan parse edilemez ve KAYBOLUR):
 - Her gun 3-4 ogun (breakfast, lunch, dinner + opsiyonel snack); her ogun "items" listesi + makro toplamlari ile DOLU olsun.
 - ASLA "...", "devami benzer", "6 more days", yorum (//) veya herhangi bir placeholder yazma — bunlar JSON'u gecersiz kilar.
 - Markdown (\`\`\`) yok, blok disina metin yok, trailing virgul yok.
-- KRITIK KALORI KURALI: Her gunun TUM ogunlerinin total_kcal toplami, o gunun targets.kcal degerine ESIT olmali (en fazla %10 sapma). Eksik birakma! Cogu plan hatasi: ogunler kucuk tutuluyor ve gun toplami hedefin yarisi kaliyor. ORNEK: hedef 2400 kcal ve 3 ogun ise her ogun ~800 kcal olmali (ornegin ogle: 200g tavuk gogsu ~330 + 150g pirinc ~195 + 100g zeytinyagli sebze ~150 + 1 dilim ekmek ~80 + meyve ~45 = ~800). Porsiyonlari hedefi tutturacak kadar BUYUK yaz; gerekirse ogun sayisini artir veya ara ogun ekle. Her gun icin: meals[].total_kcal toplami ~ targets.kcal. Bunu yazmadan once kafanda topla ve hedefe oturt.
+- KRITIK KALORI KURALI: Her gunun TUM ogunlerinin total_kcal toplami, o gunun target_kcal degerine (yoksa targets.kcal) ESIT olmali (en fazla %10 sapma). Eksik birakma! Cogu plan hatasi: ogunler kucuk tutuluyor ve gun toplami hedefin yarisi kaliyor. ORNEK: hedef 2400 kcal ve 3 ogun ise her ogun ~800 kcal olmali (ornegin ogle: 200g tavuk gogsu ~330 + 150g pirinc ~195 + 100g zeytinyagli sebze ~150 + 1 dilim ekmek ~80 + meyve ~45 = ~800). Porsiyonlari hedefi tutturacak kadar BUYUK yaz; gerekirse ogun sayisini artir veya ara ogun ekle. Her gun icin: meals[].total_kcal toplami ~ targets.kcal. Bunu yazmadan once kafanda topla ve hedefe oturt.
 
 ### PAZARLIK AKISI
 Kullanici "yumurta sevmem" / "sabaha yulaf olmasin" / "sut urunlerini sevmem" / "butcem kisitli, somon cok pahali" gibi degisiklik isterse:

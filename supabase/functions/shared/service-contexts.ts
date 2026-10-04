@@ -888,7 +888,16 @@ export async function getConflictContext(
         });
         // #arch: single owner — the dietary→forbidden map now lives in guardrails.DIETARY_FORBIDDEN
         // (shared with repair-propagation). Its inline copy here was byte-identical.
+        // The typed safety spine outranks the legacy profile text: a 'dietary' constraint the user
+        // retracted (active=false) must not keep producing "vegan olarak kayıtlısın" nudges just
+        // because profiles.dietary_restriction was never cleared.
+        let restrRetracted = false;
         if (restr && DIETARY_FORBIDDEN[restr]) {
+          const { data: dRow } = await supabaseAdmin.from('user_constraints').select('active')
+            .eq('user_id', userId).eq('kind', 'dietary').eq('subject', restr).limit(1).maybeSingle();
+          restrRetracted = dRow?.active === false;
+        }
+        if (restr && DIETARY_FORBIDDEN[restr] && !restrRetracted) {
           const hits = mentions(DIETARY_FORBIDDEN[restr]);
           if (hits.length > 0) alerts.push(`KISITLAMA CELISKISI: Kullanici "${restr}" olarak kayitli ama simdi "${hits.join(', ')}" girdi. Nazikce hatirlat, yargilamadan, kisitlamasi degisti mi diye sor.`);
         }
