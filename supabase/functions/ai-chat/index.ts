@@ -602,8 +602,15 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
     // NOTE (adversarial): 'plan' MUST be included — detectTaskMode routes any message containing
     // "plan"/"haftalık" to the 'plan' mode, which is exactly the mode a plan request lands in, so
     // omitting it made the promotion unreachable for the most common phrasing.
+    // 'register' joins the set when the message reports nothing: "bana haftalık antrenman programı
+    // hazırla" contains "antrenman", so the keyword matcher filed it as a LOG — and a plan request
+    // got a prose answer with no plan, no snapshot, no Onayla/Değiştir (live 2026-10-04). A message
+    // that also reports a past action ("antrenman yaptım…") stays a log.
+    const reportsSomething = typeof message === 'string'
+      && /(yapt[ıi]m|yedim|i[çc]tim|ko[şs]tum|y[üu]r[üu]d[üu]m|kald[ıi]rd[ıi]m|tart[ıi]ld[ıi]m|uyudum|gittim|bitirdim)/.test(message.toLocaleLowerCase('tr'));
     if (!isOnboarding && typeof message === 'string'
-      && (effectiveMode === 'coaching' || effectiveMode === 'daily_log' || effectiveMode === 'plan')) {
+      && (effectiveMode === 'coaching' || effectiveMode === 'daily_log' || effectiveMode === 'plan'
+        || (effectiveMode === 'register' && !reportsSomething))) {
       const mPlan = message.toLocaleLowerCase('tr');
       const wantsPlan = /(haftal[ıi]k|1 haftal[ıi]k|bir haftal[ıi]k|7 g[uü]nl[uü]k)[^.!?]{0,30}(plan|liste|men[uü]|program)|(diyet|beslenme)\s*(plan|liste|program)[ıi]?\s*(olu[sş]tur|haz[ıi]rla|yap|[cç][ıi]kar|ver)|(antrenman|spor|egzersiz)\s*(plan|program)[ıi]?\s*(olu[sş]tur|haz[ıi]rla|yap|[cç][ıi]kar|ver)|bana\s+(bir\s+)?(diyet|antrenman|beslenme)\s*(plan|program|liste)/.test(mPlan);
       if (wantsPlan) {
@@ -3261,7 +3268,12 @@ Doğru anladıysam: ${parsed}.${tail}`;
       .filter((p) => p.fb !== DUP_SKIP);
     const persistedActions = persistedPairs.map((p) => p.a);
     timer.mark('actions_post');
-    const assistantMessageId = await storeMessages(userId, message ?? '[foto]', assistantMessage, taskMode, modelSelection.model, tokenEstimate, persistedActions, session_id, reservedUserMessageId);
+    // The client derives the plan TYPE of an Onayla/Değiştir card from task_mode ('workout' in it →
+    // workout, else diet). A promoted workout-plan turn still carried the RAW mode ('register', from
+    // the word "antrenman"), so approving it would have sent plan_type=diet. Plan turns report the
+    // canonical mode; every other turn keeps the historical raw value its readers expect.
+    const reportedMode = planTurn ? effectiveMode : taskMode;
+    const assistantMessageId = await storeMessages(userId, message ?? '[foto]', assistantMessage, reportedMode, modelSelection.model, tokenEstimate, persistedActions, session_id, reservedUserMessageId);
     // FIX (audit AI-MDL-05): the turn is now persisted (assistant reply appended to the reserved
     // row's conversation). Clear the handle so a throw in the post-store steps below does NOT
     // make the catch release an already-answered, legitimately-counted message.
@@ -3425,7 +3437,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
       // Additive — clients that don't read it are unaffected; the feedback buttons use it so
       // votes link to the real message row instead of a client-minted id.
       assistant_message_id: assistantMessageId,
-      task_mode: taskMode,
+      task_mode: reportedMode,
       task_completion: validatedCompletion,
       plan_snapshot: persistedPlan,
       // F3/C1: identity for the approve round-trip. Without these the client's "Onayla" was a
