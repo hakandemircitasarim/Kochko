@@ -51,6 +51,8 @@ function fail(guard, file, line, msg) { violations.push({ guard, file: rel(file)
   for (const f of FILES) {
     const rf = rel(f);
     if (G10_ALLOW.some((a) => rf.endsWith(a))) continue;
+    // Unit-test fixtures describe a profile; they never write to the database.
+    if (rf.endsWith('.test.ts')) continue;
     linesOf(read(f)).forEach((ln, i) => {
       if (/calorie_range_rest_min:\s/.test(ln) && !/select|\/\/|null,?$/.test(ln)) {
         fail('G10-target-engine-owner', f, i + 1, 'calorie band written outside target-engine — use applyTargetAdjust()');
