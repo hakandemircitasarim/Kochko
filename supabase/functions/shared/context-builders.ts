@@ -514,9 +514,23 @@ async function buildLayer2Scoped(userId: string, plan: RetrievalPlan): Promise<s
 
   // Strength
   if (isFull || focuses.includes('strength')) {
-    const strength = s.strength_records as Record<string, { '1rm': number }> | null;
+    // strength_records is WRITTEN as { last_weight, last_reps } (executeActions) and only sometimes
+    // carries '1rm'. Reading v['1rm'] blindly put "bench_press: 1RM=undefinedkg" into every prompt
+    // (and occasionally into the coach's reply). Render what was actually stored; estimate 1RM
+    // (Epley) only from a real weight x reps pair, and label it as an estimate.
+    const strength = s.strength_records as Record<string, { '1rm'?: number; last_weight?: number; last_reps?: number }> | null;
     if (strength && Object.keys(strength).length > 0) {
-      parts.push(`## GUC KAYITLARI\n${Object.entries(strength).map(([k, v]) => `${k}: 1RM=${v['1rm']}kg`).join(', ')}`);
+      const lines = Object.entries(strength).map(([k, v]) => {
+        const oneRm = Number(v?.['1rm']);
+        const w = Number(v?.last_weight);
+        const r = Number(v?.last_reps);
+        if (Number.isFinite(oneRm) && oneRm > 0) return `${k}: 1RM=${oneRm}kg`;
+        if (Number.isFinite(w) && w > 0 && Number.isFinite(r) && r > 0) {
+          return `${k}: son ${w}kg x ${r} (tahmini 1RM ~${Math.round(w * (1 + r / 30))}kg)`;
+        }
+        return null;
+      }).filter(Boolean);
+      if (lines.length > 0) parts.push(`## GUC KAYITLARI\n${lines.join(', ')}`);
     }
   }
 

@@ -1070,6 +1070,16 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       householdNote,
     ].filter(Boolean).join('\n\n');
 
+    // ONE output contract (D2). The base prompt says records go ONLY in the envelope's "actions"
+    // field and never as an <actions> tag in reply — while 14 mode/task-card instructions still
+    // demanded "<actions>[...]</actions> MUTLAKA ekle". The model was handed two contracts every
+    // turn. The examples stay; their notation is rewritten to the envelope field here, at the one
+    // place every turn-scoped instruction passes through. (Embedded tags are still harvested
+    // defensively after the call, so nothing breaks if a model ignores this.)
+    const turnSystemOneContract = turnSystem
+      .replace(/<actions>([^<\n]*?)<\/actions>/g, '"actions" alanina: $1') // same-line example blocks only
+      .replace(/<actions>/g, '"actions" alani');
+
     // Build messages array: stable system → transcript → this turn's context → the user's message.
     const gptMessages: { role: string; content: string | unknown[] }[] = [
       { role: 'system', content: stableSystem },
@@ -1080,7 +1090,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       gptMessages.push({ role: msg.role, content: msg.content });
     }
 
-    gptMessages.push({ role: 'system', content: turnSystem });
+    gptMessages.push({ role: 'system', content: turnSystemOneContract });
 
     // Add current message
     if (image_base64) {
@@ -2744,8 +2754,8 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     // water; caffeinated/alcoholic drinks are not.
     if (message) {
       const mL = message.toLocaleLowerCase('tr');
-      const mentionsWater = /su|litre|bardak su|su bardağ/i.test(mL);
-      const mentionsOtherDrink = /kahve|çay|cay|kola|bira|şarap|sarap|ayran|soda|latte|espresso/i.test(mL);
+      const mentionsWater = /\bsu\b|litre|bardak su|su bardağ/i.test(mL);
+      const mentionsOtherDrink = /kahve|çay|\bcay\b|kola|bira|şarap|sarap|ayran|soda|latte|espresso/i.test(mL);
       if (mentionsOtherDrink && !mentionsWater) {
         const kept = actions.filter(a => (a as Record<string, unknown>).type !== 'water_log');
         if (kept.length !== actions.length) {
@@ -4956,7 +4966,10 @@ async function executeActions(
           if (mealItems?.length) {
             const totalMealCal = mealItems.reduce((s, i) => s + (i.calories ?? 0), 0);
             if (totalMealCal > 1500 || (totalMealCal > 0 && totalMealCal < 50)) {
-              mealFeedback.push('NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste.');
+              // This line is shown to the USER as part of the receipt. It used to be an instruction
+              // meant for the model ("NOT: Dusuk guvenli tahmin — kullanicidan dogrulama iste."),
+              // so the user read the coach's internal memo verbatim under their meal.
+              mealFeedback.push(`Bu öğün için tahminim alışılmadık görünüyor (${Math.round(totalMealCal)} kcal) — porsiyon farklıysa yaz, düzelteyim.`);
             }
           }
 

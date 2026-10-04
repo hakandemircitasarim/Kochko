@@ -423,10 +423,18 @@ async function generateWeeklyReport(userId: string, force = false) {
     else weekdayAlc += (r.alcohol_calories ?? 0);
   }
 
+  // MISSING DATA IS NOT ZERO. A user who never logs alcohol has alcohol_calories = 0 on every row,
+  // and the model praised that as a streak ("Alkol bu hafta da 0 kcal kaldi; gecen haftayla ayni
+  // cizgi" — said to a one-day logger with no alcohol entries at all). Zero is only a fact when
+  // something was actually recorded; otherwise the prompt says there is nothing to talk about.
+  const alcoholLine = (thisWeekAlcTotal > 0 || prevWeekAlcTotal > 0)
+    ? `Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) | gecen hafta ${prevWeekAlcTotal}kcal`
+    : 'Alkol: iki haftada da alkol kaydi YOK — bu "sifir alkol" basarisi DEGIL, veri yokluğu. Alkol hakkinda hic yorum yapma.';
   const prompt = `Hafta: ${wsStr} - ${weStr}
+Kayitli gun sayisi: ${reports.length}/7 (kaydi olmayan gunler hakkinda cikarim yapma)
 Raporlar: ${reports.map((r: { date: string; compliance_score: number; deviation_reason: string }) => `${r.date}: uyum ${r.compliance_score}, sapma: ${r.deviation_reason ?? 'yok'}`).join('\n') || 'rapor yok'}
 Metrikler: ${metrics.map((m: { date: string; weight_kg: number | null; sleep_hours: number | null }) => `${m.date}: ${m.weight_kg ?? '-'}kg, uyku ${m.sleep_hours ?? '-'}sa`).join('\n') || 'veri yok'}
-Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) | gecen hafta ${prevWeekAlcTotal}kcal`;
+${alcoholLine}`;
 
   let rc: UsageReceipt | null = null;
   const report = await chatCompletion<Record<string, unknown>>(
@@ -483,7 +491,10 @@ Alkol: bu hafta ${thisWeekAlcTotal}kcal (ici ${weekdayAlc}, sonu ${weekendAlc}) 
   }
 
   // Sync weekly learning to Layer 2 (ai_summary) for long-term memory
-  if (report.ai_learning_note) {
+  // The report model sees one week of thin aggregates and no memory — a "bu hafta ogrendim" note
+  // drawn from 1-2 logged days is a guess, and appending it to long-term coaching memory turned
+  // guesses into "facts" the coach later repeated. Require a week with real coverage first.
+  if (report.ai_learning_note && reports.length >= 3) {
     const dateStr = new Date().toISOString().split('T')[0];
       // F2/A11: one owner for the dated log — three functions had drifted into three
       // different date formats and none of them trimmed.

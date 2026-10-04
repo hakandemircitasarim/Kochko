@@ -80,6 +80,17 @@ export function resolveOutputBudget(maxTokens: number, effort: ReasoningEffort |
  * carries. Deliberately permissive: any gpt-5+/o-series id routes to /responses, everything
  * else keeps the legacy body, so pointing KOCHKO_MODEL_SMART at gpt-4o still works untouched.
  */
+/**
+ * Clamp a requested effort to what the model accepts. Effort levels are NOT uniform across the
+ * family: gpt-6.x Sol/Astra reject `none` (and `minimal`) with a 400, while Terra/Luna accept it.
+ * The router asks for `none` on greetings and the mechanical tier — on a model without it that
+ * would turn every "merhaba" into an error. Closest supported level is `low`.
+ */
+export function effortFor(model: string, effort: ReasoningEffort): ReasoningEffort {
+  if (effort === 'none' && /^gpt-6(\.\d+)?-(sol|astra)\b/i.test(model.trim())) return 'low';
+  return effort;
+}
+
 export function usesResponsesApi(model: string): boolean {
   return /^(gpt-5|gpt-6|o[1-9])/i.test(model.trim());
 }
@@ -318,7 +329,7 @@ export async function chatCompletion<T = string>(
   const modelRequested = options?._modelRequested ?? model;
   const attempt = (options?._attempt ?? 0) + 1;
   const responsesApi = usesResponsesApi(model);
-  const effort: ReasoningEffort | undefined = responsesApi ? (options?.reasoningEffort ?? 'low') : undefined;
+  const effort: ReasoningEffort | undefined = responsesApi ? effortFor(model, options?.reasoningEffort ?? 'low') : undefined;
   const requestedMaxTokens = options?.maxTokens ?? 2000;
   let effectiveMessages = messages;
 

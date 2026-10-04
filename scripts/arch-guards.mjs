@@ -206,6 +206,21 @@ for (const f of FILES) {
   }
 }
 
+/**
+ * G11 — no raw control characters in source. A scripted edit that wrote "\b" through a non-raw
+ * string left a literal BACKSPACE (0x08) inside regexes: /\bama\b/ became /␈ama␈/ and silently
+ * never matched again. Found 2026-10-04 in guardrails (ED clause split), the coffee-vs-water net and
+ * the habit detector — invisible in review, compiles fine, wrong at runtime.
+ */
+for (const f of FILES) {
+  const lns = linesOf(read(f));
+  for (let i = 0; i < lns.length; i++) {
+    if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(lns[i])) {
+      fail('G11-control-char', f, i + 1, 'raw control character in source (likely a mangled \\b / \\n escape)');
+    }
+  }
+}
+
 // ── report ──
 if (violations.length === 0) {
   console.log('✓ arch-guards: all invariants hold (' + FILES.length + ' files scanned)');

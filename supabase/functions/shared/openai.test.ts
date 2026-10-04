@@ -130,3 +130,12 @@ Deno.test('turns that commit a number the user acts on get real thinking', () =>
   // Chat is latency-sensitive.
   assertEquals(EFFORT.coaching, 'low');
 });
+
+Deno.test('effortFor: Sol/Astra cannot take `none` — clamped to `low`; others pass through', async () => {
+  const { effortFor } = await import('./openai.ts');
+  if (effortFor('gpt-6.1-sol', 'none') !== 'low') throw new Error('6.1-sol none must clamp');
+  if (effortFor('gpt-6-astra', 'none') !== 'low') throw new Error('astra none must clamp');
+  if (effortFor('gpt-6.1-sol', 'medium') !== 'medium') throw new Error('medium passes');
+  if (effortFor('gpt-5.6-terra', 'none') !== 'none') throw new Error('terra keeps none');
+  if (effortFor('gpt-6-luna', 'none') !== 'none') throw new Error('luna keeps none');
+});
