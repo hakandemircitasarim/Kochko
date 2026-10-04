@@ -47,6 +47,13 @@ export interface TargetAdjustInput {
   today: string;
   /** Extra profile columns to write atomically with the band (flags like maintenance_mode). */
   profileExtras?: Record<string, unknown>;
+  /**
+   * Measured baseline columns (tdee_calculated, protein_per_kg, water_target_liters) — facts about
+   * the body, not a deficit decision. Written with the band when it is applied AND on their own
+   * when the ED gate refuses it (mem#5). Never put band-dependent flags (maintenance_mode,
+   * periodic_state, tdee_last_* retry stamps) here: those must stay put when the band does.
+   */
+  baselineExtras?: Record<string, unknown>;
 }
 
 export interface TargetAdjustResult {
@@ -76,6 +83,14 @@ export async function applyTargetAdjust(input: TargetAdjustInput): Promise<Targe
       const gate = await deficitAllowed(userId);
       if (!gate.allowed) {
         console.warn('[target-engine] tightening refused by SafetyState', { source, oldRestMin, wanted: band.restMin });
+        // mem#5: the gate refuses the BAND, not the measurement. Returning before any write also
+        // dropped the caller's TDEE baseline, so an amber user's activity change left
+        // tdee_calculated on the old multiplier while the card announced the new one.
+        if (input.baselineExtras && Object.keys(input.baselineExtras).length > 0) {
+          const { error: baseErr } = await supabaseAdmin.from('profiles')
+            .update({ ...input.baselineExtras, updated_at: new Date().toISOString() }).eq('id', userId);
+          if (baseErr) console.error('[target-engine] baseline write failed:', baseErr.message);
+        }
         return { ok: true, allowed: false, oldRestMin };
       }
     }
@@ -93,6 +108,7 @@ export async function applyTargetAdjust(input: TargetAdjustInput): Promise<Targe
       ...(band.trainingMin != null ? { calorie_range_training_min: Math.max(floor, Math.round(band.trainingMin)) } : {}),
       ...(band.trainingMax != null ? { calorie_range_training_max: Math.round(band.trainingMax) } : {}),
       ...(band.weeklyBudget != null ? { weekly_calorie_budget: Math.round(band.weeklyBudget) } : {}),
+      ...(input.baselineExtras ?? {}),
       ...(input.profileExtras ?? {}),
     };
     const { error: profErr } = await supabaseAdmin.from('profiles').update(patch).eq('id', userId);
@@ -121,4 +137,37 @@ export async function applyTargetAdjust(input: TargetAdjustInput): Promise<Targe
     console.error('[target-engine] threw:', (e as Error).message);
     return { ok: false, allowed: true, error: (e as Error).message };
   }
+}
+
+/**
+ * mem#5 — the TDEE-recalc card announces only what was STORED. It used to print the freshly
+ * computed band unconditionally, so when the ED gate held an amber/red user at the old, higher band
+ * the card still told exactly that user about a LOWER calorie range nobody applied — and called an
+ * activity change a "Rutin kontrol". `adj` null = maintenance path (ramp owns the band, ranges
+ * deliberately untouched). Returns null when the band the user sees did not move (refused or failed
+ * write): there is nothing true to announce, and number talk is what the ED state asks us to cut.
+ */
+export function tdeeRecalcCardText(o: {
+  tdee: number;
+  proteinG: number;
+  waterL: number;
+  currentWeight: number;
+  lastWeight: number | null;
+  /** What actually triggered the recalc when it wasn't the scale (e.g. 'Aktivite düzeyin güncellendi'). */
+  trigger?: string;
+  adj: TargetAdjustResult | null;
+}): string | null {
+  const kg = (n: number) => n.toFixed(1).replace('.', ',');
+  const weightChanged = o.lastWeight != null && Math.abs(o.currentWeight - o.lastWeight) >= 0.1;
+  const reason = o.trigger
+    ?? (o.lastWeight == null
+      ? 'İlk TDEE hesaplaman hazır'
+      : weightChanged
+        ? `Kilon ${kg(o.lastWeight)} → ${kg(o.currentWeight)} kg değişti`
+        : 'Rutin kontrol: hedeflerini güncel kilona göre tazeledim');
+  const tail = `protein ${o.proteinG} g, su ${o.waterL} L.`;
+  if (o.adj === null) return `${reason}. Yeni TDEE ${o.tdee} kcal, ${tail} (Bakım dönemi: kalori aralığın korunuyor.)`;
+  if (!o.adj.ok || !o.adj.allowed || o.adj.newRestMin == null || o.adj.newRestMax == null) return null;
+  // The engine's numbers, not the caller's: it floors and widens the band before writing it.
+  return `${reason}. Yeni TDEE ${o.tdee} kcal, dinlenme aralığı ${o.adj.newRestMin}–${o.adj.newRestMax} kcal, ${tail}`;
 }

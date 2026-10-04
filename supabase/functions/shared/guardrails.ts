@@ -473,24 +473,17 @@ export function validateCalories(
  * Scan text for forbidden medical language (Spec 12.3).
  * Returns cleaned text with violations replaced.
  */
-// Spec 12: Eating disorder language patterns - trigger professional referral
-const ED_PATTERNS = [
-  'kusma', 'kustum', 'kusuyorum',
-  'laksatif', 'müshil', 'mushil',
-  'aç kalma', 'ac kalma', 'hiç yemiyorum', 'hic yemiyorum',
-  'yeme bozukluğu', 'yeme bozuklugu',
-  'anoreksiya', 'anorexia', 'bulimiya', 'bulimia',
-  'purging', 'binge',
-  'kendime zarar', 'intihar',
-];
-
-const ED_REFERRAL_MESSAGE =
-  'Bu konuda profesyonel destek almanizi oneririz. Turkiye Yeme Bozukluklari Dernegi veya bir uzman diyetisyen/psikolog ile gorusmeniz faydali olacaktir.';
-
-export function sanitizeText(text: string): { clean: string; hadViolations: boolean; edReferral: boolean; violatedRuleIds: string[] } {
+// final2#9 / mem#12: this function used to ALSO substring-scan for eating-disorder words and append
+// a referral. Every caller passes MODEL OUTPUT (the chat reply still carrying its hidden control
+// blocks, plan/report/nudge text), so the coach's own protective advice ("telafi için aç kalma"),
+// an ED word inside a hidden <layer2_update> note, or "binge" in an explanation appended an ASCII,
+// siz-voice referral to replies that had nothing to do with ED — often right after the referral
+// the model had already written. ED risk is a property of what the USER says: ai-chat screens the
+// user's message with detectEDRisk (negation-aware; high → safety reply, medium → one sen-voice
+// referral appended only when the reply doesn't already refer). Output text is not a risk signal.
+export function sanitizeText(text: string): { clean: string; hadViolations: boolean; violatedRuleIds: string[] } {
   let clean = text;
   let hadViolations = false;
-  let edReferral = false;
   const violatedRuleIds: string[] = [];
 
   for (const { id, pattern } of FORBIDDEN_PHRASES) {
@@ -509,20 +502,7 @@ export function sanitizeText(text: string): { clean: string; hadViolations: bool
       + '\n\nNot: Teşhis, ilaç veya tedavi gerektiren konularda mutlaka doktoruna danışmalısın.';
   }
 
-  // Check for eating disorder language patterns
-  const lower = clean.toLocaleLowerCase('tr');
-  for (const pattern of ED_PATTERNS) {
-    if (lower.includes(pattern)) {
-      edReferral = true;
-      break;
-    }
-  }
-
-  if (edReferral) {
-    clean = clean + '\n\n' + ED_REFERRAL_MESSAGE;
-  }
-
-  return { clean, hadViolations, edReferral, violatedRuleIds };
+  return { clean, hadViolations, violatedRuleIds };
 }
 
 /**

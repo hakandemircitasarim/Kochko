@@ -34,7 +34,7 @@ import { expandCompactDietSnapshot } from '../shared/plan-compact.ts';
 import { resolveTurnMode, isOnboardingHint, isPlanMode, wantsToDropIntent, classifyPlanIntent } from './turn.ts';
 import { failureLine, guardVerdictOf, type GuardFlag, type TurnFailureClass } from '../shared/turn-failures.ts';
 import { appendCoachingNote } from '../shared/coaching-notes.ts';
-import { applyTargetAdjust } from '../shared/target-engine.ts';
+import { applyTargetAdjust, tdeeRecalcCardText, type TargetAdjustResult } from '../shared/target-engine.ts';
 import { repairPlansAfterBeliefChange } from '../shared/repair-propagation.ts';
 import { recordEDSignal, deficitAllowed } from '../shared/safety-state.ts';
 import { validateMealParse } from '../shared/output-validator.ts';
@@ -5758,7 +5758,7 @@ async function executeActions(
             if (!pfErr && updates.activity_level !== undefined) {
               const { data: wRow } = await supabaseAdmin.from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
               const wv = wRow?.weight_kg as number | null;
-              if (wv) { tdeeRecalced = true; recalculateTDEEIfNeeded(userId, wv, true).then(() => {}, () => {}); }
+              if (wv) { tdeeRecalced = true; recalculateTDEEIfNeeded(userId, wv, true, 'Aktivite düzeyin güncellendi').then(() => {}, () => {}); }
             }
           }
           // Goal persistence: save even without target_weight_kg — user may give goal type
@@ -5867,7 +5867,7 @@ async function executeActions(
             // Recompute now that the goal row exists/changed. (activity_level path above does the same.)
             if (goalWriteOk && !tdeeRecalced && currentWeight) {
               tdeeRecalced = true;
-              recalculateTDEEIfNeeded(userId, currentWeight as number, true).then(() => {}, () => {});
+              recalculateTDEEIfNeeded(userId, currentWeight as number, true, 'Hedefin güncellendi').then(() => {}, () => {});
             }
           }
           // Exactly one feedback entry for this profile_update action (null = no chip,
@@ -7283,7 +7283,7 @@ async function checkOnboardingCompletion(userId: string) {
  * T1.19: Recalculate TDEE when significant weight change detected.
  * Spec 2.4: Triggers on 2.5+ kg change or 30+ days since last calc.
  */
-async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, force = false) {
+async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, force = false, trigger?: string) {
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('height_cm, birth_year, gender, activity_level, tdee_last_weight, tdee_last_date, maintenance_mode, periodic_state')
@@ -7346,29 +7346,33 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
   // protein_target_g is not a profiles column (it lives on daily_plans); record
   // protein intent via protein_per_kg (proteinG above derives from this 1.8 factor).
   const recalcDate = new Date().toISOString().split('T')[0];
-  const profileUpdate: Record<string, unknown> = {
+  // mem#5: the measured baseline (TDEE/protein/water) describes the body and is stored even when
+  // the ED gate holds the band. The tdee_last_* stamps mark when the BAND was last decided, so on a
+  // refusal they stay put and the next trigger re-gates (ai-proactive's roll-forward contract).
+  const baseline: Record<string, unknown> = {
     tdee_calculated: tdee,
-    tdee_last_weight: currentWeight,
-    tdee_last_date: recalcDate,
     protein_per_kg: 1.8,
     water_target_liters: waterTarget,
     updated_at: new Date().toISOString(),
   };
+  const stamps = { tdee_last_weight: currentWeight, tdee_last_date: recalcDate };
+  let adj: TargetAdjustResult | null = null;
   if (!inMaintenance) {
     // Only the non-maintenance path may rewrite the calorie ranges / weekly budget.
     // F3/C3 (target-engine): a weight-drop recalc LOWERS the band — the engine re-gates it for
     // amber/red ED users (holding them at the old, higher band is the conservative right call),
     // floors it, ledgers it, and projects it onto the remaining plan week.
-    await applyTargetAdjust({
+    adj = await applyTargetAdjust({
       userId, today: recalcDate,
       gender: (profile.gender as string | null) ?? null,
       band: { restMin, restMax: safeRestMax, trainingMin, trainingMax: safeTrainingMax, weeklyBudget },
       source: 'tdee_recalc',
-      reason: `TDEE yeniden hesaplandı: ${tdee} kcal @ ${currentWeight.toFixed(1)}kg (hedef ${gType})`,
-      profileExtras: profileUpdate,
+      reason: `TDEE yeniden hesaplandı: ${tdee} kcal @ ${currentWeight.toFixed(1)}kg (hedef ${gType})${trigger ? ` — ${trigger}` : ''}`,
+      baselineExtras: baseline,
+      profileExtras: stamps,
     });
   } else {
-    await supabaseAdmin.from('profiles').update(profileUpdate).eq('id', userId);
+    await supabaseAdmin.from('profiles').update({ ...baseline, ...stamps }).eq('id', userId);
   }
 
   // #10: write the previously-dead Layer-2 tdee_notes signal (spec 5.1) so buildLayer2
@@ -7382,16 +7386,9 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
   // #ux-pass3: the template claimed "kilon değişti" on EVERY recalc — a 30-day routine
   // refresh with identical weight produced the nonsense "Kilon 80.0 → 80.0kg degisti"
   // live. Say what actually happened, with proper Turkish.
-  const weightActuallyChanged = lastWeight != null && Math.abs(currentWeight - lastWeight) >= 0.1;
-  const reason = !lastWeight
-    ? 'İlk TDEE hesaplaman hazır'
-    : weightActuallyChanged
-      ? `Kilon ${lastWeight.toFixed(1).replace('.', ',')} → ${currentWeight.toFixed(1).replace('.', ',')} kg değişti`
-      : 'Rutin kontrol: hedeflerini güncel kilona göre tazeledim';
-  const content = inMaintenance
-    // In maintenance we deliberately didn't touch the ranges (ramp owns them).
-    ? `${reason}. Yeni TDEE ${tdee} kcal, protein ${proteinG} g, su ${waterTarget} L. (Bakım dönemi: kalori aralığın korunuyor.)`
-    : `${reason}. Yeni TDEE ${tdee} kcal, dinlenme aralığı ${restMin}–${safeRestMax} kcal, protein ${proteinG} g, su ${waterTarget} L.`;
+  // mem#5: and only what was STORED — a band the ED gate refused gets no card (null).
+  const content = tdeeRecalcCardText({ tdee, proteinG, waterL: waterTarget, currentWeight, lastWeight, trigger, adj });
+  if (!content) return;
   await supabaseAdmin.from('coaching_messages').insert({
     user_id: userId,
     trigger_type: 'tdee_recalculated',

@@ -33,7 +33,9 @@ export function detectTaskMode(message: string, isOnboarding: boolean): TaskMode
   const lower = message.toLocaleLowerCase('tr');
 
   // Recovery mode - emotionally sensitive, must win over bare logging keywords (e.g. "cok yedim")
-  if (/cok yedim|çok yedim|bozdum|sapti|saptı|her seyi yedim|her şeyi yedim|berbat/.test(lower)) return 'recovery';
+  // final2#9: "bugün çok fazla yedim" has a word between "çok" and "yedim" and ran as REGISTER —
+  // no weekly-budget perspective, no recovery_plan. The intensifier and "fazla kaçırdım" now count.
+  if (/[cç]ok (fazla )?yedim|fazla (yedim|ka[cç][ıi]rd[ıi]m)|a[sş][ıi]r[ıi] yedim|bozdum|sapti|saptı|her seyi yedim|her şeyi yedim|berbat/.test(lower)) return 'recovery';
 
   // F4/D4 — DISTRESS IS NOT A MOOD LOG. "çok stresliyim, bunaldım" used to hit the mood line
   // below and run as REGISTER: gpt-4o-mini, temperature 0.2, "tek cümle onay ver" — the app's
