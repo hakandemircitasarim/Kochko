@@ -19,3 +19,12 @@ Deno.test('allergen scan: passive avoidance phrasing counts as addressed', () =>
   // a real recommendation still trips the scan
   assertEquals(scanReplyForAllergens('Akşam için ızgara karides ve deniz ürünleri salatası öneririm.', allergens).violated, true);
 });
+
+// Live 2026-10-04: the hidden-allergen warning itself ("köftede yumurta olabilir, garsona sor")
+// tripped the severe-allergen HARD BLOCK and the whole helpful reply was replaced.
+Deno.test('allergen scan: an ask/may-contain caveat counts as addressed', () => {
+  const allergens = [{ name: 'yumurta', severity: 'severe' as const }];
+  assertEquals(scanReplyForAllergens('Köfte içinde yumurta olabilir; yumurta var mı diye garsona sor.', allergens).violated, false);
+  assertEquals(scanReplyForAllergens('Şnitzel pane harcı yumurta içerebilir, şiş tercih et.', allergens).violated, false);
+  assertEquals(scanReplyForAllergens('Kahvaltıda menemen ye, yumurta proteini iyi gelir.', allergens).violated, true);
+});
