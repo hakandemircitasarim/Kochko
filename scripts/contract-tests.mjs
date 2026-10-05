@@ -108,6 +108,22 @@ async function main() {
     await sql(`update user_constraints set active=false where user_id='${U}' and kind='allergen' and subject='süt'`);
   });
 
+  await test('supplement allergen (final2#11): omega-3 for a seafood allergy is logged, flagged and warned', async () => {
+    await sql(`insert into user_constraints (user_id,kind,subject,severity,source) values ('${U}','allergen','deniz ürünleri','moderate','user_stated') on conflict (user_id,kind,subject) do update set active=true`);
+    try {
+      const r = await chat('akşam yemeğinden sonra 1 omega 3 kapsülü aldım');
+      assert(r.status === 200, 'status ' + r.status);
+      // The deterministic supplement net guarantees a supplement_log even if the model skips it.
+      const rc = (r.body.receipts ?? []).find((x) => x.action_type === 'supplement_log');
+      assert(rc && rc.ok, 'supplement_log not written — the user TOOK it, it must still be logged');
+      assert(rc.allergen_exposure && rc.allergen_exposure.allergens.includes('deniz ürünleri'), 'receipt carries no allergen_exposure flag');
+      assert(/alerj|hassasiyet/i.test(r.message) && /deniz ürün|balı|krill|kabuklu/i.test(r.message), 'reply carries no seafood warning');
+    } finally {
+      await sql(`update user_constraints set active=false where user_id='${U}' and kind='allergen' and subject='deniz ürünleri'`);
+      await sql(`delete from supplement_logs where user_id='${U}' and supplement_name ilike '%omega%' and logged_at > now()-interval '5 minutes'`);
+    }
+  });
+
   await test('injury scan: Turkish "sorun" does NOT trigger a run-injury nag', async () => {
     await sql(`insert into user_constraints (user_id,kind,subject,body_parts,source) values ('${U}','injury','knee','{knee}','user_stated') on conflict (user_id,kind,subject) do update set active=true, body_parts='{knee}'`);
     const r = await chat('bugün işte biraz sorun yaşadım, moralim bozuk, hafif bir öneri ver');

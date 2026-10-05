@@ -36,6 +36,25 @@ export interface ActionReceipt {
   rows_affected: number | null;
   user_line: string | null;
   failure_class: string | null;
+  /** Faz 0 #8a (final2#11): the logged item hit the user's allergen/intolerance spine. The write
+   *  still happened (the user reported a fact); the reply must carry the warning. */
+  allergen_exposure?: AllergenExposure | null;
+}
+
+/** A logged item ∩ the user's allergen/intolerance spine — the receipt FLAG, not a block. */
+export interface AllergenExposure {
+  /** The item as logged ("omega 3"). */
+  item: string;
+  /** The user's matched allergen/intolerance subjects ("deniz ürünleri"). */
+  allergens: string[];
+  /** Allergen sources that caused the hit ("balık", "kabuklu"). */
+  sources: string[];
+  /** true = the source is ambiguous (plain omega-3: fish, krill or algae) → ask, don't assert. */
+  possible: boolean;
+  /** At least one matched allergen is recorded as severe. */
+  severe: boolean;
+  /** For an ambiguous source: what to look for on the label ("balık, krill ya da yosun"). */
+  source_hint?: string | null;
 }
 
 /** The <simulation> block, structured. The client must read THIS, not re-parse the text. */

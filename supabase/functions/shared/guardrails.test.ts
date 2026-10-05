@@ -55,6 +55,20 @@ Deno.test('checkAllergens: category allergen expands to member foods', () => {
   ok(!checkAllergens('fırında somon', ['deniz ürünleri']).passed, 'somon must fail for deniz ürünleri');
 });
 
+Deno.test('checkAllergens: krill is shellfish, fish-oil species are fish (final2#11)', () => {
+  ok(!checkAllergens('krill yağı', ['deniz ürünleri']).passed, 'krill must fail for deniz ürünleri');
+  ok(!checkAllergens('krill yağı', ['kabuklu']).passed, 'krill must fail for kabuklu');
+  ok(checkAllergens('krill yağı', ['balık']).passed, 'krill is NOT fish — a fish-only allergy must pass');
+  ok(!checkAllergens('morina yağı', ['balık']).passed, 'cod (morina) must fail for balık');
+  ok(!checkAllergens('ızgara uskumru', ['deniz ürünleri']).passed, 'uskumru must fail for deniz ürünleri');
+  ok(!checkAllergens('sardalya konservesi', ['balik']).passed, 'sardalya must fail for balik');
+});
+
+Deno.test('ALLERGEN_FOODS carries no "omega": the reply scan must not flag the safe algae alternative (final2#11)', () => {
+  const r = scanReplyForAllergens('Omega-3 için yosun bazlı bir takviye ya da ceviz iyi bir seçenek.', [{ name: 'deniz ürünleri', severity: 'severe' }]);
+  ok(!r.violated, 'algae omega-3 must not be blocked for a seafood allergy');
+});
+
 Deno.test('checkAllergens: tree-nut cross-reactivity (badem ⊂ fındık group)', () => {
   ok(!checkAllergens('badem sütü', ['fındık']).passed, 'badem must fail for a tree-nut (fındık) allergy');
 });
