@@ -1,5 +1,27 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import { detectEDRisk } from './guardrails.ts';
+import { deficitAllowed, getSafetyState } from './safety-state.ts';
+
+/**
+ * Faz 0 #6 — the deficit gate fails CLOSED. Unit tests run without net permission, so the
+ * user_safety_state query fails — and supabase-js reports that in `error`, it does not throw: the
+ * exact outage the gate used to read as "no row" = tier 'none' = deficit allowed. (Skipped if the
+ * suite is ever run with net access, where a real read could legitimately say "allowed".)
+ */
+const NET_GRANTED = Deno.permissions.querySync?.({ name: 'net' }).state === 'granted';
+
+Deno.test({
+  name: 'Faz 0 #6: deficitAllowed refuses a deficit on an unreadable state; prompt framing stays fail-open',
+  ignore: NET_GRANTED,
+  fn: async () => {
+    const uid = '00000000-0000-0000-0000-000000000000';
+    // Concurrently: each failed read waits out the client's own retries.
+    const [gate, framing] = await Promise.all([deficitAllowed(uid), getSafetyState(uid)]);
+    assertEquals([gate.allowed, gate.unreadable], [false, true]);
+    assert(gate.reason?.startsWith('safety_state_unreadable'));
+    assertEquals(framing.ed_tier, 'none'); // §7.1: the prompt frame keeps today's open default
+  },
+});
 
 /**
  * F2 · A8 — false-positive suppression for the ED detector.

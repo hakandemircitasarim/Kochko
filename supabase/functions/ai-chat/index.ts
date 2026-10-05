@@ -29,7 +29,7 @@ import { logBelief } from '../shared/belief-log.ts';
 import { ACTIVE_ROLLOUT_STEPS, rolloutMode, rolloutStamp } from '../shared/rollout.ts';
 import { sanitizeUiMarkers } from '../shared/ui-markers.ts';
 import { createTurnTimer, type TurnTimer } from '../shared/turn-timer.ts';
-import { computePlanTargets, renderPlanTargets, applyPlanTargets, type PlanTargets } from '../shared/plan-targets.ts';
+import { computePlanTargets, renderPlanTargets, applyPlanTargets, maintenanceHoldBand, maintenanceTdee, dietPlanHoldsMaintenance, type PlanTargets } from '../shared/plan-targets.ts';
 import { expandCompactDietSnapshot } from '../shared/plan-compact.ts';
 import { resolveTurnMode, isOnboardingHint, isPlanMode, wantsToDropIntent, classifyPlanIntent } from './turn.ts';
 import { failureLine, guardVerdictOf, type GuardFlag, type TurnFailureClass } from '../shared/turn-failures.ts';
@@ -1031,13 +1031,22 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     let planTargets: PlanTargets | null = null;
     if (planTurn && planKind === 'diet') {
       try {
-        const [{ data: ptProfile }, { data: wkRow }] = await Promise.all([
-          supabaseAdmin.from('profiles').select('tdee_calculated, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, weight_kg, protein_per_kg, meal_count_preference, available_training_times').eq('id', userId).maybeSingle(),
+        const [{ data: ptProfile }, { data: wkRow }, planEdGate] = await Promise.all([
+          supabaseAdmin.from('profiles').select('tdee_calculated, calorie_range_rest_min, calorie_range_rest_max, calorie_range_training_min, calorie_range_training_max, weight_kg, protein_per_kg, meal_count_preference, available_training_times, gender, height_cm, birth_year, activity_level').eq('id', userId).maybeSingle(),
           supabaseAdmin.from('weekly_plans').select('plan_data').eq('user_id', userId).eq('plan_type', 'workout').eq('status', 'active').is('plan_subtype', null).limit(1).maybeSingle(),
+          deficitAllowed(userId),
         ]);
         const wDays = ((wkRow?.plan_data as { days?: { day_index?: number; rest_day?: boolean }[] } | null)?.days ?? [])
           .filter((d) => d && d.rest_day === false && Number.isInteger(d.day_index)).map((d) => d.day_index as number);
-        if (ptProfile) planTargets = computePlanTargets(ptProfile, wDays.length > 0 ? wDays : null);
+        // Faz 0 #6 (§5.1 #8): while the ED tier refuses deficits, the plan is BUILT at maintenance —
+        // a stored band set before the tier rose may still be a deficit band, and a plan generated
+        // from it could only ever be refused at Onayla (the old "bakım planı hazırla" dead end).
+        // An UNREADABLE state does not reshape a draft (a draft is not a target write): the
+        // approval gate re-reads it and fails closed there.
+        const holdTdee = ptProfile && !planEdGate.allowed && !planEdGate.unreadable ? maintenanceTdee(ptProfile) : null;
+        const holdAt = holdTdee ? maintenanceHoldBand(holdTdee, ptProfile?.gender as string | null) : null;
+        if (ptProfile) planTargets = computePlanTargets(ptProfile, wDays.length > 0 ? wDays : null, holdAt);
+        if (planTargets?.heldAtMaintenance) console.log('[plan_targets] held at maintenance (deficit gate closed)', { edTier: planEdGate.edTier });
       } catch (e) { console.warn('[plan_targets] skipped:', (e as Error).message); }
     }
     timer.mark('prompt_inputs');
@@ -1092,6 +1101,11 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       taskCardCtx,
       modeInstructions,
       planTargets ? renderPlanTargets(planTargets) : '',
+      // Faz 0 #7 (mem#3): the approval turn promotes the draft the user REVIEWED; the server never
+      // stores a snapshot on it, so a regenerated week here is ~30 s of output nobody keeps.
+      planTurn && user_approved === true
+        ? '## BU TUR: ONAY\nKullanıcı incelediği taslağı Onayla ile onayladı; sunucu tam olarak o sürümü kaydedecek. <plan_snapshot> ve <reasoning> ÜRETME, planı değiştirme; yalnızca tek kısa kapanış cümlesi yaz.'
+        : '',
       // #organism: always-on situational snapshot — frames EVERY response with "who this person
       // is right now", even on thin register/mood turns.
       situationalSnapshot,
@@ -2060,7 +2074,18 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     // answer with an error sentence. A draft already exists here, so the question can simply be
     // answered.
     const planIntent = classifyPlanIntent(message as string | null, !!activeIntent || planTurn, user_approved === true);
-    if (!snapshotUsable(planSnapshot) && user_approved !== true && planTurn && planIntent !== 'explain') {
+    // Faz 0 #7 (mem#3): only a generate/revise turn may write the draft. The APPROVAL turn used to
+    // pass this test too ("!== 'explain'"), so the snapshot the model re-emitted on "Onayla" was
+    // persisted over the draft the user had reviewed (v3 → an unseen v4, the "lighter dinners"
+    // revision undone) right BEFORE the approval gates read the draft back by id and promoted it.
+    // Approval promotes exactly the reviewed row; whatever the model emitted here is discarded.
+    const planWritesDraft = planIntent === 'generate' || planIntent === 'revise';
+    if (planTurn && planIntent === 'approve' && (planSnapshot || planReasoning)) {
+      if (planSnapshot) console.warn('[plan_snapshot] approval turn: model-emitted snapshot discarded (the reviewed draft is promoted)');
+      planSnapshot = null;
+      planReasoning = null; // it would describe the discarded week, not the one being promoted
+    }
+    if (!snapshotUsable(planSnapshot) && user_approved !== true && planTurn && planWritesDraft) {
       // ROOT-CAUSE FIX (ux-pass3, turn-log verified): the first pass and the OLD text-based
       // regen both produced only ~26 tokens — the model echoed the example intro sentence
       // ("Profiline bakarak 7 günlük menünü hazırladım — işte plan:") and STOPPED, emitting
@@ -2110,8 +2135,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     let planPersistError: string | null = null;
     let projectionFailed = false; // audit #6: surface a silent daily_plans projection failure to the user
     // A snapshot the model emitted on a turn that asked for no change (a question, a mood message
-    // while a draft is open) must not overwrite the draft the user is reading.
-    if (planSnapshot && planTurn && planIntent !== 'explain') {
+    // while a draft is open) must not overwrite the draft the user is reading — nor may one emitted
+    // on the approval turn (mem#3, above).
+    if (planSnapshot && planTurn && planWritesDraft) {
       const expectedType = planKind;
       // Diet snapshot processing (Spec 12.4): ALLERGEN guardrail FIRST (with exclusion
       // regen), THEN calorie reconciliation on the final snapshot.
@@ -2328,23 +2354,55 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     if (user_approved === true && planTurn) {
       const expectedType = planKind;
 
+      // Honor the client's draft_id when provided: the user approved the SPECIFIC
+      // draft they were looking at. (The single-draft partial index makes the
+      // fallback safe, but relying on it silently was a dead contract.)
+      // Loaded FIRST (Faz 0 #6): the ED gate below judges THIS draft's numbers, not the tier alone.
+      let draftQuery = supabaseAdmin
+        .from('weekly_plans')
+        .select('id, plan_data')
+        .eq('user_id', userId)
+        .eq('plan_type', expectedType)
+        .eq('status', 'draft');
+      if (typeof draft_id === 'string' && draft_id) draftQuery = draftQuery.eq('id', draft_id);
+      const { data: draftRow } = await draftQuery.limit(1);
+      const draft = draftRow?.[0] as { id: string; plan_data: Record<string, unknown> } | undefined;
+
       // F3/C3 (safety slice, required BEFORE C1 ships): the approval path promotes LLM-authored
       // targets into weekly_plans and from there into daily_plans — and nothing on that road ever
       // consulted the durable ED state. A user whose trajectory locked the deficit gate could
       // still approve an aggressive cut by tapping a button. Diet approvals now pass the same
       // deficitAllowed gate as every other calorie-lowering action; a refusal is honest and keeps
       // the draft (nothing is lost — the plan can be re-approved at maintenance level later).
-      if (expectedType === 'diet') {
+      // Faz 0 #6 (mem#4) — the gate is NUMERIC. It refused EVERY diet approval while the tier was
+      // amber, a plan built at maintenance included, and then offered a "bakım planı" the same
+      // blanket gate refused again (dead end). A closed deficit gate now refuses only a draft below
+      // maintenance at the CURRENT TDEE (maintenanceHoldBand — never the stored rest band: one set
+      // before the tier rose can be a deficit band, and even the ED cap's own band puts rest days
+      // 5% + 250 kcal under TDEE). Unknown maintenance or an unreadable state cannot prove "no
+      // deficit" → refused (fail closed). No early return: the turn still runs fact capture, the
+      // ED referral net, storage and the turn ledger; the refusal is its reply.
+      if (expectedType === 'diet' && draft) {
         const edGate = await deficitAllowed(userId);
         if (!edGate.allowed) {
-          console.warn('[approve] blocked by SafetyState (ED gate)', edGate);
-          return await commitAndRespond({
-            message: 'Bu planı şu an onaylamıyorum: kalori kısıtlamasını artırmadan önce beslenmeyle ilişkini toparlamak daha önemli. Planın kaybolmadı — istersen bakım seviyesinde (kısıtlamasız) bir versiyon hazırlayayım, "bakım planı hazırla" demen yeterli.',
-            actions: [], task_mode: effectiveMode,
-            plan_snapshot: null, plan_reasoning: null,
-            plan_persist_error: 'ed_gate_blocked', plan_approved: null,
-            navigate_to: null, simulation: null, remaining: rateLimit.remaining,
-          });
+          const { data: mProf, error: mErr } = await supabaseAdmin.from('profiles')
+            .select('tdee_calculated, gender, weight_kg, height_cm, birth_year, activity_level').eq('id', userId).maybeSingle();
+          const tdee = !mErr && mProf ? maintenanceTdee(mProf) : null;
+          const band = tdee ? maintenanceHoldBand(tdee, mProf?.gender as string | null) : null;
+          const verdict = dietPlanHoldsMaintenance(draft.plan_data, band);
+          if (verdict.holds) {
+            console.log('[approve] deficit gate closed, but the draft holds maintenance — allowed', { edTier: edGate.edTier, tdee, ...verdict });
+          } else {
+            console.warn('[approve] blocked by SafetyState (ED gate)', { ...edGate, tdee, ...verdict });
+            planPersistError = 'ed_gate_blocked';
+            // The approval-turn reply ("Plan hazır…") would claim a promotion that did not happen.
+            // Never offer a "maintenance version" of a plan that already is one: this refusal only
+            // reaches a draft below maintenance, and a re-made plan is built AT maintenance
+            // (computePlanTargets holdAt) — so the offered step passes this gate.
+            assistantMessage = edGate.unreadable || !band
+              ? 'Bu planı şu an onaylayamadım: planın bakım seviyende kaldığını doğrulayamadım. Planın kaybolmadı — biraz sonra tekrar Onayla\'ya basman yeterli; sorun sürerse profilindeki boy, kilo ve doğum yılı bilgilerine birlikte bakalım.'
+              : 'Bu planı şu an onaylamıyorum: kalorisi bakım seviyenin altında kalıyor ve şu an kısıtlamayı artırmak yerine beslenmeyle ilişkini toparlamak daha önemli. Planın kaybolmadı — istersen aynı tercihlerle bakım seviyesinde yeniden kurayım; "haftalık diyet planımı yeniden hazırla" demen yeterli.';
+          }
         }
       }
 
@@ -2356,7 +2414,8 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       // free-launch: routed through the ONE owner so the KOCHKO_FREE_LAUNCH kill-switch skips
       // BOTH the cap and the consume_free_plan_slot burn — free slots stay unspent for later.
       const gateActive = isActivePremium(gateProfile as { premium?: boolean | null; premium_expires_at?: string | null } | null);
-      if (!gateActive) {
+      // (An ED-refused approval promotes nothing, so it is answered by the gate, not the paywall.)
+      if (!gateActive && !planPersistError) {
         const used = (gateProfile?.plans_used_free as { diet?: number; workout?: number } | null) ?? {};
         if ((used[expectedType] ?? 0) >= 1) {
           // #S2 (fact-capture): this return exits AFTER the deterministic nets populated
@@ -2388,23 +2447,11 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
         }
       }
 
-      // Honor the client's draft_id when provided: the user approved the SPECIFIC
-      // draft they were looking at. (The single-draft partial index makes the
-      // fallback safe, but relying on it silently was a dead contract.)
-      let draftQuery = supabaseAdmin
-        .from('weekly_plans')
-        .select('id, plan_data')
-        .eq('user_id', userId)
-        .eq('plan_type', expectedType)
-        .eq('status', 'draft');
-      if (typeof draft_id === 'string' && draft_id) draftQuery = draftQuery.eq('id', draft_id);
-      const { data: draftRow } = await draftQuery.limit(1);
-      const draft = draftRow?.[0] as { id: string; plan_data: Record<string, unknown> } | undefined;
-
       // Re-run the allergen guardrail on the draft before promoting — the
       // draft may have been persisted before the user added an allergen, or
-      // produced by an earlier snapshot that slipped through.
-      if (draft && expectedType === 'diet') {
+      // produced by an earlier snapshot that slipped through. (Skipped when the ED gate already
+      // refused: nothing is promoted, and its reason must stay the one the user is told.)
+      if (draft && expectedType === 'diet' && !planPersistError) {
         // #arch L1 (step 1b): UNION the typed SAFETY SPINE with legacy food_preferences.
         const [{ data: prefRows }, spineAllergensSnap] = await Promise.all([
           supabaseAdmin.from('food_preferences').select('food_name')
@@ -3511,7 +3558,8 @@ Doğru anladıysam: ${parsed}.${tail}`;
     // user isn't told it worked, and suppress the "planına git" navigation for a
     // plan that was never saved (#R6-2). The client also reads plan_persist_error.
     let finalNavigateTo = navigateTo;
-    if (planPersistError && !persistedPlan) {
+    // An ED-gate refusal is not a failed save: its reply already says why and what works (Faz 0 #6).
+    if (planPersistError && !persistedPlan && planPersistError !== 'ed_gate_blocked') {
       assistantMessage += `\n\n(Not: ${failureLine('persist_failed')})`;
       finalNavigateTo = null;
     }

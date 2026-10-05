@@ -549,6 +549,10 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
         // copy + route to premium instead of leaking the raw "free_quota_used" code into the bubble.
         reason = cfg.paywallMessage;
         router.push('/settings/premium' as never);
+      } else if (persistErr === 'ed_gate_blocked' && data?.message) {
+        // Faz 0 #6: the server's refusal says why and what will pass (a maintenance-level plan) —
+        // the raw code "Plan kaydedilemedi: ed_gate_blocked" said neither.
+        reason = data.message;
       } else if (persistErr) {
         reason = `Plan kaydedilemedi: ${persistErr}`;
       }
