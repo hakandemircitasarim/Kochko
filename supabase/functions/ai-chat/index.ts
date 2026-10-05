@@ -361,6 +361,11 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
     if (message) {
       const injection = sanitizeUserInput(message);
       injectionDetected = injection.injectionDetected;
+      // Faz 0 #4: a log-only pattern ("sen artık …") lands here with injectionDetected=false — the
+      // turn continues normally; both kinds leave the matched pattern in the logs.
+      if (injection.matchedPattern) {
+        console.warn('[injection_guard]', { refused: injectionDetected, pattern: injection.matchedPattern });
+      }
       if (injectionDetected) {
         // #ux-fix (re-greeting/self-intro spam, live 07-11): mid-thread "Ben Kochko..." reads broken
         // in the ONE continuous conversation — the refusal keeps the role anchor without re-introducing.
@@ -1236,13 +1241,11 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       actions = ex.actions;
     }
 
-    // Guardrail: sanitize medical language (Spec 12.3)
-    const { clean, violatedRuleIds } = sanitizeText(assistantMessage);
-    // F4/E4: violations are now COUNTABLE — one log line per turn, grep/ingest-friendly. (The
-    // ai_turn_log column for this comes with the next migration wave; the log gives the signal
-    // today without schema churn.)
-    if (violatedRuleIds.length > 0) console.warn('[prompt_violation]', { rules: violatedRuleIds });
-    assistantMessage = clean;
+    // Guardrail: medical-language tripwire (Spec 12.3). AI_MIMARI_V2 Faz 0 #4: LOG-ONLY — the reply
+    // is never rewritten on a word match. F4/E4: violations stay COUNTABLE — sanitizeText itself
+    // logs '[forbidden_phrase]' with rule ids + matched text on every surface (chat, plan, report,
+    // nudge); the ai_turn_log column for it comes with the v2 turn-log migration.
+    sanitizeText(assistantMessage);
 
     // Fallback: if AI didn't produce actions but user gave profile info, extract manually
     // Post-process: strip verbal save acknowledgements that keep slipping past the
@@ -1258,7 +1261,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     // weight (e.g. "bench press 4x8 70kg") as bodyweight and silently overwrites
     // profiles.weight_kg, corrupting calorie/protein targets.
     // Onboarding gets FULL regex extraction (incl. bodyweight). Regular chat gets the
-    // SAFE subset (age/gender/height/target — no ambiguous bodyweight) so an
+    // SAFE subset (age/height/target — no ambiguous bodyweight; gender never, Faz 0 #8) so an
     // unambiguous profile statement still persists deterministically when the model
     // SAYS it saved but omits the <actions> block (#1/#2/#5 — confirmed in live test).
     const fullExtraction = isOnboarding
@@ -1829,19 +1832,10 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       }
     }
 
-    // Injury RESOLUTION net — deterministic (#memory reversal). health_events was INSERT-only, so
-    // "belim iyileşti / dizim düzeldi" never cleared is_ongoing and filterExercisesByInjury kept
-    // stripping those movements from every plan forever. Detect a heal cue + a healed body part and
-    // emit a resolve action the handler uses to UPDATE the matching ongoing rows to is_ongoing=false.
-    if (message && !actions.some(a => (a as Record<string, unknown>).type === 'health_event' || (a as Record<string, unknown>).type === 'health_event_resolve')) {
-      const mHeal = message.toLocaleLowerCase('tr');
-      const healCue = /(iyileş|iyilest|iyilesti|düzeldi|duzeldi|toparla|geçti|gecti|ağrım geçti|agrim gecti|ağrı kalmadı|agri kalmadi|ağrı yok|agri yok|artık ağrımıyor|artik agrimiyor|şikayetim kalmadı|sikayetim kalmadi|iyiyim art|eski(den|si) gibi)/.test(mHeal);
-      const parts = healCue ? extractInjuredBodyParts([message]) : [];
-      if (parts.length > 0) {
-        actions.push({ type: 'health_event_resolve', body_parts: parts, description: message.slice(0, 200) });
-        console.warn('[injury_resolve_net] resolve injected', { parts });
-      }
-    }
+    // AI_MIMARI_V2 Faz 0 #3: the regex injury-RESOLUTION net is gone. A heal cue + any body-part
+    // word ("dizim ağrısı geçti ama belim hâlâ…", "omzum eskisi gibi değil") resolved injuries the
+    // user never said had healed — a safety record silently cleared by a word match. Resolution now
+    // comes only from the model's own health_event_resolve action, which names the healed parts.
 
     // Life-event capture net — the #organism continuity feature. A dated motivating event
     // ("3 hafta sonra kardeşimin düğünü var", "15 temmuzda tatil") is persisted to life_events so
@@ -2955,7 +2949,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
 
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
     timer.mark('nets');
-    const { feedback: actionFeedback, receipts: actionReceipts } = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz);
+    const { feedback: actionFeedback, receipts: actionReceipts, allergenExposures = [] } = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz);
 
     // #S2 RECEIPTS: verify that captured identity facts REALLY landed in the canonical store and
     // persist per-field receipts to ai_turn_log. This is what makes the "anladım, 25 yaşındasın"
@@ -3196,7 +3190,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
       // disclaimer is dangerous, not a decline; only a real avoidance phrase next to EVERY
       // occurrence of the allergen counts as addressed (see scanReplyForAllergens fail-safe rule).
       // Allergens the USER reported eating this turn are not coach recommendations: they are a
-      // safety event that needs a reaction check (ALERJEN CELISKISI below), not a redaction of the
+      // safety event that needs a reaction check (allergen exposure below), not a redaction of the
       // whole reply. The same inflection-aware matcher decides what the user's message contains.
       const userReported = new Set(
         message ? scanReplyForAllergens(message, allergensSev).matched.map((n) => n.toLocaleLowerCase('tr')) : [],
@@ -3257,9 +3251,21 @@ Doğru anladıysam: ${parsed}.${tail}`;
         }
       }
 
+      // ALLERGEN EXPOSURE reaction check — urgent, always surface. AI_MIMARI_V2 Faz 0 #9 (final2#10,
+      // mem#2): built ONLY from meal items this turn actually persisted (executeActions →
+      // allergenExposures), never from the raw message. It used to key on the prompt's conflict
+      // block, which word-matched the message, so a fish-restaurant question, a plan request or
+      // "yumurta alerjim geçti" got "şimdi bunu içeren bir şey girdin. İyi misin?" with no meal logged.
+      // Suppressed only by an actual REACTION CHECK in the reply — a bare mention of "alerji"
+      // (e.g. a block template or "alerjin kayıtlı") is not one, and used to silence this net.
+      if (allergenExposures.length > 0
+        && !/(iyi misin|belirti|reaksiyon|112|nefes darl|şişme|sisme)/.test(assistantMessage.toLocaleLowerCase('tr'))) {
+        assistantMessage += `\n\n⚠️ Bir saniye — profilinde ${[...new Set(allergenExposures)].join(', ')} alerjin/intoleransın kayıtlı ama az önce bunu içeren bir öğün girdin. İyi misin? Alerjin geçtiyse ya da yanlış kaydettiysem söyle, güncelleyeyim.`;
+      }
+
       // Deterministic CONTRADICTION surfacing (#memory, Spec 5.10) — the "hani X sevmiyordun?"
       // behaviour. getConflictContext already detected that the user LOGGED a food they earlier
-      // disliked (or is allergic to) and put a "## CELISKILER" block in the prompt, but in
+      // disliked and put a "## CELISKILER" block in the prompt, but in
       // register/terse mode the model often just logs the calories and drops the note. Mirror the
       // allergen/injury nets: if the alert fired and the reply doesn't already raise it, append it.
       const conflictStr = serviceCtx?.conflicts ?? '';
@@ -3269,7 +3275,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
         // nudges used to be independent `if`s with NO shared budget, so a two-word meal log could
         // come back as five paragraphs and five questions. A real coach who noticed your dislike,
         // your caffeine slip AND your eating window raises the ONE that matters and holds the rest.
-        // Safety nets (allergen scan, injury, allergen-CELISKISI) are exempt and stay always-on.
+        // Safety nets (allergen scan, injury, allergen exposure above) are exempt and stay always-on.
         let softNudgeBudget = 1;
         const addSoftNudge = (text: string): boolean => {
           if (softNudgeBudget <= 0) return false;
@@ -3281,13 +3287,6 @@ Doğru anladıysam: ${parsed}.${tail}`;
         // NOT the generic "sevmediğin besinleri içermiyor" (that's a relative clause, not a callout,
         // and was false-suppressing the nudge). Require the past-habit callout phrasing.
         const alreadyRaised = /(hani\s|sevmiyordun|sevmezdin|fikrin mi deg|fikrin mi değ|canın mı çek|canin mi cek|çelişki|celiski)/.test(lowerReply);
-        // ALERJEN CELISKISI (user logged an allergen food) — urgent, always surface.
-        const allergenHits = [...conflictStr.matchAll(/ALERJEN CELISKISI: "([^"]+)" alerjenin var/g)].map(m => m[1]);
-        // Suppressed only by an actual REACTION CHECK in the reply — a bare mention of "alerji"
-        // (e.g. a block template or "alerjin kayıtlı") is not one, and used to silence this net.
-        if (allergenHits.length > 0 && !/(iyi misin|belirti|reaksiyon|112|nefes darl|şişme|sisme)/.test(lowerReply)) {
-          assistantMessage += `\n\n⚠️ Bir saniye — profilinde ${[...new Set(allergenHits)].join(', ')} alerjin/intoleransın kayıtlı ama şimdi bunu içeren bir şey girdin. İyi misin? Alerjin geçtiyse ya da yanlış kaydettiysem söyle, güncelleyeyim.`;
-        }
         // SEVMEME CELISKISI (user logged a disliked food) — gentle nudge.
         const dislikeHits = [...conflictStr.matchAll(/SEVMEME CELISKISI: Kullanici daha once "([^"]+)"/g)].map(m => m[1]);
         if (dislikeHits.length > 0 && !alreadyRaised) {
@@ -4165,7 +4164,7 @@ function detectIdentityContradictions(
 
 function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly = false, prevAssistant?: string): Record<string, unknown> | null {
   // safeOnly (regular chat): skip the AMBIGUOUS bodyweight extraction only — a bare
-  // "70kg" in a workout/recipe context would be misread as bodyweight. Age/gender/
+  // "70kg" in a workout/recipe context would be misread as bodyweight. Age/
   // height/target are unambiguous, so they're still extracted to deterministically
   // catch the model omitting a profile_update action ("yaşını güncelledim" w/ no
   // <actions>) outside onboarding (#1/#2/#5).
@@ -4330,11 +4329,10 @@ function extractProfileFromMessage(msg: string, taskModeHint?: string, safeOnly 
     }
   }
 
-  // Gender. "erkeğim" mutates the final k→ğ; ASCII-keyboard users type "erkegim" (g),
-  // so the class is [gkğ] (#R1-M1). \bbay\b matches "bay/bayım" but not "bayan"
-  // (no trailing word boundary). \bmale\b prevents the substring in "female" matching male.
-  if (/erke[gkğ]|\bbay\b|\bmale\b/.test(lower)) result.gender = 'male';
-  else if (/kad[iı]n|bayan|\bfemale\b/.test(lower)) result.gender = 'female';
+  // Gender: deliberately NOT extracted here (AI_MIMARI_V2 Faz 0 #8). A word match cannot tell who
+  // the word is about — "kadın arkadaşımla yemeğe gittim" / "erkek kardeşim" wrote gender=female/male
+  // for the USER, silently moving BMR and the clinical calorie floor. Gender is written only from
+  // an explicit model profile_update; onboarding still asks for it when it is missing.
 
   // Activity level — previously NEVER extracted, so onboarding always fell back to the
   // 'sedentary' column default and every TDEE used the 1.2 multiplier (~30% too low,
@@ -4850,6 +4848,9 @@ const DUP_SKIP = '__dup_skip__';
 interface ActionExecResult {
   feedback: (string | null)[];
   receipts: ActionReceipt[];
+  /** Faz 0 #9: stored allergens found in meal items this call actually PERSISTED (structured
+   *  item names, never the raw message) — the only basis for an "… içeren bir şey girdin" claim. */
+  allergenExposures?: string[];
 }
 
 async function executeActions(
@@ -4874,6 +4875,7 @@ async function executeActions(
   // B2b's .select('id') writers can upgrade rows_affected site by site.
   const actionReceipts: ActionReceipt[] = [];
   let curType = 'unknown';
+  const allergenExposures: string[] = []; // Faz 0 #9: filled only by a meal_log that persisted
   const pushFb = (line: string | null, meta?: { ok?: boolean; rowsAffected?: number | null; failureClass?: string | null }) => {
     feedback.push(line);
     if (line === DUP_SKIP) return; // the action is dropped with its chip — no receipt for a non-event
@@ -4964,6 +4966,7 @@ async function executeActions(
           }
 
           // Allergen check for register mode (Spec 12.7)
+          let mealAllergenHits: string[] = []; // Faz 0 #9: reported as an exposure only once the meal persists
           if (items?.length) {
             // #arch L1 (step 1b): UNION the typed SAFETY SPINE with legacy food_preferences.
             const [{ data: legacyAllg }, spineAllg] = await Promise.all([
@@ -4987,6 +4990,7 @@ async function executeActions(
                 a => !checkAllergens(itemText, [a.food_name]).passed
               );
               if (matched.length > 0) {
+                mealAllergenHits = matched.map(m => m.food_name);
                 const warns = matched.map(m =>
                   `${m.food_name}${m.allergen_severity === 'severe' ? ' (CİDDİ ALERJİ!)' : ' (alerjen)'}`
                 );
@@ -5147,6 +5151,9 @@ async function executeActions(
 
           // --- Auto Meal Time Learning (Spec 5.15) ---
           learnMealTime(userId, mealType, action.logged_at as string | undefined, tzForActions).then(() => {}, () => {});
+
+          // Faz 0 #9: past every failure/dup `break` above → the meal really persisted.
+          allergenExposures.push(...mealAllergenHits);
 
           // --- Caffeine Integration (Spec 5.34) ---
           // Caffeine notices used to be pushed as separate feedback entries (and the case
@@ -6697,7 +6704,7 @@ async function executeActions(
     }
   }
 
-  return { feedback, receipts: actionReceipts };
+  return { feedback, receipts: actionReceipts, allergenExposures };
 }
 
 /**

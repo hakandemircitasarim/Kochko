@@ -1005,12 +1005,17 @@ export async function getConflictContext(
       if (allergenMap.size > 0) {
         const lower = loggedFoodText.toLocaleLowerCase('tr');
         // #arch S5: single source of the allergen→member-food dictionary (shared guardrails.ts).
+        // AI_MIMARI_V2 Faz 0 #9 / final2#10 / mem#2: `loggedFoodText` is the RAW user message, not
+        // logged food — a restaurant question, a plan request or an allergy retraction all name the
+        // food. The old line told the model "… iceren yemek girdin. Intoleransin degisti mi sor",
+        // a consumption claim built from a word match. Now: a NEUTRAL mention note; the model reads
+        // the meaning. The "girdin / iyi misin" reaction check lives in ai-chat and runs only on
+        // meal items this turn actually logged.
         for (const [aName] of allergenMap) {
           const foods = ALLERGEN_FOODS[aName] ?? [aName];
-          for (const food of foods) {
-            if (lower.includes(food)) {
-              alerts.push(`ALERJEN CELISKISI: "${aName}" alerjenin var ama "${food}" iceren yemek girdin. Intoleransin degisti mi sor.`);
-            }
+          const hits = [...new Set(foods.filter((food) => lower.includes(food)))];
+          if (hits.length > 0) {
+            alerts.push(`ALERJEN ANILDI: mesajda "${aName}" alerjeniyle ilgili "${hits.join(', ')}" geciyor. Bu tek basina tuketim anlamina gelmez (soru, plan, restoran ya da alerji bildirimi de olabilir) — kullanici yedigini/ictigini kendisi soyluyorsa nasil hissettigini sor; soylemiyorsa "girdin/yedin" varsayma, kacinma ve capraz temas icin yardim et.`);
           }
         }
       }
