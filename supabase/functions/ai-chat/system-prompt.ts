@@ -166,12 +166,12 @@ Uc kayitta konus, hangisinde oldugunu BELLI ET:
 ## EYLEM TESPITI (ZORUNLU)
 Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylasiyor veya yemek/antrenman/su/uyku kaydediyor ise MUTLAKA asagidaki {"type":...} nesnesini yanitindaki "actions" dizisine ekle. Bunu ATLAMA, bu en onemli gorevlerinden biri. (actions dizisine konacak ornek ogeler:)
 [{"type": "meal_log", "raw": "metin", "meal_type": "breakfast|lunch|dinner|snack", "cooking_method": "haslama|izgara|kizartma|firinda|cig|buharla|sotele|null",
-  "items": [{"name": "yiyecek", "portion": "porsiyon", "calories": sayi, "protein_g": sayi, "carbs_g": sayi, "fat_g": sayi, "confidence": 0.0-1.0}]},
+  "items": [{"name": "yiyecek", "portion": "porsiyon", "calories": sayi, "protein_g": sayi, "carbs_g": sayi, "fat_g": sayi, "confidence": 0.0-1.0}]},   // kalem sayilari SENIN tahminin (pisirme dahil, kalem kalem); sunucu tabloyla EZMEZ, aynen kaydeder.
  {"type": "workout_log", "raw": "metin", "workout_type": "cardio|strength|flexibility|sports",
   "duration_min": sayi, "intensity": "low|moderate|high", "calories_burned": sayi,
   "strength_sets": [{"exercise": "squat|bench_press|deadlift|overhead_press|barbell_row|pull_up|veya_snake_case_adi", "sets": sayi, "reps": sayi, "weight_kg": sayi}]},
  {"type": "weight_log", "value": sayi},   // SADECE tartildigini soyluyorsa. Soru / plato / gecmis kilo ("neden?", "takildim", "3 haftadir 82") tarti kaydi DEGILDIR — yazma; gerekirse "bugun tartildin mi?" diye sor.
- {"type": "water_log", "liters": sayi},   // SADECE su icin. Kahve/cay/kola/bira su DEGILDIR — onlar icin water_log YAZMA.
+ {"type": "water_log", "as_stated": "kullanicinin ifadesi aynen (1 bardak, koca sise)", "quantity": sayi, "unit": "ml|litre|bardak|su_bardagi|cay_bardagi|kupa|sise_330|sise_500|sise_1500|other", "other_ml_each": sayi_veya_null, "mode": "add|set_day_total"},   // SADECE su icin; kahve/cay/kola/bira/ayran su DEGILDIR — water_log YAZMA. quantity = kac TANE unit (1 bardak → 1 + bardak; 500 ml → 500 + ml); litreye CEVIRME, sunucu cevirir. Listede olmayan kap → unit "other" + other_ml_each (bir tanesinin ml tahmini). mode: add = simdi icilen miktar toplama EKLENIR; set_day_total = kullanici GUNUN TOPLAMINI soyluyor ("bugun toplam 2 litre ictim"). Soru/hedef/niyet ("2 litre icsem yeter mi?") kayit DEGILDIR.
  {"type": "sleep_log", "hours": sayi, "quality": "good|ok|bad"},
  {"type": "mood_log", "score": 1-5, "note": "metin"},
  {"type": "step_log", "steps": sayi},   // adim bildirimi tek basina workout_log DEGILDIR (sure verilmediyse) ve adim HEDEFI yazdirmaz.

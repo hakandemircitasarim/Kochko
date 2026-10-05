@@ -46,8 +46,10 @@ export function validateMealParse(output: Record<string, unknown>): ValidationRe
       corrected.fat_g = Math.max(0, Number(corrected.fat_g) || 0);
     }
 
-    // Macro-calorie consistency check (Spec 5.29)
-    // protein*4 + carbs*4 + fat*9 ≈ calories (±10%)
+    // Macro-calorie consistency check (Spec 5.29): protein*4 + carbs*4 + fat*9 ≈ calories (±15%).
+    // Faz 0 #1 (AI_MIMARI_V2 §5.3): a mismatch is FLAGGED in `errors`, never recomputed. The
+    // recompute replaced the model's kcal with a macro sum that ignores alcohol (7 kcal/g) and
+    // fibre, so a correct beer/rakı estimate was silently overwritten.
     const macroSum =
       (corrected.protein_g as number) +
       (corrected.carbs_g as number) +
@@ -59,13 +61,12 @@ export function validateMealParse(output: Record<string, unknown>): ValidationRe
     );
     const stated = corrected.calories as number;
     if (stated > 0 && macroSum > 0 && calculated > 0 && Math.abs(calculated - stated) > stated * 0.15) {
-      errors.push(`Item ${i}: makro-kalori tutarsiz (${stated} kcal vs hesaplanan ${calculated} kcal)`);
-      // Trust macros only when they exist, recalculate calories
-      corrected.calories = calculated;
+      errors.push(`Item ${i}: makro-kalori tutarsiz (${stated} kcal vs hesaplanan ${calculated} kcal) — model degeri korundu`);
     } else if (stated <= 0 && calculated > 0) {
       // 0-kcal kusuru (canlı 'kase yoğurt ~0 kcal'): model kaloriyi boş/0 bıraktı ama makrolar
       // dolu — eski kod 0'ı SESSİZCE geçiriyordu (yukarıdaki kurtarma stated>0 şartlıydı).
-      // Yenilebilir bir öğe 0 kcal olamaz; makrolardan hesapla.
+      // Yenilebilir bir öğe 0 kcal olamaz; EKSİK değer modelin kendi makrolarından türetilir
+      // (ezilen bir model sayısı yok — derive, override değil).
       errors.push(`Item ${i}: kalori eksik/0 — makrolardan hesaplandi (${calculated} kcal)`);
       corrected.calories = calculated;
     }

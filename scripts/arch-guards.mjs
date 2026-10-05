@@ -180,13 +180,33 @@ for (const f of FILES) {
 }
 
 /**
- * G4 — grounded meal logging. ai-chat must ground logged meals against the food reference
- * (computeItemNutrition), not persist raw model estimates unconditionally.
+ * G4 — grounding is ADVISORY (docs/AI_MIMARI_V2.md §5.3, Faz 0 #1). The model's per-item meal
+ * numbers are what gets stored; the food reference may only be COMPARED with them and the
+ * divergence LOGGED. The old rule ("ai-chat must call computeItemNutrition and override") stored
+ * 6 tavuk nugget as 900 g / 1708 kcal of plain breast (final2#4) and "2 dilim lahmacun" as 60 g
+ * (final2#5). Fails when ai-chat:
+ *   (a) stamps a meal item data_source 'reference' — the table's numbers being persisted. v2's
+ *       model-chosen reference_key will relax this explicitly, never implicitly;
+ *   (b) re-introduces the meal-wide cooking multiplier (it scaled salad/yoğurt by the fried factor);
+ *   (c) stops logging the reference divergence ([meal_ref_divergence]) — grounding must stay observable.
+ * The validateMealParse "flag, don't recompute" half is pinned by output-validator.test.ts.
  */
 {
   const chat = FILES.find((f) => f.endsWith(join('ai-chat', 'index.ts')) || /ai-chat[\\/]index\.ts$/.test(f));
-  if (chat && !/computeItemNutrition/.test(read(chat))) {
-    fail('G4-meal-grounding', chat, 0, 'ai-chat no longer grounds meals via computeItemNutrition (food-reference)');
+  if (chat) {
+    const txt = read(chat);
+    linesOf(txt).forEach((ln, i) => {
+      if (/^\s*(\/\/|\*)/.test(ln)) return; // comments may describe the old override
+      if (/data_source\s*:[^,}]*['"]reference['"]/.test(ln)) {
+        fail('G4-grounding-advisory', chat, i + 1, "meal item stamped data_source='reference' — the food table is overriding the model's numbers again");
+      }
+      if (/COOKING_MULTIPLIERS|\*\s*multiplier\b/.test(ln)) {
+        fail('G4-grounding-advisory', chat, i + 1, 'meal-wide cooking multiplier is back — the model\'s per-item numbers already include preparation');
+      }
+    });
+    if (!/\[meal_ref_divergence\]/.test(txt)) {
+      fail('G4-grounding-advisory', chat, 0, 'ai-chat no longer logs [meal_ref_divergence] — advisory grounding must stay observable');
+    }
   }
 }
 

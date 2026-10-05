@@ -36,10 +36,19 @@ Deno.test('tutarlı öğe DOKUNULMADAN geçer (mevcut davranış korunur)', () =
   assertEquals(r.valid, true);
 });
 
-Deno.test('makro-kalori tutarsızlığı düzeltmesi hâlâ çalışıyor (Spec 5.29)', () => {
-  // 972-kcal yulaf sınıfı: makrolar 300 kcal'lik, beyan 972 → makrolar kazanır.
+Deno.test('makro-kalori tutarsızlığı İŞARETLENİR, model değeri korunur (Faz 0 #1, Spec 5.29)', () => {
+  // Eskiden makrolar kazanır ve kcal SESSİZCE yeniden hesaplanırdı (AI_MIMARI_V2 §5.3: yasak).
+  // Şimdi tutarsızlık errors'ta iz bırakır (çağıran loglar), sayı modelinki kalır.
   const r = validateMealParse({ items: [{ name: 'yulaf', portion: '40 g', calories: 972, protein_g: 5, carbs_g: 27, fat_g: 3 }] });
-  assertEquals(itemsOf(r)[0].calories, Math.round(5 * 4 + 27 * 4 + 3 * 9)); // 155
+  assertEquals(itemsOf(r)[0].calories, 972);
+  assertEquals(r.valid, false);
+  assertEquals(r.errors.some(e => e.includes('makro-kalori tutarsiz')), true, 'tutarsızlık işaretlenir');
+});
+
+Deno.test('alkollü içecek: makro toplamı alkolü saymaz — model kcal korunur (Faz 0 #1)', () => {
+  // 330 ml bira ~140 kcal; makrolar (1.5 g P, 11 g K) yalnız ~50 kcal eder. Recompute 140'ı 50'ye çekiyordu.
+  const r = validateMealParse({ items: [{ name: 'bira', portion: '330 ml', calories: 140, protein_g: 1.5, carbs_g: 11, fat_g: 0 }] });
+  assertEquals(itemsOf(r)[0].calories, 140);
 });
 
 Deno.test('isZeroCaloriePlausible: içecek istisnaları evet, yenilebilirler hayır', () => {

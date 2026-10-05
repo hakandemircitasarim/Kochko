@@ -21,7 +21,10 @@ import { isActivePremium } from '../shared/premium.ts';
 import { supabaseAdmin, getUserId } from '../shared/supabase-admin.ts';
 import { updateLayer2, appendBehavioralPatterns } from '../shared/memory.ts';
 import { sanitizeText, detectEmergency, detectCrisis, detectEDRisk, checkAllergens, extractDeclaredAllergens, scanReplyForAllergens, buildAllergenBlockMessage, type AllergenSeverity, detectTaskSkipIntent, normalizeClockTime, foodMatchKey, sanitizeUserInput, extractInjuredBodyParts, findInjuryConflictsInText, filterExercisesByInjury } from '../shared/guardrails.ts';
-import { nextWaterLiters, waterIsDailyTotal } from '../shared/water-intent.ts';
+import {
+  deriveWaterLiters, nextWaterLiters, waterIsDailyTotal, waterModeOf,
+  WATER_FLAG_SINGLE_ADD_LITERS, WATER_MAX_LITERS_PER_WRITE,
+} from '../shared/water-intent.ts';
 import { computeItemNutrition, isZeroCaloriePlausible } from '../shared/food-reference.ts';
 import { isMemoryMirrorIntent, buildMemoryMirror, composeGeneralSummary } from '../shared/memory-mirror.ts';
 import { writeTurnLog, writeFactReceipts, type FactReceipt } from '../shared/turn-log.ts';
@@ -1076,11 +1079,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       ctx.layer2 ? `--- AI OZETI ---\n\n${ctx.layer2}` : '',
     ].filter(Boolean).join('\n\n');
 
-    // Day-total water statement: the server SETS the day's water (water-intent.ts); the prose must not
-    // claim it was added on top ("2 litre suyu ekledim" contradicted the stored total).
-    const waterTotalNote = message && waterIsDailyTotal(message) && /(?<![\p{L}])su(?![\p{L}])|litre|bardak/u.test(message.toLocaleLowerCase('tr'))
-      ? 'SU: Kullanici GUNUN TOPLAMINI soyluyor. Sunucu bugunku suyu bu degere AYARLAR, uzerine EKLEMEZ. "ekledim" deme; "bugunku toplamini ... L olarak kaydettim" de.'
-      : '';
+    // Faz 0 #2 (diff#3): the regex-gated "SU: Kullanici GUNUN TOPLAMINI soyluyor" note is gone. It fired
+    // on questions, hypotheticals, ayran and "dün" turns, and asked for a "kaydettim" sentence that
+    // stripVerbalAcknowledgements always deletes. The model now declares water_log.mode itself.
     const turnSystem = [
       '--- BU TURUN BAGLAMI (yalnizca bu mesaj icin gecerli; yukaridaki kurallar aynen gecerli) ---',
       zamanMatch ? zamanMatch[0].trim() : '',
@@ -1120,7 +1121,6 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       ctx.layer3 ? `--- SON VERILER ---\n\n${ctx.layer3}` : '',
       repairContext,
       remainingMacrosNote,
-      waterTotalNote,
       pantryRecipesNote,
       householdNote,
     ].filter(Boolean).join('\n\n');
@@ -1484,6 +1484,8 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
 
     // Water-log safety net — deterministic (#R1-H6): "2 litre su içtim", "3 bardak su".
     // #organism: any mode (the "su iç" + quantity regex is specific enough to be safe).
+    // Faz 0 #2: injects ONLY when the model emitted no water_log at all — a model value is never
+    // checked or rewritten here. The injection is the legacy {liters} shape (mode: regex fallback).
     if (message
       && !actions.some(a => a.type === 'water_log')
       && effectiveMode !== 'simulation') {
@@ -1509,11 +1511,16 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       }
     }
 
-    // Day-total vs one-more-drink (shared/water-intent.ts owns it): "bugün 2 litre içtim" SETS the
-    // day's water; "2 bardak su içtim" ADDS. Only a single water_log can carry a stated total.
+    // Day-total vs one-more-drink: "bugün 2 litre içtim" SETS the day's water; "2 bardak su içtim"
+    // ADDS. Faz 0 #2: when the model declared water_log.mode, the MODEL's mode wins. The whole-message
+    // regex (shared/water-intent.ts) is only the fallback for a legacy action without mode (the safety
+    // net's injection, an old-format {liters} reply) — it turned a question's "toplam" into a SET that
+    // wiped the day (diff#1). Only a single water_log can carry a stated total.
     {
       const waterActs = actions.filter(a => a.type === 'water_log');
-      if (waterActs.length === 1) (waterActs[0] as Record<string, unknown>).total = waterIsDailyTotal(message);
+      if (waterActs.length === 1 && !waterModeOf(waterActs[0] as Record<string, unknown>)) {
+        (waterActs[0] as Record<string, unknown>).total = waterIsDailyTotal(message);
+      }
     }
 
     // Supplement-log safety net — deterministic (#R1-H6): "her sabah kreatin alıyorum".
@@ -3050,14 +3057,14 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
       }
     }
 
-    // #ux-fix (prose-kcal vs logged-kcal contradiction, live 07-11): user logged "150g tavuk göğsü ve
-    // salata"; the executed meal_log recorded ~332 kcal (receipt UI correct) while the SAME message's
-    // prose recomputed per-100g numbers ("Toplamda yaklaşık 215 kcal aldın"). The prompt now bans prose
-    // totals on logging turns, but the guarantee is deterministic: when a meal_log actually persisted
-    // ('Ogun kaydedildi' feedback) and the prose carries kcal figures deviating >15% from the logged
-    // total, strip those sentences and cite the authoritative total instead — the user must never see
-    // two different totals in one message. Budget/burn/target sentences are exempt (other quantities),
-    // as is the code-appended "Dogru anladiysam..." line (its numbers come from the action itself).
+    // #ux-fix (prose-kcal vs logged-kcal contradiction, live 07-11) → Faz 0 #1 (AI_MIMARI_V2 §5.3):
+    // this net used to STRIP prose sentences whose kcal deviated >15% from the logged total and
+    // append its own figure. While the food table overrode the model, that deleted the model's
+    // CORRECT number and printed the wrong one (6 nuggets "~300 kcal" → "~1731 kcal olarak
+    // hesapladım", final2#4). The stored numbers are now the model's own, so prose and receipt come
+    // from the same estimate; a remaining deviation is LOGGED, never rewritten — the itemized
+    // receipt stays the one authoritative place a number lives. Budget/burn/target sentences and the
+    // code-appended "Dogru anladiysam..." line are exempt (other quantities / stored numbers).
     {
       let loggedKcalTotal = 0;
       actions.forEach((a, ai) => {
@@ -3065,16 +3072,13 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
         if (ar.type !== 'meal_log') return;
         if (!(actionFeedback[ai] ?? '').includes(MEAL_LOGGED_MARK)) return; // dupe-skip/failed → no receipt shown
         // FIX (audit — receipt vs DB split-brain): prefer the EXACT total executeActions persisted
-        // (grounding × cooking multiplier, de-duped items, validateMealParse-corrected), stashed on the
-        // action as _loggedKcal, so the "Kaydettim: ~X kcal" receipt equals what the dashboard sums.
+        // (de-duped items, clamped), stashed on the action as _loggedKcal, so the comparison uses
+        // what the dashboard sums.
         const stored = Number(ar._loggedKcal);
         if (Number.isFinite(stored) && stored > 0) { loggedKcalTotal += stored; return; }
-        // Fallback (no stash): ground each item (still better than the raw model estimate).
-        const its = ar.items as { name?: string; portion?: string; calories?: number }[] | undefined;
-        loggedKcalTotal += (its ?? []).reduce((s, it) => {
-          const g = it?.name ? computeItemNutrition(it.name, it.portion ?? '') : null;
-          return s + (g ? g.calories : (Number(it?.calories) || 0));
-        }, 0);
+        // Fallback (no stash): the model's own item numbers — the same numbers executeActions stores.
+        const its = ar.items as { calories?: number }[] | undefined;
+        loggedKcalTotal += (its ?? []).reduce((s, it) => s + (Number(it?.calories) || 0), 0);
       });
       if (loggedKcalTotal > 0 && /\d[\d.,]*\s*(kcal|kalori)/i.test(assistantMessage)) {
         const withinTolerance = (n: number) => Math.abs(n - loggedKcalTotal) <= loggedKcalTotal * 0.15;
@@ -3092,24 +3096,19 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
         // or thousands mark, and splitting there stripped half a sentence (live 2026-10-04).
         // <simulation> blocks are kept intact — they are machine payload, not prose.
         const sentences = assistantMessage.split(/(?<=(?<!\d)[.!?](?!\d)|\n)(?![^<]*<\/simulation>)/);
-        let strippedAny = false;
-        const kept = sentences.filter((s) => {
+        const deviating: number[] = [];
+        for (const s of sentences) {
           const nums = [...s.matchAll(KCAL_NUM)].map((mm) => parseKcal(mm[1]));
-          if (nums.length === 0 || EXEMPT.test(s)) return true;
-          if (nums.some(withinTolerance)) return true; // cites the real total — consistent, keep
+          if (nums.length === 0 || EXEMPT.test(s)) continue;
+          if (nums.some(withinTolerance)) continue; // cites the real total — consistent
           // Review fix (ux-pass2): a correct ITEMIZATION ("tavuk ~250 kcal, salata ~80 kcal")
-          // has no single number near the total but SUMS to it — that's consistent, keep.
+          // has no single number near the total but SUMS to it — that's consistent.
           const sum = nums.reduce((a, b) => a + b, 0);
-          if (nums.length > 1 && withinTolerance(sum)) return true;
-          strippedAny = true;
-          return false;
-        });
-        if (strippedAny) {
-          assistantMessage = kept.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-          // FIX (AI-behaviour #4c): this emitted the literally-banned "Kaydettim:" — the app broke
-          // its own voice rule. State the number without claiming the save (the UI badge shows that).
-          assistantMessage = `${assistantMessage}\n\n~${Math.round(loggedKcalTotal)} kcal olarak hesapladım.`.trim();
-          console.warn('[kcal_consistency_net] stripped deviating prose kcal figures', { loggedKcalTotal });
+          if (nums.length > 1 && withinTolerance(sum)) continue;
+          deviating.push(...nums);
+        }
+        if (deviating.length > 0) {
+          console.warn('[kcal_consistency_net] prose kcal deviates from the stored total — kept, not rewritten', { loggedKcalTotal, prose: deviating });
         }
       }
     }
@@ -3121,19 +3120,22 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
     const modelProseForScan = assistantMessage;
 
     // A8: Low confidence proactive verification — append confirmation question.
-    // 0-kcal kusuru (canlı, 'kase yoğurt (~0 kcal)'): bu satır HAM model item'ından basıyordu —
-    // DB yolu aynı öğeyi food-reference'la 122'ye temellendirirken kullanıcı '~0 kcal' görüyor,
-    // onaylarsa pano 122 diyordu (çelişki + saçmalık). Artık aynı temellendirme burada da geçerli;
-    // hâlâ bilinmeyen (0) kalan yenilebilir öğe için sayı UYDURMAK yerine dürüstçe soruyoruz.
+    // Faz 0 #1 (final2#8): bu satır artık DB'ye YAZILAN kalem sayılarını basar (executeActions'ın
+    // _loggedItems'ı) — food-reference'la yeniden hesaplayınca "Doğru anladıysam" 330/149/26 derken
+    // makbuz ve DB 314/142/25 diyordu. Yazma olmadıysa (tekrar/başarısız) modelin kendi sayıları
+    // gösterilir, tablo değeri asla. Bilinmeyen (0) kalan yenilebilir öğe için sayı UYDURMAK yerine
+    // dürüstçe soruyoruz.
+    type EchoItem = { name: string; portion: string; kcal: number; confidence?: number };
     const mealActions = actions.filter((a) => (a as { type?: string }).type === 'meal_log');
     for (const mealAction of mealActions) {
-      const items = mealAction.items as { name: string; portion: string; calories: number; confidence?: number }[] | undefined;
+      const storedItems = (mealAction as Record<string, unknown>)._loggedItems as EchoItem[] | undefined;
+      const modelItems = mealAction.items as { name: string; portion: string; calories: number; confidence?: number }[] | undefined;
+      const items: EchoItem[] | undefined = storedItems
+        ?? modelItems?.map(i => ({ name: i.name, portion: i.portion, kcal: Number(i.calories) || 0, confidence: i.confidence }));
       if (items && items.length > 0) {
         const enriched = items.map(i => {
-          const grounded = i.name ? computeItemNutrition(i.name, i.portion ?? '') : null;
-          const kcal = grounded ? grounded.calories : (Number(i.calories) || 0);
-          const unknown = kcal <= 0 && !isZeroCaloriePlausible(i.name ?? '');
-          return { ...i, kcal, unknown };
+          const unknown = i.kcal <= 0 && !isZeroCaloriePlausible(i.name ?? '');
+          return { ...i, unknown };
         });
         const lowConf = enriched.filter(i => (i.confidence ?? 0.8) < 0.7);
         const unknowns = enriched.filter(i => i.unknown);
@@ -5062,72 +5064,58 @@ async function executeActions(
           }
 
           if (log && mealItems?.length) {
-            // Phase 6: Cooking method calorie adjustments
-            const cookingMethod = action.cooking_method as string | null;
-            const COOKING_MULTIPLIERS: Record<string, number> = {
-              fried: 1.15, deep_fried: 1.25, kizartma: 1.15, derin_kizartma: 1.25,
-              grilled: 0.95, izgara: 0.95,
-              steamed: 0.90, buharla: 0.90,
-              boiled: 0.95, haslama: 0.95,
-              sauteed: 1.10, sotele: 1.10, kavurma: 1.10,
-              raw: 1.0, cig: 1.0,
-              baked: 1.0, firinda: 1.0,
-            };
-            const multiplier = cookingMethod ? (COOKING_MULTIPLIERS[cookingMethod.toLowerCase()] ?? 1.0) : 1.0;
+            // Faz 0 #1 (AI_MIMARI_V2 §5.3): the meal-wide cooking multiplier is gone. One
+            // cooking_method scaled EVERY item (salad, yoğurt, bread) on values that already describe
+            // the cooked food, and only kcal/fat — so stored macros stopped adding up (final2#8). The
+            // model's per-item numbers already account for how each item was prepared.
 
-            // FIX (audit AI-ORC-01/EXT-04/INT-03/HIGH): sanitize via the (previously imported-
-            // but-unused) validateMealParse so NaN/string/undefined macros become finite numbers
-            // and macro–calorie inconsistency is corrected. Then clamp to each column's REAL
-            // range: calories smallint [0,32767]; protein/carbs/fat numeric(5,1) [0,9999.9].
-            // Before this, Math.max(0, NaN)=NaN and a >9999.9 macro 22003-failed the WHOLE
-            // meal_log_items insert → the meal showed "saved" with ZERO items.
-            const safeItems = ((validateMealParse({ items: mealItems }).corrected?.items) as typeof mealItems | undefined) ?? mealItems;
+            // FIX (audit AI-ORC-01/EXT-04/INT-03/HIGH): sanitize via validateMealParse so
+            // NaN/string/undefined macros become finite numbers (a MISSING kcal is derived from the
+            // model's own macros). A macro–kcal mismatch is FLAGGED and logged, never recomputed
+            // (Faz 0 #1: alcohol/fibre made that recompute overwrite correct numbers). Then clamp to
+            // each column's REAL range: calories smallint [0,32767]; protein/carbs/fat numeric(5,1)
+            // [0,9999.9]. Before this, Math.max(0, NaN)=NaN and a >9999.9 macro 22003-failed the
+            // WHOLE meal_log_items insert → the meal showed "saved" with ZERO items.
+            const mealParse = validateMealParse({ items: mealItems });
+            if (mealParse.errors.length > 0) console.warn('[meal_log] flagged — stored as the model stated', mealParse.errors);
+            const safeItems = ((mealParse.corrected?.items) as typeof mealItems | undefined) ?? mealItems;
             const clampInt = (v: number, max: number) => Math.min(max, Math.max(0, Math.round(Number.isFinite(v) ? v : 0)));
             const clampDec = (v: number, max: number) => Math.min(max, Math.max(0, Math.round((Number.isFinite(v) ? v : 0) * 10) / 10));
-            // #arch step 7: GROUND each item against the deterministic food reference. Every logged
-            // meal's macros were hallucinated fresh by the model, and those per-item errors
-            // accumulate into the deficit ledger the whole coaching arc optimises. When the food
-            // resolves, code computes kcal=grams×per100g from canonical data and OVERRIDES the
-            // model's numbers (data_source='reference'); unresolved items keep the model estimate
-            // (data_source='ai_estimate') so their uncertainty stays visible rather than laundered.
-            let groundedCount = 0;
-            // AI-behaviour #6: feed the user's OWN taught portions into grounding. Without this the
-            // generic household table won and a user who corrected "benim tabağım 200 gram" five
-            // times still got 350 g logged — while the prompt claimed we use their value "tartışmasız".
-            let userPortions: Record<string, { grams?: number; confirmed?: boolean } | number> | undefined;
-            try {
-              const { data: pcRow } = await supabaseAdmin
-                .from('ai_summary').select('portion_calibration').eq('user_id', userId).maybeSingle();
-              const pc = pcRow?.portion_calibration as Record<string, unknown> | null;
-              if (pc && typeof pc === 'object' && Object.keys(pc).length > 0) {
-                userPortions = pc as Record<string, { grams?: number; confirmed?: boolean } | number>;
-              }
-            } catch { /* calibration is an enhancement — never block the log */ }
+            // Faz 0 #1: the MODEL's per-item numbers are stored (data_source='ai_estimate'). The food
+            // reference is ADVISORY only. resolveFood matched any dish containing "tavuk" to plain breast
+            // and "adet" to a 150 g portion, and that result OVERRODE the model unconditionally: 6 nuggets
+            // → 900 g / 1708 kcal (final2#4), "2 dilim lahmacun" → 60 g (final2#5). Until the model picks a
+            // reference_key itself (v2), a reference match is only compared and a divergence logged. The
+            // user's taught portions reach the model through the PORSIYON HAFIZASI context instead.
+            const REF_DIVERGENCE = 0.35; // §4.4 meal_log refDivergence(0.35)
+            let refMatched = 0;
+            let refDivergent = 0;
             const rows = safeItems.map(i => {
-              const grounded = computeItemNutrition(i.name ?? '', i.portion ?? '', userPortions);
-              if (grounded) groundedCount++;
-              const cal = grounded ? grounded.calories : i.calories;
-              const pro = grounded ? grounded.protein_g : i.protein_g;
-              const carb = grounded ? grounded.carbs_g : i.carbs_g;
-              const fat = grounded ? grounded.fat_g : i.fat_g;
+              const ref = computeItemNutrition(i.name ?? '', i.portion ?? '');
+              const modelKcal = Number(i.calories) || 0;
+              if (ref) {
+                refMatched++;
+                if (modelKcal <= 0 || Math.abs(ref.calories - modelKcal) > modelKcal * REF_DIVERGENCE) {
+                  refDivergent++;
+                  console.warn('[meal_ref_divergence] model kept', { name: i.name, portion: i.portion, model_kcal: modelKcal, ref_kcal: ref.calories, ref_key: ref.foodKey, ref_grams: ref.grams });
+                }
+              }
               return {
                 meal_log_id: log.id, food_name: i.name ?? 'Yiyecek', portion_text: i.portion ?? '1 porsiyon',
-                // Cooking multiplier still applies on top of the canonical base (fried/steamed…).
-                calories: clampInt(cal * multiplier, 32767),
-                protein_g: clampDec(pro, 9999.9),
-                carbs_g: clampDec(carb, 9999.9),
-                fat_g: clampDec(fat * multiplier, 9999.9),
-                data_source: grounded ? 'reference' : 'ai_estimate',
-                // The grams the grounding actually used — without them a vague 'biraz domates' looked like
-                // an exact reference value and could never be checked or corrected.
-                portion_grams: grounded ? clampDec(grounded.grams, 99999.9) : null,
+                calories: clampInt(i.calories, 32767),
+                protein_g: clampDec(i.protein_g, 9999.9),
+                carbs_g: clampDec(i.carbs_g, 9999.9),
+                fat_g: clampDec(i.fat_g, 9999.9),
+                data_source: 'ai_estimate',
+                // The model gives no gram figure in the v1 contract; a table gram value would be the
+                // override again (the 900 g nugget row), so it stays unknown.
+                portion_grams: null,
               };
             });
             const { error: itemsErr } = await supabaseAdmin.from('meal_log_items').insert(rows);
-            if (groundedCount > 0) console.log(`[meal_log] grounded ${groundedCount}/${rows.length} items against food-reference`);
-            // NOTE: cooking_method is NOT a column on meal_log_items — its effect
-            // is already folded into calories/fat via `multiplier` above. Writing
-            // it 42703'd and silently dropped EVERY item (zero-calorie meals).
+            if (refMatched > 0) console.log(`[meal_log] reference advisory: ${refMatched}/${rows.length} matched, ${refDivergent} diverged >${REF_DIVERGENCE * 100}% (model numbers stored)`);
+            // NOTE: cooking_method is NOT a column on meal_log_items — writing it
+            // 42703'd and silently dropped EVERY item (zero-calorie meals).
             if (itemsErr) {
               // FIX (audit HIGH — "coach lies about saving"): a swallowed items failure left the
               // parent row with ZERO items → the dashboard showed a 0-kcal phantom meal while the
@@ -5138,10 +5126,15 @@ async function executeActions(
               pushFb('Kayit basarisiz: ogun', { ok: false, failureClass: 'write_failed' });
               break;
             }
-            // FIX (audit MEDIUM — receipt = DB): stash the EXACT persisted total (grounding × cooking
-            // multiplier, de-duped `rows`, validateMealParse-corrected) so the receipt-consistency net
-            // cites the same number the dashboard sums — not a re-derived estimate that omits both.
+            // FIX (audit MEDIUM — receipt = DB): stash the EXACT persisted total (de-duped `rows`,
+            // clamped) so the receipt-consistency check cites the same number the dashboard sums.
             (action as Record<string, unknown>)._loggedKcal = rows.reduce((s, r) => s + (Number(r.calories) || 0), 0);
+            // Faz 0 #1 (final2#8): the "Doğru anladıysam" echo prints THESE stored per-item numbers.
+            // It recomputed from the reference table and showed 330/149/26 while the receipt and the
+            // DB said 314/142/25. rows are 1:1 with safeItems, so the confidence index lines up.
+            (action as Record<string, unknown>)._loggedItems = rows.map((r, idx) => ({
+              name: r.food_name, portion: r.portion_text, kcal: r.calories, confidence: safeItems[idx]?.confidence,
+            }));
             mealRows = rows.map(r => ({ food_name: r.food_name, portion_text: r.portion_text, calories: r.calories, data_source: r.data_source }));
           }
 
@@ -5419,10 +5412,29 @@ async function executeActions(
           break;
         }
         case 'water_log': {
-          const l = action.liters as number;
-          if (l > 0) {
+          // Faz 0 #2 (AI_MIMARI_V2 §4.4): the model states quantity + unit (+ mode) and code does the
+          // unit math — "1 bardak su" was stored as +1 L because action.liters was trusted as-is
+          // (final2#3). Legacy {liters} is still accepted. An unreadable or out-of-bound amount is
+          // REJECTED with a visible receipt; it is never clamped or guessed.
+          const wd = deriveWaterLiters(action);
+          if (!wd.ok) {
+            console.warn('[water_log] rejected', { reason: wd.reason, as_stated: action.as_stated, quantity: action.quantity, unit: action.unit, liters: action.liters });
+            pushFb(wd.reason === 'out_of_range'
+              ? `Su kaydedilmedi: tek seferde en fazla ${WATER_MAX_LITERS_PER_WRITE} L yazabilirim — miktarı tekrar yazar mısın?`
+              : 'Su kaydedilmedi: miktarı anlayamadım — kaç bardak ya da kaç ml olduğunu yazar mısın?',
+              { ok: false, failureClass: 'invalid_value' });
+            break;
+          }
+          const l = wd.liters;
+          // The model's mode wins; action.total is the legacy regex fallback (set before executeActions).
+          const isTotal = wd.mode ? wd.mode === 'set_day_total' : action.total === true;
+          if (wd.source === 'legacy_liters') console.warn('[water_log] legacy liters shape (no quantity/unit)', { liters: l, mode: wd.mode });
+          else if (typeof action.liters === 'number' && Math.abs(action.liters - l) > 0.01) {
+            console.warn('[water_log] model liters disagrees with its quantity×unit — unit math kept', { as_stated: action.as_stated, model_liters: action.liters, liters: l });
+          }
+          // A declared day total may legitimately be 0 ("bugün hiç su içmedim"); a 0 ADD is a no-op.
+          if (l > 0 || wd.mode === 'set_day_total') {
             const prevWater = await waterFor(actionDate);
-            const isTotal = action.total === true;
             const next = nextWaterLiters(prevWater, l, isTotal);
             setWaterFor(actionDate, next); // keep running totals so later metric upserts preserve them
             // FIX (audit HIGH — swallowed upsert → false "Su +XL"): stop on failure, don't claim success.
@@ -5439,7 +5451,18 @@ async function executeActions(
             const fmtL = (v: number) => `${v.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} L`;
             const dayWord = actionDate === today ? 'Bugünkü' : 'O günkü';
             // The running total is in the receipt so a double count is visible the moment it happens.
-            pushFb(isTotal ? `${dayWord} su toplamı ${fmtL(next)} olarak kaydedildi` : `Su +${fmtL(l)} (${dayWord.toLocaleLowerCase('tr')} toplam ${fmtL(next)})`);
+            const waterLines = [isTotal ? `${dayWord} su toplamı ${fmtL(next)} olarak kaydedildi` : `Su +${fmtL(l)} (${dayWord.toLocaleLowerCase('tr')} toplam ${fmtL(next)})`];
+            // FLAG, not rewrite (§5.1 makullük): the value is stored as the model stated it; the
+            // receipt makes a suspicious amount visible and challengeable.
+            if (!isTotal && l > WATER_FLAG_SINGLE_ADD_LITERS) {
+              waterLines.push(`Tek seferde ${fmtL(l)} su alışılmadık görünüyor — miktar farklıysa yaz, düzelteyim.`);
+            }
+            // A day total BELOW what was already logged erases earlier entries — show what it replaced.
+            if (isTotal && next < prevWater) {
+              waterLines.push(`Önceki kayıt ${fmtL(prevWater)} idi — yanlışsa yaz, düzelteyim.`);
+            }
+            console.log('[water_log]', { as_stated: action.as_stated, quantity: action.quantity, unit: action.unit, liters: l, mode: wd.mode ?? (isTotal ? 'set_day_total(regex)' : 'add(regex)'), source: wd.source, prev: prevWater, next });
+            pushFb(waterLines.join('\n'));
           } else {
             pushFb(null); // alignment (#R2-6)
           }

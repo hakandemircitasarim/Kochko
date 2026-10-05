@@ -16,6 +16,11 @@
  * Code is authoritative + fail-safe (no per-item DB round-trip). Migration 083 mirrors this seed
  * into food_reference / household_portions as the future growth + import surface.
  *
+ * Faz 0 #1 (docs/AI_MIMARI_V2.md §5.3): ai-chat no longer lets this result OVERRIDE the model's
+ * per-item numbers — resolveFood's single-token fallback mapped "tavuk nugget" to plain breast
+ * (final2#4). It is ADVISORY: compared and logged ([meal_ref_divergence]). In v2 it is used only
+ * when the model itself picks a reference_key.
+ *
  * Values are per 100 g edible portion, cooked where a food is normally eaten cooked (pilav, makarna,
  * tavuk…). Sources: TÜRKOMP + USDA FDC rounded to whole numbers. This is a curated HEAD of the
  * distribution (the ~100 foods that cover most Turkish logging), not a complete database.

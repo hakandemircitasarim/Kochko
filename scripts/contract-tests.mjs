@@ -80,24 +80,51 @@ async function main() {
     assert(Number(f?.value_num) === 1200, `female floor ${f?.value_num} != 1200`);
   });
 
-  await test('food grounding: known food → data_source=reference, grounded kcal', async () => {
-    // The LLM occasionally asks to confirm instead of logging; retry so the CONTRACT (grounded item)
-    // is exercised. If it logs (the common case) the invariant is asserted; the exact kcal is covered
-    // by the food-reference unit tests.
+  // Faz 0 #1 (docs/AI_MIMARI_V2.md §5.3): grounding is ADVISORY. The model's per-item numbers are
+  // stored (data_source=ai_estimate); the food table is only compared and the divergence logged. The
+  // old contract ("known food → data_source=reference") is exactly what stored 6 nuggets as 900 g of
+  // breast / 1708 kcal (final2#4). Static half: arch-guards G4.
+  async function loggedItem(message, namePattern) {
+    // The LLM occasionally asks to confirm instead of logging; retry so the CONTRACT is exercised.
     let rows = [];
     for (let attempt = 0; attempt < 3 && rows.length === 0; attempt++) {
-      const r = await chat('öğlen 200 gram beyaz pilav yedim');
+      const r = await chat(message);
       assert(r.status === 200, 'status ' + r.status);
       await new Promise(res => setTimeout(res, 1500));
-      rows = await sql(`select mli.calories, mli.data_source, mli.portion_text from meal_log_items mli join meal_logs ml on ml.id=mli.meal_log_id where ml.user_id='${U}' and mli.food_name ilike '%pilav%' and ml.logged_at > now()-interval '2 minutes' order by ml.logged_at desc limit 1`);
+      rows = await sql(`select mli.calories, mli.data_source, mli.portion_text, mli.portion_grams from meal_log_items mli join meal_logs ml on ml.id=mli.meal_log_id where ml.user_id='${U}' and mli.food_name ilike '${namePattern}' and ml.logged_at > now()-interval '2 minutes' order by ml.logged_at desc limit 1`);
     }
-    if (rows.length === 0) { console.log('      (note: LLM did not log pilav this run — grounding invariant not exercised; meal-log reliability is a separate net)'); return; }
-    // INVARIANT: a logged known food is grounded by the deterministic calculator (data_source=
-    // reference), not a model estimate. The exact kcal tracks the model's portion phrasing and is
-    // covered deterministically by the food-reference unit tests.
-    assert(rows[0].data_source === 'reference', `pilav data_source=${rows[0].data_source}, expected reference — GROUNDING REGRESSED`);
-    const cal = Number(rows[0].calories);
-    assert(cal >= 130 && cal <= 420, `pilav ${cal} kcal outside grounded band (portion "${rows[0].portion_text}")`);
+    return rows[0] ?? null;
+  }
+
+  await test('food grounding is advisory: a known food keeps the model numbers (ai_estimate)', async () => {
+    const row = await loggedItem('öğlen 200 gram beyaz pilav yedim', '%pilav%');
+    if (!row) { console.log('      (note: LLM did not log pilav this run — invariant not exercised; meal-log reliability is a separate net)'); return; }
+    assert(row.data_source === 'ai_estimate', `pilav data_source=${row.data_source}, expected ai_estimate — the food table is OVERRIDING the model again`);
+    const cal = Number(row.calories);
+    assert(cal >= 130 && cal <= 420, `pilav ${cal} kcal outside a plausible band for 200 g (portion "${row.portion_text}")`);
+  });
+
+  await test('food grounding is advisory: a compound dish is not stored as its base food (6 nuggets ≠ 900 g breast)', async () => {
+    const row = await loggedItem('akşam 6 tane tavuk nugget yedim', '%nugget%');
+    if (!row) { console.log('      (note: LLM did not log the nuggets this run — invariant not exercised)'); return; }
+    assert(row.data_source === 'ai_estimate', `nugget data_source=${row.data_source}, expected ai_estimate`);
+    const cal = Number(row.calories);
+    assert(cal >= 120 && cal <= 700, `6 nuggets stored as ${cal} kcal — the reference override is back (was 1708)`);
+    assert(row.portion_grams == null || Number(row.portion_grams) < 400, `6 nuggets stored as ${row.portion_grams} g`);
+  });
+
+  await test('water_log unit math: "1 bardak su" adds ~0.2 L, never 1 L', async () => {
+    // Faz 0 #2: the model states quantity+unit, code converts (final2#3 stored +1 L). Read the
+    // user's Istanbul day before/after; a 0 delta means the LLM chose not to log — not exercised.
+    const day = `(now() at time zone 'Europe/Istanbul')::date`;
+    const waterNow = async () => Number((await sql(`select coalesce((select water_liters from daily_metrics where user_id='${U}' and date=${day}), 0)::float as w`))[0].w);
+    const before = await waterNow();
+    const r = await chat('1 bardak su daha içtim');
+    assert(r.status === 200, 'status ' + r.status);
+    await new Promise(res => setTimeout(res, 1200));
+    const delta = Math.round((await waterNow() - before) * 100) / 100;
+    if (delta === 0) { console.log('      (note: LLM did not log water this run — invariant not exercised)'); return; }
+    assert(delta >= 0.1 && delta <= 0.3, `"1 bardak su" changed the day's water by ${delta} L (expected ~0.2)`);
   });
 
   await test('safety spine: spine-only allergen fires the output warning', async () => {
