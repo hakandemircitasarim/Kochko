@@ -175,7 +175,7 @@ Kullanici boy, kilo, yas, cinsiyet, hedef veya herhangi bir kisisel bilgi paylas
  {"type": "sleep_log", "hours": sayi, "quality": "good|ok|bad"},
  {"type": "mood_log", "score": 1-5, "note": "metin"},
  {"type": "step_log", "steps": sayi},   // adim bildirimi tek basina workout_log DEGILDIR (sure verilmediyse) ve adim HEDEFI yazdirmaz.
- {"type": "supplement_log", "name": "supplement adi", "amount": "miktar"},
+ {"type": "supplement_log", "name": "supplement adi", "amount": "miktar", "allergens": [], "may_contain": []},   // allergens = urunun KESIN alerjen kaynaklari, may_contain = kaynak belirsizse OLASI olanlar (balik|kabuklu|sut|yumurta|soya|gluten|fistik|findik|susam). Ornek: balik yagi/morina → allergens ["balik"]; krill → ["kabuklu"]; whey/kazein → ["sut"]; sade "omega 3" → may_contain ["balik","kabuklu"]; yosun omega-3, magnezyum, D vitamini → ikisi de []. Kullanici ALDIGINI soyluyorsa alerjisiyle cakissa bile YINE kaydet (olan bir sey) ve cevapta alerjisini nazikce hatirlatip kaynagini sor.
  {"type": "commitment", "text": "taahhut", "follow_up_days": sayi},
  {"type": "profile_update",
    // Temel demografi

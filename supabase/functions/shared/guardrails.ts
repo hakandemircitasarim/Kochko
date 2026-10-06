@@ -70,16 +70,18 @@ export const ALLERGEN_FOODS: Record<string, string[]> = {
   fıstık: ['fıstık', 'fistik', 'yer fıstığı', 'yer fistigi', 'peanut'],
   fistik: ['fıstık', 'fistik', 'yer fıstığı', 'yer fistigi', 'peanut'],
   yumurta: ['yumurta', 'omlet', 'menemen', 'egg', 'omelet', 'omelette'],
-  balık: ['balık', 'balik', 'somon', 'levrek', 'hamsi', 'fish', 'salmon', 'tuna', 'ton balığı', 'ton baligi'],
-  balik: ['balık', 'balik', 'somon', 'levrek', 'hamsi', 'fish', 'salmon', 'tuna', 'ton balığı', 'ton baligi'],
+  // final2#11: the fish-oil source species (morina = cod liver oil, sardalya, uskumru, ançüez) were
+  // missing, so "morina yağı" passed a fish allergy. Krill is a crustacean → kabuklu, NOT balık.
+  balık: ['balık', 'balik', 'somon', 'levrek', 'hamsi', 'fish', 'salmon', 'tuna', 'ton balığı', 'ton baligi', 'morina', 'sardalya', 'uskumru', 'ançüez', 'ancuez'],
+  balik: ['balık', 'balik', 'somon', 'levrek', 'hamsi', 'fish', 'salmon', 'tuna', 'ton balığı', 'ton baligi', 'morina', 'sardalya', 'uskumru', 'ançüez', 'ancuez'],
   // Category-style allergens users actually say ("deniz ürünleri alerjim var") must
   // expand to concrete member foods (karides, midye...) or a shrimp suggestion would
   // slip past the allergen guardrail (#R2-12).
-  'deniz ürünleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'balık', 'balik', 'somon', 'levrek', 'hamsi'],
-  'deniz urunleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'istakoz', 'yengec', 'istiridye', 'balik', 'somon', 'levrek', 'hamsi'],
-  'deniz mahsulleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengeç', 'yengec', 'istiridye', 'balık', 'balik', 'somon', 'levrek', 'hamsi'],
-  kabuklu: ['karides', 'midye', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'kalamar'],
-  kabuklular: ['karides', 'midye', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'kalamar'],
+  'deniz ürünleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'krill', 'balık', 'balik', 'somon', 'levrek', 'hamsi', 'morina', 'sardalya', 'uskumru', 'ançüez', 'ancuez'],
+  'deniz urunleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'istakoz', 'yengec', 'istiridye', 'krill', 'balik', 'somon', 'levrek', 'hamsi', 'morina', 'sardalya', 'uskumru', 'ancuez'],
+  'deniz mahsulleri': ['karides', 'midye', 'kalamar', 'ahtapot', 'istakoz', 'yengeç', 'yengec', 'istiridye', 'krill', 'balık', 'balik', 'somon', 'levrek', 'hamsi', 'morina', 'sardalya', 'uskumru', 'ançüez', 'ancuez'],
+  kabuklu: ['karides', 'midye', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'kalamar', 'krill'],
+  kabuklular: ['karides', 'midye', 'istakoz', 'ıstakoz', 'yengeç', 'yengec', 'istiridye', 'kalamar', 'krill'],
 };
 
 /**

@@ -58,6 +58,7 @@ import { normalizeHabitEntry } from '../shared/habits.ts'; // AI-behaviour #14: 
 import { projectDailyPlanRows, type DietPlanData, type WorkoutPlanData } from '../shared/plan-projection.ts';
 import { resolveTargetCalories, computeCalorieBand, computeMaintenanceBand, bmrMifflin, tdeeFrom } from '../shared/targets.ts';
 import { getCalorieFloor } from '../shared/clinical-rules.ts';
+import { supplementAllergenExposure, buildSupplementAllergenLine, replyWarnsAboutExposure, type SpineAllergen } from '../shared/supplement-allergens.ts';
 import { extractLifeEvent } from '../shared/life-events.ts';
 import { syncConstraint, confirmConstraint, deactivateConstraints, syncInjuryFromText, resolveInjuryConstraints, getActiveConstraints, type ConstraintKind } from '../shared/constraints.ts';
 import { getEffectiveDateForUser, shiftDateString, getLocalParts, getLocalHour } from '../shared/day-boundary.ts';
@@ -3380,6 +3381,27 @@ Doğru anladıysam: ${parsed}.${tail}`;
       console.error('[output_safety_scan] failed:', (e as Error).message);
     }
 
+    // Faz 0 #8a (final2#11) — zorunlu satır (v2 §7.1): a supplement the user TOOK hit their allergen
+    // spine, so its receipt carries allergen_exposure. The model is asked to warn in its own words;
+    // if neither it nor the nets above named that allergen, append the fixed line. Added, never
+    // rewritten. The severe-block text is about a RECOMMENDATION, not this log — it never counts.
+    try {
+      const exposures = actionReceipts.flatMap((r) => (r.ok && r.allergen_exposure ? [r.allergen_exposure] : []));
+      if (exposures.length > 0) {
+        guardFlags.push('allergen_warned');
+        const blocked = guardFlags.includes('allergen_blocked');
+        let appended = '';
+        for (const exp of exposures) {
+          if (replyWarnsAboutExposure(blocked ? appended : assistantMessage, exp)) continue;
+          const line = `\n\n${buildSupplementAllergenLine(exp)}`;
+          assistantMessage += line;
+          appended += line;
+        }
+      }
+    } catch (e) {
+      console.error('[supplement_allergen_line] failed:', (e as Error).message);
+    }
+
     // #live-L6: surface the medium-severity ED professional-support referral deterministically
     // (don't trust the LLM to include it). Skip if the reply already points to a professional.
     if (edMediumReferral && !/(diyetisyen|psikolog|profesyonel destek|uzman)/i.test(assistantMessage)) {
@@ -4924,7 +4946,7 @@ async function executeActions(
   // B2b's .select('id') writers can upgrade rows_affected site by site.
   const actionReceipts: ActionReceipt[] = [];
   let curType = 'unknown';
-  const pushFb = (line: string | null, meta?: { ok?: boolean; rowsAffected?: number | null; failureClass?: string | null }) => {
+  const pushFb = (line: string | null, meta?: { ok?: boolean; rowsAffected?: number | null; failureClass?: string | null; allergenExposure?: ActionReceipt['allergen_exposure'] }) => {
     feedback.push(line);
     if (line === DUP_SKIP) return; // the action is dropped with its chip — no receipt for a non-event
     actionReceipts.push({
@@ -4933,6 +4955,8 @@ async function executeActions(
       rows_affected: meta?.rowsAffected ?? null,
       user_line: line,
       failure_class: meta?.failureClass ?? null,
+      // Faz 0 #8a: the receipt FLAG — the post-reply net reads it to guarantee the warning line.
+      ...(meta?.allergenExposure ? { allergen_exposure: meta.allergenExposure } : {}),
     });
   };
 
@@ -5587,6 +5611,38 @@ async function executeActions(
               await supabaseAdmin.rpc('ai_summary_merge', { p_user_id: userId, p_patch: { supplement_notes: merged } });
             }
           } catch (e) { console.warn('[supplement_notes] note update skipped:', (e as Error).message); }
+          // Faz 0 #8a (final2#11): supplement_log had NO allergen check — "omega 3 kapsülü aldım" from
+          // a seafood-allergic user logged silently. Same spine ∪ legacy union as meal_log; the
+          // model's allergens/may_contain tags ∪ the safety table decide the sources. The row stays
+          // written (the user took it — a fact); the receipt carries the flag and the reply net
+          // after the output scans guarantees the warning line.
+          let suppExposure: ActionReceipt['allergen_exposure'] = null;
+          try {
+            const [{ data: legacyAllg }, spineAllg] = await Promise.all([
+              supabaseAdmin.from('food_preferences').select('food_name, allergen_severity')
+                .eq('user_id', userId).eq('is_allergen', true),
+              getActiveConstraints(userId, ['allergen', 'intolerance']),
+            ]);
+            // Worst severity wins per name (as in the output scan) — a store disagreement never softens it.
+            const allgMap = new Map<string, string | null>();
+            const sevRank = (s: string | null | undefined) => s === 'severe' ? 3 : s === 'moderate' ? 2 : s === 'mild' ? 1 : 0;
+            const noteAllg = (name: string | null | undefined, sev: string | null | undefined) => {
+              const k = (name ?? '').trim().toLocaleLowerCase('tr'); // legacy "Deniz ürünleri" = spine "deniz ürünleri"
+              if (!k) return;
+              if (!allgMap.has(k) || sevRank(sev) > sevRank(allgMap.get(k))) allgMap.set(k, sev ?? null);
+            };
+            for (const a of (legacyAllg ?? []) as Array<{ food_name: string; allergen_severity?: string | null }>) noteAllg(a.food_name, a.allergen_severity);
+            for (const c of spineAllg) noteAllg(c.subject, c.severity);
+            const spine: SpineAllergen[] = [...allgMap.entries()].map(([name, severity]) => ({ name, severity }));
+            suppExposure = supplementAllergenExposure(
+              { name: suppName, allergens: action.allergens, may_contain: action.may_contain }, spine,
+            );
+          } catch (e) { console.error('[supplement_allergen] check failed:', (e as Error).message); }
+          if (suppExposure) {
+            console.warn('[supplement_allergen] exposure logged', { item: suppExposure.item, allergens: suppExposure.allergens, possible: suppExposure.possible });
+            pushFb(`Supplement kaydedildi — ⚠️ ALERJEN UYARISI: ${suppExposure.allergens.join(', ')}${suppExposure.possible ? ' (kaynağı belirsiz)' : ''} — yine de kaydedildi`, { allergenExposure: suppExposure });
+            break;
+          }
           pushFb('Supplement kaydedildi');
           break;
         }
