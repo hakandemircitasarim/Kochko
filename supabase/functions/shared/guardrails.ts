@@ -10,6 +10,18 @@
 // versioned, cited owner (clinical-rules.ts) so guardrails, targets, and the client no longer
 // keep three drifting copies of these safety constants.
 import { getCalorieFloor, MAX_RATE_KG_PER_WEEK } from './clinical-rules.ts';
+// AI_MIMARI_V2 Faz 1: safety-tripwires.ts is the single owner of user-text safety lists. v1's
+// detectors below import them unchanged (pure move); v2 reads the same lists as tripwires.
+import {
+  INJECTION_LOG_ONLY_PATTERNS,
+  INJECTION_REFUSAL_PATTERNS,
+  V1_CRISIS_PATTERNS,
+  V1_CRISIS_PHRASES,
+  V1_ED_EVIDENCE_PHRASES,
+  V1_ED_HIGH_PHRASES,
+  V1_ED_MEDIUM_PHRASES,
+  V1_EMERGENCY_PHRASES,
+} from './safety-tripwires.ts';
 const MAX_WEEKLY_LOSS_KG = MAX_RATE_KG_PER_WEEK.lose.value;
 
 // Spec 12.2: Max workout duration
@@ -574,19 +586,8 @@ export function isSuspiciousInput(
  * If user describes serious symptoms, exit coaching mode.
  */
 export function detectEmergency(text: string): { isEmergency: boolean; message: string } {
-  const emergencyPhrases = [
-    'gogus agrisi', 'göğüs ağrısı', 'gogsum agriyor', 'göğsüm ağrıyor',
-    'nefes alamıyorum', 'nefes alamiyorum', 'nefesim kesildi', 'nefesim yok',
-    'bayiliyorum', 'bayılıyorum', 'bayildim', 'bayıldım',
-    'kalp krizi', 'felc', 'felç',
-    'kan kusuyorum', 'kan kusdum', 'kan küstüm',
-    'bilincimi kaybediyorum', 'bilincim kapaniyor', 'bilincim kapanıyor',
-    'cok siddetli agri', 'çok şiddetli ağrı', 'dayanilmaz agri', 'dayanılmaz ağrı',
-    'kalp çarpıntısı', 'kalp carpintisi',
-    'sol kolum uyusuyor', 'sol kolum uyuşuyor',
-    'yutamiyorum', 'yutamıyorum',
-    'gorme kaybı', 'gorme kaybi', 'göremiyorum', 'goremiyorum',
-  ];
+  // AI_MIMARI_V2 Faz 1: the list lives in safety-tripwires.ts (same strings, same order).
+  const emergencyPhrases = V1_EMERGENCY_PHRASES;
 
   const lower = text.toLocaleLowerCase('tr');
   for (const phrase of emergencyPhrases) {
@@ -613,41 +614,15 @@ export function detectEmergency(text: string): { isEmergency: boolean; message: 
  */
 export function detectCrisis(text: string): { isCrisis: boolean; message: string } {
   const lower = text.toLocaleLowerCase('tr');
-  const crisisPhrases = [
-    'kendime zarar', 'kendime zarar vermek',
-    'intihar', 'intihar etmek', 'intihar etmeyi',
-    'olmek istiyorum', 'ölmek istiyorum', 'artik yasamak istemiyorum', 'artık yaşamak istemiyorum',
-    'yasamak istemiyorum', 'yaşamak istemiyorum',
-    'canima kiymak', 'canıma kıymak', 'canima kiyacagim', 'canıma kıyacağım',
-    'hayatima son', 'hayatıma son', 'yasamima son', 'yaşamıma son',
-    'kendimi oldurmek', 'kendimi öldürmek', 'kendimi olduregim', 'kendimi öldüreceğim',
-    // FIX (audit guardrails_crisis): common despair / "I'm finished" idioms the literal
-    // list missed. These read as acute crisis and must trigger the 112 + professional
-    // response, never the milder ED referral.
-    'bittim ben', 'ben bittim', 'tukendim', 'tükendim',
-    'kendime kiymak', 'kendime kıymak', 'kendime kiyacagim', 'kendime kıyacağım',
-    'hayata veda', 'her seye son ver', 'her şeye son ver',
-    'olup kurtul', 'ölüp kurtul', 'yok olmak isti',
-  ];
+  // AI_MIMARI_V2 Faz 1: the phrase list and the root regexes live in safety-tripwires.ts (same
+  // strings, same RegExp objects; their audit history moved with them).
   // FIX (audit guardrails_crisis): hybrid match — literal list PLUS root-based regex so
   // method-based ("kendimi asacağım", "bileğimi keseceğim") and indirect ("ölüp
   // kurtulmak istiyorum") phrasings still fire. Bias toward false-positive: an empathetic
   // crisis message is harmless, while a missed acute crisis is the highest-impact failure.
   // Diacritic-free variants are included so broken Turkish spelling still matches.
-  const CRISIS_RE = [
-    // FIX (audit regression): roots were bare substrings → false-positives ('kestane'⊃kes,
-    // 'kıyma'⊃kıy, 'asansör'⊃as[a], 'doldur'⊃oldur). Constrain each to real self-harm verb
-    // conjugations while preserving crisis recall (kıydım/astım/keseceğim still fire); the
-    // literal phrase list above + the wrist/"ölüp kurtul" patterns below remain the safety net.
-    // FIX (audit AI-GRD-01/CRITICAL): mastar/ulaç biçimleri eklendi — "kendimi asmak/asmayı/asmaya",
-    // "kendimi kesmek/kesmeyi" gibi en doğal intihar ifadeleri yalnız çekimli (asacağım/astım)
-    // biçimleri yakaladığı için kaçıyordu. Self-harm öznesi (kendimi/canımı/hayatımı) 30 karakter
-    // içinde zorunlu olduğundan "asma katı"/"asma (üzüm)" gibi masum kullanımlar tetiklenmez.
-    /(kendi(mi|me)|canı(mı|ma)|cani(mi|ma)|hayatı(mı|ma)|hayati(mi|ma)|yaşamı(mı|ma)|yasami(mi|ma)|her\s*şeye|her\s*seye).{0,30}(as(acağ|acak|tım|tim|arak|ıyor|iyor|mak|may|maya)|kes(ece|ece[kğ]|eceğ|erim|iyor|tim|tım|mek|meyi|meye)|kıy(mak|acağ|acak|dım|dim|dı|arım|arim|amam)|kiy(mak|acag|acak|dim|di|arim|amam)|son\s*ver|öldür|oldur|\boldur(mek|ece|eyim)|bitir(mek|ece|di|eyim)|veda|yok\s*et)/u,
-    /(ölüp\s*kurtul|olup\s*kurtul|hayata\s*veda|son\s*vermek\s*isti|yaşamak\s*istemiyorum|yasamak\s*istemiyorum|yok\s*olmak\s*isti)/u,
-    /(bilek|damar|bileği?mi|bilegimi).{0,15}(kes)/u,
-    /(ip|bıçak|bicak|hap).{0,15}(kendi|canı|cani)/u,
-  ];
+  const crisisPhrases = V1_CRISIS_PHRASES;
+  const CRISIS_RE = V1_CRISIS_PATTERNS;
   if (crisisPhrases.some(p => lower.includes(p)) || CRISIS_RE.some(r => r.test(lower))) {
     return {
       isCrisis: true,
@@ -690,14 +665,11 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
   };
   // Past-tense / ongoing EVIDENCE can never be negated by a later wish — "I did it, and I don't
   // want to again" is still a disclosure that deserves support.
-  const EVIDENCE = new Set(['kustum', 'kusuyorum']);
+  // AI_MIMARI_V2 Faz 1: the phrase lists live in safety-tripwires.ts (same strings, same order).
+  const EVIDENCE = new Set(V1_ED_EVIDENCE_PHRASES);
 
   // High severity — active purging
-  const highPatterns = [
-    'kusma', 'kustum', 'kusuyorum', 'kusmak istiyorum',
-    'laksatif', 'müshil', 'mushil',
-    'purging', 'binge and purge',
-  ];
+  const highPatterns = V1_ED_HIGH_PHRASES;
   for (const p of highPatterns) {
     const at = lower.indexOf(p);
     if (at >= 0 && (EVIDENCE.has(p) || !isNegated(at + p.length))) {
@@ -759,16 +731,8 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
     };
   }
 
-  // Medium severity — restrictive patterns
-  const mediumPatterns = [
-    'hic yemiyorum', 'hiç yemiyorum', 'hic bir sey yemiyorum', 'hicbir sey yemiyorum', 'hiçbir şey yemiyorum',
-    'ac kalma', 'aç kalma', 'ac kalmak istiyorum', 'kendimi ac birakiyorum', 'kendimi aç bırakıyorum',
-    'yeme bozukluğu', 'yeme bozuklugu',
-    'anoreksiya', 'anorexia', 'bulimiya', 'bulimia',
-    'yemek yemekten korkuyorum', 'yemekten nefret',
-    'cok sismanim', 'çok şişmanım', 'sisman hissediyorum', 'kilolu hissediyorum',
-    'igrenc gorunuyorum', 'iğrenç görünüyorum',
-  ];
+  // Medium severity — restrictive patterns (list: safety-tripwires.ts)
+  const mediumPatterns = V1_ED_MEDIUM_PHRASES;
   for (const p of mediumPatterns) {
     const at = lower.indexOf(p);
     // Same negation rule as the high tier: "aç kalmak istemiyorum" is the opposite of the signal.
@@ -789,50 +753,17 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
  * Spec 5.26: Prompt Injection Protection
  * Detect and sanitize known injection patterns.
  * Returns sanitized text and whether injection was detected.
+ *
+ * AI_MIMARI_V2 Faz 1: the pattern lists live in safety-tripwires.ts (the single owner of user-text
+ * safety regex); v1 still refuses on the first list, v2 only logs both. Same RegExp objects.
  */
-const INJECTION_PATTERNS = [
-  /ignore\s+(all\s+)?previous\s+instructions/i,
-  /ignore\s+above/i,
-  /disregard\s+(all\s+)?previous/i,
-  /system\s*prompt/i,
-  /you\s+are\s+(now|no\s+longer)/i,
-  /act\s+as\s+(a|an)\s+(?!koc|coach)/i,
-  /pretend\s+(to\s+be|you('re|\s+are))/i,
-  /roleplay\s+as/i,
-  /new\s+instructions/i,
-  /override\s+(your|the)\s+(instructions|rules|prompt)/i,
-  /reveal\s+(your|the)\s+(system|prompt|instructions)/i,
-  /what\s+(are|is)\s+your\s+(system|initial)\s+(prompt|instructions)/i,
-  /repeat\s+(your|the)\s+(system|initial)\s+(prompt|instructions)/i,
-  /rolunu\s+degistir/i,
-  /talimatlarini\s+(goster|göster|yaz)/i,
-  /sistem\s+promptunu/i,
-  // Additional injection vectors
-  /forget\s+(everything|all|your)/i,
-  /jailbreak/i,
-  /DAN\s+mode/i,
-  /developer\s+mode/i,
-  /debug\s+mode\s+on/i,
-  /unfiltered\s+mode/i,
-  /do\s+anything\s+now/i,
-  /bypass\s+(safety|filter|guardrail)/i,
-  /respond\s+without\s+(filter|restriction)/i,
-  /as\s+an?\s+unrestricted/i,
-  // Turkish additional patterns
-  /filtresiz\s+(cevap|yanit|yanitla)/i,
-  /kural(lar)?\s*i?\s*(yoksay|gormezden|görmezden)/i,
-  /sinir(lar)?\s*i?\s*(kaldir|kaldır|yoksay)/i,
-  /guvenlik(leri)?\s*(kapat|devre\s*disi)/i,
-  /onceki\s+(tum\s+|butun\s+)?talimatlari\s+(unut|yoksay|gormezden|gozardi)/i,
-];
+const INJECTION_PATTERNS = INJECTION_REFUSAL_PATTERNS;
 
 // AI_MIMARI_V2 Faz 0 #4 (§7.3): patterns that are only LOGGED, never refused. "sen artık …" is
 // ordinary Turkish — "sen artık benim koçumsun", "sen artık beni tanıyorsun" — and every such turn
 // got the canned "Bu konuda yardımcı olamam" refusal (the message was never even read). The model
 // handles a real role-swap attempt under its system prompt; the hit stays visible in the logs.
-const LOG_ONLY_INJECTION_PATTERNS = [
-  /sen\s+(artık|artik)\s+(bir|)/i,
-];
+const LOG_ONLY_INJECTION_PATTERNS = INJECTION_LOG_ONLY_PATTERNS;
 
 export function sanitizeUserInput(text: string): {
   sanitized: string;
