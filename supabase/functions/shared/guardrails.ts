@@ -15,11 +15,13 @@ import { getCalorieFloor, MAX_RATE_KG_PER_WEEK } from './clinical-rules.ts';
 import {
   INJECTION_LOG_ONLY_PATTERNS,
   INJECTION_REFUSAL_PATTERNS,
+  V1_CLAUSE_BREAK,
   V1_CRISIS_PATTERNS,
   V1_CRISIS_PHRASES,
   V1_ED_EVIDENCE_PHRASES,
   V1_ED_HIGH_PHRASES,
   V1_ED_MEDIUM_PHRASES,
+  V1_ED_NEGATED,
   V1_EMERGENCY_PHRASES,
 } from './safety-tripwires.ts';
 const MAX_WEEKLY_LOSS_KG = MAX_RATE_KG_PER_WEEK.lose.value;
@@ -649,13 +651,15 @@ export function detectEDRisk(text: string): { isRisk: boolean; severity: 'low' |
   // days of a locked, deficit-averse coach, and the user cannot see or clear that state.
   // Scoped deliberately narrow: the refusal must sit within ~24 chars AFTER the trigger, so
   // "kustum ama bir daha istemiyorum" (a real signal followed by a wish) still fires.
-  const NEGATED = /(istemiyorum|istemem|yapm[ıi]yorum|yapmam|kullanm[ıi]yorum|kullanmam|etmiyorum|etmem|de[gğ]ilim|hi[çc] olmad|asla)/;
+  // AI_MIMARI_V2 Faz 1: both regexes live in safety-tripwires.ts (same source, same flags) so the
+  // v2 tripwires apply exactly v1's negation.
+  const NEGATED = V1_ED_NEGATED;
   // A refusal only cancels a trigger when it belongs to the SAME clause. Turkish contrast markers
   // ("ama", "fakat", "ancak") and a comma end the clause: "kustum ama bir daha istemiyorum" is a
   // real report followed by a wish, and must still fire.
   // Unicode-aware word edges: JS word-boundary only knows ASCII letters, so the old ama-boundary regex matched inside "amaç",
   // "aşama", "yaşama" and cut the clause in the wrong place.
-  const CLAUSE_BREAK = /(,|(?<![\p{L}\p{N}_])(?:ama|fakat|ancak|yine de)(?![\p{L}\p{N}_]))/u;
+  const CLAUSE_BREAK = V1_CLAUSE_BREAK;
   const isNegated = (idx: number): boolean => {
     if (idx < 0) return false;
     let win = lower.slice(idx, idx + 30);
