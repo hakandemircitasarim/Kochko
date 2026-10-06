@@ -243,7 +243,10 @@ export function buildSupplementAllergenLine(e: AllergenExposure): string {
   if (e.possible) {
     const src = e.sources.map(tagLabel).join(' ya da ');
     const hint = e.source_hint ? ` (${e.source_hint})` : '';
-    const advice = e.severe ? 'Emin olana kadar kullanma; eczacına bir sor.' : 'Emin değilsen eczacına bir sor.';
+    // Severe + already taken: the likely source IS the allergen — the reaction line belongs here too.
+    const advice = e.severe
+      ? "Emin olana kadar kullanma; eczacına bir sor. Kaşıntı, şişlik ya da nefes darlığı olursa hemen 112'yi ara."
+      : 'Emin değilsen eczacına bir sor.';
     return `⚠️ Bu arada, profilinde ${what} kayıtlı ve ${e.item} ${src} kaynaklı olabilir. Kutusunda kaynağı ne yazıyor${hint}? ${advice}`;
   }
   const src = e.sources.map(tagLabel).join(', ');

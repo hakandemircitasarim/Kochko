@@ -74,11 +74,14 @@ export function checkConfirmable(
 // ─── Code-owned lines (facts about what the code did — appended LAST to the reply) ───
 
 const SETTINGS_PATH_TR = 'Ayarlar > Hesap ve Güvenlik';
+// The ONLY withdrawal path is the gate shown when the app is opened again (app/index.tsx →
+// reactivateAccount) — the settings screen can request a deletion but cannot cancel one.
+const WITHDRAW_PATH_TR = 'uygulamayı yeniden açtığında çıkan ekrandan';
 
 /** The ONE confirmation question of the request turn. Exactly one "?" (one-question budget). */
 export function eraseQuestion(scope: EraseScope): string {
   if (scope === 'account') {
-    return `Emin olmak için soruyorum: hesabını ve tüm verilerini (kayıtların, sohbetlerin, hakkında tuttuğum notlar) silme talebini başlatayım mı? Onaylarsan koç hafızamı hemen sıfırlarım; hesabın ve verilerin ${ACCOUNT_GRACE_DAYS} gün sonra kalıcı olarak silinir, o süre içinde ${SETTINGS_PATH_TR} ekranından talebi geri çekebilirsin. Onaylıyorsan bir sonraki mesajında açıkça "evet" de; başka bir şey yazarsan hiçbir şey silmem.`;
+    return `Emin olmak için soruyorum: hesabını ve tüm verilerini (kayıtların, sohbetlerin, hakkında tuttuğum notlar) silme talebini başlatayım mı? Onaylarsan koç hafızamı hemen sıfırlarım; hesabın ve verilerin ${ACCOUNT_GRACE_DAYS} gün sonra kalıcı olarak silinir, o süre içinde ${WITHDRAW_PATH_TR} talebi geri çekebilirsin. Onaylıyorsan bir sonraki mesajında açıkça "evet" de; başka bir şey yazarsan hiçbir şey silmem.`;
   }
   return 'Emin olmak için soruyorum: hakkında tuttuğum koç hafızasını (notlar, çıkarımlar, alışkanlık özetleri) tamamen sıfırlayayım mı? Kayıtların ve hesabın yerinde kalır. Onaylıyorsan bir sonraki mesajında açıkça "evet" de; başka bir şey yazarsan hiçbir şey silmem.';
 }
@@ -94,7 +97,7 @@ export function eraseRequestFailedLine(): string {
 
 export function eraseDoneLine(r: { scope: EraseScope; memoryCleared: boolean }): string {
   if (r.scope === 'account') {
-    const base = `Onayın üzerine hesap silme talebini başlattım${r.memoryCleared ? ' ve koç hafızamı sıfırladım' : ''}. Hesabın ve tüm verilerin ${ACCOUNT_GRACE_DAYS} gün sonra kalıcı olarak silinecek; fikrini değiştirirsen o güne kadar ${SETTINGS_PATH_TR} ekranından talebi geri çekebilirsin.`;
+    const base = `Onayın üzerine hesap silme talebini başlattım${r.memoryCleared ? ' ve koç hafızamı sıfırladım' : ''}. Hesabın ve tüm verilerin ${ACCOUNT_GRACE_DAYS} gün sonra kalıcı olarak silinecek; fikrini değiştirirsen o güne kadar ${WITHDRAW_PATH_TR} talebi geri çekebilirsin.`;
     return r.memoryCleared ? base : `${base} Koç hafızamı şu an sıfırlayamadım; hesapla birlikte o da silinecek.`;
   }
   return 'Onayın üzerine hakkında tuttuğum koç hafızasını sıfırladım. Kayıtların ve hesabın yerinde; bundan sonra seni yeniden tanımaya başlayacağım.';

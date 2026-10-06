@@ -3215,12 +3215,15 @@ Doğru anladıysam: ${parsed}.${tail}`;
       // #live-L4: the scan never skips on a blanket /alerj/ substring — a model "(alerjisi yoksa)"
       // disclaimer is dangerous, not a decline; only a real avoidance phrase next to EVERY
       // occurrence of the allergen counts as addressed (see scanReplyForAllergens fail-safe rule).
-      // Allergens the USER reported eating this turn are not coach recommendations: they are a
-      // safety event that needs a reaction check (allergen exposure below), not a redaction of the
-      // whole reply. The same inflection-aware matcher decides what the user's message contains.
-      const userReported = new Set(
-        message ? scanReplyForAllergens(message, allergensSev).matched.map((n) => n.toLocaleLowerCase('tr')) : [],
-      );
+      // Allergens with a RECORDED exposure this turn (a persisted meal item or a logged supplement)
+      // are not coach recommendations: the coach must talk about them, and the exposure nets below
+      // guarantee the reaction check. Only those skip the scan — an allergen merely NAMED in the
+      // user's message ("balık restoranına gidiyoruz, ne yiyeyim?") is still scanned, otherwise a
+      // "karides de alabilirsin" reply passed with no block and no warning (Faz 0 review).
+      const userReported = new Set([
+        ...allergenExposures,
+        ...actionReceipts.flatMap((r) => (r.ok && r.allergen_exposure ? r.allergen_exposure.allergens : [])),
+      ].map((n) => n.toLocaleLowerCase('tr')));
       const allergensToScan = allergensSev.filter((a) => !userReported.has(a.name.toLocaleLowerCase('tr')));
       if (allergensToScan.length > 0) {
         const scan = scanReplyForAllergens(scanText, allergensToScan);
@@ -3577,11 +3580,8 @@ Doğru anladıysam: ${parsed}.${tail}`;
       assistantMessage += `\n\n(Not: ${failureLine('persist_failed')})`;
       finalNavigateTo = null;
     }
-    // KVKK: a confirmed ACCOUNT erase offers the screen where the 30-day request can be withdrawn
-    // (as the old chat path did) — a button under the reply, never an automatic jump.
-    if (eraseExecuted && actions.some((a) => (a as Record<string, unknown>)._eraseScope === 'account')) {
-      finalNavigateTo = finalNavigateTo ?? '/settings/account-security';
-    }
+    // KVKK: no navigation button after a confirmed account erase — no settings screen can withdraw
+    // the 30-day request (only the re-entry gate in app/index.tsx can), and the reply says so.
 
     const responseData = {
       message: assistantMessage,
@@ -7407,7 +7407,12 @@ async function checkOnboardingCompletion(userId: string) {
       .select('goal_type, target_weight_kg, target_weeks').eq('user_id', userId).eq('is_active', true).limit(1).maybeSingle();
     // #arch step 14 (SafetyState): don't set an onboarding deficit for an amber/red ED user — hold
     // at maintenance (like recalculateTDEEIfNeeded) until the risk state de-escalates.
-    const obGoal = (!(await deficitAllowed(userId)).allowed) ? 'maintain' : (goalRow?.goal_type as string | undefined);
+    // Unreadable state → no deficit AND no fake 'maintain' goal: hold at the user's goal type only
+    // when the gate truly allows; on unreadable, size the first band at maintenance WITHOUT
+    // pretending the goal changed (the band is re-cut on the next recalc trigger).
+    const obGate = await deficitAllowed(userId);
+    const obGoal = !obGate.allowed ? 'maintain' : (goalRow?.goal_type as string | undefined);
+    if (obGate.unreadable) console.warn('[onboarding] safety state unreadable — first band held at maintenance until re-gated', obGate);
     // FIX (audit #9 HIGH — screen vs chat split-brain): this path used a FLAT factor (tdee×0.85)
     // while the client onboarding screen (src/lib/tdee.ts calculateTargets) sizes the deficit to the
     // GOAL TIMELINE (remaining kg / remaining weeks, capped to the clinical rate). Two identical
@@ -7506,6 +7511,10 @@ async function recalculateTDEEIfNeeded(userId: string, currentWeight: number, fo
   // risk state is amber+. Force maintenance regardless of the stored goal until it de-escalates —
   // this is what makes safety trajectory-aware (protection outlasts the one acute turn).
   const edCap = await deficitAllowed(userId);
+  // An UNREADABLE state is "unknown", not "amber": rewriting a cutting user's band to maintenance
+  // on a DB hiccup is a silent goal override (Faz 0 review). Skip this recalc — stamps untouched,
+  // the next trigger re-gates.
+  if (edCap.unreadable) { console.warn('[recalcTDEE] safety state unreadable — recalc skipped', edCap); return; }
   const gType = edCap.allowed ? gType0 : 'maintain';
   if (!edCap.allowed) console.warn('[recalcTDEE] SafetyState forced maintenance', edCap);
   const weeksElapsed = goalRow?.created_at ? Math.max(0, Math.floor((Date.now() - Date.parse(goalRow.created_at as string)) / (7 * 86400000))) : 0;

@@ -203,6 +203,11 @@ for (const f of FILES) {
 {
   const chat = FILES.find((f) => /ai-chat[\\/]index\.ts$/.test(f));
   if (chat) {
+    // The reply-scan exemption must come from RECORDED exposures, never from the raw message: an
+    // allergen merely named in a question ("balık restoranına gidiyoruz") must still be scanned.
+    if (/const userReported = new Set\(\s*message \? scanReplyForAllergens\(message/.test(read(chat))) {
+      fail('F0-nets', chat, 0, 'allergen reply-scan exemption derived from the raw user message — use recorded exposures (allergenExposures + receipt allergen_exposure)');
+    }
     linesOf(read(chat)).forEach((ln, i) => {
       if (/actions\.push\(\s*\{\s*type:\s*['"]health_event_resolve['"]/.test(ln)) {
         fail('F0-nets', chat, i + 1, 'code-injected health_event_resolve — injury resolution comes only from the model action');

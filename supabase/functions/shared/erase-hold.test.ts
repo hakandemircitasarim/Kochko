@@ -93,7 +93,8 @@ Deno.test('Faz0#5: the hold question asks exactly ONE question and says nothing 
     assert(/hiçbir şey silmem/.test(q), 'states that declining erases nothing');
   }
   assert(/30 gün/.test(eraseQuestion('account')), 'account question states the grace window');
-  assert(/Hesap ve Güvenlik/.test(eraseQuestion('account')), 'account question names where to withdraw');
+  assert(/yeniden açtığında/.test(eraseQuestion('account')), 'account question names the real withdrawal path (the re-entry gate)');
+  assert(!/Hesap ve Güvenlik/.test(eraseQuestion('account')), 'settings cannot cancel a deletion — never point there');
 });
 
 Deno.test('Faz0#5: the question never suggests an undo phrase the repair net would act on', () => {
