@@ -1,0 +1,2254 @@
+{
+ "type": "object",
+ "properties": {
+  "intent": {
+   "type": "object",
+   "properties": {
+    "primary": {
+     "type": "string",
+     "enum": [
+      "report",
+      "question",
+      "hypothetical",
+      "correction",
+      "confirmation",
+      "plan",
+      "chat",
+      "other"
+     ]
+    },
+    "is_hypothetical": {
+     "type": "boolean",
+     "description": "mesajın ana kısmı varsayım mı"
+    },
+    "about_other_person": {
+     "type": "boolean",
+     "description": "mesaj başkası hakkında mı (kızı, arkadaşı…)"
+    }
+   },
+   "required": [
+    "primary",
+    "is_hypothetical",
+    "about_other_person"
+   ],
+   "additionalProperties": false
+  },
+  "safety": {
+   "type": "object",
+   "properties": {
+    "acute_medical": {
+     "type": "boolean",
+     "description": "şu an acil tıbbi durum var mı (anafilaksi, göğüs ağrısı, nefes darlığı…)"
+    },
+    "self_harm": {
+     "type": "boolean",
+     "description": "kendine zarar verme düşüncesi/niyeti var mı"
+    },
+    "ed_signal": {
+     "anyOf": [
+      {
+       "type": "object",
+       "properties": {
+        "category": {
+         "type": "string",
+         "enum": [
+          "restriction",
+          "purging",
+          "binge",
+          "compensatory_exercise",
+          "body_image",
+          "illness_vomiting"
+         ]
+        },
+        "severity": {
+         "type": "string",
+         "enum": [
+          "low",
+          "medium",
+          "high"
+         ]
+        },
+        "evidence_quote": {
+         "type": "string",
+         "description": "KULLANICININ mesajından AYNEN alıntı (koçun sözleri sayılmaz)"
+        }
+       },
+       "required": [
+        "category",
+        "severity",
+        "evidence_quote"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "tripwire_reading": {
+     "anyOf": [
+      {
+       "type": "object",
+       "description": "yalnız TETİK olgusu verildiyse doldur; yoksa null",
+       "properties": {
+        "benign": {
+         "type": "boolean",
+         "description": "tetik kelimesi zararsız anlamda mı (\"bayıldım\" = çok sevdim)"
+        },
+        "reason": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "benign",
+        "reason"
+       ],
+       "additionalProperties": false
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "acute_medical",
+    "self_harm",
+    "ed_signal",
+    "tripwire_reading"
+   ],
+   "additionalProperties": false
+  },
+  "writes": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/write"
+   }
+  },
+  "record_ops": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "type": "object",
+      "description": "Kaydı geri al/sil",
+      "properties": {
+       "op": {
+        "type": "string",
+        "enum": [
+         "delete"
+        ]
+       },
+       "ref": {
+        "type": "string",
+        "description": "m|d|w|s|t|e|l|f-ref (ör. m3)"
+       },
+       "reason": {
+        "type": "string",
+        "description": "neden geri alındığı, kısaca"
+       }
+      },
+      "required": [
+       "op",
+       "ref",
+       "reason"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "description": "Kaydı düzelt",
+      "properties": {
+       "op": {
+        "type": "string",
+        "enum": [
+         "update"
+        ]
+       },
+       "ref": {
+        "type": "string",
+        "description": "m|d|w|s|t|e|l|f-ref (ör. m3)"
+       },
+       "basis": {
+        "type": "string",
+        "enum": [
+         "user_correction",
+         "suspicious"
+        ]
+       },
+       "reason": {
+        "type": "string",
+        "description": "neyin yanlış olduğu (\"6 nugget için 1708 kcal çok yüksek\")"
+       },
+       "evidence_quote": {
+        "type": [
+         "string",
+         "null"
+        ],
+        "description": "user_correction ise kullanıcının mesajından AYNEN alıntı; suspicious ise null"
+       },
+       "patch": {
+        "$ref": "#/$defs/write"
+       }
+      },
+      "required": [
+       "op",
+       "ref",
+       "basis",
+       "reason",
+       "evidence_quote",
+       "patch"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "description": "Metriği önceki değerine döndür",
+      "properties": {
+       "op": {
+        "type": "string",
+        "enum": [
+         "restore_metric"
+        ]
+       },
+       "ref": {
+        "type": "string",
+        "description": "d-ref (ör. d3)"
+       },
+       "reason": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "op",
+       "ref",
+       "reason"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "pending_ops": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "type": "object",
+      "description": "Bekleyeni onayla",
+      "properties": {
+       "op": {
+        "type": "string",
+        "enum": [
+         "confirm"
+        ]
+       },
+       "ref": {
+        "type": "string",
+        "description": "p-ref (ör. p3)"
+       }
+      },
+      "required": [
+       "op",
+       "ref"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "description": "Bekleyenden vazgeç",
+      "properties": {
+       "op": {
+        "type": "string",
+        "enum": [
+         "discard"
+        ]
+       },
+       "ref": {
+        "type": "string",
+        "description": "p-ref (ör. p3)"
+       }
+      },
+      "required": [
+       "op",
+       "ref"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "commitment_ops": {
+   "type": "array",
+   "items": {
+    "anyOf": [
+     {
+      "type": "object",
+      "description": "Söz/taahhüt",
+      "properties": {
+       "op": {
+        "type": "string",
+        "enum": [
+         "add"
+        ]
+       },
+       "text": {
+        "type": "string",
+        "description": "sözün kısa, net hâli"
+       },
+       "follow_up_days": {
+        "type": "number",
+        "description": "kaç gün sonra sorulsun"
+       }
+      },
+      "required": [
+       "op",
+       "text",
+       "follow_up_days"
+      ],
+      "additionalProperties": false
+     },
+     {
+      "type": "object",
+      "description": "Söz sonucu",
+      "properties": {
+       "op": {
+        "type": "string",
+        "enum": [
+         "resolve"
+        ]
+       },
+       "ref": {
+        "type": "string",
+        "description": "k-ref (ör. k3)"
+       },
+       "outcome": {
+        "type": "string",
+        "enum": [
+         "kept",
+         "missed",
+         "partial"
+        ]
+       },
+       "note": {
+        "type": [
+         "string",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "op",
+       "ref",
+       "outcome",
+       "note"
+      ],
+      "additionalProperties": false
+     }
+    ]
+   }
+  },
+  "plan_action": {
+   "type": "object",
+   "properties": {
+    "op": {
+     "type": "string",
+     "enum": [
+      "none",
+      "generate",
+      "revise",
+      "explain",
+      "approve",
+      "discard"
+     ]
+    },
+    "plan_type": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "enum": [
+      "diet",
+      "workout",
+      null
+     ]
+    },
+    "draft_ref": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "dft-ref (ör. dft3) — açık taslağın dft-ref’i"
+    }
+   },
+   "required": [
+    "op",
+    "plan_type",
+    "draft_ref"
+   ],
+   "additionalProperties": false
+  },
+  "simulation": {
+   "anyOf": [
+    {
+     "type": "object",
+     "description": "\"yesem ne olur?\" türü varsayım; kod bütçe sayısını hesaplar",
+     "properties": {
+      "food": {
+       "type": "string"
+      },
+      "kcal_estimate": {
+       "type": "number"
+      },
+      "target_day": {
+       "type": "string",
+       "description": "YYYY-MM-DD — hangi gün yenecek, YYYY-MM-DD"
+      }
+     },
+     "required": [
+      "food",
+      "kcal_estimate",
+      "target_day"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "clarify": {
+   "anyOf": [
+    {
+     "type": "object",
+     "properties": {
+      "topic": {
+       "type": "string",
+       "description": "neyin belirsiz olduğu"
+      },
+      "candidate_refs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "description": "olası kayıtların ref’leri (yalnız KAYITLAR’dan)"
+      }
+     },
+     "required": [
+      "topic",
+      "candidate_refs"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "null"
+    }
+   ]
+  },
+  "reply_route": {
+   "type": "object",
+   "properties": {
+    "contract": {
+     "type": "string",
+     "enum": [
+      "coach",
+      "plan",
+      "onboarding",
+      "crisis",
+      "emergency"
+     ]
+    },
+    "effort_hint": {
+     "type": "string",
+     "enum": [
+      "low",
+      "medium"
+     ]
+    }
+   },
+   "required": [
+    "contract",
+    "effort_hint"
+   ],
+   "additionalProperties": false
+  },
+  "self_check": {
+   "type": "object",
+   "properties": {
+    "reported_new_facts": {
+     "type": "boolean",
+     "description": "kullanıcı kaydedilebilecek yeni bir şey bildirdi mi"
+    },
+    "not_written_reason": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "bildirdiği hâlde yazmadıysan neden"
+    }
+   },
+   "required": [
+    "reported_new_facts",
+    "not_written_reason"
+   ],
+   "additionalProperties": false
+  },
+  "suggested_foods": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "allergens": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "gluten",
+        "crustacean",
+        "egg",
+        "fish",
+        "peanut",
+        "soy",
+        "milk",
+        "tree_nut",
+        "hazelnut",
+        "walnut",
+        "almond",
+        "pistachio",
+        "cashew",
+        "celery",
+        "mustard",
+        "sesame",
+        "sulphite",
+        "lupin",
+        "mollusc"
+       ]
+      }
+     },
+     "may_contain": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "gluten",
+        "crustacean",
+        "egg",
+        "fish",
+        "peanut",
+        "soy",
+        "milk",
+        "tree_nut",
+        "hazelnut",
+        "walnut",
+        "almond",
+        "pistachio",
+        "cashew",
+        "celery",
+        "mustard",
+        "sesame",
+        "sulphite",
+        "lupin",
+        "mollusc"
+       ]
+      }
+     }
+    },
+    "required": [
+     "name",
+     "allergens",
+     "may_contain"
+    ],
+    "additionalProperties": false
+   },
+   "description": "cevapta ÖNERDİĞİN her yiyecek, alerjen etiketleriyle (cevaptan ÖNCE)"
+  },
+  "suggested_exercises": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "loads": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "knee",
+        "back",
+        "shoulder",
+        "ankle",
+        "wrist",
+        "elbow",
+        "hip",
+        "neck",
+        "hamstring",
+        "quad",
+        "groin"
+       ]
+      }
+     }
+    },
+    "required": [
+     "name",
+     "loads"
+    ],
+    "additionalProperties": false
+   },
+   "description": "cevapta ÖNERDİĞİN her egzersiz ve yüklediği bölgeler"
+  },
+  "reply": {
+   "type": "string",
+   "description": "kullanıcıya cevap"
+  },
+  "why": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "description": "kısa gerekçe (istemci \"neden?\" altında gösterir)"
+  },
+  "memory": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "description": "Hafıza notu",
+    "properties": {
+     "op": {
+      "type": "string",
+      "enum": [
+       "memory_note"
+      ]
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "person_note",
+       "coach_note",
+       "pattern",
+       "portion_calibration",
+       "forget"
+      ]
+     },
+     "text": {
+      "type": "string"
+     },
+     "food": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "yalnız portion_calibration"
+     },
+     "grams": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "yalnız portion_calibration"
+     },
+     "confidence": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "op",
+     "kind",
+     "text",
+     "food",
+     "grams",
+     "confidence"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "ui": {
+   "type": "object",
+   "properties": {
+    "navigate_to": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "yönlendirilecek uygulama ekranı, gerekiyorsa"
+    },
+    "task_completion_summary": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "navigate_to",
+    "task_completion_summary"
+   ],
+   "additionalProperties": false
+  },
+  "referral_included": {
+   "type": "boolean",
+   "description": "cevapta uzman/112 yönlendirmesi var mı"
+  }
+ },
+ "required": [
+  "intent",
+  "safety",
+  "writes",
+  "record_ops",
+  "pending_ops",
+  "commitment_ops",
+  "plan_action",
+  "simulation",
+  "clarify",
+  "reply_route",
+  "self_check",
+  "suggested_foods",
+  "suggested_exercises",
+  "reply",
+  "why",
+  "memory",
+  "ui",
+  "referral_included"
+ ],
+ "additionalProperties": false,
+ "$defs": {
+  "write": {
+   "anyOf": [
+    {
+     "type": "object",
+     "description": "Öğün",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "meal_log"
+       ]
+      },
+      "day": {
+       "type": "string",
+       "description": "today | yesterday | YYYY-MM-DD"
+      },
+      "meal_type": {
+       "type": "string",
+       "enum": [
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack"
+       ]
+      },
+      "time_local": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "HH:MM (24 saat) — yendiği saat 24s HH:MM; bilinmiyorsa null"
+      },
+      "raw": {
+       "type": "string",
+       "description": "kullanıcının bu öğünü anlatan sözleri, aynen"
+      },
+      "status": {
+       "type": "string",
+       "enum": [
+        "new",
+        "restatement"
+       ]
+      },
+      "venue": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "dışarıda yendiyse mekân adı; öğünle birlikte geri alınır"
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "m-ref (ör. m3) — bu öğün KAYITLAR’daki bir öğünün düzeltilmiş hâliyse onun m-ref’i"
+      },
+      "items": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string",
+          "description": "yiyeceğin adı (\"tavuk nugget\", \"tuz\")"
+         },
+         "as_stated": {
+          "type": "string",
+          "description": "miktar kullanıcının ifadesiyle: \"6 adet\", \"2 çimdik\", \"yarım tabak\". Kod ayrıştırmaz, aynen saklar."
+         },
+         "grams": {
+          "type": [
+           "number",
+           "null"
+          ],
+          "description": "SENİN gram tahminin; gerçekten bilinmiyorsa null"
+         },
+         "kcal": {
+          "type": "number",
+          "description": "SENİN kcal tahminin (pişirme dahil)"
+         },
+         "protein_g": {
+          "type": "number"
+         },
+         "carbs_g": {
+          "type": "number"
+         },
+         "fat_g": {
+          "type": "number"
+         },
+         "alcohol_g": {
+          "type": "number",
+          "description": "saf alkol gramı (bira, şarap, rakı); yoksa 0"
+         },
+         "caffeine_mg": {
+          "type": "number",
+          "description": "kafein (kahve, çay, kola, enerji içeceği); yoksa 0"
+         },
+         "preparation": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "description": "bu kalemin pişirme biçimi (kızartma, ızgara…); bilinmiyorsa null"
+         },
+         "allergens": {
+          "type": "array",
+          "items": {
+           "type": "string",
+           "enum": [
+            "gluten",
+            "crustacean",
+            "egg",
+            "fish",
+            "peanut",
+            "soy",
+            "milk",
+            "tree_nut",
+            "hazelnut",
+            "walnut",
+            "almond",
+            "pistachio",
+            "cashew",
+            "celery",
+            "mustard",
+            "sesame",
+            "sulphite",
+            "lupin",
+            "mollusc"
+           ]
+          },
+          "description": "kalemin KESİN alerjen kaynakları"
+         },
+         "may_contain": {
+          "type": "array",
+          "items": {
+           "type": "string",
+           "enum": [
+            "gluten",
+            "crustacean",
+            "egg",
+            "fish",
+            "peanut",
+            "soy",
+            "milk",
+            "tree_nut",
+            "hazelnut",
+            "walnut",
+            "almond",
+            "pistachio",
+            "cashew",
+            "celery",
+            "mustard",
+            "sesame",
+            "sulphite",
+            "lupin",
+            "mollusc"
+           ]
+          },
+          "description": "kaynağı belirsiz OLASI alerjenler"
+         },
+         "reference_key": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "description": "YALNIZCA REFERANS ADAYLARI’ndan ve gerçekten aynı yiyecekse; değilse null"
+         },
+         "confidence": {
+          "type": "number",
+          "description": "tahmin güvenin 0–1"
+         }
+        },
+        "required": [
+         "name",
+         "as_stated",
+         "grams",
+         "kcal",
+         "protein_g",
+         "carbs_g",
+         "fat_g",
+         "alcohol_g",
+         "caffeine_mg",
+         "preparation",
+         "allergens",
+         "may_contain",
+         "reference_key",
+         "confidence"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "op",
+      "day",
+      "meal_type",
+      "time_local",
+      "raw",
+      "status",
+      "venue",
+      "replaces",
+      "items"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Su",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "water_log"
+       ]
+      },
+      "day": {
+       "type": "string",
+       "description": "today | yesterday | YYYY-MM-DD"
+      },
+      "as_stated": {
+       "type": "string",
+       "description": "kullanıcının ifadesi aynen (\"1 bardak\", \"koca şişe\")"
+      },
+      "quantity": {
+       "type": "number",
+       "description": "kullanıcının söylediği sayı, seçtiğin birimde"
+      },
+      "unit": {
+       "type": "string",
+       "enum": [
+        "ml",
+        "litre",
+        "bardak",
+        "su_bardagi",
+        "cay_bardagi",
+        "kupa",
+        "sise_330",
+        "sise_500",
+        "sise_1500",
+        "other"
+       ]
+      },
+      "other_ml_each": {
+       "type": [
+        "number",
+        "null"
+       ],
+       "description": "yalnız unit=other ise: bir biriminin ml tahminin"
+      },
+      "mode": {
+       "type": "string",
+       "enum": [
+        "add",
+        "set_day_total"
+       ]
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "d-ref (ör. d3) — bu kayıt KAYITLAR’daki bir su yazmasının düzeltilmiş hâliyse onun d-ref’i"
+      }
+     },
+     "required": [
+      "op",
+      "day",
+      "as_stated",
+      "quantity",
+      "unit",
+      "other_ml_each",
+      "mode",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Tartı",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "body_weight"
+       ]
+      },
+      "day": {
+       "type": "string",
+       "description": "today | yesterday | YYYY-MM-DD"
+      },
+      "kg": {
+       "type": "number"
+      },
+      "as_stated": {
+       "type": "string",
+       "description": "kullanıcının ifadesi aynen (\"82,5\")"
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "d-ref (ör. d3)"
+      }
+     },
+     "required": [
+      "op",
+      "day",
+      "kg",
+      "as_stated",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Uyku",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "sleep_log"
+       ]
+      },
+      "day": {
+       "type": "string",
+       "description": "today | yesterday | YYYY-MM-DD — uyanılan gün"
+      },
+      "hours": {
+       "type": "number",
+       "description": "aralık söylenirse ortası (\"6-7\" → 6.5)"
+      },
+      "quality": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "enum": [
+        "good",
+        "ok",
+        "bad",
+        null
+       ]
+      },
+      "bed_time": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "HH:MM (24 saat) — yattığı saat"
+      },
+      "wake_time": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "HH:MM (24 saat) — kalktığı saat"
+      },
+      "as_stated": {
+       "type": "string"
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "d-ref (ör. d3)"
+      }
+     },
+     "required": [
+      "op",
+      "day",
+      "hours",
+      "quality",
+      "bed_time",
+      "wake_time",
+      "as_stated",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Ruh hali",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "mood_log"
+       ]
+      },
+      "day": {
+       "type": "string",
+       "description": "today | yesterday | YYYY-MM-DD"
+      },
+      "value": {
+       "type": "number",
+       "description": "kullanıcının puanı, söylediği ölçekte"
+      },
+      "scale": {
+       "type": "string",
+       "enum": [
+        "five",
+        "ten"
+       ]
+      },
+      "note": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "as_stated": {
+       "type": "string"
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "d-ref (ör. d3)"
+      }
+     },
+     "required": [
+      "op",
+      "day",
+      "value",
+      "scale",
+      "note",
+      "as_stated",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Adım",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "step_log"
+       ]
+      },
+      "day": {
+       "type": "string",
+       "description": "today | yesterday | YYYY-MM-DD"
+      },
+      "steps": {
+       "type": "number"
+      },
+      "as_stated": {
+       "type": "string"
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "d-ref (ör. d3)"
+      }
+     },
+     "required": [
+      "op",
+      "day",
+      "steps",
+      "as_stated",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Antrenman",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "workout_log"
+       ]
+      },
+      "day": {
+       "type": "string",
+       "description": "today | yesterday | YYYY-MM-DD"
+      },
+      "raw": {
+       "type": "string",
+       "description": "kullanıcının sözleri, aynen"
+      },
+      "workout_type": {
+       "type": "string",
+       "enum": [
+        "cardio",
+        "strength",
+        "flexibility",
+        "sports",
+        "mixed"
+       ]
+      },
+      "duration_min": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "intensity": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "enum": [
+        "low",
+        "moderate",
+        "high",
+        null
+       ]
+      },
+      "calories_burned": {
+       "type": [
+        "number",
+        "null"
+       ],
+       "description": "SENİN yakım tahminin; bilmiyorsan null"
+      },
+      "rpe": {
+       "type": [
+        "number",
+        "null"
+       ],
+       "description": "algılanan zorluk 1–10, söylendiyse"
+      },
+      "time_local": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "HH:MM (24 saat)"
+      },
+      "strength_sets": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "exercise": {
+          "type": "string",
+          "description": "snake_case kanonik ad (bench_press, squat, deadlift…)"
+         },
+         "as_stated": {
+          "type": "string"
+         },
+         "sets": {
+          "type": "number"
+         },
+         "reps": {
+          "type": "number"
+         },
+         "weight_kg": {
+          "type": [
+           "number",
+           "null"
+          ]
+         }
+        },
+        "required": [
+         "exercise",
+         "as_stated",
+         "sets",
+         "reps",
+         "weight_kg"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "w-ref (ör. w3)"
+      }
+     },
+     "required": [
+      "op",
+      "day",
+      "raw",
+      "workout_type",
+      "duration_min",
+      "intensity",
+      "calories_burned",
+      "rpe",
+      "time_local",
+      "strength_sets",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Takviye",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "supplement_log"
+       ]
+      },
+      "day": {
+       "type": "string",
+       "description": "today | yesterday | YYYY-MM-DD"
+      },
+      "name": {
+       "type": "string"
+      },
+      "as_stated": {
+       "type": "string",
+       "description": "miktar kullanıcının ifadesiyle (\"1 ölçek\", \"5 g\")"
+      },
+      "kcal": {
+       "type": [
+        "number",
+        "null"
+       ],
+       "description": "kalori içeriyorsa (whey, gainer) tahminin; yoksa null"
+      },
+      "protein_g": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "carbs_g": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "fat_g": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "allergens": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "enum": [
+         "gluten",
+         "crustacean",
+         "egg",
+         "fish",
+         "peanut",
+         "soy",
+         "milk",
+         "tree_nut",
+         "hazelnut",
+         "walnut",
+         "almond",
+         "pistachio",
+         "cashew",
+         "celery",
+         "mustard",
+         "sesame",
+         "sulphite",
+         "lupin",
+         "mollusc"
+        ]
+       },
+       "description": "kesin kaynak (balık yağı → fish, krill → crustacean, whey → milk)"
+      },
+      "may_contain": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "enum": [
+         "gluten",
+         "crustacean",
+         "egg",
+         "fish",
+         "peanut",
+         "soy",
+         "milk",
+         "tree_nut",
+         "hazelnut",
+         "walnut",
+         "almond",
+         "pistachio",
+         "cashew",
+         "celery",
+         "mustard",
+         "sesame",
+         "sulphite",
+         "lupin",
+         "mollusc"
+        ]
+       },
+       "description": "belirsiz kaynak (sade \"omega 3\" → fish, crustacean)"
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "s-ref (ör. s3)"
+      }
+     },
+     "required": [
+      "op",
+      "day",
+      "name",
+      "as_stated",
+      "kcal",
+      "protein_g",
+      "carbs_g",
+      "fat_g",
+      "allergens",
+      "may_contain",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Profil",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "profile_set"
+       ]
+      },
+      "subject": {
+       "type": "string",
+       "enum": [
+        "self"
+       ]
+      },
+      "changes": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "field": {
+          "type": "string",
+          "enum": [
+           "display_name",
+           "birth_year",
+           "height_cm",
+           "gender",
+           "occupation",
+           "work_start",
+           "work_end",
+           "sleep_time",
+           "wake_time",
+           "activity_level",
+           "meal_count_preference",
+           "meal_times",
+           "sleep_problems",
+           "cooking_skill",
+           "budget_level",
+           "diet_mode",
+           "eating_out_frequency",
+           "fastfood_frequency",
+           "alcohol_frequency",
+           "caffeine_intake",
+           "skipped_meals",
+           "night_eating_habit",
+           "emotional_eating",
+           "snacking_habit",
+           "meal_prep_time",
+           "kitchen_equipment",
+           "household_cooking",
+           "household_diet_challenge",
+           "household_size",
+           "training_experience",
+           "training_style",
+           "equipment_access",
+           "exercise_history",
+           "preferred_exercises",
+           "disliked_exercises",
+           "available_training_times",
+           "stress_level",
+           "stress_sources",
+           "sleep_quality",
+           "previous_diets",
+           "motivation_source",
+           "biggest_challenge",
+           "coach_tone",
+           "portion_language",
+           "water_target_liters",
+           "step_target",
+           "if_active",
+           "if_window",
+           "if_eating_start",
+           "if_eating_end",
+           "menstrual_tracking",
+           "menstrual_last_period_start",
+           "menstrual_cycle_length",
+           "body_fat_pct",
+           "muscle_mass_pct",
+           "waist_cm",
+           "hip_cm",
+           "chest_cm",
+           "thigh_cm"
+          ]
+         },
+         "value": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "description": "yeni değer: sayıysa yalnız sayı (\"175\", \"0.5\"), saat \"HH:MM\" (24s), tarih \"YYYY-MM-DD\", evet/hayır \"true\"/\"false\", seçenekli alanda seçeneğin id’si; null = alanı temizle"
+         },
+         "unit": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "enum": [
+           "cm",
+           "m",
+           "in",
+           "year",
+           "age_years",
+           "litre",
+           "ml",
+           "bardak",
+           "percent",
+           "days",
+           null
+          ],
+          "description": "sayının birimi; yaş söylendiyse age_years"
+         },
+         "list_op": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "enum": [
+           "add",
+           "remove",
+           "set",
+           null
+          ],
+          "description": "yalnız liste alanlarında"
+         },
+         "as_stated": {
+          "type": "string",
+          "description": "kullanıcının bu bilgiyi verdiği sözler, aynen"
+         }
+        },
+        "required": [
+         "field",
+         "value",
+         "unit",
+         "list_op",
+         "as_stated"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "op",
+      "subject",
+      "changes"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Hedef",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "goal_set"
+       ]
+      },
+      "goal_type": {
+       "type": "string",
+       "enum": [
+        "lose_weight",
+        "gain_weight",
+        "gain_muscle",
+        "health",
+        "maintain",
+        "conditioning"
+       ]
+      },
+      "target_weight_kg": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "target_weeks": {
+       "type": [
+        "number",
+        "null"
+       ],
+       "description": "süre hafta olarak söylendiyse (\"3 ay\" → 13)"
+      },
+      "target_date": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "YYYY-MM-DD — belirli bir tarih söylendiyse YYYY-MM-DD"
+      },
+      "reason": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "bu hedefin sebebi (\"3 ay sonra düğün\")"
+      },
+      "as_stated": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "op",
+      "goal_type",
+      "target_weight_kg",
+      "target_weeks",
+      "target_date",
+      "reason",
+      "as_stated"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Kısıt (alerji, sakatlık, hastalık, ilaç, diyet)",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "constraint_add"
+       ]
+      },
+      "kind": {
+       "type": "string",
+       "enum": [
+        "allergen",
+        "intolerance",
+        "injury",
+        "surgery",
+        "condition",
+        "medication",
+        "dietary"
+       ]
+      },
+      "subject_id": {
+       "type": "string",
+       "description": "alerjende alerjen id’si (peanut, hazelnut…), diyette diyet id’si (vegan…), aksi hâlde kısa id; listede yoksa custom:<ad>"
+      },
+      "display_tr": {
+       "type": "string",
+       "description": "kullanıcıya görünen Türkçe ad (\"fındık\", \"sol diz menisküs\")"
+      },
+      "whose": {
+       "type": "string",
+       "enum": [
+        "self",
+        "other_person"
+       ]
+      },
+      "polarity": {
+       "type": "string",
+       "enum": [
+        "has",
+        "does_not_have"
+       ]
+      },
+      "severity": {
+       "type": "string",
+       "enum": [
+        "mild",
+        "moderate",
+        "severe",
+        "unknown"
+       ]
+      },
+      "body_parts": {
+       "type": "array",
+       "items": {
+        "type": "string",
+        "enum": [
+         "knee",
+         "back",
+         "shoulder",
+         "ankle",
+         "wrist",
+         "elbow",
+         "hip",
+         "neck",
+         "hamstring",
+         "quad",
+         "groin"
+        ]
+       },
+       "description": "sakatlık/ameliyatta etkilenen bölgeler"
+      },
+      "event_date": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "YYYY-MM-DD — ameliyat/sakatlık tarihi söylendiyse"
+      },
+      "note": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "ayrıntı (eski notun üzerine yazılmaz, eklenir)"
+      },
+      "evidence_quote": {
+       "type": "string",
+       "description": "kullanıcının mesajından AYNEN alıntı"
+      }
+     },
+     "required": [
+      "op",
+      "kind",
+      "subject_id",
+      "display_tr",
+      "whose",
+      "polarity",
+      "severity",
+      "body_parts",
+      "event_date",
+      "note",
+      "evidence_quote"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Kısıt kaldırma",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "constraint_retract"
+       ]
+      },
+      "target": {
+       "type": "string",
+       "description": "c-ref (ör. c3)"
+      },
+      "evidence_quote": {
+       "type": "string",
+       "description": "kullanıcının mesajından AYNEN alıntı"
+      },
+      "note": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "op",
+      "target",
+      "evidence_quote",
+      "note"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Kısıt doğrulama",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "constraint_confirm"
+       ]
+      },
+      "target": {
+       "type": "string",
+       "description": "c-ref (ör. c3)"
+      }
+     },
+     "required": [
+      "op",
+      "target"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Yemek tercihi",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "food_pref"
+       ]
+      },
+      "food": {
+       "type": "string",
+       "description": "yalın ad (\"fıstık\", \"brokoli\") — çekim eki olmadan"
+      },
+      "preference": {
+       "type": "string",
+       "enum": [
+        "love",
+        "like",
+        "can_cook",
+        "dislike",
+        "never"
+       ]
+      },
+      "whose": {
+       "type": "string",
+       "enum": [
+        "self",
+        "other_person"
+       ]
+      },
+      "note": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "f-ref (ör. f3)"
+      }
+     },
+     "required": [
+      "op",
+      "food",
+      "preference",
+      "whose",
+      "note",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Yaklaşan olay",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "life_event"
+       ]
+      },
+      "title": {
+       "type": "string",
+       "description": "kısa başlık (\"kardeşinin düğünü\")"
+      },
+      "event_type": {
+       "type": "string",
+       "enum": [
+        "wedding",
+        "engagement",
+        "vacation",
+        "beach",
+        "graduation",
+        "birthday",
+        "reunion",
+        "exam",
+        "photoshoot",
+        "competition",
+        "other"
+       ]
+      },
+      "event_date": {
+       "type": "string",
+       "description": "YYYY-MM-DD — verilen yerel tarihe göre hesapla, YYYY-MM-DD"
+      },
+      "note": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "replaces": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "e-ref (ör. e3) — mevcut bir olayın tarihi/adı değiştiyse onun e-ref’i"
+      }
+     },
+     "required": [
+      "op",
+      "title",
+      "event_type",
+      "event_date",
+      "note",
+      "replaces"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Tahlil sonucu",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "lab_value"
+       ]
+      },
+      "measured_at": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "YYYY-MM-DD — tahlil tarihi biliniyorsa"
+      },
+      "items": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "parameter": {
+          "type": "string",
+          "description": "snake_case id (d_vitamini, b12, ferritin, tsh, hba1c, ldl…)"
+         },
+         "value": {
+          "type": [
+           "number",
+           "null"
+          ],
+          "description": "sayı söylenmediyse null"
+         },
+         "unit": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "description": "ng/mL, mg/dL…; bilinmiyorsa null"
+         },
+         "status": {
+          "type": "string",
+          "enum": [
+           "low",
+           "normal",
+           "high",
+           "unknown"
+          ]
+         },
+         "reference_min": {
+          "type": [
+           "number",
+           "null"
+          ]
+         },
+         "reference_max": {
+          "type": [
+           "number",
+           "null"
+          ]
+         },
+         "reference_source": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "enum": [
+           "report",
+           "typical",
+           null
+          ]
+         },
+         "note": {
+          "type": [
+           "string",
+           "null"
+          ],
+          "description": "doktor yorumu ya da nitel bulgu"
+         }
+        },
+        "required": [
+         "parameter",
+         "value",
+         "unit",
+         "status",
+         "reference_min",
+         "reference_max",
+         "reference_source",
+         "note"
+        ],
+        "additionalProperties": false
+       }
+      }
+     },
+     "required": [
+      "op",
+      "measured_at",
+      "items"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Tarif",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "recipe_save"
+       ]
+      },
+      "title": {
+       "type": "string"
+      },
+      "category": {
+       "type": "string",
+       "enum": [
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack"
+       ]
+      },
+      "ingredients": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "as_stated": {
+          "type": "string",
+          "description": "miktar (\"2 yemek kaşığı\")"
+         }
+        },
+        "required": [
+         "name",
+         "as_stated"
+        ],
+        "additionalProperties": false
+       }
+      },
+      "instructions": {
+       "type": "string"
+      },
+      "kcal": {
+       "type": [
+        "number",
+        "null"
+       ],
+       "description": "porsiyon başına"
+      },
+      "protein_g": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "prep_time_min": {
+       "type": [
+        "number",
+        "null"
+       ]
+      },
+      "servings": {
+       "type": [
+        "number",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "op",
+      "title",
+      "category",
+      "ingredients",
+      "instructions",
+      "kcal",
+      "protein_g",
+      "prep_time_min",
+      "servings"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Dönemsel durum",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "periodic_state"
+       ]
+      },
+      "state": {
+       "type": "string",
+       "enum": [
+        "ramadan",
+        "holiday",
+        "illness",
+        "busy_work",
+        "exam",
+        "pregnancy",
+        "breastfeeding",
+        "injury",
+        "travel",
+        "custom",
+        "none"
+       ]
+      },
+      "end_date": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "description": "YYYY-MM-DD — biliniyorsa bitiş tarihi"
+      },
+      "note": {
+       "type": [
+        "string",
+        "null"
+       ]
+      }
+     },
+     "required": [
+      "op",
+      "state",
+      "end_date",
+      "note"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Kalori programı",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "target_change"
+       ]
+      },
+      "program": {
+       "type": "string",
+       "enum": [
+        "maintenance_start",
+        "mini_cut",
+        "plateau_strategy",
+        "recovery",
+        "mvd"
+       ]
+      },
+      "strategy_id": {
+       "type": [
+        "string",
+        "null"
+       ],
+       "enum": [
+        "calorie_cycle",
+        "refeed",
+        "tdee_recalc",
+        "maintenance_break",
+        "training_change",
+        null
+       ],
+       "description": "yalnız plateau_strategy’de"
+      },
+      "weeks": {
+       "type": [
+        "number",
+        "null"
+       ],
+       "description": "yalnız mini_cut’ta (2–4)"
+      },
+      "excess_kcal": {
+       "type": [
+        "number",
+        "null"
+       ],
+       "description": "telafide fazlalık tahminin; kod canlı toplamlarla karşılaştırır"
+      },
+      "reason": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "op",
+      "program",
+      "strategy_id",
+      "weeks",
+      "excess_kcal",
+      "reason"
+     ],
+     "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "description": "Veri silme talebi (KVKK)",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "data_erase_request"
+       ]
+      },
+      "scope": {
+       "type": "string",
+       "enum": [
+        "memory",
+        "account"
+       ]
+      },
+      "evidence_quote": {
+       "type": "string",
+       "description": "kullanıcının mesajından AYNEN alıntı"
+      }
+     },
+     "required": [
+      "op",
+      "scope",
+      "evidence_quote"
+     ],
+     "additionalProperties": false
+    }
+   ]
+  }
+ }
+}

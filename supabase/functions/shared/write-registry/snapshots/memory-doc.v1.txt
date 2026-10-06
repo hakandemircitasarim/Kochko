@@ -1,0 +1,8 @@
+## memory[] — koçun hafıza notları
+
+### memory_note — Hafıza notu
+Ne zaman: Bu kişiyle ilgili ileride işe yarayacak kalıcı bir gözlem öğrendiysen.
+Ne zaman değil: Kayıtlara giden bilgiler (öğün, kilo, alerji…) hafıza notu değildir; onlar kendi yazmalarıyla gider.
+Alanlar: kind(person_note=bu kişiyle nasıl konuşmalı (tek not; yenisi eskisinin yerine geçer) · coach_note=tarihli gözlem (eklenir) · pattern=tekrarlayan davranış kalıbı ve tetikleyicisi · portion_calibration=kişisel porsiyon ("benim tabağım" ≈ 300 g) · forget=kullanıcının unutmamı istediği bir not) · text · food(|null) · grams(1–3000 g tam|null) · confidence(0–1)
+Reddedilir: portion_calibration için food ve grams gerekli
+İşaretlenir (kaydedilir): güveni 0,5 altında hafıza notu

@@ -1,0 +1,120 @@
+/**
+ * write-registry/envelope.ts — the non-write parts of the understanding envelope (§3.2 T4) and
+ * the coach reply fields (§3.2 T6), declared with the same DSL so ONE generator emits the strict
+ * schema and ONE validator checks a json_object fallback.
+ *
+ * Order is decision-first: what the message IS (intent, safety), then what to write, then routing
+ * and the self-check. In the fused single-call variant (§3.1 escape hatch) the reply fields come
+ * LAST, with suggested_foods/exercises before the prose so their safety tags are produced first
+ * (§7.1 öneri değişmezi).
+ */
+import { f, type Fields } from './dsl.ts';
+import { ALLERGENS, BODY_PARTS } from './vocab.ts';
+
+export const INTENT_PRIMARY = {
+  report: 'bir şey bildiriyor (yedim, içtim, yaptım, tartıldım, bir bilgi verdi)',
+  question: 'soru soruyor',
+  hypothetical: 'varsayım/plan ("yesem?", "yarın koşsam")',
+  correction: 'bir kaydı düzeltiyor/geri alıyor',
+  confirmation: 'bekleyen bir şeyi onaylıyor/reddediyor',
+  plan: 'plan istiyor/plan üzerine konuşuyor',
+  chat: 'sohbet, duygu, selam',
+  other: 'diğer',
+} as const;
+
+export const ED_CATEGORIES = {
+  restriction: 'aşırı kısıtlama, aç kalma',
+  purging: 'kusma/çıkarma, müshil',
+  binge: 'tıkınma, kontrol kaybı',
+  compensatory_exercise: 'yediğini yakmak için zorlayıcı spor',
+  body_image: 'ağır beden algısı sıkıntısı',
+  illness_vomiting: 'hastalık/zehirlenme kaynaklı kusma (YB değil)',
+} as const;
+
+export const PLAN_OPS = {
+  none: 'plan işlemi yok (taslak açık olsa bile alakasız tur)',
+  generate: 'yeni plan üret',
+  revise: 'açık taslağı değiştir',
+  explain: 'taslağı açıkla',
+  approve: 'kullanıcı taslağı onaylıyor',
+  discard: 'taslağı iptal et',
+} as const;
+
+export const REPLY_CONTRACTS = {
+  coach: 'normal koçluk',
+  plan: 'plan sözleşmesi',
+  onboarding: 'tanışma kartı',
+  crisis: 'kriz (kendine zarar, YB)',
+  emergency: 'acil tıbbi durum (112)',
+} as const;
+
+/** Head of the understanding envelope: before the write arrays. */
+export const ENVELOPE_HEAD = {
+  intent: f.obj({
+    primary: f.enum(INTENT_PRIMARY),
+    is_hypothetical: f.bool({ tr: 'mesajın ana kısmı varsayım mı' }),
+    about_other_person: f.bool({ tr: 'mesaj başkası hakkında mı (kızı, arkadaşı…)' }),
+  }),
+  safety: f.obj({
+    acute_medical: f.bool({ tr: 'şu an acil tıbbi durum var mı (anafilaksi, göğüs ağrısı, nefes darlığı…)' }),
+    self_harm: f.bool({ tr: 'kendine zarar verme düşüncesi/niyeti var mı' }),
+    ed_signal: f.obj({
+      category: f.enum(ED_CATEGORIES),
+      severity: f.enum({ low: 'düşük', medium: 'orta', high: 'yüksek' }),
+      evidence_quote: f.text({ max: 160, tr: 'KULLANICININ mesajından AYNEN alıntı (koçun sözleri sayılmaz)' }),
+    }, { nullable: true }),
+    tripwire_reading: f.obj({
+      benign: f.bool({ tr: 'tetik kelimesi zararsız anlamda mı ("bayıldım" = çok sevdim)' }),
+      reason: f.text({ max: 200 }),
+    }, { nullable: true, tr: 'yalnız TETİK olgusu verildiyse doldur; yoksa null' }),
+  }),
+} as const satisfies Fields;
+
+/** Tail of the understanding envelope: after the write arrays. */
+export const ENVELOPE_TAIL = {
+  plan_action: f.obj({
+    op: f.enum(PLAN_OPS),
+    plan_type: f.enum({ diet: 'beslenme', workout: 'antrenman' }, { nullable: true }),
+    draft_ref: f.ref(['dft'], { nullable: true, tr: 'açık taslağın dft-ref’i' }),
+  }),
+  simulation: f.obj({
+    food: f.text({ max: 80 }),
+    kcal_estimate: f.num({ unit: 'kcal', hard: [0, 5000] }),
+    target_day: f.date({ past_days: 0, future_days: 7, tr: 'hangi gün yenecek, YYYY-MM-DD' }),
+  }, { nullable: true, tr: '"yesem ne olur?" türü varsayım; kod bütçe sayısını hesaplar' }),
+  clarify: f.obj({
+    topic: f.text({ max: 160, tr: 'neyin belirsiz olduğu' }),
+    candidate_refs: f.textList({ max: 5, tr: 'olası kayıtların ref’leri (yalnız KAYITLAR’dan)' }),
+  }, { nullable: true }),
+  reply_route: f.obj({
+    contract: f.enum(REPLY_CONTRACTS),
+    effort_hint: f.enum({ low: 'kısa/sade', medium: 'düşünmeyi gerektiren' }),
+  }),
+  self_check: f.obj({
+    reported_new_facts: f.bool({ tr: 'kullanıcı kaydedilebilecek yeni bir şey bildirdi mi' }),
+    not_written_reason: f.text({ nullable: true, max: 200, tr: 'bildirdiği hâlde yazmadıysan neden' }),
+  }),
+} as const satisfies Fields;
+
+/** Coach reply fields (Stage B, and the tail of the fused envelope). memory[] is inserted by schema.ts. */
+export const REPLY_HEAD = {
+  suggested_foods: f.list({ min: 0, max: 12, tr: 'cevapta ÖNERDİĞİN her yiyecek, alerjen etiketleriyle (cevaptan ÖNCE)' }, {
+    name: f.text({ max: 80 }),
+    allergens: f.enumList(ALLERGENS),
+    may_contain: f.enumList(ALLERGENS),
+  }),
+  suggested_exercises: f.list({ min: 0, max: 12, tr: 'cevapta ÖNERDİĞİN her egzersiz ve yüklediği bölgeler' }, {
+    name: f.text({ max: 80 }),
+    loads: f.enumList(BODY_PARTS),
+  }),
+  reply: f.text({ max: 4000, tr: 'kullanıcıya cevap' }),
+  why: f.text({ nullable: true, max: 600, tr: 'kısa gerekçe (istemci "neden?" altında gösterir)' }),
+} as const satisfies Fields;
+
+export const REPLY_TAIL = {
+  ui: f.obj({
+    navigate_to: f.text({ nullable: true, max: 80, tr: 'yönlendirilecek uygulama ekranı, gerekiyorsa' }),
+    task_completion_summary: f.text({ nullable: true, max: 300 }),
+  }),
+  referral_included: f.bool({ tr: 'cevapta uzman/112 yönlendirmesi var mı' }),
+} as const satisfies Fields;
