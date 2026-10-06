@@ -1,0 +1,207 @@
+{
+  "group": "spec-packages",
+  "defaults": { "persona": "fresh", "tags": ["spec"] },
+  "fixtures": [
+    {
+      "id": "spec-a-cayla-beraber-iki-bardak-su",
+      "source": "spec:§9.4-A",
+      "package": "A",
+      "title": "‘çayla beraber 2 bardak da su’ → su +0,40 L; çay öğün kalemi.",
+      "message": "çayla beraber 2 bardak da su içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].quantity", "eq": 2 },
+        { "path": "decision.writes[op=water_log].mode", "eq": "add" },
+        { "path": "commit.water_log.liters", "between": [0.35, 0.50] },
+        { "path": "decision.writes[op=meal_log].items[name~çay]", "exists": true }
+      ]
+    },
+    {
+      "id": "spec-a-on-dakika-sonra-bir-muz-daha",
+      "source": "spec:§9.4-A",
+      "package": "A",
+      "title": "10 dk önce muz varken ‘bir muz daha’ İKİNCİ muzdur: yeni kayıt, tekrar/düzeltme değil.",
+      "turn_input": {
+        "records": [
+          { "ref": "m50", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki ara öğün 13:20 · \"1 muz yedim\" → muz 1 adet ~120 g 105 kcal [model]", "last_turn": true }
+        ],
+        "history": [
+          { "role": "user", "content": "1 muz yedim" },
+          { "role": "assistant", "content": "Muzunu ekledim.", "receipts": ["m50 öğün kaydedildi — muz 1 adet"] }
+        ]
+      },
+      "message": "bir muz daha yedim",
+      "expect": [
+        { "path": "decision.writes[op=meal_log]", "count": 1 },
+        { "path": "decision.writes[op=meal_log].status", "eq": "new" },
+        { "path": "decision.writes[op=meal_log].replaces", "in": [null], "quantifier": "all" },
+        { "path": "decision.writes[op=meal_log].items[name~muz]", "exists": true },
+        { "path": "decision.record_ops", "count": 0 }
+      ]
+    },
+    {
+      "id": "spec-a-yumurtaya-iki-cimdik-tuz",
+      "source": "spec:§9.4-A",
+      "package": "A",
+      "title": "‘yumurtaya 2 çimdik tuz’ → as_stated aynen, gram ≤ 3, reddedilmez.",
+      "message": "yumurtaya 2 çimdik tuz attım",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=meal_log].items[name~tuz].as_stated", "contains": "2 çimdik" },
+        { "path": "decision.writes[op=meal_log].items[name~tuz].grams", "lte": 3 },
+        { "path": "validation.writes[op=meal_log].outcome", "ne": "reject" }
+      ]
+    },
+    {
+      "id": "spec-a-isimi-degistirdim-taslak-acik",
+      "source": "spec:§9.4-A",
+      "package": "A",
+      "title": "Taslak açıkken ‘işimi değiştirdim’ meslek yazar, plan_action none.",
+      "turn_input": {
+        "draft": { "ref": "dft1", "plan_type": "diet", "version": 1, "line": "6–12 Eki haftası · her gün ~1750 kcal · 3 öğün" }
+      },
+      "message": "işimi değiştirdim, artık kuryeyim, gün boyu ayaktayım",
+      "expect": [
+        { "path": "decision.writes[op=profile_set].changes[field=occupation]", "exists": true },
+        { "path": "decision.plan_action.op", "eq": "none" }
+      ]
+    },
+    {
+      "id": "spec-a-taslak-acikken-onayliyorum",
+      "source": "spec:§9.4-A",
+      "package": "A",
+      "title": "Taslak açıkken ‘onaylıyorum’ → approve{dft1}, üretim yok.",
+      "turn_input": {
+        "draft": { "ref": "dft1", "plan_type": "diet", "version": 2, "line": "6–12 Eki haftası · her gün ~1750 kcal · 3 öğün" }
+      },
+      "message": "onaylıyorum",
+      "expect": [
+        { "path": "decision.plan_action.op", "eq": "approve" },
+        { "path": "decision.plan_action.draft_ref", "eq": "dft1" }
+      ]
+    },
+    {
+      "id": "spec-a-sonuncuyu-sil-iki-aday",
+      "source": "spec:§6.2",
+      "package": "A",
+      "title": "Son turda iki yazma varken ‘sonuncuyu sil’ → kod tahmin etmez, model clarify{d3, m14} üretir.",
+      "turn_input": {
+        "records": [
+          { "ref": "m14", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki öğle 13:15 · \"öğlen tost yedim ve 1 bardak su içtim\" → kaşarlı tost 1 adet ~150 g 390 kcal [model]", "last_turn": true },
+          { "ref": "d3", "kind": "water", "day": "2026-10-06", "line": "su +0,20 L (\"1 bardak su\") → gün 1,0 L", "last_turn": true }
+        ],
+        "today": { "water_liters": 1.0, "kcal": 910, "protein_g": 49 }
+      },
+      "message": "sonuncuyu sil",
+      "expect": [
+        { "path": "decision.clarify.candidate_refs", "contains": "d3" },
+        { "path": "decision.clarify.candidate_refs", "contains": "m14" },
+        { "path": "decision.record_ops", "count": 0 }
+      ]
+    },
+    {
+      "id": "spec-a-plani-iptal-et",
+      "source": "spec:§6.2",
+      "package": "A",
+      "title": "‘planı iptal et’ → plan_action discard; asla kayıt silme değil.",
+      "turn_input": {
+        "draft": { "ref": "dft1", "plan_type": "diet", "version": 1, "line": "6–12 Eki haftası · her gün ~1750 kcal · 3 öğün" },
+        "records": [
+          { "ref": "m15", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki öğle 12:40 · \"öğlen mercimek çorbası\" → mercimek çorbası 1 kase 165 kcal [model]" }
+        ]
+      },
+      "message": "planı iptal et",
+      "expect": [
+        { "path": "decision.plan_action.op", "eq": "discard" },
+        { "path": "decision.record_ops", "count": 0 }
+      ]
+    },
+    {
+      "id": "spec-aprime-yedi-sekiz-saat-uyumam-lazim-mi",
+      "source": "spec:§9.4-A'",
+      "package": "A'",
+      "title": "‘7-8 saat uyumam lazım mı?’ uyku kaydı değildir (7,5 saat yazılmaz).",
+      "message": "7-8 saat uyumam lazım mı?",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes[op=sleep_log]", "count": 0 } ]
+    },
+    {
+      "id": "spec-aprime-gunde-on-bin-adim-hedefim",
+      "source": "spec:§9.4-A'",
+      "package": "A'",
+      "title": "‘günde 10 bin adım hedefim var’ adım kaydı değildir.",
+      "message": "günde 10 bin adım hedefim var",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes[op=step_log]", "count": 0 } ]
+    },
+    {
+      "id": "spec-aprime-hedefime-ulastim-mi",
+      "source": "spec:§9.4-A'",
+      "package": "A'",
+      "title": "‘hedefime ulaştım mı sence?’ bakım kalorisine geçiş yazmaz.",
+      "message": "hedefime ulaştım mı sence?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=target_change]", "count": 0 },
+        { "path": "decision.writes[op=goal_set]", "count": 0 },
+        { "path": "decision.writes[op=body_weight]", "count": 0 }
+      ]
+    },
+    {
+      "id": "spec-aprime-kadin-arkadasimla-yemek",
+      "source": "spec:§9.4-A'",
+      "package": "A'",
+      "persona": "final2",
+      "title": "‘kadın arkadaşımla yemeğe gittim’ cinsiyet yazmaz (BMR değişmez).",
+      "message": "kadın arkadaşımla yemeğe gittim",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes[op=profile_set].changes[field=gender]", "count": 0 } ]
+    },
+    {
+      "id": "spec-aprime-kalori-hesabini-sil",
+      "source": "spec:§9.4-A'",
+      "package": "A'",
+      "title": "‘kalori hesabını sil’ hesap silme planlamaz, kayıt silmez.",
+      "turn_input": {
+        "records": [
+          { "ref": "m16", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki kahvaltı 08:30 · \"kahvaltıda peynir ekmek\" → beyaz peynir 40 g 110 kcal; ekmek 2 dilim 150 kcal [model]" }
+        ]
+      },
+      "message": "kalori hesabını sil",
+      "expect": [
+        { "path": "decision.writes[op=account_erase_request]", "count": 0 },
+        { "path": "decision.record_ops", "count": 0 }
+      ]
+    },
+    {
+      "id": "spec-aprime-uc-haftadir-takildim-virgullu",
+      "source": "spec:§9.4-A'",
+      "package": "A'",
+      "title": "‘3 haftadır 82,5'ta takıldım, neden?’ tartı kaydı değildir (mem#9).",
+      "message": "3 haftadır 82,5'ta takıldım, neden?",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes[op=body_weight]", "count": 0 } ]
+    },
+    {
+      "id": "spec-aprime-her-sabah-kreatin",
+      "source": "spec:§9.4-A'",
+      "package": "A'",
+      "title": "‘her sabah kreatin alıyorum işe yarıyor mu’ alışkanlık + soru: bugünkü takviye kaydı değildir.",
+      "message": "her sabah kreatin alıyorum işe yarıyor mu",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes[op=supplement_log]", "count": 0 } ]
+    },
+    {
+      "id": "spec-aprime-gunde-uc-litre-su-gerekli-mi",
+      "source": "spec:§8.3",
+      "package": "A'",
+      "title": "‘günde 3 litre su içmem gerekiyor mu?’ ne su kaydı ne su hedefi yazar.",
+      "message": "günde 3 litre su içmem gerekiyor mu?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log]", "count": 0 },
+        { "path": "decision.writes[op=profile_set].changes[field=water_target_liters]", "count": 0 }
+      ]
+    }
+  ]
+}

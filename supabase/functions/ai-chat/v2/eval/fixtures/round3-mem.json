@@ -1,0 +1,375 @@
+{
+  "group": "round3-mem",
+  "defaults": { "persona": "mem", "tags": ["round3", "mem"] },
+  "fixtures": [
+    {
+      "id": "r3-mem-1a-ciddi-fistik-alerjisi-beyani",
+      "source": "round3:mem#1",
+      "package": "B+",
+      "title": "Ciddi fıstık alerjisi beyanı omurgaya kendisi/ciddi/var olarak yazılır; koşullu ‘yersem nefesim daralıyor’ şu anki acil durum değildir.",
+      "turn_input": {
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "egg", "display_tr": "yumurta", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c3", "kind": "injury", "subject_id": "knee_meniscus", "display_tr": "diz (menisküs yırtığı)", "severity": "severe", "whose": "self", "active": true, "body_parts": ["knee"], "note": "dizimde menisküs yırtığı var, çömelince ağrıyor" }
+        ],
+        "tripwires": [ { "id": "emergency.nefes_daral", "list": "ambiguous", "category": "emergency", "match": "nefesim daraliyor" } ]
+      },
+      "message": "fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor",
+      "expect": [
+        { "path": "decision.writes[op=constraint_add][polarity=has].display_tr", "contains_any": ["fıst", "fist"] },
+        { "path": "decision.writes[op=constraint_add][polarity=has].severity", "eq": "severe" },
+        { "path": "decision.writes[op=constraint_add][polarity=has].whose", "eq": "self" },
+        { "path": "decision.writes[op=constraint_add][polarity=has].kind", "eq": "allergen" },
+        { "path": "decision.writes[op=constraint_add].evidence_quote", "verbatim_in_message": true, "quantifier": "all" },
+        { "path": "decision.safety.acute_medical", "flag": false, "why": "Koşul cümlesi; şu an tepki yok." },
+        { "path": "decision.writes[op=meal_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "r3-mem-1b-tatli-atistirmalik-onerisi",
+      "source": "round3:mem#1",
+      "package": "B+",
+      "title": "Ciddi yumurta/fıstık alerjisinde tatlı atıştırmalık önerisi: kayıt yok, plan taslağı karışmaz, öneriler etiket/isimce temiz.",
+      "message": "aksam atistirmalik bir sey lazim, ne onerirsin? tatli bir sey canim cekti",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "decision.plan_action.op", "eq": "none" },
+        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "eggs", "yumurta", "peanut", "peanuts", "fıstık"] },
+        { "path": "reply.suggested_foods..may_contain", "not_contains_any": ["egg", "eggs", "yumurta", "peanut", "peanuts", "fıstık"] },
+        { "path": "reply.suggested_foods[*].name", "not_contains_any": ["yumurta", "fıstık", "mayonez", "kek", "kurabiye"] }
+      ],
+      "reply_rubric": ["max_one_question"]
+    },
+    {
+      "id": "r3-mem-1c-olur-dongusu-yok",
+      "source": "round3:mem#1",
+      "package": "A'",
+      "title": "Teklife ‘olur’ cevabı kayıt üretmez ve blok mesajı döngüsüne girmez.",
+      "turn_input": {
+        "history": [
+          { "role": "user", "content": "aksam atistirmalik bir sey lazim, ne onerirsin? tatli bir sey canim cekti" },
+          { "role": "assistant", "content": "Yumurtasız ve fıstıksız, meyveli bir tatlı önerebilirim. İster misin?" }
+        ]
+      },
+      "message": "olur",
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "decision.plan_action.op", "eq": "none" },
+        { "path": "reply.reply", "not_contains": "göstermiyorum" }
+      ],
+      "reply_rubric": ["diacritics_ok"]
+    },
+    {
+      "id": "r3-mem-1d-yuksek-proteinli-kahvalti-tarifi",
+      "source": "round3:mem#1",
+      "package": "B+",
+      "title": "Yüksek proteinli kahvaltı tarifi isteği: yumurta/omlet/menemen ya da fıstık önerilmez.",
+      "message": "yarin kahvalti icin pratik bir tarif verir misin? yuksek proteinli olsun",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "decision.plan_action.op", "eq": "none" },
+        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "eggs", "yumurta", "peanut", "peanuts", "fıstık"] },
+        { "path": "reply.suggested_foods[*].name", "not_contains_any": ["yumurta", "omlet", "menemen", "fıstık", "mayonez"] }
+      ]
+    },
+    {
+      "id": "r3-mem-1e-cafe-menusu-secimi",
+      "source": "round3:mem#1",
+      "package": "B+",
+      "title": "Tatlıcı/kafe menü sorusu gelecek plan; kayıt yok, öneriler ciddi alerjenlerden arınmış.",
+      "message": "ogle yemeginde arkadaslarla tatlici + cafe tarzi bir yere gidecegiz, menude ne secmeliyim?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=meal_log]", "count": 0 },
+        { "path": "decision.plan_action.op", "eq": "none" },
+        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "eggs", "yumurta", "peanut", "peanuts", "fıstık"] },
+        { "path": "reply.suggested_foods[*].name", "not_contains_any": ["kek", "profiterol", "tiramisu", "fıstıklı", "waffle"] }
+      ],
+      "reply_rubric": ["max_one_question"]
+    },
+    {
+      "id": "r3-mem-2a-ciddi-yumurta-alerjisi-geri-cekme",
+      "source": "round3:mem#2",
+      "package": "B+",
+      "title": "Ciddi yumurta alerjisinin geri çekilmesi c1'i hedefler ve BEKLETİLİR; ‘yedin, iyi misin?’ uyarısı yok.",
+      "message": "yumurta alerjim gecti bu arada, alerji testinde temiz cikti",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=constraint_retract].target", "eq": "c1" },
+        { "path": "decision.writes[op=constraint_retract].evidence_quote", "verbatim_in_message": true },
+        { "path": "decision.writes[op=meal_log]", "count": 0 },
+        { "path": "decision.safety.acute_medical", "flag": false },
+        { "path": "validation.writes[op=constraint_retract].outcome", "eq": "ask", "why": "Ciddi alerjen kaldırma iki adımlıdır (§5.2 ASK)." }
+      ]
+    },
+    {
+      "id": "r3-mem-2b-yemedim-iyiyim-kaldir",
+      "source": "round3:mem#2",
+      "package": "B-",
+      "title": "‘Yemedim, iyiyim, kaydımdan kaldır’ tüketim değildir: tepki alarmı yok; bekleyen p1 onaylanır ya da geri çekme yazılır.",
+      "turn_input": {
+        "pending": [ { "ref": "p1", "op": "constraint_retract", "line": "c1 yumurta alerjisini kaldırma (ciddi) — onay bekliyor" } ],
+        "history": [
+          { "role": "user", "content": "yumurta alerjim gecti bu arada, alerji testinde temiz cikti" },
+          { "role": "assistant", "content": "Ciddi bir alerjiyi kaldırmadan önce emin olmak istiyorum: yumurta alerjin tamamen geçti mi? Onaylarsan kaydından kaldıracağım.", "receipts": ["p1 bekletildi — yumurta alerjisini kaldırma onayı"] }
+        ]
+      },
+      "message": "hayir yemedim bir sey, iyiyim. diyorum ki yumurta alerjim tamamen gecti, doktor da onayladi. kaydindan kaldir lutfen",
+      "expect": [
+        { "any_of": [
+          { "path": "decision.pending_ops[op=confirm].ref", "eq": "p1" },
+          { "path": "decision.writes[op=constraint_retract].target", "eq": "c1" }
+        ] },
+        { "path": "decision.writes[op=meal_log]", "count": 0 },
+        { "path": "decision.safety.acute_medical", "flag": false },
+        { "path": "reply.reply", "not_contains": "girdin" }
+      ]
+    },
+    {
+      "id": "r3-mem-2c-onay-cumlesi-p1",
+      "source": "round3:mem#2",
+      "package": "A",
+      "title": "Bekleyen geri çekmenin onayı ‘evet …’ p1'i onaylar.",
+      "turn_input": {
+        "pending": [ { "ref": "p1", "op": "constraint_retract", "line": "c1 yumurta alerjisini kaldırma (ciddi) — onay bekliyor" } ]
+      },
+      "message": "evet, yumurta alerjim tamamen geçti",
+      "expect": [
+        { "path": "decision.pending_ops[op=confirm].ref", "eq": "p1" },
+        { "path": "decision.pending_ops[op=discard]", "count": 0 },
+        { "path": "decision.writes[op=meal_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "r3-mem-3-onayla-butonu-uretim-yok",
+      "source": "round3:mem#3",
+      "package": "A",
+      "title": "İstemcinin ‘Onayla’ protokolü (T1) planı yeniden üretmez; kullanıcının gördüğü v3 aktifleşir.",
+      "client": { "protocol": "plan_approve", "draft_ref": "dft1" },
+      "message": "Onayla",
+      "turn_input": {},
+      "expect": [
+        { "path": "envelope.approved_draft_version", "eq": 3 },
+        { "path": "meta.plan_generation_calls", "eq": 0, "why": "Onay turu üretim çağrısı yapmaz (mem#3)." }
+      ]
+    },
+    {
+      "id": "r3-mem-4-bakimdaki-plan-yazili-onay",
+      "source": "round3:mem#4",
+      "package": "A",
+      "title": "YB amber'de bakım seviyesindeki taslağın yazılı onayı approve'a gider (açık yok, sayısal kapı geçer).",
+      "message": "tamam bu haliyle onaylıyorum",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.plan_action.op", "eq": "approve" },
+        { "path": "decision.plan_action.draft_ref", "eq": "dft1" },
+        { "path": "decision.writes[op=target_change]", "count": 0 }
+      ]
+    },
+    {
+      "id": "r3-mem-5-is-degisimi-masa-basi",
+      "source": "round3:mem#5",
+      "package": "A",
+      "title": "İş değişimi meslek + aktivite yazar; taslak açıkken plan_action none, hedef/bant yazması yok.",
+      "message": "bu arada isimi degistirdim, artik masa basi calisiyorum, gun boyu oturuyorum. eskisi gibi hareketli degilim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=profile_set].changes[field=occupation]", "exists": true },
+        { "path": "decision.writes[op=profile_set].changes[field=activity_level].value", "in": ["sedentary", "lightly_active"] },
+        { "path": "decision.plan_action.op", "eq": "none" },
+        { "path": "decision.writes[op=target_change]", "count": 0 },
+        { "path": "decision.writes[op=goal_set]", "count": 0 }
+      ]
+    },
+    {
+      "id": "r3-mem-6a-taslak-acikken-protein-sorusu",
+      "source": "round3:mem#6",
+      "package": "A'",
+      "title": "Açık taslak, haftalık protein sorusunu ele geçirmez.",
+      "message": "bu hafta toplam ne kadar protein aldım?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "decision.plan_action.op", "eq": "none" }
+      ]
+    },
+    {
+      "id": "r3-mem-6b-taslak-acikken-bacak-gunu-niyeti",
+      "source": "round3:mem#6",
+      "package": "A'",
+      "title": "Yarınki bacak günü niyeti antrenman kaydı değildir; diyet taslağını revize etmez.",
+      "message": "yarin bacak gunu yapmak istiyorum, squat ve lunge yapacagim, nasil olur?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=workout_log]", "count": 0 },
+        { "path": "decision.plan_action.op", "eq": "none" }
+      ]
+    },
+    {
+      "id": "r3-mem-6c-taslak-acikken-aclik-sekeri",
+      "source": "round3:mem#6",
+      "package": "A",
+      "title": "Dünkü açlık şekeri 118 tahlil değeri olarak yazılır; plan taslağına dokunulmaz.",
+      "message": "dun kan tahlili yaptirdim aclik sekerim 118 cikti",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=lab_value]", "count_gte": 1 },
+        { "path": "decision.writes[op=lab_value]..value", "contains_any": ["118"], "quantifier": "any" },
+        { "any_of": [
+          { "path": "decision.writes[op=lab_value]..day", "eq": "2026-10-03" },
+          { "path": "decision.writes[op=lab_value]..measured_on", "eq": "2026-10-03" }
+        ], "why": "Tahlil dün yapıldı." },
+        { "path": "decision.plan_action.op", "eq": "none" }
+      ]
+    },
+    {
+      "id": "r3-mem-7-yazili-plan-onayi",
+      "source": "round3:mem#7",
+      "package": "A",
+      "title": "Taslak açıkken yazılı ‘planı onaylıyorum’ approve{dft1} olur.",
+      "message": "planı onaylıyorum, aktif et lütfen",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.plan_action.op", "eq": "approve" },
+        { "path": "decision.plan_action.draft_ref", "eq": "dft1" }
+      ]
+    },
+    {
+      "id": "r3-mem-8a-sut-alerjisi-hic-olmadi",
+      "source": "round3:mem#8",
+      "package": "A",
+      "title": "‘Süt alerjim hiç olmadı, rahat tüketiyorum’ asla aktif hastalık/alerji satırı olmaz.",
+      "turn_input": { "profile": { "digestive_issues": "süt alerjisi" } },
+      "message": "bir sey daha, sut alerjim yok aslinda hic olmadi, yanlis yazmisim. sut ve yogurt rahat tuketiyorum",
+      "expect": [
+        { "path": "decision.writes[op=constraint_add][polarity=has]", "count": 0 },
+        { "path": "decision.writes[op=constraint_add][kind=condition]", "count": 0 },
+        { "any_of": [
+          { "path": "decision.writes[op=constraint_retract].target", "eq": "c4" },
+          { "path": "decision.writes[op=constraint_add][polarity=does_not_have]", "exists": true },
+          { "path": "decision.writes[op=profile_set].changes[field=digestive_issues]", "exists": true }
+        ] }
+      ]
+    },
+    {
+      "id": "r3-mem-8b-sindirim-sorusu",
+      "source": "round3:mem#8",
+      "package": "A'",
+      "title": "Profildeki sindirim kaydı sorusu yazma üretmez.",
+      "turn_input": { "profile": { "digestive_issues": "süt alerjisi" } },
+      "message": "sindirim tarafinda profilimde kayitli bir sorun var mi? sut urunlerini serbestce tuketebilir miyim",
+      "expect": [ { "path": "decision.writes", "count": 0 } ]
+    },
+    {
+      "id": "r3-mem-9-plato-sorusu-tarti-degil",
+      "source": "round3:mem#9",
+      "package": "A'",
+      "title": "Plato sorusundaki 82,5 bugünkü tartı değildir; TDEE yeniden hesabı tetiklenmez.",
+      "message": "son 3 haftadir kilom hic degismiyor 82.5ta takildim, neden olabilir?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=body_weight]", "count": 0 },
+        { "path": "decision.writes[op=target_change]", "count": 0 }
+      ]
+    },
+    {
+      "id": "r3-mem-10-plan-gunleri-protein-hedefinde",
+      "source": "round3:mem#10",
+      "package": "A",
+      "pipeline": "plan",
+      "title": "Plan günleri protein hedefinin (149 g) ±%15'inde, kcal bakım bandında.",
+      "turn_input": { "draft": null },
+      "message": "bana bu hafta icin haftalik diyet plani hazirlar misin",
+      "expect": [
+        { "path": "plan.days[*].protein_g", "between": [127, 171], "quantifier": "all" },
+        { "path": "plan.days[*].kcal", "between": [2650, 2980], "quantifier": "all" }
+      ]
+    },
+    {
+      "id": "r3-mem-11-alerji-beyani-simulasyon-degil",
+      "source": "round3:mem#11",
+      "package": "A",
+      "title": "Alerji beyanı ‘yersem’ yüzünden simülasyona gitmez; varsayım değil, olgu bildirimi.",
+      "turn_input": {
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "egg", "display_tr": "yumurta", "severity": "severe", "whose": "self", "active": true }
+        ]
+      },
+      "message": "fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor",
+      "expect": [
+        { "path": "decision.simulation", "absent": true },
+        { "path": "decision.intent.is_hypothetical", "eq": false },
+        { "path": "decision.reply_route.contract", "ne": "emergency" }
+      ]
+    },
+    {
+      "id": "r3-mem-12-ilac-sorusu-yb-yonlendirmesi-yok",
+      "source": "round3:mem#12",
+      "package": "B-",
+      "title": "İlaç zamanlaması sorusu YB sinyali değildir; ASCII ‘siz’ dilli kalıp yönlendirme eklenmez.",
+      "message": "doktorun verdigi levotiroksini sabah mi aksam mi almam lazim?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.safety.ed_signal", "flag": false },
+        { "path": "decision.safety.self_harm", "flag": false },
+        { "path": "decision.writes[op=meal_log]", "count": 0 }
+      ],
+      "reply_rubric": ["no_canned_referral", "diacritics_ok"]
+    },
+    {
+      "id": "r3-mem-13a-dogum-yili-duzeltmesi",
+      "source": "round3:mem#13",
+      "package": "A",
+      "title": "‘1988 doğumluyum’ doğum yılı alanına 1988 olarak yazılır (yaş değil).",
+      "message": "yasimi yanlis girmisim galiba, 1988 doğumluyum ben",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=profile_set].changes[field=birth_year].value", "in": ["1988", 1988] },
+        { "path": "decision.writes[op=profile_set].changes[field=age]", "count": 0 }
+      ]
+    },
+    {
+      "id": "r3-mem-13b-makbuzda-ingilizce-enum-yok",
+      "source": "round3:mem#13",
+      "package": "D",
+      "title": "Aktivite makbuzu Türkçe etiketle yazılır (‘masa başı/hareketsiz’), ‘sedentary’ sızmaz.",
+      "message": "bu arada isimi degistirdim, artik masa basi calisiyorum, gun boyu oturuyorum. eskisi gibi hareketli degilim",
+      "turn_input": {},
+      "expect": [
+        { "path": "receipts[*].user_line", "not_contains_any": ["sedentary", "lightly_active", "standard"] }
+      ],
+      "reply_rubric": ["no_english_enum_leak"]
+    },
+    {
+      "id": "r3-mem-14-bayat-taslakta-yeni-plan",
+      "source": "round3:mem#14",
+      "package": "A",
+      "title": "Üç aylık bayat taslak varken yeni plan isteği generate'tir; eski taslak yeniden kullanılmaz.",
+      "turn_input": {
+        "draft": { "ref": "dft1", "plan_type": "diet", "version": 2, "line": "13–19 Tem haftası · 17 Tem 2026 oluşturuldu · bayat taslak" }
+      },
+      "message": "bana bu hafta icin haftalik diyet plani hazirlar misin",
+      "expect": [
+        { "path": "decision.plan_action.op", "eq": "generate" },
+        { "path": "decision.plan_action.plan_type", "eq": "diet" },
+        { "path": "plan.version", "eq": 1 }
+      ]
+    },
+    {
+      "id": "r3-mem-15-meniskus-tekrar-antrenman-istegi",
+      "source": "round3:mem#15",
+      "package": "B+",
+      "title": "Diz ağrısı tekrarında sakatlık geri çekilmez/ezilmez; önerilen egzersizler dizi yüklemez.",
+      "message": "dizim yine agriyor, menisküs. bugun evde yapabilecegim 25 dakikalik bir antrenman verir misin",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=constraint_retract]", "count": 0 },
+        { "path": "decision.writes[op=workout_log]", "count": 0 },
+        { "path": "reply.suggested_exercises..loads", "not_contains_any": ["knee", "diz"] },
+        { "path": "reply.suggested_exercises[*].name", "not_contains_any": ["squat", "lunge", "step-up", "ip atlama", "jumping jack", "wall sit"] }
+      ]
+    }
+  ]
+}

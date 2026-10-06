@@ -1,0 +1,71 @@
+{
+  "group": "owner-decisions",
+  "defaults": {
+    "persona": "final2",
+    "source": "owner:2026-10-06",
+    "tags": ["owner", "suspicious-record"],
+    "turn_input": {
+      "records": [
+        { "ref": "m12", "kind": "meal", "day": "2026-10-01", "line": "Per 1 Eki akşam · \"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\" → tavuk nugget 6 adet ~900 g 1708 kcal (P279 K0 Y60) [reference]" },
+        { "ref": "m30", "kind": "meal", "day": "2026-10-04", "line": "Paz 4 Eki akşam 20:25 · \"akşam yemeğinde 1 kase mercimek çorbası ve 1 dilim ekmek yedim\" → mercimek çorbası 1 kase ~250 g 165 kcal; ekmek 1 dilim ~30 g 75 kcal [model]" }
+      ]
+    }
+  },
+  "fixtures": [
+    {
+      "id": "owner-supheli-eski-kayit-sessizce-duzeltilmez",
+      "package": "A",
+      "title": "Bağlamdaki şüpheli eski kayıt (1708 kcal nugget) sessizce düzeltilmez; koç bir kez ‘düzelteyim mi?’ diye sorar.",
+      "message": "bu hafta toplam kaç kalori aldım sence, iyi gidiyor muyum?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.record_ops", "count": 0, "why": "Toplu/sessiz düzeltme yok (sahip kararı 2026-10-06)." },
+        { "path": "decision.writes", "count": 0 },
+        { "any_of": [
+          { "path": "decision.clarify.candidate_refs", "contains": "m12" },
+          { "path": "reply.reply", "contains_any": ["düzelteyim", "yanlış görünüyor", "hatalı görünüyor"] }
+        ], "why": "Model kaydı GÖRÜR ve bir kez sorar." }
+      ],
+      "reply_rubric": ["max_one_question"]
+    },
+    {
+      "id": "owner-supheli-kayit-onayla-duzelt",
+      "package": "A",
+      "title": "Koçun ‘düzelteyim mi?’ sorusuna ‘evet’ → m12 ref'iyle update; yeni öğün yok.",
+      "turn_input": {
+        "history": [
+          { "role": "user", "content": "bu hafta toplam kaç kalori aldım sence, iyi gidiyor muyum?" },
+          { "role": "assistant", "content": "Genel gidişat iyi. Yalnız perşembe akşamki nugget kaydı 1708 kcal görünüyor; 6 nugget için bu çok yüksek, yanlış görünüyor. Düzelteyim mi?" }
+        ]
+      },
+      "message": "evet düzelt, normal boy 6 nuggetti",
+      "expect": [
+        { "path": "decision.record_ops[op=update].ref", "eq": "m12" },
+        { "path": "decision.record_ops[op=update].patch..kcal", "between": [200, 450] },
+        { "path": "decision.writes[op=meal_log][replaces=null]", "count": 0 },
+        { "path": "decision.record_ops[*].ref", "not_in": ["m30"] }
+      ],
+      "reply_rubric": ["claims_subset_of_receipts"]
+    },
+    {
+      "id": "owner-supheli-kayit-bir-kez-sorulur",
+      "package": "A'",
+      "title": "Kullanıcı soruyu geçiştirdiyse şüpheli kayıt aynı oturumda ikinci kez sorulmaz ve dokunulmaz.",
+      "turn_input": {
+        "history": [
+          { "role": "user", "content": "bu hafta toplam kaç kalori aldım sence, iyi gidiyor muyum?" },
+          { "role": "assistant", "content": "Genel gidişat iyi. Yalnız perşembe akşamki nugget kaydı 1708 kcal görünüyor, yanlış gibi. Düzelteyim mi?" },
+          { "role": "user", "content": "boşver şimdi onu" },
+          { "role": "assistant", "content": "Tamam, dokunmuyorum." }
+        ]
+      },
+      "message": "yarın kahvaltıda ne yesem?",
+      "expect": [
+        { "path": "decision.record_ops", "count": 0 },
+        { "path": "decision.writes", "count": 0 },
+        { "path": "decision.clarify.candidate_refs", "not_contains": "m12" },
+        { "path": "reply.reply", "not_contains": "nugget" }
+      ]
+    }
+  ]
+}

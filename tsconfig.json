@@ -23,6 +23,7 @@
     "supabase/functions/cleanup-scheduled",
     "supabase/functions/legal",
     "supabase/functions/shared/*.ts",
-    "supabase/functions/shared/write-registry"
+    "supabase/functions/shared/write-registry",
+    "scripts/eval-v2.ts"
   ]
 }

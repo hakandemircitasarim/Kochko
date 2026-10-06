@@ -1,0 +1,40 @@
+{
+  "group": "contract-d",
+  "defaults": { "persona": "fresh", "package": "D", "tags": ["contract"] },
+  "fixtures": [
+    {
+      "id": "d-ogun-commit-karara-esit",
+      "source": "spec:§2-kural-1",
+      "title": "İşlenen öğün satırı == modelin argümanı: kcal, gram ve as_stated aynen (sessiz yeniden yazım yok).",
+      "message": "2 yumurta ve 1 dilim tam buğday ekmeği yedim",
+      "turn_input": {},
+      "expect": [
+        { "path": "commit.meal_log.items[*].kcal", "eq_path": "decision.writes[op=meal_log].items[*].kcal" },
+        { "path": "commit.meal_log.items[*].grams", "eq_path": "decision.writes[op=meal_log].items[*].grams" },
+        { "path": "commit.meal_log.items[*].as_stated", "eq_path": "decision.writes[op=meal_log].items[*].as_stated" }
+      ]
+    },
+    {
+      "id": "d-su-derive-uc-bardak",
+      "source": "spec:§4.4-water_log",
+      "title": "derive(): 3 bardak × 200 ml = 0,60 L; işlenen değer derive'ın kendisi.",
+      "message": "3 bardak su içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "commit.water_log.liters", "between": [0.59, 0.61] },
+        { "path": "commit.water_log.as_stated", "eq_path": "decision.writes[op=water_log].as_stated" }
+      ]
+    },
+    {
+      "id": "d-makbuz-diakritikli-turkce",
+      "source": "round3:final2#15",
+      "title": "Antrenman makbuzu diakritikli Türkçe (‘yakım’, ‘Bugün için’), ASCII kalıp yok.",
+      "message": "dün akşam 45 dakika tempolu yürüdüm",
+      "turn_input": {},
+      "expect": [
+        { "path": "receipts[*].user_line", "not_contains_any": ["yakim", "Bugun icin", "alani acildi"] }
+      ],
+      "reply_rubric": ["diacritics_ok", "no_english_enum_leak"]
+    }
+  ]
+}
