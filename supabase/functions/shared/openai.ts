@@ -17,7 +17,11 @@
  * OPENAI_BASE_URL for. Deleting the legacy path would turn a 10-second recovery into a redeploy
  * during an incident, and would also break Azure/OpenRouter gateways that never shipped /responses.
  * The predicate is the model id, so the transport always matches whatever the secret names.
+ *
+ * v2 (AI_MIMARI_V2 §10 Faz 1): `respond()` at the bottom is a SEPARATE strict-schema path for the
+ * decide/understand calls. chatCompletion and its fallback chain are untouched for v1 callers.
  */
+import { SCHEMA_NAME_RE, validateJsonSchema, type JsonSchema } from './json-schema-check.ts';
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 // Provider/base-URL is configurable so the project can be pointed at any
@@ -561,6 +565,622 @@ export function buildVisionContent(text: string, imageBase64: string): unknown[]
     image_url: { url: `data:image/jpeg;base64,${imageBase64}`, detail: 'high' },
   });
   return content;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// v2 strict-schema path — respond()  (docs/AI_MIMARI_V2.md §3.2 T4, §5.1, §10 Faz 1)
+//
+// Different contract from chatCompletion, on purpose:
+//   - The output shape is a JSON schema the PROVIDER enforces (Responses `text.format`, legacy
+//     `response_format.json_schema`). Gateways that cannot do that degrade to `json_object` and
+//     the same schema is checked locally (injectable validator).
+//   - It NEVER changes model. A refusal, an empty answer or an off-schema object comes back as a
+//     typed outcome. The 2026-10-04 bench showed the fast tier ignoring a recorded allergy, so a
+//     silent luna answer on a decision turn is worse than an honest failure the caller can route
+//     (Stage A: fail closed to the ready-made reply, §7.2).
+//   - It never throws for upstream behaviour; every path returns a RespondResult with usage,
+//     latency and the retries it spent, so the ledger can record what actually happened.
+//   - `store:false` is always sent on /responses (provider default there is true; these are
+//     health conversations, §11 risk 10).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** A named JSON schema for structured output. `strict` defaults to true. */
+export interface StructuredSchema {
+  name: string;
+  schema: JsonSchema;
+  strict?: boolean;
+  description?: string;
+}
+
+/**
+ * - `json_schema`: provider-enforced (default).
+ * - `json_object`: for gateways without json_schema — the schema travels as an instruction and is
+ *   validated locally.
+ * - `auto`: try json_schema; if the gateway answers 400/422 saying the format is unsupported,
+ *   degrade ONCE to json_object on the SAME model (recorded in `retries`).
+ */
+export type StructuredFormat = 'json_schema' | 'json_object' | 'auto';
+
+/** Function tool declaration (Responses shape; translated for the legacy path). */
+export interface FunctionTool {
+  type: 'function';
+  name: string;
+  description?: string;
+  parameters: JsonSchema;
+  strict?: boolean;
+}
+
+export interface FunctionCall {
+  callId: string;
+  name: string;
+  /** Raw argument string exactly as the model produced it. */
+  arguments: string;
+  /** JSON.parse(arguments), or null when it is not valid JSON. */
+  parsedArguments: unknown;
+}
+
+export interface RespondUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  /** Billed as output but never visible; explains cost when effort rises. */
+  reasoningTokens: number;
+  /** Input tokens served from the prompt cache (the Stage A prefix is shared by all users). */
+  cachedTokens: number;
+}
+
+/** fetch-compatible seam. Tests and the eval replay runner inject a fake; production uses fetch. */
+export type Transport = (url: string, init: RequestInit) => Promise<Response>;
+
+export interface RespondOptions {
+  model?: string;
+  effort?: ReasoningEffort;
+  /** A bare string is sent as one user message. */
+  input: ChatMessage[] | string;
+  schema: StructuredSchema;
+  /** Defaults to the KOCHKO_SCHEMA_FORMAT secret, else 'json_schema'. */
+  format?: StructuredFormat;
+  /** Visible output budget; the reasoning reserve is added on top (resolveOutputBudget). */
+  maxTokens?: number;
+  cacheKey?: string;
+  /** Only `false` is representable: decision calls are never stored provider-side. */
+  store?: false;
+  tools?: FunctionTool[];
+  toolChoice?: 'auto' | 'none' | 'required';
+  /** /responses-only passthrough, e.g. ['reasoning.encrypted_content'] for a stateless tool loop. */
+  include?: string[];
+  /** OVERALL wall-clock budget across every attempt (Stage A uses ~4 s). Default: effort-scaled. */
+  timeoutMs?: number;
+  /** Local schema check; returns issues, [] = valid. Default: validateJsonSchema(schema.schema). */
+  validator?: (value: unknown) => string[];
+  /** Legacy /chat/completions only (reasoning models reject temperature). Default 0.2: parse-like. */
+  temperature?: number;
+  baseUrl?: string;
+  apiKey?: string;
+  transport?: Transport;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export interface RespondError {
+  class: 'http' | 'timeout' | 'network' | 'bad_response' | 'invalid_request';
+  status: number | null;
+  message: string;
+}
+
+interface RespondMeta {
+  modelRequested: string;
+  /** Always the requested id — respond() has no model fallback. Kept for UsageReceipt parity. */
+  modelServed: string;
+  /** The provider's own `model` echo (often a dated snapshot), or null. */
+  providerModel: string | null;
+  api: 'responses' | 'chat_completions';
+  /** What was actually sent on the final attempt. */
+  format: 'json_schema' | 'json_object';
+  effort: ReasoningEffort | null;
+  /** Summed over every attempt that returned a body (a truncated attempt is still billed). */
+  usage: RespondUsage;
+  latencyMs: number;
+  attempts: number;
+  retries: string[];
+  responseId: string | null;
+  /** Provider status: 'completed' | 'incomplete' | chat finish_reason | 'error'. */
+  status: string;
+  /** Normalised: 'stop' | 'length' | 'content_filter' | 'tool_calls' | 'error' | other. */
+  finishReason: string;
+  text: string;
+  refusal: string | null;
+  functionCalls: FunctionCall[];
+  /** Raw provider output items (Responses `output[]`; legacy: [choices[0].message]). */
+  outputItems: unknown[];
+}
+
+export type RespondResult<T> =
+  | (RespondMeta & { kind: 'parsed'; value: T })
+  | (RespondMeta & { kind: 'refusal'; refusal: string })
+  | (RespondMeta & { kind: 'function_call' })
+  | (RespondMeta & { kind: 'invalid'; issues: string[]; candidate: unknown })
+  | (RespondMeta & { kind: 'incomplete'; reason: string })
+  | (RespondMeta & { kind: 'error'; error: RespondError });
+
+export function parseSchemaFormat(raw: string | undefined | null): StructuredFormat {
+  const v = (raw ?? '').trim().toLowerCase();
+  return v === 'json_object' || v === 'auto' ? v : 'json_schema';
+}
+
+// Operator lever for the gateway rollback: KOCHKO_SCHEMA_FORMAT=json_object (or auto) next to
+// OPENAI_BASE_URL / KOCHKO_MODEL_SMART — a secret-set, not a deploy.
+const DEFAULT_SCHEMA_FORMAT: StructuredFormat = parseSchemaFormat(Deno.env.get('KOCHKO_SCHEMA_FORMAT'));
+
+// A retry only makes sense if a real attempt still fits in the caller's budget.
+const MIN_ATTEMPT_MS = 1_000;
+const MAX_RESPOND_TOKENS = 32_000;
+
+function isOpenAiHost(baseUrl: string): boolean {
+  try { return new URL(baseUrl).hostname === 'api.openai.com'; } catch { return false; }
+}
+
+/**
+ * The instruction that carries the schema on the json_object path. It is PREPENDED (not appended
+ * like chatCompletion's json hint) so the request still starts with a byte-stable prefix that is
+ * identical for every user — the cache property the strict path gets from `text.format`.
+ * Contains the literal word "JSON", which json_object mode requires.
+ */
+export function schemaInstruction(schema: StructuredSchema): string {
+  return [
+    'Yanıtını yalnızca aşağıdaki JSON şemasına birebir uyan tek bir JSON nesnesi olarak ver. Şemada olmayan alan ekleme, zorunlu alanları atlama; bilinmeyen değer için şemanın izin verdiği null değerini kullan.',
+    '(Respond with exactly ONE JSON object that validates against this JSON schema.)',
+    `Şema adı: ${schema.name}`,
+    JSON.stringify(schema.schema),
+  ].join('\n');
+}
+
+export interface RespondRequest {
+  api: 'responses' | 'chat_completions';
+  url: string;
+  body: Record<string, unknown>;
+}
+
+/**
+ * Pure request builder — the exact body respond() sends. Exported so the eval runner can key its
+ * replay cache on sha256(body) and so tests can pin the wire shape without a network.
+ */
+export function buildRespondRequest(p: {
+  model: string;
+  effort: ReasoningEffort | null;
+  format: 'json_schema' | 'json_object';
+  messages: ChatMessage[];
+  schema: StructuredSchema;
+  maxTokens: number;
+  baseUrl: string;
+  cacheKey?: string;
+  tools?: FunctionTool[];
+  toolChoice?: 'auto' | 'none' | 'required';
+  include?: string[];
+  temperature?: number;
+}): RespondRequest {
+  const base = p.baseUrl.replace(/\/+$/, '');
+  const openAi = isOpenAiHost(base);
+  const strict = p.schema.strict !== false;
+  const messages: ChatMessage[] = p.format === 'json_object'
+    ? [{ role: 'system', content: schemaInstruction(p.schema) }, ...p.messages]
+    : p.messages;
+
+  if (usesResponsesApi(p.model)) {
+    const format = p.format === 'json_schema'
+      ? {
+        type: 'json_schema',
+        name: p.schema.name,
+        ...(p.schema.description ? { description: p.schema.description } : {}),
+        schema: p.schema.schema,
+        strict,
+      }
+      : { type: 'json_object' };
+    const body: Record<string, unknown> = {
+      model: p.model,
+      input: messages.map(toResponsesMessage),
+      max_output_tokens: resolveOutputBudget(p.maxTokens, p.effort ?? undefined),
+      reasoning: { effort: p.effort ?? 'low' },
+      text: { format },
+      store: false,
+    };
+    if (p.tools?.length) {
+      body.tools = p.tools.map((t) => ({
+        type: 'function',
+        name: t.name,
+        ...(t.description ? { description: t.description } : {}),
+        parameters: t.parameters,
+        strict: t.strict !== false,
+      }));
+      if (p.toolChoice) body.tool_choice = p.toolChoice;
+    }
+    if (p.include?.length) body.include = p.include;
+    if (p.cacheKey && openAi) body.prompt_cache_key = p.cacheKey;
+    return { api: 'responses', url: `${base}/responses`, body };
+  }
+
+  const responseFormat = p.format === 'json_schema'
+    ? {
+      type: 'json_schema',
+      json_schema: {
+        name: p.schema.name,
+        ...(p.schema.description ? { description: p.schema.description } : {}),
+        schema: p.schema.schema,
+        strict,
+      },
+    }
+    : { type: 'json_object' };
+  const body: Record<string, unknown> = {
+    model: p.model,
+    messages,
+    temperature: p.temperature ?? 0.2,
+    max_tokens: p.maxTokens,
+    response_format: responseFormat,
+  };
+  if (p.tools?.length) {
+    body.tools = p.tools.map((t) => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        ...(t.description ? { description: t.description } : {}),
+        parameters: t.parameters,
+        strict: t.strict !== false,
+      },
+    }));
+    if (p.toolChoice) body.tool_choice = p.toolChoice;
+  }
+  // Same reasoning as SENDS_CACHE_KEY: strict gateways 400 on unknown arguments, and on
+  // OpenAI's chat endpoint store already defaults to false — explicit there, omitted elsewhere.
+  if (openAi) body.store = false;
+  if (p.cacheKey && openAi) body.prompt_cache_key = p.cacheKey;
+  return { api: 'chat_completions', url: `${base}/chat/completions`, body };
+}
+
+interface ParsedOutput {
+  text: string;
+  refusal: string | null;
+  functionCalls: FunctionCall[];
+  items: unknown[];
+  status: string;
+  finishReason: string;
+  usage: RespondUsage;
+  responseId: string | null;
+  providerModel: string | null;
+  providerError: string | null;
+}
+
+function toFunctionCall(callId: unknown, name: unknown, args: unknown): FunctionCall {
+  const raw = typeof args === 'string' ? args : JSON.stringify(args ?? null);
+  let parsed: unknown = null;
+  try { parsed = JSON.parse(raw); } catch { parsed = null; }
+  return { callId: typeof callId === 'string' ? callId : '', name: typeof name === 'string' ? name : '', arguments: raw, parsedArguments: parsed };
+}
+
+/**
+ * Walk a /responses body. Unlike extractResponsesText (kept as-is for chatCompletion), this
+ * surfaces `refusal` parts and `function_call` items instead of dropping them — a dropped refusal
+ * is what used to turn into "empty content → retry on the fast model".
+ */
+export function parseResponsesOutput(data: Record<string, unknown>): ParsedOutput {
+  const items = Array.isArray(data.output) ? data.output as unknown[] : [];
+  const texts: string[] = [];
+  const refusals: string[] = [];
+  const functionCalls: FunctionCall[] = [];
+  for (const raw of items) {
+    const item = raw as Record<string, unknown>;
+    if (item?.type === 'function_call') {
+      functionCalls.push(toFunctionCall(item.call_id ?? item.id, item.name, item.arguments));
+      continue;
+    }
+    if (item?.type !== 'message') continue; // reasoning items are private thinking, never the answer
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const rawPart of content) {
+      const part = rawPart as Record<string, unknown>;
+      if (part?.type === 'output_text' && typeof part.text === 'string') texts.push(part.text);
+      else if (part?.type === 'refusal' && typeof part.refusal === 'string') refusals.push(part.refusal);
+    }
+  }
+  let text = texts.join('');
+  if (text.trim() === '' && typeof data.output_text === 'string') text = data.output_text;
+  const refusal = refusals.join(' ').trim();
+
+  const status = typeof data.status === 'string' ? data.status : 'completed';
+  const incompleteReason = (data.incomplete_details as { reason?: string } | undefined)?.reason;
+  const finishReason = status === 'incomplete'
+    ? (incompleteReason === 'max_output_tokens' ? 'length' : (incompleteReason ?? 'incomplete'))
+    : status === 'failed' || status === 'cancelled'
+      ? 'error'
+      : functionCalls.length > 0 ? 'tool_calls' : 'stop';
+
+  const u = (data.usage ?? {}) as {
+    input_tokens?: number;
+    output_tokens?: number;
+    total_tokens?: number;
+    output_tokens_details?: { reasoning_tokens?: number };
+    input_tokens_details?: { cached_tokens?: number };
+  };
+  const err = data.error as { message?: string } | null | undefined;
+  return {
+    text,
+    refusal: refusal === '' ? null : refusal,
+    functionCalls,
+    items,
+    status,
+    finishReason,
+    usage: {
+      inputTokens: u.input_tokens ?? 0,
+      outputTokens: u.output_tokens ?? 0,
+      totalTokens: u.total_tokens ?? ((u.input_tokens ?? 0) + (u.output_tokens ?? 0)),
+      reasoningTokens: u.output_tokens_details?.reasoning_tokens ?? 0,
+      cachedTokens: u.input_tokens_details?.cached_tokens ?? 0,
+    },
+    responseId: typeof data.id === 'string' ? data.id : null,
+    providerModel: typeof data.model === 'string' ? data.model : null,
+    providerError: err && typeof err.message === 'string' ? err.message : null,
+  };
+}
+
+/** Walk a /chat/completions body: content, `message.refusal`, `message.tool_calls`. */
+export function parseChatCompletionOutput(data: Record<string, unknown>): ParsedOutput {
+  const choices = Array.isArray(data.choices) ? data.choices as Array<Record<string, unknown>> : [];
+  const choice = choices[0] ?? {};
+  const message = (choice.message ?? null) as Record<string, unknown> | null;
+  const text = typeof message?.content === 'string' ? message.content : '';
+  const refusalRaw = typeof message?.refusal === 'string' ? message.refusal.trim() : '';
+  const toolCalls = Array.isArray(message?.tool_calls) ? message!.tool_calls as Array<Record<string, unknown>> : [];
+  const functionCalls = toolCalls
+    .filter((c) => c?.type === 'function' || c?.function)
+    .map((c) => {
+      const fn = (c.function ?? {}) as Record<string, unknown>;
+      return toFunctionCall(c.id, fn.name, fn.arguments);
+    });
+  const finishReason = typeof choice.finish_reason === 'string' ? choice.finish_reason : 'stop';
+  const u = (data.usage ?? {}) as {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
+    completion_tokens_details?: { reasoning_tokens?: number };
+  };
+  return {
+    text,
+    refusal: refusalRaw === '' ? null : refusalRaw,
+    functionCalls,
+    items: message ? [message] : [],
+    status: finishReason,
+    finishReason: finishReason === 'function_call' ? 'tool_calls' : finishReason,
+    usage: {
+      inputTokens: u.prompt_tokens ?? 0,
+      outputTokens: u.completion_tokens ?? 0,
+      totalTokens: u.total_tokens ?? ((u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0)),
+      reasoningTokens: u.completion_tokens_details?.reasoning_tokens ?? 0,
+      cachedTokens: u.prompt_tokens_details?.cached_tokens ?? 0,
+    },
+    responseId: typeof data.id === 'string' ? data.id : null,
+    providerModel: typeof data.model === 'string' ? data.model : null,
+    providerError: null,
+  };
+}
+
+/**
+ * Does this 400/422 say "this endpoint/model cannot do json_schema" (→ degrade the FORMAT) rather
+ * than "your schema is wrong" (→ a bug that must surface)? Only consulted in `auto` mode. This
+ * reads a provider error string, never user text.
+ */
+export function looksLikeFormatUnsupported(status: number, errBody: string): boolean {
+  if (status !== 400 && status !== 422) return false;
+  if (/invalid schema/i.test(errBody)) return false;
+  return /(json_schema|response_format|text\.format)/i.test(errBody)
+    && /(not supported|unsupported|unknown|unrecognized|not allowed|not permitted)/i.test(errBody);
+}
+
+function providerMessage(errBody: string): string {
+  try {
+    const j = JSON.parse(errBody) as { error?: { message?: unknown } | string; message?: unknown };
+    const m = typeof j.error === 'string' ? j.error : j.error?.message ?? j.message;
+    if (typeof m === 'string' && m.trim() !== '') return m.slice(0, 500);
+  } catch { /* not JSON — fall through to the raw text */ }
+  return errBody.slice(0, 500);
+}
+
+const ZERO_USAGE: RespondUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, reasoningTokens: 0, cachedTokens: 0 };
+
+/**
+ * Strict-schema structured call. Returns a typed outcome; the caller decides what each one means
+ * (Stage A: `parsed` → validate, anything else → fail closed).
+ *
+ * Retries, all on the SAME model and all recorded in `retries`: one transient retry (429/5xx/
+ * network) after backoff, one truncation retry with a doubled budget, and — `auto` only — one
+ * format degrade to json_object. A timeout is never retried: the budget is already spent.
+ */
+export async function respond<T = unknown>(opts: RespondOptions): Promise<RespondResult<T>> {
+  const startedAt = Date.now();
+  const model = (opts.model ?? MODELS.primary).trim();
+  const api: 'responses' | 'chat_completions' = usesResponsesApi(model) ? 'responses' : 'chat_completions';
+  const effort: ReasoningEffort | null = api === 'responses' ? effortFor(model, opts.effort ?? 'low') : null;
+  const requestedFormat = opts.format ?? DEFAULT_SCHEMA_FORMAT;
+  let format: 'json_schema' | 'json_object' = requestedFormat === 'json_object' ? 'json_object' : 'json_schema';
+  const budgetMs = opts.timeoutMs ?? resolveTimeoutMs(effort ?? undefined);
+  const deadline = startedAt + budgetMs;
+  const transport: Transport = opts.transport ?? ((url, init) => fetch(url, init));
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const baseUrl = opts.baseUrl ?? OPENAI_BASE_URL;
+  const apiKey = opts.apiKey ?? OPENAI_API_KEY;
+  const messages: ChatMessage[] = typeof opts.input === 'string' ? [{ role: 'user', content: opts.input }] : opts.input;
+  const validator = opts.validator ?? ((v: unknown) => validateJsonSchema(opts.schema.schema, v));
+
+  const usage: RespondUsage = { ...ZERO_USAGE };
+  const retries: string[] = [];
+  let attempts = 0;
+  let maxTokens = opts.maxTokens ?? 2000;
+  let transientRetried = false;
+  let budgetRetried = false;
+  let formatDegraded = false;
+
+  const meta = (p: Partial<ParsedOutput> = {}): RespondMeta => ({
+    modelRequested: model,
+    modelServed: model,
+    providerModel: p.providerModel ?? null,
+    api,
+    format,
+    effort,
+    usage: { ...usage },
+    latencyMs: Date.now() - startedAt,
+    attempts,
+    retries: [...retries],
+    responseId: p.responseId ?? null,
+    status: p.status ?? 'error',
+    finishReason: p.finishReason ?? 'error',
+    text: p.text ?? '',
+    refusal: p.refusal ?? null,
+    functionCalls: p.functionCalls ?? [],
+    outputItems: p.items ?? [],
+  });
+  const fail = (cls: RespondError['class'], status: number | null, message: string, p?: Partial<ParsedOutput>): RespondResult<T> =>
+    ({ ...meta(p), kind: 'error', error: { class: cls, status, message } });
+
+  if (!opts.schema || !SCHEMA_NAME_RE.test(opts.schema.name ?? '') || typeof opts.schema.schema !== 'object' || opts.schema.schema === null) {
+    return fail('invalid_request', null, 'schema must be {name: /^[A-Za-z0-9_-]{1,64}$/, schema: object}');
+  }
+  if (messages.length === 0) return fail('invalid_request', null, 'input is empty');
+
+  while (true) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return fail('timeout', null, `no answer within ${budgetMs}ms`);
+    attempts++;
+    const req = buildRespondRequest({
+      model, effort, format, messages, schema: opts.schema, maxTokens, baseUrl,
+      cacheKey: opts.cacheKey, tools: opts.tools, toolChoice: opts.toolChoice, include: opts.include,
+      temperature: opts.temperature,
+    });
+
+    let response: Response;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Raced against the abort so a transport that ignores `signal` still cannot hang the turn.
+      const aborted = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new DOMException('respond() budget exhausted', 'AbortError'));
+        }, remaining);
+      });
+      response = await Promise.race([
+        transport(req.url, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(req.body),
+          signal: controller.signal,
+        }),
+        aborted,
+      ]);
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return fail('timeout', null, `no answer within ${budgetMs}ms`);
+      const msg = (e as Error)?.message ?? String(e);
+      if (!transientRetried && deadline - Date.now() > 500 + MIN_ATTEMPT_MS) {
+        transientRetried = true;
+        retries.push('network_retry');
+        await sleep(500);
+        continue;
+      }
+      return fail('network', null, msg.slice(0, 500));
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      const status = response.status;
+      const transient = status === 429 || status >= 500;
+      if (transient && !transientRetried) {
+        const delayMs = resolveBackoffMs(response, false);
+        if (deadline - Date.now() > delayMs + MIN_ATTEMPT_MS) {
+          transientRetried = true;
+          retries.push(`http_${status}_retry`);
+          await sleep(delayMs);
+          continue;
+        }
+      }
+      if (requestedFormat === 'auto' && format === 'json_schema' && !formatDegraded && looksLikeFormatUnsupported(status, errBody)) {
+        formatDegraded = true;
+        format = 'json_object';
+        retries.push('format_degraded');
+        continue;
+      }
+      return fail('http', status, providerMessage(errBody));
+    }
+
+    let data: Record<string, unknown>;
+    try {
+      const parsedBody = await response.json();
+      if (typeof parsedBody !== 'object' || parsedBody === null) throw new Error('body is not an object');
+      data = parsedBody as Record<string, unknown>;
+    } catch (e) {
+      return fail('bad_response', response.status, `unparseable provider body: ${(e as Error)?.message ?? e}`);
+    }
+
+    const out = api === 'responses' ? parseResponsesOutput(data) : parseChatCompletionOutput(data);
+    usage.inputTokens += out.usage.inputTokens;
+    usage.outputTokens += out.usage.outputTokens;
+    usage.totalTokens += out.usage.totalTokens;
+    usage.reasoningTokens += out.usage.reasoningTokens;
+    usage.cachedTokens += out.usage.cachedTokens;
+
+    // Truncated strict JSON is unparseable by construction; one same-model retry with room to finish.
+    if (out.finishReason === 'length' && !out.refusal && out.functionCalls.length === 0 && !budgetRetried) {
+      const bumped = maxTokens * 2;
+      if (bumped <= MAX_RESPOND_TOKENS && deadline - Date.now() > MIN_ATTEMPT_MS) {
+        budgetRetried = true;
+        maxTokens = bumped;
+        retries.push('truncation_retry');
+        continue;
+      }
+    }
+
+    const m = meta(out);
+    if (out.refusal) return { ...m, kind: 'refusal', refusal: out.refusal };
+    if (out.functionCalls.length > 0) return { ...m, kind: 'function_call' };
+    if (out.finishReason === 'error') return fail('bad_response', response.status, out.providerError ?? `provider status ${out.status}`, out);
+    if (out.status === 'incomplete' || out.finishReason === 'length' || out.finishReason === 'content_filter') {
+      return { ...m, kind: 'incomplete', reason: out.finishReason };
+    }
+
+    const trimmed = out.text.trim();
+    if (trimmed === '') return { ...m, kind: 'invalid', issues: ['empty_output'], candidate: null };
+    let value: unknown;
+    try {
+      value = JSON.parse(trimmed);
+    } catch (e) {
+      return { ...m, kind: 'invalid', issues: [`malformed_json: ${(e as Error)?.message ?? e}`], candidate: null };
+    }
+    let issues: string[];
+    try {
+      issues = validator(value);
+    } catch (e) {
+      issues = [`validator_threw: ${(e as Error)?.message ?? e}`];
+    }
+    if (issues.length > 0) return { ...m, kind: 'invalid', issues, candidate: value };
+    return { ...m, kind: 'parsed', value: value as T };
+  }
+}
+
+/**
+ * Map a respond() result onto the ai_turn_log receipt shape, so writeTurnLog persists v2 calls
+ * with the same columns as v1. `fallbackReason` carries the same-model retries (never a model swap).
+ */
+export function respondReceipt(r: RespondResult<unknown>): UsageReceipt {
+  return {
+    modelRequested: r.modelRequested,
+    modelServed: r.modelServed,
+    promptTokens: r.usage.inputTokens,
+    completionTokens: r.usage.outputTokens,
+    totalTokens: r.usage.totalTokens,
+    latencyMs: r.latencyMs,
+    finishReason: r.kind === 'parsed' ? r.finishReason : `${r.kind}:${r.finishReason}`,
+    fallbackReason: r.retries.length > 0 ? r.retries.join(',') : null,
+    attempts: r.attempts,
+    reasoningTokens: r.usage.reasoningTokens,
+    cachedTokens: r.usage.cachedTokens,
+  };
 }
 
 export { MODELS };
