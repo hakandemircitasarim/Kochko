@@ -39,6 +39,16 @@ export function formatNote(dateStr: string, source: NoteSource, text: string): s
 }
 
 /**
+ * KVKK Md.17 — the ONE sanctioned wipe of this log. "Append-only" guards the notes against an
+ * ACCIDENTAL replace; a user who CONFIRMED (two-step, shared/erase-hold.ts) that their coach memory
+ * be erased is the opposite case. Returned as a patch so it rides in the SAME ai_summary write as the
+ * tombstone — a half-erased memory must not exist.
+ */
+export function coachingNotesErasePatch(): { coaching_notes: string } {
+  return { coaching_notes: '' };
+}
+
+/**
  * Append ONE dated observation. Read-modify-write on purpose: the merge RPC replaces, and there is
  * no server-side append primitive for a text column. The race window is a single user's own turns,
  * and losing a duplicate observation is a far smaller harm than the wholesale wipe this replaces.

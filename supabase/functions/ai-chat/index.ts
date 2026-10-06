@@ -37,6 +37,7 @@ import { expandCompactDietSnapshot } from '../shared/plan-compact.ts';
 import { resolveTurnMode, isOnboardingHint, isPlanMode, wantsToDropIntent, classifyPlanIntent } from './turn.ts';
 import { failureLine, guardVerdictOf, type GuardFlag, type TurnFailureClass } from '../shared/turn-failures.ts';
 import { appendCoachingNote } from '../shared/coaching-notes.ts';
+import { holdForThisTurn, lapseEraseHold, createEraseHold, confirmEraseHold, parseEraseScope, pendingEraseNote, eraseQuestion, eraseClarifyLine, eraseRequestFailedLine, eraseLapsedLine, type EraseHold } from '../shared/erase-hold.ts';
 import { applyTargetAdjust, tdeeRecalcCardText, type TargetAdjustResult } from '../shared/target-engine.ts';
 import { repairPlansAfterBeliefChange } from '../shared/repair-propagation.ts';
 import { recordEDSignal, deficitAllowed } from '../shared/safety-state.ts';
@@ -470,51 +471,16 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
         await storeMessages(userId, message, summary, undefined, undefined, undefined, undefined, session_id);
         return await commitAndRespond({ message: summary, actions: [], task_mode: 'knowledge' });
       }
-
-      // #live-L18: KVKK Md.7/17 erasure. A full-account-deletion or "beni unut / hafızanı
-      // sıfırla" request previously had NO handler — the model freely (and FALSELY) confirmed
-      // a deletion that never happened (compliance + trust failure). Handle deterministically:
-      // memory-reset clears ai_summary; full-deletion ALSO schedules the reversible 30-day
-      // account-deletion grace (mirrors privacy.service.requestAccountDeletion) + audit, and
-      // points the user to Settings to confirm/cancel. Never claim a deletion we didn't do.
-      const mDel = message.toLocaleLowerCase('tr');
-      // Intent-based (NOT adjacency-based): an erase verb anywhere + a strong account/data/memory
-      // target anywhere. Adjacency regexes missed the natural phrasing "KVKK kapsamında tüm
-      // verilerimi KALICI OLARAK sil" (#live-L18 verify). Bare "bilgi/kayıt" is excluded so a
-      // correction/undo ("az önce verdiğim bilgiyi sil") doesn't misfire (it's handled above).
-      const eraseVerb = /(sil|unut|sıfırla|sifirla)/.test(mDel);
-      const eraseTarget = /(verilerim|verimi|tüm ver|tum ver|hesab|kvkk|unutulma|beni unut|hafıza|hafiza)/.test(mDel);
-      const wantsErase = eraseVerb && eraseTarget;
-      const isQuestion = /nasıl|nasil|\?|m[ıiuü]s[ıiuü]n|mümkün mü|mumkun mu|olur mu|misin/.test(mDel);
-      if (wantsErase && !isQuestion) {
-        const fullDeletion = /(hesab|tüm ver|tum ver|verilerimi|verimi|kvkk|kalıcı|kalici)/.test(mDel);
-        try {
-          // Always reset coaching memory on any erase intent (bounded, clearly requested).
-          await supabaseAdmin.from('ai_summary').delete().eq('user_id', userId);
-          await supabaseAdmin.from('audit_logs').insert({
-            user_id: userId,
-            event_type: fullDeletion ? 'account_delete_request' : 'memory_reset',
-            description: fullDeletion ? 'KVKK chat-initiated account deletion request (30-day grace)' : 'KVKK chat-initiated coach-memory reset',
-          });
-          let kvkkMsg: string;
-          let kvkkNav: string | null = null;
-          if (fullDeletion) {
-            await supabaseAdmin.from('profiles')
-              .update({ deletion_requested_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-              .eq('id', userId);
-            kvkkMsg = 'KVKK kapsamında veri silme talebini başlattım ve koç hafızamı sıfırladım. Hesabın ve tüm verilerin 30 gün içinde kalıcı olarak silinecek. Fikrini değiştirirsen bu süre içinde Ayarlar > Hesap ve Güvenlik ekranından talebi iptal edebilirsin.';
-            kvkkNav = '/settings/account-security';
-          } else {
-            kvkkMsg = 'Hakkında tuttuğum tüm koç hafızasını (notlar, çıkarımlar, alışkanlık özetleri) sildim. Bundan sonra seni yeniden tanımaya başlayacağım. Hesabını tamamen silmek istersen "tüm verilerimi sil" diyebilir ya da Ayarlar > Hesap ve Güvenlik ekranını kullanabilirsin.';
-          }
-          await storeMessages(userId, message, kvkkMsg, 'kvkk', undefined, undefined, undefined, session_id);
-          return await commitAndRespond({ message: kvkkMsg, actions: [], task_mode: 'kvkk', navigate_to: kvkkNav });
-        } catch (e) {
-          console.error('[kvkk_erase] failed:', (e as Error).message);
-          // fall through to normal flow rather than falsely confirming a deletion
-        }
-      }
     }
+
+    // KVKK erase (Faz 0 #5, AI_MIMARI_V2 §5.2/§7.3). This was a substring regex that ERASED before
+    // the model read the message: "kalori hesabını sil" scheduled the ACCOUNT for deletion, and every
+    // match DELETED the ai_summary row — taking the mig-101 tombstone with it, so the memory came
+    // back overnight. Intent now belongs to the model (data_erase_request → a hold + one question);
+    // code only executes a hold confirmed in the very NEXT turn (data_erase_confirm). Here we only
+    // load the hold this turn may confirm, in parallel with the turn's other reads.
+    const eraseHoldP: Promise<EraseHold | null> = holdForThisTurn(userId)
+      .catch((e) => { console.error('[erase_hold] turn-start read failed:', (e as Error).message); return null; });
 
     timer.mark('gates');
     // Check onboarding status
@@ -770,6 +736,11 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
       correctionCtx = buildCorrectionContext(reverted);
       serviceReadsP = startServiceReads(); // post-revert state
     }
+
+    // KVKK erase hold (see the turn-start read above): the model must KNOW a confirmation is pending
+    // to read "evet" as one. The note exists only on the single turn that may confirm it.
+    const eraseHold = await eraseHoldP;
+    const eraseHoldNote = eraseHold ? pendingEraseNote(eraseHold.scope) : '';
 
     // Household size for recipe scaling (Spec 7.7)
     let householdNote = '';
@@ -1118,6 +1089,7 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       toneContext,
       personaPrompt,
       correctionCtx,
+      eraseHoldNote,
       // Service contexts (11 integrated services)
       serviceCtx.returnFlow,           // 4. Return flow (richer: weight, compliance, plan lightening)
       freshOpener ? '' : serviceCtx.habits.prompt,        // 1. Habits — suppressed on a cold opener (#R3-4)
@@ -3011,6 +2983,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
     timer.mark('nets');
     const { feedback: actionFeedback, receipts: actionReceipts } = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz);
+    // KVKK: a confirmed erase ran this turn → nothing on this turn may write memory back (the
+    // summary regen and the model's layer2_update below are skipped; the tombstone stands).
+    const eraseExecuted = actionReceipts.some((r) => r.action_type === 'data_erase_confirm' && r.ok);
 
     // #S2 RECEIPTS: verify that captured identity facts REALLY landed in the canonical store and
     // persist per-field receipts to ai_turn_log. This is what makes the "anladım, 25 yaşındasın"
@@ -3060,8 +3035,9 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
 
     // #S3 (derived summary): a fact-class action changed a canonical store this turn → REGENERATE
     // general_summary from those stores (never append). Fire-and-forget; the nightly extractor
-    // pass covers any miss.
-    if (factsDirty) {
+    // pass covers any miss. Never on the turn a KVKK erase was confirmed: lifting the stamp there
+    // would rebuild the memory the user just erased.
+    if (factsDirty && !eraseExecuted) {
       // F3/C6: a fact-class action IS fresh user input — it lifts the KVKK tombstone before the
       // regen, so a post-reset summary only ever rebuilds from what the user newly said.
       (async () => {
@@ -3409,6 +3385,20 @@ Doğru anladıysam: ${parsed}.${tail}`;
       assistantMessage += '\n\n' + edMediumReferral;
     }
 
+    // KVKK erase (Faz 0 #5): the hold's question and the erase outcome are FACTS the code owns. The
+    // model wrote its prose before anything ran (and is told never to claim an erase), so the lines
+    // go LAST, where no net can strip them — the safety-hold rule of AI_MIMARI_V2 §5.2.
+    for (const r of actionReceipts) {
+      if ((r.action_type === 'data_erase_request' || r.action_type === 'data_erase_confirm') && r.user_line) {
+        assistantMessage += `\n\n${r.user_line}`;
+      }
+    }
+    // The hold shown this turn was not confirmed (no/other topic/model silent) → it lapses now, and
+    // the user hears it. A confirmed or superseded hold is no longer pending, so this is a no-op then.
+    if (eraseHold && await lapseEraseHold(eraseHold.id)) {
+      assistantMessage += `\n\n${eraseLapsedLine()}`;
+    }
+
     // Store messages with token count and model version (Spec 5.25)
     const tokenEstimate = Math.round((message?.length ?? 0) / 3.5) + Math.round(assistantMessage.length / 3.5);
     // FIX (audit AI-MDL-05): pass the reserved user-row id so storeMessages appends ONLY the
@@ -3528,8 +3518,9 @@ Doğru anladıysam: ${parsed}.${tail}`;
       }
     }
 
-    // Async: update Layer 2 if needed
-    if (layer2Updates) {
+    // Async: update Layer 2 if needed — never on a confirmed-erase turn (a note written here would
+    // land right on top of the tombstone the user just confirmed).
+    if (layer2Updates && !eraseExecuted) {
       processLayer2Updates(userId, layer2Updates).catch((err: Error) => {
         console.error('[Layer2] Memory write failed:', err.message);
       });
@@ -3586,6 +3577,11 @@ Doğru anladıysam: ${parsed}.${tail}`;
     if (planPersistError && !persistedPlan && planPersistError !== 'ed_gate_blocked') {
       assistantMessage += `\n\n(Not: ${failureLine('persist_failed')})`;
       finalNavigateTo = null;
+    }
+    // KVKK: a confirmed ACCOUNT erase offers the screen where the 30-day request can be withdrawn
+    // (as the old chat path did) — a button under the reply, never an automatic jump.
+    if (eraseExecuted && actions.some((a) => (a as Record<string, unknown>)._eraseScope === 'account')) {
+      finalNavigateTo = finalNavigateTo ?? '/settings/account-security';
     }
 
     const responseData = {
@@ -6061,6 +6057,27 @@ async function executeActions(
             }
           }
           pushFb(null);
+          break;
+        }
+        case 'data_erase_request': {
+          // KVKK (Faz 0 #5): a HOLD, never an erase — nothing is deleted on the turn the request is
+          // read. The scope is the model's; an unknown one becomes a question, never a default.
+          const scope = parseEraseScope((action as Record<string, unknown>).scope);
+          if (!scope) {
+            pushFb(eraseClarifyLine(), { ok: false, rowsAffected: 0, failureClass: 'erase_scope_unclear' });
+            break;
+          }
+          const hold = await createEraseHold(userId, scope);
+          if (hold.ok) pushFb(eraseQuestion(scope), { ok: true, rowsAffected: 1 });
+          else pushFb(eraseRequestFailedLine(), { ok: false, rowsAffected: 0, failureClass: 'persist_failed' });
+          break;
+        }
+        case 'data_erase_confirm': {
+          // KVKK (Faz 0 #5): executes ONLY a hold stored on the previous turn. The model's "yes" alone
+          // erases nothing: no hold, a stale hold or a same-turn hold → no erase (shared/erase-hold.ts).
+          const outcome = await confirmEraseHold(userId);
+          if (outcome.ok) (action as Record<string, unknown>)._eraseScope = outcome.scope;
+          pushFb(outcome.line, { ok: outcome.ok, rowsAffected: outcome.ok ? 1 : 0, failureClass: outcome.failureClass });
           break;
         }
         case 'food_preference': {

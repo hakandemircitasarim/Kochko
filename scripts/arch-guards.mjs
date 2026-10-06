@@ -101,6 +101,29 @@ for (const f of FILES) {
 }
 
 /**
+ * G12 (AI_MIMARI_V2 Faz 0 #5) — KVKK erase runs ONLY through the two-step hold. The old chat path
+ * was a substring regex that erased before the model read the message ("kalori hesabını sil"
+ * scheduled the ACCOUNT for deletion) and DELETED the ai_summary row, taking the mig-101 tombstone
+ * with it. Now: (a) no edge code deletes ai_summary rows — memory erase is a tombstone; (b) the
+ * only server writer of the account-deletion flag is shared/erase-hold.ts, which runs it after a
+ * pending_writes hold was confirmed in the next turn.
+ */
+{
+  for (const f of FILES) {
+    if (rel(f).endsWith('.test.ts')) continue;
+    linesOf(read(f)).forEach((ln, i) => {
+      if (/^\s*\/\//.test(ln)) return;
+      if (/from\(\s*['"]ai_summary['"]\s*\)\s*\.delete\(/.test(ln)) {
+        fail('G12-erase-tombstone', f, i + 1, 'ai_summary row deleted — a memory erase is a tombstone (memoryTombstonePatch), the row stays');
+      }
+      if (/deletion_requested_at\s*:/.test(ln) && !/select/.test(ln) && !rel(f).endsWith('shared/erase-hold.ts')) {
+        fail('G12-erase-hold-owner', f, i + 1, 'account deletion flagged outside shared/erase-hold.ts — chat erase must go through the confirmed two-step hold');
+      }
+    });
+  }
+}
+
+/**
  * G6 (plan v2, F1 · B5) — the turn's guard verdict must be RECORDED at the decision point, never
  * reverse-engineered from the final reply. The old derivation regexed assistantMessage; a severe
  * allergen HARD BLOCK replaces that text, so the app's gravest safety event was written to the

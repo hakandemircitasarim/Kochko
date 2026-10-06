@@ -170,6 +170,23 @@ const SCENARIOS = [
     expect: 0,
   },
   {
+    id: 'S10-kvkk-erase-two-step',
+    finding: 'AI_MIMARI_V2 §1 ("kalori hesabını sil" → hesap silme)',
+    // PENDING until migration 106 is applied and the Faz 0 #5 ai-chat is deployed; flip to
+    // 'enforced' then (an ERROR before that only means pending_writes does not exist yet).
+    status: 'pending',
+    owner: 'Faz 0 #5 / mig 106',
+    why: 'A chat substring regex erased memory and scheduled ACCOUNT deletion on the same turn it read "sil … hesab" — before the model ever saw the message. Every chat-sourced erase audit row must now point to a pending_writes hold that was CONFIRMED (next turn) and written before the erase.',
+    corpus: `select count(*)::int as n from audit_logs
+             where metadata->>'source' = 'chat' and event_type in ('account_delete_request','ai_summary_delete')`,
+    query: `select count(*)::int as n from audit_logs a
+            where a.metadata->>'source' = 'chat' and a.event_type in ('account_delete_request','ai_summary_delete')
+              and not exists (select 1 from pending_writes p
+                              where p.id::text = a.metadata->>'pending_write_id' and p.user_id = a.user_id
+                                and p.status = 'confirmed' and p.created_at < a.created_at)`,
+    expect: 0,
+  },
+  {
     id: 'S6-turn-ledger-alive',
     finding: '(gate health)',
     status: 'enforced',
