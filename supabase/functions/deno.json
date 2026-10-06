@@ -3,5 +3,8 @@
   "compilerOptions": {
     "strict": true,
     "lib": ["deno.window", "esnext"]
+  },
+  "tasks": {
+    "v2-eval": "deno run --allow-read --allow-write --allow-net --allow-env ../../scripts/eval-v2.ts"
   }
 }

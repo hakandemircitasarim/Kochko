@@ -1,0 +1,195 @@
+{
+  "group": "probes",
+  "defaults": {
+    "persona": "fresh",
+    "tags": ["probe"],
+    "turn_input": { "now": { "local_time": "21:30" } }
+  },
+  "fixtures": [
+    {
+      "id": "probe-cap-bir-bardak-su-daha",
+      "source": "probe:cap-schema",
+      "package": "A",
+      "title": "cap-probe: ‘1 bardak su daha içtim’ → 1 bardak, ekle, 0,20 L.",
+      "message": "1 bardak su daha içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].quantity", "eq": 1 },
+        { "path": "decision.writes[op=water_log].unit", "in": ["bardak", "su_bardagi"] },
+        { "path": "decision.writes[op=water_log].mode", "eq": "add" },
+        { "path": "commit.water_log.liters", "between": [0.15, 0.30] }
+      ]
+    },
+    {
+      "id": "probe-cap-alti-tavuk-nugget",
+      "source": "probe:cap-schema",
+      "package": "A",
+      "title": "cap-probe: ‘6 tavuk nugget yedim’ → 100–120 g, 290–360 kcal civarı; tavuk göğsü referansı seçilmez.",
+      "turn_input": {
+        "reference_candidates": [ { "key": "tavuk göğsü", "line": "tavuk göğsü: 165 kcal/100 g · P31 K0 Y3,6 · porsiyon ≈150 g" } ]
+      },
+      "message": "6 tavuk nugget yedim",
+      "expect": [
+        { "path": "decision.writes[op=meal_log].items[name~nugget].kcal", "between": [220, 450] },
+        { "path": "decision.writes[op=meal_log].items[name~nugget].grams", "between": [60, 200] },
+        { "path": "decision.writes[op=meal_log].items[*].reference_key", "not_in": ["tavuk göğsü", "tavuk_gogsu", "tavuk gogsu"] }
+      ]
+    },
+    {
+      "id": "probe-cap-mercimek-iki-cimdik-tuz",
+      "source": "probe:cap-schema",
+      "package": "A",
+      "title": "cap-probe: ‘2 çimdik tuz’ aynen saklanır, ~0,7–1 g, 0 kcal; asla reddedilmez (§4.3).",
+      "message": "akşam 1 tabak mercimek çorbası içtim, içine 2 çimdik tuz attım",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=meal_log].items[*]", "count": 2 },
+        { "path": "decision.writes[op=meal_log].meal_type", "eq": "dinner" },
+        { "path": "decision.writes[op=meal_log].items[name~tuz].as_stated", "contains": "çimdik" },
+        { "path": "decision.writes[op=meal_log].items[name~tuz].grams", "lte": 3 },
+        { "path": "decision.writes[op=meal_log].items[name~tuz].kcal", "lte": 1 },
+        { "path": "decision.writes[op=water_log]", "count": 0 },
+        { "path": "validation.writes[op=meal_log].outcome", "ne": "reject" }
+      ]
+    },
+    {
+      "id": "probe-cap-bugun-toplam-iki-litre",
+      "source": "probe:cap-schema",
+      "package": "A",
+      "title": "cap-probe: ‘bugün toplam 2 litre su içtim’ → günün toplamını ayarla.",
+      "message": "bugün toplam 2 litre su içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
+        { "path": "commit.water_log.liters", "between": [1.95, 2.05] }
+      ]
+    },
+    {
+      "id": "probe-cap-iki-dilim-lahmacun-ayran",
+      "source": "probe:cap-schema",
+      "package": "A",
+      "title": "cap-probe zayıf vakası: ‘2 dilim lahmacun’ low effort'ta 90–100 g geldi; hedef 180–330 g ya da netleştirme.",
+      "turn_input": {
+        "reference_candidates": [
+          { "key": "lahmacun", "line": "lahmacun: 240 kcal/100 g · 1 adet ≈130 g" },
+          { "key": "ayran", "line": "ayran: 36 kcal/100 ml · 1 bardak ≈200 ml" }
+        ]
+      },
+      "message": "2 dilim lahmacun ve 1 ayran",
+      "expect": [
+        { "any_of": [
+          { "path": "decision.writes[op=meal_log].items[name~lahmacun].grams", "between": [180, 330] },
+          { "path": "decision.clarify", "exists": true }
+        ] },
+        { "path": "decision.writes[op=water_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "probe-dtm-gunde-kac-litre-su",
+      "source": "probe:dtm",
+      "package": "A'",
+      "title": "‘günde kaç litre su içmeliyim?’ soru: yazma yok.",
+      "message": "günde kaç litre su içmeliyim?",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes", "count": 0 } ]
+    },
+    {
+      "id": "probe-dtm-salon-kapali-evde-ne-yapayim",
+      "source": "probe:dtm",
+      "package": "A'",
+      "title": "‘salon kapalıydı, evde ne yapabilirim?’ antrenman kaydı değildir.",
+      "message": "salon kapalıydı, evde ne yapabilirim?",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes[op=workout_log]", "count": 0 } ]
+    },
+    {
+      "id": "probe-dtm-dort-saat-uyku-antrenman-sorusu",
+      "source": "probe:dtm",
+      "package": "A",
+      "title": "‘dün 4 saat uyudum, antrenmana gideyim mi?’ uyku kaydı (bugün, 4 saat) + soru.",
+      "message": "dün 4 saat uyudum, bugün antrenmana gideyim mi?",
+      "turn_input": { "now": { "local_time": "08:15" } },
+      "expect": [
+        { "path": "decision.writes[op=sleep_log].day", "eq": "2026-10-06" },
+        { "any_of": [
+          { "path": "decision.writes[op=sleep_log]..hours", "eq": 4 },
+          { "path": "decision.writes[op=sleep_log]..duration_hours", "eq": 4 }
+        ] },
+        { "path": "decision.writes[op=workout_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "probe-dtm-protein-tozu-alsam-mi",
+      "source": "probe:dtm",
+      "package": "A'",
+      "title": "‘protein tozu alsam mı?’ varsayım/soru: takviye kaydı yok.",
+      "message": "protein tozu alsam mı?",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes", "count": 0 } ]
+    },
+    {
+      "id": "probe-dtm-bir-bardak-sut",
+      "source": "probe:dtm",
+      "package": "A",
+      "title": "‘bir bardak süt içtim’ süt öğün kalemidir, su değildir.",
+      "message": "bir bardak süt içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log]", "count": 0 },
+        { "path": "decision.writes[op=meal_log].items[name~süt]", "exists": true }
+      ]
+    },
+    {
+      "id": "probe-dtm-kahve-uykuyu-bozar-mi",
+      "source": "probe:dtm",
+      "package": "A'",
+      "title": "‘kahve içmek uykumu bozuyor mu?’ soru: yazma yok.",
+      "message": "kahve içmek uykumu bozuyor mu?",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes", "count": 0 } ]
+    },
+    {
+      "id": "probe-dtm-bu-hafta-iki-kilo-verdim",
+      "source": "probe:dtm",
+      "package": "A'",
+      "title": "‘bu hafta 2 kilo verdim!’ bir fark bildirimidir; tartı değeri uydurulmaz.",
+      "message": "bu hafta 2 kilo verdim!",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes[op=body_weight]", "count": 0 } ]
+    },
+    {
+      "id": "probe-dtm-restoran-ne-yesem",
+      "source": "probe:dtm",
+      "package": "A'",
+      "title": "‘akşam restorana gideceğim, ne yesem?’ gelecek plan: yazma yok.",
+      "message": "akşam arkadaşlarla restorana gideceğim, ne yesem?",
+      "turn_input": { "now": { "local_time": "15:00" } },
+      "expect": [ { "path": "decision.writes", "count": 0 } ]
+    },
+    {
+      "id": "probe-dtm-diz-agrisi-squat-yaptim",
+      "source": "probe:dtm",
+      "package": "A",
+      "title": "‘dizim ağrıyor, squat yaptım bugün’ yapılmış antrenmanı kaydeder; sakatlık silinmez.",
+      "message": "dizim ağrıyor, squat yaptım bugün",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=workout_log]", "count_gte": 1 },
+        { "path": "decision.writes[op=constraint_retract]", "count": 0 }
+      ]
+    },
+    {
+      "id": "probe-dtm-laktoz-intoleransi",
+      "source": "probe:dtm",
+      "package": "B+",
+      "title": "‘laktoz intoleransım var’ omurgaya intolerans/kendisi/var olarak yazılır.",
+      "message": "laktoz intoleransım var",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=constraint_add][polarity=has].kind", "in": ["intolerance", "allergen"] },
+        { "path": "decision.writes[op=constraint_add][polarity=has].whose", "eq": "self" },
+        { "path": "decision.writes[op=constraint_add][polarity=has].display_tr", "contains_any": ["laktoz", "süt"] }
+      ]
+    }
+  ]
+}

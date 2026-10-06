@@ -1,0 +1,312 @@
+{
+  "group": "round3-diff",
+  "defaults": { "persona": "fresh", "tags": ["round3", "diff"] },
+  "fixtures": [
+    {
+      "id": "r3-diff-1a-tek-icecek-ve-toplam-sorusu",
+      "source": "round3:diff#1",
+      "package": "A",
+      "title": "‘bir bardak su içtim, toplam kaç bardak oldu?’ tek içeceği EKLER; günün suyunu ezmez.",
+      "turn_input": { "today": { "water_liters": 1.6, "kcal": 520, "protein_g": 31 } },
+      "message": "bir bardak su içtim, toplam kaç bardak oldu?",
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "add" },
+        { "path": "decision.writes[op=water_log].quantity", "eq": 1 },
+        { "path": "decision.writes[op=water_log].unit", "in": ["bardak", "su_bardagi"] },
+        { "path": "commit.water_log.liters", "between": [0.15, 0.30] }
+      ]
+    },
+    {
+      "id": "r3-diff-1b-kalori-toplami-ve-iki-bardak",
+      "source": "round3:diff#1",
+      "package": "A",
+      "title": "Cümledeki ‘toplam 1800 kalori’ suyu set'e çevirmez: 2 bardak eklenir.",
+      "turn_input": { "today": { "water_liters": 1.2, "kcal": 1800, "protein_g": 70 } },
+      "message": "bugün toplam 1800 kalori aldım, 2 bardak su içtim",
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "add" },
+        { "path": "decision.writes[op=water_log].quantity", "eq": 2 },
+        { "path": "commit.water_log.liters", "between": [0.35, 0.50] }
+      ]
+    },
+    {
+      "id": "r3-diff-1c-ayranin-litresi-su-degil",
+      "source": "round3:diff#1",
+      "package": "A",
+      "title": "‘1 litre ayran ve 2 bardak su’: su yalnızca 2 bardak (ekle); ayran öğün kalemi.",
+      "message": "bugün 1 litre ayran ve 2 bardak su içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log]", "count": 1 },
+        { "path": "decision.writes[op=water_log].mode", "eq": "add" },
+        { "path": "decision.writes[op=water_log].quantity", "eq": 2 },
+        { "path": "decision.writes[op=meal_log].items[name~ayran]", "exists": true }
+      ]
+    },
+    {
+      "id": "r3-diff-2a-toplam-iki-litre-daha-icmeli-miyim",
+      "source": "round3:diff#2",
+      "package": "A",
+      "title": "‘bugün toplam 2 litre…, daha içmeli miyim?’ günün toplamını 2,0 L'ye AYARLAR (soru eki toplamı eklemeye çevirmez).",
+      "turn_input": { "today": { "water_liters": 1.2, "kcal": 900, "protein_g": 45 } },
+      "message": "bugün toplam 2 litre su içtim, daha içmeli miyim?",
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
+        { "path": "commit.water_log.liters", "between": [1.95, 2.05] }
+      ]
+    },
+    {
+      "id": "r3-diff-2b-toplamda-bucuk-litre-yarin-daha",
+      "source": "round3:diff#2",
+      "package": "A",
+      "title": "‘toplamda 1.5 litre…, yarın daha çok’ → günün toplamı 1,5 L.",
+      "message": "bugün toplamda 1.5 litre su içtim, yarın daha çok içeceğim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
+        { "path": "commit.water_log.liters", "between": [1.45, 1.55] }
+      ]
+    },
+    {
+      "id": "r3-diff-2c-toplam-ve-yeni-su-hedefi",
+      "source": "round3:diff#2",
+      "package": "A",
+      "title": "‘toplam 2 litre…, yeni hedefim 3 litre’ → toplam 2,0 L + su hedefi 3 L (ikisi ayrı yazma).",
+      "message": "bugün toplam 2 litre su içtim, yeni hedefim 3 litre",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
+        { "path": "decision.writes[op=water_log].quantity", "in": [2, 2000] },
+        { "any_of": [
+          { "path": "decision.writes[op=profile_set].changes[field=water_target_liters].value", "contains": "3" },
+          { "path": "decision.writes[op=goal_set]..water_target_liters", "eq": 3 }
+        ] }
+      ]
+    },
+    {
+      "id": "r3-diff-2d-toplam-iki-litre-ekle",
+      "source": "round3:diff#2",
+      "package": "A",
+      "title": "‘…toplam 2 litre su içtim, ekle’ — ‘ekle’ kaydet demektir; mod yine günün toplamı.",
+      "message": "bugün toplam 2 litre su içtim, ekle",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" } ]
+    },
+    {
+      "id": "r3-diff-2e-su-toplamim-iki-litre",
+      "source": "round3:diff#2",
+      "package": "A",
+      "title": "Çekimli ‘su toplamım 2 litre oldu’ günün toplamıdır.",
+      "message": "su toplamım 2 litre oldu",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
+        { "path": "commit.water_log.liters", "between": [1.95, 2.05] }
+      ]
+    },
+    {
+      "id": "r3-diff-2f-bugunku-su-toplami-virgullu",
+      "source": "round3:diff#2",
+      "package": "A",
+      "title": "‘bugünkü su toplamı 2,5 litre’ → 2,5 L (virgüllü ondalık).",
+      "message": "bugünkü su toplamı 2,5 litre",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
+        { "path": "commit.water_log.liters", "between": [2.45, 2.55] }
+      ]
+    },
+    {
+      "id": "r3-diff-2g-kocun-toplam-sorusuna-cevap",
+      "source": "round3:diff#2",
+      "package": "A",
+      "title": "Koçun ‘Bugün ne kadar su içtin?’ sorusuna ‘2 litre’ cevabı toplamı ayarlar, üstüne eklemez.",
+      "turn_input": {
+        "today": { "water_liters": 1.2, "kcal": 900, "protein_g": 45 },
+        "history": [
+          { "role": "user", "content": "su hedefim neydi?" },
+          { "role": "assistant", "content": "Su hedefin 2,2 litre. Bugün ne kadar su içtin?" }
+        ]
+      },
+      "message": "2 litre",
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
+        { "path": "commit.water_log.liters", "between": [1.95, 2.05] }
+      ]
+    },
+    {
+      "id": "r3-diff-3a-iki-litre-icsem-yeter-mi",
+      "source": "round3:diff#3",
+      "package": "A'",
+      "title": "Varsayım sorusu (‘içsem yeter mi?’) su kaydı değildir.",
+      "message": "bugün 2 litre su içsem yeter mi?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log]", "count": 0 },
+        { "path": "decision.intent.is_hypothetical", "eq": true }
+      ]
+    },
+    {
+      "id": "r3-diff-3b-toplam-kac-bardak-sorusu",
+      "source": "round3:diff#3",
+      "package": "A'",
+      "title": "‘bugün toplam kaç bardak su içtim?’ yalnızca soru: yazma yok.",
+      "message": "bugün toplam kaç bardak su içtim?",
+      "turn_input": {},
+      "expect": [ { "path": "decision.writes", "count": 0 } ]
+    },
+    {
+      "id": "r3-diff-3c-bir-litre-ayran",
+      "source": "round3:diff#3",
+      "package": "A",
+      "title": "‘1 litre ayran’ su toplamı olarak kaydedilmez; öğüne yazılır.",
+      "message": "bugün 1 litre ayran içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log]", "count": 0 },
+        { "path": "decision.writes[op=meal_log].items[name~ayran]", "exists": true }
+      ]
+    },
+    {
+      "id": "r3-diff-3d-dunku-su-toplami",
+      "source": "round3:diff#3",
+      "package": "A",
+      "title": "‘dün toplam 2 litre’ DÜNÜN toplamını ayarlar, bugünü değil.",
+      "message": "dün toplam 2 litre su içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].day", "eq": "2026-10-05" },
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" }
+      ]
+    },
+    {
+      "id": "r3-diff-4-yarin-pizza-simulasyonu",
+      "source": "round3:diff#4",
+      "package": "A",
+      "title": "‘yarın akşam pizza yesem’ simülasyonu YARINI hedefler; kayıt yok.",
+      "turn_input": { "today": { "water_liters": 1.8, "kcal": 1800, "protein_g": 80 } },
+      "message": "yarın akşam 2 dilim pizza yesem ne olur?",
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "decision.intent.is_hypothetical", "eq": true },
+        { "path": "decision.simulation.target_day", "in": ["2026-10-07", "tomorrow", "yarın"] },
+        { "path": "decision.simulation.kcal_estimate", "between": [350, 900] }
+      ]
+    },
+    {
+      "id": "r3-diff-5-su-duzeltmesi-ogle-yemegini-silmez",
+      "source": "round3:diff#5",
+      "package": "A",
+      "title": "‘su yanlış, düzelt: toplam 2 litre’ yalnızca suyu düzeltir; aynı turdaki tavuk pilav silinmez.",
+      "turn_input": {
+        "records": [
+          { "ref": "m20", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki öğle 13:10 · \"öğlen tavuk pilav yedim, 2 litre su içtim\" → tavuk pilav 1 tabak ~300 g 480 kcal [model]", "last_turn": true },
+          { "ref": "d4", "kind": "water", "day": "2026-10-06", "line": "su +2,00 L (\"2 litre su içtim\") → gün 2,8 L", "last_turn": true }
+        ],
+        "today": { "water_liters": 2.8, "kcal": 1000, "protein_g": 55 }
+      },
+      "message": "su yanlış, düzelt: bugünün toplamı 2 litre",
+      "expect": [
+        { "any_of": [
+          { "path": "decision.writes[op=water_log][mode=set_day_total]", "exists": true },
+          { "path": "decision.writes[op=water_log].replaces", "eq": "d4" },
+          { "path": "decision.record_ops[op=update].ref", "eq": "d4" }
+        ] },
+        { "path": "decision.record_ops[*].ref", "not_in": ["m20"] },
+        { "path": "decision.writes[op=meal_log]", "count": 0 }
+      ],
+      "reply_rubric": ["claims_subset_of_receipts"]
+    },
+    {
+      "id": "r3-diff-6-kilo-bildirimi-tarti-kaydi",
+      "source": "round3:diff#6",
+      "package": "A",
+      "title": "‘85,5 kiloyum’ bugünkü tartı kaydıdır; tartı hatırlatması kapanır.",
+      "message": "85,5 kiloyum",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=body_weight]", "count": 1 },
+        { "any_of": [
+          { "path": "decision.writes[op=body_weight]..kg", "eq": 85.5 },
+          { "path": "decision.writes[op=body_weight]..weight_kg", "eq": 85.5 }
+        ] },
+        { "path": "decision.writes[op=body_weight].day", "eq": "2026-10-06" },
+        { "path": "commit.body_weight.closes_weight_reminder", "eq": true }
+      ]
+    },
+    {
+      "id": "r3-diff-7-geri-al-rozeti-kalici",
+      "source": "round3:diff#7",
+      "package": "D",
+      "title": "Geri alma makbuzu mesaj saklanmadan ÖNCE üretilir; rozet yeniden yüklemede kaybolmaz.",
+      "client": { "protocol": "undo_button" },
+      "turn_input": {
+        "records": [
+          { "ref": "m21", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki öğle 13:20 · \"öğlen mercimek çorbası içtim\" → mercimek çorbası 1 kase 165 kcal [model]", "last_turn": true }
+        ]
+      },
+      "message": "Son öğün kaydını geri al",
+      "expect": [
+        { "path": "envelope.actions[type=undo]", "count": 1 },
+        { "path": "envelope.persisted_actions[type=undo]", "exists": true, "why": "chat_messages.actions_executed tam makbuzu taşır (diff#7)." }
+      ]
+    },
+    {
+      "id": "r3-diff-8-kurtarma-hafta-bilinmiyor",
+      "source": "round3:diff#8",
+      "package": "A'",
+      "title": "Haftanın günleri kayıtsızken ‘hafta kurtarılabilir: EVET’ olgusu verilmez; duygu cümlesi kayıt değildir.",
+      "turn_input": { "today": { "water_liters": 1.0, "kcal": 2900, "protein_g": 90, "week": "2 gün kayıtsız (haftalık kalan bilinmiyor)" } },
+      "message": "dün de bugün de çok kaçırdım, bu hafta mahvoldu mu?",
+      "expect": [
+        { "path": "decision.writes[op=meal_log]", "count": 0 },
+        { "path": "facts.text", "not_contains": "Hafta kurtarilabilir: EVET" },
+        { "path": "reply.reply", "not_contains": "kurtarılabilir" }
+      ]
+    },
+    {
+      "id": "r3-diff-9-rapor-plan-yokken-dinlenme-gunu-demez",
+      "source": "round3:diff#9",
+      "package": "A'",
+      "pipeline": "report",
+      "title": "Planı ve su hedefi olmayan gün raporunda ‘dinlenme günü’ ve uydurma 2,5 L hedef yok.",
+      "turn_input": { "profile": { "water_target_liters": null } },
+      "message": "(günlük rapor üretimi: 2026-10-05, plan yok, antrenman yok)",
+      "expect": [
+        { "path": "report.prompt", "not_contains": "dinlenme gunu" },
+        { "path": "report.prompt", "not_contains": "Su 2.5L" }
+      ]
+    },
+    {
+      "id": "r3-diff-10-hedef-gecildi",
+      "source": "round3:diff#10",
+      "package": "A'",
+      "pipeline": "report",
+      "title": "Kilo verme hedefi geçildiyse (69,4 < 70) rapor ‘hedefe ulaşıldı’ der, ‘0.6kg kaldı’ demez.",
+      "turn_input": { "profile": { "weight_kg": 69.4, "target_weight_kg": 70 } },
+      "message": "(haftalık rapor üretimi: 2026-10-06)",
+      "expect": [
+        { "path": "report.goal_reached", "eq": true },
+        { "path": "report.full_report", "not_contains": "kg kaldi" }
+      ]
+    },
+    {
+      "id": "r3-diff-11-silinen-ogun-baglamda-kalmaz",
+      "source": "round3:diff#11",
+      "package": "A",
+      "title": "‘o öğle yemeğini sil’ m22'yi siler; Stage B bağlamı silinen öğünü artık listelemez.",
+      "turn_input": {
+        "records": [
+          { "ref": "m22", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki öğle 12:50 · \"öğlen 5 mercimek köftesi yedim\" → mercimek köftesi 5 adet ~150 g 290 kcal [model]", "last_turn": true }
+        ]
+      },
+      "message": "yanlış oldu, o öğle yemeğini sil",
+      "expect": [
+        { "path": "decision.record_ops[op=delete].ref", "eq": "m22" },
+        { "path": "decision.writes[op=meal_log]", "count": 0 },
+        { "path": "facts.text", "not_contains": "mercimek köftesi" }
+      ],
+      "reply_rubric": ["claims_subset_of_receipts"]
+    }
+  ]
+}

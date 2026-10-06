@@ -1,0 +1,263 @@
+{
+  "group": "devir-earlier-rounds",
+  "defaults": { "persona": "fresh", "tags": ["regression", "devir"] },
+  "fixtures": [
+    {
+      "id": "devir-6-motivasyon-sifir-taslak-acik",
+      "source": "devir:§6",
+      "package": "A'",
+      "persona": "mem",
+      "title": "Açık plan taslağı motivasyon/sıkıntı mesajını ele geçirmez (52 sn plan üretimi yok).",
+      "message": "bu hafta çok kötü geçti, her şeyi bıraktım, motivasyonum sıfır",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.plan_action.op", "eq": "none" },
+        { "path": "decision.reply_route.contract", "eq": "coach" },
+        { "path": "decision.writes[op=meal_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "devir-6-ne-yesem-oneri-simulasyon-degil",
+      "source": "devir:§6",
+      "package": "A'",
+      "title": "‘akşam ne yesem’ öneri isteğidir: kayıt ve simülasyon yok.",
+      "message": "akşam ne yesem, hafif ama doyurucu bir şey olsun",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "decision.simulation", "absent": true }
+      ]
+    },
+    {
+      "id": "devir-6-yedim-sorun-olur-mu",
+      "source": "devir:§6",
+      "package": "A",
+      "title": "‘dün akşam cacık yedim, sorun olur mu?’ endişeli BİLDİRİMDİR: dünün akşamına öğün yazılır.",
+      "message": "dün akşam cacık yedim, sorun olur mu?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=meal_log]", "count": 1 },
+        { "path": "decision.writes[op=meal_log].day", "eq": "2026-10-05" },
+        { "path": "decision.intent.is_hypothetical", "eq": false }
+      ]
+    },
+    {
+      "id": "devir-6-alerjen-kaydi-tepki-kontrolu",
+      "source": "devir:§6",
+      "package": "B+",
+      "persona": "severe_allergy",
+      "title": "Ciddi fıstık alerjisinde fıstık ezmeli sandviç kaydı yazılır, fıstık etiketi taşır; cevap tepkiyi sorar.",
+      "message": "öğlen fıstık ezmeli sandviç yedim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=meal_log]", "count": 1 },
+        { "path": "decision.writes[op=meal_log]..allergens", "contains_any": ["peanut", "peanuts", "fıstık", "yer fıstığı"] },
+        { "path": "receipts[*].allergen_exposure", "exists": true },
+        { "path": "reply.reply", "contains_any": ["nasılsın", "iyi misin", "belirti", "112", "tepki"] }
+      ]
+    },
+    {
+      "id": "devir-6-plan-hafifletme-iddiasi-makbuzla",
+      "source": "devir:§6",
+      "package": "A",
+      "persona": "mem",
+      "title": "‘akşamları hafiflet’ revize isteğidir (dft1); koç yapılmamış ‘%30 hafiflettim’ demez.",
+      "message": "akşam yemeklerini biraz daha hafif yapar mısın, gece ağır geliyor",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.plan_action.op", "eq": "revise" },
+        { "path": "decision.plan_action.draft_ref", "eq": "dft1" },
+        { "path": "decision.writes", "count": 0 }
+      ],
+      "reply_rubric": ["claims_subset_of_receipts"]
+    },
+    {
+      "id": "devir-6-eski-tartidan-trend-yok",
+      "source": "devir:§6",
+      "package": "A'",
+      "title": "Son tartı 20 gün önceyse ‘kilom nasıl gidiyor’ yazma üretmez; güncel trend uydurulmaz.",
+      "turn_input": { "profile": { "last_weigh_in": "2026-09-16 (20 gün önce) 64,8 kg" } },
+      "message": "kilom nasıl gidiyor?",
+      "expect": [
+        { "path": "decision.writes", "count": 0 }
+      ],
+      "reply_rubric": ["answers_user_question"]
+    },
+    {
+      "id": "devir-6-plan-sunucu-hedefleri",
+      "source": "devir:§6-§7",
+      "package": "A",
+      "persona": "final2",
+      "pipeline": "plan",
+      "title": "Diyet planı sunucu hedeflerini kullanır: 2 ana öğün, gün kcal'ı bant içinde, şablon 2000/150 kopyalanmaz.",
+      "message": "bana bu hafta için haftalık diyet planı hazırlar mısın",
+      "turn_input": {},
+      "expect": [
+        { "path": "plan.meal_count", "eq": 2 },
+        { "path": "plan.days[*].kcal", "between": [1950, 2400], "quantifier": "all" },
+        { "path": "plan.targets.protein", "ne": 150 }
+      ]
+    },
+    {
+      "id": "devir-6-uyku-uyanilan-gune",
+      "source": "devir:§6-§7",
+      "package": "A",
+      "title": "‘dün gece 7 saat uyudum’ uyanılan güne (bugün) yazılır.",
+      "message": "dün gece 7 saat uyudum",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=sleep_log].day", "eq": "2026-10-06" },
+        { "any_of": [
+          { "path": "decision.writes[op=sleep_log]..hours", "eq": 7 },
+          { "path": "decision.writes[op=sleep_log]..duration_hours", "eq": 7 }
+        ] }
+      ]
+    },
+    {
+      "id": "devir-8-haftalik-antrenman-programi-istegi",
+      "source": "devir:§8",
+      "package": "A",
+      "title": "‘haftalık antrenman programı hazırla’ plan üretimidir (workout), antrenman kaydı değil.",
+      "message": "bana haftalık antrenman programı hazırla",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.plan_action.op", "eq": "generate" },
+        { "path": "decision.plan_action.plan_type", "eq": "workout" },
+        { "path": "decision.writes[op=workout_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "devir-8-neden-kilo-vermiyorum-sorusu",
+      "source": "devir:§8",
+      "package": "A'",
+      "title": "‘neden kilo vermiyorum’ sorusu hedef/bant yazmaz.",
+      "message": "neden kilo vermiyorum, her şeyi doğru yapıyorum",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=goal_set]", "count": 0 },
+        { "path": "decision.writes[op=target_change]", "count": 0 },
+        { "path": "decision.writes[op=body_weight]", "count": 0 }
+      ]
+    },
+    {
+      "id": "devir-8-ayni-hedefin-tekrari",
+      "source": "devir:§8",
+      "package": "A'",
+      "title": "Kayıtlı hedefin (60 kg) tekrarı yeni bir hedef üretmez; yazılırsa aynı değerdir.",
+      "message": "hedefim 60 kilo",
+      "turn_input": {},
+      "expect": [
+        { "any_of": [
+          { "path": "decision.writes[op=goal_set]", "count": 0 },
+          { "path": "decision.writes[op=goal_set]..target_weight_kg", "eq": 60, "quantifier": "all" }
+        ] },
+        { "path": "decision.writes[op=target_change]", "count": 0 }
+      ]
+    },
+    {
+      "id": "devir-8-vegan-degilim-artik",
+      "source": "devir:§8",
+      "package": "A",
+      "title": "‘vegan değilim artık’ beslenme kısıtını kaldırır; yeni ‘var’ kısıtı yazmaz.",
+      "turn_input": {
+        "spine": [ { "ref": "c1", "kind": "dietary", "subject_id": "vegan", "display_tr": "vegan", "severity": "unknown", "whose": "self", "active": true } ],
+        "profile": { "dietary_restriction": "vegan" }
+      },
+      "message": "vegan değilim artık, her şeyi yiyorum",
+      "expect": [
+        { "any_of": [
+          { "path": "decision.writes[op=constraint_retract].target", "eq": "c1" },
+          { "path": "decision.writes[op=profile_set].changes[field=dietary_restriction]", "exists": true }
+        ] },
+        { "path": "decision.writes[op=constraint_add][polarity=has]", "count": 0 }
+      ]
+    },
+    {
+      "id": "devir-8-gizli-alerjen-kofte",
+      "source": "devir:§8",
+      "package": "B+",
+      "persona": "severe_allergy",
+      "title": "Ciddi yumurta alerjisinde köfteci sorusu: köfte/pane/mayonez önerilmez (gizli yumurta).",
+      "message": "akşam köfteciye gideceğiz, ne yesem?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "reply.suggested_foods[*].name", "not_contains_any": ["köfte", "pane", "şnitzel", "mayonez"] },
+        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "eggs", "yumurta"] }
+      ]
+    },
+    {
+      "id": "devir-8-ayni-kilo-sahte-tdee-fisi-yok",
+      "source": "devir:§8",
+      "package": "D",
+      "title": "Değişmeyen kiloda ‘yeniden hesaplandı’ fişi çıkmaz.",
+      "message": "64 kiloyum bugün",
+      "turn_input": {},
+      "expect": [ { "path": "receipts[*].user_line", "not_contains": "yeniden hesaplandı" } ]
+    },
+    {
+      "id": "devir-8-bugun-iki-litre-ictim",
+      "source": "devir:§8-§9",
+      "package": "A",
+      "title": "‘Bugün 2 litre su içtim’ günün toplamıdır (0,8 + 2 = 2,8 değil).",
+      "message": "bugün 2 litre su içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
+        { "path": "commit.water_log.liters", "between": [1.95, 2.05] }
+      ]
+    },
+    {
+      "id": "devir-8-iki-bardak-su-ictim",
+      "source": "devir:§8-§9",
+      "package": "A",
+      "title": "‘2 bardak su içtim’ eklenecek miktardır: +0,40 L.",
+      "message": "2 bardak su içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=water_log].mode", "eq": "add" },
+        { "path": "decision.writes[op=water_log].quantity", "eq": 2 },
+        { "path": "commit.water_log.liters", "between": [0.35, 0.50] }
+      ]
+    },
+    {
+      "id": "devir-8-pizza-haftalik-simulasyon",
+      "source": "devir:§8-§9",
+      "package": "A",
+      "title": "‘bu akşam 3 dilim pizza yesem haftam ne olur?’ bugünü hedefleyen simülasyondur; kayıt yok.",
+      "message": "bu akşam 3 dilim pizza yesem haftam ne olur?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "decision.simulation.kcal_estimate", "between": [500, 1300] },
+        { "path": "decision.simulation.target_day", "in": ["2026-10-06", "today", "bugün"] }
+      ]
+    },
+    {
+      "id": "devir-8-disarida-yemek-ayirdik-yok",
+      "source": "devir:§8-§9",
+      "package": "A'",
+      "title": "Dışarıda yemek sorusunda yapılmamış ‘X kcal ayırdık’ iddiası yok; yazma yok.",
+      "message": "akşam dışarıda yiyeceğim, ne kadar yer kalıyor?",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes", "count": 0 },
+        { "path": "reply.reply", "not_contains": "ayırdık" }
+      ],
+      "reply_rubric": ["claims_subset_of_receipts"]
+    },
+    {
+      "id": "devir-8-kayitsiz-gun-raporu",
+      "source": "devir:§8",
+      "package": "A'",
+      "pipeline": "report",
+      "title": "Yemek kaydı olmayan gün ‘uyumsuz’ puan almaz; ‘kayıt yok’ denir.",
+      "message": "(günlük rapor üretimi: 2026-10-05, yemek kaydı yok)",
+      "turn_input": {},
+      "expect": [
+        { "path": "report.compliance_score", "absent": true },
+        { "path": "report.full_report", "contains": "kayıt yok" }
+      ]
+    }
+  ]
+}
