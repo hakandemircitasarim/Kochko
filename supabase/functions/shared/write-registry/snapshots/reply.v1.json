@@ -1,0 +1,215 @@
+{
+ "type": "object",
+ "properties": {
+  "suggested_foods": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "allergens": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "gluten",
+        "crustacean",
+        "egg",
+        "fish",
+        "peanut",
+        "soy",
+        "milk",
+        "tree_nut",
+        "hazelnut",
+        "walnut",
+        "almond",
+        "pistachio",
+        "cashew",
+        "celery",
+        "mustard",
+        "sesame",
+        "sulphite",
+        "lupin",
+        "mollusc"
+       ]
+      }
+     },
+     "may_contain": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "gluten",
+        "crustacean",
+        "egg",
+        "fish",
+        "peanut",
+        "soy",
+        "milk",
+        "tree_nut",
+        "hazelnut",
+        "walnut",
+        "almond",
+        "pistachio",
+        "cashew",
+        "celery",
+        "mustard",
+        "sesame",
+        "sulphite",
+        "lupin",
+        "mollusc"
+       ]
+      }
+     }
+    },
+    "required": [
+     "name",
+     "allergens",
+     "may_contain"
+    ],
+    "additionalProperties": false
+   },
+   "description": "cevapta ÖNERDİĞİN her yiyecek, alerjen etiketleriyle (cevaptan ÖNCE)"
+  },
+  "suggested_exercises": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "loads": {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "knee",
+        "back",
+        "shoulder",
+        "ankle",
+        "wrist",
+        "elbow",
+        "hip",
+        "neck",
+        "hamstring",
+        "quad",
+        "groin"
+       ]
+      }
+     }
+    },
+    "required": [
+     "name",
+     "loads"
+    ],
+    "additionalProperties": false
+   },
+   "description": "cevapta ÖNERDİĞİN her egzersiz ve yüklediği bölgeler"
+  },
+  "reply": {
+   "type": "string",
+   "description": "kullanıcıya cevap"
+  },
+  "why": {
+   "type": [
+    "string",
+    "null"
+   ],
+   "description": "kısa gerekçe (istemci \"neden?\" altında gösterir)"
+  },
+  "memory": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "description": "Hafıza notu",
+    "properties": {
+     "op": {
+      "type": "string",
+      "enum": [
+       "memory_note"
+      ]
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "person_note",
+       "coach_note",
+       "pattern",
+       "portion_calibration",
+       "forget"
+      ]
+     },
+     "text": {
+      "type": "string"
+     },
+     "food": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "yalnız portion_calibration"
+     },
+     "grams": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "yalnız portion_calibration"
+     },
+     "confidence": {
+      "type": "number"
+     }
+    },
+    "required": [
+     "op",
+     "kind",
+     "text",
+     "food",
+     "grams",
+     "confidence"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "ui": {
+   "type": "object",
+   "properties": {
+    "navigate_to": {
+     "type": [
+      "string",
+      "null"
+     ],
+     "description": "yönlendirilecek uygulama ekranı, gerekiyorsa"
+    },
+    "task_completion_summary": {
+     "type": [
+      "string",
+      "null"
+     ]
+    }
+   },
+   "required": [
+    "navigate_to",
+    "task_completion_summary"
+   ],
+   "additionalProperties": false
+  },
+  "referral_included": {
+   "type": "boolean",
+   "description": "cevapta uzman/112 yönlendirmesi var mı"
+  }
+ },
+ "required": [
+  "suggested_foods",
+  "suggested_exercises",
+  "reply",
+  "why",
+  "memory",
+  "ui",
+  "referral_included"
+ ],
+ "additionalProperties": false
+}
