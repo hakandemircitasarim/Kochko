@@ -193,6 +193,36 @@ for (const f of FILES) {
 }
 
 /**
+ * F0-nets (AI_MIMARI_V2 Faz 0 #3/#8/#9) — a word match in the user's message never writes or
+ * clears a safety/identity record, and never claims consumption. Each line below is a removed net
+ * coming back: code injecting health_event_resolve (heal cue + any body part cleared injuries),
+ * the extractor filling gender ("kadın arkadaşımla…" moved BMR), or the conflict context telling
+ * the model "… iceren yemek girdin" from the raw message (final2#10). The model's own actions
+ * carry these; the allergen reaction check reads executeActions' persisted meal items.
+ */
+{
+  const chat = FILES.find((f) => /ai-chat[\\/]index\.ts$/.test(f));
+  if (chat) {
+    linesOf(read(chat)).forEach((ln, i) => {
+      if (/actions\.push\(\s*\{\s*type:\s*['"]health_event_resolve['"]/.test(ln)) {
+        fail('F0-nets', chat, i + 1, 'code-injected health_event_resolve — injury resolution comes only from the model action');
+      }
+      if (/\bresult\.gender\s*=/.test(ln)) {
+        fail('F0-nets', chat, i + 1, 'regex gender fill — gender is written only from an explicit model profile_update');
+      }
+    });
+  }
+  const svc = FILES.find((f) => /shared[\\/]service-contexts\.ts$/.test(f));
+  if (svc) {
+    linesOf(read(svc)).forEach((ln, i) => {
+      if (/iceren yemek girdin/.test(ln) && !/^\s*\/\//.test(ln)) {
+        fail('F0-nets', svc, i + 1, 'consumption claim built from the raw message — allergen exposure comes from persisted meal items');
+      }
+    });
+  }
+}
+
+/**
  * G1 — ONE owner for the calorie floor. The male floor is 1500 (clinical-rules.getCalorieFloor);
  * the legacy 1400 must never reappear as an inline floor idiom (`? 1200 : 1400` / `: 1400`).
  */

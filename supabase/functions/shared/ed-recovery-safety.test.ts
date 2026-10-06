@@ -23,12 +23,15 @@ Deno.test('mem#12: a model-written referral is not followed by a canned ASCII si
   assert(!/almanizi|Dernegi|gorusmeniz/.test(out));
 });
 
-Deno.test('sanitizeText: the medical-claim guard still drops the role claim and adds its note', () => {
-  const r = sanitizeText('Doktor olarak söylüyorum, bu normal.');
+// AI_MIMARI_V2 Faz 0 #4: the medical-claim guard is a LOG-ONLY tripwire — it still detects and
+// names the rule, but never cuts words out of the reply or appends its canned note.
+Deno.test('sanitizeText: the medical-claim guard detects the role claim but leaves the reply untouched', () => {
+  const reply = 'Doktor olarak söylüyorum, bu normal.';
+  const r = sanitizeText(reply);
   assert(r.hadViolations);
   assert(r.violatedRuleIds.includes('role_doctor'));
-  assert(!/doktor olarak/i.test(r.clean));
-  assert(r.clean.includes('doktoruna danışmalısın'));
+  assertEquals(r.clean, reply);
+  assert(!r.clean.includes('doktoruna danışmalısın'));
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

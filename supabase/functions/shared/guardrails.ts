@@ -31,18 +31,22 @@ const MAX_WORKOUT_DURATION_MIN = 120;
 // one boolean that every caller discarded — "önce ölçüm" was a principle with no instrument, and
 // no prompt change could ever prove its effect ("kural X'in ihlali %22'den %4'e düştü" was
 // unsayable). The ledger row now records WHICH rule fired.
-const FORBIDDEN_PHRASES: { id: string; pattern: string }[] = [
-  { id: 'role_doctor', pattern: 'doktor olarak' },
-  { id: 'role_clinician', pattern: 'hekim olarak' },
-  { id: 'role_dietitian', pattern: 'diyetisyen olarak' },
-  { id: 'medical_advice', pattern: 't[iı]bbi tavsiye(m|yi)?\s*(ver|sun)?' },
-  { id: 'medical_advice2', pattern: 't[iı]bbi olarak (öner|tavsiye)' },
-  { id: 'prescribe_drug', pattern: 'ila[çc] (öner|yaz|ver)\w*' },
-  { id: 'write_rx', pattern: 're[çc]ete (yaz|düzenle)\w*' },
-  { id: 'change_meds', pattern: 'ilac[iı]n[iı]\s*(b[iı]rak|kes|de[gğ]i[sş]tir)\w*' },
-  { id: 'diagnose', pattern: 'te[sş]his koy\w*' },
-  { id: 'diagnose2', pattern: 'tan[iı] koy\w*' },
-  { id: 'treat', pattern: 'tedavi (öner|uygula|başlat)\w*' },
+// AI_MIMARI_V2 Faz 0 #4: REAL RegExp literals. These used to be plain strings fed to new RegExp(),
+// where '\s' and '\w' silently collapse to the letters 's'/'w' — "ilacını bırak" (with its space)
+// never matched, and \w could not see Turkish letters anyway. Letter boundaries use \p{L} (u flag)
+// and run on the tr-lowercased text, so the patterns stay lowercase.
+const FORBIDDEN_PHRASES: { id: string; re: RegExp }[] = [
+  { id: 'role_doctor', re: /(?<!\p{L})doktor olarak(?!\p{L})/u },
+  { id: 'role_clinician', re: /(?<!\p{L})hekim olarak(?!\p{L})/u },
+  { id: 'role_dietitian', re: /(?<!\p{L})diyetisyen olarak(?!\p{L})/u },
+  { id: 'medical_advice', re: /(?<!\p{L})t[iı]bbi tavsiye(?:m|yi)?(?:\s*(?:ver|sun)\p{L}*)?/u },
+  { id: 'medical_advice2', re: /(?<!\p{L})t[iı]bbi olarak (?:öner|tavsiye)\p{L}*/u },
+  { id: 'prescribe_drug', re: /(?<!\p{L})ila[çc] (?:öner|yaz|ver)\p{L}*/u },
+  { id: 'write_rx', re: /(?<!\p{L})re[çc]ete (?:yaz|düzenle)\p{L}*/u },
+  { id: 'change_meds', re: /(?<!\p{L})ilac[iı]n[iı]\s*(?:b[iı]rak|kes|de[gğ]i[sş]tir)\p{L}*/u },
+  { id: 'diagnose', re: /(?<!\p{L})te[sş]his koy\p{L}*/u },
+  { id: 'diagnose2', re: /(?<!\p{L})tan[iı] koy\p{L}*/u },
+  { id: 'treat', re: /(?<!\p{L})tedavi (?:öner|uygula|başlat)\p{L}*/u },
 ];
 
 // Spec 12.4: Allergen filter - these MUST be code-enforced, not prompt-dependent
@@ -472,8 +476,8 @@ export function validateCalories(
 }
 
 /**
- * Scan text for forbidden medical language (Spec 12.3).
- * Returns cleaned text with violations replaced.
+ * Scan text for forbidden medical language (Spec 12.3) — a LOG-ONLY tripwire.
+ * `clean` is always the input, unchanged (kept so existing callers need no edit).
  */
 // final2#9 / mem#12: this function used to ALSO substring-scan for eating-disorder words and append
 // a referral. Every caller passes MODEL OUTPUT (the chat reply still carrying its hidden control
@@ -483,28 +487,20 @@ export function validateCalories(
 // the model had already written. ED risk is a property of what the USER says: ai-chat screens the
 // user's message with detectEDRisk (negation-aware; high → safety reply, medium → one sen-voice
 // referral appended only when the reply doesn't already refer). Output text is not a risk signal.
-export function sanitizeText(text: string): { clean: string; hadViolations: boolean; violatedRuleIds: string[] } {
-  let clean = text;
-  let hadViolations = false;
-  const violatedRuleIds: string[] = [];
-
-  for (const { id, pattern } of FORBIDDEN_PHRASES) {
-    const regex = new RegExp(pattern, 'gi');
-    if (regex.test(clean)) {
-      hadViolations = true;
-      violatedRuleIds.push(id);
-      // Drop the offending construction — NEVER inject bracketed placeholder junk into a
-      // user-visible sentence. Role-claims ("doktor olarak söylüyorum" → "söylüyorum") read fine
-      // with the phrase removed; the referral note below carries the safety message coherently.
-      clean = clean.replace(regex, '');
-    }
+// AI_MIMARI_V2 Faz 0 #4 (§5.3/§7.3): LOG-ONLY. The matched words used to be cut out mid-sentence
+// and a canned referral note appended, so the coach's own refusal "Ben ilaç öneremem" reached the
+// user as a broken sentence plus a lecture. Code never rewrites a reply on a word match: this only
+// records which rule fired (and the matched text) so the rate stays measurable.
+export function sanitizeText(text: string): { clean: string; hadViolations: boolean; violatedRuleIds: string[]; matches: { id: string; text: string }[] } {
+  const lower = text.toLocaleLowerCase('tr');
+  const matches: { id: string; text: string }[] = [];
+  for (const { id, re } of FORBIDDEN_PHRASES) {
+    const m = lower.match(re);
+    if (m) matches.push({ id, text: m[0] });
   }
-  if (hadViolations) {
-    clean = clean.replace(/[ \t]{2,}/g, ' ').trim()
-      + '\n\nNot: Teşhis, ilaç veya tedavi gerektiren konularda mutlaka doktoruna danışmalısın.';
-  }
-
-  return { clean, hadViolations, violatedRuleIds };
+  const violatedRuleIds = matches.map((m) => m.id);
+  if (matches.length > 0) console.warn('[forbidden_phrase] log-only', { rules: violatedRuleIds, matched: matches.map((m) => m.text) });
+  return { clean: text, hadViolations: matches.length > 0, violatedRuleIds, matches };
 }
 
 /**
@@ -808,7 +804,6 @@ const INJECTION_PATTERNS = [
   /reveal\s+(your|the)\s+(system|prompt|instructions)/i,
   /what\s+(are|is)\s+your\s+(system|initial)\s+(prompt|instructions)/i,
   /repeat\s+(your|the)\s+(system|initial)\s+(prompt|instructions)/i,
-  /sen\s+(artık|artik)\s+(bir|)/i,
   /rolunu\s+degistir/i,
   /talimatlarini\s+(goster|göster|yaz)/i,
   /sistem\s+promptunu/i,
@@ -831,9 +826,20 @@ const INJECTION_PATTERNS = [
   /onceki\s+(tum\s+|butun\s+)?talimatlari\s+(unut|yoksay|gormezden|gozardi)/i,
 ];
 
+// AI_MIMARI_V2 Faz 0 #4 (§7.3): patterns that are only LOGGED, never refused. "sen artık …" is
+// ordinary Turkish — "sen artık benim koçumsun", "sen artık beni tanıyorsun" — and every such turn
+// got the canned "Bu konuda yardımcı olamam" refusal (the message was never even read). The model
+// handles a real role-swap attempt under its system prompt; the hit stays visible in the logs.
+const LOG_ONLY_INJECTION_PATTERNS = [
+  /sen\s+(artık|artik)\s+(bir|)/i,
+];
+
 export function sanitizeUserInput(text: string): {
   sanitized: string;
+  /** A REFUSING pattern matched — the caller answers with the fixed refusal. */
   injectionDetected: boolean;
+  /** Source of the pattern that matched (refusing or log-only), for the caller's warn line. */
+  matchedPattern: string | null;
 } {
   // #live-L8: normalize Turkish diacritics + apostrophes so ASCII-written injection patterns
   // still match real Turkish input. Without this "Önceki tüm talimatları unut" and
@@ -846,16 +852,22 @@ export function sanitizeUserInput(text: string): {
     .replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ç/g, 'c').replace(/â/g, 'a');
 
   let injectionDetected = false;
+  let matchedPattern: string | null = null;
   for (const pattern of INJECTION_PATTERNS) {
     if (pattern.test(text) || pattern.test(normalized)) {
       injectionDetected = true;
+      matchedPattern = pattern.source;
       break;
     }
+  }
+  if (!injectionDetected) {
+    const logOnly = LOG_ONLY_INJECTION_PATTERNS.find((p) => p.test(text) || p.test(normalized));
+    if (logOnly) matchedPattern = logOnly.source;
   }
 
   // Don't modify the text - let the system prompt handle it
   // But flag it so the response can be adjusted
-  return { sanitized: text, injectionDetected };
+  return { sanitized: text, injectionDetected, matchedPattern };
 }
 
 /**
