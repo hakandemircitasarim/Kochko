@@ -39,9 +39,9 @@ function req(body: unknown, token: string | null = SERVICE, method = 'POST'): Re
 }
 
 function fakeTransport(payload: unknown, status = 200) {
-  const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const calls: Array<{ url: string; body: Record<string, unknown>; headers: Headers }> = [];
   const transport: Transport = (url, init) => {
-    calls.push({ url, body: JSON.parse(String(init.body)) });
+    calls.push({ url, body: JSON.parse(String(init.body)), headers: new Headers(init.headers) });
     return Promise.resolve(new Response(JSON.stringify(payload), { status, headers: { 'content-type': 'application/json' } }));
   };
   return { transport, calls };
@@ -56,7 +56,9 @@ const responses = (content: unknown[]) => ({
 });
 
 const VALID_BODY = { model: 'gpt-5.6-terra', effort: 'low', system: 'Anla kuralları', input: '1 bardak su içtim', schema: SCHEMA };
-const deps = (transport: Transport) => ({ transport, serviceRoleKey: 'sb_secret_test' });
+const TOOL_PARAMS = { type: 'object', additionalProperties: false, required: ['days'], properties: { days: { type: 'integer' } } };
+// probeBaseUrl '' pins "not configured" regardless of the machine's env.
+const deps = (transport: Transport) => ({ transport, serviceRoleKey: 'sb_secret_test', probeBaseUrl: '', probeApiKey: '' });
 
 // ── gate ────────────────────────────────────────────────────────────────────────────────────
 
@@ -70,7 +72,10 @@ Deno.test('ai-decide: only the service role gets in', async () => {
   assertEquals(calls.length, 0, 'a refused caller never costs a token');
 });
 
-Deno.test('ai-decide: the raw service-role key is accepted (non-JWT sb_secret keys)', () => {
+// Defence in depth only: with verify_jwt=true the Supabase gateway rejects a non-JWT bearer
+// (sb_secret_…) before the handler runs, so in production probes send the service_role JWT. The
+// raw-key branch matters for `functions serve --no-verify-jwt` or if verify_jwt is ever turned off.
+Deno.test('ai-decide: the raw service-role key matches when no gateway check ran (defence in depth)', () => {
   assert(isServiceRoleCaller(req({}, 'sb_secret_test'), 'sb_secret_test'));
   assert(!isServiceRoleCaller(req({}, 'sb_secret_tesT'), 'sb_secret_test'));
   assert(!isServiceRoleCaller(req({}, 'sb_secret_test'), ''), 'an unset key must not match an empty token');
@@ -185,6 +190,56 @@ Deno.test('ai-decide: a named registry schema can be referenced instead of sent'
   assertEquals(calls.length, 1);
 });
 
+// ── provider target: probing a gateway without touching live v1 traffic ─────────────────────
+
+Deno.test('ai-decide: target probe_gateway uses the probe-only secrets, never OPENAI_BASE_URL', async () => {
+  const { transport, calls } = fakeTransport({
+    id: 'c1', model: 'gpt-4o', choices: [{ message: { role: 'assistant', content: '{"intent":"log","liters":0.2}' }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+  });
+  const res = await handleDecide(
+    req({ ...VALID_BODY, model: 'gpt-4o', target: 'probe_gateway', cache_key: 'k' }),
+    { ...deps(transport), probeBaseUrl: 'https://gateway.example.com/v1/', probeApiKey: 'gw-key' },
+  );
+  assertEquals(res.status, 200);
+  const out = await res.json();
+  assertEquals(out.kind, 'parsed');
+  assertEquals(out.target, 'probe_gateway');
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].url, 'https://gateway.example.com/v1/chat/completions');
+  assertEquals(calls[0].headers.get('Authorization'), 'Bearer gw-key', 'the gateway gets its own key');
+  assert(!('prompt_cache_key' in calls[0].body), 'OpenAI-only args are not sent to a gateway');
+  assert(!JSON.stringify(out).includes('gw-key'), 'the key never comes back in the body');
+});
+
+Deno.test('ai-decide: the default target can be pinned through deps (tests / local serve)', async () => {
+  const { transport, calls } = fakeTransport(responses([{ type: 'output_text', text: '{"intent":"log","liters":0.2}' }]));
+  const out = await (await handleDecide(req(VALID_BODY), { ...deps(transport), baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-pinned' })).json();
+  assertEquals(out.kind, 'parsed');
+  assertEquals(out.target, 'default');
+  assertEquals(calls[0].url, 'https://api.openai.com/v1/responses');
+  assertEquals(calls[0].headers.get('Authorization'), 'Bearer sk-pinned');
+});
+
+Deno.test('ai-decide: an unconfigured or unsafe probe gateway is refused before any call', async () => {
+  const { transport, calls } = fakeTransport(responses([]));
+  const cases: Array<[Record<string, string>, string]> = [
+    [{ probeBaseUrl: '', probeApiKey: 'gw-key' }, 'KOCHKO_PROBE_BASE_URL'],
+    // No key → refused, rather than sending the OpenAI key to a third party.
+    [{ probeBaseUrl: 'https://gateway.example.com/v1', probeApiKey: '' }, 'KOCHKO_PROBE_API_KEY'],
+    [{ probeBaseUrl: 'http://gateway.example.com/v1', probeApiKey: 'gw-key' }, 'https'],
+    [{ probeBaseUrl: 'not a url', probeApiKey: 'gw-key' }, 'https'],
+  ];
+  for (const [cfg, needle] of cases) {
+    const res = await handleDecide(req({ ...VALID_BODY, target: 'probe_gateway' }), { ...deps(transport), ...cfg });
+    assertEquals(res.status, 400, needle);
+    const out = await res.json();
+    assert(String(out.error).includes(needle), `${needle} → ${out.error}`);
+    assert(!String(out.error).includes('gateway.example.com'), 'the configured URL is not echoed');
+  }
+  assertEquals(calls.length, 0);
+});
+
 // ── request validation ──────────────────────────────────────────────────────────────────────
 
 Deno.test('ai-decide: request validation names the bad field and spends no tokens', async () => {
@@ -201,6 +256,9 @@ Deno.test('ai-decide: request validation names the bad field and spends no token
     [{ ...VALID_BODY, schema_name: 'kochko_probe_v1' }, 'either schema or schema_name'],
     [{ model: 'gpt-5.6-terra', system: 's', input: 'x', schema_name: 'nope' }, 'unknown schema_name'],
     [{ ...VALID_BODY, tools: [{ name: 'x' }] }, 'tools[0]'],
+    [{ ...VALID_BODY, tools: [{ name: 'x', parameters: TOOL_PARAMS, strict: 'false' }] }, 'tools[0].strict'],
+    [{ ...VALID_BODY, tools: [{ name: 'x', parameters: TOOL_PARAMS, description: 7 }] }, 'tools[0].description'],
+    [{ ...VALID_BODY, target: 'prod' }, 'target'],
   ];
   const { transport, calls } = fakeTransport(responses([]));
   for (const [body, needle] of cases) {
@@ -224,6 +282,41 @@ Deno.test('ai-decide: a schema strict mode would reject is caught before the pro
   assert(parseDecideRequest({ ...loose, schema: { ...loose.schema, strict: false } }).ok);
 });
 
+Deno.test('ai-decide: strict tool parameters are pre-flighted too, with tool-indexed paths', async () => {
+  const loose = { type: 'object', properties: { days: { type: 'integer' } } };
+  const r = parseDecideRequest({ ...VALID_BODY, tools: [{ name: 'ok_tool', parameters: TOOL_PARAMS }, { name: 'read_meals', parameters: loose }] });
+  assert(!r.ok);
+  if (!r.ok) {
+    assert(r.error.includes('tools[1].parameters'), r.error);
+    assert(r.issues?.some((i) => i.startsWith('tools[1].parameters#') && i.includes('additionalProperties')), r.issues?.join(' | '));
+    assert(r.issues?.some((i) => i.includes('tools[1].parameters#/properties/days')), r.issues?.join(' | '));
+  }
+  // strict:false on the tool is the explicit opt-out (sent as strict:false on the wire).
+  const optOut = parseDecideRequest({ ...VALID_BODY, tools: [{ name: 'read_meals', parameters: loose, strict: false }] });
+  assert(optOut.ok);
+
+  const { transport, calls } = fakeTransport(responses([]));
+  const res = await handleDecide(req({ ...VALID_BODY, tools: [{ name: 'read_meals', parameters: loose }] }), deps(transport));
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0, 'a malformed tool schema costs no round trip');
+  await res.body?.cancel();
+});
+
+Deno.test('ai-decide: schema_name only resolves OWN registry keys (no prototype lookups)', async () => {
+  const named: Record<string, StructuredSchema> = { kochko_probe_v1: SCHEMA };
+  const { schema: _raw, ...rest } = VALID_BODY;
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+    const r = parseDecideRequest({ ...rest, schema_name: name }, named);
+    assert(!r.ok, name);
+    if (!r.ok) assert(r.error.startsWith('unknown schema_name'), `${name} → ${r.error}`);
+  }
+  const { transport, calls } = fakeTransport(responses([]));
+  const res = await handleDecide(req({ ...rest, schema_name: 'constructor' }), { ...deps(transport), schemas: named });
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0);
+  await res.body?.cancel();
+});
+
 Deno.test('ai-decide: defaults — primary model, low effort (Stage A base, §8.4)', () => {
   const r = parseDecideRequest({ system: 's', input: 'x', schema: SCHEMA });
   assert(r.ok);
@@ -231,6 +324,7 @@ Deno.test('ai-decide: defaults — primary model, low effort (Stage A base, §8.
     assertEquals(r.value.effort, 'low');
     assert(r.value.model.length > 0);
     assertEquals(r.value.messages, [{ role: 'system', content: 's' }, { role: 'user', content: 'x' }]);
+    assertEquals(r.value.target, 'default', 'the probe gateway is opt-in per request');
   }
 });
 

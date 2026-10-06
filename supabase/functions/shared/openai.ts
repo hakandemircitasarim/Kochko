@@ -649,7 +649,11 @@ export interface RespondOptions {
   toolChoice?: 'auto' | 'none' | 'required';
   /** /responses-only passthrough, e.g. ['reasoning.encrypted_content'] for a stateless tool loop. */
   include?: string[];
-  /** OVERALL wall-clock budget across every attempt (Stage A uses ~4 s). Default: effort-scaled. */
+  /**
+   * OVERALL wall-clock budget across every attempt (Stage A uses ~4 s). Default: effort-scaled.
+   * It covers the whole exchange — headers AND the full body — so a gateway that stalls mid-body
+   * is a `timeout`, never a hang (sendWithinBudget).
+   */
   timeoutMs?: number;
   /** Local schema check; returns issues, [] = valid. Default: validateJsonSchema(schema.schema). */
   validator?: (value: unknown) => string[];
@@ -961,16 +965,29 @@ export function parseChatCompletionOutput(data: Record<string, unknown>): Parsed
   };
 }
 
+const SCHEMA_BUG_RE = /invalid[ _](?:json[ _])?schema/i;
+const FORMAT_SUBJECT_RE = /(json_schema|response_format|text\.format)/i;
+// OpenAI ("is not supported with this model"), gateways ("does not support json_schema"), Azure
+// ("… is enabled only for api versions 2024-08-01-preview and later").
+const FORMAT_CAPABILITY_RE = new RegExp([
+  'not supported', 'unsupported', "do(?:es)?(?: not|n't|n’t) support", 'unknown', 'unrecognized',
+  'not allowed', 'not permitted', 'not available',
+  '(?:enabled|supported|available|allowed) only', 'only (?:enabled|supported|available|allowed)',
+  'only for api[ _-]?versions?',
+].join('|'), 'i');
+
 /**
  * Does this 400/422 say "this endpoint/model cannot do json_schema" (→ degrade the FORMAT) rather
  * than "your schema is wrong" (→ a bug that must surface)? Only consulted in `auto` mode. This
- * reads a provider error string, never user text.
+ * reads a provider error string, never user text. A miss is safe (the 400 is reported, fail
+ * closed); a false hit only degrades to json_object, whose answer is still validated locally.
  */
 export function looksLikeFormatUnsupported(status: number, errBody: string): boolean {
   if (status !== 400 && status !== 422) return false;
-  if (/invalid schema/i.test(errBody)) return false;
-  return /(json_schema|response_format|text\.format)/i.test(errBody)
-    && /(not supported|unsupported|unknown|unrecognized|not allowed|not permitted)/i.test(errBody);
+  // Checked FIRST: a schema bug (message "Invalid schema …" or code "invalid_json_schema") must
+  // surface, whatever capability wording the rest of the message happens to contain.
+  if (SCHEMA_BUG_RE.test(errBody)) return false;
+  return FORMAT_SUBJECT_RE.test(errBody) && FORMAT_CAPABILITY_RE.test(errBody);
 }
 
 function providerMessage(errBody: string): string {
@@ -983,6 +1000,73 @@ function providerMessage(errBody: string): string {
 }
 
 const ZERO_USAGE: RespondUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0, reasoningTokens: 0, cachedTokens: 0 };
+
+/** One attempt's reply, read to the last byte inside the attempt's budget. */
+interface BoundedReply {
+  /** Status and headers only — its body has already been consumed into `text`. */
+  response: Response;
+  /** The whole body, or null when reading it failed (`readError` says why). */
+  text: string | null;
+  readError: string | null;
+}
+
+async function readBodyText(response: Response, onReader: (r: ReadableStreamDefaultReader<Uint8Array>) => void): Promise<string> {
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  onReader(reader);
+  const decoder = new TextDecoder();
+  let text = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+/**
+ * Send one request and read its body to the end, all inside `budgetMs`.
+ *
+ * The timer stays armed until the LAST body byte is in: a gateway that sends headers and then
+ * stalls mid-body is as much a timeout as one that never answers (Stage A's 4 s fail-closed bound,
+ * §7.2, depends on it). On expiry the request is aborted (a real fetch drops the socket), the body
+ * reader is cancelled, and a Response that a signal-ignoring transport delivers late has its body
+ * cancelled too — nothing is left holding a connection.
+ *
+ * Rejects with an AbortError on expiry and with the transport's own error on a network failure;
+ * a body that fails mid-read before the deadline resolves with `readError`.
+ */
+async function sendWithinBudget(transport: Transport, url: string, init: RequestInit, budgetMs: number): Promise<BoundedReply> {
+  const controller = new AbortController();
+  let expired = false;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Raced against every await below, so a transport that ignores `signal` still cannot hang the turn.
+  const budget = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      expired = true;
+      reject(new DOMException('respond() budget exhausted', 'AbortError'));
+      controller.abort();
+      reader?.cancel().catch(() => { /* already errored by the abort */ });
+    }, budgetMs);
+  });
+  try {
+    const pending = Promise.resolve(transport(url, { ...init, signal: controller.signal }));
+    pending.then((late) => {
+      if (expired) late?.body?.cancel().catch(() => { /* locked or already closed */ });
+    }).catch(() => { /* a rejection is handled by the race below; nothing here may go unhandled */ });
+    const response = await Promise.race([pending, budget]);
+    try {
+      const text = await Promise.race([readBodyText(response, (r) => { reader = r; }), budget]);
+      return { response, text, readError: null };
+    } catch (e) {
+      if (expired) throw e;
+      return { response, text: null, readError: ((e as Error)?.message ?? String(e)).slice(0, 300) };
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Strict-schema structured call. Returns a typed outcome; the caller decides what each one means
@@ -1053,26 +1137,14 @@ export async function respond<T = unknown>(opts: RespondOptions): Promise<Respon
       temperature: opts.temperature,
     });
 
-    let response: Response;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let reply: BoundedReply;
     try {
-      // Raced against the abort so a transport that ignores `signal` still cannot hang the turn.
-      const aborted = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          controller.abort();
-          reject(new DOMException('respond() budget exhausted', 'AbortError'));
-        }, remaining);
-      });
-      response = await Promise.race([
-        transport(req.url, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(req.body),
-          signal: controller.signal,
-        }),
-        aborted,
-      ]);
+      // Headers AND body inside the remaining budget — the timer is not cleared until the last byte.
+      reply = await sendWithinBudget(transport, req.url, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body),
+      }, remaining);
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') return fail('timeout', null, `no answer within ${budgetMs}ms`);
       const msg = (e as Error)?.message ?? String(e);
@@ -1083,12 +1155,11 @@ export async function respond<T = unknown>(opts: RespondOptions): Promise<Respon
         continue;
       }
       return fail('network', null, msg.slice(0, 500));
-    } finally {
-      clearTimeout(timer);
     }
+    const response = reply.response;
 
     if (!response.ok) {
-      const errBody = await response.text().catch(() => '');
+      const errBody = reply.text ?? '';
       const status = response.status;
       const transient = status === 429 || status >= 500;
       if (transient && !transientRetried) {
@@ -1109,9 +1180,12 @@ export async function respond<T = unknown>(opts: RespondOptions): Promise<Respon
       return fail('http', status, providerMessage(errBody));
     }
 
+    if (reply.text === null) {
+      return fail('bad_response', response.status, `unreadable provider body: ${reply.readError ?? 'unknown error'}`);
+    }
     let data: Record<string, unknown>;
     try {
-      const parsedBody = await response.json();
+      const parsedBody: unknown = JSON.parse(reply.text);
       if (typeof parsedBody !== 'object' || parsedBody === null) throw new Error('body is not an object');
       data = parsedBody as Record<string, unknown>;
     } catch (e) {
