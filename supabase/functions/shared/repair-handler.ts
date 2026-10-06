@@ -221,7 +221,7 @@ export async function handleUndo(userId: string, intendedType: UndoTargetType | 
   if (new Date(target.logged_at).getTime() < windowStart) {
     return {
       handled: true,
-      response: 'Son mesajında geri alabileceğim bir öğün, antrenman ya da takviye kaydı yok. Eski bir kaydı silmek istersen Bugün ekranından kaydın üzerinden silebilir ya da hangi kaydı kastettiğini yazabilirsin.',
+      response: 'Son mesajında geri alabileceğim bir öğün, antrenman ya da takviye kaydı yok. Eski bir kaydı silmek istersen Bugün ekranından kaydın üzerinden silebilir ya da hangi kaydı kastettiğini yazabilirsin. Su, uyku ya da tartı kaydını düzeltmek istersen doğru değeri yazman yeterli (ör. "bugün toplam 2 litre su").',
       undoneAction: null,
       shouldContinueNormal: false,
     };

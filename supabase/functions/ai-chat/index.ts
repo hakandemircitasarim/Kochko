@@ -2737,6 +2737,14 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
     assistantMessage = assistantMessage.replace(/<confirm_reject\s*\/?>/g, '').trim();
     if (persistedPlan && user_approved !== true
       && planTurn) {
+      // A plan turn whose prose came back EMPTY showed only the buttons (live Faz 0 check): state
+      // the persisted plan's own numbers instead of nothing.
+      if (!assistantMessage.replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '').trim()) {
+        const t = (persistedPlan.targets ?? {}) as { kcal?: number; calories?: number; protein_g?: number; protein?: number };
+        const kcal = Number(t.kcal ?? t.calories) || 0;
+        const pro = Number(t.protein_g ?? t.protein) || 0;
+        assistantMessage = `${kcal > 0 ? `Haftalık planın hazır: günde ~${kcal.toLocaleString('tr-TR')} kcal${pro > 0 ? `, ${pro} g protein` : ''}.` : 'Haftalık planın hazır.'} İnceleyip onaylayabilir ya da değiştirmemi istediğin yeri yazabilirsin.\n${assistantMessage}`.trim();
+      }
       assistantMessage = `${assistantMessage}\n<confirm_reject/>`.trim();
     }
 
@@ -3231,13 +3239,55 @@ Doğru anladıysam: ${parsed}.${tail}`;
       if (allergensToScan.length > 0) {
         const scan = scanReplyForAllergens(scanText, allergensToScan);
         if (scan.violated) {
+          // ONE regeneration first (AI_MIMARI_V2 §3.2 T7: "ihlalde TEK regen, sonra güvenli
+          // yedek"). The fixed template answered nothing — a severe-allergy user asking about a fish
+          // restaurant got "öneriyi göstermiyorum" on every turn and "olur" looped (live Faz 0 check).
+          // The model rewrites its OWN prose knowing exactly which allergen to avoid; code-appended
+          // lines after the model prose (echo, questions, plan marker) are kept as they were.
+          let regenReply: string | null = null;
           if (scan.worstSeverity === 'severe') {
+            try {
+              const avoid = scan.matched.join(', ');
+              const regenRaw = await chatCompletion<string>(
+                [
+                  ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
+                  { role: 'assistant', content: rawModelOut },
+                  { role: 'system', content: `GÜVENLİK DÜZELTMESİ: Bu taslak, kullanıcının CİDDİ alerjisi olan ${avoid} içeren bir yiyeceği önerdi ya da önerir gibi okunuyor. Aynı soruya yeniden cevap ver: ${avoid} içeren HİÇBİR yiyeceği önerme; gerekiyorsa hangi yemeklerde gizli olabileceğini söyleyip "içinde ${avoid} var mı diye sor" uyarısı ver ve güvenli seçenekler sun. Aynı JSON zarfını döndür; "actions" alanını BOŞ bırak (kayıtlar zaten işlendi).` },
+                ],
+                { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, reasoningEffort: modelSelection.effort, jsonRaw: true, cacheKey: `kochko-chat:${userId}` },
+              );
+              let txt = '';
+              try { const p = JSON.parse(regenRaw); txt = typeof p?.reply === 'string' ? p.reply : ''; } catch { txt = regenRaw; }
+              txt = extractActions(txt).cleanMessage.trim();
+              const reScan = txt ? scanReplyForAllergens(txt, allergensToScan) : null;
+              if (txt && reScan && !(reScan.violated && reScan.worstSeverity === 'severe')) regenReply = txt;
+              else console.warn('[allergen_block] regeneration still unsafe — falling back to the template', { matched: reScan?.matched });
+            } catch (e) {
+              console.warn('[allergen_block] regeneration failed — falling back to the template', (e as Error).message);
+            }
+          }
+          if (regenReply) {
+            const appended = assistantMessage.startsWith(modelProseForScan) ? assistantMessage.slice(modelProseForScan.length) : '';
+            console.warn('[allergen_block] severe allergen in draft — regenerated safely', { matched: scan.matched });
+            guardFlags.push('allergen_regenerated');
+            // The plan approve marker was appended before this scan; keep it exactly once.
+            const hadMarker = /<confirm_reject\s*\/?>/.test(modelProseForScan);
+            const cleanRegen = regenReply.replace(/<confirm_reject\s*\/?>/g, '').trim();
+            assistantMessage = `${cleanRegen}${appended}${hadMarker && !/<confirm_reject/.test(appended) ? '\n<confirm_reject/>' : ''}`;
+            planReasoning = '';
+          } else if (scan.worstSeverity === 'severe') {
             // HARD BLOCK (anaphylaxis risk): redact the whole reply AND the reasoning panel (which
             // carried the same rationale) — replace with a deterministic safe message. Warning-
             // below-the-danger is NOT enforcement; the unsafe food must never reach the user.
             console.warn('[allergen_block] severe allergen recommended in reply — redacted', { matched: scan.matched, contexts: scan.contexts });
             guardFlags.push('allergen_blocked');
-            assistantMessage = buildAllergenBlockMessage(scan.matched);
+            // On a plan turn the PLAN itself already passed the plan-level allergen check and was
+            // persisted; only the prose is withheld. Say that, and keep the approve buttons — the
+            // generic "öneriyi göstermiyorum" + lost marker left a saved draft with no way to act.
+            const planKept = !!persistedPlan && planTurn && user_approved !== true;
+            assistantMessage = planKept
+              ? `Plan taslağın hazır ve alerjenlerine (${scan.matched.join(', ')}) göre kontrol edildi; açıklama metnimde bu alerjen geçtiği için onu göstermiyorum. Planı aşağıdan inceleyip onaylayabilir ya da değiştirmemi istediğin yeri yazabilirsin.\n<confirm_reject/>`
+              : buildAllergenBlockMessage(scan.matched);
             planReasoning = '';
           } else {
             // F-SIM5: an empty match produced the dumb-sounding "profilinde alerjen alerjisi kayıtlı".
@@ -6272,8 +6322,19 @@ async function executeActions(
           // #memory RETRACTION: an injury healed. UPDATE the matching ongoing rows to
           // is_ongoing=false so filterExercisesByInjury / the injury guardrail / plan-gen stop
           // treating it as active. Match by body part (the same extractor the injury net uses).
-          const healedParts = new Set((action.body_parts as string[] | undefined) ?? []);
-          if (healedParts.size === 0) { pushFb(null); break; }
+          // The model writes body parts in Turkish ("diz", "sol dizim" — the prompt example teaches
+          // it), while ongoing rows and spine constraints are keyed by the canonical body-part
+          // vocabulary ("knee"). Comparing raw values never matched: a healed knee stayed an active
+          // injury while the receipt said ok (live Faz 0 check). Map both sides to canonical keys.
+          const rawHealed = ((action.body_parts as string[] | undefined) ?? []).filter((p) => typeof p === 'string' && p.trim());
+          const healedParts = new Set([
+            ...extractInjuredBodyParts([...rawHealed, String(action.description ?? '')]),
+            ...rawHealed.map((p) => p.trim().toLowerCase()).filter((p) => /^[a-z_]+$/.test(p)),
+          ]);
+          if (healedParts.size === 0) {
+            pushFb('Hangi sakatlığın iyileştiğini kayıtta eşleştiremedim; bölgeyi yazarsan güncellerim.', { ok: false, failureClass: 'no_match' });
+            break;
+          }
           const { data: ongoing } = await supabaseAdmin
             .from('health_events').select('id, description')
             .eq('user_id', userId).eq('is_ongoing', true);
@@ -6287,17 +6348,19 @@ async function executeActions(
             }
           }
           // #arch L1: also deactivate the typed injury constraints for the healed parts.
-          await resolveInjuryConstraints(userId, [...healedParts]);
+          const deactivated = await resolveInjuryConstraints(userId, [...healedParts]);
           // F3/C6 (retract half): a healed injury is a retracted belief — timeline it.
-          if (resolved > 0) {
+          if (resolved > 0 || deactivated > 0) {
             await logBelief(userId, {
               belief_key: 'health_event', subject: [...healedParts].join(', '), operation: 'retract',
               old_value: 'aktif sakatlık/rahatsızlık', new_value: 'iyileşti',
               note: 'kullanıcı iyileştiğini bildirdi — kısıt kaldırıldı',
             });
           }
-          console.warn('[health_event_resolve] resolved', { parts: [...healedParts], resolved });
-          pushFb(resolved > 0 ? 'Geçmiş olsun, kaydını güncelledim' : null);
+          console.warn('[health_event_resolve] resolved', { parts: [...healedParts], resolved, deactivated });
+          // Honest receipt: "ok" only when something actually changed.
+          if (resolved > 0 || deactivated > 0) pushFb('Geçmiş olsun, sakatlık kaydını kapattım');
+          else pushFb('Kayıtlı aktif bir sakatlıkla eşleştiremedim; hangi bölge olduğunu yazarsan güncellerim.', { ok: false, failureClass: 'no_match' });
           break;
         }
         case 'lab_value': {

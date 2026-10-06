@@ -350,3 +350,8 @@ Deno.test('sanitizeUserInput (Faz 0 #4): explicit injection phrases still refuse
   const benign = sanitizeUserInput('bugün 2 yumurta yedim');
   ok(!benign.injectionDetected && benign.matchedPattern === null, 'benign message: no match at all');
 });
+
+Deno.test('Faz 0 live: a first-person refusal ("önermem") addresses the allergen — no false "uygun olmayabilir" tail', () => {
+  const r = scanReplyForAllergens('Somon ve karidesi önermem; ızgara tavuk göğsü ve mevsim salatası daha güvenli.', [{ name: 'deniz ürünleri', severity: 'moderate' }]);
+  ok(r.violated === false, "önermem is a first-person refusal, not a recommendation");
+});

@@ -66,6 +66,7 @@ export type GuardFlag =
   | 'crisis'
   | 'emergency'
   | 'plan_allergen_regen'
+  | 'allergen_regenerated'
   | 'clean';
 
 /**
@@ -75,7 +76,7 @@ export type GuardFlag =
  */
 const SEVERITY_ORDER: GuardFlag[] = [
   'emergency', 'crisis', 'allergen_blocked', 'ed_referral',
-  'plan_allergen_regen', 'injury_warned', 'allergen_warned',
+  'plan_allergen_regen', 'allergen_regenerated', 'injury_warned', 'allergen_warned',
 ];
 
 export function guardVerdictOf(flags: readonly GuardFlag[]): GuardFlag {
