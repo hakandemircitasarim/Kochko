@@ -5,11 +5,13 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import { checkAllergens, filterExercisesByInjury } from './guardrails.ts';
 import {
+  allergenSpine,
   allergenTagsHit,
   checkSuggestionInvariants,
   injuredRegionsFromSpine,
   injuryLoadHit,
   severeAllergenSubjects,
+  unlocatedInjuries,
 } from './safety-invariants.ts';
 
 // ─── allergenTagsHit ─────────────────────────────────────────────────────────
@@ -122,20 +124,41 @@ Deno.test('injury: expand hook for vocab ids', () => {
 
 // ─── spine helpers ───────────────────────────────────────────────────────────
 
-Deno.test('severeAllergenSubjects: severe + unknown + missing severity count; mild/moderate, others\' and retracted do not', () => {
+Deno.test('severeAllergenSubjects: only an explicit mild leaves the set; others\' and retracted rows never enter', () => {
   const rows = [
     { kind: 'allergen', subject: 'fıstık', severity: 'severe' },
     { kind: 'allergen', subject: 'yumurta', severity: 'unknown' },
     { kind: 'allergen', subject: 'susam', severity: null },
     { kind: 'intolerance', subject: 'laktoz', severity: 'mild' },
+    // v1 writes 'moderate' whenever the user gave no severity (ai-chat salvage/actions, the 080
+    // backfill) — so 'moderate' means "unknown" and counts as severe (§7.1).
     { kind: 'allergen', subject: 'kivi', severity: 'moderate' },
     { kind: 'allergen', subject: 'çilek', severity: 'severe', whose: 'other_person' },
     { kind: 'allergen', subject: 'fındık', severity: 'severe', polarity: 'does_not_have' },
     { kind: 'allergen', subject: 'balık', severity: 'severe', active: false },
     { kind: 'injury', subject: 'knee', severity: 'severe' },
     { name: 'deniz ürünleri', severity: null }, // legacy food_preferences row
+    { kind: 'allergen', subject: 'hardal' }, // severity missing entirely
   ];
-  assertEquals(severeAllergenSubjects(rows), ['fıstık', 'yumurta', 'susam', 'deniz ürünleri']);
+  assertEquals(severeAllergenSubjects(rows), ['fıstık', 'yumurta', 'susam', 'kivi', 'deniz ürünleri', 'hardal']);
+});
+
+Deno.test('severeAllergenSubjects: a legacy "moderate" row is protected by the T7 invariant (wave-1 review probe)', () => {
+  const severe = severeAllergenSubjects([{ kind: 'allergen', subject: 'fıstık', severity: 'moderate' }]);
+  assertEquals(severe, ['fıstık']);
+  const v = checkSuggestionInvariants({ foods: [{ name: 'Fıstık ezmeli tost', allergens: ['fıstık'] }] }, { severeAllergens: severe, injuredRegions: [] });
+  assertEquals(v.map((x) => x.name), ['Fıstık ezmeli tost']);
+});
+
+Deno.test('allergenSpine: worst severity wins per subject; mild-only subjects are kept for v1\'s warning path', () => {
+  const spine = allergenSpine([
+    { kind: 'allergen', subject: 'Fıstık', severity: 'mild' },
+    { kind: 'allergen', subject: 'fıstık', severity: 'moderate' }, // the same allergen, legacy default → severe wins
+    { kind: 'intolerance', subject: 'laktoz', severity: ' MILD ' },
+    { kind: 'allergen', subject: 'kivi', severity: 'mild', whose: 'other_person' },
+  ]);
+  assertEquals(spine, { severe: ['fıstık'], mild: ['laktoz'] });
+  assertEquals(severeAllergenSubjects([{ kind: 'intolerance', subject: 'laktoz', severity: 'mild' }]), []);
 });
 
 Deno.test('injuredRegionsFromSpine: body_parts first, subject as fallback, own active rows only', () => {
@@ -148,6 +171,21 @@ Deno.test('injuredRegionsFromSpine: body_parts first, subject as fallback, own a
     { kind: 'allergen', subject: 'fıstık' },
   ];
   assertEquals(injuredRegionsFromSpine(rows), ['knee', 'omuz']);
+});
+
+Deno.test('unlocatedInjuries: an own active injury with no usable region is surfaced, never silently empty', () => {
+  const rows = [
+    { kind: 'injury', subject: 'knee', body_parts: ['knee'] },
+    { kind: 'injury', subject: 'injury', body_parts: [] }, // v1 syncInjuryFromText placeholder
+    { kind: 'surgery', subject: 'surgery', body_parts: null },
+    { kind: 'surgery', subject: '  ', body_parts: [] },
+    { kind: 'injury', subject: 'injury', body_parts: [], active: false },
+    { kind: 'injury', subject: 'injury', body_parts: [], whose: 'other_person' },
+    { kind: 'allergen', subject: 'fıstık' },
+  ];
+  assertEquals(unlocatedInjuries(rows).map((r) => r.kind), ['injury', 'surgery', 'surgery']);
+  assertEquals(injuredRegionsFromSpine(rows), ['knee'], 'the region list itself stays region-only');
+  assertEquals(unlocatedInjuries([{ kind: 'injury', subject: 'diz', body_parts: [] }]), [], 'a named subject is a region');
 });
 
 // ─── checkSuggestionInvariants (T7) ──────────────────────────────────────────

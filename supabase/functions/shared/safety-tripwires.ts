@@ -17,8 +17,12 @@
  *
  * Why a split instead of today's single list: every v1 hit is an instant canned reply, so
  * "bu tarife bayıldım" got 112 and "dün gece kustum, zehirlendim galiba" an ED referral plus a
- * 14-day deficit lock. The explicit list keeps only phrasings with no plausible benign reading;
- * everything else is ambiguous WITHOUT losing recall: v1's own phrase lists and root regexes live
+ * 14-day deficit lock. The explicit list keeps only phrasings with no plausible benign reading,
+ * about the user, NOW: the same words told as past or about someone else ("koşuda nefes
+ * alamıyordum, normal mi?", "babam hayata veda etti") are reported as an ambiguous `<id>.anlatim`
+ * hit (see `narration`), and an explicit pattern never reaches into a neighbouring word
+ * ("hayatımı son derece kolaylaştırdı" is praise, not "hayatıma son").
+ * Everything else is ambiguous WITHOUT losing recall: v1's own phrase lists and root regexes live
  * here (guardrails.ts imports them — a pure move, v1 behaviour unchanged) and also run as
  * catch-all ambiguous triggers, so every v1 hit is still a hit by construction (golden parity
  * test in safety-tripwires.test.ts). Rules for editing (§7.4): ADDING a pattern ships any time;
@@ -34,7 +38,7 @@
  * Pure: no I/O, no Deno/npm imports (the eval runner and any runtime can load it).
  */
 
-export const TRIPWIRES_VERSION = 'tw-2026-10-06';
+export const TRIPWIRES_VERSION = 'tw-2026-10-07';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -46,7 +50,8 @@ export type EdSeverity = 'high' | 'medium';
 export interface TripwireHit {
   /** Per-scan handle Stage A answers with in `safety.tripwire_reading` ('tw1', 'tw2', …). */
   hit_id: string;
-  /** Stable pattern id for the ledger ('emg.bayilma', 'sh.intihar', 'ed.kusma' …). */
+  /** Stable pattern id for the ledger ('emg.bayilma', 'sh.intihar', 'ed.kusma' …); an explicit
+   * phrasing told as past or about someone else is '<explicit id>.anlatim' (tier 'ambiguous'). */
   trigger: string;
   category: TripwireCategory;
   tier: TripwireTier;
@@ -92,6 +97,15 @@ export interface TripwireDef {
   ed_severity?: EdSeverity;
   /** ED: a same-clause refusal after the match marks the hit negated (v1 F2/A8 rule). */
   negatable?: boolean;
+  /**
+   * EXPLICIT only — is this occurrence past narration or someone else's? Gets the folded last word
+   * of the match (completed to its end) and the word right after it. True → the occurrence is
+   * reported as an AMBIGUOUS hit with trigger `<id>.anlatim`: Stage A reads it, a failed Stage A
+   * still gives today's canned reply, so nothing is lost — it is only not instant.
+   */
+  narration?: (verb: string, next: string) => boolean;
+  /** Stage A's question for a narrated occurrence (default: `question_tr`). */
+  narration_q?: string;
   question_tr: string;
 }
 
@@ -158,17 +172,47 @@ function originalSlice(t: Texts, from: number, toExclusive: number): string {
   return t.src.slice(a, b + width).trim();
 }
 
-// ─── ED negation (ported verbatim from guardrails.detectEDRisk, on folded text) ───
+// ─── ED negation (v1's rule, v1's regexes, v1's window) ──────────────────────
+// Moved here verbatim from guardrails.detectEDRisk (which imports them back — a pure move).
+// A negated hit gets no canned fallback, so negation must never reach further than v1's: the
+// window is the 30 SOURCE characters after the match on the tr-lowercased raw text, exactly as v1
+// measures it — collapsed whitespace and dropped apostrophes cannot pull a refusal into reach, and
+// a refusal v1 cannot read ("ISTEMIYORUM" → "ıstemıyorum") cancels nothing here either.
 
-const ED_NEGATED = /(istemiyorum|istemem|yapmiyorum|yapmam|kullanmiyorum|kullanmam|etmiyorum|etmem|degilim|hic olmad|asla)/u;
-const CLAUSE_BREAK = /(,|(?<![\p{L}\p{N}_])(?:ama|fakat|ancak|yine de)(?![\p{L}\p{N}_]))/u;
+/** guardrails.detectEDRisk refusal regex (F2/A8), on the tr-lowercased raw text. */
+export const V1_ED_NEGATED = /(istemiyorum|istemem|yapm[ıi]yorum|yapmam|kullanm[ıi]yorum|kullanmam|etmiyorum|etmem|de[gğ]ilim|hi[çc] olmad|asla)/;
+/** guardrails.detectEDRisk clause break: a comma or a contrast word ends the refusal's reach. */
+export const V1_CLAUSE_BREAK = /(,|(?<![\p{L}\p{N}_])(?:ama|fakat|ancak|yine de)(?![\p{L}\p{N}_]))/u;
 
-function negatedAfter(folded: string, end: number): boolean {
-  let win = folded.slice(end, end + 30);
-  const brk = win.search(CLAUSE_BREAK);
+/** `end` is a folded index (exclusive end of the match). */
+function negatedAfter(t: Texts, end: number): boolean {
+  if (end <= 0 || t.map.length === 0) return false;
+  // The source position right after the last matched character (v1: `at + p.length`).
+  const last = t.map[Math.min(end, t.map.length) - 1];
+  const from = last + String.fromCodePoint(t.src.codePointAt(last)!).length;
+  let win = t.src.slice(from, from + 30).toLocaleLowerCase('tr');
+  const brk = win.search(V1_CLAUSE_BREAK);
   if (brk >= 0) win = win.slice(0, brk);
-  return ED_NEGATED.test(win);
+  return V1_ED_NEGATED.test(win);
 }
+
+// ─── narration (explicit list only) ──────────────────────────────────────────
+
+/** Past narration on the matched verb word (folded): -iyordu/-iyodu (was …-ing), -iyormuş
+ * (reportedly), -mıştı (had …), -ardı/-irdi/-urdu (used to). Simple past stays instant: for these
+ * state verbs it reports a state that holds now ("sol kolum uyuştu" = it is numb now). */
+const PAST_VERB = /(?:yor?du|yor?mus|m[iu]st[iu]|[aeiu]rd[iu])/u;
+/** A past auxiliary right after the matched noun phrase ("göğsümde ağrı vardı"). */
+const PAST_AUX = /^(?:vardi|yoktu|oluyordu|olmustu|olurdu)/u;
+const pastNarration = (verb: string, next: string): boolean => PAST_VERB.test(verb) || PAST_AUX.test(next);
+
+/** Breathing is instant only in the present first person ("alamıyorum", "alamıyom"): "alamıyor",
+ * "alamıyoruz", "alamıyorsun", "alamıyordum" are someone else's or past (wave-1 review). */
+const notMeNow = (verb: string): boolean => !/yo(?:ru)?m+$/u.test(verb);
+
+/** "hayata veda etti / etmiş / eden / ettiğinde": a death being told, not an intent. */
+const someoneElsesDeath = (_verb: string, next: string): boolean =>
+  /^(?:etti(?!m)|etmis(?!im)|eden|ettig|ettikt|ettiler|etmisler)/u.test(next);
 
 /**
  * v1's dangerously-low calorie INTENT rule (#live-L7 / AI-GRD-02), copied verbatim from
@@ -280,31 +324,40 @@ export const V1_ED_MEDIUM_PHRASES: readonly string[] = [
 // Folded spelling throughout (ş→s, ı→i, ğ→g, ü→u, ö→o, ç→c). Order inside a tier = priority.
 
 const Q_EMERGENCY = 'Şu an akut bir tıbbi acil durum mu anlatıyor, yoksa geçmişte kalmış ya da mecazi bir kullanım mı?';
+const Q_EMERGENCY_NARRATED = 'Şu an süren bir belirti mi, yoksa geçmişte kalmış ya da başkasına ait bir anlatım (ör. "koşuda nefes alamıyordum, normal mi?") mı?';
 const Q_SELF_HARM = 'Kendine zarar verme ya da yaşamak istememe düşüncesi mi, yoksa yorgunluk/mecaz mı?';
 
+// Explicit = the user, now. Each emergency pattern carries `narration`, so the same words told as
+// past or about someone else land in the ambiguous tier as `<id>.anlatim` (never lost). No pattern
+// may run into a following word: "hayatımı son derece …", "kendimi zararlı …" are not crises.
 export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
   // ── emergency (acute medical) ──
-  { id: 'emg.nefes_alamiyorum', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:nefes|soluk)\s*alami?yo/u, question_tr: Q_EMERGENCY },
-  { id: 'emg.gogus_sikismasi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:gogus\s+sikis|gogsum\s+(?:cok\s+)?sikis|gogsumde\s+(?:bir\s+|cok\s+)?(?:sikisma|baski))/u, question_tr: Q_EMERGENCY },
-  { id: 'emg.gogus_agrisi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:gogus\s+agri|gogsum\s+(?:cok\s+)?agri|gogsumde\s+(?:bir\s+|cok\s+)?agri)/u, question_tr: Q_EMERGENCY },
-  { id: 'emg.kalp_krizi_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kalp\s*kriz\p{L}*\s+(?:mi\s+)?geciriyo/u, question_tr: Q_EMERGENCY },
-  { id: 'emg.kan_kusuyorum', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kan\s+kusuyo/u, question_tr: Q_EMERGENCY },
-  { id: 'emg.bilinc_kaybi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})bilinc\p{L}*\s+(?:kaybed|kaybet|kapan|gidiyo)/u, question_tr: Q_EMERGENCY },
-  { id: 'emg.sol_kol_uyusma', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})sol\s+kol\p{L}*\s+(?:\p{L}+\s+)?uyus/u, question_tr: Q_EMERGENCY },
-  { id: 'emg.felc_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})felc\s+(?:mi\s+)?geciriyo/u, question_tr: Q_EMERGENCY },
+  { id: 'emg.nefes_alamiyorum', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:nefes|soluk)\s*alami?yo/u, narration: notMeNow, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  { id: 'emg.gogus_sikismasi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:gogus\s+sikis|gogsum\s+(?:cok\s+)?sikis|gogsumde\s+(?:bir\s+|cok\s+)?(?:sikisma|baski))/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  { id: 'emg.gogus_agrisi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:gogus\s+agri|gogsum\s+(?:cok\s+)?agri|gogsumde\s+(?:bir\s+|cok\s+)?agri)/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  { id: 'emg.kalp_krizi_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kalp\s*kriz\p{L}*\s+(?:mi\s+)?geciriyo/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  { id: 'emg.kan_kusuyorum', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kan\s+kusuyo/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  { id: 'emg.bilinc_kaybi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})bilinc\p{L}*\s+(?:kaybed|kaybet|kapan|gidiyo)/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  { id: 'emg.sol_kol_uyusma', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})sol\s+kol\p{L}*\s+(?:\p{L}+\s+)?uyus/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  { id: 'emg.felc_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})felc\s+(?:mi\s+)?geciriyo/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   // ── self-harm / suicide ──
   { id: 'sh.intihar', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})intihar/u, question_tr: Q_SELF_HARM },
-  { id: 'sh.kendime_zarar', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})kendi(?:me|mi)\s+zarar/u, question_tr: Q_SELF_HARM },
+  // Dative only (v1's phrase): the accusative "kendimi zararlı alışkanlıklardan kurtarmak
+  // istiyorum" is a goal, and v1 is silent on it. "kendime zararlı bir şey yaptım" stays instant.
+  { id: 'sh.kendime_zarar', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})kendime\s+zarar/u, question_tr: Q_SELF_HARM },
   { id: 'sh.olmek_istiyorum', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})olmek\s+ist(?:iyo|erdim|edim|erim)/u, question_tr: Q_SELF_HARM },
   // "böyle / bu kiloyla yaşamak istemiyorum" is a common weight-loss sentence → ambiguous list.
   { id: 'sh.yasamak_istemiyorum', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?<!(?:boyle|bu sekilde|bu kiloyla|bu kilolarla|bu halde|bu bedenle|bu vucutla) )yasamak\s+ist(?:emiyo|emem)/u, question_tr: Q_SELF_HARM },
   { id: 'sh.canima_kiymak', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:canima\s+kiy(?:mak|maya|mayi|acag|acak|dim|arim|sam)|kendime\s+kiy(?:mak|acag|acak|dim|arim|sam))/u, question_tr: Q_SELF_HARM },
-  { id: 'sh.hayatima_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:hayat|yasam)(?:ima|imi)\s+son/u, question_tr: Q_SELF_HARM },
+  // "hayatıma (bir) son ver…", a bare "hayatıma son" ending the clause, "hayatımı sonlandır…".
+  // Never "hayatımı sonsuza dek değiştirdi" / "hayatıma son derece iyi geldi" (praise; the latter
+  // is a v1 hit, so the sh.v1 catch-all still reports it as an ambiguous fact).
+  { id: 'sh.hayatima_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:hayat|yasam)(?:ima\s+(?:bir\s+)?son(?:\s+ver|(?!\s*\p{L}))|imi\s+sonlandir)/u, question_tr: Q_SELF_HARM },
   // Intent forms only: "antrenmanda kendimi öldürdüm" (gym idiom) is ambiguous below.
   { id: 'sh.kendimi_oldurmek', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})kendimi\s+oldur(?:ec|mek|meyi|meye|sem|eyim)/u, question_tr: Q_SELF_HARM },
   // Unfolded: "kendimi aşmak istiyorum" (outdo myself) must not read as "asmak" (hang).
   { id: 'sh.kendimi_asmak', category: 'self_harm', tier: 'explicit', on: 'lower', re: /(?<!\p{L})kendimi\s+as(?:aca[gğ]|acak|mak|may[ıi]|maya|sam|ay[ıi]m)/u, question_tr: Q_SELF_HARM },
-  { id: 'sh.hayata_veda', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})hayata\s+veda/u, question_tr: Q_SELF_HARM },
+  { id: 'sh.hayata_veda', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})hayata\s+veda/u, narration: someoneElsesDeath, narration_q: 'Kendi yaşamına son verme düşüncesi mi, yoksa başka birinin vefatını mı anlatıyor?', question_tr: Q_SELF_HARM },
   { id: 'sh.her_seye_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})her\s*seye\s+son\s+ver/u, question_tr: Q_SELF_HARM },
   { id: 'sh.yok_olmak', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})yok\s+olmak\s+isti/u, question_tr: Q_SELF_HARM },
 ];
@@ -314,6 +367,8 @@ export const AMBIGUOUS_TRIPWIRES: readonly TripwireDef[] = [
   // "bayılırım" (I'd love it) is not even a fact; "bayıldım/bayılıyorum" can be either.
   { id: 'emg.bayilma', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})bayil(?!ir(?:im|sin|iz|siniz)(?!\p{L}))/u, question_tr: 'Gerçekten bayılma mı, yoksa "çok beğendim" anlamında mı?' },
   { id: 'emg.nefes_darligi', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})nefes\p{L}*\s+(?:kesil|yok|daral|tikan|darl|yetmiyo)/u, question_tr: 'Akut nefes darlığı mı, yoksa efor sonrası normal nefes nefese kalma mı?' },
+  // "nefes alamadım / alamayacak gibiyim" (no v1 phrase covers these; an addition).
+  { id: 'emg.nefes_alamama', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:nefes|soluk)\s*ala(?:madi|mayaca)/u, question_tr: Q_EMERGENCY_NARRATED },
   { id: 'emg.kalp_carpintisi', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:(?:kalp\s+)?carpinti|kalbim\s+(?:\p{L}+\s+){0,2}(?:carpiyo|sikis|agri|duracak|tekliyo))/u, question_tr: 'Şu an süren, eşlik eden belirtisi olan bir çarpıntı mı, yoksa geçici/genel bir soru mu?' },
   { id: 'emg.kalp_krizi', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})kalp\s*kriz/u, question_tr: 'Şu an yaşanan bir kalp krizi belirtisi mi, yoksa geçmiş/başkası/risk sorusu mu?' },
   { id: 'emg.felc', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})felc/u, question_tr: 'Şu an yaşanan bir felç belirtisi mi, yoksa geçmiş/başkası/risk sorusu mu?' },
@@ -478,9 +533,30 @@ export const REQUIRED_SAFETY_LINE: Readonly<Record<SafetyCategory, string>> = {
   ed: 'Bu konuyu bir uzmanla, örneğin bir diyetisyen ya da psikologla konuşman sana iyi gelebilir.',
 };
 
-/** Reads the REPLY (never the user's message): does it already carry the required line? */
+/**
+ * A referral, not a mere mention of a profession ("Ben diyetisyen değilim" is not one): a
+ * profession followed within four words (none of them "değil…") by a referral verb, and not waved
+ * away right after ("… konuşmana gerek yok").
+ */
+const ED_REFERRAL = /(?<!\p{L})(?:diyetisyen|psikolog|psikiyatr|uzman|profesyonel)\p{L}*(?:\s+(?!degil)\p{L}+){0,4}?\s+(?:konus|gorus|danis|basvur|ulas|deste[kg]|yardim|gorun|git)\p{L}*/gu;
+const REFERRAL_WAVED_AWAY = /^\s+(?:gerek\s+(?:yok|kalma)|gerekmez|zorunda\s+degil|sart\s+degil)/u;
+
+function hasEdReferral(reply: string): boolean {
+  const f = foldTripwireText(reply);
+  for (const m of f.matchAll(ED_REFERRAL)) {
+    if (!REFERRAL_WAVED_AWAY.test(f.slice((m.index ?? 0) + m[0].length))) return true;
+  }
+  return false;
+}
+
+/**
+ * Reads the REPLY (never the user's message): does it already carry the required line?
+ * HEURISTIC over the coach's prose — when Stage B reports a structured referral/112 flag, that flag
+ * is the primary signal and this is only the code-side check. It errs toward "missing": a false
+ * "missing" costs one appended line, a false "present" would drop the referral.
+ */
 export function hasRequiredSafetyLine(reply: string, category: SafetyCategory): boolean {
-  if (category === 'ed') return /(diyetisyen|psikolog|profesyonel destek|uzman)/u.test(foldTripwireText(reply ?? ''));
+  if (category === 'ed') return hasEdReferral(reply ?? '');
   return /(?<!\d)112(?!\d)/.test(reply ?? '');
 }
 
@@ -527,36 +603,57 @@ export function scanTripwires(userMessage: string): TripwireScan {
   let n = 0;
   const sev = (s: EdSeverity | null | undefined): number => (s === 'high' ? 2 : s === 'medium' ? 1 : 0);
 
+  /** Folded end of the word the span ends in ("bayıl" → "bayıldım"). */
+  const wordEnd = (s: Span): number => {
+    let end = s.index + s.length;
+    while (end < t.folded.length && /\p{L}/u.test(t.folded[end])) end++;
+    return end;
+  };
+  const isNarrated = (def: TripwireDef, s: Span): boolean => {
+    if (!def.narration) return false;
+    const end = wordEnd(s);
+    const span = t.folded.slice(s.index, end);
+    const verb = span.slice(span.lastIndexOf(' ') + 1);
+    const next = /^ (\p{L}+)/u.exec(t.folded.slice(end))?.[1] ?? '';
+    return def.narration(verb, next);
+  };
+
   const consider = (def: TripwireDef) => {
     // One fact per place: an occurrence over the same words as an earlier hit of the same
     // category adds nothing for Stage A — unless it is live where that hit was negated, or more
     // severe. (Catch-alls run last, so this keeps them to what the curated patterns missed.)
-    const redundant = (s: Span, negated: boolean): boolean => hits.some((h, i) =>
+    // An instant (explicit, not narrated) occurrence is only ever redundant to another explicit
+    // hit: a narrated fact over the same words can never swallow it.
+    const redundant = (s: Span, negated: boolean, instant: boolean): boolean => hits.some((h, i) =>
       h.category === def.category && overlaps(spans[i], s) &&
+      (!instant || h.tier === 'explicit') &&
       (negated || (!h.negated && sev(h.ed_severity) >= sev(def.ed_severity))));
-    let chosen: { span: Span; negated: boolean } | null = null;
+    let chosen: { span: Span; negated: boolean; narrated: boolean } | null = null;
+    let best = -1;
     for (const s of occurrences(def, t)) {
-      const negated = !!def.negatable && negatedAfter(t.folded, s.index + s.length);
-      if (redundant(s, negated)) continue;
-      if (!negated) { chosen = { span: s, negated }; break; } // a live occurrence wins
-      if (!chosen) chosen = { span: s, negated };
+      const negated = !!def.negatable && negatedAfter(t, s.index + s.length);
+      const narrated = isNarrated(def, s);
+      if (redundant(s, negated, def.tier === 'explicit' && !narrated)) continue;
+      // A live occurrence beats a negated one; an instant one beats a narrated one; else the first.
+      const score = (negated ? 0 : 2) + (narrated ? 0 : 1);
+      if (score > best) { chosen = { span: s, negated, narrated }; best = score; }
+      if (best === 3) break;
     }
     if (!chosen) return;
     const { index, length } = chosen.span;
     spans.push(chosen.span);
     // Quote whole words ("bayıldım", not the stem "bayıl") so Stage A reads what the user wrote.
-    let end = index + length;
-    while (end < t.folded.length && /\p{L}/u.test(t.folded[end])) end++;
+    const end = wordEnd(chosen.span);
     hits.push({
       hit_id: `tw${++n}`,
-      trigger: def.id,
+      trigger: chosen.narrated ? `${def.id}.anlatim` : def.id,
       category: def.category,
-      tier: def.tier,
+      tier: chosen.narrated ? 'ambiguous' : def.tier,
       matched: originalSlice(t, index, end),
       context: originalSlice(t, Math.max(0, index - 40), Math.min(t.folded.length, index + length + 40)),
       negated: chosen.negated,
       ed_severity: def.ed_severity ?? null,
-      question_tr: def.question_tr,
+      question_tr: chosen.narrated ? (def.narration_q ?? def.question_tr) : def.question_tr,
     });
   };
   for (const def of EXPLICIT_TRIPWIRES) consider(def);

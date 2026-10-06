@@ -93,8 +93,9 @@ export interface AllergenHitOptions {
 
 /**
  * §7.1 allergen invariant for ONE item. Returns one hit per user allergen that the item touches;
- * an empty array means the invariant holds. Pass the SEVERE set (severeAllergenSubjects) for the
- * suggestion/plan invariant, or the whole spine for the consumption check.
+ * an empty array means the invariant holds. Pass the SEVERE set (severeAllergenSubjects — every
+ * allergen not explicitly 'mild') for the suggestion/plan invariant, the mild set (allergenSpine)
+ * for v1's warning, or the whole spine for the consumption check.
  * A bare string array is read as the item's certain `allergens` tags.
  */
 export function allergenTagsHit(
@@ -226,33 +227,74 @@ export interface SpineRow {
 const ownActive = (r: SpineRow): boolean =>
   r.active !== false && r.whose !== 'other_person' && r.polarity !== 'does_not_have';
 
+export interface AllergenSpine {
+  /** Block + one regen (T7 suggestion/plan invariant, §7.1). */
+  severe: string[];
+  /** Explicitly mild only: not blocked, but v1 still WARNS on these (index.ts non-severe hit) —
+   * the integration keeps that warning so protection never drops below today's (§7.4). */
+  mild: string[];
+}
+
 /**
- * The set the suggestion/plan invariant runs against. §7.1: severity=unknown counts as SEVERE in
- * every filter until clarified — and a missing severity (legacy rows) is unknown, not mild.
+ * Splits the user's own active allergen/intolerance rows. §7.1: severity=unknown counts as SEVERE
+ * in every filter until clarified — and in practice 'moderate' IS unknown: v1 writes 'moderate'
+ * whenever the user gave no severity (ai-chat salvage + food_preference actions, syncConstraint,
+ * migration 080's COALESCE backfill), so it cannot tell "stated moderate" from "defaulted". Only an
+ * explicit 'mild' leaves the severe set; 'moderate', 'unknown', null, missing or anything else stays
+ * severe. Worst wins per subject (case-insensitive): one non-mild row makes the allergen severe.
  */
-export function severeAllergenSubjects(rows: readonly SpineRow[]): string[] {
-  const out = new Set<string>();
+export function allergenSpine(rows: readonly SpineRow[]): AllergenSpine {
+  const severe = new Map<string, string>();
+  const mild = new Map<string, string>();
   for (const r of rows) {
     if (r.kind && r.kind !== 'allergen' && r.kind !== 'intolerance') continue;
     if (!ownActive(r)) continue;
-    if (r.severity === 'mild' || r.severity === 'moderate') continue;
     const s = (r.subject ?? r.name ?? '').trim();
-    if (s) out.add(s);
+    if (!s) continue;
+    const key = s.toLocaleLowerCase('tr');
+    const isMild = String(r.severity ?? '').trim().toLowerCase() === 'mild';
+    if (!isMild) { if (!severe.has(key)) severe.set(key, s); }
+    else if (!mild.has(key)) mild.set(key, s);
+  }
+  for (const key of severe.keys()) mild.delete(key);
+  return { severe: [...severe.values()], mild: [...mild.values()] };
+}
+
+/** The set the suggestion/plan invariant runs against (see allergenSpine for the severity rule). */
+export function severeAllergenSubjects(rows: readonly SpineRow[]): string[] {
+  return allergenSpine(rows).severe;
+}
+
+const isInjuryRow = (r: SpineRow): boolean => (r.kind === 'injury' || r.kind === 'surgery') && ownActive(r);
+const usableParts = (r: SpineRow): string[] =>
+  (r.body_parts ?? []).filter((p): p is string => typeof p === 'string' && !!p.trim()).map((p) => p.trim());
+/** v1's syncInjuryFromText writes subject = kind ('injury'/'surgery') when it found no body part. */
+const usableSubject = (r: SpineRow): string | null =>
+  r.subject && r.subject.trim() && r.subject.trim() !== r.kind ? r.subject.trim() : null;
+
+/**
+ * Injured regions from active injury/surgery rows (body_parts, else the subject itself). Region
+ * names only — an injury with no usable region is NOT here; read it with unlocatedInjuries().
+ */
+export function injuredRegionsFromSpine(rows: readonly SpineRow[]): string[] {
+  const out = new Set<string>();
+  for (const r of rows) {
+    if (!isInjuryRow(r)) continue;
+    const parts = usableParts(r);
+    if (parts.length > 0) for (const p of parts) out.add(p);
+    else { const s = usableSubject(r); if (s) out.add(s); }
   }
   return [...out];
 }
 
-/** Injured regions from active injury/surgery rows (body_parts, else the subject itself). */
-export function injuredRegionsFromSpine(rows: readonly SpineRow[]): string[] {
-  const out = new Set<string>();
-  for (const r of rows) {
-    if (r.kind !== 'injury' && r.kind !== 'surgery') continue;
-    if (!ownActive(r)) continue;
-    const parts = (r.body_parts ?? []).filter((p) => typeof p === 'string' && p.trim());
-    if (parts.length > 0) for (const p of parts) out.add(p.trim());
-    else if (r.subject && r.subject.trim() && r.subject !== r.kind) out.add(r.subject.trim());
-  }
-  return [...out];
+/**
+ * The user's own active injury/surgery rows that name NO usable region (empty body_parts and a
+ * placeholder subject, as v1 writes for "ameliyat oldum"). The injury invariant cannot check
+ * these, so an empty region list must never be read as "no injury": the integration routes them to
+ * the luna prose judge / a one-time "hangi bölge?" question instead of passing silently.
+ */
+export function unlocatedInjuries(rows: readonly SpineRow[]): SpineRow[] {
+  return rows.filter((r) => isInjuryRow(r) && usableParts(r).length === 0 && !usableSubject(r));
 }
 
 // ─── one call for Stage B's suggested_foods / suggested_exercises (T7) ───────
