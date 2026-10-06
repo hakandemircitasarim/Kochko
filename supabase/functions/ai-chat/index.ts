@@ -1859,10 +1859,11 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
         { re: /(kebapç|kebapc)/, name: 'Kebapçı' },
         { re: /(dönerc|donerc)/, name: 'Dönerci' },
         { re: /(pideci|pidecis)/, name: 'Pideci' },
-        { re: /(lahmacun)/, name: 'Lahmacuncu' },
         { re: /(köfteci|kofteci)/, name: 'Köfteci' },
         { re: /(çiğköfteci|cigkofteci|çiğ köfteci)/, name: 'Çiğköfteci' },
-        { re: /(pizzac|pizza)/, name: 'Pizzacı' },
+        // A DISH name is not a venue: "2 dilim lahmacun yedim" at home recorded a Lahmacuncu visit
+        // (final2#12). Only shop nouns (pizzacı, kebapçı…) and brands imply a visit.
+        { re: /(pizzac)/, name: 'Pizzacı' },
         { re: /(restoran|lokanta)/, name: 'Restoran' },
         { re: /(kafeterya|kafede|\bkafe\b|cafe)/, name: 'Kafe' },
       ];
@@ -3152,12 +3153,14 @@ Bir de şunu sorayım: kalori hesabını doğru kurabilmem için cinsiyetini bil
         ?? modelItems?.map(i => ({ name: i.name, portion: i.portion, kcal: Number(i.calories) || 0, confidence: i.confidence }));
       if (items && items.length > 0) {
         const enriched = items.map(i => {
-          const unknown = i.kcal <= 0 && !isZeroCaloriePlausible(i.name ?? '');
+          // The model's own numbers are stored now (Faz 0 #1): a 0 kcal it is CONFIDENT about ("2 çimdik
+          // tuz") is an answer, not a gap — asking "tuzun kalorisini kestiremedim" was noise. Only an
+          // unsure zero is asked about.
+          const unknown = i.kcal <= 0 && !isZeroCaloriePlausible(i.name ?? '') && (i.confidence ?? 0.8) < 0.8;
           return { ...i, unknown };
         });
         const lowConf = enriched.filter(i => (i.confidence ?? 0.8) < 0.7);
         const unknowns = enriched.filter(i => i.unknown);
-        // Sıfır-kalorili yenilebilir öğe DOĞASI GEREĞİ düşük güvendir — confidence ne derse desin sor.
         if ((lowConf.length > 0 || unknowns.length > 0) && !/[Dd]o[gğ]ru anlad[iı]ysam/.test(assistantMessage)) {
           const parsed = enriched
             .map(i => i.unknown ? itemLabel(i.name, i.portion) : `${itemLabel(i.name, i.portion)} (~${Math.round(i.kcal)} kcal)`)
