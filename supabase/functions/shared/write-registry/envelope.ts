@@ -70,7 +70,7 @@ export const ENVELOPE_HEAD = {
     tripwire_reading: f.obj({
       benign: f.bool(),
       reason: f.text({ max: 200 }),
-    }, { nullable: true, tr: 'yalnız TETİK olgusu verildiyse; yoksa null' }),
+    }, { nullable: true, tr: 'yalnız GÜVENLİK TETİKLERİ bloğu verildiyse; yoksa null' }),
   }),
 } as const satisfies Fields;
 

@@ -98,7 +98,8 @@ T3  PARALEL (~0,4-0,8 sn)
 
 T4  STAGE A — ANLA  (gpt-5.6-terra, effort low; görsel/açık taslak/tier≥watch → medium)
     Önek (TÜM kullanıcılar için byte-aynı, cache key 'kochko-understand:vN'):
-        anlama kuralları ~1,2K + kayıttan üretilmiş Türkçe alan dokümanı + ~10 few-shot
+        anlama kuralları ~1,5K + kayıttan üretilmiş Türkçe alan dokümanı ~3,1K + 18 few-shot ~2,6K
+        (+ strict şema ~5,1K; önbellekli toplam ~12,3K, §3.3)
     + TurnInput bloğu + tetik olguları + kullanıcı mesajı
     text.format = json_schema strict 'kochko_understand_vN' (karar-önce sıra):
         intent · safety · writes[] · record_ops[] · pending_ops[] · commitment_ops[]
@@ -143,16 +144,16 @@ Tahminler 2026-10-04 bench'ine (terra:low, 16,5K prompt, öğün turu 3,2–4,1 
 | Bileşen | v2 tahmini |
 |---|---|
 | Ön iş (auth, journal, loadTurnInput + B okumaları paralel) | 0,5–0,9 sn |
-| Stage A (~6–7K prompt, ~4–5K global önbellekte; 60–350 çıktı token) | 1,2–3,0 sn |
+| Stage A (~14K prompt, ~12K global önbellekte; 60–350 çıktı token) | 1,3–3,2 sn |
 | Denetim + paralel yazma (öğün: 8–10 sıralı tur → 1 RPC) | 0,2–0,7 sn |
 | Stage B (9–12K prompt, ~8–10K önbellekte; 120–300 çıktı token) | 2,0–3,5 sn |
-| **Uçtan uca** | **p50 ~5,5–6 sn, p90 ~8–9 sn** (bugün 4,7–8,4 sn + zorla-çıkarma başına 1,5 sn + taslak açıkken alakasız turlarda 26–50 sn) |
+| **Uçtan uca** | **p50 ~5,6–6,1 sn, p90 ~8,1–9,2 sn** (bugün 4,7–8,4 sn + zorla-çıkarma başına 1,5 sn + taslak açıkken alakasız turlarda 26–50 sn) |
 | Plan | A ~2 sn + plan şeması 22–45 sn (json regen yok) |
 | Onay | 31 sn → ~3–4 sn |
 
-**Ölçüm (2026-10-07, `write-registry/budget.ts`, karakter/3,6 tahmini):** kayıttan üretilen önek = Türkçe doküman ≈2,7K + strict şema ≈4,5K token (şemada açıklama yok; anlam bir kez, dokümanda). Şema da global önbellekli öneke girer; Stage A istemi böylece ~10–11K olur (≈9K önbellekte, ~1,5–2K tur girdisi). `registry.test.ts` bütçe testi doküman ≤2,8K, şema ≤4,7K, toplam ≤7,4K tavanlarını aşınca kırılır. Gecikme/maliyet satırları bu önekle gölgede ve Faz 2'den önce tek canlı `strictFormat('understand')` probe'u ile doğrulanacak.
+**Ölçüm (2026-10-07, tek tahminci `write-registry/tokens.ts`, karakter/3,2):** Stage A'nın global önbellekli öneki = anlama kuralları ≈1,5K + kayıttan üretilen Türkçe doküman ≈3,1K + 18 few-shot ≈2,6K + strict şema ≈5,1K = **≈12,3K token** (şemada açıklama yok; anlam bir kez, dokümanda). Tur girdisiyle (~1,5–2K) Stage A istemi ~14K olur (≈12K önbellekte). Bu bir tahmindir: o200k ön-bölücü yaklaşıklığı aynı önek için ≈10,3K verir; karakter/3,2 Türkçe düzyazıyı ~%7–10, sıkıştırılmış JSON şemayı ~%35 fazla sayar, yani tavanı geçen bir önek canlıda daha büyük değildir. Önceki "~10–11K / doküman ≈2,7K" rakamları aynı baytların karakter/3,6 ile sayılmış hâliydi; beyin (3,2) ve kayıt (3,6) iki ayrı oran kullanıyordu, artık tek sabit var ve tavanlar ona göre yeniden kuruldu: `registry.test.ts` doküman ≤3,3K, şema ≤5,3K, ikisi ≤8,6K; `understand-prompt.test.ts` tüm önek ≤12,8K (~%4 pay). Tavanı yükseltmek test düzeltmesi değil, bu bölümün maliyet kararıdır. Önbellekli önekin plandaki 4–5K'dan ~12K'ya çıkması ilk-token süresine tahminen +0,1–0,2 sn ekler (önbellekli token ucuzdur ama bedava değildir); uçtan uca p50/p90 Faz 3 kapısının (≤6 / ≤9 sn) sınırına gelir. Gerçek giriş/önbellek token sayıları ve gecikme gölgede (Faz 2) `ai_turn_log`'dan ve Faz 2'den önce tek canlı `strictFormat('understand')` probe'undan okunup bu tahminlerin yerine yazılacak.
 
-**Maliyet** (terra $2 giriş / $0,2 önbellek / $12 çıktı, 1M token başına): A ≈ $0,009, B ≈ $0,009, sıradan tur ≈ $0,017–0,019. Bugün ≈ $0,0136 + zorla-çıkarmalar. Sıradan turda **+%25–40**. Dengeleyen kalemler: plan-yakalama israfı biter (yakalanan tur başına $0,04–0,07), onay regen'i biter, Stage A öneki tüm kullanıcılarda ortak önbellek (yeni kullanıcı sıcak başlar). Stage A ileride eval'i geçerse luna'ya iner ve v2 bugünden ucuza gelir.
+**Maliyet** (terra $2 giriş / $0,2 önbellek / $12 çıktı, 1M token başına): A ≈ $0,011 (≈12,3K önbellek $0,0025 + ~2K tur girdisi $0,004 + ≤350 çıktı/düşünme token'ı $0,004), B ≈ $0,009, sıradan tur ≈ $0,019–0,021. Bugün ≈ $0,0136 + zorla-çıkarmalar. Sıradan turda **+%40–55**: Faz 3 maliyet kapısının (≤ +%40) sınırında ya da üstünde. Farkın kaynağı Stage A önekinin 4–5K yerine ~12K olması (önbellek fiyatıyla tur başına ~$0,0016). Önek her değiştiğinde ilk çağrı soğuktur: 12,3K × $2/1M ≈ $0,025, bir kez ve global. Dengeleyen kalemler: plan-yakalama israfı biter (yakalanan tur başına $0,04–0,07), onay regen'i biter, zorla-çıkarma çağrıları biter, Stage A öneki tüm kullanıcılarda ortak önbellek (yeni kullanıcı sıcak başlar). Kapı tutmazsa kaldıraçlar: Stage A'nın eval kapısıyla luna'ya inmesi (v2 bugünden ucuza gelir) ve gölge verisine göre few-shot/doküman budaması (her örnek eval'de karşılığını göstermeli).
 
 ---
 
@@ -169,7 +170,7 @@ Tahminler 2026-10-04 bench'ine (terra:low, 16,5K prompt, öğün turu 3,2–4,1 
 | `vocab.ts` | Alerjen taksonomisi (AB/TR 14 + sert kabuklu alt türleri + `custom:<slug>`), vücut bölgesi id'leri ve TR etiketleri (`knee:'diz'`), hedef tipi, meal_type, workout_type, cinsiyet, aktivite ve profil enum'ları. Şunların yerini alır: `PROFILE_ENUM_WHITELIST`, `CANONICAL_GOAL_TYPES`, `VALID_MEAL_TYPES`, TR→EN sakatlık haritaları, goal_suggestion'ın TR anahtarları. |
 | `ops/*.ts` | Alan başına bir dosya (§4.4) |
 | `schema.ts` | → strict json_schema. `writes[]` alanı `op` ile ayrışan `anyOf`; tüm alanlar required, opsiyoneller nullable, `additionalProperties:false`, alanlar kayıt sırasıyla yazılır. Tur başına dinamik enum YOK (ref'ler string, kod denetler). |
-| `doc.ts` | → Stage A'nın önbellekli önekine giren ~2,5K token'lık doğal Türkçe "YAZILABİLİR KAYITLAR" dokümanı. Alan anlamlarının TEK yeri (şema açıklama taşımaz); yalnız şemanın ve anlama kurallarının söylemediğini söyler; seyrek op'lar (tahlil, tarif, dönemsel durum, kalori programı…) tek satırlık ekte. Boyut `budget.ts` ile test edilir. |
+| `doc.ts` | → Stage A'nın önbellekli önekine giren ~3,1K token'lık (karakter/3,2) doğal Türkçe "YAZILABİLİR KAYITLAR" dokümanı. Alan anlamlarının TEK yeri (şema açıklama taşımaz); yalnız şemanın ve anlama kurallarının söylemediğini söyler; seyrek op'lar (tahlil, tarif, dönemsel durum, kalori programı…) tek satırlık ekte. Boyut `budget.ts` ile test edilir. |
 | `capabilities.ts` | → Stage B için "bu uygulamada gerçekten yapabildiklerin" listesi. "hedefleri zorlaştırıyorum", "%10 düşürdüm", "grafikle destekle" gibi boş vaatler biter. |
 | `validate.ts` | → çalışma zamanı validatoru (T5) |
 | `adapter.ts` | → Faz 3'te eski `executeActions` yazıcılarına köprü (override dalları `v2` bayrağıyla kapalı) |
@@ -384,8 +385,9 @@ Alıntı denetiminin izinli yerleri (kayıt tek tek beyan eder, `rule(..., { evi
 |---|---|
 | "bunu nasıl düzeltebilirim?" / "düzeltebilirim" | Niyet soru; `record_ops` yok. Soru hiçbir şey silemez (final2#1). |
 | Su kaydından hemen sonra "geri al" | Kayıtlarda `d3 su +0,20 L (son tur)` görünür → `delete{ref:'d3'}` → önceki toplam geri yüklenir. 45 dk önceki akşam yemeği adı geçmediği için dokunulamaz (final2#2, diff#5). |
-| "yanlış, su 2 bardaktı" | `water_log{quantity:2, unit:'bardak', replaces:'d3'}` → d3 geri alınır, yeni değer yazılır, ledger'da birbirine bağlanır. |
+| "su yanlış, 2 bardaktı" | `update{ref:'d3', basis:'user_correction', evidence_quote:'2 bardaktı', patch:water_log{quantity:2, unit:'bardak', mode:'add'}}` → d3 geri alınır, yeni değer yazılır, ledger'da birbirine bağlanır. Anlama kuralları ve few-shot'lar düzeltmenin bu tek yolunu öğretir (alıntı denetimi ve şüpheli-kayıt yolu da buradan geçer); `water_log{…, replaces:'d3'}` biçimi kayıtta, validatorda ve eval'de geçerli kalır, öğretilmez. |
 | "perşembe akşamki nugget 1700 olmuş, 6 küçük nuggetti 100 gram falan" | `update{ref:'m12', patch:{items:[…]}}` → eski satır soft-delete, yenisi `supersedes_id` ile tek işlemde. Çift sayım yok. Koç "düzelttim" derken makbuz gerçekten vardır (final2#6). |
+| Model eski bir kaydı şüpheli bulur (6 nugget = 1708 kcal), kişi düzeltme istememiş | `update{ref:'m12', basis:'suspicious', patch:…}` → SOR (bekletme `p#`); koç bir kez "Bu kayıt yanlış görünüyor, düzelteyim mi?" der. Sonraki turda "evet düzelt" → `pending_ops confirm{p#}`; reddedilen şüphe yeniden önerilmez. |
 | "sonuncuyu sil" (son turda 2 yazma var) | Model `clarify{candidate_refs:['d3','m14']}` üretir; kod tahmin etmez, koç sorar. |
 | "planı iptal et" | `plan_action: discard`; asla kayıt silme değil. |
 | 7 günden eski kayıt | Bağlamda ref'i yoktur. Koç Günlük ekranını gösterir. Okuma aracı probe'dan sonra eklenebilir. |
@@ -489,9 +491,10 @@ Model kendisine verilen üslubu kopyalıyor. İki aşama kök nedeni kaldırır:
 
 ### 8.3 Stage A'nın beyni (`ai-chat/v2/understand-prompt.ts`)
 
-- ~1,2K kural: rapor / soru / varsayım ayrımı · kendisi / başkası · verilen yerel tarihe göre gün · miktarı aynen + kanonik birim · ref yalnız listeden · emin değilsen `clarify` · kayıt uydurma.
+- ~1,5K kural: rapor / soru / varsayım ayrımı · kendisi / başkası · verilen yerel tarihe göre gün · miktarı aynen + kanonik birim · ref yalnız listeden · düzeltme `record_ops.update` ile, şüpheli kayıt `basis:suspicious` ile önerilir · emin değilsen `clarify` · kayıt uydurma.
 - Kayıt dokümanı.
-- ~10 few-shot: "1 bardak su daha içtim", "2 çimdik tuz attım", "6 tavuk nugget", su kaydından sonra "yok o yanlış geri al", "nasıl düzeltebilirim", "kızımın fıstık alerjisi var", "günde 3 litre su içmem gerekiyor mu?", taslak açıkken "onaylıyorum", "bu tatlıya bayılıyorum", "dün gece kustum, zehirlendim galiba".
+- 18 few-shot: "1 bardak su daha içtim", "2 çimdik tuz attım", "6 tavuk nugget", "bugün toplam 2 litre", su kaydından sonra "yok o yanlış geri al" (`delete{d3}`), "su yanlış, 2 bardaktı" (`update{d3}`), "bunu nasıl düzeltebilirim?" (soru, kayıt işlemi yok), şüpheli eski kayıt (`update{basis:suspicious}` → SOR) ve sonraki turdaki "evet düzelt" (`pending_ops confirm{p1}`), plan isteği, taslak açıkken "onaylıyorum" (`approve{dft1}`), "fıstık yok ama fındık var", "kızımın yumurta alerjisi var", diz burkulması, "bu tatlıya bayıldım" / "antrenmanda bayıldım", "dün gece kustum, zehirlendim galiba" (`illness_vomiting`, YB yok), "günde 3 litre su içmem gerekiyor mu?".
+- Few-shot'lar kayda bağlıdır: seyrek yazılır (boş alanlar gösterilmez), kayıttaki alan tanımlarıyla tamamlanır; tamamlanan her karar üretilen strict şemadan ve `validateDecision`'dan öğrettiği sonuçla geçer, bağlam satırları gerçek blok başlıklarını (`BLOCK_TITLES`, GÜVENLİK TETİKLERİ) kullanır (`understand-prompt.test.ts`).
 - Bayt bayt herkes için aynıdır, global önbellek kullanır.
 
 ### 8.4 Effort politikası (yalnızca kodun kesin bildiği olgulardan)
@@ -689,7 +692,7 @@ Acil/kriz/YB sözlüklerine (ör. "bayıldım") **dokunulmaz**; o adım gölge k
 | 4 | **Stage B makbuzla çelişir** | Makbuzlar kesin olgu; anayasa ilkesi; eval'de "iddialar ⊆ makbuzlar" yargıcı; üretimde log-only lint. Nesir asla silinmez, prompt/örnekle düzeltilir. |
 | 5 | **Soru yorgunluğu** | Cevap başına en fazla bir soru; düşük riskli tuhaflık ask değil flag; kullanıcı başına ask sıklığı gölgede ölçülür; önemlilik eşikleri. |
 | 6 | **Önbellek kırılganlığı**: şemada bir bayt değişimi = bir soğuk tur | Byte snapshot + `SCHEMA_VERSION`; deploy sonrası ısıtma isteği; A'nın soğuk maliyeti globaldir (kullanıcı başına değil). |
-| 7 | **Maliyet +%25–40** | Yakalama/regen tasarrufları; pct sınırlı gölge; eval geçerse Stage A luna'ya iner. |
+| 7 | **Maliyet +%40–55** (tahmin, §3.3: Stage A öneki ~12K) | Yakalama/regen tasarrufları; pct sınırlı gölge; tek tahminciyle önek tavanı CI'da; eval geçerse Stage A luna'ya iner. |
 | 8 | **7,5K satırlık monolitte canlı refaktör** | Yeni klasör yan yana; adaptör kanıtlanmış yazıcıları kullanır; env bayrağıyla saniyelik geri dönüş; silme Faz 5'e kadar bekler. Adaptörün `v2` bayrağı tam olarak override dallarını kapatmalı; D paketi bunu test eder. |
 | 9 | **Kardeş yazıcılar kaydı atlar** (ayar ekranları, ai-extractor, health-connect) | Kayıt paylaşılan saf modül; ai-extractor yönlendirilir veya silinir; istemci için kayıt destekli RPC; ileride DB tarafı omurga tetikleri. |
 | 10 | **Mahremiyet**: TurnInput yakalama, gölge kararları ve eğitim verisi sağlık verisidir | Yakalama yalnızca test hesabı/rıza; 30 gün saklama; `store:false`; eğitim için açık rıza. |

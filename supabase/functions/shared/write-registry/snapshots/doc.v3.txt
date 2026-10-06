@@ -1,6 +1,7 @@
-YAZILABİLİR KAYITLAR (şema kochko_understand_v2)
+YAZILABİLİR KAYITLAR (şema kochko_understand_v3)
 Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aralığı denetler, hiçbir sayını sessizce değiştirmez. Her yazma ayrı denetlenir.
-Ortak alanlar: day ≤7 gün geri; diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. replaces: KAYITLAR’daki aynı türden kaydın düzeltilmiş hâliyse onun ref’i, değilse null.
+day: today | yesterday | YYYY-MM-DD; en fazla 7 gün geri, gelecek yok.
+Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. replaces: KAYITLAR’daki aynı türden kaydın düzeltilmiş hâliyse onun ref’i, değilse null.
 Ref’ler yalnız bu turda gösterilenler: KAYITLAR: m=öğün · d=günlük metrik (su, uyku, ruh hali, adım, tartı) · w=antrenman · s=takviye · t=son tur yazması · e=olay · l=tahlil · f=yemek tercihi | KISITLAR: c | BEKLEYEN ONAYLAR: p | AÇIK SÖZLER: k | PLAN TASLAĞI: dft.
 ALERJENLER: gluten (buğday, arpa, çavdar, yulaf) · crustacean (karides, yengeç, ıstakoz, krill) · egg · fish · peanut (yer fıstığı) · soy · milk · tree_nut (sert kabuklu, türü belirsiz) · hazelnut · walnut · almond · pistachio (antep fıstığı) · cashew · celery · mustard · sesame · sulphite · lupin (acı bakla) · mollusc (midye, kalamar, ahtapot) · listede yoksa (yalnız kısıtta) custom:<ad>
 BÖLGELER: knee=diz · back=sırt/bel · shoulder=omuz · ankle=ayak bileği · wrist=el bileği · elbow=dirsek · hip=kalça · neck=boyun · hamstring=arka bacak · quad=ön bacak · groin=kasık
@@ -128,6 +129,6 @@ AÇIK SÖZLER’deki bir sözün sonucu ("dün akşam 8’den sonra yemedim"). D
 
 ## Diğer alanlar
 - safety.ed_signal.category: illness_vomiting = hastalık/zehirlenme kusması, YB sinyali değil
-- safety.tripwire_reading: yalnız TETİK olgusu verildiyse; yoksa null
+- safety.tripwire_reading: yalnız GÜVENLİK TETİKLERİ bloğu verildiyse; yoksa null
 - plan_action.op: plan işlemi yoksa none (taslak açıkken alakasız tur da none)
 - simulation: "yesem ne olur?" varsayımı (kod bütçe sayısını hesaplar); yoksa null

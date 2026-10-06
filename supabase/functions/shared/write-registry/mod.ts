@@ -3,6 +3,7 @@
  *
  *   schema:   buildUnderstandSchema / buildFusedSchema / buildReplySchema / strictFormat / SCHEMA_NAMES
  *   doc:      buildWriteDoc / buildMemoryDoc / buildCapabilities;  budget: stageARegistrySize (Stage A prefix size)
+ *   tokens:   estimateTokens / TR_CHARS_PER_TOKEN — the ONE token estimate every v2 prompt budget uses
  *   validate: validateDecision(decision, ctx) → per-write COMMIT | FLAG | ASK | REJECT (+ plan, safety)
  *   receipts: receiptLine / toActionReceipt / turnFactLine / holdLine / rejectLine
  *   registry: REGISTRY / getOp / opsIn / SCHEMA_VERSION;  refs: parseRef / RenderedRef / REF_KINDS
@@ -13,7 +14,8 @@ export {
   type JsonSchema,
 } from './schema.ts';
 export { buildWriteDoc, buildMemoryDoc } from './doc.ts';
-export { approxTokens, stageARegistrySize, STAGE_A_REGISTRY_BUDGET, type RegistryPromptSize } from './budget.ts';
+export { stageARegistrySize, STAGE_A_REGISTRY_BUDGET, type RegistryPromptSize } from './budget.ts';
+export { estimateTokens, TR_CHARS_PER_TOKEN } from './tokens.ts';
 export { buildCapabilities } from './capabilities.ts';
 export {
   validateDecision, validateChannelItems, validateConfirmedHold, collectRefs, freezeForHold, opOf,

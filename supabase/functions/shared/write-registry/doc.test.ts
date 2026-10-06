@@ -12,8 +12,11 @@ import { UNIT_ML } from './units.ts';
 import { BLOCK_TITLES } from './refs.ts';
 import { ENVELOPE_HEAD, ENVELOPE_TAIL } from './envelope.ts';
 import { buildReplySchema, buildUnderstandSchema } from './schema.ts';
-import type { Fields } from './dsl.ts';
+import { type Fields, MAX_BACK_DAYS } from './dsl.ts';
 import { DIETARY_SUBJECTS } from './vocab.ts';
+import { RELATIVE_DAY_TOKENS, resolveDay } from './util.ts';
+import { validateChannelItems } from './validate.ts';
+import { SAMPLE_WRITES, sampleContext } from './samples.ts';
 
 const doc = buildWriteDoc();
 
@@ -53,6 +56,23 @@ Deno.test('doc: says what code computes and what is two-step — and that nothin
   assert(doc.includes('peanut (yer fıstığı)') && doc.includes('pistachio (antep fıstığı)'), 'the ambiguous "fıstık" ids carry their hint');
   assert(doc.includes('BÖLGELER: knee=diz'));
   for (const d of Object.keys(DIETARY_SUBJECTS)) assert(doc.includes(d), `dietary id ${d} is listed for constraint_add.subject_id`);
+});
+
+Deno.test('doc: the day vocabulary is stated — exactly the tokens and window the validator accepts', () => {
+  // The schema types `day` as a bare string; without this line the model learns 'yesterday' and
+  // "no future day" only from luck (wave-2a review: the slimmed doc had dropped it).
+  const line = doc.split('\n').find((l) => l.startsWith('day: '));
+  assert(line, 'no "day:" line in the doc header');
+  for (const t of [...RELATIVE_DAY_TOKENS, 'YYYY-MM-DD']) assert(line.includes(t), `day token ${t} not documented`);
+  assert(line.includes(`en fazla ${MAX_BACK_DAYS} gün geri`) && line.includes('gelecek yok'), line);
+  // …and every documented token is one the resolver really accepts.
+  for (const t of RELATIVE_DAY_TOKENS) assert(resolveDay(t, '2026-10-06') !== null, t);
+  assertEquals(resolveDay('tomorrow', '2026-10-06'), null, 'an undocumented token is not silently accepted');
+  const ctx = sampleContext();
+  const at = (day: string) => validateChannelItems('writes', [{ ...SAMPLE_WRITES.water_log, day }], ctx)[0];
+  assertEquals(at('yesterday').verdict, 'COMMIT');
+  assertEquals(at('2026-10-07').issues.map((i) => i.code), ['gelecek_tarih'], 'gelecek yok');
+  assertEquals(at('2026-09-28').issues.map((i) => i.code), ['cok_eski'], `en fazla ${MAX_BACK_DAYS} gün geri`);
 });
 
 Deno.test('doc: plausibility thresholds are not advertised (the model gives its honest estimate; code decides)', () => {

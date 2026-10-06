@@ -38,6 +38,13 @@ export function daysBetween(a: string, b: string): number {
 }
 
 /**
+ * The relative tokens a `day` field accepts besides 'YYYY-MM-DD'. One list for the resolver below,
+ * the hold freezer (validate.ts) and the Stage A doc's day line (doc.ts), so the model is told
+ * exactly the vocabulary the validator accepts.
+ */
+export const RELATIVE_DAY_TOKENS = ['today', 'yesterday'] as const;
+
+/**
  * Resolve a log day ('today' | 'yesterday' | 'YYYY-MM-DD') against the user's effective day.
  * Returns null when the token is malformed — the caller turns that into a visible issue.
  */

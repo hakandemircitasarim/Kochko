@@ -20,6 +20,7 @@ import { MAX_BACK_DAYS, type Channel, type Fields, type RegOp } from './dsl.ts';
 import { ENVELOPE_HEAD, ENVELOPE_TAIL } from './envelope.ts';
 import { BLOCK_REF_KINDS, BLOCK_TITLES, REF_KINDS } from './refs.ts';
 import { opsIn, SCHEMA_VERSION } from './registry.ts';
+import { RELATIVE_DAY_TOKENS } from './util.ts';
 import { ALLERGEN_DOC_HINTS, ALLERGENS, BODY_PARTS } from './vocab.ts';
 
 const CHANNEL_TITLES: Record<Channel, string> = {
@@ -97,12 +98,22 @@ function refLine(): string {
   return `Ref’ler yalnız bu turda gösterilenler: ${blocks.join(' | ')}.`;
 }
 
+/**
+ * The `day` vocabulary, stated once (every log op has a `day`, and the schema only says "string").
+ * Generated from the validator's own token list and window, so the doc cannot drift from what
+ * checkField('day') accepts: a relative token, an ISO day ≤ MAX_BACK_DAYS back, never the future.
+ */
+function dayLine(): string {
+  return `day: ${[...RELATIVE_DAY_TOKENS, 'YYYY-MM-DD'].join(' | ')}; en fazla ${MAX_BACK_DAYS} gün geri, gelecek yok.`;
+}
+
 /** The doc block for Stage A (writes, record/pending/commitment ops, envelope fields). */
 export function buildWriteDoc(): string {
   const out: string[] = [];
   out.push(`YAZILABİLİR KAYITLAR (şema kochko_understand_${SCHEMA_VERSION})`);
   out.push('Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aralığı denetler, hiçbir sayını sessizce değiştirmez. Her yazma ayrı denetlenir.');
-  out.push(`Ortak alanlar: day ≤${MAX_BACK_DAYS} gün geri; diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. replaces: KAYITLAR’daki aynı türden kaydın düzeltilmiş hâliyse onun ref’i, değilse null.`);
+  out.push(dayLine());
+  out.push(`Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. replaces: KAYITLAR’daki aynı türden kaydın düzeltilmiş hâliyse onun ref’i, değilse null.`);
   out.push(refLine());
   const allergenIds = (Object.keys(ALLERGENS) as Array<keyof typeof ALLERGENS>)
     .map((id) => (ALLERGEN_DOC_HINTS[id] ? `${id} (${ALLERGEN_DOC_HINTS[id]})` : id));

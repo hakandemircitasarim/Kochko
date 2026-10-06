@@ -21,7 +21,7 @@ import { MAX_BACK_DAYS, type Channel, type EvalOpts, type FieldSpec, type Fields
 import { ENVELOPE_HEAD, ENVELOPE_TAIL } from './envelope.ts';
 import { parseRef } from './refs.ts';
 import { CHANNELS, findWireOp, getOp, SCHEMA_VERSION, UNDERSTAND_CHANNELS } from './registry.ts';
-import { cloneJson, daysBetween, isHhmm, isIsoDay, isRecord, isVerbatimQuote, resolveDay, roundTo } from './util.ts';
+import { cloneJson, daysBetween, isHhmm, isIsoDay, isRecord, isVerbatimQuote, RELATIVE_DAY_TOKENS, resolveDay, roundTo } from './util.ts';
 
 export type Verdict = 'COMMIT' | 'FLAG' | 'ASK' | 'REJECT';
 
@@ -286,7 +286,7 @@ function walkDays(fields: Fields, obj: unknown, base: string, visit: (holder: Re
   }
 }
 
-const RELATIVE_DAYS: readonly unknown[] = ['today', 'yesterday'];
+const RELATIVE_DAYS: readonly unknown[] = RELATIVE_DAY_TOKENS;
 
 /**
  * The hold payload for a write: a copy of `args` with 'today'/'yesterday' resolved against the

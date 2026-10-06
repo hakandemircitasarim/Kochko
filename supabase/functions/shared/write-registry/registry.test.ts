@@ -16,7 +16,8 @@ import {
   buildFusedSchema, buildReplySchema, buildUnderstandSchema, schemaBytes, schemaStats, SCHEMA_NAMES, strictFormat, type JsonSchema,
 } from './schema.ts';
 import { buildMemoryDoc, buildWriteDoc } from './doc.ts';
-import { approxTokens, STAGE_A_REGISTRY_BUDGET, stageARegistrySize } from './budget.ts';
+import { STAGE_A_REGISTRY_BUDGET, stageARegistrySize } from './budget.ts';
+import { estimateTokens, TR_CHARS_PER_TOKEN } from './tokens.ts';
 import { buildCapabilities } from './capabilities.ts';
 import { RECEIPT_OPS } from './receipts.ts';
 import { validateChannelItems, type WriteVerdict } from './validate.ts';
@@ -167,16 +168,29 @@ Deno.test('the slimmed schemas pass the strict-mode lint and accept every golden
 
 // ─── 2b. Stage A budget (§3.3, §4.1) ─────────────────────────────────────────
 
-Deno.test('Stage A budget: generated doc + strict schema stay within the prompt budget (chars/3.6 estimate)', () => {
+Deno.test('Stage A budget: generated doc + strict schema stay within the prompt budget (the shared chars/3.2 estimate)', () => {
   const s = stageARegistrySize();
   const b = STAGE_A_REGISTRY_BUDGET;
   const report = `doc ${s.doc_chars} kr ≈ ${s.doc_tokens} tok · şema ${s.schema_chars} kr ≈ ${s.schema_tokens} tok · toplam ≈ ${s.total_tokens} tok`;
   console.log(`[Stage A kayıt öneki] ${report}`);
-  assert(s.doc_tokens <= b.doc.ceiling, `doc ${s.doc_tokens} > ${b.doc.ceiling} (§4.1 ~2,5K) — ${report}`);
+  assert(s.doc_tokens <= b.doc.ceiling, `doc ${s.doc_tokens} > ${b.doc.ceiling} (§4.1 ~3,1K) — ${report}`);
   assert(s.doc_tokens >= b.doc.floor, `doc ${s.doc_tokens} < ${b.doc.floor}: the model must see what it may write — ${report}`);
   assert(s.schema_tokens <= b.schema.ceiling, `schema ${s.schema_tokens} > ${b.schema.ceiling} — ${report}`);
   assert(s.total_tokens <= b.total.ceiling, `doc+schema ${s.total_tokens} > ${b.total.ceiling} — ${report}`);
-  assertEquals(approxTokens('x'.repeat(36)), 10);
+  assert(b.doc.ceiling + b.schema.ceiling >= b.total.ceiling, 'the total ceiling is never looser than its parts');
+});
+
+Deno.test('one token estimate: the registry budget and the v2 brain prompts measure with the same function', async () => {
+  // Two ratios (3.6 here, 3.2 for the brain) let the same doc pass one ceiling and fail the other.
+  const brain = await import('../../ai-chat/v2/prompt-size.ts');
+  assertEquals(brain.TR_CHARS_PER_TOKEN, TR_CHARS_PER_TOKEN);
+  assertEquals(brain.estimateTokens, estimateTokens, 'prompt-size.ts re-exports the registry estimate, it does not define one');
+  const s = stageARegistrySize();
+  assertEquals(s.doc_tokens, estimateTokens(buildWriteDoc()));
+  assertEquals(s.schema_tokens, estimateTokens(schemaBytes(buildUnderstandSchema())));
+  assertEquals(estimateTokens(''), 0);
+  assertEquals(estimateTokens('x'.repeat(32)), 10);
+  assertEquals(estimateTokens('x'.repeat(33)), 11, 'rounds up');
 });
 
 Deno.test('understand envelope is decision-first; fused puts suggested_* before the prose', () => {

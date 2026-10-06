@@ -39,14 +39,17 @@ import { memory_note } from './ops/memory.ts';
 
 /**
  * Bump on ANY change to the generated schema or doc bytes (field, enum, order, description).
- * It names the strict schema ('kochko_understand_v2') and the cache key, and is stamped on every
+ * It names the strict schema ('kochko_understand_v3') and the cache key, and is stamped on every
  * ai_turn_log row and pending_writes payload (an older hold is never applied blindly).
  *
  * v2 (2026-10-07): Stage A budget — no descriptions in the understand schema (semantics once, in
  * the doc), shared $defs for allergens/body parts, compact doc with rare ops in an appendix;
  * water quantity without a unit-blind range; protective constraint uncertainty is FLAG, not ASK.
+ * v3 (2026-10-07): the doc states the `day` vocabulary again (today | yesterday | YYYY-MM-DD,
+ * ≤7 days back, no future), generated from the validator's own tokens; the tripwire_reading note
+ * names the real block (GÜVENLİK TETİKLERİ, shared/safety-tripwires.ts). Schema bytes unchanged.
  */
-export const SCHEMA_VERSION = 'v2';
+export const SCHEMA_VERSION = 'v3';
 
 export const REGISTRY: readonly RegOp[] = [
   // writes[] — what the user reported
