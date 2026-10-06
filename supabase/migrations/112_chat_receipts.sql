@@ -22,7 +22,18 @@
 -- v2_link_turn_message: asistan mesajı yazmalardan SONRA saklandığı için turun defter satırlarına ve
 -- açtığı bekletmelere mesaj kimliğini sonradan damgalar (geçmişte "⟦m12 düzeltildi → m15⟧" satırı).
 --
+-- YALNIZ SUNUCU YAZAR: 005'in genel RLS politikaları kullanıcıya kendi chat_messages satırlarında
+-- INSERT/UPDATE veriyor. Bu dört sütun istemciden yazılabilseydi: quota_class='exempt'/'record' ile
+-- sohbet kotasından kaçılır (Faz 3 sayacı bunu okur), code_notes ile modele "kodun satırı" diye metin
+-- sokulur, turn_id önceden doldurulup v2_link_turn_message bağlaması engellenir. Sütun yetkisi tablo
+-- düzeyindeki yetkiyi geçersiz kılamadığı için (REVOKE (sütun) ON … tablo GRANT'ı varken etkisiz) bir
+-- BEFORE tetikleyicisi istemci rollerinden (anon/authenticated) gelen ve bu sütunları dolduran/değiştiren
+-- yazmayı AÇIKÇA reddeder (42501) — sessizce boşaltmaz. Bu sütunlara dokunmayan v1 istemci yazmaları
+-- (ve service_role / SECURITY DEFINER RPC'ler) aynen çalışır.
+--
 -- DOWN:
+--   DROP TRIGGER IF EXISTS trg_chat_messages_v2_server_columns ON public.chat_messages;
+--   DROP FUNCTION IF EXISTS public._v2_chat_messages_server_columns();
 --   DROP FUNCTION IF EXISTS public.v2_link_turn_message(uuid, uuid, uuid);
 --   DROP INDEX IF EXISTS idx_chat_messages_turn, idx_chat_messages_quota;
 --   ALTER TABLE chat_messages DROP CONSTRAINT IF EXISTS chat_messages_quota_class_check,
@@ -65,6 +76,33 @@ COMMENT ON COLUMN public.chat_messages.code_notes       IS 'v2: cevabın sonuna 
 COMMENT ON COLUMN public.chat_messages.actions_executed IS 'v1: [{type}]. v2: tam makbuz [{action_type, ok, rows_affected, user_line, failure_class, ref, write_id, …}] — [{type}] okuyucularıyla uyumlu üst küme.';
 COMMENT ON COLUMN public.chat_messages.turn_id          IS 'turn_writes / ai_turn_log / pending_writes ile aynı tur kimliği.';
 
+-- ─── Yalnız sunucu: turn_id / pipeline / quota_class / code_notes ─────────────────────────────────
+-- current_user: PostgREST istemci isteği 'authenticated'/'anon' rolüne SET ROLE yapar; edge fonksiyonu
+-- 'service_role'; SECURITY DEFINER RPC (v2_link_turn_message) sahibinin rolüyle çalışır. INVOKER
+-- tetikleyici fonksiyonunda current_user bu yüzden yazmayı kimin yaptığını doğru söyler.
+CREATE OR REPLACE FUNCTION public._v2_chat_messages_server_columns()
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
+BEGIN
+  IF current_user IN ('anon', 'authenticated') THEN
+    IF TG_OP = 'INSERT' THEN
+      IF NEW.turn_id IS NOT NULL OR NEW.pipeline IS NOT NULL OR NEW.quota_class IS NOT NULL OR NEW.code_notes IS NOT NULL THEN
+        RAISE EXCEPTION USING ERRCODE = 'insufficient_privilege',
+          MESSAGE = 'chat_messages.turn_id/pipeline/quota_class/code_notes are written by the server only';
+      END IF;
+    ELSIF NEW.turn_id IS DISTINCT FROM OLD.turn_id OR NEW.pipeline IS DISTINCT FROM OLD.pipeline
+       OR NEW.quota_class IS DISTINCT FROM OLD.quota_class OR NEW.code_notes IS DISTINCT FROM OLD.code_notes THEN
+      RAISE EXCEPTION USING ERRCODE = 'insufficient_privilege',
+        MESSAGE = 'chat_messages.turn_id/pipeline/quota_class/code_notes are written by the server only';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_chat_messages_v2_server_columns ON public.chat_messages;
+CREATE TRIGGER trg_chat_messages_v2_server_columns
+  BEFORE INSERT OR UPDATE ON public.chat_messages
+  FOR EACH ROW EXECUTE FUNCTION public._v2_chat_messages_server_columns();
+
 CREATE OR REPLACE FUNCTION public.v2_link_turn_message(p_user uuid, p_turn_id uuid, p_chat_message_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -83,6 +121,16 @@ BEGIN
   GET DIAGNOSTICS v_holds = ROW_COUNT;
   UPDATE chat_messages SET turn_id = p_turn_id WHERE id = p_chat_message_id AND turn_id IS NULL;
   RETURN jsonb_build_object('ok', true, 'op', 'link_turn_message', 'writes', v_writes, 'holds', v_holds);
+END $$;
+
+-- İç yardımcılar (tetikleyici fonksiyonu dahil) hiçbir role açılmaz; tetikleyici EXECUTE yetkisi istemez.
+DO $$
+DECLARE f regprocedure;
+BEGIN
+  FOR f IN SELECT p.oid::regprocedure FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public' AND p.proname LIKE '\_v2\_%' LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon, authenticated', f);
+  END LOOP;
 END $$;
 
 REVOKE ALL ON FUNCTION public.v2_link_turn_message(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated;

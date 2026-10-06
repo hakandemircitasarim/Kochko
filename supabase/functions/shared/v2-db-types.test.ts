@@ -1,6 +1,7 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import {
   buildRefMap,
+  CHAT_SERVER_ONLY_COLUMNS,
   DB_BOUNDS,
   DECISION_RETENTION_DAYS,
   DELETABLE_REF_KINDS,
@@ -10,10 +11,13 @@ import {
   isRpcFailure,
   LEDGER_TABLES,
   METRIC_OPS,
+  METRIC_VALUE_KEYS,
   parseRef,
   parseRpcReceipt,
   PENDING_STATUSES,
   QUOTA_CLASSES,
+  RECENTLY_UNDONE_HOURS,
+  RECENTLY_UNDONE_LIMIT,
   REF_KIND_TABLE,
   REF_KINDS,
   TURN_INPUT_KEYS,
@@ -175,6 +179,69 @@ Deno.test('DB bounds, metric ops, hold TTL and retention match the SQL', () => {
   assert(m111.includes(`SELECT public.v2_retention_sweep(${DECISION_RETENTION_DAYS})`), 'retention cron drifted');
 });
 
+Deno.test('w_metric_apply accepts exactly METRIC_VALUE_KEYS and writes details only when stated (113)', () => {
+  const m113 = sql('113_v2_writer_rpcs.sql');
+  const block = grab(m113, /WHERE NOT \(k = ANY \(CASE v_metric ([\s\S]*?) END\)\)/, 'metric unknown-key whitelist');
+  for (const [metric, keys] of Object.entries(METRIC_VALUE_KEYS)) {
+    const list = metric === 'weight'
+      ? grab(block, /ELSE ARRAY\[([^\]]*)\]/, 'weight keys')
+      : grab(block, new RegExp(`WHEN '${metric}'\\s+THEN ARRAY\\[([^\\]]*)\\]`), `${metric} keys`);
+    assertEquals(sorted(quoted(list)), sorted(keys), metric);
+  }
+  // NULL ≠ clear: the detail columns are added to v_new only under an IS NOT NULL guard, never unconditionally.
+  assert(!/jsonb_build_object\('sleep_hours', v_r, 'sleep_quality'/.test(m113), 'sleep_quality is written unconditionally again');
+  assert(!/'mood_note', _v2_text\(/.test(m113), 'mood_note is written unconditionally again');
+  assert(/IF v_t IS NOT NULL AND btrim\(v_t\) <> '' THEN\s+v_new := v_new \|\| jsonb_build_object\('mood_note', v_t\)/.test(m113), 'mood note guard missing');
+});
+
+Deno.test('the ledger canonicalises before/after on every insert path (108)', () => {
+  const m108 = sql('108_turn_writes.sql');
+  const ins = grab(m108, /CREATE OR REPLACE FUNCTION public\._v2_ledger_insert\(([\s\S]*?)END \$\$;/, '_v2_ledger_insert');
+  assert(ins.includes("_v2_canon(p_table, p_before, 'before')") && ins.includes("_v2_canon(p_table, p_after, 'after')"),
+    '_v2_ledger_insert stores before/after without canonicalising them');
+  const append = grab(m108, /CREATE OR REPLACE FUNCTION public\.v2_ledger_append\(([\s\S]*?)END \$\$;/, 'v2_ledger_append');
+  for (const reason of ['not_writable', 'missing_field', 'protected_column', 'required']) {
+    assert(append.includes(`'reason', '${reason}'`), `v2_ledger_append lost its '${reason}' check`);
+  }
+});
+
+Deno.test('a workout soft-delete cascades to its strength_sets (108) and holds confirm only in a later turn (109)', () => {
+  const m108 = sql('108_turn_writes.sql');
+  const soft = grab(m108, /CREATE OR REPLACE FUNCTION public\._v2_soft_delete\(([\s\S]*?)END \$\$;/, '_v2_soft_delete');
+  assert(/FROM strength_sets s\s+WHERE s\.workout_log_id = p_row/.test(soft), 'workout soft-delete no longer cascades to strength_sets');
+  assert(soft.includes("'strength_sets', v_dep.id"), 'strength_sets cascade is not journalled');
+  assert(LEDGER_TABLES.includes('strength_sets'));
+  const m109 = sql('109_pending_writes_v2.sql');
+  assert(m109.includes("v_hold.turn_id = p_turn_id THEN") && m109.includes("'reason', 'same_turn'"), 'same-turn hold confirmation guard missing');
+  // Every claim passes the confirming turn.
+  for (const m of ALL_V2_SQL.matchAll(/_v2_hold_claim\(([^)]*)\)/g)) {
+    if (m[1].includes('uuid')) continue; // the definition / DOWN signature
+    assert(m[1].split(',').length === 4, `_v2_hold_claim called without the turn id: ${m[0]}`);
+  }
+});
+
+Deno.test('chat_messages v2 columns are server-only (112) and retention keeps consent holds (111)', () => {
+  const m112 = sql('112_chat_receipts.sql');
+  const fn = grab(m112, /CREATE OR REPLACE FUNCTION public\._v2_chat_messages_server_columns\(\)([\s\S]*?)END \$\$;/, 'server-columns trigger fn');
+  assert(fn.includes("current_user IN ('anon', 'authenticated')"), 'trigger does not single out client roles');
+  assert(fn.includes("ERRCODE = 'insufficient_privilege'"), 'trigger must reject (42501), not silently rewrite');
+  for (const c of CHAT_SERVER_ONLY_COLUMNS) {
+    assert(fn.includes(`NEW.${c} IS NOT NULL`), `client INSERT of chat_messages.${c} is not blocked`);
+    assert(fn.includes(`NEW.${c} IS DISTINCT FROM OLD.${c}`), `client UPDATE of chat_messages.${c} is not blocked`);
+  }
+  assert(/CREATE TRIGGER trg_chat_messages_v2_server_columns\s+BEFORE INSERT OR UPDATE ON public\.chat_messages/.test(m112), 'trigger not attached');
+  const m111 = sql('111_turn_log_v2.sql');
+  const del = grab(m111, /DELETE FROM pending_writes([\s\S]*?);/, 'hold retention delete');
+  assert(del.includes("op <> 'account_erase_request'"), 'retention may delete KVKK erase holds');
+  assert(del.includes("hold_class = 'ask'") && del.includes('turn_id IS NOT NULL'), 'retention may delete safety / non-v2 holds');
+});
+
+Deno.test('recently_undone window and limit match v2_turn_input (113)', () => {
+  const m113 = sql('113_v2_writer_rpcs.sql');
+  assert(m113.includes(`w.created_at >= now() - make_interval(hours => ${RECENTLY_UNDONE_HOURS})`), 'recently_undone window drifted');
+  assert(m113.includes(`ORDER BY u.seq DESC LIMIT ${RECENTLY_UNDONE_LIMIT}`), 'recently_undone limit drifted');
+});
+
 Deno.test('migration numbers are unique (parallel branches must not both ship a 108)', () => {
   const seen = new Map<string, string>();
   for (const e of Deno.readDirSync(MIG_DIR)) {
@@ -240,6 +307,10 @@ function sections(over: Partial<RefSections> = {}): RefSections {
     commitments: [{ ref: 'k1', id: 'cm-1' }] as TurnInputRow['commitments'],
     pending: [{ ref: 'p1', id: 'pw-1' }] as TurnInputRow['pending'],
     plans: { active: [], drafts: [{ ref: 'dft1', id: 'wp-1' }] as TurnInputRow['plans']['drafts'] },
+    recently_undone: [
+      { ref: 'm9', table: 'meal_logs', id: 'meal-9' },
+      { ref: 'd2', table: 'daily_metrics', id: 'tw-2' },
+    ] as TurnInputRow['recently_undone'],
   };
   return { ...base, ...over };
 }
@@ -251,9 +322,27 @@ Deno.test('buildRefMap maps every rendered ref to its table and row (d/w → the
   assertEquals(map.get('d3'), { kind: 'd', table: 'turn_writes', id: 'tw-3' });
   assertEquals(map.get('w1'), { kind: 'w', table: 'turn_writes', id: 'tw-9' });
   assertEquals(map.get('dft1'), { kind: 'dft', table: 'weekly_plans', id: 'wp-1' });
-  assertEquals(map.size, 12);
+  assertEquals(map.size, 14);
   // A ref the model invents is simply absent: refInRenderedSet fails, nothing is guessed.
   assertEquals(map.get('m99'), undefined);
+});
+
+Deno.test('buildRefMap renders recently undone records so "geri getir" can name them (d/w → the undone write)', () => {
+  const { map, problems } = buildRefMap(sections());
+  assertEquals(problems, []);
+  assertEquals(map.get('m9'), { kind: 'm', table: 'meal_logs', id: 'meal-9' });
+  assertEquals(map.get('d2'), { kind: 'd', table: 'turn_writes', id: 'tw-2' });
+  // A ref whose kind does not fit its table, or a table that has no undoable ref kind, is reported.
+  const bad = buildRefMap(sections({
+    recently_undone: [
+      { ref: 'd7', table: 'meal_logs', id: 'meal-7' },
+      { ref: 'x1', table: 'strength_sets', id: 'set-1' },
+    ] as TurnInputRow['recently_undone'],
+  }));
+  assert(!bad.map.has('d7'));
+  assertEquals(bad.problems.length, 2);
+  assert(bad.problems.some((p) => p.includes('has kind d')));
+  assert(bad.problems.some((p) => p.includes('unexpected table strength_sets')));
 });
 
 Deno.test('buildRefMap reports malformed, mis-kinded and colliding refs instead of guessing', () => {

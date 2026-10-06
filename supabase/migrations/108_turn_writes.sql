@@ -31,6 +31,16 @@
 -- şimdiki değeri bu yazmanın bıraktığı değer değilse geri alma YAPILMAZ: ok=false, failure_class=
 -- 'later_write'. Kod sessizce ezmez (§2 kural 1); koç sorar.
 --
+-- KANONİK DEĞERLER: defterin before/after değerleri, sütun karşılığı olan her anahtar için sütunun kendi
+-- tipine çevrilerek saklanır (_v2_canon: '23:00' → "23:00:00", DECIMAL(3,1)'e 7.46 → 7.5). Böylece
+-- geri almanın çakışma denetimi DB'nin to_jsonb değeriyle AYNI gösterimi karşılaştırır; v1'in
+-- v2_ledger_append ile yazdığı '23:00' artık sahte bir 'later_write' üretmez (§6.1: v2, v1 yazmasını
+-- geri alabilir).
+--
+-- ANTRENMAN: antrenman soft-delete olunca başarımları (source_row_id) VE set'leri (strength_sets)
+-- aynı grupta birlikte soft-delete olur; geri getirme hepsini geri getirir. Geri alınmış bir
+-- "200 kg squat" set'i rekor/geçmiş okuyucularında kalmaz (okuyucular is_deleted süzmeli — 110).
+--
 -- GÜVENLİK: tüm fonksiyonlar SECURITY DEFINER + yalnız service_role (072'nin dersi: p_user alan bir
 -- RPC'yi authenticated çağırabilirse başkasının verisini siler). Tablolar RLS açık: kullanıcı yalnızca
 -- kendi defterini/ref'lerini OKUR, yazma politikası BİLEREK yok.
@@ -43,6 +53,7 @@
 --     public._v2_ref_for(uuid, text, text, uuid), public._v2_ensure_refs(uuid, text, text, uuid[]), public._v2_ref_kind_for(text, text[]),
 --     public._v2_insert_row(text, jsonb), public._v2_delete_row(text, uuid), public._v2_set_fields(text, uuid, jsonb),
 --     public._v2_row_owner(text, uuid), public._v2_row_state(text, uuid), public._v2_assert_table(text), public._v2_record_day(text, jsonb),
+--     public._v2_canon(text, jsonb, text), public._v2_unwritable(text, text[]),
 --     public._v2_subset(jsonb, text[]), public._v2_text_array(jsonb, text, text), public._v2_text(jsonb, text, integer, boolean, text),
 --     public._v2_num(jsonb, text, numeric, numeric, boolean, text), public._v2_day(text), public._v2_pipeline(text),
 --     public._v2_write_failed(text, text, text), public._v2_failure(text, text, text), public._v2_fail(text, jsonb);
@@ -101,7 +112,7 @@ CREATE TABLE IF NOT EXISTS turn_writes (
   op              text NOT NULL CHECK (length(op) BETWEEN 1 AND 64),
   table_name      text NOT NULL CHECK (table_name IN (
                     'meal_logs','workout_logs','supplement_logs','daily_metrics','weight_history',
-                    'profiles','user_venues','life_events','lab_values','achievements')),
+                    'profiles','user_venues','life_events','lab_values','achievements','strength_sets')),
   row_id          uuid,
   for_date        date,
   field_set       text[] NOT NULL DEFAULT '{}',
@@ -258,7 +269,7 @@ CREATE OR REPLACE FUNCTION public._v2_assert_table(p_table text)
 RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
   IF p_table IS NULL OR p_table NOT IN ('meal_logs','workout_logs','supplement_logs','daily_metrics','weight_history',
-                                        'profiles','user_venues','life_events','lab_values','achievements') THEN
+                                        'profiles','user_venues','life_events','lab_values','achievements','strength_sets') THEN
     PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'table_name', 'value', p_table));
   END IF;
 END $$;
@@ -280,32 +291,75 @@ BEGIN
   PERFORM _v2_assert_table(p_table);
   IF p_table = 'profiles' THEN
     SELECT id INTO v FROM profiles WHERE id = p_row;
+  ELSIF p_table = 'strength_sets' THEN
+    -- strength_sets'in user_id'si yok: sahiplik antrenman ebeveyninden (005'in RLS'iyle aynı yol).
+    SELECT w.user_id INTO v FROM strength_sets s JOIN workout_logs w ON w.id = s.workout_log_id WHERE s.id = p_row;
   ELSE
     EXECUTE format('SELECT user_id FROM public.%I WHERE id = $1', p_table) INTO v USING p_row;
   END IF;
   RETURN v;
 END $$;
 
--- Alan yazımı: değerler jsonb_populate_record ile sütun tipine çevrilir (numeric(4,2), time, text[]…).
-CREATE OR REPLACE FUNCTION public._v2_set_fields(p_table text, p_row uuid, p_values jsonb)
-RETURNS void LANGUAGE plpgsql SET search_path = public AS $$
-DECLARE
-  v_bad  text;
-  v_sets text;
+-- Defterin yazamayacağı anahtarlar: kimlik sütunları, korunan profil sütunları, tabloda olmayan ya da
+-- üretilmiş sütunlar. _v2_set_fields (yazma anı) ve v2_ledger_append (kayıt anı) aynı listeyi kullanır:
+-- geri alınabilirlik yazılırken denetlenir, geri alma anında sürpriz olmaz.
+CREATE OR REPLACE FUNCTION public._v2_unwritable(p_table text, p_keys text[])
+RETURNS text[] LANGUAGE plpgsql SET search_path = public AS $$
+DECLARE v_bad text[];
 BEGIN
   PERFORM _v2_assert_table(p_table);
-  IF p_values IS NULL OR p_values = '{}'::jsonb THEN RETURN; END IF;
-  SELECT string_agg(k, ',') INTO v_bad
-  FROM jsonb_object_keys(p_values) AS k
-  WHERE k IN ('id', 'user_id')
+  SELECT coalesce(array_agg(k ORDER BY k), '{}'::text[]) INTO v_bad
+  FROM unnest(coalesce(p_keys, '{}'::text[])) AS k
+  WHERE k IS NULL OR k IN ('id', 'user_id')
      -- Abonelik ve hesap durumu defterden asla yazılmaz (geri alma bile).
      OR (p_table = 'profiles' AND k IN ('premium', 'premium_expires_at', 'trial_used', 'deleted_at',
                                          'deletion_requested_at', 'deletion_cancelled'))
      OR NOT EXISTS (SELECT 1 FROM pg_attribute a
                     WHERE a.attrelid = format('public.%I', p_table)::regclass
                       AND a.attname = k AND a.attnum > 0 AND NOT a.attisdropped AND a.attgenerated = '');
-  IF v_bad IS NOT NULL THEN
-    RAISE EXCEPTION 'v2: column(s) % not writable on %', v_bad, p_table;
+  RETURN v_bad;
+END $$;
+
+-- Defter değerlerinin KANONİK gösterimi: nesnenin sütun karşılığı olan her anahtarı sütunun kendi
+-- tipinden (typmod dahil) geçirilip to_jsonb ile geri yazılır ('23:00' → "23:00:00", DECIMAL(3,1)'e
+-- 7.46 → 7.5, '2026-10-06T10:00Z' → "2026-10-06T10:00:00+00:00"). Sütunu olmayan anahtarlar (ör. öğünün
+-- item_count özeti) aynen kalır, yeni anahtar eklenmez. Böylece geri almanın çakışma denetimi DB'nin
+-- to_jsonb değeriyle aynı gösterimi karşılaştırır. Sütun tipine uymayan değer = gerekçeli ret.
+CREATE OR REPLACE FUNCTION public._v2_canon(p_table text, p_obj jsonb, p_path text)
+RETURNS jsonb LANGUAGE plpgsql SET search_path = public AS $$
+DECLARE
+  v_cols text[];
+  v_row  jsonb;
+BEGIN
+  IF p_obj IS NULL OR jsonb_typeof(p_obj) <> 'object' THEN RETURN p_obj; END IF;
+  PERFORM _v2_assert_table(p_table);
+  SELECT array_agg(k) INTO v_cols FROM jsonb_object_keys(p_obj) AS k
+  WHERE EXISTS (SELECT 1 FROM pg_attribute a
+                WHERE a.attrelid = format('public.%I', p_table)::regclass
+                  AND a.attname = k AND a.attnum > 0 AND NOT a.attisdropped);
+  IF v_cols IS NULL THEN RETURN p_obj; END IF;
+  BEGIN
+    EXECUTE format('SELECT to_jsonb(r) FROM jsonb_populate_record(NULL::public.%I, $1) AS r', p_table)
+      INTO v_row USING _v2_subset(p_obj, v_cols);
+  EXCEPTION WHEN others THEN
+    PERFORM _v2_fail('invalid_value', jsonb_build_object('path', p_path, 'reason', 'not_column_type',
+                                                         'table', p_table, 'error', left(SQLERRM, 200)));
+  END;
+  RETURN p_obj || _v2_subset(v_row, v_cols);
+END $$;
+
+-- Alan yazımı: değerler jsonb_populate_record ile sütun tipine çevrilir (numeric(4,2), time, text[]…).
+CREATE OR REPLACE FUNCTION public._v2_set_fields(p_table text, p_row uuid, p_values jsonb)
+RETURNS void LANGUAGE plpgsql SET search_path = public AS $$
+DECLARE
+  v_bad  text[];
+  v_sets text;
+BEGIN
+  PERFORM _v2_assert_table(p_table);
+  IF p_values IS NULL OR p_values = '{}'::jsonb THEN RETURN; END IF;
+  v_bad := _v2_unwritable(p_table, ARRAY(SELECT jsonb_object_keys(p_values)));
+  IF cardinality(v_bad) > 0 THEN
+    RAISE EXCEPTION 'v2: column(s) % not writable on %', array_to_string(v_bad, ','), p_table;
   END IF;
   SELECT string_agg(format('%I = r.%I', k, k), ', ') INTO v_sets FROM jsonb_object_keys(p_values) AS k;
   EXECUTE format('UPDATE public.%I AS t SET %s FROM jsonb_populate_record(NULL::public.%I, $1) AS r WHERE t.id = $2',
@@ -316,7 +370,8 @@ CREATE OR REPLACE FUNCTION public._v2_delete_row(p_table text, p_row uuid)
 RETURNS void LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
   PERFORM _v2_assert_table(p_table);
-  IF p_table IN ('profiles', 'meal_logs', 'workout_logs', 'supplement_logs', 'life_events', 'lab_values', 'achievements') THEN
+  IF p_table IN ('profiles', 'meal_logs', 'workout_logs', 'supplement_logs', 'life_events', 'lab_values', 'achievements',
+                 'strength_sets') THEN
     -- Bu tabloların soft-delete'i (ya da kimliği) var: fiziksel silme defterden asla çıkmaz.
     RAISE EXCEPTION 'v2: % rows are never hard-deleted by the ledger', p_table;
   END IF;
@@ -400,17 +455,21 @@ CREATE OR REPLACE FUNCTION public._v2_ledger_insert(
   p_ref text, p_reverses uuid, p_meta jsonb
 ) RETURNS uuid LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
+  -- before/after HER yolda kanonik saklanır (yazıcılar, geri alma motoru, v1 eki): çakışma denetimi
+  -- DB'nin to_jsonb gösterimiyle birebir karşılaştırır.
   INSERT INTO turn_writes (id, user_id, turn_id, pipeline, ref, op, table_name, row_id, for_date, field_set,
                            before, after, undo_mode, group_id, is_primary, reverses, meta)
   VALUES (coalesce(p_id, gen_random_uuid()), p_user, p_turn_id, p_pipeline, p_ref, p_op, p_table, p_row, p_for_date,
-          coalesce(p_field_set, '{}'), p_before, p_after, p_undo_mode, p_group, p_is_primary, p_reverses,
-          coalesce(p_meta, '{}'::jsonb))
+          coalesce(p_field_set, '{}'), _v2_canon(p_table, p_before, 'before'), _v2_canon(p_table, p_after, 'after'),
+          p_undo_mode, p_group, p_is_primary, p_reverses, coalesce(p_meta, '{}'::jsonb))
   RETURNING id INTO p_id;
   RETURN p_id;
 END $$;
 
--- Bir kayıt satırını soft-delete eder ve deftere yazar. Antrenmanın başarımları (source_row_id)
--- aynı grupta birlikte gider; geri getirme onları da geri getirir.
+-- Bir kayıt satırını soft-delete eder ve deftere yazar. Antrenmanın başarımları (source_row_id) ve
+-- set'leri (strength_sets) aynı grupta, yan etki satırları olarak birlikte gider; geri getirme onları da
+-- geri getirir. (v1 antrenmanı hard-delete ediyordu → set'ler FK CASCADE ile gidiyordu; soft-delete'te
+-- set'ler kalsaydı geri alınmış bir "200 kg squat" rekor okuyucularında tarihi en yüksek olarak kalırdı.)
 CREATE OR REPLACE FUNCTION public._v2_soft_delete(
   p_user uuid, p_turn_id uuid, p_pipeline text, p_op text, p_table text, p_row uuid, p_for_date date,
   p_group uuid, p_is_primary boolean, p_ref text, p_reverses uuid, p_meta jsonb
@@ -433,6 +492,15 @@ BEGIN
                  WHERE a.user_id = p_user AND a.source_row_id = p_row AND a.is_deleted = false LOOP
       PERFORM _v2_set_fields('achievements', v_dep.id, v_after);
       PERFORM _v2_ledger_insert(NULL, p_user, p_turn_id, p_pipeline, p_op, 'achievements', v_dep.id, p_for_date,
+                                ARRAY['is_deleted', 'deleted_at'],
+                                jsonb_build_object('is_deleted', false, 'deleted_at', v_dep.deleted_at), v_after,
+                                'restore_previous', p_group, false, NULL, NULL,
+                                jsonb_build_object('dependent_of', p_row));
+    END LOOP;
+    FOR v_dep IN SELECT s.id, s.deleted_at FROM strength_sets s
+                 WHERE s.workout_log_id = p_row AND s.is_deleted = false ORDER BY s.set_number, s.id LOOP
+      PERFORM _v2_set_fields('strength_sets', v_dep.id, v_after);
+      PERFORM _v2_ledger_insert(NULL, p_user, p_turn_id, p_pipeline, p_op, 'strength_sets', v_dep.id, p_for_date,
                                 ARRAY['is_deleted', 'deleted_at'],
                                 jsonb_build_object('is_deleted', false, 'deleted_at', v_dep.deleted_at), v_after,
                                 'restore_previous', p_group, false, NULL, NULL,
@@ -843,6 +911,14 @@ END $$;
 -- işlemde değildir (v1 supabase-js ile yazar) — en iyi çaba; v2 yazıcı RPC'leri aynı işlemde yazar.
 -- p_entries: [{op, table_name, row_id, for_date, field_set[], before, after, undo_mode, group?, is_primary?, meta?, pipeline?}]
 -- Aynı "group" etiketini taşıyan girdiler tek mantıksal yazmadır.
+-- restore_previous / revert_delta girdileri için (geri alınabilirlik YAZILIRKEN denetlenir):
+--   * field_set yalnız yazılabilir gerçek sütunlardır (kimlik/korunan/üretilmiş/olmayan sütun = ret);
+--   * before/after nesne ise field_set'in HER anahtarını taşır (null değer = "boştu"/"boşalttım");
+--   * satır duruyorsa after zorunludur (after=NULL "bu yazma satırı sildi" demektir);
+--   * before/after sütun tipine göre kanonik saklanır (_v2_canon): v1'in '23:00'ı "23:00:00" olur ve
+--     geri almanın çakışma denetimi DB değeriyle aynı gösterimi karşılaştırır. Kanonik after DB'deki
+--     değerle tutmuyorsa (araya başka yazma girdi / v1 yanlış after verdi) geri alma 'later_write' ile
+--     reddedilir — sessiz ezme yok.
 CREATE OR REPLACE FUNCTION public.v2_ledger_append(p_user uuid, p_turn_id uuid, p_entries jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -861,6 +937,10 @@ DECLARE
   v_mode   text;
   v_primary boolean;
   v_owner  uuid;
+  v_before jsonb;
+  v_after  jsonb;
+  v_bad    text[];
+  v_side   text;
   v_msg    text;
   v_detail text;
   v_state  text;
@@ -882,7 +962,8 @@ BEGIN
       v_row := nullif(e ->> 'row_id', '')::uuid;
       v_fields := _v2_text_array(e, 'field_set', format('entries[%s].field_set', i));
       -- Geri alınabilirlik yazılırken denetlenir, geri alma anında sürpriz olmaz.
-      IF v_mode = 'soft_delete' AND v_table NOT IN ('meal_logs', 'workout_logs', 'supplement_logs', 'life_events', 'lab_values', 'achievements') THEN
+      IF v_mode = 'soft_delete' AND v_table NOT IN ('meal_logs', 'workout_logs', 'supplement_logs', 'life_events', 'lab_values',
+                                                    'achievements', 'strength_sets') THEN
         PERFORM _v2_fail('invalid_value', jsonb_build_object('path', format('entries[%s].undo_mode', i), 'reason', 'table_has_no_soft_delete'));
       END IF;
       IF v_mode IN ('restore_previous', 'revert_delta') AND cardinality(v_fields) = 0 THEN
@@ -895,16 +976,39 @@ BEGIN
                                                     'deletion_requested_at', 'deletion_cancelled'] THEN
         PERFORM _v2_fail('invalid_value', jsonb_build_object('path', format('entries[%s].field_set', i), 'reason', 'protected_column'));
       END IF;
+      v_before := CASE WHEN jsonb_typeof(e -> 'before') = 'object' THEN e -> 'before' END;
+      v_after  := CASE WHEN jsonb_typeof(e -> 'after') = 'object' THEN e -> 'after' END;
+      IF v_mode IN ('restore_previous', 'revert_delta') THEN
+        v_bad := _v2_unwritable(v_table, v_fields);
+        IF cardinality(v_bad) > 0 THEN
+          PERFORM _v2_fail('invalid_value', jsonb_build_object('path', format('entries[%s].field_set', i), 'reason', 'not_writable',
+                                                               'fields', to_jsonb(v_bad)));
+        END IF;
+        FOREACH v_side IN ARRAY ARRAY['before', 'after'] LOOP
+          SELECT array_agg(f ORDER BY f) INTO v_bad FROM unnest(v_fields) AS f
+          WHERE NOT (CASE v_side WHEN 'before' THEN v_before ELSE v_after END) ? f;
+          IF (CASE v_side WHEN 'before' THEN v_before ELSE v_after END) IS NOT NULL AND v_bad IS NOT NULL THEN
+            PERFORM _v2_fail('invalid_value', jsonb_build_object('path', format('entries[%s].%s', i, v_side), 'reason', 'missing_field',
+                                                                 'fields', to_jsonb(v_bad)));
+          END IF;
+        END LOOP;
+      END IF;
       IF v_row IS NOT NULL THEN
         v_owner := _v2_row_owner(v_table, v_row);
         -- Satır yoksa yalnızca "bu yazma satırı sildi" (after NULL) kaydı anlamlıdır.
-        IF v_owner IS NULL AND NOT (v_mode = 'restore_previous' AND jsonb_typeof(e -> 'after') IS DISTINCT FROM 'object') THEN
+        IF v_owner IS NULL AND NOT (v_mode = 'restore_previous' AND v_after IS NULL) THEN
           PERFORM _v2_fail('row_missing', jsonb_build_object('path', format('entries[%s].row_id', i)));
         END IF;
         IF v_owner IS NOT NULL AND v_owner <> p_user THEN
           PERFORM _v2_fail('not_owner', jsonb_build_object('path', format('entries[%s].row_id', i)));
         END IF;
+        -- Satır duruyor: geri almanın karşılaştıracağı "bu yazmanın bıraktığı değer" olmadan girdi geri alınamaz.
+        IF v_owner IS NOT NULL AND v_mode IN ('restore_previous', 'revert_delta') AND v_after IS NULL THEN
+          PERFORM _v2_fail('invalid_value', jsonb_build_object('path', format('entries[%s].after', i), 'reason', 'required'));
+        END IF;
       END IF;
+      v_before := _v2_canon(v_table, v_before, format('entries[%s].before', i));
+      v_after  := _v2_canon(v_table, v_after,  format('entries[%s].after', i));
       v_label := coalesce(e ->> 'group', 'auto:' || i::text);
       v_gid := coalesce((v_groups ->> v_label)::uuid, gen_random_uuid());
       v_groups := v_groups || jsonb_build_object(v_label, v_gid);
@@ -920,9 +1024,7 @@ BEGIN
         END IF;
       END IF;
       PERFORM _v2_ledger_insert(v_id, p_user, p_turn_id, _v2_pipeline(coalesce(e ->> 'pipeline', 'v1')), e ->> 'op', v_table, v_row,
-                                nullif(e ->> 'for_date', '')::date, v_fields,
-                                CASE WHEN jsonb_typeof(e -> 'before') = 'object' THEN e -> 'before' END,
-                                CASE WHEN jsonb_typeof(e -> 'after') = 'object' THEN e -> 'after' END,
+                                nullif(e ->> 'for_date', '')::date, v_fields, v_before, v_after,
                                 v_mode, v_gid, v_primary, v_ref, NULL,
                                 CASE WHEN jsonb_typeof(e -> 'meta') = 'object' THEN e -> 'meta' ELSE '{}'::jsonb END);
       v_out := v_out || jsonb_build_object('index', i - 1, 'write_id', v_id, 'group_id', v_gid, 'ref', v_ref);

@@ -21,8 +21,14 @@
 -- SAKLAMA (sahip kararı 2026-10-06: karar/gölge kayıtları 30 gün): v2_retention_sweep() her gece
 -- decision/issues/v1_actions/turn_input yüklerini NULL'lar (token/gecikme sayıları kalır), hesabı
 -- silinmiş kullanıcıların (user_id NULL) yükünü HEMEN siler, süresi dolan bekletmeleri 'expired'
--- yapar ve 30 günden eski kapanmış bekletmeleri siler. pg_cron yoksa (dal veritabanı) zamanlama atlanır
--- ve NOTICE düşer; fonksiyon elle çağrılabilir.
+-- yapar ve 30 günden eski kapanmış v2 ASK bekletmelerini siler. pg_cron yoksa (dal veritabanı) zamanlama
+-- atlanır ve NOTICE düşer; fonksiyon elle çağrılabilir.
+--
+-- SİLİNMEYEN BEKLETMELER: sahibin 30 gün kararı karar/gölge kayıtları içindi, rıza/silme kayıtları için
+-- DEĞİL. Bu yüzden süpürme yalnız v2_hold_open'ın açtığı (turn_id dolu) 'ask' sınıfı bekletmeleri siler;
+-- KVKK hesap/hafıza silme bekletmeleri (106, op='account_erase_request') ve 'safety' bekletmeleri
+-- (alerjen/sakatlık kaldırma, kimlik/cinsiyet, bant, hesap silme onayları) kalır. Hepsi hesap
+-- silindiğinde profiles FK CASCADE ile gider; ayrı bir saklama süresi sahibin kararını bekler.
 --
 -- DOWN:
 --   SELECT cron.unschedule('kochko-v2-retention');  -- varsa
@@ -91,7 +97,10 @@ BEGIN
   WHERE status = 'pending' AND expires_at < now();
   GET DIAGNOSTICS v_expired = ROW_COUNT;
 
-  DELETE FROM pending_writes WHERE status <> 'pending' AND coalesce(resolved_at, created_at) < v_cut;
+  -- Yalnız v2 ASK bekletmeleri: KVKK silme ve güvenlik (rıza) bekletmeleri silinmez (başlığa bkz.).
+  DELETE FROM pending_writes
+  WHERE status <> 'pending' AND coalesce(resolved_at, created_at) < v_cut
+    AND turn_id IS NOT NULL AND hold_class = 'ask' AND op <> 'account_erase_request';
   GET DIAGNOSTICS v_deleted = ROW_COUNT;
 
   RETURN jsonb_build_object('turn_log_payloads_purged', v_purged, 'holds_expired', v_expired,
