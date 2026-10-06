@@ -6,11 +6,21 @@
  * gpt-4o / OPENAI_BASE_URL rollback path), measuring Stage A latency/usage on a real prompt, and
  * replaying eval fixtures against the live provider — WITHOUT touching user data.
  *
+ * Two provider targets, chosen per request with `target`:
+ *   - `default`: OPENAI_BASE_URL / OPENAI_API_KEY, i.e. exactly what live chat uses.
+ *   - `probe_gateway`: the probe-only secrets KOCHKO_PROBE_BASE_URL / KOCHKO_PROBE_API_KEY. This is
+ *     how a rollback gateway (Azure / OpenRouter / self-host) is probed BEFORE anyone points
+ *     OPENAI_BASE_URL at it — changing that secret would reroute live v1 chat too. Both probe
+ *     secrets are required: the OpenAI key is never sent to a gateway. A base URL is never taken
+ *     from the request body (that would let a caller exfiltrate the key).
+ *
  * Hard properties (each pinned by handler.test.ts):
  *   - NO database access of any kind: this module imports no Supabase client. It cannot write.
- *   - Service role only. config.toml keeps verify_jwt=true, so the gateway has checked the JWT
- *     signature before we run; here we only require that the verified token is the service role
- *     (the same check the deleted model-bench / cap-probe used), or the raw service-role key.
+ *   - Service role only. config.toml keeps verify_jwt=true, so the Supabase gateway has verified
+ *     the bearer JWT before we run; here we only require that the verified token is the service
+ *     role (the same check the deleted model-bench / cap-probe used). The gateway rejects a
+ *     non-JWT bearer, including the new `sb_secret_…` keys, so probes and the eval runner MUST
+ *     send the legacy service_role JWT (`Authorization: Bearer <service_role JWT>`).
  *   - No model fallback: respond() reports a refusal / off-schema answer as what it is.
  *   - Logs carry counts and timings only — the prompt and the answer are health data.
  *
@@ -36,6 +46,8 @@ const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/;
 const MAX_BODY_CHARS = 512 * 1024;
 const MAX_MESSAGES = 200;
 const MAX_TOOLS = 16;
+const TARGETS = ['default', 'probe_gateway'] as const;
+export type DecideTarget = typeof TARGETS[number];
 
 export interface DecideDeps {
   transport?: Transport;
@@ -46,6 +58,12 @@ export interface DecideDeps {
    * Empty until shared/write-registry lands; integration passes the registry's generated map.
    */
   schemas?: Readonly<Record<string, StructuredSchema>>;
+  /** Pins the `default` target. Unset → respond() uses OPENAI_BASE_URL / OPENAI_API_KEY (live chat's). */
+  baseUrl?: string;
+  apiKey?: string;
+  /** The `probe_gateway` target. Default: KOCHKO_PROBE_BASE_URL / KOCHKO_PROBE_API_KEY; '' = not set. */
+  probeBaseUrl?: string;
+  probeApiKey?: string;
   now?: () => number;
 }
 
@@ -60,6 +78,7 @@ export interface DecideRequest {
   timeoutMs?: number;
   tools?: FunctionTool[];
   includeOutputItems: boolean;
+  target: DecideTarget;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -92,10 +111,12 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Service-role gate. The raw key match covers the non-JWT `sb_secret_…` keys; the claim check
- * covers any gateway-verified service-role JWT. An expired token is refused even though the
- * gateway should already have done so — cheap defence if the function is ever deployed without
- * JWT verification.
+ * Service-role gate. In production the claim check is the one that matters: verify_jwt=true has
+ * the gateway verify the JWT signature, and it rejects a non-JWT bearer before this runs — so a
+ * raw `sb_secret_…` key never reaches here there, and probes must send the service_role JWT.
+ * The raw-key match is defence in depth for runs WITHOUT that gateway check (`functions serve
+ * --no-verify-jwt`, or if verify_jwt is ever turned off). Likewise an expired token is refused
+ * even though the gateway should already have done so.
  */
 export function isServiceRoleCaller(req: Request, serviceRoleKey: string, nowMs = Date.now()): boolean {
   const tok = bearerToken(req);
@@ -164,6 +185,21 @@ function parseTools(raw: unknown): Parsed<FunctionTool[] | undefined> {
     if (!isRecord(t) || typeof t.name !== 'string' || !SCHEMA_NAME_RE.test(t.name) || !isRecord(t.parameters)) {
       return { ok: false, error: `tools[${i}] must be {name, parameters, description?, strict?}` };
     }
+    // Never silently coerce: a string "false" would otherwise be dropped and go out as strict:true.
+    if (t.strict !== undefined && typeof t.strict !== 'boolean') return { ok: false, error: `tools[${i}].strict must be boolean` };
+    if (t.description !== undefined && typeof t.description !== 'string') return { ok: false, error: `tools[${i}].description must be a string` };
+    // Tools go out strict unless opted out (buildRespondRequest: `t.strict !== false`), so they get
+    // the same zero-token pre-flight as the main schema, with tool-indexed paths.
+    if (t.strict !== false) {
+      const issues = strictSchemaIssues(t.parameters);
+      if (issues.length > 0) {
+        return {
+          ok: false,
+          error: `tools[${i}].parameters is not valid for strict mode (or send strict:false on the tool)`,
+          issues: issues.map((issue) => `tools[${i}].parameters${issue}`),
+        };
+      }
+    }
     tools.push({
       type: 'function',
       name: t.name,
@@ -195,7 +231,9 @@ export function parseDecideRequest(
     return { ok: false, error: 'send either schema or schema_name, not both' };
   }
   if (body.schema_name !== undefined) {
-    const named = typeof body.schema_name === 'string' ? schemas[body.schema_name] : undefined;
+    // OWN keys only: a plain-object lookup would resolve 'constructor' / '__proto__' / 'toString'.
+    const name = body.schema_name;
+    const named = typeof name === 'string' && Object.prototype.hasOwnProperty.call(schemas, name) ? schemas[name] : undefined;
     if (!named) {
       const known = Object.keys(schemas);
       return { ok: false, error: `unknown schema_name; registered: ${known.length ? known.join(', ') : '(none yet — send a raw schema)'}` };
@@ -229,6 +267,8 @@ export function parseDecideRequest(
   }
   const tools = parseTools(body.tools);
   if (!tools.ok) return tools;
+  const target = body.target ?? 'default';
+  if (!TARGETS.includes(target as DecideTarget)) return { ok: false, error: `target must be one of ${TARGETS.join('|')}` };
 
   return {
     ok: true,
@@ -243,8 +283,36 @@ export function parseDecideRequest(
       timeoutMs: timeoutMs as number | undefined,
       tools: tools.value,
       includeOutputItems: body.include_output_items === true,
+      target: target as DecideTarget,
     },
   };
+}
+
+/** Where respond() is pointed. `undefined` fields fall through to respond()'s OPENAI_* defaults. */
+export interface ProviderEndpoint {
+  baseUrl?: string;
+  apiKey?: string;
+}
+
+/**
+ * Resolve the request's target to an endpoint. Pure. Config errors never echo the configured URL
+ * or key. For `probe_gateway` both probe secrets are required and the URL must be https: the
+ * fallback would otherwise be sending OPENAI_API_KEY to a third party.
+ */
+export function resolveTarget(
+  target: DecideTarget,
+  cfg: { baseUrl?: string; apiKey?: string; probeBaseUrl: string; probeApiKey: string },
+): Parsed<ProviderEndpoint> {
+  if (target === 'default') return { ok: true, value: { baseUrl: cfg.baseUrl, apiKey: cfg.apiKey } };
+  const unset = 'target probe_gateway is not configured: set the probe-only secrets KOCHKO_PROBE_BASE_URL and KOCHKO_PROBE_API_KEY (OPENAI_BASE_URL is live chat traffic and stays untouched)';
+  const url = cfg.probeBaseUrl.trim();
+  if (url === '') return { ok: false, error: `${unset} — KOCHKO_PROBE_BASE_URL is empty` };
+  let parsed: URL | null = null;
+  try { parsed = new URL(url); } catch { parsed = null; }
+  if (!parsed || parsed.protocol !== 'https:') return { ok: false, error: 'KOCHKO_PROBE_BASE_URL must be an https URL' };
+  const key = cfg.probeApiKey.trim();
+  if (key === '') return { ok: false, error: `${unset} — KOCHKO_PROBE_API_KEY is empty (the OpenAI key is never sent to a gateway)` };
+  return { ok: true, value: { baseUrl: url, apiKey: key } };
 }
 
 /** The dry-run response body. snake_case: it is consumed by probe/eval scripts, not by the app. */
@@ -280,6 +348,7 @@ export function decideResponseBody(r: RespondResult<unknown>, req: DecideRequest
     response_id: r.responseId,
     finish_reason: r.finishReason,
     schema_name: req.schema.name,
+    target: req.target,
     ...(req.includeOutputItems ? { output_items: r.outputItems } : {}),
   };
 }
@@ -301,6 +370,13 @@ export async function handleDecide(req: Request, deps: DecideDeps = {}): Promise
   const parsed = parseDecideRequest(body, deps.schemas ?? {});
   if (!parsed.ok) return json({ error: parsed.error, issues: parsed.issues ?? [] }, 400);
   const r = parsed.value;
+  const endpoint = resolveTarget(r.target, {
+    baseUrl: deps.baseUrl,
+    apiKey: deps.apiKey,
+    probeBaseUrl: deps.probeBaseUrl ?? Deno.env.get('KOCHKO_PROBE_BASE_URL') ?? '',
+    probeApiKey: deps.probeApiKey ?? Deno.env.get('KOCHKO_PROBE_API_KEY') ?? '',
+  });
+  if (!endpoint.ok) return json({ error: endpoint.error, issues: [] }, 400);
 
   const result = await respond({
     model: r.model,
@@ -313,11 +389,13 @@ export async function handleDecide(req: Request, deps: DecideDeps = {}): Promise
     timeoutMs: r.timeoutMs,
     tools: r.tools,
     store: false,
+    baseUrl: endpoint.value.baseUrl,
+    apiKey: endpoint.value.apiKey,
     transport: deps.transport,
   });
 
-  // Counts and timings only — never the prompt or the answer.
-  console.log(`[ai-decide] kind=${result.kind} model=${result.modelRequested} api=${result.api} format=${result.format} effort=${result.effort ?? 'n/a'} ms=${result.latencyMs} in=${result.usage.inputTokens} cached=${result.usage.cachedTokens} out=${result.usage.outputTokens} reasoning=${result.usage.reasoningTokens} attempts=${result.attempts}${result.retries.length ? ` retries=${result.retries.join(',')}` : ''}`);
+  // Counts and timings only — never the prompt or the answer (nor the endpoint or key).
+  console.log(`[ai-decide] kind=${result.kind} target=${r.target} model=${result.modelRequested} api=${result.api} format=${result.format} effort=${result.effort ?? 'n/a'} ms=${result.latencyMs} in=${result.usage.inputTokens} cached=${result.usage.cachedTokens} out=${result.usage.outputTokens} reasoning=${result.usage.reasoningTokens} attempts=${result.attempts}${result.retries.length ? ` retries=${result.retries.join(',')}` : ''}`);
 
   // 200 for every upstream outcome: the probe's job is to REPORT a refusal/400, not to fail on it.
   return json(decideResponseBody(result, r), 200);

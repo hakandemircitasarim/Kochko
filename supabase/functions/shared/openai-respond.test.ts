@@ -300,6 +300,17 @@ Deno.test('respond: auto mode degrades the FORMAT once (same model) when the gat
   assertEquals(r.attempts, 2);
 });
 
+Deno.test('respond: auto mode also degrades on the Azure "enabled only for api versions" wording', async () => {
+  const { transport, calls } = fake(
+    jsonReply(400, { error: { code: 'BadRequest', message: 'response_format value as json_schema is enabled only for api versions 2024-08-01-preview and later' } }),
+    jsonReply(200, chatBody({ content: JSON.stringify(GOOD) })),
+  );
+  const r = expectKind(await respond({ ...base, baseUrl: GATEWAY, model: 'gpt-4o', format: 'auto', transport }), 'parsed');
+  assertEquals(calls.length, 2);
+  assertEquals(calls[1].body.response_format, { type: 'json_object' });
+  assertEquals(r.retries, ['format_degraded']);
+});
+
 Deno.test('respond: a bad SCHEMA is a surfaced error even in auto mode (never masked by degrading)', async () => {
   const { transport, calls } = fake(jsonReply(400, { error: { message: "Invalid schema for response_format 'kochko_probe_v1': additionalProperties is required" } }));
   const r = expectKind(await respond({ ...base, model: 'gpt-4o', format: 'auto', transport }), 'error');
@@ -373,6 +384,98 @@ Deno.test('respond: the overall timeout is a hard bound even if the transport ig
   assertEquals(r.error.class, 'timeout');
   assertEquals(r.attempts, 1, 'a timeout is never retried — the budget is spent');
   assert(Date.now() - t0 < 2_000);
+});
+
+// A body that sends `head` and then never closes — a gateway that stalls mid-body. `cancelled`
+// flips when respond() releases the stream (the connection is not leaked).
+function stalledBody(head: string) {
+  const state = { cancelled: false };
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) { c.enqueue(new TextEncoder().encode(head)); },
+    cancel() { state.cancelled = true; },
+  });
+  return { stream, state };
+}
+
+/** Fails (instead of hanging the suite) if `p` does not settle within `ms`. */
+async function settlesWithin<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const guard = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`still pending after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([p, guard]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+Deno.test('respond: the timeout also bounds the BODY read (200 whose stream never closes)', async () => {
+  const { stream, state } = stalledBody('{"id":"resp_1","output":[');
+  const { transport, calls } = fake(() => new Response(stream, { status: 200, headers: { 'content-type': 'application/json' } }));
+  const t0 = Date.now();
+  const r = expectKind(await settlesWithin(respond({ ...base, model: 'gpt-5.6-terra', timeoutMs: 300, transport }), 3_000), 'error');
+  const elapsed = Date.now() - t0;
+  assertEquals(r.error.class, 'timeout');
+  assertEquals(r.attempts, 1, 'a timeout is never retried — the budget is spent');
+  assert(elapsed < 1_500, `bounded by the 300ms budget, took ${elapsed}ms`);
+  assert(calls[0].signal?.aborted, 'the request is aborted, so a real fetch drops the socket');
+  assert(state.cancelled, 'the stalled body stream is released, not leaked');
+});
+
+Deno.test('respond: the timeout also bounds an ERROR body read (503 whose stream stalls)', async () => {
+  const { stream, state } = stalledBody('{"error":{"message":"upstream');
+  const { transport, calls } = fake(() => new Response(stream, { status: 503 }));
+  const r = expectKind(await settlesWithin(respond({ ...base, model: 'gpt-5.6-terra', timeoutMs: 300, transport }), 3_000), 'error');
+  assertEquals(r.error.class, 'timeout');
+  assertEquals(calls.length, 1, 'no transient retry once the budget is spent');
+  assert(state.cancelled);
+});
+
+Deno.test('respond: a response that arrives AFTER the deadline has its body released', async () => {
+  const { stream, state } = stalledBody('{');
+  let resolved: () => void = () => {};
+  const arrived = new Promise<void>((r) => { resolved = r; });
+  const late: Transport = () => new Promise<Response>((res) => {
+    setTimeout(() => { res(new Response(stream, { status: 200 })); resolved(); }, 120);
+  });
+  const r = expectKind(await respond({ ...base, model: 'gpt-5.6-terra', timeoutMs: 50, transport: late }), 'error');
+  assertEquals(r.error.class, 'timeout');
+  await arrived;
+  await new Promise((r) => setTimeout(r, 10));
+  assert(state.cancelled, 'a transport that ignored the abort must not leave an unread body behind');
+});
+
+Deno.test('respond: a body delivered in chunks (UTF-8 split mid-character) is read whole', async () => {
+  const text = JSON.stringify(responsesBody(JSON.stringify({ ...GOOD, writes: [{ ...GOOD.writes[0], as_stated: 'bir bardak ılık su' }] })));
+  const bytes = new TextEncoder().encode(text);
+  const cut = bytes.indexOf(0xc4); // first byte of 'ı' (U+0131 = C4 B1)
+  assert(cut > 0);
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(bytes.slice(0, cut + 1));
+      c.enqueue(bytes.slice(cut + 1));
+      c.close();
+    },
+  });
+  const { transport } = fake(() => new Response(stream, { status: 200 }));
+  const r = expectKind(await respond({ ...base, model: 'gpt-5.6-terra', transport }), 'parsed');
+  assertEquals((r.value as typeof GOOD).writes[0].as_stated, 'bir bardak ılık su');
+});
+
+Deno.test('respond: a body that errors mid-read on a 200 is `bad_response`, not a crash', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(new TextEncoder().encode('{"id":'));
+      c.error(new TypeError('connection reset'));
+    },
+  });
+  const { transport, calls } = fake(() => new Response(stream, { status: 200 }));
+  const r = expectKind(await respond({ ...base, model: 'gpt-5.6-terra', transport }), 'error');
+  assertEquals(r.error.class, 'bad_response');
+  assertEquals(r.error.status, 200);
+  assert(r.error.message.includes('connection reset'), r.error.message);
+  assertEquals(calls.length, 1);
 });
 
 Deno.test('respond: the transport receives an abort signal', async () => {
@@ -454,6 +557,19 @@ Deno.test('looksLikeFormatUnsupported: format-capability errors only', () => {
   assert(!looksLikeFormatUnsupported(400, "Invalid schema for response_format 'x': missing required"), 'a schema bug must surface');
   assert(!looksLikeFormatUnsupported(500, 'response_format not supported'), 'a 5xx is transient, not a capability');
   assert(!looksLikeFormatUnsupported(400, 'max_tokens is too large'));
+});
+
+Deno.test('looksLikeFormatUnsupported: gateway / Azure capability wordings degrade too', () => {
+  assert(looksLikeFormatUnsupported(400, 'This model does not support response_format of type json_schema.'));
+  assert(looksLikeFormatUnsupported(400, "Provider doesn't support json_schema structured outputs"));
+  assert(looksLikeFormatUnsupported(400, JSON.stringify({ error: { message: 'response_format value as json_schema is enabled only for api versions 2024-08-01-preview and later', code: 'BadRequest' } })));
+  assert(looksLikeFormatUnsupported(400, 'json_schema response format is only supported for api version 2024-08-01-preview or later'));
+  assert(looksLikeFormatUnsupported(422, 'text.format json_schema is not available for this deployment'));
+  // A schema bug still surfaces, whatever else the message says.
+  assert(!looksLikeFormatUnsupported(400, "Invalid schema for response_format 'x': 'format' is not supported in strict mode"));
+  assert(!looksLikeFormatUnsupported(400, JSON.stringify({ error: { message: "response_format 'x': keyword not supported", code: 'invalid_json_schema' } })));
+  // The capability phrase alone (no format subject) is not enough.
+  assert(!looksLikeFormatUnsupported(400, 'This model does not support temperature'));
 });
 
 Deno.test('parseSchemaFormat: unknown secret values fall back to provider-enforced json_schema', () => {
