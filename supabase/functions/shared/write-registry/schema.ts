@@ -12,64 +12,87 @@
  * the model's number silently; ranges are checked by validateDecision, where a violation is a
  * visible REJECT/ASK with a reason (§2 rule 1). No per-turn dynamic enums: refs are strings.
  *
+ * Budget (§3.3/§4.1, registry.test.ts "Stage A budget"): the understanding side carries NO
+ * descriptions. Field names and enum ids carry the shape; the meaning is written ONCE, in the
+ * Turkish doc (doc.ts) that sits in the same cached prefix — a schema description repeating it
+ * would be paid for twice on every Stage A call. The reply side (Stage B) has no generated doc, so
+ * its field notes stay as descriptions. Vocabularies used by several fields (allergens, body parts)
+ * are emitted once under $defs and referenced.
+ *
  * Output is byte-deterministic (insertion-ordered objects, registry order) — it is part of Stage
  * A's cached prefix and pinned by registry.test.ts against SCHEMA_VERSION.
  */
 import type { Channel, FieldSpec, Fields, RegOp } from './dsl.ts';
 import { ENVELOPE_HEAD, ENVELOPE_TAIL, REPLY_HEAD, REPLY_TAIL } from './envelope.ts';
 import { opsIn, SCHEMA_VERSION, UNDERSTAND_CHANNELS } from './registry.ts';
+import { ALLERGENS, BODY_PARTS } from './vocab.ts';
 
 export type JsonSchema = { [k: string]: unknown };
 
 const WRITE_DEF = '#/$defs/write';
 
+/** Shared vocabularies emitted once under $defs (name → the vocab object, by identity). */
+const SHARED_LISTS: ReadonlyArray<[string, Readonly<Record<string, string>>]> = [
+  ['allergens', ALLERGENS],
+  ['body_parts', BODY_PARTS],
+];
+
+/** `describe` = emit `tr` as the JSON-schema description (reply side only; see header). */
+interface Gen {
+  describe: boolean;
+}
+
 function typeOf(t: string, nullable: boolean): string | string[] {
   return nullable ? [t, 'null'] : t;
 }
 
-function described(base: JsonSchema, tr: string | undefined): JsonSchema {
-  return tr ? { ...base, description: tr } : base;
+function described(g: Gen, base: JsonSchema, tr: string | undefined): JsonSchema {
+  return g.describe && tr ? { ...base, description: tr } : base;
 }
 
-export function fieldSchema(spec: FieldSpec): JsonSchema {
+function enumListSchema(g: Gen, spec: Extract<FieldSpec, { kind: 'enumList' }>): JsonSchema {
+  const shared = SHARED_LISTS.find(([, v]) => v === spec.values);
+  if (shared && !(g.describe && spec.tr)) return { $ref: `#/$defs/${shared[0]}` };
+  return described(g, { type: 'array', items: { type: 'string', enum: Object.keys(spec.values) } }, spec.tr);
+}
+
+export function fieldSchema(spec: FieldSpec, g: Gen = { describe: false }): JsonSchema {
   switch (spec.kind) {
     case 'num':
-      return described({ type: typeOf('number', spec.nullable) }, spec.tr);
+      return described(g, { type: typeOf('number', spec.nullable) }, spec.tr);
     case 'text':
-      return described({ type: typeOf('string', spec.nullable) }, spec.format === 'hhmm' ? `HH:MM (24 saat)${spec.tr ? ' — ' + spec.tr : ''}` : spec.tr);
+      return described(g, { type: typeOf('string', spec.nullable) }, spec.tr);
     case 'bool':
-      return described({ type: typeOf('boolean', spec.nullable) }, spec.tr);
+      return described(g, { type: typeOf('boolean', spec.nullable) }, spec.tr);
     case 'enum': {
       const ids: Array<string | null> = Object.keys(spec.values);
-      return described({ type: typeOf('string', spec.nullable), enum: spec.nullable ? [...ids, null] : ids }, spec.tr);
+      return described(g, { type: typeOf('string', spec.nullable), enum: spec.nullable ? [...ids, null] : ids }, spec.tr);
     }
     case 'enumList':
-      return described({ type: 'array', items: { type: 'string', enum: Object.keys(spec.values) } }, spec.tr);
+      return enumListSchema(g, spec);
     case 'textList':
-      return described({ type: 'array', items: { type: 'string' } }, spec.tr);
+      return described(g, { type: 'array', items: { type: 'string' } }, spec.tr);
     case 'day':
-      return described({ type: typeOf('string', spec.nullable) }, `today | yesterday | YYYY-MM-DD${spec.tr ? ' — ' + spec.tr : ''}`);
     case 'date':
-      return described({ type: typeOf('string', spec.nullable) }, `YYYY-MM-DD${spec.tr ? ' — ' + spec.tr : ''}`);
     case 'ref':
-      return described({ type: typeOf('string', spec.nullable) }, `${spec.kinds.join('|')}-ref (ör. ${spec.kinds[0]}3)${spec.tr ? ' — ' + spec.tr : ''}`);
+      return described(g, { type: typeOf('string', spec.nullable) }, spec.tr);
     case 'list':
-      return described({ type: 'array', items: objectSchema(spec.fields) }, spec.tr);
+      return described(g, { type: 'array', items: objectSchema(spec.fields, undefined, undefined, g) }, spec.tr);
     case 'obj':
       return spec.nullable
-        ? { anyOf: [objectSchema(spec.fields, spec.tr), { type: 'null' }] }
-        : objectSchema(spec.fields, spec.tr);
+        ? { anyOf: [objectSchema(spec.fields, spec.tr, undefined, g), { type: 'null' }] }
+        : objectSchema(spec.fields, spec.tr, undefined, g);
     case 'write':
       return { $ref: WRITE_DEF };
   }
 }
 
-export function objectSchema(fields: Fields, tr?: string, head?: Record<string, JsonSchema>): JsonSchema {
+export function objectSchema(fields: Fields, tr?: string, head?: Record<string, JsonSchema>, g: Gen = { describe: false }): JsonSchema {
   const properties: Record<string, JsonSchema> = { ...(head ?? {}) };
-  for (const [name, spec] of Object.entries(fields)) properties[name] = fieldSchema(spec);
+  for (const [name, spec] of Object.entries(fields)) properties[name] = fieldSchema(spec, g);
   return {
     type: 'object',
-    ...(tr ? { description: tr } : {}),
+    ...(g.describe && tr ? { description: tr } : {}),
     properties,
     required: Object.keys(properties),
     additionalProperties: false,
@@ -77,46 +100,61 @@ export function objectSchema(fields: Fields, tr?: string, head?: Record<string, 
 }
 
 /** One anyOf branch: `{op: <wire>, ...fields}`. */
-export function opBranch(o: RegOp): JsonSchema {
-  return objectSchema(o.fields, o.title_tr, { op: { type: 'string', enum: [o.op] } });
+export function opBranch(o: RegOp, g: Gen = { describe: false }): JsonSchema {
+  return objectSchema(o.fields, o.title_tr, { op: { type: 'string', enum: [o.op] } }, g);
 }
 
-function unionOf(channel: Channel): JsonSchema {
-  const branches = opsIn(channel).map(opBranch);
+function unionOf(channel: Channel, g: Gen): JsonSchema {
+  const branches = opsIn(channel).map((o) => opBranch(o, g));
   return branches.length === 1 ? branches[0] : { anyOf: branches };
 }
 
-function channelArray(channel: Channel): JsonSchema {
-  return { type: 'array', items: channel === 'writes' ? { $ref: WRITE_DEF } : unionOf(channel) };
+function channelArray(channel: Channel, g: Gen): JsonSchema {
+  return { type: 'array', items: channel === 'writes' ? { $ref: WRITE_DEF } : unionOf(channel, g) };
 }
 
-function fieldsInto(target: Record<string, JsonSchema>, fields: Fields): void {
-  for (const [name, spec] of Object.entries(fields)) target[name] = fieldSchema(spec);
+function fieldsInto(target: Record<string, JsonSchema>, fields: Fields, g: Gen): void {
+  for (const [name, spec] of Object.entries(fields)) target[name] = fieldSchema(spec, g);
 }
+
+const UNDERSTAND: Gen = { describe: false };
+const REPLY: Gen = { describe: true };
 
 function understandProperties(): Record<string, JsonSchema> {
   const p: Record<string, JsonSchema> = {};
-  fieldsInto(p, ENVELOPE_HEAD);
-  for (const ch of UNDERSTAND_CHANNELS) p[ch] = channelArray(ch);
-  fieldsInto(p, ENVELOPE_TAIL);
+  fieldsInto(p, ENVELOPE_HEAD, UNDERSTAND);
+  for (const ch of UNDERSTAND_CHANNELS) p[ch] = channelArray(ch, UNDERSTAND);
+  fieldsInto(p, ENVELOPE_TAIL, UNDERSTAND);
   return p;
 }
 
 function replyProperties(): Record<string, JsonSchema> {
   const p: Record<string, JsonSchema> = {};
-  fieldsInto(p, REPLY_HEAD);
-  p.memory = channelArray('memory');
-  fieldsInto(p, REPLY_TAIL);
+  fieldsInto(p, REPLY_HEAD, REPLY);
+  p.memory = channelArray('memory', REPLY);
+  fieldsInto(p, REPLY_TAIL, REPLY);
   return p;
 }
 
+/** $defs: the write union (when used) and every shared vocabulary something references. */
+function defsFor(properties: Record<string, JsonSchema>, withWriteDef: boolean): Record<string, JsonSchema> | null {
+  const defs: Record<string, JsonSchema> = {};
+  if (withWriteDef) defs.write = unionOf('writes', UNDERSTAND);
+  const used = JSON.stringify([properties, defs]);
+  for (const [name, values] of SHARED_LISTS) {
+    if (used.includes(`"#/$defs/${name}"`)) defs[name] = { type: 'array', items: { type: 'string', enum: Object.keys(values) } };
+  }
+  return Object.keys(defs).length ? defs : null;
+}
+
 function root(properties: Record<string, JsonSchema>, withWriteDef: boolean): JsonSchema {
+  const defs = defsFor(properties, withWriteDef);
   return {
     type: 'object',
     properties,
     required: Object.keys(properties),
     additionalProperties: false,
-    ...(withWriteDef ? { $defs: { write: unionOf('writes') } } : {}),
+    ...(defs ? { $defs: defs } : {}),
   };
 }
 

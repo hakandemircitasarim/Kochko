@@ -11,15 +11,15 @@
 
 export const REF_KINDS = {
   m: { tr: 'öğün', table: 'meal_logs' },
-  d: { tr: 'günlük metrik yazması (su, uyku, ruh hali, adım, tartı)', table: 'daily_metrics' },
+  d: { tr: 'günlük metrik (su, uyku, ruh hali, adım, tartı)', table: 'daily_metrics' },
   w: { tr: 'antrenman', table: 'workout_logs' },
   s: { tr: 'takviye', table: 'supplement_logs' },
-  t: { tr: 'son turların yazması (defter satırı)', table: 'turn_writes' },
+  t: { tr: 'son tur yazması', table: 'turn_writes' },
   p: { tr: 'onay bekleyen yazma', table: 'pending_writes' },
   c: { tr: 'kısıt (alerji, sakatlık, hastalık, ilaç, diyet)', table: 'user_constraints' },
   k: { tr: 'açık söz/taahhüt', table: 'user_commitments' },
-  e: { tr: 'yaklaşan olay', table: 'life_events' },
-  l: { tr: 'tahlil değeri', table: 'lab_values' },
+  e: { tr: 'olay', table: 'life_events' },
+  l: { tr: 'tahlil', table: 'lab_values' },
   f: { tr: 'yemek tercihi', table: 'food_preferences' },
   dft: { tr: 'plan taslağı', table: 'weekly_plans' },
 } as const;
@@ -86,6 +86,13 @@ export interface RenderedRef {
   later_write_on_same_field?: boolean;
   /** Written in the previous turn ("son tur"). */
   last_turn?: boolean;
+  /**
+   * The coach already asked "bu kayıt yanlış görünüyor, düzelteyim mi?" about this row and the
+   * user did not say yes (the basis=suspicious hold was discarded or expired). Owner decision
+   * 2026-10-06: asked ONCE — a new suspicious proposal on this row is rejected, not re-asked. A
+   * correction the user states themselves is still accepted.
+   */
+  suspicion_declined?: boolean;
   /** One-line Turkish summary the model was shown (receipts quote it back). */
   summary_tr?: string | null;
   /** c#: the spine row's safety facts. */

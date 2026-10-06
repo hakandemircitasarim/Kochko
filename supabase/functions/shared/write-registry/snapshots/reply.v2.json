@@ -10,58 +10,10 @@
       "type": "string"
      },
      "allergens": {
-      "type": "array",
-      "items": {
-       "type": "string",
-       "enum": [
-        "gluten",
-        "crustacean",
-        "egg",
-        "fish",
-        "peanut",
-        "soy",
-        "milk",
-        "tree_nut",
-        "hazelnut",
-        "walnut",
-        "almond",
-        "pistachio",
-        "cashew",
-        "celery",
-        "mustard",
-        "sesame",
-        "sulphite",
-        "lupin",
-        "mollusc"
-       ]
-      }
+      "$ref": "#/$defs/allergens"
      },
      "may_contain": {
-      "type": "array",
-      "items": {
-       "type": "string",
-       "enum": [
-        "gluten",
-        "crustacean",
-        "egg",
-        "fish",
-        "peanut",
-        "soy",
-        "milk",
-        "tree_nut",
-        "hazelnut",
-        "walnut",
-        "almond",
-        "pistachio",
-        "cashew",
-        "celery",
-        "mustard",
-        "sesame",
-        "sulphite",
-        "lupin",
-        "mollusc"
-       ]
-      }
+      "$ref": "#/$defs/allergens"
      }
     },
     "required": [
@@ -82,23 +34,7 @@
       "type": "string"
      },
      "loads": {
-      "type": "array",
-      "items": {
-       "type": "string",
-       "enum": [
-        "knee",
-        "back",
-        "shoulder",
-        "ankle",
-        "wrist",
-        "elbow",
-        "hip",
-        "neck",
-        "hamstring",
-        "quad",
-        "groin"
-       ]
-      }
+      "$ref": "#/$defs/body_parts"
      }
     },
     "required": [
@@ -211,5 +147,53 @@
   "ui",
   "referral_included"
  ],
- "additionalProperties": false
+ "additionalProperties": false,
+ "$defs": {
+  "allergens": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "enum": [
+     "gluten",
+     "crustacean",
+     "egg",
+     "fish",
+     "peanut",
+     "soy",
+     "milk",
+     "tree_nut",
+     "hazelnut",
+     "walnut",
+     "almond",
+     "pistachio",
+     "cashew",
+     "celery",
+     "mustard",
+     "sesame",
+     "sulphite",
+     "lupin",
+     "mollusc"
+    ]
+   }
+  },
+  "body_parts": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "enum": [
+     "knee",
+     "back",
+     "shoulder",
+     "ankle",
+     "wrist",
+     "elbow",
+     "hip",
+     "neck",
+     "hamstring",
+     "quad",
+     "groin"
+    ]
+   }
+  }
+ }
 }

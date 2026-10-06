@@ -220,31 +220,34 @@ const PROBLEM_TR: Record<Exclude<Problem, null>, string> = {
 
 const first = (a: { changes: Change[] }) => a.changes[0];
 
-const TYPE_GROUPS: ReadonlyArray<[string, readonly PType[]]> = [
-  ['Sayı (value yalnız sayı)', ['int', 'num']],
-  ['Seçenek (value = id)', ['enum']],
-  ['Saat (value "HH:MM")', ['time']],
-  ['Evet/hayır (value "true"/"false")', ['bool']],
-  ['Tarih (value "YYYY-MM-DD")', ['date']],
-  ['Liste (list_op ile tek öğe)', ['list']],
-  ['Serbest metin', ['text']],
-];
-
-function fieldDoc(k: string, s: ProfileFieldSpec): string {
-  const parts = [s.hint ? `${s.tr}, ${s.hint}` : s.tr];
-  if (s.values) parts.push(Object.entries(s.values).map(([id, l]) => `${id}=${l}`).join(', '));
-  if (s.units) parts.push(s.units.join('|'));
-  if (s.hard && !s.identity) parts.push(`${trNum(s.hard[0], s.decimals ?? 0)}–${trNum(s.hard[1], s.decimals ?? 0)}`);
-  if (s.identity) parts.push('kimlik: kayıtlıdan önemli farkta sorulur');
-  if (s.ownership) parts.push('kullanıcının hedefi');
-  return `${k} (${parts.join('; ')})`;
-}
-
-/** The per-field contract table the model reads under profile_set (generated, never hand-copied). */
+/**
+ * The per-field contract table the model reads under profile_set (generated, never hand-copied).
+ * Compact on purpose (Stage A budget, §4.1): field ids are self-explanatory English column names,
+ * so the table says only what the model cannot guess — accepted units, enum ids, value formats.
+ * Enum fields sharing one vocabulary are listed together. Free-text fields are not listed (the
+ * schema's field enum names them); only their format hints are.
+ */
 function profileDocLines(): string[] {
   const entries = Object.entries(PROFILE_FIELD_SPECS);
-  return TYPE_GROUPS.map(([title, types]) =>
-    `- ${title}: ${entries.filter(([, s]) => types.includes(s.type)).map(([k, s]) => fieldDoc(k, s)).join(' · ')}`);
+  const of = (...types: PType[]) => entries.filter(([, s]) => types.includes(s.type));
+  const nums = of('int', 'num').map(([k, s]) => (s.units ? `${k} (${s.units.join('|')})` : k));
+  const byVocab = new Map<string, string[]>();
+  for (const [k, s] of of('enum')) {
+    const ids = Object.keys(s.values ?? {}).join('|');
+    byVocab.set(ids, [...(byVocab.get(ids) ?? []), k]);
+  }
+  const enums = [...byVocab].map(([ids, ks]) => `${ks.join(', ')}: ${ids}`);
+  const hinted = of('text').filter(([, s]) => s.hint).map(([k, s]) => `${k} ${s.hint}`);
+  return [
+    'Profil alanları (value bu türde):',
+    `- Sayı (birim): ${nums.join(' · ')}`,
+    `- Seçenek id’si: ${enums.join(' · ')}`,
+    `- Saat HH:MM: ${of('time').map(([k]) => k).join(' · ')}`,
+    `- "true"/"false": ${of('bool').map(([k]) => k).join(' · ')}`,
+    `- Tarih: ${of('date').map(([k]) => k).join(' · ')}`,
+    `- Liste (list_op add|remove|set, tek öğe): ${of('list').map(([k]) => k).join(' · ')}`,
+    `- Diğerleri serbest metin${hinted.length ? ` (${hinted.join(' · ')})` : ''}.`,
+  ];
 }
 
 export const profile_set = op({
@@ -252,30 +255,25 @@ export const profile_set = op({
   channel: 'writes',
   envelope: 'profile_update',
   title_tr: 'Profil',
-  when_tr: 'Kullanıcı KENDİSİ hakkında kalıcı bir bilgi veriyorsa (yaş, boy, meslek, saatler, mutfak, antrenman geçmişi, su/adım hedefi…). Her alan ayrı yazılır, ayrı denetlenir.',
-  not_when_tr: 'Başkası hakkındaki bilgi profil değildir ("kadın arkadaşımla yemeğe gittim" cinsiyet yazmaz). Kilo → body_weight; hedef → goal_set; alerji, sakatlık, hastalık, ilaç, diyet → constraint_add.',
+  when_tr: 'KENDİSİ hakkında kalıcı bilgi (yaş, boy, meslek, saatler, antrenman geçmişi, su/adım hedefi…); her alan ayrı denetlenir.',
+  not_when_tr: 'kilo → body_weight, hedef → goal_set, alerji/sakatlık/hastalık/ilaç/diyet → constraint_add.',
   fields: {
     subject: f.enum({ self: 'yalnızca kullanıcının kendisi' }),
     changes: f.list({ min: 1, max: 12 }, {
       field: f.enum(FIELD_LABELS),
-      value: f.text({ nullable: true, max: 300, tr: 'yeni değer: sayıysa yalnız sayı ("175", "0.5"), saat "HH:MM" (24s), tarih "YYYY-MM-DD", evet/hayır "true"/"false", seçenekli alanda seçeneğin id’si; null = alanı temizle' }),
-      unit: f.enum(PROFILE_UNITS, { nullable: true, tr: 'sayının birimi; yaş söylendiyse age_years' }),
-      list_op: f.enum({ add: 'listeye ekle', remove: 'listeden çıkar', set: 'listeyi baştan yaz' }, { nullable: true, tr: 'yalnız liste alanlarında' }),
-      as_stated: f.text({ max: 120, tr: 'kullanıcının bu bilgiyi verdiği sözler, aynen' }),
+      value: f.text({ nullable: true, max: 300, tr: 'sayıda yalnız sayı ("1.75"), seçenekte id; null = alanı temizle' }),
+      unit: f.enum(PROFILE_UNITS, { nullable: true }),
+      list_op: f.enum({ add: 'listeye ekle', remove: 'listeden çıkar', set: 'listeyi baştan yaz' }, { nullable: true }),
+      as_stated: f.text({ max: 120 }),
     }),
   },
   atomic_list: 'changes',
   derive: (a, ctx) => convertProfileChange(first(a), ctx),
-  derive_tr: 'yaş → doğum yılı (bu yıl − yaş), m/inç → cm, ml/bardak → litre; boy tam sayıya yuvarlanır. Su/adım hedefi "kullanıcı koydu" olarak işaretlenir, TDEE yeniden hesabı onu ezmez.',
-  doc_appendix_tr: ['Profil alanları:', ...profileDocLines()],
+  derive_tr: 'yaş → doğum yılı, m/inç → cm, ml/bardak → litre.',
+  doc_appendix_tr: profileDocLines(),
   writes: { rpc: 'w_profile_field_apply', tables: ['profiles', 'belief_events', 'turn_writes'], undo: 'restore_previous', hold_op: 'profile_set' },
   invariants: ['per_field_atomic', 'tdee_recalc_on_identity_or_activity', 'user_set_targets_not_overwritten'],
-  examples_tr: [
-    '"37 yaşındayım" → field birth_year, value "37", unit age_years',
-    '"boyum 1.75" → field height_cm, value "1.75", unit m (kod 175 cm yazar)',
-    '"sabah 7 gibi kalkarım" → field wake_time, value "07:00"',
-    '"burpee artık yapamıyorum" → field disliked_exercises, value "burpee", list_op add',
-  ],
+  examples_tr: ['"37 yaşındayım" → field birth_year, value "37", unit age_years'],
 }).rules({
   hard: [
     rule('profil_deger_gecersiz', 'değer alanın tipine/birimine uymuyor', (a, d) =>
@@ -302,9 +300,11 @@ export const profile_set = op({
       return typeof stored === 'number' && typeof d.value === 'number' && Math.abs(d.value - stored) >= limit &&
         `kayıtlı ${profileFieldLabel(first(a).field)} ${trNum(stored)}, yeni ${trNum(d.value)}`;
     }, { question_tr: 'Kayıtlarımda farklı bir değer var; hangisi doğru?' }),
+    // A sanctioned verbatim check (AI_MIMARI_V2 §5): an identity value must come from the user's own
+    // words this turn, not from someone else's ("kadın arkadaşım"). Substring, never a regex.
     rule('kimlik_kaniti', 'kimlik alanının as_stated’i kullanıcının mesajında aynen geçmeli', (a, _d, ctx) =>
       !!PROFILE_FIELD_SPECS[first(a).field]?.identity && !isVerbatimQuote(first(a).as_stated, ctx.user_message),
-      { question_tr: 'Bu bilgiyi profiline yazmamı ister misin?' }),
+      { question_tr: 'Bu bilgiyi profiline yazmamı ister misin?', evidence: true }),
   ],
   flag: [
     rule('metin_uzun_profil', 'serbest metin alanın önerilen uzunluğunu aşıyor (kısaltılmadan saklanır)', (a) => {

@@ -12,9 +12,12 @@
  *
  * Nothing is rewritten. `args` is a copy of what the model sent; `row` (what the writer persists)
  * differs from it ONLY by declared derive() output and lossless column normalisations, each listed
- * in `normalized[]`. registry.test.ts checks that leaf by leaf.
+ * in `normalized[]`. derive() and the op rules see the args WITH those column fits applied, so a
+ * value derive() passes through (a meal item's own kcal) is the fitted one — the row can never
+ * carry 312.5 into an integer column while normalized[] says 313. registry.test.ts checks that
+ * leaf by leaf.
  */
-import { MAX_BACK_DAYS, type Channel, type FieldSpec, type Fields, type Issue, type RegOp, type ValidationContext } from './dsl.ts';
+import { MAX_BACK_DAYS, type Channel, type EvalOpts, type FieldSpec, type Fields, type Issue, type RegOp, type ValidationContext } from './dsl.ts';
 import { ENVELOPE_HEAD, ENVELOPE_TAIL } from './envelope.ts';
 import { parseRef } from './refs.ts';
 import { CHANNELS, findWireOp, getOp, SCHEMA_VERSION, UNDERSTAND_CHANNELS } from './registry.ts';
@@ -55,6 +58,12 @@ export interface WriteVerdict {
   question_tr: string | null;
   /** ASK: pending_writes.op for the hold. */
   hold_op: string | null;
+  /**
+   * ASK: the payload to persist for the hold — `args` with every relative day ('today',
+   * 'yesterday') frozen to the date it meant THIS turn, so a "yes" after midnight writes to the
+   * right day. Refs inside still need collectRefs() → row ids before persisting. null otherwise.
+   */
+  hold_args: Record<string, unknown> | null;
   /** The record this op acts on (record/pending/commitment ref, or a write's `replaces`). */
   target_ref: string | null;
 }
@@ -242,11 +251,64 @@ function overlay(base: unknown, top: unknown): unknown {
   return cloneJson(top);
 }
 
-function buildRow(fields: Fields, args: Record<string, unknown>, derived: Record<string, unknown>, normalized: Normalization[]): Record<string, unknown> {
+/** The model's args with the listed lossless column fits applied (a copy; args stay untouched). */
+function fitted(args: Record<string, unknown>, normalized: Normalization[]): Record<string, unknown> {
+  const out = cloneJson(args);
+  for (const n of normalized) setPath(out, n.path, n.to);
+  return out;
+}
+
+/**
+ * row = fitted args ⊕ derive(). derive() was computed FROM the fitted args, so anything it echoes
+ * is already fitted; anything it computes (a picked reference's kcal) is its declared output.
+ */
+function buildRow(fields: Fields, fittedArgs: Record<string, unknown>, derived: Record<string, unknown>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
-  for (const name of Object.keys(fields)) row[name] = cloneJson(args[name]);
-  for (const n of normalized) setPath(row, n.path, n.to);
+  for (const name of Object.keys(fields)) row[name] = cloneJson(fittedArgs[name]);
   return overlay(row, derived) as Record<string, unknown>;
+}
+
+// ─── holds: relative days are frozen when the hold is made ───────────────────
+
+/** Walk every `day` field of a write's args (nested lists/objects and a record_update patch). */
+function walkDays(fields: Fields, obj: unknown, base: string, visit: (holder: Record<string, unknown>, key: string, path: string) => void): void {
+  if (!isRecord(obj)) return;
+  for (const [name, spec] of Object.entries(fields)) {
+    const v = obj[name];
+    const p = sub(base, name);
+    if (spec.kind === 'day') visit(obj, name, p);
+    else if (spec.kind === 'list' && Array.isArray(v)) v.forEach((it, i) => walkDays(spec.fields, it, sub(p, i), visit));
+    else if (spec.kind === 'obj') walkDays(spec.fields, v, p, visit);
+    else if (spec.kind === 'write' && isRecord(v)) {
+      const inner = findWireOp('writes', v.op);
+      if (inner) walkDays(inner.fields, v, p, visit);
+    }
+  }
+}
+
+const RELATIVE_DAYS: readonly unknown[] = ['today', 'yesterday'];
+
+/**
+ * The hold payload for a write: a copy of `args` with 'today'/'yesterday' resolved against the
+ * day the hold was made. Ref tokens are left as they are (collectRefs() lists them for the caller).
+ */
+export function freezeForHold(op: string, args: Record<string, unknown>, today: string): Record<string, unknown> {
+  const out = cloneJson(args);
+  const reg = getOp(op);
+  if (reg) {
+    walkDays(reg.fields, out, '', (holder, key) => {
+      if (RELATIVE_DAYS.includes(holder[key])) holder[key] = resolveDay(holder[key], today);
+    });
+  }
+  return out;
+}
+
+function relativeDayPaths(reg: RegOp, args: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  walkDays(reg.fields, args, '', (holder, key, path) => {
+    if (RELATIVE_DAYS.includes(holder[key])) out.push(path);
+  });
+  return out;
 }
 
 // ─── per-write validation ────────────────────────────────────────────────────
@@ -264,50 +326,51 @@ function targetRefOf(args: Record<string, unknown>): string | null {
   return null;
 }
 
+interface Built {
+  derived: Record<string, unknown>;
+  noop: string | null;
+  envelope: string;
+  /** Fitted args (column fits applied) — the base of the row. */
+  fittedArgs: Record<string, unknown>;
+  rowOverride?: (row: Record<string, unknown>) => void;
+}
+
 function finish(
-  reg: RegOp,
-  channel: Channel,
-  index: number,
-  part: number | null,
-  args: Record<string, unknown>,
-  acc: Acc,
-  derived: Record<string, unknown>,
-  noop: string | null,
-  envelope: string,
-  rowOverride?: (row: Record<string, unknown>) => void,
-  confirmed = false,
+  reg: RegOp, channel: Channel, index: number, part: number | null, args: Record<string, unknown>, acc: Acc, b: Built, ctx: ValidationContext, opts: EvalOpts,
 ): WriteVerdict {
   // A hold the user explicitly confirmed: its questions are answered. They stay visible as notes
   // (FLAG), while every hard rule is re-checked against today's state (ED tier may have moved).
-  if (confirmed) {
+  if (opts.confirmed) {
     acc.issues = acc.issues.map((i) => i.level === 'ask' ? { code: i.code, level: 'flag', tr: `kullanıcı onayladı — ${i.tr}`, ...(i.path ? { path: i.path } : {}) } : i);
   }
-  const verdict = aggregate(acc.issues, noop);
+  const verdict = aggregate(acc.issues, b.noop);
   const hardIssues = acc.issues.filter((i) => i.level === 'hard');
   const ask = acc.issues.find((i) => i.level === 'ask');
   let row: Record<string, unknown> | null = null;
-  if ((verdict === 'COMMIT' || verdict === 'FLAG') && !noop) {
-    row = buildRow(reg.fields, args, derived, acc.normalized);
-    rowOverride?.(row);
+  if ((verdict === 'COMMIT' || verdict === 'FLAG') && !b.noop) {
+    row = buildRow(reg.fields, b.fittedArgs, b.derived);
+    b.rowOverride?.(row);
   }
   return {
-    channel, index, part, op: reg.type, envelope, verdict, noop,
+    channel, index, part, op: reg.type, envelope: b.envelope, verdict, noop: b.noop,
     issues: acc.issues,
     args,
-    derived,
+    derived: b.derived,
     normalized: acc.normalized,
     row,
     repairable: verdict === 'REJECT' && hardIssues.every((i) => i.repairable === true),
     question_tr: verdict === 'ASK' ? (ask?.question_tr ?? ask?.tr ?? null) : null,
     hold_op: verdict === 'ASK' ? (reg.writes.hold_op ?? reg.type) : null,
+    hold_args: verdict === 'ASK' ? freezeForHold(reg.type, args, ctx.today) : null,
     target_ref: targetRefOf(args),
   };
 }
 
 function validateOne(
-  reg: RegOp, channel: Channel, index: number, part: number | null, args: Record<string, unknown>, ctx: ValidationContext, confirmed = false,
+  reg: RegOp, channel: Channel, index: number, part: number | null, args: Record<string, unknown>, ctx: ValidationContext,
+  opts: EvalOpts & { preIssues?: Issue[] } = {},
 ): WriteVerdict {
-  const acc: Acc = { issues: [], normalized: [] };
+  const acc: Acc = { issues: [...(opts.preIssues ?? [])], normalized: [] };
   checkObject(reg.fields, args, '', ctx, acc, ['op']);
   // Atomic-list ops are split by validateChannelItems; validated directly (inside a patch, or as a
   // confirmed hold) they must carry exactly one element, or the rules would only see the first.
@@ -315,16 +378,19 @@ function validateOne(
     hard(acc, 'tek_oge_bekleniyor', `${reg.atomic_list}: burada tam bir öğe olmalı`, reg.atomic_list, 'invalid_value', true);
   }
   const structuralHard = acc.issues.some((i) => i.level === 'hard');
-  let derived: Record<string, unknown> = {};
-  let noop: string | null = null;
-  let envelope = safeEnvelope(reg, args);
-  let rowOverride: ((row: Record<string, unknown>) => void) | undefined;
+  const b: Built = { derived: {}, noop: null, envelope: safeEnvelope(reg, args), fittedArgs: fitted(args, acc.normalized) };
+
+  // §4.4(3): a correction must not clobber a newer write of the same field — for record_ops AND for
+  // a log op's own `replaces` (restore_previous would wipe the later value).
+  if (reg.fields.replaces?.kind === 'ref' && typeof args.replaces === 'string' && ctx.refs[args.replaces]?.later_write_on_same_field === true) {
+    hard(acc, 'sonraki_yazma_var', `${args.replaces} sonrasında aynı alana yeniden yazılmış; düzeltmek sonrakini ezer`, 'replaces', 'conflict', false);
+  }
 
   if (!structuralHard) {
     try {
-      const ev = reg.evaluate(args, ctx);
-      derived = ev.derived;
-      noop = ev.noop;
+      const ev = reg.evaluate(b.fittedArgs, ctx, opts);
+      b.derived = ev.derived;
+      b.noop = ev.noop;
       acc.issues.push(...ev.issues);
     } catch (e) {
       // A rule/derive bug must surface as a visible REJECT, never crash the turn or pass silently.
@@ -338,29 +404,39 @@ function validateOne(
     if (!patchReg) {
       hard(acc, 'yama_bilinmeyen_op', `patch.op "${String(args.patch.op)}" bir yazma türü değil`, 'patch.op', 'invalid_value', true);
     } else {
-      const nested = validateOne(patchReg, 'writes', index, null, args.patch, ctx);
+      const nested = validateOne(patchReg, 'writes', index, null, args.patch, ctx, { confirmed: opts.confirmed });
       for (const i of nested.issues) acc.issues.push({ ...i, path: i.path ? `patch.${i.path}` : 'patch' });
       for (const n of nested.normalized) acc.normalized.push({ ...n, path: `patch.${n.path}` });
-      derived = { ...derived, patch: nested.derived };
-      envelope = nested.envelope;
-      rowOverride = (row) => { row.patch = nested.row ?? buildRow(patchReg.fields, args.patch as Record<string, unknown>, nested.derived, nested.normalized); };
+      b.derived = { ...b.derived, patch: nested.derived };
+      b.envelope = nested.envelope;
+      b.rowOverride = (row) => {
+        row.patch = nested.row ?? buildRow(patchReg.fields, fitted(args.patch as Record<string, unknown>, nested.normalized), nested.derived);
+      };
     }
   }
-  return finish(reg, channel, index, part, args, acc, derived, noop, envelope, rowOverride, confirmed);
+  return finish(reg, channel, index, part, args, acc, b, ctx, opts);
 }
 
 /**
  * pending_ops.confirm{p#} → re-validate the held write (pending_writes.op = verdict.hold_op) as a
- * CONFIRMED write: its ASK reasons become FLAG notes, hard rules still REJECT (state may have
- * moved since the question). The hold's payload stores row ids for its refs (collectRefs); the
- * caller maps them back to THIS turn's tokens — the loader renders those rows — before calling.
- * Returns null for holds that are not registry ops (the KVKK erase hold runs through
- * shared/erase-hold.ts).
+ * CONFIRMED write: its ASK reasons become FLAG notes, hard STATE rules still REJECT (state may have
+ * moved since the question), and evidence rules — which read the turn's own message and were
+ * decided when the hold was made — are not re-run against the "evet". `args` must be the persisted
+ * `hold_args` (relative days frozen); a payload that still says 'today'/'yesterday' is refused
+ * rather than written to the confirming day. The hold's payload stores row ids for its refs
+ * (collectRefs); the caller maps them back to THIS turn's tokens — the loader renders those rows —
+ * before calling. Returns null for holds that are not registry ops (the KVKK erase hold runs
+ * through shared/erase-hold.ts).
  */
 export function validateConfirmedHold(holdOp: string, args: Record<string, unknown>, ctx: ValidationContext): WriteVerdict | null {
   const reg = getOp(holdOp);
   if (!reg) return null;
-  return validateOne(reg, reg.channel, 0, null, cloneJson(args), ctx, true);
+  const copy = cloneJson(args);
+  const preIssues: Issue[] = relativeDayPaths(reg, copy).map((path) => ({
+    code: 'bekletme_gunu_goreli', level: 'hard', path, failure_class: 'invalid_hold', repairable: false,
+    tr: `${path}: bekletme göreli gün (today/yesterday) taşıyor; hangi güne yazılacağı belirsiz — bekletmede hold_args saklanmalı`,
+  }));
+  return validateOne(reg, reg.channel, 0, null, copy, ctx, { confirmed: true, preIssues });
 }
 
 /**
@@ -405,7 +481,7 @@ function unknownOp(channel: Channel, index: number, raw: unknown): WriteVerdict 
   };
   return {
     channel, index, part: null, op: 'unknown', envelope: name, verdict: 'REJECT', noop: null, issues: [issue],
-    args, derived: {}, normalized: [], row: null, repairable: true, question_tr: null, hold_op: null, target_ref: null,
+    args, derived: {}, normalized: [], row: null, repairable: true, question_tr: null, hold_op: null, hold_args: null, target_ref: null,
   };
 }
 
@@ -429,9 +505,14 @@ export function validateChannelItems(channel: Channel, items: unknown, ctx: Vali
 
 // ─── envelope-level checks ───────────────────────────────────────────────────
 
-function validatePlan(raw: unknown, ctx: ValidationContext): PlanVerdict | null {
-  if (!isRecord(raw)) return null;
+function validatePlan(present: boolean, raw: unknown, ctx: ValidationContext): PlanVerdict | null {
+  if (!present) return null; // reported once as alan_eksik at envelope level
   const acc: Acc = { issues: [], normalized: [] };
+  if (!isRecord(raw)) {
+    // A json_object fallback can send null here; the field is not nullable — never pass silently.
+    hard(acc, 'tip_hatasi', 'plan_action: nesne bekleniyordu (plan işlemi yoksa op none)', 'plan_action', 'invalid_value', true);
+    return { op: 'none', plan_type: null, draft_ref: null, verdict: 'REJECT', issues: acc.issues };
+  }
   checkObject(ENVELOPE_TAIL.plan_action.fields, raw, 'plan_action', ctx, acc);
   const op = typeof raw.op === 'string' ? raw.op : 'none';
   const draft_ref = typeof raw.draft_ref === 'string' ? raw.draft_ref : null;
@@ -508,13 +589,16 @@ export function validateDecision(decision: unknown, ctx: ValidationContext): Dec
   const counts: Record<Verdict, number> = { COMMIT: 0, FLAG: 0, ASK: 0, REJECT: 0 };
   for (const v of verdicts) counts[v.verdict]++;
 
+  const plan = validatePlan('plan_action' in d, d.plan_action, ctx);
+  const fixable = (issues: readonly Issue[]) => issues.some((i) => i.level === 'hard' && i.repairable);
+
   return {
     schema_version: SCHEMA_VERSION,
     verdicts,
-    plan: validatePlan(d.plan_action, ctx),
+    plan,
     decision_issues: env.issues,
     safety: { ed_signal: validateEdSignal(d.safety, ctx) },
-    repair: { needed: repairItems.length > 0 || env.issues.some((i) => i.level === 'hard' && i.repairable), items: repairItems },
+    repair: { needed: repairItems.length > 0 || fixable(env.issues) || fixable(plan?.issues ?? []), items: repairItems },
     missed_write,
     counts,
   };

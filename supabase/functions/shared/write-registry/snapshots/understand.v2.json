@@ -18,12 +18,10 @@
      ]
     },
     "is_hypothetical": {
-     "type": "boolean",
-     "description": "mesajın ana kısmı varsayım mı"
+     "type": "boolean"
     },
     "about_other_person": {
-     "type": "boolean",
-     "description": "mesaj başkası hakkında mı (kızı, arkadaşı…)"
+     "type": "boolean"
     }
    },
    "required": [
@@ -37,12 +35,10 @@
    "type": "object",
    "properties": {
     "acute_medical": {
-     "type": "boolean",
-     "description": "şu an acil tıbbi durum var mı (anafilaksi, göğüs ağrısı, nefes darlığı…)"
+     "type": "boolean"
     },
     "self_harm": {
-     "type": "boolean",
-     "description": "kendine zarar verme düşüncesi/niyeti var mı"
+     "type": "boolean"
     },
     "ed_signal": {
      "anyOf": [
@@ -69,8 +65,7 @@
          ]
         },
         "evidence_quote": {
-         "type": "string",
-         "description": "KULLANICININ mesajından AYNEN alıntı (koçun sözleri sayılmaz)"
+         "type": "string"
         }
        },
        "required": [
@@ -89,11 +84,9 @@
      "anyOf": [
       {
        "type": "object",
-       "description": "yalnız TETİK olgusu verildiyse doldur; yoksa null",
        "properties": {
         "benign": {
-         "type": "boolean",
-         "description": "tetik kelimesi zararsız anlamda mı (\"bayıldım\" = çok sevdim)"
+         "type": "boolean"
         },
         "reason": {
          "type": "string"
@@ -131,7 +124,6 @@
     "anyOf": [
      {
       "type": "object",
-      "description": "Kaydı geri al/sil",
       "properties": {
        "op": {
         "type": "string",
@@ -140,12 +132,10 @@
         ]
        },
        "ref": {
-        "type": "string",
-        "description": "m|d|w|s|t|e|l|f-ref (ör. m3)"
+        "type": "string"
        },
        "reason": {
-        "type": "string",
-        "description": "neden geri alındığı, kısaca"
+        "type": "string"
        }
       },
       "required": [
@@ -157,7 +147,6 @@
      },
      {
       "type": "object",
-      "description": "Kaydı düzelt",
       "properties": {
        "op": {
         "type": "string",
@@ -166,8 +155,7 @@
         ]
        },
        "ref": {
-        "type": "string",
-        "description": "m|d|w|s|t|e|l|f-ref (ör. m3)"
+        "type": "string"
        },
        "basis": {
         "type": "string",
@@ -177,15 +165,13 @@
         ]
        },
        "reason": {
-        "type": "string",
-        "description": "neyin yanlış olduğu (\"6 nugget için 1708 kcal çok yüksek\")"
+        "type": "string"
        },
        "evidence_quote": {
         "type": [
          "string",
          "null"
-        ],
-        "description": "user_correction ise kullanıcının mesajından AYNEN alıntı; suspicious ise null"
+        ]
        },
        "patch": {
         "$ref": "#/$defs/write"
@@ -203,7 +189,6 @@
      },
      {
       "type": "object",
-      "description": "Metriği önceki değerine döndür",
       "properties": {
        "op": {
         "type": "string",
@@ -212,8 +197,7 @@
         ]
        },
        "ref": {
-        "type": "string",
-        "description": "d-ref (ör. d3)"
+        "type": "string"
        },
        "reason": {
         "type": "string"
@@ -235,7 +219,6 @@
     "anyOf": [
      {
       "type": "object",
-      "description": "Bekleyeni onayla",
       "properties": {
        "op": {
         "type": "string",
@@ -244,8 +227,7 @@
         ]
        },
        "ref": {
-        "type": "string",
-        "description": "p-ref (ör. p3)"
+        "type": "string"
        }
       },
       "required": [
@@ -256,7 +238,6 @@
      },
      {
       "type": "object",
-      "description": "Bekleyenden vazgeç",
       "properties": {
        "op": {
         "type": "string",
@@ -265,8 +246,7 @@
         ]
        },
        "ref": {
-        "type": "string",
-        "description": "p-ref (ör. p3)"
+        "type": "string"
        }
       },
       "required": [
@@ -284,7 +264,6 @@
     "anyOf": [
      {
       "type": "object",
-      "description": "Söz/taahhüt",
       "properties": {
        "op": {
         "type": "string",
@@ -293,12 +272,10 @@
         ]
        },
        "text": {
-        "type": "string",
-        "description": "sözün kısa, net hâli"
+        "type": "string"
        },
        "follow_up_days": {
-        "type": "number",
-        "description": "kaç gün sonra sorulsun"
+        "type": "number"
        }
       },
       "required": [
@@ -310,7 +287,6 @@
      },
      {
       "type": "object",
-      "description": "Söz sonucu",
       "properties": {
        "op": {
         "type": "string",
@@ -319,8 +295,7 @@
         ]
        },
        "ref": {
-        "type": "string",
-        "description": "k-ref (ör. k3)"
+        "type": "string"
        },
        "outcome": {
         "type": "string",
@@ -377,8 +352,7 @@
      "type": [
       "string",
       "null"
-     ],
-     "description": "dft-ref (ör. dft3) — açık taslağın dft-ref’i"
+     ]
     }
    },
    "required": [
@@ -392,7 +366,6 @@
    "anyOf": [
     {
      "type": "object",
-     "description": "\"yesem ne olur?\" türü varsayım; kod bütçe sayısını hesaplar",
      "properties": {
       "food": {
        "type": "string"
@@ -401,8 +374,7 @@
        "type": "number"
       },
       "target_day": {
-       "type": "string",
-       "description": "YYYY-MM-DD — hangi gün yenecek, YYYY-MM-DD"
+       "type": "string"
       }
      },
      "required": [
@@ -423,15 +395,13 @@
      "type": "object",
      "properties": {
       "topic": {
-       "type": "string",
-       "description": "neyin belirsiz olduğu"
+       "type": "string"
       },
       "candidate_refs": {
        "type": "array",
        "items": {
         "type": "string"
-       },
-       "description": "olası kayıtların ref’leri (yalnız KAYITLAR’dan)"
+       }
       }
      },
      "required": [
@@ -476,15 +446,13 @@
    "type": "object",
    "properties": {
     "reported_new_facts": {
-     "type": "boolean",
-     "description": "kullanıcı kaydedilebilecek yeni bir şey bildirdi mi"
+     "type": "boolean"
     },
     "not_written_reason": {
      "type": [
       "string",
       "null"
-     ],
-     "description": "bildirdiği hâlde yazmadıysan neden"
+     ]
     }
    },
    "required": [
@@ -513,7 +481,6 @@
    "anyOf": [
     {
      "type": "object",
-     "description": "Öğün",
      "properties": {
       "op": {
        "type": "string",
@@ -522,8 +489,7 @@
        ]
       },
       "day": {
-       "type": "string",
-       "description": "today | yesterday | YYYY-MM-DD"
+       "type": "string"
       },
       "meal_type": {
        "type": "string",
@@ -538,12 +504,10 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "HH:MM (24 saat) — yendiği saat 24s HH:MM; bilinmiyorsa null"
+       ]
       },
       "raw": {
-       "type": "string",
-       "description": "kullanıcının bu öğünü anlatan sözleri, aynen"
+       "type": "string"
       },
       "status": {
        "type": "string",
@@ -556,15 +520,13 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "dışarıda yendiyse mekân adı; öğünle birlikte geri alınır"
+       ]
       },
       "replaces": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "m-ref (ör. m3) — bu öğün KAYITLAR’daki bir öğünün düzeltilmiş hâliyse onun m-ref’i"
+       ]
       },
       "items": {
        "type": "array",
@@ -572,23 +534,19 @@
         "type": "object",
         "properties": {
          "name": {
-          "type": "string",
-          "description": "yiyeceğin adı (\"tavuk nugget\", \"tuz\")"
+          "type": "string"
          },
          "as_stated": {
-          "type": "string",
-          "description": "miktar kullanıcının ifadesiyle: \"6 adet\", \"2 çimdik\", \"yarım tabak\". Kod ayrıştırmaz, aynen saklar."
+          "type": "string"
          },
          "grams": {
           "type": [
            "number",
            "null"
-          ],
-          "description": "SENİN gram tahminin; gerçekten bilinmiyorsa null"
+          ]
          },
          "kcal": {
-          "type": "number",
-          "description": "SENİN kcal tahminin (pişirme dahil)"
+          "type": "number"
          },
          "protein_g": {
           "type": "number"
@@ -600,86 +558,31 @@
           "type": "number"
          },
          "alcohol_g": {
-          "type": "number",
-          "description": "saf alkol gramı (bira, şarap, rakı); yoksa 0"
+          "type": "number"
          },
          "caffeine_mg": {
-          "type": "number",
-          "description": "kafein (kahve, çay, kola, enerji içeceği); yoksa 0"
+          "type": "number"
          },
          "preparation": {
           "type": [
            "string",
            "null"
-          ],
-          "description": "bu kalemin pişirme biçimi (kızartma, ızgara…); bilinmiyorsa null"
+          ]
          },
          "allergens": {
-          "type": "array",
-          "items": {
-           "type": "string",
-           "enum": [
-            "gluten",
-            "crustacean",
-            "egg",
-            "fish",
-            "peanut",
-            "soy",
-            "milk",
-            "tree_nut",
-            "hazelnut",
-            "walnut",
-            "almond",
-            "pistachio",
-            "cashew",
-            "celery",
-            "mustard",
-            "sesame",
-            "sulphite",
-            "lupin",
-            "mollusc"
-           ]
-          },
-          "description": "kalemin KESİN alerjen kaynakları"
+          "$ref": "#/$defs/allergens"
          },
          "may_contain": {
-          "type": "array",
-          "items": {
-           "type": "string",
-           "enum": [
-            "gluten",
-            "crustacean",
-            "egg",
-            "fish",
-            "peanut",
-            "soy",
-            "milk",
-            "tree_nut",
-            "hazelnut",
-            "walnut",
-            "almond",
-            "pistachio",
-            "cashew",
-            "celery",
-            "mustard",
-            "sesame",
-            "sulphite",
-            "lupin",
-            "mollusc"
-           ]
-          },
-          "description": "kaynağı belirsiz OLASI alerjenler"
+          "$ref": "#/$defs/allergens"
          },
          "reference_key": {
           "type": [
            "string",
            "null"
-          ],
-          "description": "YALNIZCA REFERANS ADAYLARI’ndan ve gerçekten aynı yiyecekse; değilse null"
+          ]
          },
          "confidence": {
-          "type": "number",
-          "description": "tahmin güvenin 0–1"
+          "type": "number"
          }
         },
         "required": [
@@ -717,7 +620,6 @@
     },
     {
      "type": "object",
-     "description": "Su",
      "properties": {
       "op": {
        "type": "string",
@@ -726,16 +628,13 @@
        ]
       },
       "day": {
-       "type": "string",
-       "description": "today | yesterday | YYYY-MM-DD"
+       "type": "string"
       },
       "as_stated": {
-       "type": "string",
-       "description": "kullanıcının ifadesi aynen (\"1 bardak\", \"koca şişe\")"
+       "type": "string"
       },
       "quantity": {
-       "type": "number",
-       "description": "kullanıcının söylediği sayı, seçtiğin birimde"
+       "type": "number"
       },
       "unit": {
        "type": "string",
@@ -756,8 +655,7 @@
        "type": [
         "number",
         "null"
-       ],
-       "description": "yalnız unit=other ise: bir biriminin ml tahminin"
+       ]
       },
       "mode": {
        "type": "string",
@@ -770,8 +668,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "d-ref (ör. d3) — bu kayıt KAYITLAR’daki bir su yazmasının düzeltilmiş hâliyse onun d-ref’i"
+       ]
       }
      },
      "required": [
@@ -788,7 +685,6 @@
     },
     {
      "type": "object",
-     "description": "Tartı",
      "properties": {
       "op": {
        "type": "string",
@@ -797,22 +693,19 @@
        ]
       },
       "day": {
-       "type": "string",
-       "description": "today | yesterday | YYYY-MM-DD"
+       "type": "string"
       },
       "kg": {
        "type": "number"
       },
       "as_stated": {
-       "type": "string",
-       "description": "kullanıcının ifadesi aynen (\"82,5\")"
+       "type": "string"
       },
       "replaces": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "d-ref (ör. d3)"
+       ]
       }
      },
      "required": [
@@ -826,7 +719,6 @@
     },
     {
      "type": "object",
-     "description": "Uyku",
      "properties": {
       "op": {
        "type": "string",
@@ -835,12 +727,10 @@
        ]
       },
       "day": {
-       "type": "string",
-       "description": "today | yesterday | YYYY-MM-DD — uyanılan gün"
+       "type": "string"
       },
       "hours": {
-       "type": "number",
-       "description": "aralık söylenirse ortası (\"6-7\" → 6.5)"
+       "type": "number"
       },
       "quality": {
        "type": [
@@ -858,15 +748,13 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "HH:MM (24 saat) — yattığı saat"
+       ]
       },
       "wake_time": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "HH:MM (24 saat) — kalktığı saat"
+       ]
       },
       "as_stated": {
        "type": "string"
@@ -875,8 +763,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "d-ref (ör. d3)"
+       ]
       }
      },
      "required": [
@@ -893,7 +780,6 @@
     },
     {
      "type": "object",
-     "description": "Ruh hali",
      "properties": {
       "op": {
        "type": "string",
@@ -902,12 +788,10 @@
        ]
       },
       "day": {
-       "type": "string",
-       "description": "today | yesterday | YYYY-MM-DD"
+       "type": "string"
       },
       "value": {
-       "type": "number",
-       "description": "kullanıcının puanı, söylediği ölçekte"
+       "type": "number"
       },
       "scale": {
        "type": "string",
@@ -929,8 +813,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "d-ref (ör. d3)"
+       ]
       }
      },
      "required": [
@@ -946,7 +829,6 @@
     },
     {
      "type": "object",
-     "description": "Adım",
      "properties": {
       "op": {
        "type": "string",
@@ -955,8 +837,7 @@
        ]
       },
       "day": {
-       "type": "string",
-       "description": "today | yesterday | YYYY-MM-DD"
+       "type": "string"
       },
       "steps": {
        "type": "number"
@@ -968,8 +849,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "d-ref (ör. d3)"
+       ]
       }
      },
      "required": [
@@ -983,7 +863,6 @@
     },
     {
      "type": "object",
-     "description": "Antrenman",
      "properties": {
       "op": {
        "type": "string",
@@ -992,12 +871,10 @@
        ]
       },
       "day": {
-       "type": "string",
-       "description": "today | yesterday | YYYY-MM-DD"
+       "type": "string"
       },
       "raw": {
-       "type": "string",
-       "description": "kullanıcının sözleri, aynen"
+       "type": "string"
       },
       "workout_type": {
        "type": "string",
@@ -1031,22 +908,19 @@
        "type": [
         "number",
         "null"
-       ],
-       "description": "SENİN yakım tahminin; bilmiyorsan null"
+       ]
       },
       "rpe": {
        "type": [
         "number",
         "null"
-       ],
-       "description": "algılanan zorluk 1–10, söylendiyse"
+       ]
       },
       "time_local": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "HH:MM (24 saat)"
+       ]
       },
       "strength_sets": {
        "type": "array",
@@ -1054,8 +928,7 @@
         "type": "object",
         "properties": {
          "exercise": {
-          "type": "string",
-          "description": "snake_case kanonik ad (bench_press, squat, deadlift…)"
+          "type": "string"
          },
          "as_stated": {
           "type": "string"
@@ -1087,8 +960,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "w-ref (ör. w3)"
+       ]
       }
      },
      "required": [
@@ -1108,7 +980,6 @@
     },
     {
      "type": "object",
-     "description": "Takviye",
      "properties": {
       "op": {
        "type": "string",
@@ -1117,22 +988,19 @@
        ]
       },
       "day": {
-       "type": "string",
-       "description": "today | yesterday | YYYY-MM-DD"
+       "type": "string"
       },
       "name": {
        "type": "string"
       },
       "as_stated": {
-       "type": "string",
-       "description": "miktar kullanıcının ifadesiyle (\"1 ölçek\", \"5 g\")"
+       "type": "string"
       },
       "kcal": {
        "type": [
         "number",
         "null"
-       ],
-       "description": "kalori içeriyorsa (whey, gainer) tahminin; yoksa null"
+       ]
       },
       "protein_g": {
        "type": [
@@ -1153,67 +1021,16 @@
        ]
       },
       "allergens": {
-       "type": "array",
-       "items": {
-        "type": "string",
-        "enum": [
-         "gluten",
-         "crustacean",
-         "egg",
-         "fish",
-         "peanut",
-         "soy",
-         "milk",
-         "tree_nut",
-         "hazelnut",
-         "walnut",
-         "almond",
-         "pistachio",
-         "cashew",
-         "celery",
-         "mustard",
-         "sesame",
-         "sulphite",
-         "lupin",
-         "mollusc"
-        ]
-       },
-       "description": "kesin kaynak (balık yağı → fish, krill → crustacean, whey → milk)"
+       "$ref": "#/$defs/allergens"
       },
       "may_contain": {
-       "type": "array",
-       "items": {
-        "type": "string",
-        "enum": [
-         "gluten",
-         "crustacean",
-         "egg",
-         "fish",
-         "peanut",
-         "soy",
-         "milk",
-         "tree_nut",
-         "hazelnut",
-         "walnut",
-         "almond",
-         "pistachio",
-         "cashew",
-         "celery",
-         "mustard",
-         "sesame",
-         "sulphite",
-         "lupin",
-         "mollusc"
-        ]
-       },
-       "description": "belirsiz kaynak (sade \"omega 3\" → fish, crustacean)"
+       "$ref": "#/$defs/allergens"
       },
       "replaces": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "s-ref (ör. s3)"
+       ]
       }
      },
      "required": [
@@ -1233,7 +1050,6 @@
     },
     {
      "type": "object",
-     "description": "Profil",
      "properties": {
       "op": {
        "type": "string",
@@ -1320,8 +1136,7 @@
           "type": [
            "string",
            "null"
-          ],
-          "description": "yeni değer: sayıysa yalnız sayı (\"175\", \"0.5\"), saat \"HH:MM\" (24s), tarih \"YYYY-MM-DD\", evet/hayır \"true\"/\"false\", seçenekli alanda seçeneğin id’si; null = alanı temizle"
+          ]
          },
          "unit": {
           "type": [
@@ -1340,8 +1155,7 @@
            "percent",
            "days",
            null
-          ],
-          "description": "sayının birimi; yaş söylendiyse age_years"
+          ]
          },
          "list_op": {
           "type": [
@@ -1353,12 +1167,10 @@
            "remove",
            "set",
            null
-          ],
-          "description": "yalnız liste alanlarında"
+          ]
          },
          "as_stated": {
-          "type": "string",
-          "description": "kullanıcının bu bilgiyi verdiği sözler, aynen"
+          "type": "string"
          }
         },
         "required": [
@@ -1381,7 +1193,6 @@
     },
     {
      "type": "object",
-     "description": "Hedef",
      "properties": {
       "op": {
        "type": "string",
@@ -1410,22 +1221,19 @@
        "type": [
         "number",
         "null"
-       ],
-       "description": "süre hafta olarak söylendiyse (\"3 ay\" → 13)"
+       ]
       },
       "target_date": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "YYYY-MM-DD — belirli bir tarih söylendiyse YYYY-MM-DD"
+       ]
       },
       "reason": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "bu hedefin sebebi (\"3 ay sonra düğün\")"
+       ]
       },
       "as_stated": {
        "type": "string"
@@ -1444,7 +1252,6 @@
     },
     {
      "type": "object",
-     "description": "Kısıt (alerji, sakatlık, hastalık, ilaç, diyet)",
      "properties": {
       "op": {
        "type": "string",
@@ -1465,12 +1272,10 @@
        ]
       },
       "subject_id": {
-       "type": "string",
-       "description": "alerjende alerjen id’si (peanut, hazelnut…), diyette diyet id’si (vegan…), aksi hâlde kısa id; listede yoksa custom:<ad>"
+       "type": "string"
       },
       "display_tr": {
-       "type": "string",
-       "description": "kullanıcıya görünen Türkçe ad (\"fındık\", \"sol diz menisküs\")"
+       "type": "string"
       },
       "whose": {
        "type": "string",
@@ -1496,42 +1301,22 @@
        ]
       },
       "body_parts": {
-       "type": "array",
-       "items": {
-        "type": "string",
-        "enum": [
-         "knee",
-         "back",
-         "shoulder",
-         "ankle",
-         "wrist",
-         "elbow",
-         "hip",
-         "neck",
-         "hamstring",
-         "quad",
-         "groin"
-        ]
-       },
-       "description": "sakatlık/ameliyatta etkilenen bölgeler"
+       "$ref": "#/$defs/body_parts"
       },
       "event_date": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "YYYY-MM-DD — ameliyat/sakatlık tarihi söylendiyse"
+       ]
       },
       "note": {
        "type": [
         "string",
         "null"
-       ],
-       "description": "ayrıntı (eski notun üzerine yazılmaz, eklenir)"
+       ]
       },
       "evidence_quote": {
-       "type": "string",
-       "description": "kullanıcının mesajından AYNEN alıntı"
+       "type": "string"
       }
      },
      "required": [
@@ -1551,7 +1336,6 @@
     },
     {
      "type": "object",
-     "description": "Kısıt kaldırma",
      "properties": {
       "op": {
        "type": "string",
@@ -1560,12 +1344,10 @@
        ]
       },
       "target": {
-       "type": "string",
-       "description": "c-ref (ör. c3)"
+       "type": "string"
       },
       "evidence_quote": {
-       "type": "string",
-       "description": "kullanıcının mesajından AYNEN alıntı"
+       "type": "string"
       },
       "note": {
        "type": [
@@ -1584,7 +1366,6 @@
     },
     {
      "type": "object",
-     "description": "Kısıt doğrulama",
      "properties": {
       "op": {
        "type": "string",
@@ -1593,8 +1374,7 @@
        ]
       },
       "target": {
-       "type": "string",
-       "description": "c-ref (ör. c3)"
+       "type": "string"
       }
      },
      "required": [
@@ -1605,7 +1385,6 @@
     },
     {
      "type": "object",
-     "description": "Yemek tercihi",
      "properties": {
       "op": {
        "type": "string",
@@ -1614,8 +1393,7 @@
        ]
       },
       "food": {
-       "type": "string",
-       "description": "yalın ad (\"fıstık\", \"brokoli\") — çekim eki olmadan"
+       "type": "string"
       },
       "preference": {
        "type": "string",
@@ -1644,8 +1422,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "f-ref (ör. f3)"
+       ]
       }
      },
      "required": [
@@ -1660,7 +1437,6 @@
     },
     {
      "type": "object",
-     "description": "Yaklaşan olay",
      "properties": {
       "op": {
        "type": "string",
@@ -1669,8 +1445,7 @@
        ]
       },
       "title": {
-       "type": "string",
-       "description": "kısa başlık (\"kardeşinin düğünü\")"
+       "type": "string"
       },
       "event_type": {
        "type": "string",
@@ -1689,8 +1464,7 @@
        ]
       },
       "event_date": {
-       "type": "string",
-       "description": "YYYY-MM-DD — verilen yerel tarihe göre hesapla, YYYY-MM-DD"
+       "type": "string"
       },
       "note": {
        "type": [
@@ -1702,8 +1476,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "e-ref (ör. e3) — mevcut bir olayın tarihi/adı değiştiyse onun e-ref’i"
+       ]
       }
      },
      "required": [
@@ -1718,7 +1491,6 @@
     },
     {
      "type": "object",
-     "description": "Tahlil sonucu",
      "properties": {
       "op": {
        "type": "string",
@@ -1730,8 +1502,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "YYYY-MM-DD — tahlil tarihi biliniyorsa"
+       ]
       },
       "items": {
        "type": "array",
@@ -1739,22 +1510,19 @@
         "type": "object",
         "properties": {
          "parameter": {
-          "type": "string",
-          "description": "snake_case id (d_vitamini, b12, ferritin, tsh, hba1c, ldl…)"
+          "type": "string"
          },
          "value": {
           "type": [
            "number",
            "null"
-          ],
-          "description": "sayı söylenmediyse null"
+          ]
          },
          "unit": {
           "type": [
            "string",
            "null"
-          ],
-          "description": "ng/mL, mg/dL…; bilinmiyorsa null"
+          ]
          },
          "status": {
           "type": "string",
@@ -1792,8 +1560,7 @@
           "type": [
            "string",
            "null"
-          ],
-          "description": "doktor yorumu ya da nitel bulgu"
+          ]
          }
         },
         "required": [
@@ -1819,7 +1586,6 @@
     },
     {
      "type": "object",
-     "description": "Tarif",
      "properties": {
       "op": {
        "type": "string",
@@ -1848,8 +1614,7 @@
           "type": "string"
          },
          "as_stated": {
-          "type": "string",
-          "description": "miktar (\"2 yemek kaşığı\")"
+          "type": "string"
          }
         },
         "required": [
@@ -1866,8 +1631,7 @@
        "type": [
         "number",
         "null"
-       ],
-       "description": "porsiyon başına"
+       ]
       },
       "protein_g": {
        "type": [
@@ -1903,7 +1667,6 @@
     },
     {
      "type": "object",
-     "description": "Dönemsel durum",
      "properties": {
       "op": {
        "type": "string",
@@ -1931,8 +1694,7 @@
        "type": [
         "string",
         "null"
-       ],
-       "description": "YYYY-MM-DD — biliniyorsa bitiş tarihi"
+       ]
       },
       "note": {
        "type": [
@@ -1951,7 +1713,6 @@
     },
     {
      "type": "object",
-     "description": "Kalori programı",
      "properties": {
       "op": {
        "type": "string",
@@ -1981,22 +1742,19 @@
         "maintenance_break",
         "training_change",
         null
-       ],
-       "description": "yalnız plateau_strategy’de"
+       ]
       },
       "weeks": {
        "type": [
         "number",
         "null"
-       ],
-       "description": "yalnız mini_cut’ta (2–4)"
+       ]
       },
       "excess_kcal": {
        "type": [
         "number",
         "null"
-       ],
-       "description": "telafide fazlalık tahminin; kod canlı toplamlarla karşılaştırır"
+       ]
       },
       "reason": {
        "type": "string"
@@ -2014,7 +1772,6 @@
     },
     {
      "type": "object",
-     "description": "Veri silme talebi (KVKK)",
      "properties": {
       "op": {
        "type": "string",
@@ -2030,8 +1787,7 @@
        ]
       },
       "evidence_quote": {
-       "type": "string",
-       "description": "kullanıcının mesajından AYNEN alıntı"
+       "type": "string"
       }
      },
      "required": [
@@ -2042,6 +1798,52 @@
      "additionalProperties": false
     }
    ]
+  },
+  "allergens": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "enum": [
+     "gluten",
+     "crustacean",
+     "egg",
+     "fish",
+     "peanut",
+     "soy",
+     "milk",
+     "tree_nut",
+     "hazelnut",
+     "walnut",
+     "almond",
+     "pistachio",
+     "cashew",
+     "celery",
+     "mustard",
+     "sesame",
+     "sulphite",
+     "lupin",
+     "mollusc"
+    ]
+   }
+  },
+  "body_parts": {
+   "type": "array",
+   "items": {
+    "type": "string",
+    "enum": [
+     "knee",
+     "back",
+     "shoulder",
+     "ankle",
+     "wrist",
+     "elbow",
+     "hip",
+     "neck",
+     "hamstring",
+     "quad",
+     "groin"
+    ]
+   }
   }
  }
 }

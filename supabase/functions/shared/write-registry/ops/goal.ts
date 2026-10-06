@@ -39,14 +39,14 @@ export const goal_set = op({
   channel: 'writes',
   envelope: 'goal_suggestion',
   title_tr: 'Hedef',
-  when_tr: 'Kullanıcı kendi ana hedefini koyuyor ya da değiştiriyorsa ("3 ayda 5 kilo vermek istiyorum").',
-  not_when_tr: '"Hedefime ulaştım mı sence?" sorudur. Su/adım hedefi profile_set’tir. Varsayım ("versem ne olur") kayıt değildir.',
+  when_tr: 'Kendi ana hedefini koyması ya da değiştirmesi ("3 ayda 5 kilo vermek istiyorum").',
+  not_when_tr: 'su/adım hedefi (profile_set).',
   fields: {
     goal_type: f.enum(GOAL_TYPES),
     target_weight_kg: f.num({ unit: 'kg', nullable: true, hard: [30, 300], decimals: 1 }),
-    target_weeks: f.num({ unit: 'hafta', nullable: true, hard: [1, 104], decimals: 0, tr: 'süre hafta olarak söylendiyse ("3 ay" → 13)' }),
-    target_date: f.date({ nullable: true, past_days: 0, future_days: 730, tr: 'belirli bir tarih söylendiyse YYYY-MM-DD' }),
-    reason: f.text({ nullable: true, max: 300, tr: 'bu hedefin sebebi ("3 ay sonra düğün")' }),
+    target_weeks: f.num({ unit: 'hafta', nullable: true, hard: [1, 104], decimals: 0, tr: 'süre söylendiyse ("3 ay" → 13); tarih söylendiyse target_date — ikisi birden değil' }),
+    target_date: f.date({ nullable: true, past_days: 0, future_days: 730 }),
+    reason: f.text({ nullable: true, max: 300 }),
     as_stated: f.text({ max: 160 }),
   },
   derive: (a, ctx) => {
@@ -56,10 +56,8 @@ export const goal_set = op({
       ? round2(Math.abs(start - a.target_weight_kg) / weeks) : null;
     return { weeks, weekly_rate_kg: rate, start_weight_kg: start };
   },
-  derive_tr: 'hafta = target_weeks ya da bugünden target_date’e; haftalık hız = |şimdiki kilo − hedef| / hafta.',
   writes: { rpc: 'set_active_goal', tables: ['goals', 'profiles', 'belief_events', 'turn_writes'], undo: 'supersede', hold_op: 'goal_set' },
   invariants: ['assert_target_allowed', 'tdee_recalc', 'band_refresh'],
-  examples_tr: ['"3 ayda 75 kiloya inmek istiyorum" → goal_type lose_weight, target_weight_kg 75, target_weeks 13'],
 }).rules({
   hard: [
     rule('iki_sure', 'target_weeks ve target_date ikisi birden dolu olamaz', (a) => a.target_weeks !== null && a.target_date !== null,

@@ -4,10 +4,14 @@
  *
  * The model says HOW MUCH in the user's unit and WHETHER it is an addition or the day's total;
  * code only multiplies by the unit table. There is no `liters` field to put a glass count into.
+ *
+ * `quantity` has NO range of its own: "500" is impossible in litres and ordinary in millilitres,
+ * so a unit-blind bound would reject "500 ml su içtim". The physical check is on the derived litres
+ * (litre_araligi, 0–8 L), which also catches a negative amount.
  */
 import { f, op, rule } from '../dsl.ts';
 import { requireWhen } from '../rules.ts';
-import { LIQUID_UNIT_TR, mlPerUnit } from '../units.ts';
+import { LIQUID_UNIT_TR, mlPerUnit, UNIT_ML } from '../units.ts';
 import { resolveDay, round2, trNum } from '../util.ts';
 
 const WATER_UNITS = {
@@ -23,6 +27,14 @@ const WATER_UNITS = {
   other: LIQUID_UNIT_TR.other,
 } as const;
 
+/**
+ * The doc line for `unit`, generated from the SAME table derive() multiplies by (UNIT_ML), so the
+ * millilitres the model reads are exactly the ones code uses.
+ */
+const UNIT_DOC = `${(Object.keys(WATER_UNITS) as Array<keyof typeof WATER_UNITS>)
+  .filter((u): u is Exclude<keyof typeof WATER_UNITS, 'ml' | 'litre' | 'other'> => u !== 'ml' && u !== 'litre' && u !== 'other')
+  .map((u) => `${u} ${UNIT_ML[u]} ml`).join(' · ')} · listede yoksa other + other_ml_each (bir biriminin ml tahmini)`;
+
 /** One drink above this is unusual enough to ask (§5.1.6). */
 export const WATER_SINGLE_ASK_L = 1.5;
 /** Physical ceiling for one entry or a stated day total. */
@@ -33,29 +45,25 @@ export const water_log = op({
   channel: 'writes',
   envelope: 'water_log',
   title_tr: 'Su',
-  when_tr: 'Yalnızca kullanıcının ŞİMDİ bildirdiği sade su.',
-  not_when_tr: 'Çay, kahve, ayran, maden suyu meal_log’a gider. Soru ("3 litre içmeli miyim?"), hedef ve niyet kayıt değildir.',
+  when_tr: 'Şimdi içtiği sade su.',
+  not_when_tr: 'çay, kahve, ayran, maden suyu (meal_log).',
   fields: {
     day: f.day(),
-    as_stated: f.text({ max: 60, tr: 'kullanıcının ifadesi aynen ("1 bardak", "koca şişe")' }),
-    quantity: f.num({ hard: [0, 50], tr: 'kullanıcının söylediği sayı, seçtiğin birimde' }),
-    unit: f.enum(WATER_UNITS),
-    other_ml_each: f.num({ nullable: true, hard: [1, 3000], unit: 'ml', tr: 'yalnız unit=other ise: bir biriminin ml tahminin' }),
-    mode: f.enum({ add: 'bu içilen miktar toplama eklenir', set_day_total: 'kullanıcı GÜNÜN TOPLAMINI söyledi' }),
-    replaces: f.ref(['d'], { nullable: true, targets: ['water'], tr: 'bu kayıt KAYITLAR’daki bir su yazmasının düzeltilmiş hâliyse onun d-ref’i' }),
+    as_stated: f.text({ max: 60 }),
+    quantity: f.num({ tr: 'kullanıcının sayısı, unit cinsinden ("500 ml" → 500 ml)' }),
+    unit: f.enum(WATER_UNITS, { tr: UNIT_DOC }),
+    other_ml_each: f.num({ nullable: true, hard: [1, 3000], unit: 'ml' }),
+    mode: f.enum({ add: 'içilen miktar toplama eklenir', set_day_total: 'kullanıcı GÜNÜN TOPLAMINI söyledi' }, { explain: true }),
+    replaces: f.ref(['d'], { nullable: true, targets: ['water'] }),
   },
   derive: (a, ctx) => {
     const ml = mlPerUnit(a.unit, a.other_ml_each);
     return { date: resolveDay(a.day, ctx.today), liters: ml === null ? null : round2((a.quantity * ml) / 1000) };
   },
-  derive_tr: 'litre = miktar × birimin ml değeri / 1000 (bardak 200 ml, çay bardağı 100 ml, kupa 250 ml).',
+  derive_tr: 'litre = quantity × birimin ml’si / 1000.',
   writes: { rpc: 'w_water_apply', tables: ['daily_metrics', 'turn_writes'], undo: 'restore_previous' },
   invariants: ['atomic_increment'],
-  examples_tr: [
-    '"1 bardak su daha içtim" → quantity 1, unit bardak, mode add (kod +0,20 L hesaplar)',
-    '"bugün toplam 2 litre içtim" → quantity 2, unit litre, mode set_day_total',
-    '"yarım şişe" → quantity 0.5, unit sise_500',
-  ],
+  examples_tr: ['"1 bardak su daha içtim" → quantity 1, unit bardak, mode add (kod +0,20 L yazar)'],
 }).rules({
   hard: [
     requireWhen('other_ml_eksik', 'unit=other iken other_ml_each boş olamaz', (a) => a.unit === 'other', (a) => a.other_ml_each, 'other_ml_each'),

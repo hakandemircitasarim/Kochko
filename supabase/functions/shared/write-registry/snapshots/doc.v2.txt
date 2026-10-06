@@ -1,0 +1,133 @@
+YAZILABİLİR KAYITLAR (şema kochko_understand_v2)
+Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aralığı denetler, hiçbir sayını sessizce değiştirmez. Her yazma ayrı denetlenir.
+Ortak alanlar: day ≤7 gün geri; diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. replaces: KAYITLAR’daki aynı türden kaydın düzeltilmiş hâliyse onun ref’i, değilse null.
+Ref’ler yalnız bu turda gösterilenler: KAYITLAR: m=öğün · d=günlük metrik (su, uyku, ruh hali, adım, tartı) · w=antrenman · s=takviye · t=son tur yazması · e=olay · l=tahlil · f=yemek tercihi | KISITLAR: c | BEKLEYEN ONAYLAR: p | AÇIK SÖZLER: k | PLAN TASLAĞI: dft.
+ALERJENLER: gluten (buğday, arpa, çavdar, yulaf) · crustacean (karides, yengeç, ıstakoz, krill) · egg · fish · peanut (yer fıstığı) · soy · milk · tree_nut (sert kabuklu, türü belirsiz) · hazelnut · walnut · almond · pistachio (antep fıstığı) · cashew · celery · mustard · sesame · sulphite · lupin (acı bakla) · mollusc (midye, kalamar, ahtapot) · listede yoksa (yalnız kısıtta) custom:<ad>
+BÖLGELER: knee=diz · back=sırt/bel · shoulder=omuz · ankle=ayak bileği · wrist=el bileği · elbow=dirsek · hip=kalça · neck=boyun · hamstring=arka bacak · quad=ön bacak · groin=kasık
+
+## writes[] — kullanıcının bildirdikleri
+
+### meal_log
+Şimdi yediği/içtiği şey (sade su hariç).
+- status: restatement yazılmaz
+- items[].grams: bilinmiyorsa null
+- items[].kcal: pişirme dahil
+- items[].alcohol_g: saf alkol gramı (içeceğin değil); yoksa 0
+- items[].reference_key: yalnız REFERANS ADAYLARI’ndan; seçtiysen grams zorunlu
+Kod: reference_key seçtiysen kcal/makro = grams × referans/100 (senin kcal’ın model_kcal’da kalır); seçmediysen senin sayıların aynen.
+
+### water_log
+Şimdi içtiği sade su. Değil: çay, kahve, ayran, maden suyu (meal_log).
+- quantity: kullanıcının sayısı, unit cinsinden ("500 ml" → 500 ml)
+- unit: bardak 200 ml · su_bardagi 200 ml · cay_bardagi 100 ml · kupa 250 ml · sise_330 330 ml · sise_500 500 ml · sise_1500 1500 ml · listede yoksa other + other_ml_each (bir biriminin ml tahmini)
+- mode: add=içilen miktar toplama eklenir · set_day_total=kullanıcı GÜNÜN TOPLAMINI söyledi
+Kod: litre = quantity × birimin ml’si / 1000.
+Örnek: "1 bardak su daha içtim" → quantity 1, unit bardak, mode add (kod +0,20 L yazar)
+
+### body_weight
+Son 7 gündeki bir tartı sonucu (eski hatıra değil).
+
+### sleep_log
+Uyuduğu süre; day = UYANDIĞI gün ("dün gece 7 saat uyudum" → today).
+- hours: aralıksa ortası ("6-7" → 6.5)
+
+### mood_log
+Ruh hali puanı ya da açık tarifi.
+- value: kullanıcının puanı, scale ölçeğinde
+Kod: 1–10 ölçeği 1–5’e çevrilir (8/10 → 4), kırpma yok.
+
+### step_log
+Attığı adım sayısı (süre yoksa antrenman değil). Değil: "günde 10 bin adım hedefim var" (profile_set step_target).
+
+### workout_log
+Yaptığı egzersiz ya da spor. Değil: yalnız adım sayısı (step_log).
+- calories_burned: bilmiyorsan null
+- strength_sets[].exercise: snake_case (bench_press, squat…)
+
+### supplement_log
+Aldığı bir takviye (kreatin, whey, omega-3, vitamin…); alerjisiyle çakışsa da yazılır. Değil: "her sabah kreatin alıyorum" gibi alışkanlık anlatısı.
+- kcal: kalorisi yoksa null (makrolar da)
+- allergens: kesin kaynak (balık yağı → fish, krill → crustacean, whey → milk)
+- may_contain: belirsiz kaynak (sade "omega 3" → fish, crustacean)
+
+### profile_set
+KENDİSİ hakkında kalıcı bilgi (yaş, boy, meslek, saatler, antrenman geçmişi, su/adım hedefi…); her alan ayrı denetlenir. Değil: kilo → body_weight, hedef → goal_set, alerji/sakatlık/hastalık/ilaç/diyet → constraint_add.
+- changes[].value: sayıda yalnız sayı ("1.75"), seçenekte id; null = alanı temizle
+Kod: yaş → doğum yılı, m/inç → cm, ml/bardak → litre.
+Örnek: "37 yaşındayım" → field birth_year, value "37", unit age_years
+Profil alanları (value bu türde):
+- Sayı (birim): birth_year (year|age_years) · height_cm (cm|m|in) · meal_count_preference · household_size · water_target_liters (litre|ml|bardak) · step_target · menstrual_cycle_length (days) · body_fat_pct (percent) · muscle_mass_pct (percent) · waist_cm (cm|in) · hip_cm (cm|in) · chest_cm (cm|in) · thigh_cm (cm|in)
+- Seçenek id’si: gender: male|female|other · activity_level: sedentary|light|moderate|active|very_active · cooking_skill: none|basic|good · budget_level: low|medium|high · diet_mode: standard|low_carb|keto|high_protein · eating_out_frequency, fastfood_frequency, alcohol_frequency: never|rare|weekly|frequent · caffeine_intake: none|low|moderate|high · meal_prep_time: short|medium|long · household_cooking: self|partner|parent|shared · training_experience: none|beginner|intermediate|advanced · training_style: cardio|strength|mixed · equipment_access: home|gym|both · stress_level: low|moderate|high · sleep_quality: good|ok|bad · coach_tone: strict|balanced|gentle · portion_language: grams|household
+- Saat HH:MM: work_start · work_end · sleep_time · wake_time · if_eating_start · if_eating_end
+- "true"/"false": if_active · menstrual_tracking
+- Tarih: menstrual_last_period_start
+- Liste (list_op add|remove|set, tek öğe): kitchen_equipment · preferred_exercises · disliked_exercises
+- Diğerleri serbest metin (if_window "16:8" gibi).
+
+### goal_set
+Kendi ana hedefini koyması ya da değiştirmesi ("3 ayda 5 kilo vermek istiyorum"). Değil: su/adım hedefi (profile_set).
+- target_weeks: süre söylendiyse ("3 ay" → 13); tarih söylendiyse target_date — ikisi birden değil
+
+### constraint_add
+Alerji, intolerans, sakatlık, ameliyat, hastalık, ilaç ya da diyet kısıtı — kendisi ya da başkası için, var ya da yok; her konu ayrı yazma. Değil: KISITLAR’daki bir kısıtı kaldırmak (constraint_retract); yalnız sevmemek (food_pref).
+- subject_id: alerjende ALERJENLER id’si; diyette vegan|vegetarian|pescatarian|halal|kosher|gluten_free|lactose_free; diğerlerinde kısa id; listede yoksa custom:<ad>
+- whose: other_person → yalnız koç notu olur, omurgaya girmez
+- body_parts: sakatlık/ameliyatta BÖLGELER’den
+
+### constraint_retract
+KISITLAR’daki bir kısıtın artık geçerli olmadığı ("dizim tamamen iyileşti", "artık vegan değilim"); yalnız adı geçen kısıt. Değil: ağrı sürüyorsa ("dizim eskisi gibi ağrıyor").
+İki adım: ciddi/bilinmeyen alerjen, ameliyat ya da ciddi sakatlık bekletilir; SONRAKİ turdaki açık onayla (pending_ops confirm) kalkar.
+
+### food_pref
+Bir yiyeceği sevdiği, sevmediği ya da asla yemediği. Değil: alerji ve intolerans (constraint_add, güvenlik).
+- food: yalın ad, çekim eki olmadan ("fıstık")
+- preference: can_cook = yapabildiği yemek; never = asla yemez (alerji değil)
+
+### life_event
+İleri tarihli, motive eden bir olay ("3 hafta sonra kardeşimin düğünü"). Değil: geçmiş ya da tarihsiz olaylar.
+
+### data_erase_request
+AÇIKÇA hesabın ve tüm verilerin ya da yalnız koç hafızasının silinmesi isteği. Değil: "kalori hesabını sil" (hesaplama), "nasıl silerim?" (soru), tek kayıt (record_ops); kapsam belirsizse clarify.
+İki adım: her zaman bekletilir; yalnız HEMEN SONRAKİ turdaki açık evetle (pending_ops confirm) yapılır.
+
+## record_ops[] — kayıtları ref ile geri al / düzelt
+
+### delete
+KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("yok o yanlış, geri al" → az önceki su yazmasının d-ref’i). Değil: kısıt (constraint_retract), bekleyen (pending_ops), plan taslağı (plan_action).
+
+### update
+KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (6 nugget için 1708 kcal) basis=suspicious — kod önce kullanıcıya sordurur. Değil: aynı kaydı yeni yazma olarak eklemek (çift sayım).
+- evidence_quote: suspicious ise null
+- patch: kaydın düzeltilmiş TAM hâli, ref’in kayıt türündeki op ile
+İki adım: suspicious bekletilir, koç bir kez sorar; reddedilen şüphe yeniden önerilmez.
+
+## pending_ops[] — BEKLEYEN ONAYLAR’a cevap
+
+### confirm
+BEKLEYEN ONAYLAR’daki bir yazmanın bu mesajda AÇIKÇA onaylanması. Değil: tereddüt, soru, "hayır" ya da başka konu; değiştirerek onaylıyorsa discard + writes’ta yeni hâli.
+
+### discard
+Bekleyen bir yazmanın istenmemesi ("hayır, kalsın").
+
+## commitment_ops[] — sözler
+
+### add
+Somut, takip edilebilir bir söz ("yarından itibaren akşam 8’den sonra yemeyeceğim"). Değil: genel istekler ("daha sağlıklı olmak istiyorum").
+- follow_up_days: kaç gün sonra sorulsun
+
+### resolve
+AÇIK SÖZLER’deki bir sözün sonucu ("dün akşam 8’den sonra yemedim"). Değil: "yaptım/olmadı" başka bir konudaysa.
+
+## Seyrek kayıtlar (şemada tüm alanlarıyla)
+- constraint_confirm: Koç kısıtın sürüp sürmediğini sordu, kullanıcı EVET dedi.
+- lab_value: Tahlil sonuçları (sayılı ya da "D vitaminim düşük çıktı"). Alanlar: items[].parameter: snake_case (d_vitamini, b12, ferritin…); items[].value: sayı yoksa null.
+- recipe_save: Bir tarifi kaydetme isteği. Alanlar: kcal: porsiyon başına.
+- periodic_state: Geçici bir dönemin (ramazan, hastalık, sınav, seyahat, hamilelik…) başlaması ya da bitmesi. Alanlar: state: none = dönem bitti.
+- target_change: Açıkça istenen ya da kabul edilen kalori programı (bakım, mini cut, plato stratejisi, telafi, MVD günü); "hedefime ulaştım mı?" sorusu değil. Alanlar: program: maintenance_start=bakım kalorisine geçiş · mini_cut=2–4 hafta kısa açık · plateau_strategy=plato stratejisi · recovery=fazla yeme sonrası 2 gün hafif açık · mvd=bugün yalnız temel hedefler; strategy_id: yalnız plateau_strategy’de; weeks: yalnız mini_cut’ta (2–4); excess_kcal: telafide fazlalık tahminin.
+- restore_metric (record_ops): Bir günlük metriği belirli bir yazmadan önceki değerine döndürme isteği.
+
+## Diğer alanlar
+- safety.ed_signal.category: illness_vomiting = hastalık/zehirlenme kusması, YB sinyali değil
+- safety.tripwire_reading: yalnız TETİK olgusu verildiyse; yoksa null
+- plan_action.op: plan işlemi yoksa none (taslak açıkken alakasız tur da none)
+- simulation: "yesem ne olur?" varsayımı (kod bütçe sayısını hesaplar); yoksa null

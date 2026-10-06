@@ -16,10 +16,12 @@ import {
   buildFusedSchema, buildReplySchema, buildUnderstandSchema, schemaBytes, schemaStats, SCHEMA_NAMES, strictFormat, type JsonSchema,
 } from './schema.ts';
 import { buildMemoryDoc, buildWriteDoc } from './doc.ts';
+import { approxTokens, STAGE_A_REGISTRY_BUDGET, stageARegistrySize } from './budget.ts';
 import { buildCapabilities } from './capabilities.ts';
 import { RECEIPT_OPS } from './receipts.ts';
 import { validateChannelItems, type WriteVerdict } from './validate.ts';
-import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleContext } from './samples.ts';
+import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleContext, sampleDecision, sampleMeal } from './samples.ts';
+import { strictSchemaIssues, validateJsonSchema } from '../json-schema-check.ts';
 import { ERASE_HOLD_OP } from './ops/pending.ts';
 import { isRecord, jsonEqual } from './util.ts';
 import { ERASE_OP } from '../erase-hold.ts';
@@ -141,6 +143,42 @@ Deno.test('writes[] and record_ops.update.patch share ONE $defs write union (no 
   assertEquals((update.properties as Record<string, JsonSchema>).patch.$ref, '#/$defs/write');
 });
 
+Deno.test('shared vocabularies are emitted once under $defs and referenced (allergens ×4, body parts) — never copied', () => {
+  const s = buildUnderstandSchema() as { $defs: Record<string, JsonSchema> };
+  assertEquals(Object.keys(s.$defs), ['write', 'allergens', 'body_parts']);
+  const bytes = schemaBytes(buildUnderstandSchema());
+  assertEquals(bytes.split('"#/$defs/allergens"').length - 1, 4, 'meal allergens/may_contain + supplement allergens/may_contain');
+  assertEquals(bytes.split('"enum":["gluten"').length - 1, 1, 'the allergen id list appears exactly once');
+  const r = buildReplySchema() as { $defs?: Record<string, JsonSchema> };
+  assertEquals(Object.keys(r.$defs ?? {}), ['allergens', 'body_parts'], 'suggested_foods/exercises use the same vocabularies');
+});
+
+Deno.test('the slimmed schemas pass the strict-mode lint and accept every golden sample (shared $defs resolve)', () => {
+  for (const s of [buildUnderstandSchema(), buildFusedSchema(), buildReplySchema()]) assertEquals(strictSchemaIssues(s), []);
+  const byChannel = (ch: string) => REGISTRY.filter((o) => o.channel === ch).map((o) => SAMPLE_WRITES[o.type]);
+  const decision = sampleDecision({
+    writes: byChannel('writes'), record_ops: byChannel('record_ops'), pending_ops: byChannel('pending_ops'), commitment_ops: byChannel('commitment_ops'),
+  });
+  assertEquals(validateJsonSchema(buildUnderstandSchema(), decision, { maxIssues: 50 }), []);
+  // …and still rejects what strict decoding could never produce.
+  const bad = sampleDecision({ writes: [{ ...SAMPLE_WRITES.meal_log, items: [{ ...(SAMPLE_WRITES.meal_log.items as object[])[0], allergens: ['fındık'] }] }] });
+  assert(validateJsonSchema(buildUnderstandSchema(), bad).length > 0, 'an allergen outside the vocabulary is not schema-valid');
+});
+
+// ─── 2b. Stage A budget (§3.3, §4.1) ─────────────────────────────────────────
+
+Deno.test('Stage A budget: generated doc + strict schema stay within the prompt budget (chars/3.6 estimate)', () => {
+  const s = stageARegistrySize();
+  const b = STAGE_A_REGISTRY_BUDGET;
+  const report = `doc ${s.doc_chars} kr ≈ ${s.doc_tokens} tok · şema ${s.schema_chars} kr ≈ ${s.schema_tokens} tok · toplam ≈ ${s.total_tokens} tok`;
+  console.log(`[Stage A kayıt öneki] ${report}`);
+  assert(s.doc_tokens <= b.doc.ceiling, `doc ${s.doc_tokens} > ${b.doc.ceiling} (§4.1 ~2,5K) — ${report}`);
+  assert(s.doc_tokens >= b.doc.floor, `doc ${s.doc_tokens} < ${b.doc.floor}: the model must see what it may write — ${report}`);
+  assert(s.schema_tokens <= b.schema.ceiling, `schema ${s.schema_tokens} > ${b.schema.ceiling} — ${report}`);
+  assert(s.total_tokens <= b.total.ceiling, `doc+schema ${s.total_tokens} > ${b.total.ceiling} — ${report}`);
+  assertEquals(approxTokens('x'.repeat(36)), 10);
+});
+
 Deno.test('understand envelope is decision-first; fused puts suggested_* before the prose', () => {
   const u = Object.keys(buildUnderstandSchema().properties as object);
   assertEquals(u, ['intent', 'safety', 'writes', 'record_ops', 'pending_ops', 'commitment_ops', 'plan_action', 'simulation', 'clarify', 'reply_route', 'self_check']);
@@ -233,22 +271,36 @@ function getPath(obj: unknown, path: string): unknown {
   return cur;
 }
 
-/** Every stored leaf is the model's, or declared derive() output, or a listed normalisation. */
+/**
+ * Every stored leaf is the model's, or declared derive() output, or a listed normalisation. A
+ * normalised path may be overridden only by derive()'s own arithmetic (a picked reference's kcal),
+ * never by an echo of the model's raw, un-normalised value (that is the 22P02 column failure).
+ */
 function assertNothingRewritten(v: WriteVerdict): void {
   assert(v.row, `${v.op}: no row`);
   const derivedPaths = new Map(leaves(v.derived));
-  const norm = new Map(v.normalized.map((n) => [n.path, n.to]));
+  const norm = new Map(v.normalized.map((n) => [n.path, n]));
   for (const [path, val] of leaves(v.row)) {
+    const n = norm.get(path);
     if (derivedPaths.has(path)) {
       assert(jsonEqual(val, derivedPaths.get(path)), `${v.op}.${path}: row ≠ derive()`);
-    } else if (norm.has(path)) {
-      assertEquals(val, norm.get(path), `${v.op}.${path}: row ≠ normalized`);
+      if (n) assert(val !== n.from, `${v.op}.${path}: derive() re-emitted the un-normalised ${n.from} (row must carry ${n.to})`);
+    } else if (n) {
+      assertEquals(val, n.to, `${v.op}.${path}: row ≠ normalized`);
     } else {
       assert(jsonEqual(val, getPath(v.args, path)), `${v.op}.${path}: ${JSON.stringify(val)} is neither the model's value nor declared`);
     }
   }
   for (const n of v.normalized) assertEquals(getPath(v.args, n.path), n.from, `${v.op}.${n.path}: normalisation 'from' must be the model's value`);
 }
+
+Deno.test('golden meal_log with fractional model numbers: the row carries the column fits (313, 16.4), derive() does not undo them', () => {
+  const ctx = sampleContext();
+  const v = validateChannelItems('writes', [sampleMeal([{ kcal: 312.5, protein_g: 16.37 }])], ctx)[0];
+  assert(v.verdict === 'COMMIT' || v.verdict === 'FLAG', JSON.stringify(v.issues));
+  assert(v.normalized.length >= 2);
+  assertNothingRewritten(v);
+});
 
 for (const o of REGISTRY) {
   Deno.test(`golden ${o.type}: sample validates and the row is args + derive (nothing else)`, () => {

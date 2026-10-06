@@ -23,20 +23,20 @@ export const REF_DIVERGENCE = 0.35;
 export const LOW_CONFIDENCE = 0.5;
 
 const itemFields = {
-  name: f.text({ max: 80, tr: 'yiyeceğin adı ("tavuk nugget", "tuz")' }),
-  as_stated: f.text({ max: 60, tr: 'miktar kullanıcının ifadesiyle: "6 adet", "2 çimdik", "yarım tabak". Kod ayrıştırmaz, aynen saklar.' }),
-  grams: f.num({ unit: 'g', nullable: true, hard: [0, 3000], decimals: 1, tr: 'SENİN gram tahminin; gerçekten bilinmiyorsa null' }),
-  kcal: f.num({ unit: 'kcal', hard: [0, 5000], decimals: 0, tr: 'SENİN kcal tahminin (pişirme dahil)' }),
+  name: f.text({ max: 80 }),
+  as_stated: f.text({ max: 60 }),
+  grams: f.num({ unit: 'g', nullable: true, hard: [0, 3000], decimals: 1, tr: 'bilinmiyorsa null' }),
+  kcal: f.num({ unit: 'kcal', hard: [0, 5000], decimals: 0, tr: 'pişirme dahil' }),
   protein_g: f.num({ unit: 'g', hard: [0, 400], decimals: 1 }),
   carbs_g: f.num({ unit: 'g', hard: [0, 800], decimals: 1 }),
   fat_g: f.num({ unit: 'g', hard: [0, 400], decimals: 1 }),
-  alcohol_g: f.num({ unit: 'g', hard: [0, 300], decimals: 1, tr: 'saf alkol gramı (bira, şarap, rakı); yoksa 0' }),
-  caffeine_mg: f.num({ unit: 'mg', hard: [0, 1500], decimals: 0, tr: 'kafein (kahve, çay, kola, enerji içeceği); yoksa 0' }),
-  preparation: f.text({ nullable: true, max: 40, tr: 'bu kalemin pişirme biçimi (kızartma, ızgara…); bilinmiyorsa null' }),
-  allergens: f.enumList(ALLERGENS, { tr: 'kalemin KESİN alerjen kaynakları' }),
-  may_contain: f.enumList(ALLERGENS, { tr: 'kaynağı belirsiz OLASI alerjenler' }),
-  reference_key: f.text({ nullable: true, tr: 'YALNIZCA REFERANS ADAYLARI’ndan ve gerçekten aynı yiyecekse; değilse null' }),
-  confidence: f.num({ hard: [0, 1], tr: 'tahmin güvenin 0–1' }),
+  alcohol_g: f.num({ unit: 'g', hard: [0, 300], decimals: 1, tr: 'saf alkol gramı (içeceğin değil); yoksa 0' }),
+  caffeine_mg: f.num({ unit: 'mg', hard: [0, 1500], decimals: 0 }),
+  preparation: f.text({ nullable: true, max: 40 }),
+  allergens: f.enumList(ALLERGENS),
+  may_contain: f.enumList(ALLERGENS),
+  reference_key: f.text({ nullable: true, tr: 'yalnız REFERANS ADAYLARI’ndan; seçtiysen grams zorunlu' }),
+  confidence: f.num({ hard: [0, 1] }),
 } as const;
 
 interface ItemNumbers { kcal: number; protein_g: number; carbs_g: number; fat_g: number; alcohol_g: number }
@@ -75,16 +75,15 @@ export const meal_log = op({
   channel: 'writes',
   envelope: 'meal_log',
   title_tr: 'Öğün',
-  when_tr: 'Kullanıcı ŞİMDİ yediğini/içtiğini (sade su hariç) bildiriyorsa.',
-  not_when_tr: 'Soru, plan, simülasyon ("yesem?") ve KAYITLAR’da zaten olan öğün kayıt değildir. Zaten kayıtlıyı anlatıyorsa status=restatement.',
+  when_tr: 'Şimdi yediği/içtiği şey (sade su hariç).',
   fields: {
     day: f.day(),
     meal_type: f.enum(MEAL_TYPES),
-    time_local: f.text({ nullable: true, format: 'hhmm', tr: 'yendiği saat 24s HH:MM; bilinmiyorsa null' }),
-    raw: f.text({ max: 300, tr: 'kullanıcının bu öğünü anlatan sözleri, aynen' }),
-    status: f.enum({ new: 'yeni yenen', restatement: 'zaten kayıtlı öğünü anlatıyor — yazılmaz' }),
-    venue: f.text({ nullable: true, max: 80, tr: 'dışarıda yendiyse mekân adı; öğünle birlikte geri alınır' }),
-    replaces: f.ref(['m'], { nullable: true, tr: 'bu öğün KAYITLAR’daki bir öğünün düzeltilmiş hâliyse onun m-ref’i' }),
+    time_local: f.text({ nullable: true, format: 'hhmm' }),
+    raw: f.text({ max: 300 }),
+    status: f.enum({ new: 'yeni yenen', restatement: 'KAYITLAR’daki öğünü yeniden anlatıyor' }, { tr: 'restatement yazılmaz' }),
+    venue: f.text({ nullable: true, max: 80 }),
+    replaces: f.ref(['m'], { nullable: true }),
     items: f.list({ min: 1, max: 20 }, itemFields),
   },
   derive: (a, ctx) => {
@@ -97,15 +96,10 @@ export const meal_log = op({
       alcohol_g: roundTo(a.items.reduce((s, it) => s + it.alcohol_g, 0), 1),
     };
   },
-  derive_tr: 'reference_key seçtiysen kalemin kcal/makrosu = gram × referans/100 (senin kcal’ın model_kcal’da saklanır); seçmediysen SENİN sayıların aynen. Toplam kcal, kafein ve alkol toplanır.',
+  derive_tr: 'reference_key seçtiysen kcal/makro = grams × referans/100 (senin kcal’ın model_kcal’da kalır); seçmediysen senin sayıların aynen.',
   noop: (a) => a.status === 'restatement' && 'zaten kayıtlı öğünü anlatıyor (restatement) — yazılmadı',
   writes: { rpc: 'w_meal_apply', tables: ['meal_logs', 'meal_log_items', 'user_venues', 'turn_writes'], undo: 'soft_delete' },
   invariants: ['allergen_consumption_check', 'budget_refresh', 'caffeine_from_items', 'meal_time_learning'],
-  examples_tr: [
-    '"6 tavuk nugget yedim" → name "tavuk nugget", as_stated "6 adet", grams ~110, kcal ~320; tavuk göğsü adayı SEÇİLMEZ',
-    '"yumurtaya 2 çimdik tuz attım" → name "tuz", as_stated "2 çimdik", grams 0.7, kcal 0 — reddedilmez',
-    '"2 dilim lahmacun" → 2 bütün lahmacun (~260 g) ya da emin değilsen clarify',
-  ],
 }).rules({
   hard: [
     rule('referans_listede_yok', 'reference_key yalnızca bu turdaki REFERANS ADAYLARI’ndan olabilir', (a, _d, ctx) => {

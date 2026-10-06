@@ -24,18 +24,16 @@ export const body_weight = op({
   channel: 'writes',
   envelope: 'weight_log',
   title_tr: 'Tartı',
-  when_tr: 'Kullanıcı bugün (ya da son 7 günde) tartıldığını ve sonucu bildiriyorsa.',
-  not_when_tr: '"3 haftadır 82,5’ta takıldım, neden?" gibi bir soru ya da eski bir hatıra tartı kaydı değildir.',
+  when_tr: 'Son 7 gündeki bir tartı sonucu (eski hatıra değil).',
   fields: {
     day: f.day(),
     kg: f.num({ unit: 'kg', hard: [20, 300], decimals: 2 }),
-    as_stated: f.text({ max: 60, tr: 'kullanıcının ifadesi aynen ("82,5")' }),
+    as_stated: f.text({ max: 60 }),
     replaces: f.ref(['d'], { nullable: true, targets: ['weight'] }),
   },
   derive: (a, ctx) => ({ date: resolveDay(a.day, ctx.today) }),
   writes: { rpc: 'w_metric_apply', tables: ['daily_metrics', 'weight_history', 'profiles', 'belief_events', 'turn_writes'], undo: 'restore_previous' },
   invariants: ['tdee_recalc_if_today', 'weight_reminder_close'],
-  examples_tr: ['"bu sabah 82,5 çıktım" → kg 82.5, day today'],
 }).rules({
   ask: [
     rule('kilo_sicramasi', 'son 14 günün tartısından max(3 kg, %4) fazla fark', (a, _d, ctx) =>
@@ -54,20 +52,19 @@ export const sleep_log = op({
   channel: 'writes',
   envelope: 'sleep_log',
   title_tr: 'Uyku',
-  when_tr: 'Kullanıcı uyuduğu süreyi bildiriyorsa. day = UYANDIĞI gün ("dün gece 7 saat uyudum" → today).',
-  not_when_tr: '"7-8 saat uyumam lazım mı?" gibi soru ya da hedef kayıt değildir.',
+  when_tr: 'Uyuduğu süre; day = UYANDIĞI gün ("dün gece 7 saat uyudum" → today).',
+  capability_tr: 'Uyku süresini ve kalitesini kaydetmek.',
   fields: {
-    day: f.day({ tr: 'uyanılan gün' }),
-    hours: f.num({ unit: 'saat', hard: [0.5, 24], plausible: [2, 14], decimals: 1, tr: 'aralık söylenirse ortası ("6-7" → 6.5)' }),
+    day: f.day(),
+    hours: f.num({ unit: 'saat', hard: [0.5, 24], plausible: [2, 14], decimals: 1, tr: 'aralıksa ortası ("6-7" → 6.5)' }),
     quality: f.enum(SLEEP_QUALITY, { nullable: true }),
-    bed_time: f.text({ nullable: true, format: 'hhmm', tr: 'yattığı saat' }),
-    wake_time: f.text({ nullable: true, format: 'hhmm', tr: 'kalktığı saat' }),
+    bed_time: f.text({ nullable: true, format: 'hhmm' }),
+    wake_time: f.text({ nullable: true, format: 'hhmm' }),
     as_stated: f.text({ max: 60 }),
     replaces: f.ref(['d'], { nullable: true, targets: ['sleep'] }),
   },
   derive: (a, ctx) => ({ date: resolveDay(a.day, ctx.today) }),
   writes: { rpc: 'w_metric_apply', tables: ['daily_metrics', 'turn_writes'], undo: 'restore_previous' },
-  examples_tr: ['"dün gece 6-7 saat uyudum, kötüydü" → hours 6.5, quality bad, day today'],
 });
 
 const MOOD_SCALES = { five: '1–5 ölçeği', ten: '1–10 ölçeği' } as const;
@@ -77,10 +74,10 @@ export const mood_log = op({
   channel: 'writes',
   envelope: 'mood_log',
   title_tr: 'Ruh hali',
-  when_tr: 'Kullanıcı ruh halini puanlıyor ya da açıkça tarif ediyorsa.',
+  when_tr: 'Ruh hali puanı ya da açık tarifi.',
   fields: {
     day: f.day(),
-    value: f.num({ hard: [1, 10], tr: 'kullanıcının puanı, söylediği ölçekte' }),
+    value: f.num({ hard: [1, 10], tr: 'kullanıcının puanı, scale ölçeğinde' }),
     scale: f.enum(MOOD_SCALES),
     note: f.text({ nullable: true, max: 280 }),
     as_stated: f.text({ max: 60 }),
@@ -90,9 +87,8 @@ export const mood_log = op({
     date: resolveDay(a.day, ctx.today),
     score: a.scale === 'ten' ? Math.max(1, Math.round(a.value / 2)) : Math.round(a.value),
   }),
-  derive_tr: 'puan 1–5’e çevrilir: 1–10 ölçeğinde değer/2 yuvarlanır (8/10 → 4); kırpma yok.',
+  derive_tr: '1–10 ölçeği 1–5’e çevrilir (8/10 → 4), kırpma yok.',
   writes: { rpc: 'w_metric_apply', tables: ['daily_metrics', 'turn_writes'], undo: 'restore_previous' },
-  examples_tr: ['"bugün 8/10 hissediyorum" → value 8, scale ten (kod 4/5 saklar)'],
 }).rules({
   hard: [
     rule('olcek_disi', '1–5 ölçeğinde değer 5’i aşamaz', (a) => a.scale === 'five' && a.value > 5, {
@@ -106,8 +102,8 @@ export const step_log = op({
   channel: 'writes',
   envelope: 'step_log',
   title_tr: 'Adım',
-  when_tr: 'Kullanıcı attığı adım sayısını bildiriyorsa. Süre verilmedikçe antrenman değildir.',
-  not_when_tr: '"günde 10 bin adım hedefim var" hedeftir (profile_set step_target), kayıt değildir.',
+  when_tr: 'Attığı adım sayısı (süre yoksa antrenman değil).',
+  not_when_tr: '"günde 10 bin adım hedefim var" (profile_set step_target).',
   fields: {
     day: f.day(),
     steps: f.num({ hard: [0, 100000], plausible: [100, 60000], decimals: 0 }),
@@ -116,5 +112,4 @@ export const step_log = op({
   },
   derive: (a, ctx) => ({ date: resolveDay(a.day, ctx.today) }),
   writes: { rpc: 'w_metric_apply', tables: ['daily_metrics', 'turn_writes'], undo: 'restore_previous' },
-  examples_tr: ['"bugün 12 bin adım attım" → steps 12000'],
 });

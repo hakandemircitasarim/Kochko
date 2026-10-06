@@ -22,7 +22,7 @@ export const memory_note = op({
       pattern: 'tekrarlayan davranış kalıbı ve tetikleyicisi',
       portion_calibration: 'kişisel porsiyon ("benim tabağım" ≈ 300 g)',
       forget: 'kullanıcının unutmamı istediği bir not',
-    }),
+    }, { explain: true }),
     text: f.text({ max: 400 }),
     food: f.text({ nullable: true, max: 60, tr: 'yalnız portion_calibration' }),
     grams: f.num({ unit: 'g', nullable: true, hard: [1, 3000], decimals: 0, tr: 'yalnız portion_calibration' }),

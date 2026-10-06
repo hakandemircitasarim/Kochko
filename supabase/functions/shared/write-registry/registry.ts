@@ -39,10 +39,14 @@ import { memory_note } from './ops/memory.ts';
 
 /**
  * Bump on ANY change to the generated schema or doc bytes (field, enum, order, description).
- * It names the strict schema ('kochko_understand_v1') and the cache key, and is stamped on every
- * ai_turn_log row.
+ * It names the strict schema ('kochko_understand_v2') and the cache key, and is stamped on every
+ * ai_turn_log row and pending_writes payload (an older hold is never applied blindly).
+ *
+ * v2 (2026-10-07): Stage A budget — no descriptions in the understand schema (semantics once, in
+ * the doc), shared $defs for allergens/body parts, compact doc with rare ops in an appendix;
+ * water quantity without a unit-blind range; protective constraint uncertainty is FLAG, not ASK.
  */
-export const SCHEMA_VERSION = 'v1';
+export const SCHEMA_VERSION = 'v2';
 
 export const REGISTRY: readonly RegOp[] = [
   // writes[] — what the user reported

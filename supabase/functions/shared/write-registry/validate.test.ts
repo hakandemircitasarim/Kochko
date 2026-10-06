@@ -4,9 +4,10 @@
  * code's verdict. The live defects that motivated v2 are the first cases.
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
-import { collectRefs, validateChannelItems, validateConfirmedHold, validateDecision, type WriteVerdict } from './validate.ts';
+import { collectRefs, freezeForHold, validateChannelItems, validateConfirmedHold, validateDecision, type WriteVerdict } from './validate.ts';
 import { SAMPLE_WRITES, sampleContext, sampleDecision, sampleMeal } from './samples.ts';
 import type { ValidationContext } from './dsl.ts';
+import { SCHEMA_VERSION } from './registry.ts';
 
 const w = (op: string, over: Record<string, unknown> = {}) => ({ ...structuredClone(SAMPLE_WRITES[op]), ...over });
 const water = (over: Record<string, unknown> = {}) => w('water_log', over);
@@ -67,6 +68,20 @@ Deno.test('water: > 1.5 L in one drink → ASK; 250 L → REJECT out_of_range (n
   assertEquals(big.verdict, 'REJECT');
   assertEquals(big.issues[0].failure_class, 'out_of_range');
   assertEquals(big.repairable, false);
+});
+
+Deno.test('water in ml: "500 ml su içtim" → COMMIT 0,50 L; 1500 ml → 1,50 L; 2000 ml → ASK; 250 000 ml (250 L) → REJECT (the litre rule is the physical check)', () => {
+  const ml500 = one('writes', water({ quantity: 500, unit: 'ml', as_stated: '500 ml' }));
+  assertEquals(ml500.verdict, 'COMMIT', JSON.stringify(ml500.issues));
+  assertEquals(ml500.row?.liters, 0.5);
+  assertEquals(ml500.row?.quantity, 500, 'the model\'s number in the user\'s unit is stored as-is');
+  assertEquals(one('writes', water({ quantity: 1500, unit: 'ml' })).verdict, 'COMMIT');
+  assertEquals(one('writes', water({ quantity: 2000, unit: 'ml' })).verdict, 'ASK');
+  const huge = one('writes', water({ quantity: 250000, unit: 'ml' }));
+  assertEquals(huge.verdict, 'REJECT');
+  assertEquals(huge.issues.filter((i) => i.level === 'hard').map((i) => i.code), ['litre_araligi']);
+  assertEquals(huge.repairable, false);
+  assertEquals(one('writes', water({ quantity: -1, unit: 'litre' })).verdict, 'REJECT', 'a negative amount is still impossible');
 });
 
 Deno.test('water: unit=other without its ml → REJECT, repairable (one repair call), and the decision asks for repair', () => {
@@ -240,6 +255,24 @@ Deno.test('lossless column fits are listed, never hidden: 45.5 dk → 46 in the 
   assertEquals(v.normalized, [{ path: 'duration_min', from: 45.5, to: 46, why_tr: 'tam sayı sütunu' }]);
 });
 
+Deno.test('column fits survive derive(): meal kcal 312.5 → 313 and protein 16.37 → 16.4 in the ROW, totals summed from the stored values', () => {
+  const v = one('writes', sampleMeal([{ kcal: 312.5, protein_g: 16.37, fat_g: 19.04, carbs_g: 20 }]));
+  assertEquals((v.args.items as Array<Record<string, unknown>>)[0].kcal, 312.5, 'args keep the model\'s raw numbers');
+  const norm = Object.fromEntries(v.normalized.map((n) => [n.path, n.to]));
+  assertEquals(norm['items[0].kcal'], 313);
+  assertEquals(norm['items[0].protein_g'], 16.4);
+  const item = (v.row?.items as Array<Record<string, unknown>>)[0];
+  assertEquals(item.kcal, 313, 'the row must carry the normalised value (integer column), never the raw 312.5');
+  assertEquals(item.protein_g, 16.4);
+  assertEquals(item.fat_g, 19);
+  assertEquals(v.row?.total_kcal, 313);
+  // A reference the model picked still overrides kcal by declared arithmetic; model_kcal is the stored (integer) model value.
+  const r = one('writes', sampleMeal([{ name: 'lahmacun', as_stated: '2 adet', grams: 260, kcal: 620.4, protein_g: 26, carbs_g: 78, fat_g: 23, reference_key: 'lahmacun', allergens: ['gluten'], may_contain: [] }]));
+  const ri = (r.row?.items as Array<Record<string, unknown>>)[0];
+  assertEquals(ri.kcal, 624);
+  assertEquals(ri.model_kcal, 620);
+});
+
 Deno.test('mood: 8/10 → 4/5 by declared scaling (no clamp); 7 on a 1–5 scale → REJECT repairable', () => {
   assertEquals(one('writes', w('mood_log')).row?.score, 4);
   const bad = one('writes', w('mood_log', { value: 7, scale: 'five' }));
@@ -329,8 +362,25 @@ Deno.test('constraint_add: other person → coach note only; unknown severity �
   const unk = one('writes', w('constraint_add', { severity: 'unknown' }), sampleContext({ user_message: 'Fındık alerjim var' }));
   assertEquals(unk.verdict, 'FLAG');
   assertEquals(unk.derived.treat_as_severe, true);
+});
+
+Deno.test('§7.4: uncertainty in a PROTECTIVE declaration stores it (FLAG), never holds it — paraphrased quote, injury without a region', () => {
   const para = one('writes', w('constraint_add', { evidence_quote: 'fındığa alerjim olduğunu söyledi' }), sampleContext({ user_message: 'Fındık alerjim var' }));
-  assertEquals(para.verdict, 'ASK', 'protection is never dropped for a paraphrase');
+  assertEquals(para.verdict, 'FLAG', 'protection is never dropped (or postponed) for a paraphrase');
+  assert(para.row, 'the allergy reaches the spine this turn, as in v1');
+  assertEquals(para.derived.spine, true);
+  assert(codes(para).includes('koruyucu_beyan_teyidi'));
+  const knee = one('writes', w('constraint_add', {
+    kind: 'injury', subject_id: 'injury', display_tr: 'sakatlık', severity: 'moderate', body_parts: [], evidence_quote: 'sakatlandım',
+  }), sampleContext({ user_message: 'antrenmanda sakatlandım' }));
+  assertEquals(knee.verdict, 'FLAG');
+  assert(knee.row);
+  assertEquals(knee.derived.region_unknown, true, 'the filters can treat an unplaced injury strictly until the coach asks');
+  assert(codes(knee).includes('bolge_belirsiz'));
+  // A non-protective shape with a paraphrase is still a (repairable) REJECT: nothing protective is lost.
+  const kid = one('writes', w('constraint_add', { whose: 'other_person', evidence_quote: 'kızının alerjisi' }), sampleContext({ user_message: 'kızımın yumurta alerjisi var' }));
+  assertEquals(kid.verdict, 'REJECT');
+  assertEquals(kid.repairable, true);
 });
 
 Deno.test('mem#2: removing a severe (or unknown-severity) allergen is two-step → ASK; a moderate knee injury is retracted', () => {
@@ -402,6 +452,70 @@ Deno.test('confirmed hold: the suspicious correction commits after the user\'s y
   assert(two.issues.some((i) => i.code === 'tek_oge_bekleniyor'));
 });
 
+Deno.test('mem#2 two-step removal COMPLETES: retract c3 → ASK → user\'s yes next turn → FLAG with a row (the quote was checked when the hold was made)', () => {
+  for (const [target, quote] of [['c3', 'süt alerjim geçti'], ['c1', 'fıstık alerjim geçti']] as const) {
+    const held = one('writes', w('constraint_retract', { target, evidence_quote: quote }), sampleContext({ user_message: quote }));
+    assertEquals(held.verdict, 'ASK', target);
+    const ok = validateConfirmedHold(held.hold_op!, held.hold_args!, sampleContext({ user_message: 'evet eminim kaldır', today: '2026-10-07', now_iso: '2026-10-07T09:00:00Z' }))!;
+    assertEquals(ok.verdict, 'FLAG', `${target}: ${JSON.stringify(ok.issues)}`);
+    assert(ok.row, `${target}: a confirmed removal produces the row to write`);
+    assert(ok.issues.some((i) => i.code === 'iki_adimli_kaldirma' && i.tr.startsWith('kullanıcı onayladı')));
+    assert(!ok.issues.some((i) => i.code === 'alinti_dogrulanamadi'), 'the evidence quote is not re-read against "evet"');
+  }
+  // State rules are still re-checked: a removal target that is no longer shown → REJECT.
+  const held = one('writes', w('constraint_retract', { target: 'c3', evidence_quote: 'süt alerjim geçti' }), sampleContext({ user_message: 'süt alerjim geçti' }));
+  assertEquals(validateConfirmedHold(held.hold_op!, held.hold_args!, sampleContext({ refs: {} }))!.verdict, 'REJECT');
+  // An identity change held for materiality commits on yes (as_stated is not re-read against "evet").
+  const id = one('writes', { op: 'profile_set', subject: 'self', changes: [{ field: 'height_cm', value: '168', unit: 'cm', list_op: null, as_stated: 'boyum 168' }] },
+    sampleContext({ user_message: 'boyum 168' }));
+  assertEquals(id.verdict, 'ASK');
+  assertEquals(validateConfirmedHold(id.hold_op!, id.hold_args!, sampleContext({ user_message: 'evet' }))!.verdict, 'FLAG');
+});
+
+Deno.test('holds freeze their day: 2 L water held on 10-06 and confirmed on 10-07 is written to 10-06 (hold_args carry the resolved date)', () => {
+  const held = one('writes', water({ quantity: 2, unit: 'litre', as_stated: '2 litre' }));
+  assertEquals(held.verdict, 'ASK');
+  assertEquals(held.args.day, 'today', 'args stay exactly what the model sent');
+  assertEquals(held.hold_args?.day, '2026-10-06');
+  const next = sampleContext({ today: '2026-10-07', now_iso: '2026-10-07T00:30:00Z', user_message: 'evet tek seferde' });
+  const ok = validateConfirmedHold(held.hold_op!, held.hold_args!, next)!;
+  assertEquals(ok.verdict, 'FLAG');
+  assertEquals(ok.row?.date, '2026-10-06');
+  // Nested day tokens (a suspicious correction's patch) are frozen too.
+  const sus = one('record_ops', w('record_update', { basis: 'suspicious', evidence_quote: null, patch: sampleMeal([{}], { day: 'yesterday' }) }), sampleContext({ user_message: 'bugün ne yesem?' }));
+  assertEquals(sus.verdict, 'ASK');
+  assertEquals((sus.hold_args?.patch as Record<string, unknown>).day, '2026-10-05');
+  assertEquals(freezeForHold('water_log', water(), '2026-10-06').day, '2026-10-06');
+  // A hold persisted with a relative day can no longer land on the wrong day: it is refused, loudly.
+  const raw = validateConfirmedHold('water_log', water({ quantity: 2, unit: 'litre' }), next)!;
+  assertEquals(raw.verdict, 'REJECT');
+  assert(raw.issues.some((i) => i.code === 'bekletme_gunu_goreli'));
+  assertEquals(raw.repairable, false);
+  // Non-held verdicts carry no hold payload.
+  assertEquals(one('writes', water()).hold_args, null);
+});
+
+Deno.test('suspicious record is asked ONCE: a declined suspicion on the same ref → REJECT (no new question); a user correction still commits', () => {
+  const refs = { ...sampleContext().refs, m12: { ...sampleContext().refs.m12, suspicion_declined: true } };
+  const again = one('record_ops', w('record_update', { basis: 'suspicious', evidence_quote: null }), sampleContext({ refs, user_message: 'bugün ne yesem?' }));
+  assertEquals(again.verdict, 'REJECT');
+  assert(codes(again).includes('supheli_zaten_soruldu'));
+  assertEquals(again.repairable, false);
+  const user = one('record_ops', w('record_update'), sampleContext({ refs, user_message: 'perşembe akşamki nugget 1700 olmuş, 6 küçük nuggetti 100 gram falan' }));
+  assertEquals(user.verdict, 'COMMIT');
+});
+
+Deno.test('§4.4(3) no later write on the same field: update{d6} and step_log{replaces:d6} → REJECT conflict', () => {
+  const upd = one('record_ops', { op: 'update', ref: 'd6', basis: 'user_correction', reason: 'adım yanlış', evidence_quote: '5 bin adım', patch: w('step_log', { steps: 5000, as_stated: '5 bin', replaces: null }) },
+    sampleContext({ user_message: 'yok 5 bin adım attım' }));
+  assertEquals(upd.verdict, 'REJECT');
+  assert(codes(upd).includes('sonraki_yazma_var'));
+  const rep = one('writes', w('step_log', { steps: 5000, as_stated: '5 bin', replaces: 'd6' }));
+  assertEquals(rep.verdict, 'REJECT');
+  assert(codes(rep).includes('sonraki_yazma_var'));
+  assertEquals(rep.issues.find((i) => i.code === 'sonraki_yazma_var')?.failure_class, 'conflict');
+});
+
 Deno.test('collectRefs: every turn-scoped ref in a write (incl. inside a patch) — the caller resolves them before holding', () => {
   assertEquals(collectRefs('record_update', w('record_update', { patch: sampleMeal([{}], { replaces: 'm12' }) })), [
     { path: 'ref', ref: 'm12' },
@@ -427,6 +541,17 @@ Deno.test('plan_action: approve needs the rendered draft ref; generate needs pla
   assertEquals(validateDecision(sampleDecision({ plan_action: { op: 'approve', plan_type: null, draft_ref: null } }), sampleContext()).plan?.verdict, 'REJECT');
   assertEquals(validateDecision(sampleDecision({ plan_action: { op: 'approve', plan_type: null, draft_ref: 'dft9' } }), sampleContext()).plan?.verdict, 'REJECT');
   assertEquals(validateDecision(sampleDecision({ plan_action: { op: 'generate', plan_type: null, draft_ref: null } }), sampleContext()).plan?.verdict, 'REJECT');
+});
+
+Deno.test('json_object fallback: plan_action null (not an object) is reported as a type error and asks for repair, never passes silently', () => {
+  const d = validateDecision(sampleDecision({ plan_action: null }), sampleContext());
+  assertEquals(d.plan?.verdict, 'REJECT');
+  assert(d.plan?.issues.some((i) => i.code === 'tip_hatasi'));
+  assertEquals(d.repair.needed, true);
+  // Absent is "missing", reported once at envelope level.
+  const { plan_action: _p, ...rest } = sampleDecision();
+  const absent = validateDecision(rest, sampleContext());
+  assert(absent.decision_issues.some((i) => i.code === 'alan_eksik' && i.path === 'plan_action'));
 });
 
 Deno.test('final2#9: an ED signal counts only with a verbatim USER quote; illness vomiting never escalates', () => {
@@ -467,5 +592,5 @@ Deno.test('json_object fallback: a malformed envelope is reported, not guessed',
 Deno.test('counts and schema_version are reported for the turn ledger', () => {
   const d = validateDecision(sampleDecision({ writes: [water(), water({ quantity: 2, unit: 'litre' }), water({ quantity: 250, unit: 'litre' })] }), sampleContext());
   assertEquals(d.counts, { COMMIT: 1, FLAG: 0, ASK: 1, REJECT: 1 });
-  assertEquals(d.schema_version, 'v1');
+  assertEquals(d.schema_version, SCHEMA_VERSION);
 });

@@ -48,51 +48,55 @@ export const REPLY_CONTRACTS = {
   emergency: 'acil tıbbi durum (112)',
 } as const;
 
-/** Head of the understanding envelope: before the write arrays. */
+/**
+ * Head of the understanding envelope: before the write arrays. Field notes (`tr`) here are only
+ * what the Stage A rules (ai-chat/v2/understand-prompt.ts: intent, safety reading, self-check,
+ * routing) do not already say — the understand schema carries no descriptions.
+ */
 export const ENVELOPE_HEAD = {
   intent: f.obj({
     primary: f.enum(INTENT_PRIMARY),
-    is_hypothetical: f.bool({ tr: 'mesajın ana kısmı varsayım mı' }),
-    about_other_person: f.bool({ tr: 'mesaj başkası hakkında mı (kızı, arkadaşı…)' }),
+    is_hypothetical: f.bool(),
+    about_other_person: f.bool(),
   }),
   safety: f.obj({
-    acute_medical: f.bool({ tr: 'şu an acil tıbbi durum var mı (anafilaksi, göğüs ağrısı, nefes darlığı…)' }),
-    self_harm: f.bool({ tr: 'kendine zarar verme düşüncesi/niyeti var mı' }),
+    acute_medical: f.bool(),
+    self_harm: f.bool(),
     ed_signal: f.obj({
-      category: f.enum(ED_CATEGORIES),
+      category: f.enum(ED_CATEGORIES, { tr: 'illness_vomiting = hastalık/zehirlenme kusması, YB sinyali değil' }),
       severity: f.enum({ low: 'düşük', medium: 'orta', high: 'yüksek' }),
-      evidence_quote: f.text({ max: 160, tr: 'KULLANICININ mesajından AYNEN alıntı (koçun sözleri sayılmaz)' }),
+      evidence_quote: f.text({ max: 160 }),
     }, { nullable: true }),
     tripwire_reading: f.obj({
-      benign: f.bool({ tr: 'tetik kelimesi zararsız anlamda mı ("bayıldım" = çok sevdim)' }),
+      benign: f.bool(),
       reason: f.text({ max: 200 }),
-    }, { nullable: true, tr: 'yalnız TETİK olgusu verildiyse doldur; yoksa null' }),
+    }, { nullable: true, tr: 'yalnız TETİK olgusu verildiyse; yoksa null' }),
   }),
 } as const satisfies Fields;
 
 /** Tail of the understanding envelope: after the write arrays. */
 export const ENVELOPE_TAIL = {
   plan_action: f.obj({
-    op: f.enum(PLAN_OPS),
+    op: f.enum(PLAN_OPS, { tr: 'plan işlemi yoksa none (taslak açıkken alakasız tur da none)' }),
     plan_type: f.enum({ diet: 'beslenme', workout: 'antrenman' }, { nullable: true }),
-    draft_ref: f.ref(['dft'], { nullable: true, tr: 'açık taslağın dft-ref’i' }),
+    draft_ref: f.ref(['dft'], { nullable: true }),
   }),
   simulation: f.obj({
     food: f.text({ max: 80 }),
     kcal_estimate: f.num({ unit: 'kcal', hard: [0, 5000] }),
-    target_day: f.date({ past_days: 0, future_days: 7, tr: 'hangi gün yenecek, YYYY-MM-DD' }),
-  }, { nullable: true, tr: '"yesem ne olur?" türü varsayım; kod bütçe sayısını hesaplar' }),
+    target_day: f.date({ past_days: 0, future_days: 7 }),
+  }, { nullable: true, tr: '"yesem ne olur?" varsayımı (kod bütçe sayısını hesaplar); yoksa null' }),
   clarify: f.obj({
-    topic: f.text({ max: 160, tr: 'neyin belirsiz olduğu' }),
-    candidate_refs: f.textList({ max: 5, tr: 'olası kayıtların ref’leri (yalnız KAYITLAR’dan)' }),
+    topic: f.text({ max: 160 }),
+    candidate_refs: f.textList({ max: 5 }),
   }, { nullable: true }),
   reply_route: f.obj({
     contract: f.enum(REPLY_CONTRACTS),
     effort_hint: f.enum({ low: 'kısa/sade', medium: 'düşünmeyi gerektiren' }),
   }),
   self_check: f.obj({
-    reported_new_facts: f.bool({ tr: 'kullanıcı kaydedilebilecek yeni bir şey bildirdi mi' }),
-    not_written_reason: f.text({ nullable: true, max: 200, tr: 'bildirdiği hâlde yazmadıysan neden' }),
+    reported_new_facts: f.bool(),
+    not_written_reason: f.text({ nullable: true, max: 200 }),
   }),
 } as const satisfies Fields;
 

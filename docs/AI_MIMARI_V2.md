@@ -150,6 +150,8 @@ Tahminler 2026-10-04 bench'ine (terra:low, 16,5K prompt, öğün turu 3,2–4,1 
 | Plan | A ~2 sn + plan şeması 22–45 sn (json regen yok) |
 | Onay | 31 sn → ~3–4 sn |
 
+**Ölçüm (2026-10-07, `write-registry/budget.ts`, karakter/3,6 tahmini):** kayıttan üretilen önek = Türkçe doküman ≈2,7K + strict şema ≈4,5K token (şemada açıklama yok; anlam bir kez, dokümanda). Şema da global önbellekli öneke girer; Stage A istemi böylece ~10–11K olur (≈9K önbellekte, ~1,5–2K tur girdisi). `registry.test.ts` bütçe testi doküman ≤2,8K, şema ≤4,7K, toplam ≤7,4K tavanlarını aşınca kırılır. Gecikme/maliyet satırları bu önekle gölgede ve Faz 2'den önce tek canlı `strictFormat('understand')` probe'u ile doğrulanacak.
+
 **Maliyet** (terra $2 giriş / $0,2 önbellek / $12 çıktı, 1M token başına): A ≈ $0,009, B ≈ $0,009, sıradan tur ≈ $0,017–0,019. Bugün ≈ $0,0136 + zorla-çıkarmalar. Sıradan turda **+%25–40**. Dengeleyen kalemler: plan-yakalama israfı biter (yakalanan tur başına $0,04–0,07), onay regen'i biter, Stage A öneki tüm kullanıcılarda ortak önbellek (yeni kullanıcı sıcak başlar). Stage A ileride eval'i geçerse luna'ya iner ve v2 bugünden ucuza gelir.
 
 ---
@@ -167,7 +169,7 @@ Tahminler 2026-10-04 bench'ine (terra:low, 16,5K prompt, öğün turu 3,2–4,1 
 | `vocab.ts` | Alerjen taksonomisi (AB/TR 14 + sert kabuklu alt türleri + `custom:<slug>`), vücut bölgesi id'leri ve TR etiketleri (`knee:'diz'`), hedef tipi, meal_type, workout_type, cinsiyet, aktivite ve profil enum'ları. Şunların yerini alır: `PROFILE_ENUM_WHITELIST`, `CANONICAL_GOAL_TYPES`, `VALID_MEAL_TYPES`, TR→EN sakatlık haritaları, goal_suggestion'ın TR anahtarları. |
 | `ops/*.ts` | Alan başına bir dosya (§4.4) |
 | `schema.ts` | → strict json_schema. `writes[]` alanı `op` ile ayrışan `anyOf`; tüm alanlar required, opsiyoneller nullable, `additionalProperties:false`, alanlar kayıt sırasıyla yazılır. Tur başına dinamik enum YOK (ref'ler string, kod denetler). |
-| `doc.ts` | → Stage A'nın önbellekli önekine giren ~2,5K token'lık doğal Türkçe "YAZILABİLİR KAYITLAR" dokümanı |
+| `doc.ts` | → Stage A'nın önbellekli önekine giren ~2,5K token'lık doğal Türkçe "YAZILABİLİR KAYITLAR" dokümanı. Alan anlamlarının TEK yeri (şema açıklama taşımaz); yalnız şemanın ve anlama kurallarının söylemediğini söyler; seyrek op'lar (tahlil, tarif, dönemsel durum, kalori programı…) tek satırlık ekte. Boyut `budget.ts` ile test edilir. |
 | `capabilities.ts` | → Stage B için "bu uygulamada gerçekten yapabildiklerin" listesi. "hedefleri zorlaştırıyorum", "%10 düşürdüm", "grafikle destekle" gibi boş vaatler biter. |
 | `validate.ts` | → çalışma zamanı validatoru (T5) |
 | `adapter.ts` | → Faz 3'te eski `executeActions` yazıcılarına köprü (override dalları `v2` bayrağıyla kapalı) |
@@ -202,7 +204,7 @@ export const water_log = op({ type: 'water_log', envelope: 'water_log',
   fields: {
     day: f.day(),
     as_stated: f.text({ max: 60, tr: 'kullanıcının ifadesi aynen ("1 bardak", "koca şişe")' }),
-    quantity: f.num({ hard: [0, 50] }),
+    quantity: f.num(),                      // birimsiz aralık YOK: "500" litrede imkânsız, ml'de olağan; fiziksel denetim türetilen litrede
     unit: f.enum({ ml:'ml', litre:'litre', bardak:'bardak ≈200 ml', su_bardagi:'su bardağı ≈200 ml',
       cay_bardagi:'çay bardağı ≈100 ml', kupa:'kupa ≈250 ml', sise_330:'küçük şişe', sise_500:'yarım litrelik',
       sise_1500:'büyük şişe', other:'listede yok → other_ml_each doldur' }),
@@ -257,7 +259,8 @@ export const record_ops = {
   delete:          op({ fields: { ref: f.ref('*'), reason: f.text({ max: 120 }) }, envelope: 'undo' }),
   update:          op({ fields: { ref: f.ref('*'), patch: 'aynı tipin kayıt şekli' } }), // eskisini soft-delete + yenisi, tek işlem
   restore_metric:  op({ fields: { ref: f.ref('d') } }),
-  hard: [refInRenderedSet(), refOwned(), withinDays(7), notAlreadyUndone(), noLaterWriteOnSameField()],
+  hard: [refInRenderedSet(), refOwned(), withinDays(7), notAlreadyUndone(), noLaterWriteOnSameField()],  // log op'larının replaces'ı da
+  // update{basis:suspicious}: SOR; ref'te suspicion_declined (bir kez sorulmuş, onaylanmamış) varsa REDDET — iki kez sorulmaz
   when_tr: 'Hangi kayıt olduğundan emin değilsen YAZMA; clarify{candidate_refs} ile sor.',
 };
 ```
@@ -275,7 +278,9 @@ export const constraint_add = op({
     severity: f.enum({ mild:'hafif', moderate:'orta', severe:'ciddi', unknown:'bilinmiyor' }),
     body_parts: f.enumList(BODY_PARTS), note: f.text({ max: 280 }),
     evidence_quote: f.text({ max: 160, tr: 'kullanıcının mesajından AYNEN alıntı' }) },
-  hard: [quoteIsVerbatimInUserMessage(), whoseSelfForSpine(), polarityRequired()],
+  hard: [quoteIsVerbatimInUserMessage(), whoseSelfForSpine(), polarityRequired()],   // koruyucu beyan (self+has) hariç:
+  flag: ['self+has alıntısı tutmuyor → yine KAYDET + koç bir kez teyit eder (koruma ertelenmez, §7.4)',
+         'sakatlıkta bölge yok → KAYDET, region_unknown: bölge netleşene kadar sıkı filtre'],
   safety: ['severity=unknown → netleşene kadar her filtrede ciddi sayılır + bir kez sor'],
   writes: { fn: 'syncConstraint', note: 'append_with_history' },   // not artık ezilmez
 });
@@ -314,7 +319,9 @@ Hedef yazmaları (`goal_type`, hedef kilo, `goal_reason`) ve `goal_suggestion` t
 
 ## 5. Doğrulama politikası
 
-**Kod anlamı değil yapıyı denetler.** Her kural, strict şemanın ürettiği tipli alanlar üzerinde çalışır. Kullanıcı metnine bakılan yalnızca iki istisna vardır: T2 güvenlik tetikleri ve YB kanıt alıntısının alt dize denetimi.
+**Kod anlamı değil yapıyı denetler.** Her kural, strict şemanın ürettiği tipli alanlar üzerinde çalışır. Kullanıcı metnine bakılan yalnızca iki istisna vardır: T2 güvenlik tetikleri ve **kelimesi kelimesine alıntı denetimi** (alt dize; regex değil, yalnız büyük/küçük harf, tırnak ve boşluk katlanır).
+
+Alıntı denetiminin izinli yerleri (kayıt tek tek beyan eder, `rule(..., { evidence: true })`): YB sinyali `evidence_quote` · `constraint_add` / `constraint_retract` `evidence_quote` · `data_erase_request` `evidence_quote` · `record_update{basis:user_correction}` `evidence_quote` (tutmazsa SOR) · kimlik alanlarının (`birth_year`, `height_cm`, `gender`) `as_stated`'i (tutmazsa SOR; "kadın arkadaşım" cinsiyet yazmaz). Koruyucu beyan (`whose=self`, `polarity=has`) alıntı tutmasa da **kaydedilir** (İŞARETLE): koruma alıntı yüzünden ertelenmez. Bu denetimlerin SOR oranı gölgede (Faz 2) izlenir. Onaylanan bir bekletme yeniden denetlenirken alıntı kuralları "evet" mesajına karşı çalıştırılmaz (bekletme anında karar verilmiştir); durum kuralları (ref, YB kademesi) yeniden çalışır.
 
 ### 5.1 Ne denetlenir
 
@@ -335,7 +342,7 @@ Hedef yazmaları (`goal_type`, hedef kilo, `goal_reason`) ve `goal_suggestion` t
 |---|---|---|
 | **COMMIT** | Model ne yazdıysa o + beyan edilmiş `derive()`. `as_stated` saklanır. | "1 bardak su" → +0,20 L |
 | **FLAG** | Aynen kaydedilir; şüphe makbuz meta'sına ve Stage B olgusuna ("bu tahmin belirsiz") yazılır. Ekstra çağrı yok, blok yok, yeniden yazım yok. | Düşük güvenli kalem, makro uyumsuzluğu. Tek meyvede tetiklenen "<50 kcal alışılmadık" uyarısı (final2#14) kalkar, yerini fiziksel yoğunluk bandı alır. |
-| **ASK (hold)** | Yazılmaz. `pending_writes` tablosuna gider (`p#`, 48 sa TTL). Stage B tek soruyu kendi sözleriyle sorar. Sonraki turda Stage A `confirm{p#}` / `discard` / `modify` üretir; kod yalnızca onayda yazar. **Güvenlik bekletmelerinde** (alerjen/sakatlık kaldırma, kimlik/cinsiyet, bant değişimi, hesap silme) koç sormazsa kod şablon soru ekler. | Günün toplamı kayıttan az · "kayıtlarımda 35 yaş var, 12 dedin" · maintenance_start · bandı > 300 kcal oynatan hedef · ciddi alerjen kaldırma · "verilerimi sil" (onayda privacy.service tombstone'u çalışır, ai_summary satırı silinmez) |
+| **ASK (hold)** | Yazılmaz. `pending_writes` tablosuna gider (`p#`, 48 sa TTL; yük `hold_args`: göreli gün bekletme anındaki tarihe dondurulur, gece yarısından sonraki "evet" doğru güne yazar). Stage B tek soruyu kendi sözleriyle sorar. Sonraki turda Stage A `confirm{p#}` / `discard` / `modify` üretir; kod yalnızca onayda yazar. **Güvenlik bekletmelerinde** (alerjen/sakatlık kaldırma, kimlik/cinsiyet, bant değişimi, hesap silme) koç sormazsa kod şablon soru ekler. | Günün toplamı kayıttan az · "kayıtlarımda 35 yaş var, 12 dedin" · maintenance_start · bandı > 300 kcal oynatan hedef · ciddi alerjen kaldırma · "verilerimi sil" (onayda privacy.service tombstone'u çalışır, ai_summary satırı silinmez) |
 | **REJECT** | Yazılmaz. `ok:false` + `failure_class` (istemci kırmızı rozet gösterir). Stage B gerekçeyi olgu olarak alıp dürüstçe söyler. Model mevcut bilgiyle düzeltebiliyorsa (unit=other + ml yok) önce **tek** onarım çağrısı yapılır. | 250 L su · listede olmayan ref · gelecek tarih · YB amber'de kalori açığı · klinik tabanın altı |
 
 **Atomiklik:** Her yazma, hatta her profil alanı bağımsızdır. Bugünkü tek `profiles.update` toplu yazması kalkar; bir kötü değer artık 60 alanı birden düşürmez.

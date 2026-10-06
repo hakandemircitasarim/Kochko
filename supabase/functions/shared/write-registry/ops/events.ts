@@ -15,18 +15,17 @@ export const life_event = op({
   channel: 'writes',
   envelope: 'life_event',
   title_tr: 'Yaklaşan olay',
-  when_tr: 'Kullanıcı ileri tarihli, motivasyon veren bir olay söylüyorsa ("3 hafta sonra kardeşimin düğünü").',
-  not_when_tr: 'Geçmiş olaylar ve tarihsiz istekler kayıt değildir.',
+  when_tr: 'İleri tarihli, motive eden bir olay ("3 hafta sonra kardeşimin düğünü").',
+  not_when_tr: 'geçmiş ya da tarihsiz olaylar.',
   fields: {
-    title: f.text({ max: 80, tr: 'kısa başlık ("kardeşinin düğünü")' }),
+    title: f.text({ max: 80 }),
     event_type: f.enum(LIFE_EVENT_TYPES),
-    event_date: f.date({ past_days: 0, future_days: 730, tr: 'verilen yerel tarihe göre hesapla, YYYY-MM-DD' }),
+    event_date: f.date({ past_days: 0, future_days: 730 }),
     note: f.text({ nullable: true, max: 200 }),
-    replaces: f.ref(['e'], { nullable: true, tr: 'mevcut bir olayın tarihi/adı değiştiyse onun e-ref’i' }),
+    replaces: f.ref(['e'], { nullable: true }),
   },
   writes: { rpc: 'w_life_event_apply', tables: ['life_events', 'turn_writes'], undo: 'soft_delete' },
   invariants: ['countdown_context'],
-  examples_tr: ['"15 Kasım’da mezuniyetim var" → event_type graduation, event_date 2026-11-15'],
 });
 
 export const lab_value = op({
@@ -34,22 +33,22 @@ export const lab_value = op({
   channel: 'writes',
   envelope: 'lab_value',
   title_tr: 'Tahlil sonucu',
-  when_tr: 'Kullanıcı kan tahlili vb. sonuçlarını paylaşıyorsa (sayılı ya da "D vitaminim düşük çıktı").',
+  when_tr: 'Tahlil sonuçları (sayılı ya da "D vitaminim düşük çıktı").',
   fields: {
-    measured_at: f.date({ nullable: true, past_days: 3650, future_days: 0, tr: 'tahlil tarihi biliniyorsa' }),
+    measured_at: f.date({ nullable: true, past_days: 3650, future_days: 0 }),
     items: f.list({ min: 1, max: 30 }, {
-      parameter: f.text({ max: 40, tr: 'snake_case id (d_vitamini, b12, ferritin, tsh, hba1c, ldl…)' }),
-      value: f.num({ nullable: true, hard: [0, 100000], tr: 'sayı söylenmediyse null' }),
-      unit: f.text({ nullable: true, max: 20, tr: 'ng/mL, mg/dL…; bilinmiyorsa null' }),
+      parameter: f.text({ max: 40, tr: 'snake_case (d_vitamini, b12, ferritin…)' }),
+      value: f.num({ nullable: true, hard: [0, 100000], tr: 'sayı yoksa null' }),
+      unit: f.text({ nullable: true, max: 20 }),
       status: f.enum(LAB_STATUS),
       reference_min: f.num({ nullable: true }),
       reference_max: f.num({ nullable: true }),
       reference_source: f.enum({ report: 'rapordaki aralık', typical: 'genel bilinen aralık' }, { nullable: true }),
-      note: f.text({ nullable: true, max: 300, tr: 'doktor yorumu ya da nitel bulgu' }),
+      note: f.text({ nullable: true, max: 300 }),
     }),
   },
   writes: { rpc: 'w_lab_apply', tables: ['lab_values', 'turn_writes'], undo: 'soft_delete' },
-  examples_tr: ['"D vitaminim 12 çıktı, doktor düşük dedi" → parameter d_vitamini, value 12, unit ng/mL, status low'],
+  tier: 'rare',
 }).rules({
   hard: [
     rule('bos_tahlil', 'her kalemde değer, durum (unknown dışı) ya da not olmalı', (a) =>
@@ -63,13 +62,13 @@ export const recipe_save = op({
   channel: 'writes',
   envelope: 'save_recipe',
   title_tr: 'Tarif',
-  when_tr: 'Kullanıcı bir tarifi kaydetmek istiyorsa ("bu tarifi kaydet").',
+  when_tr: 'Bir tarifi kaydetme isteği.',
   fields: {
     title: f.text({ max: 120 }),
     category: f.enum(RECIPE_CATEGORIES),
     ingredients: f.list({ min: 1, max: 40 }, {
       name: f.text({ max: 60 }),
-      as_stated: f.text({ max: 60, tr: 'miktar ("2 yemek kaşığı")' }),
+      as_stated: f.text({ max: 60 }),
     }),
     instructions: f.text({ max: 3000 }),
     kcal: f.num({ unit: 'kcal', nullable: true, hard: [0, 10000], decimals: 0, tr: 'porsiyon başına' }),
@@ -78,4 +77,5 @@ export const recipe_save = op({
     servings: f.num({ nullable: true, hard: [1, 50], decimals: 0 }),
   },
   writes: { rpc: 'w_recipe_apply', tables: ['saved_recipes', 'turn_writes'], undo: 'none' },
+  tier: 'rare',
 });

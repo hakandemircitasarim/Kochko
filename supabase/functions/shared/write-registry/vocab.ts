@@ -32,6 +32,22 @@ export const ALLERGENS = {
 } as const;
 export type AllergenId = keyof typeof ALLERGENS;
 
+/**
+ * Stage A doc hints, ONLY for allergen ids whose Turkish word is not an obvious translation
+ * (yer fıstığı vs antep fıstığı, krill → crustacean, acı bakla → lupin). The rest (egg, milk,
+ * sesame, hazelnut…) the model maps itself; listing their Turkish names would only spend the
+ * cached-prefix budget (§4.1). Labels for users stay in ALLERGENS.
+ */
+export const ALLERGEN_DOC_HINTS: Readonly<Partial<Record<AllergenId, string>>> = {
+  gluten: 'buğday, arpa, çavdar, yulaf',
+  crustacean: 'karides, yengeç, ıstakoz, krill',
+  peanut: 'yer fıstığı',
+  tree_nut: 'sert kabuklu, türü belirsiz',
+  pistachio: 'antep fıstığı',
+  lupin: 'acı bakla',
+  mollusc: 'midye, kalamar, ahtapot',
+};
+
 /** Body regions an injury can affect / an exercise can load (ids = guardrails INJURY_KEYWORDS keys). */
 export const BODY_PARTS = {
   knee: 'diz',

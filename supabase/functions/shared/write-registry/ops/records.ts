@@ -37,16 +37,15 @@ export const record_delete = op({
   channel: 'record_ops',
   envelope: 'undo',
   title_tr: 'Kaydı geri al/sil',
-  when_tr: 'Kullanıcı KAYITLAR’daki belirli bir kaydın geri alınmasını/silinmesini istiyorsa ("yok o yanlış, geri al" → az önceki su kaydının d-ref’i).',
-  not_when_tr: '"Nasıl düzeltebilirim?" sorudur, hiçbir şey silinmez. Hangi kayıt olduğundan emin değilsen YAZMA, clarify{candidate_refs} ile sor. Kısıtlar constraint_retract, bekleyenler pending_ops, plan taslağı plan_action ile kapanır.',
+  when_tr: 'KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("yok o yanlış, geri al" → az önceki su yazmasının d-ref’i).',
+  not_when_tr: 'kısıt (constraint_retract), bekleyen (pending_ops), plan taslağı (plan_action).',
   fields: {
     ref: f.ref(DELETABLE_KINDS),
-    reason: f.text({ max: 120, tr: 'neden geri alındığı, kısaca' }),
+    reason: f.text({ max: 120 }),
   },
   capability_tr: 'Gösterilen belirli bir kaydı geri almak (yalnızca son 7 gün).',
   writes: { rpc: 'w_record_undo', tables: ['turn_writes'], undo: 'none' },
   invariants: ['soft_delete_only', 'group_side_effects_undone'],
-  examples_tr: ['su kaydından sonra "yok o yanlış, geri al" → ref d3 (yalnız o su yazması)'],
 }).rules({
   hard: [tooOldRule(), laterWriteRule()],
 });
@@ -58,29 +57,31 @@ export const record_update = op({
   // The client badge follows the corrected record type; validate.ts takes it from the patch.
   envelope: 'undo',
   title_tr: 'Kaydı düzelt',
-  when_tr: 'KAYITLAR’daki bir kaydın sayıları/içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (ör. 6 nugget için 1708 kcal) basis=suspicious — o zaman kod sorar, onaysız değiştirmez.',
-  not_when_tr: 'Yeni bir öğün ekleme değildir (çift sayım olur). Emin değilsen clarify.',
+  when_tr: 'KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (6 nugget için 1708 kcal) basis=suspicious — kod önce kullanıcıya sordurur.',
+  not_when_tr: 'aynı kaydı yeni yazma olarak eklemek (çift sayım).',
   fields: {
     ref: f.ref(['m', 'd', 'w', 's', 't', 'e', 'l', 'f']),
     basis: f.enum({
       user_correction: 'kullanıcı bu mesajda düzeltmeyi verdi',
       suspicious: 'kayıt yanlış görünüyor; kullanıcıya sorulacak',
     }),
-    reason: f.text({ max: 160, tr: 'neyin yanlış olduğu ("6 nugget için 1708 kcal çok yüksek")' }),
-    evidence_quote: f.text({ nullable: true, max: 160, tr: 'user_correction ise kullanıcının mesajından AYNEN alıntı; suspicious ise null' }),
-    patch: f.write({ tr: 'kaydın düzeltilmiş TAM hâli, aynı kayıt türünün şekliyle' }),
+    reason: f.text({ max: 160 }),
+    evidence_quote: f.text({ nullable: true, max: 160, tr: 'suspicious ise null' }),
+    patch: f.write({ tr: 'kaydın düzeltilmiş TAM hâli, ref’in kayıt türündeki op ile' }),
   },
-  hold_tr: 'basis=suspicious her zaman bekletilir (p-ref) ve koç bir kez sorar; kullanıcı onaylarsa pending_ops confirm.',
+  hold_tr: 'suspicious bekletilir, koç bir kez sorar; reddedilen şüphe yeniden önerilmez.',
   capability_tr: 'Yanlış bir kaydı düzeltmek; fark ettiğin şüpheli bir geçmiş kaydı (ör. 6 nugget için 1708 kcal) önce kullanıcıya sorarak.',
   writes: { rpc: 'w_record_supersede', tables: ['turn_writes'], undo: 'restore_previous', hold_op: 'record_update' },
   invariants: ['supersede_in_one_transaction', 'no_double_count'],
-  examples_tr: [
-    '"perşembe akşamki nugget 1700 olmuş, 6 küçük nuggetti 100 gram falan" → ref m12, basis user_correction, patch meal_log (düzeltilmiş kalemler)',
-    'KAYITLAR’da "6 tavuk nugget → 900 g 1708 kcal" görürsen → ref m12, basis suspicious, reason, patch (makul hâli)',
-  ],
 }).rules({
   hard: [
     tooOldRule(),
+    // §4.4(3): noLaterWriteOnSameField holds for every record_op — superseding a record whose field
+    // was written again later would overwrite the newer value.
+    laterWriteRule(),
+    rule('supheli_zaten_soruldu', 'bu kayıt için şüphe bir kez soruldu ve onaylanmadı; yeniden sorulmaz', (a, _d, ctx) =>
+      a.basis === 'suspicious' && ctx.refs[a.ref]?.suspicion_declined === true,
+      { failure_class: 'already_asked' }),
     rule('yama_turu', 'patch, ref’in kayıt türüyle aynı op olmalı (m → meal_log, d su → water_log…)', (a, _d, ctx) => {
       const r = ctx.refs[a.ref];
       if (!r) return false;
@@ -95,9 +96,11 @@ export const record_update = op({
     rule('supheli_kayit', 'fark ettiğin şüpheli kayıt kullanıcı onaylamadan değiştirilmez', (a) =>
       a.basis === 'suspicious' && `şüpheli kayıt (${a.ref}): ${a.reason}`,
       { question_tr: 'Bu kayıt yanlış görünüyor, düzelteyim mi?' }),
+    // A sanctioned verbatim check (AI_MIMARI_V2 §5): a correction the model attributes to the user
+    // must be in the user's words this turn; otherwise it is asked, never committed on its own.
     rule('duzeltme_teyidi', 'kullanıcı düzeltmesinin alıntısı mesajda aynen yok', (a, _d, ctx) =>
       a.basis === 'user_correction' && !isVerbatimQuote(a.evidence_quote, ctx.user_message),
-      { question_tr: 'Bu kaydı böyle düzeltmemi istiyor musun?' }),
+      { question_tr: 'Bu kaydı böyle düzeltmemi istiyor musun?', evidence: true }),
   ],
 });
 
@@ -107,11 +110,12 @@ export const record_restore_metric = op({
   channel: 'record_ops',
   envelope: 'undo',
   title_tr: 'Metriği önceki değerine döndür',
-  when_tr: 'Kullanıcı bir günlük metriğin (su, uyku, adım, tartı, ruh hali) belirli bir yazmadan önceki değerine dönmesini istiyorsa.',
+  when_tr: 'Bir günlük metriği belirli bir yazmadan önceki değerine döndürme isteği.',
   fields: {
     ref: f.ref(['d']),
     reason: f.text({ max: 120 }),
   },
+  tier: 'rare',
   capability_tr: 'Bir günlük metriği belirli bir yazmadan önceki değerine döndürmek.',
   writes: { rpc: 'w_record_undo', tables: ['daily_metrics', 'turn_writes'], undo: 'none' },
 }).rules({

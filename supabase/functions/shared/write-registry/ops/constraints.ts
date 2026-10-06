@@ -9,6 +9,9 @@
  *   • severity=unknown counts as severe in every filter until answered (FLAG → the coach asks once);
  *   • removing a severe/unknown allergen or a surgery/severe injury is TWO-STEP (pending_writes);
  *   • the note is appended with history, never overwritten (mem#15).
+ *   • ADDING protection is never held (§7.4: protection never below v1). A self+has declaration
+ *     whose quote is paraphrased, or an injury with no region, is STORED and FLAGged so the coach
+ *     confirms once — uncertainty makes the filter stricter, it never leaves the spine without it.
  * Replaces food_preference(is_allergen)/clear, health_event, health_event_resolve and the regex
  * allergy/retract/injury/heal nets.
  */
@@ -26,33 +29,33 @@ export const constraint_add = op({
   channel: 'writes',
   envelope: (a) => (a.kind === 'allergen' || a.kind === 'intolerance') ? 'food_preference' : a.kind === 'dietary' ? 'profile_update' : 'health_event',
   title_tr: 'Kısıt (alerji, sakatlık, hastalık, ilaç, diyet)',
-  when_tr: 'Kullanıcı bir alerji, intolerans, sakatlık, ameliyat, kronik durum, ilaç ya da beslenme kısıtı bildiriyorsa — kendisi ya da başkası için, var ya da yok diye. Her konu ayrı yazılır ("fıstık alerjim yok ama fındık var" → iki yazma).',
-  not_when_tr: 'KAYITLAR’da c-ref’i olan bir kısıtı kaldırmak constraint_retract’tır. Sadece sevmemek food_pref’tir.',
+  when_tr: 'Alerji, intolerans, sakatlık, ameliyat, hastalık, ilaç ya da diyet kısıtı — kendisi ya da başkası için, var ya da yok; her konu ayrı yazma.',
+  not_when_tr: 'KISITLAR’daki bir kısıtı kaldırmak (constraint_retract); yalnız sevmemek (food_pref).',
   fields: {
     kind: f.enum(CONSTRAINT_KINDS),
-    subject_id: f.text({ max: 60, tr: 'alerjende alerjen id’si (peanut, hazelnut…), diyette diyet id’si (vegan…), aksi hâlde kısa id; listede yoksa custom:<ad>' }),
-    display_tr: f.text({ max: 60, tr: 'kullanıcıya görünen Türkçe ad ("fındık", "sol diz menisküs")' }),
-    whose: f.enum({ self: 'kullanıcının kendisi', other_person: 'başkası (kızı, annesi, eşi…)' }),
+    subject_id: f.text({
+      max: 60,
+      tr: `alerjende ALERJENLER id’si; diyette ${Object.keys(DIETARY_SUBJECTS).join('|')}; diğerlerinde kısa id; listede yoksa custom:<ad>`,
+    }),
+    display_tr: f.text({ max: 60 }),
+    whose: f.enum({ self: 'kullanıcının kendisi', other_person: 'başkası (kızı, annesi, eşi…)' }, { tr: 'other_person → yalnız koç notu olur, omurgaya girmez' }),
     polarity: f.enum({ has: 'var', does_not_have: 'yok' }),
     severity: f.enum(SEVERITY),
-    body_parts: f.enumList(BODY_PARTS, { tr: 'sakatlık/ameliyatta etkilenen bölgeler' }),
-    event_date: f.date({ nullable: true, past_days: 36500, future_days: 0, tr: 'ameliyat/sakatlık tarihi söylendiyse' }),
-    note: f.text({ nullable: true, max: 280, tr: 'ayrıntı (eski notun üzerine yazılmaz, eklenir)' }),
-    evidence_quote: f.text({ max: 160, tr: 'kullanıcının mesajından AYNEN alıntı' }),
+    body_parts: f.enumList(BODY_PARTS, { tr: 'sakatlık/ameliyatta BÖLGELER’den' }),
+    event_date: f.date({ nullable: true, past_days: 36500, future_days: 0 }),
+    note: f.text({ nullable: true, max: 280 }),
+    evidence_quote: f.text({ max: 160 }),
   },
   derive: (a) => ({
     effect: a.whose === 'other_person' ? 'coach_note' : a.polarity === 'has' ? 'activate' : 'record_absence',
     spine: a.whose === 'self' && a.polarity === 'has',
     treat_as_severe: a.severity === 'severe' || a.severity === 'unknown',
+    // An injury stored without a region cannot be matched to exercise loads yet; the safety layer
+    // treats it strictly (judge every exercise mention) until the coach learns the region.
+    region_unknown: a.whose === 'self' && a.polarity === 'has' && a.kind === 'injury' && a.body_parts.length === 0,
   }),
-  derive_tr: 'başkası için → yalnız koç notu (omurgaya girmez); "yok" → aktif kısıt olmaz, yokluk not edilir; şiddet bilinmiyorsa her filtrede ciddi sayılır.',
   writes: { fn: 'syncConstraint', tables: ['user_constraints', 'health_events', 'food_preferences', 'belief_events', 'turn_writes'], undo: 'deactivate' },
-  invariants: ['spine_sync', 'note_append_with_history', 'plan_repair', 'unknown_severity_is_severe'],
-  examples_tr: [
-    '"fıstık alerjim yok ama fındık alerjim var" → iki yazma: peanut does_not_have, hazelnut has',
-    '"kızımın yumurta alerjisi var" → whose other_person (omurgaya girmez)',
-    '"süt ve yoğurdu rahat tüketiyorum" → milk does_not_have (aktif hastalık olmaz)',
-  ],
+  invariants: ['spine_sync', 'note_append_with_history', 'plan_repair', 'unknown_severity_is_severe', 'region_unknown_is_strict'],
 }).rules({
   hard: [
     rule('alerjen_kimligi', 'alerji/intoleransta subject_id alerjen listesinden ya da custom:<ad> olmalı', (a) =>
@@ -65,21 +68,18 @@ export const constraint_add = op({
       a.whose === 'self' && a.polarity === 'does_not_have' &&
       Object.values(ctx.refs).some((r) => r.kind === 'c' && !r.undone && r.constraint?.kind === a.kind && r.constraint.subject === a.subject_id),
       { repairable: true, failure_class: 'use_retract' }),
-    // A protective declaration (self + has) is never REJECTED for a paraphrased quote — that would
-    // drop protection below v1. It is ASKed instead (below); every other shape stays hard.
+    // A protective declaration (self + has) is never REJECTED (or held) for a paraphrased quote —
+    // that would drop protection below v1. It is stored and FLAGged (below); other shapes stay hard.
     rule('alinti_dogrulanamadi', 'evidence_quote kullanıcının mesajında aynen geçmeli', (a, _d, ctx) =>
       !(a.whose === 'self' && a.polarity === 'has') && !isVerbatimQuote(a.evidence_quote, ctx.user_message),
-      { repairable: true, failure_class: 'evidence', path: 'evidence_quote' }),
-  ],
-  ask: [
-    rule('koruyucu_beyan_teyidi', 'koruyucu beyanın alıntısı mesajda aynen yok → kaydetmeden önce sor', (a, _d, ctx) =>
-      a.whose === 'self' && a.polarity === 'has' && !isVerbatimQuote(a.evidence_quote, ctx.user_message),
-      { question_tr: 'Bunu sağlık kısıtı olarak kaydetmemi ister misin?' }),
-    rule('bolge_belirsiz', 'sakatlıkta etkilenen bölge belirtilmeli', (a) =>
-      a.whose === 'self' && a.polarity === 'has' && a.kind === 'injury' && a.body_parts.length === 0,
-      { question_tr: 'Sakatlık tam olarak hangi bölgede?' }),
+      { repairable: true, failure_class: 'evidence', path: 'evidence_quote', evidence: true }),
   ],
   flag: [
+    rule('koruyucu_beyan_teyidi', 'koruyucu beyanın alıntısı mesajda aynen yok — koruma düşmesin diye kaydedildi; koç bir kez teyit eder', (a, _d, ctx) =>
+      a.whose === 'self' && a.polarity === 'has' && !isVerbatimQuote(a.evidence_quote, ctx.user_message),
+      { evidence: true }),
+    rule('bolge_belirsiz', 'sakatlığın bölgesi belirtilmedi — kaydedildi, bölge netleşene kadar sıkı filtrelenir; koç bir kez sorar', (_a, d) =>
+      d.region_unknown),
     rule('siddet_bilinmiyor', 'şiddet bilinmiyor: netleşene kadar ciddi sayılır, koç bir kez sorar', (a) =>
       a.whose === 'self' && a.polarity === 'has' && a.severity === 'unknown'),
   ],
@@ -90,17 +90,16 @@ export const constraint_retract = op({
   channel: 'writes',
   envelope: 'profile_update',
   title_tr: 'Kısıt kaldırma',
-  when_tr: 'Kullanıcı KAYITLAR’daki bir kısıtın artık geçerli olmadığını söylüyorsa ("dizim tamamen iyileşti", "artık vegan değilim"). Yalnızca adı geçen kısıt.',
-  not_when_tr: 'Ağrının sürdüğü ("dizim eskisi gibi ağrıyor") kaldırma değildir. Emin değilsen clarify.',
+  when_tr: 'KISITLAR’daki bir kısıtın artık geçerli olmadığı ("dizim tamamen iyileşti", "artık vegan değilim"); yalnız adı geçen kısıt.',
+  not_when_tr: 'ağrı sürüyorsa ("dizim eskisi gibi ağrıyor").',
   fields: {
     target: f.ref(['c']),
-    evidence_quote: f.text({ max: 160, tr: 'kullanıcının mesajından AYNEN alıntı' }),
+    evidence_quote: f.text({ max: 160 }),
     note: f.text({ nullable: true, max: 200 }),
   },
-  hold_tr: 'Ciddi/bilinmeyen alerjen, ameliyat ya da ciddi sakatlık kaldırılmaz, bekletilir (p-ref); yalnızca SONRAKİ turda kullanıcı açıkça onaylarsa pending_ops confirm{p-ref}.',
+  hold_tr: 'ciddi/bilinmeyen alerjen, ameliyat ya da ciddi sakatlık bekletilir; SONRAKİ turdaki açık onayla (pending_ops confirm) kalkar.',
   writes: { fn: 'deactivateConstraint', tables: ['user_constraints', 'health_events', 'food_preferences', 'profiles', 'belief_events', 'turn_writes'], undo: 'restore_previous', hold_op: 'constraint_retract' },
   invariants: ['spine_sync', 'two_step_severe_removal', 'only_named_constraint'],
-  examples_tr: ['"dizim tamamen iyileşti" (c2 = diz sakatlığı) → target c2'],
 }).rules({
   hard: [evidenceIsVerbatim('alinti_dogrulanamadi', 'evidence_quote kullanıcının mesajında aynen geçmeli', { repairable: true, failure_class: 'evidence' })],
   ask: [
@@ -120,10 +119,11 @@ export const constraint_confirm = op({
   channel: 'writes',
   envelope: 'constraint_confirm',
   title_tr: 'Kısıt doğrulama',
-  when_tr: 'Koç bir kısıtın hâlâ geçerli olup olmadığını sordu ve kullanıcı EVET dedi.',
-  not_when_tr: '"artık geçti" derse constraint_retract’tır.',
+  when_tr: 'Koç kısıtın sürüp sürmediğini sordu, kullanıcı EVET dedi.',
+  not_when_tr: '"artık geçti" (constraint_retract).',
   fields: { target: f.ref(['c']) },
   writes: { fn: 'confirmConstraint', tables: ['user_constraints', 'turn_writes'], undo: 'restore_previous' },
+  tier: 'rare',
 });
 
 export const food_pref = op({
@@ -131,11 +131,11 @@ export const food_pref = op({
   channel: 'writes',
   envelope: 'food_preference',
   title_tr: 'Yemek tercihi',
-  when_tr: 'Kullanıcı bir yiyeceği sevdiğini/sevmediğini/asla yemediğini söylüyorsa.',
-  not_when_tr: 'Alerji ve intolerans constraint_add’dir (güvenlik). Başkasının tercihi whose=other_person.',
+  when_tr: 'Bir yiyeceği sevdiği, sevmediği ya da asla yemediği.',
+  not_when_tr: 'alerji ve intolerans (constraint_add, güvenlik).',
   fields: {
-    food: f.text({ max: 60, tr: 'yalın ad ("fıstık", "brokoli") — çekim eki olmadan' }),
-    preference: f.enum(FOOD_PREFERENCE),
+    food: f.text({ max: 60, tr: 'yalın ad, çekim eki olmadan ("fıstık")' }),
+    preference: f.enum(FOOD_PREFERENCE, { tr: 'can_cook = yapabildiği yemek; never = asla yemez (alerji değil)' }),
     whose: f.enum({ self: 'kullanıcının kendisi', other_person: 'başkası' }),
     note: f.text({ nullable: true, max: 200 }),
     replaces: f.ref(['f'], { nullable: true }),
@@ -143,5 +143,4 @@ export const food_pref = op({
   derive: (a) => ({ effect: a.whose === 'self' ? 'preference' : 'coach_note' }),
   writes: { fn: 'upsertFoodPreference', tables: ['food_preferences', 'profiles', 'belief_events', 'turn_writes'], undo: 'restore_previous' },
   invariants: ['positive_preference_prunes_dislike', 'plan_repair'],
-  examples_tr: ['"brokoliden nefret ederim" → food brokoli, preference dislike'],
 });

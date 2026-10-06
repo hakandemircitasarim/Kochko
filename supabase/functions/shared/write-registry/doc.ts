@@ -4,109 +4,126 @@
  * Generated from the same declarations as the schema, so the doc can never promise a field the
  * schema lacks or describe a unit the derive() does not use. It is part of Stage A's cached,
  * byte-identical prefix: same registry → same bytes (pinned by the snapshot test).
+ *
+ * Budget (§4.1: ~2.5K tokens; registry.test.ts "Stage A budget"). The doc is the ONE place field
+ * semantics live — the understand schema has no descriptions — so it says only what the schema
+ * (names, enum ids, nullability) and the Stage A rules (ai-chat/v2/understand-prompt.ts) do not:
+ *   • per op: when / when not (one line), notes only for non-obvious fields, explained enums,
+ *     what code computes ("Kod:"), the two-step policy, at most one example;
+ *   • shared conventions (day, as_stated, evidence_quote, replaces, refs, allergen and body-part
+ *     ids) once, in the header;
+ *   • seldom-used ops (tier 'rare') as one line each in an appendix — still complete in the schema.
+ * Plausibility thresholds (what is asked or flagged) are deliberately NOT listed: the model gives
+ * its honest estimate and code decides; telling it "2500 kcal is asked" only invites shading.
  */
-import { MAX_BACK_DAYS, type Channel, type FieldSpec, type Fields, type RegOp } from './dsl.ts';
+import { MAX_BACK_DAYS, type Channel, type Fields, type RegOp } from './dsl.ts';
 import { ENVELOPE_HEAD, ENVELOPE_TAIL } from './envelope.ts';
 import { BLOCK_REF_KINDS, BLOCK_TITLES, REF_KINDS } from './refs.ts';
 import { opsIn, SCHEMA_VERSION } from './registry.ts';
-import { ALLERGENS, BODY_PARTS } from './vocab.ts';
-import { trNum } from './util.ts';
+import { ALLERGEN_DOC_HINTS, ALLERGENS, BODY_PARTS } from './vocab.ts';
 
 const CHANNEL_TITLES: Record<Channel, string> = {
   writes: 'writes[] — kullanıcının bildirdikleri',
-  record_ops: 'record_ops[] — KAYITLAR’daki bir kaydı ref ile geri al / düzelt',
+  record_ops: 'record_ops[] — kayıtları ref ile geri al / düzelt',
   pending_ops: 'pending_ops[] — BEKLEYEN ONAYLAR’a cevap',
   commitment_ops: 'commitment_ops[] — sözler',
   memory: 'memory[] — koçun hafıza notları',
 };
 
-function enumText(values: Readonly<Record<string, string>>): string {
-  if (values === ALLERGENS) return 'ALERJENLER listesinden id';
-  if (values === BODY_PARTS) return 'BÖLGELER listesinden id';
-  const entries = Object.entries(values);
-  if (entries.length > 15) return 'id (aşağıdaki listeden)';
-  return entries.map(([id, tr]) => `${id}=${tr}`).join(' · ');
-}
+const STAGE_A_CHANNELS = ['writes', 'record_ops', 'pending_ops', 'commitment_ops'] as const;
 
-function range(r: readonly [number, number] | undefined): string {
-  return r ? ` ${trNum(r[0], r[0] % 1 ? 1 : 0)}–${trNum(r[1], r[1] % 1 ? 1 : 0)}` : '';
+/** `id=meaning` pairs; a meaning that only repeats the id is dropped ("litre"). */
+function enumMeanings(values: Readonly<Record<string, string>>): string {
+  return Object.entries(values).map(([id, tr]) => (tr === id ? id : `${id}=${tr}`)).join(' · ');
 }
 
 /**
- * Compact field notation — only what the schema itself cannot say (ranges, units, enum meanings,
- * formats). Each field's own meaning (`tr`) already travels as the schema `description`; repeating
- * it here would double the cached prefix for nothing.
+ * Notes for the fields that need one: an explained enum and/or the field's `tr`. Nested fields
+ * are addressed by path ("items[].grams", "safety.ed_signal.category"). Self-explanatory fields
+ * produce nothing — the schema lists them.
  */
-function fieldInline(name: string, s: FieldSpec): string {
-  const opt = 'nullable' in s && s.nullable ? '|null' : '';
-  const wrap = (detail: string) => (detail ? `${name}(${detail})` : name);
-  switch (s.kind) {
-    case 'num':
-      return wrap(`${range(s.hard).trim()}${s.unit ? ' ' + s.unit : ''}${s.decimals === 0 ? ' tam' : ''}${opt}`.trim());
-    case 'text':
-      return wrap(`${s.format === 'hhmm' ? 'HH:MM' : ''}${opt}`);
-    case 'bool':
-      return wrap(`true/false${opt}`);
-    case 'enum':
-      return wrap(`${enumText(s.values)}${opt}`);
-    case 'enumList':
-      return wrap(`liste: ${enumText(s.values)}`);
-    case 'textList':
-      return wrap('metin listesi');
-    case 'day':
-      return wrap(`gün${opt}`);
-    case 'date':
-      return wrap(`YYYY-MM-DD${opt}`);
-    case 'ref':
-      return wrap(`${s.kinds.join('|')}-ref${opt}`);
-    case 'list':
-      return `${name}[${s.min}–${s.max}]{ ${fieldsInline(s.fields)} }`;
-    case 'obj':
-      return `${name}${opt ? '?' : ''}{ ${fieldsInline(s.fields)} }`;
-    case 'write':
-      return wrap('writes[]’teki bir yazmanın tam şekli');
+function fieldNotes(fields: Fields, base = ''): string[] {
+  const out: string[] = [];
+  for (const [name, s] of Object.entries(fields)) {
+    const path = base ? `${base}.${name}` : name;
+    if (s.kind === 'list') {
+      if (s.tr) out.push(`${path}[]: ${s.tr}`);
+      out.push(...fieldNotes(s.fields, `${path}[]`));
+      continue;
+    }
+    if (s.kind === 'obj') {
+      if (s.tr) out.push(`${path}: ${s.tr}`);
+      out.push(...fieldNotes(s.fields, path));
+      continue;
+    }
+    const parts: string[] = [];
+    if (s.kind === 'enum' && s.explain) parts.push(enumMeanings(s.values));
+    if (s.tr) parts.push(s.tr);
+    if (parts.length) out.push(`${path}: ${parts.join(' — ')}`);
   }
-}
-
-function fieldsInline(fields: Fields): string {
-  return Object.entries(fields).map(([n, s]) => fieldInline(n, s)).join(' · ');
+  return out;
 }
 
 function opSection(o: RegOp, out: string[]): void {
-  out.push('', `### ${o.op} — ${o.title_tr}`);
-  out.push(`Ne zaman: ${o.when_tr}`);
-  if (o.not_when_tr) out.push(`Ne zaman değil: ${o.not_when_tr}`);
-  out.push(`Alanlar: ${fieldsInline(o.fields)}`);
-  if (o.derive_tr) out.push(`Kod hesaplar: ${o.derive_tr}`);
-  if (o.rule_docs.hard.length) out.push(`Reddedilir: ${o.rule_docs.hard.map((r) => r.doc_tr).join(' · ')}`);
-  if (o.rule_docs.ask.length) out.push(`Sorulur (yazılmaz, bekletilir): ${o.rule_docs.ask.map((r) => r.doc_tr).join(' · ')}`);
-  if (o.rule_docs.flag.length) out.push(`İşaretlenir (kaydedilir): ${o.rule_docs.flag.map((r) => r.doc_tr).join(' · ')}`);
+  out.push('', `### ${o.op}`);
+  out.push(o.not_when_tr ? `${o.when_tr} Değil: ${o.not_when_tr}` : o.when_tr);
+  for (const n of fieldNotes(o.fields)) out.push(`- ${n}`);
+  if (o.derive_tr) out.push(`Kod: ${o.derive_tr}`);
   if (o.hold_tr) out.push(`İki adım: ${o.hold_tr}`);
   for (const e of o.examples_tr) out.push(`Örnek: ${e}`);
   out.push(...o.doc_appendix_tr);
+}
+
+/**
+ * One compact line for a seldom-used op (the schema still has all of its fields). not_when is left
+ * out: a rare op's "not this" cases are the main ops' own territory, documented there.
+ */
+function rareLine(o: RegOp): string {
+  const parts = [`- ${o.op}${o.channel === 'writes' ? '' : ` (${o.channel})`}: ${o.when_tr}`];
+  const notes = fieldNotes(o.fields);
+  if (notes.length) parts.push(`Alanlar: ${notes.join('; ')}.`);
+  if (o.derive_tr) parts.push(`Kod: ${o.derive_tr}`);
+  if (o.hold_tr) parts.push(`İki adım: ${o.hold_tr}`);
+  return parts.join(' ');
+}
+
+function refLine(): string {
+  const blocks = (Object.keys(BLOCK_TITLES) as Array<keyof typeof BLOCK_TITLES>).map((b) => {
+    const kinds = BLOCK_REF_KINDS[b];
+    if (!kinds.length) return null;
+    const list = kinds.length === 1 ? kinds[0] : kinds.map((k) => `${k}=${REF_KINDS[k].tr}`).join(' · ');
+    return `${BLOCK_TITLES[b]}: ${list}`;
+  }).filter((x): x is string => x !== null);
+  return `Ref’ler yalnız bu turda gösterilenler: ${blocks.join(' | ')}.`;
 }
 
 /** The doc block for Stage A (writes, record/pending/commitment ops, envelope fields). */
 export function buildWriteDoc(): string {
   const out: string[] = [];
   out.push(`YAZILABİLİR KAYITLAR (şema kochko_understand_${SCHEMA_VERSION})`);
-  out.push('Sen anlarsın, kod denetler. Sayıyı SEN verirsin; kod yalnızca birim aritmetiği yapar ve sayının fiziksel olarak mümkün olup olmadığına bakar. "as_stated" kullanıcının ifadesidir: aynen saklanır, asla ayrıştırılmaz — "2 çimdik", "koca bir bardak" her zaman geçerlidir.');
-  out.push('Her yazmanın sonucu dört şeyden biridir: KAYDET · İŞARETLE (kaydedilir, şüphe koça iletilir) · SOR (yazılmaz, bekletilir, koç tek soru sorar) · REDDET (yazılmaz, gerekçe koça iletilir). Kod hiçbir sayını sessizce değiştirmez.');
-  out.push(`Gün (day): today | yesterday | YYYY-MM-DD; en fazla ${MAX_BACK_DAYS} gün geri, gelecek yok. Diğer tarihler YYYY-MM-DD; bağlamdaki yerel tarihe göre hesapla.`);
-  out.push(`Ref’ler yalnızca bu turda gösterilenlerdir: ${Object.entries(REF_KINDS).map(([k, v]) => `${k}=${v.tr}`).join(' · ')}. Gösterilmeyen ref reddedilir. Hangi kayıt olduğundan emin değilsen yazma, clarify{candidate_refs} kullan.`);
-  out.push(`Bağlam blokları: ${(Object.keys(BLOCK_TITLES) as Array<keyof typeof BLOCK_TITLES>).map((b) =>
-    `${BLOCK_TITLES[b]} (${BLOCK_REF_KINDS[b].length ? BLOCK_REF_KINDS[b].join(', ') + ' ref’leri' : 'yalnız ipucu, ref değil; kod asla dayatmaz'})`).join(' · ')}.`);
-  out.push('Soru, varsayım, plan ve başkası hakkındaki bilgi kullanıcının kendi kaydı değildir. Bir mesajda birden çok yazma olabilir; her biri ayrı denetlenir.');
-  out.push(`ALERJENLER: ${Object.entries(ALLERGENS).map(([k, v]) => `${k}=${v}`).join(' · ')} · listede yoksa (yalnız kısıtta) custom:<ad>`);
-  out.push(`BÖLGELER: ${Object.entries(BODY_PARTS).map(([k, v]) => `${k}=${v}`).join(' · ')}`);
+  out.push('Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aralığı denetler, hiçbir sayını sessizce değiştirmez. Her yazma ayrı denetlenir.');
+  out.push(`Ortak alanlar: day ≤${MAX_BACK_DAYS} gün geri; diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. replaces: KAYITLAR’daki aynı türden kaydın düzeltilmiş hâliyse onun ref’i, değilse null.`);
+  out.push(refLine());
+  const allergenIds = (Object.keys(ALLERGENS) as Array<keyof typeof ALLERGENS>)
+    .map((id) => (ALLERGEN_DOC_HINTS[id] ? `${id} (${ALLERGEN_DOC_HINTS[id]})` : id));
+  out.push(`ALERJENLER: ${allergenIds.join(' · ')} · listede yoksa (yalnız kısıtta) custom:<ad>`);
+  out.push(`BÖLGELER: ${enumMeanings(BODY_PARTS)}`);
 
-  for (const ch of ['writes', 'record_ops', 'pending_ops', 'commitment_ops'] as const) {
+  const rare: RegOp[] = [];
+  for (const ch of STAGE_A_CHANNELS) {
     out.push('', `## ${CHANNEL_TITLES[ch]}`);
-    for (const o of opsIn(ch)) opSection(o, out);
+    for (const o of opsIn(ch)) {
+      if (o.tier === 'rare') rare.push(o);
+      else opSection(o, out);
+    }
+  }
+  if (rare.length) {
+    out.push('', '## Seyrek kayıtlar (şemada tüm alanlarıyla)');
+    for (const o of rare) out.push(rareLine(o));
   }
 
   out.push('', '## Diğer alanlar');
-  for (const [name, spec] of Object.entries({ ...ENVELOPE_HEAD, ...ENVELOPE_TAIL })) out.push(`- ${fieldInline(name, spec)}`);
+  for (const n of fieldNotes({ ...ENVELOPE_HEAD, ...ENVELOPE_TAIL })) out.push(`- ${n}`);
   return out.join('\n');
 }
 

@@ -19,8 +19,8 @@ export const pending_confirm = op({
   channel: 'pending_ops',
   envelope: 'pending_confirm',
   title_tr: 'Bekleyeni onayla',
-  when_tr: 'BEKLEYEN ONAYLAR’da p-ref’i olan bir yazmayı kullanıcı bu mesajda AÇIKÇA onaylıyorsa.',
-  not_when_tr: 'Tereddüt, soru, "hayır" ya da başka konu onay değildir. Değiştirerek onaylıyorsa discard + writes’ta yeni hâli.',
+  when_tr: 'BEKLEYEN ONAYLAR’daki bir yazmanın bu mesajda AÇIKÇA onaylanması.',
+  not_when_tr: 'tereddüt, soru, "hayır" ya da başka konu; değiştirerek onaylıyorsa discard + writes’ta yeni hâli.',
   fields: { ref: f.ref(['p']) },
   writes: { fn: 'commitHeldWrite', tables: ['pending_writes', 'turn_writes'], undo: 'none' },
   invariants: ['runs_the_held_write_through_its_own_op'],
@@ -45,7 +45,7 @@ export const pending_discard = op({
   channel: 'pending_ops',
   envelope: 'pending_discard',
   title_tr: 'Bekleyenden vazgeç',
-  when_tr: 'Kullanıcı bekleyen bir yazmayı istemediğini söylüyorsa ("hayır, kalsın").',
+  when_tr: 'Bekleyen bir yazmanın istenmemesi ("hayır, kalsın").',
   fields: { ref: f.ref(['p']) },
   writes: { fn: 'discardHeldWrite', tables: ['pending_writes'], undo: 'none' },
 });
@@ -56,14 +56,13 @@ export const commitment_add = op({
   channel: 'commitment_ops',
   envelope: 'commitment',
   title_tr: 'Söz/taahhüt',
-  when_tr: 'Kullanıcı somut, takip edilebilir bir söz veriyorsa ("yarından itibaren akşam 8’den sonra yemeyeceğim").',
-  not_when_tr: 'Genel istekler ("daha sağlıklı olmak istiyorum") söz değildir.',
+  when_tr: 'Somut, takip edilebilir bir söz ("yarından itibaren akşam 8’den sonra yemeyeceğim").',
+  not_when_tr: 'genel istekler ("daha sağlıklı olmak istiyorum").',
   fields: {
-    text: f.text({ max: 200, tr: 'sözün kısa, net hâli' }),
+    text: f.text({ max: 200 }),
     follow_up_days: f.num({ unit: 'gün', hard: [0, 30], decimals: 0, tr: 'kaç gün sonra sorulsun' }),
   },
   derive: (a, ctx) => ({ follow_up_date: shiftDay(ctx.today, Math.round(a.follow_up_days)) }),
-  derive_tr: 'takip tarihi = bugün + follow_up_days (kullanıcının yerel günü).',
   writes: { rpc: 'w_commitment_apply', tables: ['user_commitments', 'turn_writes'], undo: 'soft_delete' },
 });
 
@@ -73,8 +72,8 @@ export const commitment_resolve = op({
   channel: 'commitment_ops',
   envelope: 'commitment',
   title_tr: 'Söz sonucu',
-  when_tr: 'Kullanıcı AÇIK SÖZLER’deki bir sözün sonucunu söylüyorsa ("dün akşam 8’den sonra yemedim").',
-  not_when_tr: '"yaptım/olmadı" kelimesi başka bir konudaysa söz kapatılmaz.',
+  when_tr: 'AÇIK SÖZLER’deki bir sözün sonucu ("dün akşam 8’den sonra yemedim").',
+  not_when_tr: '"yaptım/olmadı" başka bir konudaysa.',
   fields: {
     ref: f.ref(['k']),
     outcome: f.enum(COMMITMENT_OUTCOMES),

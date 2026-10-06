@@ -15,7 +15,12 @@ import type { RefKind, RefTarget, RenderedRefs } from './refs.ts';
 // ─── Field specs ─────────────────────────────────────────────────────────────
 
 interface SpecBase {
-  /** Turkish meaning shown to the model (schema description + doc). */
+  /**
+   * Turkish note for the model — ONLY what the field name, its enum ids and the shared doc header
+   * do not already say. Stage A reads it once, in the doc; the understand schema carries no
+   * descriptions (budget §3.3/§4.1). Reply-side fields (Stage B, no generated doc) keep it as the
+   * schema description.
+   */
   readonly tr?: string;
 }
 
@@ -48,8 +53,13 @@ export interface BoolSpec<N extends boolean = boolean> extends SpecBase {
 export interface EnumSpec<K extends string = string, N extends boolean = boolean> extends SpecBase {
   readonly kind: 'enum';
   readonly nullable: N;
-  /** id → Turkish meaning. Ids are stored; meanings are what the model reads. */
+  /** id → Turkish meaning. Ids are stored and are what the schema lists; meanings label receipts. */
   readonly values: Readonly<Record<K, string>>;
+  /**
+   * The ids alone do not carry the meaning (set_day_total, restatement, suspicious, bardak ≈200 ml):
+   * the Stage A doc spells out `id=meaning`. Self-explanatory ids (breakfast, knee) stay ids only.
+   */
+  readonly explain?: boolean;
 }
 
 export interface EnumListSpec<K extends string = string> extends SpecBase {
@@ -140,6 +150,7 @@ type NullOf<O> = O extends { nullable: true } ? true : false;
 interface NumOpts { nullable?: boolean; unit?: string; hard?: readonly [number, number]; plausible?: readonly [number, number]; decimals?: number; tr?: string }
 interface TextOpts { nullable?: boolean; max?: number; format?: 'hhmm'; tr?: string }
 interface PlainOpts { nullable?: boolean; tr?: string }
+interface EnumOpts extends PlainOpts { explain?: boolean }
 interface DateOpts { nullable?: boolean; past_days?: number; future_days?: number; tr?: string }
 interface RefOpts { nullable?: boolean; targets?: readonly RefTarget[]; tr?: string }
 
@@ -151,7 +162,7 @@ export const f = {
   num: <O extends NumOpts>(o?: O): NumSpec<NullOf<O>> => withNull(o, { kind: 'num' as const }),
   text: <O extends TextOpts>(o?: O): TextSpec<NullOf<O>> => withNull(o, { kind: 'text' as const }),
   bool: <O extends PlainOpts>(o?: O): BoolSpec<NullOf<O>> => withNull(o, { kind: 'bool' as const }),
-  enum: <K extends string, O extends PlainOpts>(values: Readonly<Record<K, string>>, o?: O): EnumSpec<K, NullOf<O>> =>
+  enum: <K extends string, O extends EnumOpts>(values: Readonly<Record<K, string>>, o?: O): EnumSpec<K, NullOf<O>> =>
     withNull(o, { kind: 'enum' as const, values }),
   enumList: <K extends string>(values: Readonly<Record<K, string>>, o?: { max?: number; tr?: string }): EnumListSpec<K> =>
     ({ kind: 'enumList', values, ...(o ?? {}) }),
@@ -245,13 +256,20 @@ export interface RuleDef<A, D> {
   repairable?: boolean;
   failure_class?: string;
   question_tr?: string;
+  /**
+   * The rule reads THIS turn's user message (verbatim evidence check). A confirmed hold is
+   * re-validated in a later turn whose message is "evet": such rules were already decided when the
+   * hold was made (a hold exists only for a verdict without hard issues, and its questions are what
+   * the user just answered), so they are not re-run there. State rules (refs, ED tier) still are.
+   */
+  evidence?: boolean;
 }
 
 export function rule<A, D>(
   code: string,
   doc_tr: string,
   test: (a: A, d: D, ctx: ValidationContext) => boolean | string | null | undefined,
-  extra?: { path?: string; repairable?: boolean; failure_class?: string; question_tr?: string },
+  extra?: { path?: string; repairable?: boolean; failure_class?: string; question_tr?: string; evidence?: boolean },
 ): RuleDef<A, D> {
   return { code, doc_tr, test, ...(extra ?? {}) };
 }
@@ -306,6 +324,16 @@ export interface OpDef<F extends Fields, D extends object> {
   doc_appendix_tr?: readonly string[];
   /** The coach-facing line in capabilities.ts (defaults to the first sentence of when_tr). */
   capability_tr?: string;
+  /**
+   * 'rare' = seldom-needed op (lab results, recipes, calorie programs…): still fully in the schema,
+   * but documented as one compact line in the doc's appendix to keep Stage A's prefix in budget.
+   */
+  tier?: 'rare';
+}
+
+/** Options for evaluate(): `confirmed` = re-validating a hold the user just said yes to. */
+export interface EvalOpts {
+  confirmed?: boolean;
 }
 
 /** Rule metadata the generators read (no functions needed for docs). */
@@ -332,13 +360,16 @@ export interface RegOp {
   readonly examples_tr: readonly string[];
   readonly doc_appendix_tr: readonly string[];
   readonly capability_tr?: string;
+  readonly tier?: 'rare';
   /** Legacy envelope type for these args. */
   envelopeFor(args: Record<string, unknown>): string;
   /**
    * derive() + the op's own rules. Callers MUST run the structural field checks first and call
-   * this only when they found no hard structural error (the args then match the declared types).
+   * this only when they found no hard structural error (the args then match the declared types),
+   * and pass the args WITH lossless column fits applied, so derive() computes from — and echoes —
+   * the values that will actually be stored.
    */
-  evaluate(args: Record<string, unknown>, ctx: ValidationContext): { derived: Record<string, unknown>; issues: Issue[]; noop: string | null };
+  evaluate(args: Record<string, unknown>, ctx: ValidationContext, opts?: EvalOpts): { derived: Record<string, unknown>; issues: Issue[]; noop: string | null };
 }
 
 function toDocs<A, D>(rs: ReadonlyArray<RuleDef<A, D>> | undefined): RuleDoc[] {
@@ -367,8 +398,11 @@ export function op<F extends Fields, D extends object = Record<string, never>>(d
 }
 
 function buildOp<F extends Fields, D extends object>(def: OpDef<F, D>, rs: RuleSet<Infer<F>, D>): RegOp {
-  const run = (level: IssueLevel, rs: ReadonlyArray<RuleDef<Infer<F>, D>> | undefined, a: Infer<F>, d: D, ctx: ValidationContext, out: Issue[]) => {
+  const run = (
+    level: IssueLevel, rs: ReadonlyArray<RuleDef<Infer<F>, D>> | undefined, a: Infer<F>, d: D, ctx: ValidationContext, out: Issue[], opts: EvalOpts,
+  ) => {
     for (const r of rs ?? []) {
+      if (opts.confirmed && r.evidence) continue;
       const hit = r.test(a, d, ctx);
       if (!hit) continue;
       out.push({
@@ -398,17 +432,18 @@ function buildOp<F extends Fields, D extends object>(def: OpDef<F, D>, rs: RuleS
     examples_tr: def.examples_tr ?? [],
     doc_appendix_tr: def.doc_appendix_tr ?? [],
     capability_tr: def.capability_tr,
+    tier: def.tier,
     envelopeFor(args) {
       return typeof def.envelope === 'string' ? def.envelope : def.envelope(args as Infer<F>);
     },
-    evaluate(args, ctx) {
+    evaluate(args, ctx, opts = {}) {
       // Safe by contract: the structural pass already proved `args` matches `fields`.
       const a = args as Infer<F>;
       const d = (def.derive ? def.derive(a, ctx) : {}) as D;
       const issues: Issue[] = [];
-      run('hard', rs.hard, a, d, ctx, issues);
-      run('ask', rs.ask, a, d, ctx, issues);
-      run('flag', rs.flag, a, d, ctx, issues);
+      run('hard', rs.hard, a, d, ctx, issues, opts);
+      run('ask', rs.ask, a, d, ctx, issues, opts);
+      run('flag', rs.flag, a, d, ctx, issues, opts);
       return { derived: d as Record<string, unknown>, issues, noop: (def.noop && def.noop(a)) || null };
     },
   };

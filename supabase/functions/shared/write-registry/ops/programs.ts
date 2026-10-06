@@ -15,15 +15,16 @@ export const periodic_state = op({
   channel: 'writes',
   envelope: 'periodic_state_update',
   title_tr: 'Dönemsel durum',
-  when_tr: 'Kullanıcı hayatında geçici bir dönemin başladığını/bittiğini söylüyorsa (ramazan, hastalık, sınav, seyahat, hamilelik…).',
-  not_when_tr: 'Bakım, mini cut gibi kalori programları target_change’dir.',
+  when_tr: 'Geçici bir dönemin (ramazan, hastalık, sınav, seyahat, hamilelik…) başlaması ya da bitmesi.',
+  not_when_tr: 'bakım, mini cut gibi kalori programları (target_change).',
   fields: {
-    state: f.enum(PERIODIC_STATES),
-    end_date: f.date({ nullable: true, past_days: 0, future_days: 365, tr: 'biliniyorsa bitiş tarihi' }),
+    state: f.enum(PERIODIC_STATES, { tr: 'none = dönem bitti' }),
+    end_date: f.date({ nullable: true, past_days: 0, future_days: 365 }),
     note: f.text({ nullable: true, max: 200 }),
   },
   writes: { rpc: 'w_periodic_state_apply', tables: ['profiles', 'challenges', 'ai_summary', 'turn_writes'], undo: 'restore_previous' },
   invariants: ['if_pause_for_incompatible_states', 'challenge_pause_resume'],
+  tier: 'rare',
 }).rules({
   ask: [
     rule('program_bitiyor', 'aktif bakım/mini cut programı varken dönem temizleme programı da bitirir', (a, _d, ctx) =>
@@ -33,11 +34,11 @@ export const periodic_state = op({
 });
 
 const PROGRAMS = {
-  maintenance_start: 'bakıma geçiş (kilo koruma kalorisi)',
-  mini_cut: 'mini cut (2–4 hafta kısa açık)',
+  maintenance_start: 'bakım kalorisine geçiş',
+  mini_cut: '2–4 hafta kısa açık',
   plateau_strategy: 'plato stratejisi',
-  recovery: 'fazla yeme sonrası telafi (2 gün hafif açık)',
-  mvd: 'minimum uygulanabilir gün (bugün sadece temel hedefler)',
+  recovery: 'fazla yeme sonrası 2 gün hafif açık',
+  mvd: 'bugün yalnız temel hedefler',
 } as const;
 
 const ENVELOPE_BY_PROGRAM: Record<keyof typeof PROGRAMS, string> = {
@@ -53,17 +54,18 @@ export const target_change = op({
   channel: 'writes',
   envelope: (a) => ENVELOPE_BY_PROGRAM[a.program],
   title_tr: 'Kalori programı',
-  when_tr: 'Kullanıcı açıkça bir program istiyor ya da kabul ediyorsa (bakıma geç, mini cut, plato stratejisi, telafi, MVD günü).',
-  not_when_tr: '"Hedefime ulaştım mı sence?" gibi soru program başlatmaz.',
+  when_tr: 'Açıkça istenen ya da kabul edilen kalori programı (bakım, mini cut, plato stratejisi, telafi, MVD günü); "hedefime ulaştım mı?" sorusu değil.',
+  not_when_tr: '"hedefime ulaştım mı sence?" gibi soru.',
   fields: {
-    program: f.enum(PROGRAMS),
+    program: f.enum(PROGRAMS, { explain: true }),
     strategy_id: f.enum(PLATEAU_STRATEGIES, { nullable: true, tr: 'yalnız plateau_strategy’de' }),
     weeks: f.num({ nullable: true, hard: [2, 4], decimals: 0, tr: 'yalnız mini_cut’ta (2–4)' }),
-    excess_kcal: f.num({ unit: 'kcal', nullable: true, hard: [0, 10000], decimals: 0, tr: 'telafide fazlalık tahminin; kod canlı toplamlarla karşılaştırır' }),
+    excess_kcal: f.num({ unit: 'kcal', nullable: true, hard: [0, 10000], decimals: 0, tr: 'telafide fazlalık tahminin' }),
     reason: f.text({ max: 200 }),
   },
   writes: { fn: 'applyTargetAdjust', tables: ['daily_plans', 'profiles', 'user_commitments', 'turn_writes'], undo: 'restore_previous', hold_op: 'target_change' },
   invariants: ['assert_target_allowed', 'clinical_floor', 'forward_projection'],
+  tier: 'rare',
 }).rules({
   hard: [
     rule('strateji_eksik', 'plateau_strategy için strategy_id gerekli', (a) => a.program === 'plateau_strategy' && a.strategy_id === null,

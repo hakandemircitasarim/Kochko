@@ -1,0 +1,7 @@
+## memory[] — koçun hafıza notları
+
+### memory_note
+Bu kişiyle ilgili ileride işe yarayacak kalıcı bir gözlem öğrendiysen. Değil: Kayıtlara giden bilgiler (öğün, kilo, alerji…) hafıza notu değildir; onlar kendi yazmalarıyla gider.
+- kind: person_note=bu kişiyle nasıl konuşmalı (tek not; yenisi eskisinin yerine geçer) · coach_note=tarihli gözlem (eklenir) · pattern=tekrarlayan davranış kalıbı ve tetikleyicisi · portion_calibration=kişisel porsiyon ("benim tabağım" ≈ 300 g) · forget=kullanıcının unutmamı istediği bir not
+- food: yalnız portion_calibration
+- grams: yalnız portion_calibration

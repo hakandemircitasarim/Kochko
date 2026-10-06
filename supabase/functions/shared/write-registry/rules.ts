@@ -42,6 +42,7 @@ export function evidenceIsVerbatim<A extends { evidence_quote: string | null }, 
 ): RuleDef<A, D> {
   return rule<A, D>(code, doc_tr, (a, _d, ctx) => !isVerbatimQuote(a.evidence_quote, ctx.user_message), {
     path: 'evidence_quote',
+    evidence: true,
     ...(extra ?? {}),
   });
 }
