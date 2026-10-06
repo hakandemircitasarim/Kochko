@@ -8,6 +8,8 @@
  *     NOT explicit hits.
  *  4. Recall parity: every v1 phrase and every sentence today's detectors fire on is still a hit
  *     of the same category (and, for ED, at least the same severity).
+ *     4b. Instant parity: what v1 answered instantly about the user, now, is still instant here;
+ *     every v1 phrase that is not is listed with the benign reading that made v1 wrong.
  *  5. The §7.2 decision table, the classifier hook and the canned copy.
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
@@ -77,6 +79,15 @@ const EXPLICIT: Record<'emergency' | 'self_harm', string[]> = {
     // Simple past / evidential of a state verb reports a state that holds NOW ("uyuştu" = numb).
     'sol kolum uyuşuyor', 'sol kolum uyuştu', 'sol kolum uyuşmuş', 'sol kolumda uyuşma var',
     'felç geçiriyorum',
+    // A simile is how Turkish describes a symptom NOW, never past narration (wave-2a review).
+    'sanki kalp krizi geçiriyormuşum gibi', 'kalp krizi geçiriyormuş gibiyim', 'kalp krizi geçirecek gibiyim',
+    'kalp krizi geçirecek gibi hissediyorum', 'göğsüm ağrıyormuş gibi', 'göğsüm ağrıyormuş', 'göğsüm sıkışıyormuş gibi',
+    'göğsüm sıkışıyormuş gibi hissediyorum', 'felç geçiriyormuşum gibi hissediyorum', 'felç geçirecek gibiyim',
+    'sol kolum uyuşuyormuş gibi', 'kan kusuyormuşum gibi', 'bilincimi kaybediyormuşum gibi', 'bilincim kapanıyormuş gibi',
+    'nefes alamıyormuşum gibi', 'nefes alamıyormuş gibiyim', 'nefes alamıyormuş gibi hissediyorum',
+    'sanki nefes alamıyormuşum gibi oluyor', 'nefes alamıyomuşum gibi',
+    // Someone's emergency reported as happening now, like "kan kusuyor".
+    'babam kalp krizi geçiriyormuş',
   ],
   self_harm: [
     'intihar', 'intihar etmek istiyorum', 'intihar etmeyi düşünüyorum', 'intiharı düşünüyorum', 'intihar edeceğim',
@@ -86,7 +97,12 @@ const EXPLICIT: Record<'emergency' | 'self_harm', string[]> = {
     'canıma kıymak istiyorum', 'canıma kıyacağım', 'kendime kıyacağım', 'kendime kıymak',
     'hayatıma son vermek istiyorum', 'hayatıma son vereceğim', 'yaşamıma son vermek', 'hayatıma son veriyorum',
     'hayatıma bir son vermek istiyorum', 'hayatıma son', 'hayatımı sonlandırmak istiyorum', 'yaşamımı sonlandıracağım',
-    'kendimi öldürmek istiyorum', 'kendimi öldüreceğim', 'kendimi öldürmeyi düşünüyorum',
+    // wave-2a review: the narrowed pattern had dropped these v1-instant phrasings to ambiguous.
+    'hayatıma son noktayı koymak istiyorum', 'yaşamıma son noktasını koyacağım', 'hayatıma sonvereceğim', 'hayatıma sonvermek istiyorum',
+    'hayatımı bitireceğim', 'hayatımı bitirmek istiyorum',
+    'kendimi öldürmek istiyorum', 'kendimi öldüreceğim', 'kendimi öldürmeyi düşünüyorum', 'kendimi öldüreğim',
+    'bileğimi keseceğim', 'bileklerimi kesmek istiyorum', 'bileğimi kesmeyi düşünüyorum', 'damarımı kesmek istiyorum',
+    'damarlarımı keseceğim', 'şahdamarımı keseceğim',
     'kendimi asacağım', 'kendimi asmak istiyorum',
     'hayata veda etmek istiyorum', 'hayata veda edeceğim', 'her şeye son vermek istiyorum', 'yok olmak istiyorum',
   ],
@@ -129,14 +145,20 @@ const AMBIGUOUS: Record<SafetyCategory, string[]> = {
     // wave-1: "koşuda nefes alamıyordum, normal mi?" was an instant 112), never lost.
     'nefes alamıyor', 'nefes alamıyoruz', 'nefes alamıyordum', 'nefes alamıyodum', 'koşuda nefes alamıyordum, normal mi?',
     'soluk alamıyoruz koşarken', 'nefes alamıyor musun?', 'nefes alamadım', 'nefes alamayacak gibiyim',
-    'göğsüm sıkışıyordu', 'göğsüm ağrıyordu', 'göğsümde ağrı vardı', 'göğsüm ağrıyormuş', 'kalp krizi geçiriyordum sandım',
+    'göğsüm sıkışıyordu', 'göğsüm ağrıyordu', 'göğsümde ağrı vardı', 'göğsüm ağrıyormuştu', 'kalp krizi geçiriyordum sandım',
     'kan kusuyordum', 'bilincimi kaybetmiştim', 'bilincim kapanıyordu', 'sol kolum uyuşuyordu', 'sol kolum uyuşurdu',
     'felç geçiriyordum sandım',
+    // A simile told in the past, someone else's simile, or a bare "-iyormuşum" report: Stage A reads it.
+    'kalp krizi geçiriyormuş gibiydim', 'kalp krizi geçirecek gibiydim', 'nefes alamıyormuş gibiydim',
+    'annem nefes alamıyormuş gibi', 'uykuda nefes alamıyormuşum, doktor apne dedi',
   ],
   self_harm: [
-    'tükendim', 'ben bittim', 'bittim ben', 'keşke uyanmasam', 'keşke ölsem', 'ölsem de kurtulsam', 'ölüp kurtulmak istiyorum',
-    'yaşamamın bir anlamı yok', 'bileğimi keseceğim', 'damarımı kesmek istiyorum', 'ipi alıp kendimi',
+    'tükendim', 'ben bittim', 'bittim ben', 'keşke uyanmasam', 'keşke ölsem', 'ölsem de kurtulsam', 'ölüp kurtulsam',
+    'yaşamamın bir anlamı yok', 'ipi alıp kendimi',
     'bugün antrenmanda kendimi öldürdüm', 'böyle yaşamak istemiyorum',
+    // v1's root regexes fire on these; each has a benign reading, so they are facts, not instant.
+    'ekmek keserken bileğimi kestim', 'bilekliğimi kesmek istiyorum', 'tatlıdan kendimi keseceğim',
+    'bu tatlılar hayatımı bitirecek',
     // Someone else's death is not a self-harm statement — but it stays a fact for Stage A.
     'babam geçen yıl hayata veda etti', 'hayata veda eden dedem',
   ],
@@ -185,6 +207,11 @@ const NOT_EXPLICIT = [
   'koşuda nefes alamıyordum, normal mi?', 'soluk alamıyoruz koşarken', 'koşarken nefes alamıyor musun?',
   'koşuda göğsüm sıkışıyordu, normal mi?', 'koşuda göğsüm ağrıyordu, normal mi?', 'babamın göğüs ağrısı vardı',
   'babam geçen yıl hayata veda etti', 'kendimi zararlı alışkanlıklardan kurtarmak istiyorum',
+  // Wave-2a: near-misses of the patterns added to the instant tier (past, third person, other senses).
+  'koşuda kalp krizi geçiriyormuş gibiydim, normal mi?', 'faturayı görünce kalp krizi geçirecektim',
+  'uykuda nefes alamıyormuşum, doktor apne dedi', 'bu tatlılar hayatımı bitirecek', 'bu diyet hayatımı bitirdi',
+  'ekmek keserken bileğimi kestim', 'bilekliğimi kesmek istiyorum', 'bileğimdeki alçıyı keseceğim',
+  'tatlıdan kendimi keseceğim', 'damar yolunu kesmek istiyorum', 'ölüp kurtulsam',
   // final2#9: the coach's OWN advice — tripwires only ever see the user's message, but even if
   // such a sentence were fed in, it could at most be an ambiguous fact.
   'Bir günlük fazlalık haftayı bozmaz; bugün bunun yüzünden telafi için aç kalma, yarın normal düzenine dön.',
@@ -254,6 +281,10 @@ Deno.test('narration: past / someone else\'s explicit phrasing is an ambiguous f
   // A live occurrence anywhere in the message still wins.
   assertEquals(scanTripwires('dün nefes alamıyordum, şimdi de nefes alamıyorum').explicit?.trigger, 'emg.nefes_alamiyorum');
   assertEquals(scanTripwires('göğsüm ağrıyordu, şimdi göğüs ağrısı var').explicit?.category, 'emergency');
+  // A simile is NOW (wave-2a review); only its explicitly past form is narration.
+  assertEquals(scanTripwires('sanki kalp krizi geçiriyormuşum gibi').explicit?.trigger, 'emg.kalp_krizi_simdi');
+  assertEquals(liveAmbiguousHits(scanTripwires('kalp krizi geçiriyormuş gibiydim')).map((h) => h.trigger), ['emg.kalp_krizi_simdi.anlatim']);
+  assertEquals(liveAmbiguousHits(scanTripwires('göğsüm ağrıyormuştu')).map((h) => h.trigger), ['emg.gogus_agrisi.anlatim']);
   // Someone else's death: a fact, never the instant crisis reply.
   const veda = scanTripwires('babam geçen yıl hayata veda etti');
   assertEquals(veda.explicit, null);
@@ -263,7 +294,8 @@ Deno.test('narration: past / someone else\'s explicit phrasing is an ambiguous f
 Deno.test('dotless-ı trap: ASCII capitals ("KENDIMI") still hit; an ASCII-capital deficit is still not intake', () => {
   // tr-lowercasing "I" gives "ı" — v1 itself misses these; v2 must not.
   assertEquals(scanTripwires('KENDIMI ASACAGIM').explicit?.trigger, 'sh.kendimi_asmak');
-  assert(liveAmbiguousHits(scanTripwires('BILEGIMI KESECEGIM')).some((h) => h.category === 'self_harm'));
+  assertEquals(scanTripwires('BILEGIMI KESECEGIM').explicit?.trigger, 'sh.bilek_kesme_niyeti');
+  assert(liveAmbiguousHits(scanTripwires('BILEGIMI KESTIM')).some((h) => h.category === 'self_harm'));
   assertEquals(liveEdSeverity(scanTripwires('GUNDE 500 KALORI YEMEK ISTIYORUM')), RANK.medium);
   assertEquals(liveAmbiguousHits(scanTripwires('GUNDE 500 KALORI ACIK VERIYORUM')), []);
 });
@@ -281,6 +313,19 @@ Deno.test('scan is cheap (T2 budget): a ~4000-character message well under 100 m
 Deno.test('"kendimi aşmak" (outdo myself) is not "kendimi asmak" (hang) — diacritics decide', () => {
   assertEquals(scanTripwires('kendimi aşmak istiyorum').explicit, null);
   assertEquals(scanTripwires('kendimi asmak istiyorum').explicit?.trigger, 'sh.kendimi_asmak');
+});
+
+Deno.test('"ölüp kurtulmak" (die) is not "(zayıf) olup kurtulmak" — diacritics decide; ASCII stays a fact', () => {
+  for (const s of ['ölüp kurtulmak istiyorum', 'ölüp kurtulacağım', 'ÖLÜP KURTULMAK İSTİYORUM', 'artık ölüp kurtulmak istiyorum.', 'ölüp kurtulmak istiyorum'.normalize('NFD')]) {
+    assert(detectCrisis(s.normalize('NFC')).isCrisis, `v1 sanity: ${s}`);
+    assertEquals(scanTripwires(s).explicit?.trigger, 'sh.olup_kurtulmak', s);
+  }
+  // Folding cannot tell "olup" from "ölüp": the ASCII spelling and the passive wish go to Stage A.
+  for (const s of ['olup kurtulmak istiyorum', 'OLUP KURTULMAK ISTIYORUM', 'ölüp kurtulsam', 'zayıf olup kurtulmak istiyorum']) {
+    const scan = scanTripwires(s);
+    assertEquals(scan.explicit, null, s);
+    assert(liveAmbiguousHits(scan).some((h) => h.category === 'self_harm'), s);
+  }
 });
 
 Deno.test('ED negation (v1 F2/A8): a same-clause refusal is a fact only, a later wish is not a refusal', () => {
@@ -366,6 +411,139 @@ Deno.test('parity: on the probe corpus, every sentence today\'s detectors fire o
     const ed = detectEDRisk(s);
     if (ed.isRisk) assert(liveEdSeverity(scan) >= RANK[ed.severity as 'high' | 'medium'], `ED ${ed.severity} lost: ${s}`);
   }
+});
+
+// ─── 4b. golden: the instant tier never drops below v1 for the user, now ────
+// v1 answered every hit instantly with no LLM. v2 keeps that for every phrasing about the user's
+// own acute symptom or intent; v1's other hits go to Stage A as facts, and each of those is listed
+// below WITH the benign reading that made v1 wrong. A pattern edit that drops a phrasing out of the
+// instant tier fails here (§7.4: explicit → ambiguous needs owner sign-off and shadow evidence).
+
+/** v1 answered these instantly (asserted) and each is the user, now → instant in every spelling. */
+const V1_INSTANT_GOLDEN: Record<'emergency' | 'self_harm', string[]> = {
+  emergency: [
+    'göğüs ağrısı', 'göğsüm ağrıyor', 'gogsum agriyor', 'nefes alamıyorum', 'kan kusuyorum', 'bilincimi kaybediyorum',
+    'bilincim kapanıyor', 'sol kolum uyuşuyor', 'kalp krizi geçiriyorum', 'şu an kalp krizi mi geçiriyorum?', 'felç geçiriyorum',
+    // wave-2a review: a simile is how Turkish describes a symptom NOW (the reviewer's probes).
+    'sanki kalp krizi geçiriyormuşum gibi', 'kalp krizi geçiriyormuş gibiyim', 'göğsüm ağrıyormuş gibi',
+    'felç geçiriyormuşum gibi hissediyorum', 'sol kolum uyuşuyormuş gibi', 'bilincim kapanıyormuş gibi', 'göğsüm ağrıyormuş',
+    'kalp krizi geçirecek gibiyim', 'felç geçirecek gibiyim',
+  ],
+  self_harm: [
+    'intihar etmek istiyorum', 'kendime zarar vermek istiyorum', 'ölmek istiyorum', 'artık yaşamak istemiyorum',
+    'canıma kıyacağım', 'kendime kıyacağım', 'hayatıma son vermek istiyorum', 'yaşamıma son vereceğim', 'kendimi öldüreceğim',
+    'kendimi asacağım', 'hayata veda etmek istiyorum', 'her şeye son vermek istiyorum', 'yok olmak istiyorum',
+    // wave-2a review: the two phrasings the narrowed sh.hayatima_son had dropped to ambiguous.
+    'hayatıma son noktayı koymak istiyorum', 'hayatıma sonvereceğim',
+    // v1's own "kendimi olduregim" spelling, and first-person intents only v1's root regexes caught.
+    'kendimi öldüreğim', 'hayatımı bitireceğim', 'bileğimi keseceğim', 'damarımı kesmek istiyorum', 'şahdamarımı keseceğim',
+  ],
+};
+
+const V1_DETECTOR = {
+  emergency: (s: string) => detectEmergency(s).isEmergency,
+  self_harm: (s: string) => detectCrisis(s).isCrisis,
+} as const;
+
+Deno.test('golden: every v1-instant phrasing about the user, now, is still instant — in every spelling', () => {
+  for (const [category, sentences] of Object.entries(V1_INSTANT_GOLDEN) as ['emergency' | 'self_harm', string[]][]) {
+    for (const s of sentences) {
+      assert(V1_DETECTOR[category](s), `v1 sanity (v1 answered it instantly): ${s}`);
+      for (const v of variants(s)) {
+        const scan = scanTripwires(v);
+        const got = scan.explicit?.trigger ?? `ambiguous[${liveAmbiguousHits(scan).map((h) => h.trigger).join(',')}]`;
+        assertEquals(scan.explicit?.category, category, `weaker than v1: ${JSON.stringify(v)} → ${got}`);
+        assertEquals(resolveTripwires({ scan, stageA: null }).kind, 'canned', v);
+      }
+    }
+  }
+});
+
+/**
+ * Every v1 phrase v2 does NOT answer instantly, keyed by its folded form, with the reading that
+ * made the instant reply wrong. Each is still a live hit: a failed Stage A gives today's canned
+ * reply and a missing or unconfirmed benign reading the protective path (§7.2) — only not instant.
+ * Adding an entry is a §7.4 decision (owner + shadow evidence), never a side effect of a refactor.
+ */
+const V1_PHRASES_READ_BY_STAGE_A: Record<string, string> = {
+  'nefesim kesildi': 'efor sonrası: "koşudan sonra nefesim kesildi"',
+  'nefesim yok': 'kondisyon: "bugün koşacak nefesim yok"',
+  'bayiliyorum': 'çok sevmek: "bu tatlıya bayılıyorum"',
+  'bayildim': 'çok beğenmek: "bu tarife bayıldım"',
+  'kalp krizi': 'geçmiş, başkası ya da risk: "babam geçen yıl kalp krizi geçirdi", "kalp krizi riskini azaltmak için…"',
+  'felc': 'geçmiş ya da başkası: "dedem felç geçirdi"',
+  'kan kusdum': 'geçmiş zaman ya da deyim: "bu antrenmanda kan kustum resmen"',
+  'kan kustum': 'geçmiş zaman ya da deyim ("kan küstüm" yazımı)',
+  'cok siddetli agri': 'bilinen ya da geçmiş ağrı: "dişimde çok şiddetli ağrı vardı"',
+  'dayanilmaz agri': 'bilinen ağrı: "regl döneminde dayanılmaz ağrı oluyor"',
+  'kalp carpintisi': 'geçici ya da genel: "kahveden sonra kalp çarpıntısı oluyor bazen"',
+  'yutamiyorum': 'sevmemek: "bu kadar kuru ekmeği yutamıyorum"',
+  'gorme kaybi': 'başkası ya da bilgi: "annemde görme kaybı var"',
+  'goremiyorum': 'ekran: "kalori yazısını göremiyorum ekranda"',
+  'bittim ben': 'yorgunluk: "bacak gününde bittim ben"',
+  'ben bittim': 'yorgunluk: "bugün ben bittim, toplantılar bitmedi"',
+  'tukendim': 'iş yorgunluğu: "işte tükendim bugün"',
+  'olup kurtul': 'katlama bunu "zayıf olup kurtulmak istiyorum" cümlesinden ayıramaz; diakritikli niyet biçimleri (ölüp kurtulmak istiyorum, ölüp kurtulacağım) açık listede',
+};
+
+Deno.test('golden: the benign readings quoted in V1_PHRASES_READ_BY_STAGE_A really are not instant', () => {
+  let quoted = 0;
+  for (const reason of Object.values(V1_PHRASES_READ_BY_STAGE_A)) {
+    for (const [, example] of reason.matchAll(/"([^"]+)"/g)) {
+      quoted++;
+      assertEquals(scanTripwires(example).explicit, null, example);
+    }
+  }
+  assert(quoted >= Object.keys(V1_PHRASES_READ_BY_STAGE_A).length, `${quoted}`);
+});
+
+Deno.test('golden: every v1 phrase is instant in v2, or listed with the reason Stage A reads it — never silently weaker', () => {
+  const used = new Set<string>();
+  for (const [list, category] of [[V1_EMERGENCY_PHRASES, 'emergency'], [V1_CRISIS_PHRASES, 'self_harm']] as const) {
+    for (const p of list) {
+      assert(V1_DETECTOR[category](p), `v1 sanity: ${p}`);
+      const key = foldTripwireText(p);
+      const scan = scanTripwires(p);
+      if (scan.explicit) {
+        assertEquals(scan.explicit.category, category, p);
+        assert(!(key in V1_PHRASES_READ_BY_STAGE_A), `stale entry: "${key}" is instant now — remove it from the list`);
+        continue;
+      }
+      assert(key in V1_PHRASES_READ_BY_STAGE_A, `v1 answered "${p}" instantly and v2 does not: make it explicit, or document why Stage A must read it`);
+      used.add(key);
+      // Still protected: a live hit of the same category, and today's canned reply if Stage A fails.
+      assert(liveAmbiguousHits(scan).some((h) => h.category === category), p);
+      const fb = resolveTripwires({ scan, stageA: null });
+      assert(fb.kind === 'fallback' && fb.category === category && fb.mode === 'replace', `${p} → ${fb.kind}`);
+    }
+  }
+  assertEquals(Object.keys(V1_PHRASES_READ_BY_STAGE_A).filter((k) => !used.has(k)), [], 'every entry names a v1 phrase');
+});
+
+Deno.test('golden: a v1 phrase that is instant in the present stays instant as a simile ("-iyormuş gibi")', () => {
+  /** "göğsüm ağrıyor" → "göğsüm ağrıyormuş gibi"; "nefes alamıyorum" → "nefes alamıyormuşum gibi" … */
+  const similes = (p: string): string[] => {
+    const mus = /[ıİşŞğĞüÜöÖçÇ]/.test(p) ? 'muş' : 'mus';
+    if (/yorum$/.test(p)) {
+      const stem = p.slice(0, -2);
+      return [`${stem}${mus}um gibi`, `sanki ${stem}${mus}um gibi`, `${stem}${mus} gibiyim`, `${stem}${mus} gibi hissediyorum`];
+    }
+    if (/yor$/.test(p)) return [`${p}${mus} gibi`, `sanki ${p}${mus} gibi`, `${p}${mus} gibi hissediyorum`];
+    return [];
+  };
+  let checked = 0;
+  for (const p of V1_EMERGENCY_PHRASES) {
+    const base = scanTripwires(p);
+    for (const s of similes(p)) {
+      for (const v of variants(s)) {
+        const scan = scanTripwires(v);
+        checked++;
+        if (base.explicit) assertEquals(scan.explicit?.category, 'emergency', `simile weaker than its present form: ${JSON.stringify(v)}`);
+        else assert(hasHit(scan, 'emergency'), `simile lost the hit: ${JSON.stringify(v)}`);
+      }
+    }
+  }
+  assert(checked > 100, `${checked}`);
 });
 
 Deno.test('parity: v1 injection refusal is unchanged (same pattern objects), v2 only logs', () => {
@@ -590,10 +768,16 @@ Deno.test('ED required line: a referral, not a mere mention of a profession (wav
     'Bir uzmana danışman iyi olur.', 'Bir psikologdan destek almanı öneririm.', 'Uzman desteği almak sana iyi gelir.',
     'Profesyonel destek almak güçlü bir adımdır.', 'Bir uzman diyetisyen veya psikolog ile görüşmeni öneririm.',
     'Ben diyetisyen değilim; bir diyetisyenle görüşmeni öneririm.', 'BİR DİYETİSYENLE KONUŞMANI ÖNERİRİM',
+    // A dismissal in another clause does not undo the referral; a second, real referral counts.
+    'Bir psikologla konuşmanı öneririm, kendini suçlamana gerek yok.', 'Bir diyetisyenle görüşmeni öneririm; beklemene gerek yok.',
+    'Bir uzmanla konuşmak zorunda değilsin ama bir diyetisyenle görüşmeni öneririm.',
   ]) assert(hasRequiredSafetyLine(s, 'ed'), s);
   for (const s of [
     'Ben diyetisyen değilim.', 'Ben bir uzman değilim ama yardım edebilirim.', 'Bunun uzmanı değilim.',
     'Bir uzmanla konuşmana gerek yok, birlikte hallederiz.', 'Psikolog arkadaşın ne dedi?', 'Diyetisyenin listesi güzel.',
+    // wave-2a review: a verb between the referral word and the dismissal ("… almana gerek yok").
+    'Profesyonel yardım almana gerek yok.', 'Uzman desteği almana hiç gerek yok bence.', 'Psikolog yardımı almak zorunda değilsin.',
+    'Bir diyetisyene gitmen gerekmiyor.', 'PROFESYONEL YARDIM ALMANA GEREK YOK', 'Uzman desteği alman şart değil.',
   ]) {
     assert(!hasRequiredSafetyLine(s, 'ed'), s);
     const out = ensureRequiredSafetyLine(s, 'ed');

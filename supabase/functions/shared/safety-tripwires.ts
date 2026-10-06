@@ -21,7 +21,12 @@
  * about the user, NOW: the same words told as past or about someone else ("koşuda nefes
  * alamıyordum, normal mi?", "babam hayata veda etti") are reported as an ambiguous `<id>.anlatim`
  * hit (see `narration`), and an explicit pattern never reaches into a neighbouring word
- * ("hayatımı son derece kolaylaştırdı" is praise, not "hayatıma son").
+ * ("hayatımı son derece kolaylaştırdı" is praise, not "hayatıma son"). A simile is NOT narration:
+ * "sanki kalp krizi geçiriyormuşum gibi", "göğsüm sıkışıyormuş gibi" is how Turkish describes a
+ * symptom happening now, and v1 answers it instantly — so does this list (wave-2a review).
+ * The instant tier never shrinks below v1 for the user, now: the golden test in
+ * safety-tripwires.test.ts classifies every v1 phrase as explicit here or as a documented,
+ * reasoned "Stage A reads it" entry.
  * Everything else is ambiguous WITHOUT losing recall: v1's own phrase lists and root regexes live
  * here (guardrails.ts imports them — a pure move, v1 behaviour unchanged) and also run as
  * catch-all ambiguous triggers, so every v1 hit is still a hit by construction (golden parity
@@ -38,7 +43,7 @@
  * Pure: no I/O, no Deno/npm imports (the eval runner and any runtime can load it).
  */
 
-export const TRIPWIRES_VERSION = 'tw-2026-10-07';
+export const TRIPWIRES_VERSION = 'tw-2026-10-07b';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -99,11 +104,12 @@ export interface TripwireDef {
   negatable?: boolean;
   /**
    * EXPLICIT only — is this occurrence past narration or someone else's? Gets the folded last word
-   * of the match (completed to its end) and the word right after it. True → the occurrence is
-   * reported as an AMBIGUOUS hit with trigger `<id>.anlatim`: Stage A reads it, a failed Stage A
-   * still gives today's canned reply, so nothing is lost — it is only not instant.
+   * of the match (completed to its end), the word right after it, and the folded text right after
+   * it (up to 60 characters; '' when punctuation, not a space, follows the word). True → the
+   * occurrence is reported as an AMBIGUOUS hit with trigger `<id>.anlatim`: Stage A reads it, a
+   * failed Stage A still gives today's canned reply, so nothing is lost — it is only not instant.
    */
-  narration?: (verb: string, next: string) => boolean;
+  narration?: (verb: string, next: string, after: string) => boolean;
   /** Stage A's question for a narrated occurrence (default: `question_tr`). */
   narration_q?: string;
   question_tr: string;
@@ -198,17 +204,32 @@ function negatedAfter(t: Texts, end: number): boolean {
 
 // ─── narration (explicit list only) ──────────────────────────────────────────
 
-/** Past narration on the matched verb word (folded): -iyordu/-iyodu (was …-ing), -iyormuş
- * (reportedly), -mıştı (had …), -ardı/-irdi/-urdu (used to). Simple past stays instant: for these
- * state verbs it reports a state that holds now ("sol kolum uyuştu" = it is numb now). */
-const PAST_VERB = /(?:yor?du|yor?mus|m[iu]st[iu]|[aeiu]rd[iu])/u;
-/** A past auxiliary right after the matched noun phrase ("göğsümde ağrı vardı"). */
-const PAST_AUX = /^(?:vardi|yoktu|oluyordu|olmustu|olurdu)/u;
+/** Past narration on the matched verb word (folded): -iyordu/-iyodu (was …-ing), -mıştı (had …),
+ * -ardı/-irdi/-urdu (used to). Simple past stays instant: for these state verbs it reports a state
+ * that holds now ("sol kolum uyuştu" = it is numb now).
+ * NOT -iyormuş (wave-2a review): "sanki kalp krizi geçiriyormuşum gibi", "kalp krizi geçiriyormuş
+ * gibiyim", "göğsüm ağrıyormuş gibi" describe an acute symptom NOW, and "babam kalp krizi
+ * geçiriyormuş" reports one happening now — v1 answers all of them instantly. Only an explicitly
+ * past form demotes it: -iyormuştu (PAST_VERB) or "… gibiydi(m)" (PAST_AUX). */
+const PAST_VERB = /(?:yor?du|m[iu]st[iu]|[aeiu]rd[iu])/u;
+/** A past auxiliary right after the matched phrase ("göğsümde ağrı vardı", "… geçiriyormuş gibiydim"). */
+const PAST_AUX = /^(?:vardi|yoktu|oluyordu|olmustu|olurdu|gibiydi)/u;
 const pastNarration = (verb: string, next: string): boolean => PAST_VERB.test(verb) || PAST_AUX.test(next);
 
-/** Breathing is instant only in the present first person ("alamıyorum", "alamıyom"): "alamıyor",
- * "alamıyoruz", "alamıyorsun", "alamıyordum" are someone else's or past (wave-1 review). */
-const notMeNow = (verb: string): boolean => !/yo(?:ru)?m+$/u.test(verb);
+/** A first-person simile on an -iyormuş verb — the user's own symptom, now: "…-iyormuşum gibi",
+ * "…-iyormuş gibiyim", "…-iyormuş gibi hissediyorum / oluyorum". Not "…-iyormuş gibiydim" (past). */
+const firstPersonSimile = (verb: string, after: string): boolean =>
+  /yor?mus(?:um)?$/u.test(verb) && (
+    (/musum$/u.test(verb) && /^gibi(?!\p{L})/u.test(after)) ||
+    /^gibiyim(?!\p{L})/u.test(after) ||
+    /^gibi \p{L}+yo(?:ru)?m+(?!\p{L})/u.test(after));
+
+/** Breathing is instant only for the user, now: the present first person ("alamıyorum",
+ * "alamıyom") or a first-person simile ("alamıyormuşum gibi", "alamıyormuş gibiyim"). "alamıyor",
+ * "alamıyoruz", "alamıyorsun", "alamıyordum" are someone else's or past (wave-1 review), and so is
+ * a bare "alamıyormuşum" ("uykuda nefes alamıyormuşum" = what a sleep test found). */
+const notMeNow = (verb: string, _next: string, after: string): boolean =>
+  !(/yo(?:ru)?m+$/u.test(verb) || firstPersonSimile(verb, after));
 
 /** "hayata veda etti / etmiş / eden / ettiğinde": a death being told, not an intent. */
 const someoneElsesDeath = (_verb: string, next: string): boolean =>
@@ -335,11 +356,13 @@ export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
   { id: 'emg.nefes_alamiyorum', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:nefes|soluk)\s*alami?yo/u, narration: notMeNow, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.gogus_sikismasi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:gogus\s+sikis|gogsum\s+(?:cok\s+)?sikis|gogsumde\s+(?:bir\s+|cok\s+)?(?:sikisma|baski))/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.gogus_agrisi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:gogus\s+agri|gogsum\s+(?:cok\s+)?agri|gogsumde\s+(?:bir\s+|cok\s+)?agri)/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
-  { id: 'emg.kalp_krizi_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kalp\s*kriz\p{L}*\s+(?:mi\s+)?geciriyo/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  // "geçiriyorum / geçiriyormuşum gibi / geçirecek gibiyim / geçirecek gibi hissediyorum": now or
+  // about to. "geçirecektim", "geçirecek gibiydim" (past) and a bare "kalp krizi" stay ambiguous.
+  { id: 'emg.kalp_krizi_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kalp\s*kriz\p{L}*\s+(?:mi\s+)?gecir(?:iyo|ecek(?:mis)?\s+gibi(?:yim|\s+\p{L}+yo(?:ru)?m))/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.kan_kusuyorum', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kan\s+kusuyo/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.bilinc_kaybi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})bilinc\p{L}*\s+(?:kaybed|kaybet|kapan|gidiyo)/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.sol_kol_uyusma', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})sol\s+kol\p{L}*\s+(?:\p{L}+\s+)?uyus/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
-  { id: 'emg.felc_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})felc\s+(?:mi\s+)?geciriyo/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
+  { id: 'emg.felc_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})felc\s+(?:mi\s+)?gecir(?:iyo|ecek(?:mis)?\s+gibi(?:yim|\s+\p{L}+yo(?:ru)?m))/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   // ── self-harm / suicide ──
   { id: 'sh.intihar', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})intihar/u, question_tr: Q_SELF_HARM },
   // Dative only (v1's phrase): the accusative "kendimi zararlı alışkanlıklardan kurtarmak
@@ -349,14 +372,24 @@ export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
   // "böyle / bu kiloyla yaşamak istemiyorum" is a common weight-loss sentence → ambiguous list.
   { id: 'sh.yasamak_istemiyorum', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?<!(?:boyle|bu sekilde|bu kiloyla|bu kilolarla|bu halde|bu bedenle|bu vucutla) )yasamak\s+ist(?:emiyo|emem)/u, question_tr: Q_SELF_HARM },
   { id: 'sh.canima_kiymak', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:canima\s+kiy(?:mak|maya|mayi|acag|acak|dim|arim|sam)|kendime\s+kiy(?:mak|acag|acak|dim|arim|sam))/u, question_tr: Q_SELF_HARM },
-  // "hayatıma (bir) son ver…", a bare "hayatıma son" ending the clause, "hayatımı sonlandır…".
-  // Never "hayatımı sonsuza dek değiştirdi" / "hayatıma son derece iyi geldi" (praise; the latter
-  // is a v1 hit, so the sh.v1 catch-all still reports it as an ambiguous fact).
-  { id: 'sh.hayatima_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:hayat|yasam)(?:ima\s+(?:bir\s+)?son(?:\s+ver|(?!\s*\p{L}))|imi\s+sonlandir)/u, question_tr: Q_SELF_HARM },
-  // Intent forms only: "antrenmanda kendimi öldürdüm" (gym idiom) is ambiguous below.
-  { id: 'sh.kendimi_oldurmek', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})kendimi\s+oldur(?:ec|mek|meyi|meye|sem|eyim)/u, question_tr: Q_SELF_HARM },
+  // "hayatıma (bir) son ver…" (also typed joined: "sonvereceğim"), "hayatıma son noktayı koy…", a
+  // bare "hayatıma son" ending the clause, "hayatımı sonlandır…", first-person "hayatımı bitir…"
+  // intent. Never "hayatımı sonsuza dek değiştirdi" / "hayatıma son derece iyi geldi" (praise; the
+  // latter is a v1 hit, so the sh.v1 catch-all still reports it as an ambiguous fact), nor "bu
+  // tatlılar hayatımı bitirecek" (third person: "will ruin my life").
+  { id: 'sh.hayatima_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:hayat|yasam)(?:ima\s+(?:bir\s+)?son(?:\s*ver|\s+nokta\p{L}*\s+koy|(?!\s*\p{L}))|imi\s+(?:sonlandir|bitir(?:ecegim|ecem|mek\s+isti|meyi\s+dusun)))/u, question_tr: Q_SELF_HARM },
+  // Intent forms only: "antrenmanda kendimi öldürdüm" (gym idiom) is ambiguous below. "öldüreğim" is
+  // v1's own spelling of the future ("kendimi olduregim" is in V1_CRISIS_PHRASES).
+  { id: 'sh.kendimi_oldurmek', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})kendimi\s+oldur(?:ec|eg|mek|meyi|meye|sem|eyim)/u, question_tr: Q_SELF_HARM },
   // Unfolded: "kendimi aşmak istiyorum" (outdo myself) must not read as "asmak" (hang).
   { id: 'sh.kendimi_asmak', category: 'self_harm', tier: 'explicit', on: 'lower', re: /(?<!\p{L})kendimi\s+as(?:aca[gğ]|acak|mak|may[ıi]|maya|sam|ay[ıi]m)/u, question_tr: Q_SELF_HARM },
+  // Unfolded, intent forms only: folding merges "ölüp kurtulmak" with "(zayıf) olup kurtulmak", so
+  // the ASCII spelling stays ambiguous (sh.olup_kurtul), and so does the passive wish "ölüp
+  // kurtulsam" (read like "keşke ölsem").
+  { id: 'sh.olup_kurtulmak', category: 'self_harm', tier: 'explicit', on: 'lower', re: /(?<!\p{L})ölüp\s+kurtul(?:mak\s+isti|aca[gğ][ıi]m|acam)/u, question_tr: Q_SELF_HARM },
+  // First-person object + first-person intent only: "ekmek keserken bileğimi kestim" (an accident)
+  // and "bilekliğimi kesmek istiyorum" (a wristband) stay with v1's root regex in the ambiguous list.
+  { id: 'sh.bilek_kesme_niyeti', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:bilegimi|bileklerimi|(?:sah\s*)?damar(?:imi|larimi))\s+kes(?:ecegim|ecem|icem|mek\s+isti|meyi\s+dusun)/u, question_tr: Q_SELF_HARM },
   { id: 'sh.hayata_veda', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})hayata\s+veda/u, narration: someoneElsesDeath, narration_q: 'Kendi yaşamına son verme düşüncesi mi, yoksa başka birinin vefatını mı anlatıyor?', question_tr: Q_SELF_HARM },
   { id: 'sh.her_seye_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})her\s*seye\s+son\s+ver/u, question_tr: Q_SELF_HARM },
   { id: 'sh.yok_olmak', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})yok\s+olmak\s+isti/u, question_tr: Q_SELF_HARM },
@@ -536,10 +569,13 @@ export const REQUIRED_SAFETY_LINE: Readonly<Record<SafetyCategory, string>> = {
 /**
  * A referral, not a mere mention of a profession ("Ben diyetisyen değilim" is not one): a
  * profession followed within four words (none of them "değil…") by a referral verb, and not waved
- * away right after ("… konuşmana gerek yok").
+ * away within the next two words of the same clause. Turkish usually puts a verb between the
+ * referral word and the dismissal ("Profesyonel yardım almana gerek yok", "Uzman desteği almana
+ * hiç gerek yok", "Psikolog yardımı almak zorunda değilsin" — wave-2a review); punctuation ends the
+ * reach, so "…görüşmeni öneririm; beklemene gerek yok" is still a referral.
  */
 const ED_REFERRAL = /(?<!\p{L})(?:diyetisyen|psikolog|psikiyatr|uzman|profesyonel)\p{L}*(?:\s+(?!degil)\p{L}+){0,4}?\s+(?:konus|gorus|danis|basvur|ulas|deste[kg]|yardim|gorun|git)\p{L}*/gu;
-const REFERRAL_WAVED_AWAY = /^\s+(?:gerek\s+(?:yok|kalma)|gerekmez|zorunda\s+degil|sart\s+degil)/u;
+const REFERRAL_WAVED_AWAY = /^(?:\s+\p{L}+){0,2}?\s+(?:hic\s+)?(?:gerek\s+(?:yok|kalma|duyma)|gerekmez|gerekmiyo|zorunda\s+degil|sart\s+degil|lazim\s+degil)/u;
 
 function hasEdReferral(reply: string): boolean {
   const f = foldTripwireText(reply);
@@ -615,7 +651,8 @@ export function scanTripwires(userMessage: string): TripwireScan {
     const span = t.folded.slice(s.index, end);
     const verb = span.slice(span.lastIndexOf(' ') + 1);
     const next = /^ (\p{L}+)/u.exec(t.folded.slice(end))?.[1] ?? '';
-    return def.narration(verb, next);
+    const after = t.folded[end] === ' ' ? t.folded.slice(end + 1, end + 61) : '';
+    return def.narration(verb, next, after);
   };
 
   const consider = (def: TripwireDef) => {
