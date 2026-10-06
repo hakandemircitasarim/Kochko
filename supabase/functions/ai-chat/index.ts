@@ -3252,7 +3252,7 @@ Doğru anladıysam: ${parsed}.${tail}`;
                 [
                   ...(gptMessages as { role: 'system' | 'user' | 'assistant'; content: string | unknown[] }[]),
                   { role: 'assistant', content: rawModelOut },
-                  { role: 'system', content: `GÜVENLİK DÜZELTMESİ: Bu taslak, kullanıcının CİDDİ alerjisi olan ${avoid} içeren bir yiyeceği önerdi ya da önerir gibi okunuyor. Aynı soruya yeniden cevap ver: ${avoid} içeren HİÇBİR yiyeceği önerme; gerekiyorsa hangi yemeklerde gizli olabileceğini söyleyip "içinde ${avoid} var mı diye sor" uyarısı ver ve güvenli seçenekler sun. Aynı JSON zarfını döndür; "actions" alanını BOŞ bırak (kayıtlar zaten işlendi).` },
+                  { role: 'system', content: `GÜVENLİK DÜZELTMESİ: Bu taslak, kullanıcının CİDDİ alerjisi olan ${avoid} içeren bir yiyeceği önerdi ya da önerir gibi okunuyor. Aynı soruya yeniden cevap ver: ${avoid} içeren HİÇBİR yiyeceği önerme. İstenen yemek doğası gereği ${avoid} içeriyorsa onun ${avoid} KULLANILMAYAN güvenli bir versiyonunu ya da benzer bir alternatifini ver. ${avoid} kelimesini YALNIZCA kaçınma kalıplarıyla kullan: "${avoid}sız/siz", "${avoid} yerine", "${avoid} kullanmadan", "${avoid} içermeyen", "içinde ${avoid} var mı diye sor". Aynı JSON zarfını döndür; "actions" alanını BOŞ bırak (kayıtlar zaten işlendi).` },
                 ],
                 { model: modelSelection.model, temperature, maxTokens: modelSelection.maxTokens, reasoningEffort: modelSelection.effort, jsonRaw: true, cacheKey: `kochko-chat:${userId}` },
               );
