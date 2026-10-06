@@ -82,6 +82,11 @@ verify_jwt = false
 [functions.cleanup-scheduled]
 verify_jwt = false
 
+# Service-role-only dry-run (AI_MIMARI_V2 §10 Faz 1). verify_jwt MUST stay true: the handler
+# trusts the gateway-verified 'service_role' claim. Pinned by ai-decide/handler.test.ts.
+[functions.ai-decide]
+verify_jwt = true
+
 [analytics]
 enabled = false
 port = 54327
