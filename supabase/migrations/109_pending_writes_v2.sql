@@ -15,12 +15,15 @@
 --   * v2_hold_open / v2_hold_resolve RPC'leri + yazıcı RPC'lerin onayı AYNI işlemde kapatması için
 --     _v2_hold_claim / _v2_hold_close. Onay yazıyla birlikte ya hep ya hiç: tekrar denenen bir "evet"
 --     ikinci kez yazamaz (bekletme artık 'pending' değildir).
+--   * Bekletme yalnız SONRAKİ bir turda onaylanır (§4.4(4), §5.2; erase-hold.ts ile aynı kural): onu açan
+--     turun kimliğiyle gelen onay 'hold_not_open' (detail.reason='same_turn') döner. Model aynı turda p#'yi
+--     göremez; bu kod tarafındaki ikinci kilittir.
 --
 -- Kullanıcının ham mesajı payload'a YAZILMAZ: yalnız modelin yapısal argümanları (106 ile aynı kural).
 --
 -- DOWN:
 --   DROP FUNCTION IF EXISTS public.v2_hold_resolve(uuid, uuid, uuid, text, jsonb, text), public.v2_hold_open(uuid, uuid, text, jsonb, jsonb),
---     public._v2_hold_close(uuid, text, uuid, jsonb, text), public._v2_hold_claim(uuid, uuid, text);
+--     public._v2_hold_close(uuid, text, uuid, jsonb, text), public._v2_hold_claim(uuid, uuid, text, uuid);
 --   DROP INDEX IF EXISTS idx_pending_writes_open, idx_pending_writes_resolved; DROP INDEX IF EXISTS uq_pending_writes_one_open;
 --   CREATE UNIQUE INDEX uq_pending_writes_one_open ON pending_writes(user_id, op) WHERE status = 'pending';
 --   ALTER TABLE pending_writes DROP CONSTRAINT IF EXISTS pending_writes_hold_class_check;
@@ -62,14 +65,20 @@ COMMENT ON COLUMN pending_writes.hold_class IS 'ask = koç kendi sözleriyle sor
 COMMENT ON COLUMN pending_writes.subject_key IS 'Aynı konuya tek açık bekletme. NULL = op başına tek (106 KVKK davranışı).';
 
 -- ─── Yazıcıların onayı aynı işlemde kapatması ────────────────────────────────────────────────────
--- Satırı kilitler; yalnızca bu kullanıcının, açık, süresi dolmamış, aynı op'lu bekletmesi onaylanabilir.
-CREATE OR REPLACE FUNCTION public._v2_hold_claim(p_user uuid, p_pending_id uuid, p_op text)
+-- Satırı kilitler; yalnızca bu kullanıcının, açık, süresi dolmamış, aynı op'lu ve BAŞKA bir turda
+-- açılmış bekletmesi onaylanabilir. p_turn_id = onaylayan tur (zorunlu).
+CREATE OR REPLACE FUNCTION public._v2_hold_claim(p_user uuid, p_pending_id uuid, p_op text, p_turn_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = public AS $$
 DECLARE v_hold pending_writes%ROWTYPE;
 BEGIN
+  IF p_turn_id IS NULL THEN PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'identity')); END IF;
   SELECT * INTO v_hold FROM pending_writes WHERE id = p_pending_id AND user_id = p_user FOR UPDATE;
   IF NOT FOUND OR v_hold.status <> 'pending' THEN
     PERFORM _v2_fail('hold_not_open', jsonb_build_object('pending_id', p_pending_id, 'status', v_hold.status));
+  END IF;
+  -- Onay bir SORUYA verilen cevaptır: soruyu soran (bekletmeyi açan) turda onay olamaz.
+  IF v_hold.turn_id IS NOT NULL AND v_hold.turn_id = p_turn_id THEN
+    PERFORM _v2_fail('hold_not_open', jsonb_build_object('pending_id', p_pending_id, 'status', v_hold.status, 'reason', 'same_turn'));
   END IF;
   IF v_hold.expires_at <= now() THEN
     PERFORM _v2_fail('hold_expired', jsonb_build_object('pending_id', p_pending_id, 'expires_at', v_hold.expires_at));
@@ -159,7 +168,7 @@ BEGIN
     END IF;
     -- Süresi dolmuş bir bekletme yalnızca 'expired' / 'discarded' / 'failed' ile kapanabilir; onaylanamaz.
     IF p_status = 'confirmed' THEN
-      v_hold := _v2_hold_claim(p_user, p_pending_id, NULL);
+      v_hold := _v2_hold_claim(p_user, p_pending_id, NULL, p_turn_id);
     ELSE
       PERFORM 1 FROM pending_writes WHERE id = p_pending_id AND user_id = p_user AND status = 'pending' FOR UPDATE;
       IF NOT FOUND THEN PERFORM _v2_fail('hold_not_open', jsonb_build_object('pending_id', p_pending_id)); END IF;

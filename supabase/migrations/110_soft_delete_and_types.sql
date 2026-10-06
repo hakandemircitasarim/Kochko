@@ -17,7 +17,16 @@
 -- OKUYUCULAR (Faz 3'ten ÖNCE güncellenmeli — bkz. rapor): yeni is_deleted sütunları varsayılan false;
 -- bugün hiçbir yol bu satırları işaretlemiyor, bu yüzden bu migrasyon tek başına hiçbir ekranı
 -- değiştirmez. v2 yazıcıları canlıya çıkmadan önce supplement_logs / life_events / lab_values /
--- achievements / workout_logs okuyucuları "is_deleted IS NOT TRUE" filtresini almalı.
+-- achievements / workout_logs / strength_sets okuyucuları "is_deleted IS NOT TRUE" filtresini almalı.
+-- Bu migrasyon setindeki SQL okuyucusu (113 v2_turn_input set_count) zaten süzüyor. Uygulama kodu bu
+-- sütun canlıda yokken süzemez (sorgu hata verir), bu yüzden şunlar ENTEGRASYON maddesidir:
+--   strength_sets (108 _v2_soft_delete antrenmanla birlikte soft-delete eder; rekor/geçmiş okuyucuları
+--   ya strength_sets.is_deleted'i ya da workout_logs!inner(is_deleted)'i süzmeli):
+--     ai-chat/index.ts PR tespiti (tarihi en yüksek ağırlık, ~5406) · ai-plan/index.ts progresif yüklenme
+--     (~302) · ai-proactive/index.ts progresif yüklenme (~1001) · ai-report/index.ts ömür boyu PR (~685) ·
+--     src/services/strength.service.ts (~56, ~188) · src/services/export.service.ts (~34, dışa aktarım).
+--   achievements: v1'in PR başarımı (ai-chat/index.ts ~5418) source_table/source_row_id YAZMIYOR; v1
+--   defter kablolaması bunu doldurmazsa geri alınan antrenmanın rekor başarımı kalır.
 --
 -- Tüm eklemeler NULL'a izinli ya da sabit varsayılanlı: PG11+ yalnızca katalog güncellemesi, tablo
 -- yeniden yazılmaz, geri dönük veri hareketi yok.
@@ -59,6 +68,8 @@ CREATE INDEX IF NOT EXISTS idx_supplement_logs_user_live ON supplement_logs (use
 CREATE INDEX IF NOT EXISTS idx_workout_logs_user_live    ON workout_logs (user_id, logged_for_date) WHERE is_deleted IS NOT TRUE;
 CREATE INDEX IF NOT EXISTS idx_lab_values_user_live      ON lab_values (user_id, measured_at) WHERE NOT is_deleted;
 CREATE INDEX IF NOT EXISTS idx_achievements_source       ON achievements (source_row_id) WHERE source_row_id IS NOT NULL;
+-- Antrenman soft-delete/geri getirme kaskadı (108 _v2_soft_delete) set'leri antrenmana göre arar;
+-- 002'nin idx_strength_sets_workout indeksi bunu zaten karşılar.
 
 -- ─── Öğün düzeltme zinciri ─────────────────────────────────────────────────────────────────────────
 ALTER TABLE meal_logs ADD COLUMN IF NOT EXISTS supersedes_id uuid REFERENCES meal_logs(id) ON DELETE SET NULL;

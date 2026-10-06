@@ -89,9 +89,15 @@ export function isDeletableRefKind(kind: RefKind): boolean {
 
 // ─── Ledger (turn_writes) ────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Tables the ledger may touch. strength_sets is a side-effect table only (no ref kind): soft-deleting a
+ * workout soft-deletes its achievements AND its sets in the same group, and restoring brings them back,
+ * so an undone mis-logged "200 kg squat" stops being the historical max (readers must filter is_deleted —
+ * see migration 110's reader checklist).
+ */
 export const LEDGER_TABLES = [
   'meal_logs', 'workout_logs', 'supplement_logs', 'daily_metrics', 'weight_history',
-  'profiles', 'user_venues', 'life_events', 'lab_values', 'achievements',
+  'profiles', 'user_venues', 'life_events', 'lab_values', 'achievements', 'strength_sets',
 ] as const;
 export type LedgerTable = typeof LEDGER_TABLES[number];
 
@@ -155,7 +161,8 @@ export const V2_FAILURE_CLASSES = [
   'later_write',       // noLaterWriteOnSameField: a later write owns the field now
   'too_old',           // older than max_age_days (7)
   'not_reversible',    // ledger row with undo_mode 'none'
-  'hold_not_open',     // pending_id not pending (already confirmed/discarded/superseded)
+  'hold_not_open',     // pending_id not pending (already confirmed/discarded/superseded), or confirmed in the
+                       // SAME turn that opened it (detail.reason='same_turn': a hold is confirmed only in a later turn)
   'hold_expired',      // pending_id past expires_at
   'hold_op_mismatch',  // pending_id belongs to another op
   'write_failed',      // unexpected DB error — detail.sqlstate / detail.error
@@ -178,7 +185,10 @@ interface WriterBase {
   day: IsoDay;
   /** Ref of the record this write corrects (same type). Old one is undone in the SAME transaction. */
   replaces?: string | null;
-  /** Confirms this ASK hold in the SAME transaction; a repeated "evet" cannot write twice. */
+  /**
+   * Confirms this ASK hold in the SAME transaction; a repeated "evet" cannot write twice. The hold must have
+   * been opened in an EARLIER turn: confirming with the opening turn's p_turn_id → hold_not_open (same_turn).
+   */
   pending_id?: string | null;
   pipeline?: Pipeline;
   /** Structured extras copied to turn_writes.meta. Never the raw chat message. */
@@ -229,9 +239,21 @@ export interface WaterApplyPayload extends WriterBase {
   unit?: string | null;
 }
 
+/**
+ * w_metric_apply payload. NULL ≠ CLEAR (§2 rule 1, §5.3): only values the MODEL actually gave are written.
+ *  - The primary value (hours / score / steps / kg) is required and always written.
+ *  - Detail values (sleep quality / sleep_time / wake_time, mood note): ABSENT, null (the strict schema's
+ *    "not stated") or a blank note leave the stored value UNTOUCHED — not written, not in field_set, not in
+ *    the receipt. "7,5 saat uyudum" no longer erases an earlier "kötü uyudum, 06:30'da kalktım".
+ *  - Clearing a detail = correcting the d# that wrote it with `replaces` (the old write is undone first,
+ *    restoring its fields; the new write writes only what it states). There is deliberately no "clear" flag.
+ *  - steps.source is the provenance of the steps value and is written with it (absent → 'manual').
+ *  - A key outside METRIC_VALUE_KEYS is rejected (invalid_value, detail.reason='unknown_key'), never dropped:
+ *    the adapter maps registry field names to these column-shaped keys (sleep_log.bed_time → sleep_time).
+ */
 export type MetricApplyPayload =
   | (WriterBase & { metric: 'sleep'; as_stated?: string | null;
-      values: { hours: number; quality: 'good' | 'ok' | 'bad' | null; sleep_time?: string | null; wake_time?: string | null } })
+      values: { hours: number; quality?: 'good' | 'ok' | 'bad' | null; sleep_time?: string | null; wake_time?: string | null } })
   | (WriterBase & { metric: 'mood'; as_stated?: string | null; values: { score: 1 | 2 | 3 | 4 | 5; note?: string | null } })
   | (WriterBase & { metric: 'steps'; as_stated?: string | null; values: { steps: number; source?: 'manual' | 'phone' | 'wearable' } })
   | (WriterBase & { metric: 'weight'; as_stated?: string | null; values: { kg: number };
@@ -248,6 +270,14 @@ export const METRIC_OPS: Readonly<Record<MetricName, string>> = {
   weight: 'body_weight',
 };
 
+/** The only `values` keys w_metric_apply accepts per metric (parity-tested against migration 113). */
+export const METRIC_VALUE_KEYS: Readonly<Record<MetricName, readonly string[]>> = {
+  sleep: ['hours', 'quality', 'sleep_time', 'wake_time'],
+  mood: ['score', 'note'],
+  steps: ['steps', 'source'],
+  weight: ['kg'],
+};
+
 /** {ref} = that record (+ its side effects); {write_id} = the WHOLE logical write (client undo button). */
 export type RecordTarget = { ref: string } | { write_id: string };
 
@@ -262,6 +292,19 @@ export interface RecordOpOptions {
   reason?: string | null;
 }
 
+/**
+ * v2_ledger_append entry (v1 executeActions / writers without an RPC). Undoability is checked WHEN
+ * APPENDED, so an undo never fails by surprise later. For restore_previous / revert_delta:
+ *  - field_set holds only real, writable columns (no id/user_id, protected profile columns, generated or
+ *    unknown columns) → else invalid_value (reason 'not_writable' / 'protected_column');
+ *  - before / after, when objects, carry EVERY field_set key (null = "was empty" / "I emptied it") →
+ *    else invalid_value (reason 'missing_field');
+ *  - if the row exists, `after` is required (after=null means "this write deleted the row");
+ *  - before / after are stored CANONICALISED to the column type ('23:00' → "23:00:00", 7.46 into
+ *    DECIMAL(3,1) → 7.5), so the undo conflict check compares like with like. A value the column type
+ *    rejects → invalid_value (reason 'not_column_type'). If the canonical `after` does not match the row
+ *    at undo time (another write landed, or v1 reported a wrong after), the undo answers later_write.
+ */
 export interface LedgerAppendEntry {
   op: string;
   table_name: LedgerTable;
@@ -353,8 +396,12 @@ export interface WaterApplyOk extends WriterOkBase {
 
 export interface MetricApplyOk extends WriterOkBase {
   metric: MetricName;
-  /** Stored values in the DB's own representation (time → "07:00:00"). */
+  /**
+   * ONLY the columns this write stored, in the DB's own representation (time → "07:00:00"). Details the
+   * model did not state are absent here and untouched in the row.
+   */
   values: Record<string, unknown>;
+  /** Previous values of exactly the columns in `values`. */
   previous: Record<string, unknown>;
   /** Lossless normalisations (7.46 h → 7.5) — shown in the receipt, never silent. */
   normalized: { path: string; from: number; to: number }[];
@@ -491,7 +538,12 @@ export interface TurnLogV2Fields {
   payload_purged_at: string | null;
 }
 
-/** Owner decision 2026-10-06: decision/shadow payloads are kept 30 days (v2_retention_sweep, nightly). */
+/**
+ * Owner decision 2026-10-06: decision/shadow payloads are kept 30 days (v2_retention_sweep, nightly).
+ * The same sweep deletes only closed v2 ASK holds (turn_id set, hold_class 'ask') older than that; KVKK
+ * erase holds (op 'account_erase_request') and 'safety' holds are consent records and are KEPT (they go
+ * with the account via FK cascade) until the owner decides their retention.
+ */
 export const DECISION_RETENTION_DAYS = 30;
 
 // ─── chat_messages (112) ─────────────────────────────────────────────────────────────────────────────
@@ -519,6 +571,15 @@ export interface ChatMessageV2Fields {
   code_notes: CodeNote[] | null;
 }
 
+/**
+ * chat_messages columns ONLY the server writes (service_role / SECURITY DEFINER RPCs). A client
+ * (anon/authenticated) insert that fills them or an update that changes them is rejected with 42501 by
+ * trg_chat_messages_v2_server_columns (112): otherwise a client could mark its own messages 'exempt' to
+ * escape the quota, plant "code notes" for the model, or pre-fill turn_id. The quota counter (Faz 3) may
+ * therefore trust quota_class.
+ */
+export const CHAT_SERVER_ONLY_COLUMNS = ['turn_id', 'pipeline', 'quota_class', 'code_notes'] as const satisfies readonly (keyof ChatMessageV2Fields)[];
+
 // ─── v2_turn_input (113) ─────────────────────────────────────────────────────────────────────────────
 
 export const TURN_INPUT_SCHEMA = 'v2_turn_input/1';
@@ -526,6 +587,10 @@ export const TURN_INPUT_SCHEMA = 'v2_turn_input/1';
 export const TURN_INPUT_WINDOW_DAYS = 7;
 /** record_ops may not reach further back (§4.4 (3) withinDays(7)). */
 export const MAX_RECORD_AGE_DAYS = 7;
+/** recently_undone lists live undos from the last N hours (so "geri getir" can name a rendered ref)… */
+export const RECENTLY_UNDONE_HOURS = 48;
+/** …newest first, at most this many. */
+export const RECENTLY_UNDONE_LIMIT = 10;
 
 export interface TurnInputMealItem {
   name: string;
@@ -615,6 +680,27 @@ export interface TurnInputRecentWrite {
   created_at: string;
 }
 
+/**
+ * A record (or metric write) that is CURRENTLY undone by a live record_delete from the last
+ * RECENTLY_UNDONE_HOURS, inside the window. Rendering these lets "yanlışlıkla sildim, geri getir" name a
+ * ref that passes refInRenderedSet (w_record_restore by ref). Not listed: undos that are part of a
+ * correction (the group has a live replacement — restoring would double count) and records brought back
+ * outside the ledger. w_record_restore stays the authority (replaced / not_undone / too_old).
+ */
+export interface TurnInputUndone {
+  ref: string;
+  table: LedgerTable;
+  /** Row id for record refs (m/t/s/e/l); the undone LEDGER WRITE id for d/w refs (= record_refs.target_id). */
+  id: string;
+  /** The undone write's op when the ledger knows it (null for a direct soft-delete of an app/legacy row). */
+  op: string | null;
+  day: IsoDay | null;
+  undone_at: string;
+  undone_by_turn: string;
+  last_turn: boolean;
+  reason: string | null;
+}
+
 /** The serialisable TurnInput core the RPC returns (history + REFERANS ADAYLARI are added in TS). */
 export interface TurnInputRow {
   schema: typeof TURN_INPUT_SCHEMA;
@@ -658,6 +744,7 @@ export interface TurnInputRow {
   life_events: { ref: string; id: string; title: string; event_type: string; event_date: IsoDay; note: string | null }[];
   weights_recent: { day: IsoDay; kg: number }[];
   recent_writes: TurnInputRecentWrite[];
+  recently_undone: TurnInputUndone[];
   pending: {
     ref: string; id: string; op: string; payload: Record<string, unknown>; subject_key: string | null;
     hold_class: HoldClass; reason_code: string | null; schema_version: string | null; turn_id: string | null;
@@ -676,7 +763,8 @@ export interface TurnInputRow {
 export const TURN_INPUT_KEYS = [
   'schema', 'day', 'window', 'generated_at', 'last_turn', 'profile', 'goal', 'safety', 'targets_today',
   'constraints', 'meals', 'days', 'metric_writes', 'workouts', 'supplements', 'labs', 'life_events',
-  'weights_recent', 'recent_writes', 'pending', 'commitments', 'plans', 'portion_calibration', 'active_intent',
+  'weights_recent', 'recent_writes', 'recently_undone', 'pending', 'commitments', 'plans', 'portion_calibration',
+  'active_intent',
 ] as const satisfies readonly (keyof TurnInputRow)[];
 
 // ─── refMap ──────────────────────────────────────────────────────────────────────────────────────────
@@ -695,13 +783,23 @@ export interface RefMapResult {
   problems: string[];
 }
 
+const UNDONE_KINDS_BY_TABLE: Readonly<Partial<Record<LedgerTable, readonly RefKind[]>>> = {
+  meal_logs: ['m'],
+  workout_logs: ['t'],
+  supplement_logs: ['s'],
+  life_events: ['e'],
+  lab_values: ['l'],
+  daily_metrics: ['d', 'w'],
+};
+
 /**
  * §3.2 T3: the server-side refMap {m#, d#, w#, t#, p#, c#, k#, dft# → uuid}. The model only ever sees
  * short refs; a ref it emits resolves ONLY through this map (refInRenderedSet), and the RPCs resolve it
  * again per user (refOwned) — so a model cannot "invent" another user's row.
  */
 export function buildRefMap(input: Pick<TurnInputRow,
-  'meals' | 'metric_writes' | 'workouts' | 'supplements' | 'labs' | 'life_events' | 'constraints' | 'commitments' | 'pending' | 'plans'>,
+  'meals' | 'metric_writes' | 'workouts' | 'supplements' | 'labs' | 'life_events' | 'constraints' | 'commitments' | 'pending' | 'plans'
+  | 'recently_undone'>,
 ): RefMapResult {
   const map = new Map<string, RefTarget>();
   const problems: string[] = [];
@@ -725,6 +823,12 @@ export function buildRefMap(input: Pick<TurnInputRow,
   for (const k of input.commitments) add('commitments', k.ref, k.id, ['k']);
   for (const p of input.pending) add('pending', p.ref, p.id, ['p']);
   for (const d of input.plans.drafts) add('drafts', d.ref, d.id, ['dft']);
+  // Undone records: rendered so a restore can name them; their kind must match the table they came from.
+  for (const u of input.recently_undone) {
+    const kinds = UNDONE_KINDS_BY_TABLE[u.table];
+    if (!kinds) { problems.push(`recently_undone: ref ${String(u.ref)} from unexpected table ${String(u.table)}`); continue; }
+    add('recently_undone', u.ref, u.id, kinds);
+  }
   return { map, problems };
 }
 

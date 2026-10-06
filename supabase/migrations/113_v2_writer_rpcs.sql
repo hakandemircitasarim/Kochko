@@ -17,8 +17,8 @@
 --   * Her RPC her zaman bir makbuz döner: {ok:true, …} ya da {ok:false, failure_class, detail}.
 --
 -- v2_turn_input(uid, gün): Stage A'nın TurnInput'u (§3.2 T3, §4.2). Son 7 günün kayıtları kalıcı kısa
--- ref'lerle, bugünkü metrikler, defterin son yazmaları, profil olguları, omurga, bekleyen onaylar,
--- açık sözler, plan/taslak özeti. Geçmiş (sohbet) ve REFERANS ADAYLARI TS'te eklenir. Görüntülenecek
+-- ref'lerle, bugünkü metrikler, defterin son yazmaları, son 48 saatte geri alınmış (geri getirilebilir)
+-- kayıtlar, profil olguları, omurga, bekleyen onaylar, açık sözler, plan/taslak özeti. Geçmiş (sohbet) ve REFERANS ADAYLARI TS'te eklenir. Görüntülenecek
 -- kayıtlara ref atadığı için VOLATILE'dır (yalnız record_refs'e yazar; kullanıcı verisine dokunmaz).
 --
 -- Yalnız service_role. DOWN:
@@ -70,7 +70,7 @@ BEGIN
 
     IF nullif(v_p ->> 'pending_id', '') IS NOT NULL THEN
       v_hold := (v_p ->> 'pending_id')::uuid;
-      PERFORM _v2_hold_claim(p_user, v_hold, v_op);
+      PERFORM _v2_hold_claim(p_user, v_hold, v_op, p_turn_id);
     END IF;
     IF nullif(v_p ->> 'replaces', '') IS NOT NULL THEN
       v_replaced := _v2_record_op(p_user, p_turn_id, jsonb_build_object('ref', v_p ->> 'replaces'), 'delete', v_group,
@@ -111,11 +111,23 @@ END $$;
 -- ─── Uyku / mood / adım / tartı ───────────────────────────────────────────────────────────────────
 -- p_payload: {metric:'sleep'|'mood'|'steps'|'weight', day, values, as_stated?, replaces?:'d#'|'w#',
 --             pending_id?, pipeline?, meta?, update_profile?:boolean (yalnız tartı; TS "kullanıcının bugünü" ise true)}
---   sleep  values {hours (0<h<24), quality: good|ok|bad|null, sleep_time?: 'HH:MM'|null, wake_time?: 'HH:MM'|null}
---   mood   values {score: 1..5 tamsayı (8/10 → 4 dönüşümü TS derive'ın işi; burada KIRPMA YOK), note?}
+--   sleep  values {hours (0<h<24), quality?: good|ok|bad|null, sleep_time?: 'HH:MM'|null, wake_time?: 'HH:MM'|null}
+--   mood   values {score: 1..5 tamsayı (8/10 → 4 dönüşümü TS derive'ın işi; burada KIRPMA YOK), note?: text|null}
 --   steps  values {steps: 0..100000, source?: manual|phone|wearable}
 --   weight values {kg: 20..300} → daily_metrics + weight_history (+ profiles.weight_kg), tek grupta
 -- Hepsi restore_previous: geri alma = önceki değer (sonradan değiştiyse 'later_write').
+--
+-- NULL ≠ SİL (§2 kural 1, §5.3): yalnız modelin GERÇEKTEN verdiği değerler yazılır.
+--   * Ana değer (hours / score / steps / kg) zorunludur ve her zaman yazılır.
+--   * Ayrıntı alanları (quality, sleep_time, wake_time, note): anahtar YOK ya da null (strict şemada
+--     "söylenmedi") ya da boş not → kayıtlı değere DOKUNULMAZ; field_set'e, deftere, makbuza girmez.
+--     "7,5 saat uyudum" önceki "kötü uyudum, 06:30'da kalktım"ı silmez.
+--   * Bir ayrıntıyı boşaltmak = o ayrıntıyı yazan d#'yi replaces ile düzeltmek: eski yazma önce geri alınır
+--     (alanlar önceki hâline döner), yeni yazma yalnız verdiği alanları yazar. Ayrı bir "temizle"
+--     sinyali bilerek yok.
+--   * steps.source adım değerinin kaynağıdır ve onunla birlikte yazılır (verilmezse 'manual' = sohbetten).
+--   * values içinde metrik için tanımsız bir anahtar (ör. 'bed_time') sessizce atılmaz: invalid_value
+--     (detail.reason='unknown_key'). Adaptör kayıt alanını sütun adına çevirmeli (bed_time → sleep_time).
 CREATE OR REPLACE FUNCTION public.w_metric_apply(p_user uuid, p_turn_id uuid, p_payload jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -169,6 +181,16 @@ BEGIN
     IF v_p ? 'meta' AND jsonb_typeof(v_p -> 'meta') NOT IN ('object', 'null') THEN
       PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'meta'));
     END IF;
+    -- Tanımsız anahtar sessizce atılmaz (yoksa "kaydettim" deyip yazmamış oluruz).
+    SELECT k INTO v_key FROM jsonb_object_keys(v_vals) AS k
+    WHERE NOT (k = ANY (CASE v_metric WHEN 'sleep'  THEN ARRAY['hours', 'quality', 'sleep_time', 'wake_time']
+                                      WHEN 'mood'   THEN ARRAY['score', 'note']
+                                      WHEN 'steps'  THEN ARRAY['steps', 'source']
+                                      ELSE ARRAY['kg'] END))
+    ORDER BY k LIMIT 1;
+    IF v_key IS NOT NULL THEN
+      PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'values.' || v_key, 'reason', 'unknown_key'));
+    END IF;
 
     IF v_metric = 'sleep' THEN
       v_n := _v2_num(v_vals, 'hours', 0, 24, false, 'values.hours');
@@ -177,15 +199,19 @@ BEGIN
       END IF;
       v_r := round(v_n, 1);  -- DECIMAL(3,1)
       IF v_r <> v_n THEN v_norm := v_norm || jsonb_build_object('path', 'values.hours', 'from', v_n, 'to', v_r); END IF;
+      v_new := jsonb_build_object('sleep_hours', v_r);
+      -- Ayrıntılar yalnız VERİLDİYSE yazılır; null/yok = söylenmedi → kayıtlı değer kalır.
       v_t := _v2_text(v_vals, 'quality', 10, true, 'values.quality');
-      IF v_t IS NOT NULL AND v_t NOT IN ('good', 'ok', 'bad') THEN
-        PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'values.quality', 'value', v_t));
+      IF v_t IS NOT NULL THEN
+        IF v_t NOT IN ('good', 'ok', 'bad') THEN
+          PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'values.quality', 'value', v_t));
+        END IF;
+        v_new := v_new || jsonb_build_object('sleep_quality', v_t);
       END IF;
-      v_new := jsonb_build_object('sleep_hours', v_r, 'sleep_quality', v_t);
       FOREACH v_key IN ARRAY ARRAY['sleep_time', 'wake_time'] LOOP
-        IF v_vals ? v_key THEN
-          v_t := _v2_text(v_vals, v_key, 5, true, 'values.' || v_key);
-          IF v_t IS NOT NULL AND v_t !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN
+        v_t := _v2_text(v_vals, v_key, 5, true, 'values.' || v_key);
+        IF v_t IS NOT NULL THEN
+          IF v_t !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' THEN
             PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'values.' || v_key, 'value', v_t, 'reason', 'not_hh_mm'));
           END IF;
           v_new := v_new || jsonb_build_object(v_key, v_t);
@@ -196,7 +222,12 @@ BEGIN
       IF v_n <> trunc(v_n) THEN
         PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'values.score', 'reason', 'not_an_integer', 'value', v_n));
       END IF;
-      v_new := jsonb_build_object('mood_score', v_n::integer, 'mood_note', _v2_text(v_vals, 'note', 500, true, 'values.note'));
+      v_new := jsonb_build_object('mood_score', v_n::integer);
+      -- Not yalnız VERİLDİYSE yazılır: puan-yalnız bir mood yazması önceki notu silmez.
+      v_t := _v2_text(v_vals, 'note', 500, true, 'values.note');
+      IF v_t IS NOT NULL AND btrim(v_t) <> '' THEN
+        v_new := v_new || jsonb_build_object('mood_note', v_t);
+      END IF;
     ELSIF v_metric = 'steps' THEN
       v_n := _v2_num(v_vals, 'steps', 0, 100000, false, 'values.steps');
       v_r := round(v_n);
@@ -215,7 +246,7 @@ BEGIN
 
     IF nullif(v_p ->> 'pending_id', '') IS NOT NULL THEN
       v_hold := (v_p ->> 'pending_id')::uuid;
-      PERFORM _v2_hold_claim(p_user, v_hold, v_op);
+      PERFORM _v2_hold_claim(p_user, v_hold, v_op, p_turn_id);
     END IF;
     IF nullif(v_p ->> 'replaces', '') IS NOT NULL THEN
       v_replaced := _v2_record_op(p_user, p_turn_id, jsonb_build_object('ref', v_p ->> 'replaces'), 'delete', v_group,
@@ -392,7 +423,7 @@ BEGIN
 
     IF nullif(v_p ->> 'pending_id', '') IS NOT NULL THEN
       v_hold := (v_p ->> 'pending_id')::uuid;
-      PERFORM _v2_hold_claim(p_user, v_hold, v_op);
+      PERFORM _v2_hold_claim(p_user, v_hold, v_op, p_turn_id);
     END IF;
     -- Düzeltme: eski öğün AYNI işlemde ve AYNI grupta geri alınır; yenisi onu supersedes_id ile gösterir.
     IF nullif(v_p ->> 'replaces', '') IS NOT NULL THEN
@@ -522,6 +553,7 @@ DECLARE
   v_events     jsonb;
   v_weights    jsonb;
   v_recent     jsonb;
+  v_undone     jsonb;
   v_pending    jsonb;
   v_commit     jsonb;
   v_plans      jsonb;
@@ -712,6 +744,42 @@ BEGIN
     FROM turn_writes w WHERE w.user_id = p_user ORDER BY w.seq DESC LIMIT 15
   ) AS x;
 
+  -- Yakında geri alınmış (hâlâ geri alınmış) kayıtlar: "yanlışlıkla sildim, geri getir" ref ile
+  -- çözülebilsin diye (refInRenderedSet). Kaynak defterin canlı record_delete satırları (son 48 sa,
+  -- pencere içi, ana satır). Düzeltmeyle yerine yenisi geçmiş olanlar (grupta canlı yeni kayıt) ve
+  -- defter dışında geri gelmiş olanlar gösterilmez; son karar yine w_record_restore'undur.
+  -- id: kayıt ref'lerinde satır, d/w ref'lerinde geri alınan YAZMA (record_refs'in gösterdiği).
+  SELECT coalesce(jsonb_agg(x.j ORDER BY x.seq), '[]'::jsonb) INTO v_undone
+  FROM (
+    SELECT u.seq, jsonb_build_object('ref', u.ref, 'table', u.table_name,
+             'id', CASE WHEN u.table_name = 'daily_metrics' THEN u.reverses ELSE u.row_id END,
+             'op', u.meta -> 'reverses_op', 'day', u.for_date, 'undone_at', u.created_at, 'undone_by_turn', u.turn_id,
+             'last_turn', (v_last_turn IS NOT NULL AND u.turn_id = v_last_turn), 'reason', u.meta -> 'reason') AS j
+    FROM (
+      SELECT DISTINCT ON (w.ref) w.*
+      FROM turn_writes w
+      WHERE w.user_id = p_user AND w.op = 'record_delete' AND w.is_primary AND w.ref IS NOT NULL AND w.undone_at IS NULL
+        AND w.created_at >= now() - make_interval(hours => 48)
+        AND (w.for_date IS NULL OR w.for_date BETWEEN v_from AND p_day)
+        -- Düzeltmenin parçası değil: aynı grupta canlı yeni bir kayıt yok.
+        AND NOT EXISTS (SELECT 1 FROM turn_writes g
+                        WHERE g.user_id = p_user AND g.group_id = w.group_id AND g.undone_at IS NULL AND g.is_primary
+                          AND g.op NOT IN ('record_delete', 'record_restore'))
+        -- Hedef hâlâ geri alınmış: metrikte asıl yazma undone, kayıtta satır soft-deleted.
+        AND CASE w.table_name
+              WHEN 'daily_metrics'   THEN EXISTS (SELECT 1 FROM turn_writes o WHERE o.id = w.reverses AND o.user_id = p_user
+                                                    AND o.op NOT IN ('record_delete', 'record_restore') AND o.undone_at IS NOT NULL)
+              WHEN 'meal_logs'       THEN EXISTS (SELECT 1 FROM meal_logs t WHERE t.id = w.row_id AND t.is_deleted)
+              WHEN 'workout_logs'    THEN EXISTS (SELECT 1 FROM workout_logs t WHERE t.id = w.row_id AND t.is_deleted)
+              WHEN 'supplement_logs' THEN EXISTS (SELECT 1 FROM supplement_logs t WHERE t.id = w.row_id AND t.is_deleted)
+              WHEN 'life_events'     THEN EXISTS (SELECT 1 FROM life_events t WHERE t.id = w.row_id AND t.is_deleted)
+              WHEN 'lab_values'      THEN EXISTS (SELECT 1 FROM lab_values t WHERE t.id = w.row_id AND t.is_deleted)
+              ELSE false END
+      ORDER BY w.ref, w.seq DESC
+    ) AS u
+    ORDER BY u.seq DESC LIMIT 10
+  ) AS x;
+
   SELECT coalesce(jsonb_agg(jsonb_build_object('ref', r.ref, 'id', pw.id, 'op', pw.op, 'payload', pw.payload,
            'subject_key', pw.subject_key, 'hold_class', pw.hold_class, 'reason_code', pw.reason_code,
            'schema_version', pw.schema_version, 'turn_id', pw.turn_id, 'created_at', pw.created_at, 'expires_at', pw.expires_at)
@@ -764,6 +832,7 @@ BEGIN
     'life_events', v_events,
     'weights_recent', v_weights,
     'recent_writes', v_recent,
+    'recently_undone', v_undone,
     'pending', v_pending,
     'commitments', v_commit,
     'plans', jsonb_build_object('active', v_plans, 'drafts', v_drafts),
