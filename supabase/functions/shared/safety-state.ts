@@ -16,50 +16,63 @@ const DEESCALATE_DAYS = 14; // one tier step down per this many signal-free days
 
 export interface SafetyState { ed_tier: EDTier; ed_signal_count: number; ed_last_signal_at: string | null; ed_escalated_at: string | null; }
 
-async function loadRaw(userId: string): Promise<SafetyState> {
-  const { data } = await supabaseAdmin.from('user_safety_state')
+const NO_STATE: SafetyState = { ed_tier: 'none', ed_signal_count: 0, ed_last_signal_at: null, ed_escalated_at: null };
+
+/**
+ * `strict` (Faz 0 #6): supabase-js reports a failed query in `error` — it does not throw — so a
+ * failed read used to come back as "no row" = tier 'none' = deficit allowed. A missing row really is
+ * 'none'; a read that FAILED is unknown, and a deficit decision must not treat unknown as safe.
+ */
+async function loadRaw(userId: string, strict = false): Promise<SafetyState> {
+  const { data, error } = await supabaseAdmin.from('user_safety_state')
     .select('ed_tier, ed_signal_count, ed_last_signal_at, ed_escalated_at').eq('user_id', userId).maybeSingle();
-  return (data as SafetyState | null) ?? { ed_tier: 'none', ed_signal_count: 0, ed_last_signal_at: null, ed_escalated_at: null };
+  if (error && strict) throw new Error(`user_safety_state read failed: ${error.message}`);
+  return (data as SafetyState | null) ?? { ...NO_STATE };
 }
 
 /**
  * Read the current safety state, applying lazy TIME-BASED de-escalation: after DEESCALATE_DAYS with
  * no new signal the tier steps down one level (persisted). Escalation never happens here.
+ * Fail-OPEN by design (prompt framing only): an unreadable state frames the turn as 'none'. Never use
+ * this for a deficit decision — that is deficitAllowed(), which fails CLOSED.
  */
 export async function getSafetyState(userId: string): Promise<SafetyState> {
-  try {
-    const st = await loadRaw(userId);
-    if (st.ed_tier === 'none' || !st.ed_last_signal_at) return st;
-    const lastSignalMs = new Date(st.ed_last_signal_at).getTime();
-    const daysSince = (Date.now() - lastSignalMs) / 86400000;
-    const steps = Math.floor(daysSince / DEESCALATE_DAYS);
-    if (steps <= 0) return st;
-    const newRank = Math.max(0, RANK[st.ed_tier] - steps);
-    if (newRank === RANK[st.ed_tier]) return st;
-    const next = NAME[newRank];
+  try { return await readSafetyState(userId, false); } catch { return { ...NO_STATE }; }
+}
 
-    // F2/A1 — CRITICAL. `steps` is computed from an ed_last_signal_at that this function never
-    // advanced, but it was applied to an ALREADY-lowered tier. getSafetyState runs on every turn
-    // (situational snapshot) and again from deficitAllowed at five more call sites, so on day 15 a
-    // 'red' user decayed red→amber→watch→none inside a single conversation and the 14-day
-    // protection evaporated — after which the coach could offer an aggressive cut again.
-    // The fix is to move the clock forward by EXACTLY the steps consumed (not to now(), which
-    // would also throw away the partial wait already served). A second read in the same turn then
-    // computes steps=0 and changes nothing.
-    const consumedMs = steps * DEESCALATE_DAYS * 86400000;
-    const advancedSignalAt = new Date(lastSignalMs + consumedMs).toISOString();
-    const { error } = await supabaseAdmin.from('user_safety_state')
-      .update({ ed_tier: next, ed_last_signal_at: advancedSignalAt, updated_at: new Date().toISOString() })
-      .eq('user_id', userId);
-    if (error) {
-      // A swallowed failure here means the clock never moves and EVERY later call de-escalates
-      // again — the exact bug, restored. Report the OLD tier so a failed write cannot lower the
-      // guard: safety degrades closed, never open.
-      console.error('[safety-state] de-escalation write failed — keeping the higher tier:', error.message);
-      return st;
-    }
-    return { ...st, ed_tier: next, ed_last_signal_at: advancedSignalAt };
-  } catch { return { ed_tier: 'none', ed_signal_count: 0, ed_last_signal_at: null, ed_escalated_at: null }; }
+/** The de-escalating read behind both entry points; throws only when `strict` and the read failed. */
+async function readSafetyState(userId: string, strict: boolean): Promise<SafetyState> {
+  const st = await loadRaw(userId, strict);
+  if (st.ed_tier === 'none' || !st.ed_last_signal_at) return st;
+  const lastSignalMs = new Date(st.ed_last_signal_at).getTime();
+  const daysSince = (Date.now() - lastSignalMs) / 86400000;
+  const steps = Math.floor(daysSince / DEESCALATE_DAYS);
+  if (steps <= 0) return st;
+  const newRank = Math.max(0, RANK[st.ed_tier] - steps);
+  if (newRank === RANK[st.ed_tier]) return st;
+  const next = NAME[newRank];
+
+  // F2/A1 — CRITICAL. `steps` is computed from an ed_last_signal_at that this function never
+  // advanced, but it was applied to an ALREADY-lowered tier. getSafetyState runs on every turn
+  // (situational snapshot) and again from deficitAllowed at five more call sites, so on day 15 a
+  // 'red' user decayed red→amber→watch→none inside a single conversation and the 14-day
+  // protection evaporated — after which the coach could offer an aggressive cut again.
+  // The fix is to move the clock forward by EXACTLY the steps consumed (not to now(), which
+  // would also throw away the partial wait already served). A second read in the same turn then
+  // computes steps=0 and changes nothing.
+  const consumedMs = steps * DEESCALATE_DAYS * 86400000;
+  const advancedSignalAt = new Date(lastSignalMs + consumedMs).toISOString();
+  const { error } = await supabaseAdmin.from('user_safety_state')
+    .update({ ed_tier: next, ed_last_signal_at: advancedSignalAt, updated_at: new Date().toISOString() })
+    .eq('user_id', userId);
+  if (error) {
+    // A swallowed failure here means the clock never moves and EVERY later call de-escalates
+    // again — the exact bug, restored. Report the OLD tier so a failed write cannot lower the
+    // guard: safety degrades closed, never open.
+    console.error('[safety-state] de-escalation write failed — keeping the higher tier:', error.message);
+    return st;
+  }
+  return { ...st, ed_tier: next, ed_last_signal_at: advancedSignalAt };
 }
 
 /**
@@ -84,15 +97,30 @@ export async function recordEDSignal(userId: string, severity: 'medium' | 'high'
   } catch (e) { console.warn('[safety-state] recordEDSignal failed', (e as Error).message); return 'none'; }
 }
 
+export interface DeficitGate {
+  allowed: boolean;
+  edTier: EDTier;
+  reason: string | null;
+  /** True when the state could not be read — the refusal is "unknown", not "amber". */
+  unreadable?: boolean;
+}
+
 /**
  * The deficit gate the TargetEngine consults. Aggressive calorie deficits are FORBIDDEN while the
- * ED tier is amber or red — the coach floors at maintenance instead. Fail-safe: on error, allow
- * (the deficit paths keep their own clinical floors; this only ADDS protection, never removes it).
+ * ED tier is amber or red — the coach floors at maintenance instead.
+ * Faz 0 #6 — FAIL-CLOSED: every caller decides a target/band/plan write, so a state that cannot be
+ * read refuses the deficit (`unreadable: true`). It used to ALLOW on error — and loadRaw turned a
+ * failed query into "no row" = 'none' — so a DB hiccup opened the gate for exactly the users it
+ * exists to protect. A refusal means "hold at maintenance": the target engine still applies any
+ * band that does not tighten. Prompt framing keeps using getSafetyState (fail-open, by design).
  */
-export async function deficitAllowed(userId: string): Promise<{ allowed: boolean; edTier: EDTier; reason: string | null }> {
+export async function deficitAllowed(userId: string): Promise<DeficitGate> {
   try {
-    const st = await getSafetyState(userId);
+    const st = await readSafetyState(userId, true);
     const blocked = RANK[st.ed_tier] >= RANK.amber;
     return { allowed: !blocked, edTier: st.ed_tier, reason: blocked ? `ed_tier=${st.ed_tier}: deficit forbidden, hold at maintenance` : null };
-  } catch { return { allowed: true, edTier: 'none', reason: null }; }
+  } catch (e) {
+    console.error('[safety-state] state unreadable — deficit refused (fail-closed):', (e as Error).message);
+    return { allowed: false, edTier: 'none', reason: 'safety_state_unreadable: deficit refused until the state can be read', unreadable: true };
+  }
 }

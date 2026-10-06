@@ -134,6 +134,42 @@ for (const f of FILES) {
 }
 
 /**
+ * G12 (AI_MIMARI_V2 Faz 0 #6/#7) — plan approval promotes what the user REVIEWED, through a NUMERIC
+ * ED gate that fails closed.
+ *  a) mem#3: the draft is written only on a generate/revise turn. With `!== 'explain'` alone the
+ *     approval turn persisted the model's re-emitted week over the reviewed draft, then promoted it.
+ *  b) mem#4: the diet-approval gate judges the draft against maintenance at the current TDEE
+ *     (dietPlanHoldsMaintenance) instead of refusing every amber approval — and never returns early
+ *     (that skipped fact capture, the ED referral net, storage and the turn ledger).
+ *  c) deficitAllowed() never ALLOWS from its error path (it used to on any failure).
+ */
+{
+  const chat = FILES.find((f) => /ai-chat[\\/]index\.ts$/.test(f));
+  if (chat) {
+    const txt = read(chat);
+    if (!/if \(planSnapshot && planTurn && planWritesDraft\)/.test(txt) || !/const planWritesDraft = planIntent === 'generate' \|\| planIntent === 'revise';/.test(txt)) {
+      fail('G12a-approval-no-overwrite', chat, 0, 'the plan draft must be persisted only on generate/revise turns (planWritesDraft) — never on the approval turn');
+    }
+    if (!/dietPlanHoldsMaintenance\(draft\.plan_data/.test(txt)) {
+      fail('G12b-numeric-ed-gate', chat, 0, 'diet approval must judge the draft numerically (dietPlanHoldsMaintenance), not refuse on the tier alone');
+    }
+    linesOf(txt).forEach((ln, i) => {
+      if (/plan_persist_error:\s*'ed_gate_blocked'/.test(ln)) {
+        fail('G12b-numeric-ed-gate', chat, i + 1, 'ED-gate refusal must not early-return — set planPersistError and let the turn finish');
+      }
+    });
+  }
+  const ss = FILES.find((f) => /shared[\\/]safety-state\.ts$/.test(f));
+  if (ss) {
+    const fn = read(ss).split('export async function deficitAllowed')[1] ?? '';
+    if (!fn) fail('G12c-deficit-fail-closed', ss, 0, 'deficitAllowed() is missing');
+    else if (/catch[^]*?allowed:\s*true/.test(fn.split('\n}')[0])) {
+      fail('G12c-deficit-fail-closed', ss, 0, 'deficitAllowed() allows a deficit from its error path — it must fail closed');
+    }
+  }
+}
+
+/**
  * G1 — ONE owner for the calorie floor. The male floor is 1500 (clinical-rules.getCalorieFloor);
  * the legacy 1400 must never reappear as an inline floor idiom (`? 1200 : 1400` / `: 1400`).
  */

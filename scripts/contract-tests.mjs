@@ -154,6 +154,39 @@ async function main() {
     await sql(`update user_safety_state set ed_tier='none' where user_id='${U}'`);
   });
 
+  await test('plan approval (Faz 0 #6/#7): a below-maintenance draft is refused NUMERICALLY, and the reviewed draft is never rewritten', async () => {
+    // Uses the test user's open diet draft (skips without one) and restores it + the ED tier after.
+    const drafts = await sql(`select id, plan_data from weekly_plans where user_id='${U}' and plan_type='diet' and status='draft' limit 1`);
+    if (drafts.length === 0) { console.log('      (skip: no open diet draft)'); return; }
+    const draftId = drafts[0].id;
+    const prevState = (await sql(`select ed_tier, ed_last_signal_at from user_safety_state where user_id='${U}'`))[0] ?? null;
+    const tdee = Number((await sql(`select tdee_calculated from profiles where id='${U}'`))[0]?.tdee_calculated) || 2500;
+    const low = Math.round(tdee * 0.6); // far below maintenance at any TDEE
+    const days = [0, 1, 2, 3, 4, 5, 6].map((i) => ({
+      day_index: i, day_label: `Gün ${i + 1}`, target_kcal: low, total_kcal: low,
+      meals: [{ meal_type: 'lunch', name: 'kontrat testi', items: [{ name: 'bulgur pilavı', grams: 300, kcal: low }], total_kcal: low }],
+    }));
+    const lit = (o) => `'${JSON.stringify(o).replace(/'/g, "''")}'::jsonb`;
+    await sql(`update weekly_plans set plan_data=${lit({ plan_type: 'diet', version: 7, targets: { kcal: low }, days })} where id='${draftId}'`);
+    await sql(`insert into user_safety_state (user_id,ed_tier,ed_last_signal_at) values ('${U}','amber',now()) on conflict (user_id) do update set ed_tier='amber', ed_last_signal_at=now()`);
+    try {
+      const r = await chat('Evet, bu planı onayla', { task_mode_hint: 'plan_diet', plan_type: 'diet', user_approved: true, draft_id: draftId });
+      assert(r.body.plan_persist_error === 'ed_gate_blocked', `expected ed_gate_blocked, got ${r.body.plan_persist_error}`);
+      assert(!r.body.plan_approved, 'a below-maintenance plan was approved for an amber user');
+      assert(!/bakım planı hazırla/i.test(r.message), 'refusal still offers the dead-end "bakım planı hazırla"');
+      const after = await sql(`select status, (plan_data->>'version')::int as v, (plan_data->'targets'->>'kcal')::int as k from weekly_plans where id='${draftId}'`);
+      assert(after[0].status === 'draft' && after[0].v === 7 && after[0].k === low,
+        `the approval turn rewrote the reviewed draft (status ${after[0].status}, version ${after[0].v}, kcal ${after[0].k})`);
+    } finally {
+      await sql(`update weekly_plans set plan_data=${lit(drafts[0].plan_data)} where id='${draftId}'`);
+      // Restore the tier AND its clock (a fresh ed_last_signal_at would restart the 14-day decay).
+      if (prevState) {
+        const at = prevState.ed_last_signal_at ? `'${prevState.ed_last_signal_at}'` : 'null';
+        await sql(`update user_safety_state set ed_tier='${prevState.ed_tier}', ed_last_signal_at=${at} where user_id='${U}'`);
+      } else await sql(`delete from user_safety_state where user_id='${U}'`);
+    }
+  });
+
   await test('belief repair: a new dietary restriction flags the conflicting active plan stale', async () => {
     await sql(`update weekly_plans set stale_reason=null where user_id='${U}' and status='active' and plan_type='diet'`);
     const hasMeat = await sql(`select 1 from weekly_plans where user_id='${U}' and status='active' and plan_type='diet' and (plan_data::text ilike '%tavuk%' or plan_data::text ilike '%köfte%' or plan_data::text ilike '%balık%') limit 1`);
