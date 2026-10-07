@@ -65,6 +65,7 @@ import { syncConstraint, confirmConstraint, deactivateConstraints, syncInjuryFro
 import { getEffectiveDateForUser, shiftDateString, getLocalParts, getLocalHour } from '../shared/day-boundary.ts';
 import { judgeTodayWeighIn } from '../shared/weigh-in-guard.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
+import { beginShadowTurn } from './v2/shadow.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -145,6 +146,11 @@ async function handleChat(req: Request, timer: TurnTimer): Promise<Response> {
     timer.mark('auth');
 
     const { message, image_base64, target_date: target_date_raw, audio_base64, session_id, task_mode_hint, client_timezone, plan_type, user_approved, draft_id, idempotency_key, ui_markers: ui_markers_raw, accepted_nudge_id } = body;
+
+    // AI_MIMARI_V2 §10 Faz 2 — Stage A shadow (KOCHKO_ROLLOUT_V2_UNDERSTAND_SHADOW, default off → null).
+    // Starts the TurnInput read NOW, before any of this turn's writes; Stage A runs only after the
+    // reply exists (EdgeRuntime.waitUntil). Never throws, never awaited, never touches the reply.
+    const v2Shadow = beginShadowTurn({ userId, message, hasImage: !!image_base64, transcribeOnly: !!(audio_base64 && body.transcribe_only), clientTimezone: client_timezone });
 
     // F3/C5 — the accepted OFFER, stamped and made visible. The old flow marked the nudge READ at
     // the moment of acceptance (extinguishing the open-offer flag as it was being answered) and
@@ -1227,6 +1233,8 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
       assistantMessage = ex.cleanMessage;
       actions = ex.actions;
     }
+    // v2 shadow: remember which actions the MODEL emitted, before any net adds or drops one.
+    v2Shadow?.markModelActions(actions);
 
     // Guardrail: medical-language tripwire (Spec 12.3). AI_MIMARI_V2 Faz 0 #4: LOG-ONLY — the reply
     // is never rewritten on a word match. F4/E4: violations stay COUNTABLE — sanitizeText itself
@@ -3669,7 +3677,13 @@ Doğru anladıysam: ${parsed}.${tail}`;
     };
     timer.mark('store');
     // #arch step 4: commit the exact response so a still-in-flight retry replays THIS, not a re-run.
-    return await commitAndRespond(responseData);
+    const v1Response = await commitAndRespond(responseData);
+    // AI_MIMARI_V2 §10 Faz 2: the reply exists and is final — the shadow is scheduled after it.
+    v2Shadow?.finish({
+      actions, feedback: actionFeedback, receipts: actionReceipts, dupSkip: DUP_SKIP, v1Mode: effectiveMode,
+      correctionReverted, v1Safety: edMediumReferral ? ['ed_medium_referral'] : [],
+    });
+    return v1Response;
   } catch (err) {
     const msg = (err as Error).message;
     console.error('[ai-chat] unhandled error:', err); // full detail stays server-side

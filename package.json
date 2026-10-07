@@ -15,7 +15,8 @@
     "ci": "npm run lint && npm run arch-guards && npm run seam-check && npm run check:edge && npm run test:edge",
     "seam-check": "node scripts/seam-check.mjs",
     "verify:live": "node scripts/contract-tests.mjs",
-    "scenarios": "node scripts/scenarios.mjs"
+    "scenarios": "node scripts/scenarios.mjs",
+    "v2-shadow-diff": "node scripts/v2-shadow-diff.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

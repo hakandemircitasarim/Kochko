@@ -63,6 +63,8 @@ interface Expected {
   plan?: string;
   ed?: { accepted: boolean; escalate: string | null };
   missed_write?: boolean;
+  /** The reason a reported fact was consciously not written (then it is NOT a missed write). */
+  not_written_reason?: string;
 }
 
 interface Fixture {
@@ -101,10 +103,12 @@ const FIXTURES: Record<string, Fixture> = {
   // A self injury of unknown severity is stored AND flagged (counts as severe, coach asks once).
   sakatlik: { expect: { verdicts: ['constraint_add:FLAG'], issues: ['siddet_bilinmiyor'] } },
   tetik_mecaz: { expect: { verdicts: [] } },
-  // Reported but not written, with a reason: validateDecision marks missed_write; the facts layer
-  // must read not_written_reason (and the route) before turning it into a question.
-  tetik_gercek: { expect: { verdicts: [], missed_write: true } },
-  kusma_hastalik: { expect: { verdicts: [], ed: { accepted: true, escalate: null }, missed_write: true } },
+  // Reported but consciously not written, WITH a reason: a decision, not a miss (§5.1.10) — an
+  // emergency or an illness turn must never end in a "you told me something, shall I log it?" question.
+  tetik_gercek: { expect: { verdicts: [], missed_write: false, not_written_reason: 'acil sağlık durumu; önce güvenlik' } },
+  kusma_hastalik: {
+    expect: { verdicts: [], ed: { accepted: true, escalate: null }, missed_write: false, not_written_reason: 'tek seferlik rahatsızlık; kayıt alanı yok' },
+  },
   soru_kayit_degil: { expect: { verdicts: [] } },
 };
 
@@ -302,6 +306,7 @@ Deno.test('every few-shot gets the verdict it teaches from validateDecision (fix
       assertEquals(v.safety.ed_signal, null, `${s.id}: no ED reading`);
     }
     assertEquals(v.missed_write, f.expect.missed_write ?? false, `${s.id}: missed_write`);
+    assertEquals(v.not_written_reason, f.expect.not_written_reason ?? null, `${s.id}: not_written_reason`);
   }
 });
 

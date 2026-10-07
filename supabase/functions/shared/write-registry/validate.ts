@@ -88,8 +88,17 @@ export interface DecisionValidation {
   };
   /** One repair call (§3.2 T5) is worth it: some REJECT is fixable from what the model knows. */
   repair: { needed: boolean; items: Array<{ channel: Channel; index: number; op: string; issues: Issue[] }> };
-  /** self_check said "user reported something" but nothing was written or clarified (§5.1.10). */
+  /**
+   * self_check said "user reported something" but nothing was written or clarified AND no
+   * not_written_reason was given (§5.1.10) — an unexplained omission; the coach asks.
+   */
   missed_write: boolean;
+  /**
+   * The model's own reason for a reported-but-unwritten fact (trimmed), when it gave one — then the
+   * turn is NOT a missed write; the facts layer acts on the reason. null when something was written
+   * or clarified, nothing was reported, or no reason was given.
+   */
+  not_written_reason: string | null;
   counts: Record<Verdict, number>;
 }
 
@@ -578,9 +587,17 @@ export function validateDecision(decision: unknown, ctx: ValidationContext): Dec
     env.issues.push({ code: 'niyet_yazma_celiskisi', level: 'flag', tr: 'mesaj varsayım olarak okunmuş ama kayıt yazması var', path: 'intent' });
   }
 
+  // §5.1.10: a missed write is an UNEXPLAINED omission. When the model says why it wrote nothing
+  // (not_written_reason: "acil sağlık durumu; önce güvenlik", "tek seferlik rahatsızlık; kayıt alanı
+  // yok", "bilgi eksik") it decided, it did not forget — the facts layer reads that reason and the
+  // route; it must not ALSO get a "kullanıcı bir şey bildirdi ama yazılmadı → sor" fact (an
+  // emergency turn would otherwise end in a data-entry question). Only a blank reason is a miss.
   const selfCheck = isRecord(d.self_check) ? d.self_check : null;
   const wroteSomething = verdicts.some((v) => v.channel !== 'memory');
-  const missed_write = selfCheck?.reported_new_facts === true && !wroteSomething && clarify === null;
+  const reasonGiven = typeof selfCheck?.not_written_reason === 'string' && selfCheck.not_written_reason.trim() !== '';
+  const unwritten = selfCheck?.reported_new_facts === true && !wroteSomething && clarify === null;
+  const missed_write = unwritten && !reasonGiven;
+  const not_written_reason = unwritten && reasonGiven ? (selfCheck!.not_written_reason as string).trim() : null;
 
   const repairItems = verdicts
     .filter((v) => v.verdict === 'REJECT' && v.repairable)
@@ -600,6 +617,7 @@ export function validateDecision(decision: unknown, ctx: ValidationContext): Dec
     safety: { ed_signal: validateEdSignal(d.safety, ctx) },
     repair: { needed: repairItems.length > 0 || fixable(env.issues) || fixable(plan?.issues ?? []), items: repairItems },
     missed_write,
+    not_written_reason,
     counts,
   };
 }

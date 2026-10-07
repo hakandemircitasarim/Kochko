@@ -337,6 +337,25 @@ for (const f of FILES) {
   }
 }
 
+/**
+ * G13 (AI_MIMARI_V2 §2 rule 2, §5.3) — no regex in the v2 turn code. "Kod serbest metni
+ * anlamlandırmaz": the ONLY user-text regex lives in shared/safety-tripwires.ts, as safety triggers.
+ * ai-chat/v2 runtime files (the eval harness and tests excluded — they parse fixtures and expectation
+ * paths, never a user turn) therefore carry no regex at all; a pattern there is a v1 net coming back.
+ */
+{
+  for (const f of FILES) {
+    const rf = rel(f);
+    if (!rf.includes('supabase/functions/ai-chat/v2/') || rf.includes('/v2/eval/') || /\.test\.ts$/.test(rf)) continue;
+    linesOf(read(f)).forEach((ln, i) => {
+      if (/^\s*(\/\/|\*|\/\*)/.test(ln)) return;
+      if (/new RegExp\(|\/[^/\s*][^/\n]*\/[dgimsuy]*\.(test|exec)\(|\.(match|matchAll|search)\(|\.(replace|replaceAll|split)\(\s*\//.test(ln)) {
+        fail('G13-v2-no-regex', f, i + 1, 'regex in ai-chat/v2 turn code — user-text patterns live only in shared/safety-tripwires.ts (§5.3)');
+      }
+    });
+  }
+}
+
 // ── report ──
 if (violations.length === 0) {
   console.log('✓ arch-guards: all invariants hold (' + FILES.length + ' files scanned)');

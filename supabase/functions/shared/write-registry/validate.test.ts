@@ -569,6 +569,31 @@ Deno.test('§5.1.10: reported a fact but wrote nothing and did not clarify → m
   assertEquals(validateDecision(sampleDecision({ self_check: sc }), sampleContext()).missed_write, true);
   assertEquals(validateDecision(sampleDecision({ self_check: sc, clarify: { topic: 'hangi öğün', candidate_refs: ['m14'] } }), sampleContext()).missed_write, false);
   assertEquals(validateDecision(sampleDecision({ self_check: sc, writes: [water()] }), sampleContext()).missed_write, false);
+  assertEquals(validateDecision(sampleDecision({ self_check: sc }), sampleContext()).not_written_reason, null);
+});
+
+Deno.test('§5.1.10: a GIVEN not_written_reason is a decision, not a miss (emergency / illness turns never become a data-entry question)', () => {
+  const emergency = sampleDecision({
+    safety: { acute_medical: true, self_harm: false, ed_signal: null, tripwire_reading: null },
+    reply_route: { contract: 'emergency', effort_hint: 'medium' },
+    self_check: { reported_new_facts: true, not_written_reason: '  acil sağlık durumu; önce güvenlik ' },
+  });
+  const e = validateDecision(emergency, sampleContext({ user_message: 'antrenmanda bayıldım, hâlâ başım dönüyor' }));
+  assertEquals([e.missed_write, e.not_written_reason], [false, 'acil sağlık durumu; önce güvenlik']);
+  const illness = validateDecision(sampleDecision({
+    self_check: { reported_new_facts: true, not_written_reason: 'tek seferlik rahatsızlık; kayıt alanı yok' },
+  }), sampleContext({ user_message: 'dün gece kustum, zehirlendim galiba' }));
+  assertEquals([illness.missed_write, illness.not_written_reason], [false, 'tek seferlik rahatsızlık; kayıt alanı yok']);
+  // A blank / whitespace reason explains nothing: still a miss.
+  for (const blank of ['', '   ', null]) {
+    const v = validateDecision(sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: blank } }), sampleContext());
+    assertEquals([v.missed_write, v.not_written_reason], [true, null], JSON.stringify(blank));
+  }
+  // The reason is only surfaced for an UNWRITTEN report: written / clarified / nothing reported → null.
+  const reason = { reported_new_facts: true, not_written_reason: 'bilgi eksik' };
+  assertEquals(validateDecision(sampleDecision({ self_check: reason, writes: [water()] }), sampleContext()).not_written_reason, null);
+  assertEquals(validateDecision(sampleDecision({ self_check: reason, clarify: { topic: 'hangi öğün', candidate_refs: ['m14'] } }), sampleContext()).not_written_reason, null);
+  assertEquals(validateDecision(sampleDecision({ self_check: { reported_new_facts: false, not_written_reason: 'bilgi eksik' } }), sampleContext()).not_written_reason, null);
 });
 
 Deno.test('A′: "bunu nasıl düzeltebilirim?" (no record_ops) deletes nothing; a clarify ref that was not shown is flagged', () => {

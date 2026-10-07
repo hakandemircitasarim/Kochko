@@ -1,5 +1,7 @@
 import { assertEquals } from 'https://deno.land/std@0.208.0/assert/mod.ts';
-import { parseRolloutValue, rolloutEnvKey, rolloutMode, rolloutStamp } from './rollout.ts';
+import {
+  ACTIVE_ROLLOUT_STEPS, parseRolloutValue, rolloutBucket, rolloutEnvKey, rolloutMode, rolloutStamp, V2_ROLLOUT_STEPS,
+} from './rollout.ts';
 
 const U = '4750e6be-0000-0000-0000-000000000001';
 const V = '4750e6be-0000-0000-0000-000000000002';
@@ -72,4 +74,99 @@ Deno.test('rolloutStamp lists only the non-off steps', () => {
   assertEquals(rolloutStamp([a, b, c], U), 'stamp_a=shadow|stamp_b=on');
   assertEquals(rolloutStamp([c], U), '', 'an all-off turn costs zero bytes');
   for (const s of [a, b, c]) Deno.env.delete(rolloutEnvKey(s));
+});
+
+// ─── AI_MIMARI_V2 §10: deterministic pct bucket + v2 steps ──────────────────────────────────────
+
+/** n synthetic, uuid-shaped user ids (deterministic). */
+function fakeUsers(n: number): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) {
+    out.push(`0000${i.toString(16).padStart(4, '0')}-1111-4222-8333-${(i * 7919).toString(16).padStart(12, '0')}`);
+  }
+  return out;
+}
+
+async function webCryptoBucket(step: string, uid: string): Promise<number> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${step}${uid}`));
+  const hex = [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return Number(BigInt(`0x${hex}`) % 100n);
+}
+
+Deno.test('rolloutBucket is sha256(step + uid) mod 100 — pinned to WebCrypto', async () => {
+  for (const uid of [U, V, ...fakeUsers(20)]) {
+    for (const step of ['v2_understand_shadow', 'v2_turn']) {
+      assertEquals(rolloutBucket(step, uid), await webCryptoBucket(step, uid), `${step}/${uid}`);
+    }
+  }
+});
+
+Deno.test('rolloutBucket normalises case/whitespace and is salted by the step', () => {
+  assertEquals(rolloutBucket(' V2_Turn ', ` ${U.toUpperCase()} `), rolloutBucket('v2_turn', U));
+  const users = fakeUsers(50);
+  assertEquals(users.some((u) => rolloutBucket('v2_turn', u) !== rolloutBucket('v2_plan', u)), true, 'each step draws its own cohort');
+  for (const u of users) {
+    const b = rolloutBucket('v2_turn', u);
+    assertEquals(Number.isInteger(b) && b >= 0 && b < 100, true);
+  }
+});
+
+Deno.test('pct=N selects ~N% of users, deterministically, and raising N only adds users', () => {
+  const users = fakeUsers(2000);
+  const on = (raw: string) => users.filter((u) => parseRolloutValue(raw, u, 'off', 'v2_turn') === 'on');
+  const p5 = on('pct=5'), p20 = on('pct=20'), p50 = on('pct=50');
+  for (const [got, want] of [[p5.length, 100], [p20.length, 400], [p50.length, 1000]] as const) {
+    // binomial sd at n=2000 is ≤ 23 users; ±70 is a 3σ band on a FIXED sample, so it never flakes.
+    assertEquals(Math.abs(got - want) <= 70, true, `expected ~${want}, got ${got}`);
+  }
+  const s20 = new Set(p20);
+  assertEquals(p5.every((u) => s20.has(u)), true, 'pct=5 ⊂ pct=20');
+  assertEquals(on('pct=20').join(), p20.join(), 'same answer every time');
+});
+
+Deno.test('pct edges: 0 nobody, 100 everybody with a user, no user → off', () => {
+  const users = fakeUsers(200);
+  assertEquals(users.some((u) => parseRolloutValue('pct=0', u, 'off', 's') !== 'off'), false);
+  assertEquals(users.every((u) => parseRolloutValue('pct=100', u, 'off', 's') === 'on'), true);
+  assertEquals(parseRolloutValue('pct=100', null, 'off', 's'), 'off');
+  assertEquals(parseRolloutValue('pct=100', undefined, 'on', 's'), 'off', 'a bucket needs a user');
+});
+
+Deno.test('pct combines with an allowlist and with the shadow prefix', () => {
+  const users = fakeUsers(400);
+  const outside = users.find((u) => rolloutBucket('v2_turn', u) >= 5)!;
+  const inside = users.find((u) => rolloutBucket('v2_turn', u) < 5)!;
+  assertEquals(parseRolloutValue(`pct=5,${outside}`, outside, 'off', 'v2_turn'), 'on', 'listed user is on regardless of bucket');
+  assertEquals(parseRolloutValue(`pct=5,${outside}`, inside, 'off', 'v2_turn'), 'on', 'bucket user is on');
+  assertEquals(parseRolloutValue(`pct=5,${U}`, outside, 'off', 'v2_turn'), 'off');
+  assertEquals(parseRolloutValue('shadow:pct=5', inside, 'off', 'v2_turn'), 'shadow');
+  assertEquals(parseRolloutValue('shadow:pct=5', outside, 'off', 'v2_turn'), 'off');
+  assertEquals(parseRolloutValue(`on: PCT = 5 , ${outside}`, inside, 'off', 'v2_turn'), 'on', 'spacing/case tolerant');
+});
+
+Deno.test('a malformed pct fails CLOSED to the fallback (never a guessed cohort)', () => {
+  for (const raw of ['pct=abc', 'pct=12.5', 'pct=150', 'pct=-1', 'pct=', 'pct=5,pct=10', 'pctx=5', `pct=5x,${U}`]) {
+    assertEquals(parseRolloutValue(raw, U, 'off', 'v2_turn'), 'off', raw);
+    assertEquals(parseRolloutValue(raw, U, 'shadow', 'v2_turn'), 'shadow', `${raw}: falls back, does not invent a mode`);
+  }
+});
+
+Deno.test('v2 steps are default OFF, stamped by the ledger, and deaf to KOCHKO_ROLLOUT_DEFAULT', () => {
+  assertEquals([...V2_ROLLOUT_STEPS], ['v2_understand_shadow', 'v2_turn', 'v2_plan', 'v2_classifier', 'v2_stream']);
+  for (const s of V2_ROLLOUT_STEPS) assertEquals(ACTIVE_ROLLOUT_STEPS.includes(s), true, s);
+  for (const s of V2_ROLLOUT_STEPS) Deno.env.delete(rolloutEnvKey(s));
+  Deno.env.set('KOCHKO_ROLLOUT_DEFAULT', 'on');
+  try {
+    for (const s of V2_ROLLOUT_STEPS) assertEquals(rolloutMode(s, U), 'off', `${s} must not follow DEFAULT=on`);
+    assertEquals(rolloutMode('b1a_return_flow', U), 'on', 'older steps still follow DEFAULT');
+    Deno.env.set(rolloutEnvKey('v2_understand_shadow'), `on:${U}`);
+    assertEquals(rolloutMode('v2_understand_shadow', U), 'on', 'its own key still works');
+    assertEquals(rolloutMode('v2_understand_shadow', V), 'off');
+    Deno.env.set(rolloutEnvKey('v2_understand_shadow'), 'pct=100');
+    assertEquals(rolloutMode('v2_understand_shadow', V), 'on', 'rolloutMode hands the step to the bucket');
+    assertEquals(rolloutStamp(['v2_understand_shadow', 'v2_turn'], V), 'v2_understand_shadow=on');
+  } finally {
+    Deno.env.delete('KOCHKO_ROLLOUT_DEFAULT');
+    Deno.env.delete(rolloutEnvKey('v2_understand_shadow'));
+  }
 });
