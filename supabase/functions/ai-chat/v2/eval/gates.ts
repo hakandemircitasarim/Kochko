@@ -29,10 +29,17 @@ export interface Budget {
   p90_ms: number;
   /** Faz 2 gate: parse/schema errors ≤ %0,5. */
   max_parse_schema_error_rate: number;
-  /** §3.3 Stage A ≈ $0.009/turn; Faz 3 allows ≤ +%40 → $0.0126. null = report only. */
+  /**
+   * Stage A alone, per answered call. §3.3 (2026-10-07 measurement) estimates A ≈ $0,011 (≈12,3K
+   * cached prefix + ~2K turn input + ≤350 output); the ceiling keeps ~%15 headroom over that
+   * estimate. The Faz 3 gate itself is per WHOLE turn (A + B ≤ +%40 vs v1) — this is the A share,
+   * an owner-adjustable number, not a spec constant. null = report only.
+   */
   max_cost_per_turn_usd: number | null;
+  /** §10 Faz 3: repair calls (validateDecision repair.needed) ≤ %5 of answered turns. */
+  max_repair_rate: number;
 }
-export const DEFAULT_BUDGET: Budget = { p50_ms: 3000, p90_ms: 4000, max_parse_schema_error_rate: 0.005, max_cost_per_turn_usd: 0.0126 };
+export const DEFAULT_BUDGET: Budget = { p50_ms: 3000, p90_ms: 4000, max_parse_schema_error_rate: 0.005, max_cost_per_turn_usd: 0.0126, max_repair_rate: 0.05 };
 
 /** $ per 1M tokens: [input, cached input, output] (§3.3). */
 export const PRICES: Record<string, [number, number, number]> = {
@@ -71,13 +78,19 @@ export function rateGate(pkg: PackageId, results: FixtureRunResult[]): GateResul
   else if (errors || misses) status = 'incomplete';
   else status = 'pass';
   const failing = [...new Set(judged.filter((r) => r.status === 'fail').map((r) => r.fixture_id))];
+  // Coverage: a run "passes" on what was evaluable; checks on stages not built yet are skipped.
+  const checks = judged.flatMap((r) => [...r.outcomes.map((o) => o.status), ...r.rubric.map((x) => x.status)]);
+  const checks_skipped = checks.filter((s) => s === 'skipped').length;
+  const checks_evaluated = checks.length - checks_skipped;
+  const partial = checks_skipped > 0;
   const detail = [
     rate === null ? 'değerlendirilebilen koşu yok' : `${passed}/${judged.length} (%${(rate * 100).toFixed(1)})`,
     errors ? `${errors} hata` : '',
     misses ? `${misses} replay kaydı yok` : '',
+    partial ? `KISMİ: ${checks_skipped}/${checks.length} denetim atlandı (aşama henüz yok)` : '',
     failing.length ? `kalan: ${failing.slice(0, 8).join(', ')}${failing.length > 8 ? ', …' : ''}` : '',
   ].filter(Boolean).join(' · ');
-  return { package: pkg, status, label_tr: g.label_tr, runs: judged.length, passed, rate, detail };
+  return { package: pkg, status, label_tr: g.label_tr, runs: judged.length, passed, rate, detail, checks_evaluated, checks_skipped, partial };
 }
 
 export interface QualityPair { fixture_id: string; v1_score: number; v2_score: number; safety_loss?: boolean }
@@ -102,7 +115,9 @@ export function qualityGate(pairs: QualityPair[]): GateResult {
 export function budgetGate(results: FixtureRunResult[], budget: Budget = DEFAULT_BUDGET, model?: string): GateResult {
   const pct = (budget.max_parse_schema_error_rate * 100).toFixed(1).replace('.', ',');
   const costLabel = budget.max_cost_per_turn_usd === null ? '' : `, maliyet/tur ≤ $${budget.max_cost_per_turn_usd}`;
-  const label_tr = `Gecikme/maliyet: Stage A p50 ≤ ${budget.p50_ms} ms, p90 ≤ ${budget.p90_ms} ms, ayrıştırma/şema hatası ≤ %${pct}${costLabel}`;
+  const repairPct = (budget.max_repair_rate * 100).toFixed(0);
+  const label_tr = `Gecikme/maliyet: Stage A p50 ≤ ${budget.p50_ms} ms, p90 ≤ ${budget.p90_ms} ms, ayrıştırma/şema hatası ≤ %${pct}, onarım ≤ %${repairPct}${costLabel}`;
+  // Only real Stage A calls are latency/cost evidence (a T2 canned turn makes no call).
   const live = results.filter((r) => r.cache === 'live' || r.cache === 'hit');
   const lat = live.map((r) => r.latency_ms).filter((x): x is number => typeof x === 'number').sort((a, b) => a - b);
   const answered = live.filter((r) => r.status === 'pass' || r.status === 'fail');
@@ -119,9 +134,11 @@ export function budgetGate(results: FixtureRunResult[], budget: Budget = DEFAULT
   const costs = model ? usages.map((u) => costOf(model, u)).filter((c): c is number => c !== null) : [];
   const costPerTurn = costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : null;
   const costOk = budget.max_cost_per_turn_usd === null || costPerTurn === null || costPerTurn <= budget.max_cost_per_turn_usd;
-  const ok = p50 <= budget.p50_ms && p90 <= budget.p90_ms && errRate <= budget.max_parse_schema_error_rate && costOk;
+  const repairs = answered.filter((r) => r.repair_needed === true).length;
+  const repairRate = repairs / answered.length;
+  const ok = p50 <= budget.p50_ms && p90 <= budget.p90_ms && errRate <= budget.max_parse_schema_error_rate && costOk && repairRate <= budget.max_repair_rate;
   const detail = [
-    `p50 ${p50} ms · p90 ${p90} ms · ayrıştırma/şema hatası ${bad}/${answered.length}`,
+    `p50 ${p50} ms · p90 ${p90} ms · ayrıştırma/şema hatası ${bad}/${answered.length} · onarım ${repairs}/${answered.length}`,
     outMean !== null ? `ort. çıktı ${outMean} token` : '',
     cacheRatio !== null ? `önbellek %${Math.round(cacheRatio * 100)}` : '',
     costPerTurn !== null ? `maliyet/tur $${costPerTurn.toFixed(4)}` : '',
@@ -141,7 +158,14 @@ export function computeGates(results: FixtureRunResult[], opts: { budget?: Budge
   ];
 }
 
-/** Gates that block a rollout step when enforced (no_data is not a pass, but not a failure either). */
-export function gatesFailed(report: Pick<EvalReport, 'gates'>, allowNoData = true): GateResult[] {
-  return report.gates.filter((g) => g.status === 'fail' || g.status === 'incomplete' || (!allowNoData && g.status === 'no_data'));
+/**
+ * Gates that block a rollout step when enforced. no_data is not a pass, but not a failure either;
+ * a PARTIAL pass (checks skipped because a stage is not built yet) blocks only with requireFull —
+ * Faz 1/2 gates run before Stage B exists, Faz 3 needs full coverage.
+ */
+export function gatesFailed(report: Pick<EvalReport, 'gates'>, opts: { allowNoData?: boolean; requireFull?: boolean } = {}): GateResult[] {
+  const allowNoData = opts.allowNoData ?? true;
+  return report.gates.filter((g) =>
+    g.status === 'fail' || g.status === 'incomplete' || (!allowNoData && g.status === 'no_data') || (opts.requireFull === true && g.status === 'pass' && g.partial === true)
+  );
 }

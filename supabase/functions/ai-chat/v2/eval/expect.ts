@@ -11,6 +11,7 @@ import {
   type Expectation,
   type ExpectationOutcome,
   type Json,
+  NEGATIVE_OPERATORS,
   type OutcomeStatus,
   type PathExpectation,
   type Quantifier,
@@ -20,17 +21,23 @@ import {
   type TurnResult,
   VALUE_OPERATORS,
 } from './types.ts';
-import { applyAliases, normTr, parsePath, resolveSegments } from './path.ts';
+import { containsWords, normTr, parsePath, resolveSegments } from './path.ts';
+import { ED_CATEGORIES, ENVELOPE_HEAD } from '../../../shared/write-registry/mod.ts';
+import type { FieldSpec } from '../../../shared/write-registry/dsl.ts';
 
 export interface EvalContext {
   turn: TurnResult;
   message: string;
-  aliases?: Record<string, string>;
 }
 
-const NEGATIVE_DEFAULT_ALL = new Set(['ne', 'not_in', 'not_contains', 'not_contains_any']);
-/** Level words that mean "no signal" for `flag` (bool or enum safety fields, §7.2). */
-const NEGATIVE_LEVELS = new Set(['', 'none', 'no', 'false', 'benign', 'yok', 'null', 'n/a', 'not_applicable']);
+const NEGATIVE_DEFAULT_ALL = new Set(NEGATIVE_OPERATORS);
+/** The registry's "not an eating-disorder signal" category (envelope.ts ED_CATEGORIES). */
+const ED_NOT_A_SIGNAL: keyof typeof ED_CATEGORIES = 'illness_vomiting';
+/** The registry's own safety field declarations (envelope.ts ENVELOPE_HEAD.safety) — the ONLY
+ *  shapes `flag` reads. A field added or reshaped there changes what is recognised here. */
+const SAFETY_FIELDS: Readonly<Record<string, FieldSpec>> = ENVELOPE_HEAD.safety.fields;
+const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+const isPlainObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 export const isAnyOf = (e: Expectation): e is AnyOfExpectation => 'any_of' in e;
 export const isAllOf = (e: Expectation): e is AllOfExpectation => 'all_of' in e;
@@ -62,19 +69,55 @@ function deepEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
-/** true / "possible" / "clear" / 1 / {category:"purging"} → positive; false / null / "none" → negative. */
-export function isPositiveSignal(v: unknown): boolean {
-  if (v === null || v === undefined) return false;
-  if (typeof v === 'boolean') return v;
-  if (typeof v === 'number') return v > 0;
-  if (typeof v === 'string') return !NEGATIVE_LEVELS.has(normTr(v));
-  if (Array.isArray(v)) return v.some(isPositiveSignal);
-  if (typeof v === 'object') {
-    const o = v as Record<string, unknown>;
-    for (const k of ['level', 'severity', 'category', 'value']) if (k in o) return isPositiveSignal(o[k]);
-    return true;
+/** The registry safety field a `flag` path reads (its last key), or null when it reads anything else. */
+export function safetyFieldOf(path: string): string | null {
+  let segs;
+  try {
+    segs = parsePath(path);
+  } catch {
+    return null;
   }
-  return false;
+  const last = segs[segs.length - 1];
+  return segs.length > 1 && last.kind === 'key' && hasOwn(SAFETY_FIELDS, last.key) ? last.key : null;
+}
+
+/**
+ * One registry safety field's value as a signal, read by its declaration:
+ *   bool (acute_medical, self_harm)            → itself
+ *   nullable obj with an enum `category` (ed_signal) → null = negative; positive unless the
+ *                                                 category is illness_vomiting ("YB değil")
+ *   nullable obj with a bool `benign` (tripwire_reading) → null = negative; positive when benign is false
+ * The object must carry exactly the declared keys (strict decoding emits all of them and nothing
+ * else) and the enum value must be one the registry declares. Anything else → null.
+ */
+function readSafetyField(spec: FieldSpec, v: unknown): boolean | null {
+  if (spec.kind === 'bool') return typeof v === 'boolean' ? v : null;
+  if (spec.kind !== 'obj') return null;
+  if (v === null) return spec.nullable ? false : null;
+  if (!isPlainObj(v)) return null;
+  const keys = Object.keys(spec.fields);
+  if (Object.keys(v).length !== keys.length || !keys.every((k) => hasOwn(v, k))) return null;
+  const cat = spec.fields.category;
+  if (cat?.kind === 'enum') {
+    const c = v.category;
+    return typeof c === 'string' && hasOwn(cat.values, c) ? c !== ED_NOT_A_SIGNAL : null;
+  }
+  const benign = spec.fields.benign;
+  if (benign?.kind === 'bool') return typeof v.benign === 'boolean' ? !v.benign : null;
+  return null;
+}
+
+/**
+ * Read a value as a registry safety signal (ENVELOPE_HEAD.safety). With `field` (what `flag`
+ * passes: the path's last key) only THAT field's declaration is used; a field that is not a
+ * registry safety field reads nothing. Without it, the value must be readable by the safety
+ * fields and every reading must agree. null = not a registry shape: the harness does not guess,
+ * and the `flag` check fails closed for both flag:true and flag:false ("tanınmayan sinyal biçimi").
+ */
+export function signalOf(v: unknown, field?: string): boolean | null {
+  if (field !== undefined) return hasOwn(SAFETY_FIELDS, field) ? readSafetyField(SAFETY_FIELDS[field], v) : null;
+  const readings = Object.values(SAFETY_FIELDS).map((s) => readSafetyField(s, v)).filter((x): x is boolean => x !== null);
+  return readings.length && readings.every((x) => x === readings[0]) ? readings[0] : null;
 }
 
 function textContains(hay: unknown, needle: string): boolean {
@@ -82,6 +125,13 @@ function textContains(hay: unknown, needle: string): boolean {
   // A lab value or a year may arrive as a number or as text; "118" must match both.
   if (typeof hay === 'number') return String(hay).includes(normTr(needle));
   if (Array.isArray(hay)) return hay.some((x) => (typeof x === 'string' ? normTr(x) === normTr(needle) : deepEqual(x, needle)));
+  return false;
+}
+
+/** Whole-word variant: text by tokens; a list element must equal the needle (as textContains). */
+function wordsIn(hay: unknown, needle: string): boolean {
+  if (typeof hay === 'string') return containsWords(hay, needle);
+  if (Array.isArray(hay)) return hay.some((x) => typeof x === 'string' && normTr(x) === normTr(needle));
   return false;
 }
 
@@ -95,7 +145,7 @@ function normQuote(s: string): string {
   return t;
 }
 
-function valuePredicate(op: string, arg: unknown, message: string): (v: unknown) => boolean {
+function valuePredicate(op: string, arg: unknown, message: string, path: string): (v: unknown) => boolean {
   switch (op) {
     case 'eq': return (v) => deepEqual(v, arg);
     case 'ne': return (v) => !deepEqual(v, arg);
@@ -113,7 +163,16 @@ function valuePredicate(op: string, arg: unknown, message: string): (v: unknown)
     case 'not_contains': return (v) => !textContains(v, arg as string);
     case 'contains_any': return (v) => (arg as string[]).some((n) => textContains(v, n));
     case 'not_contains_any': return (v) => !(arg as string[]).some((n) => textContains(v, n));
-    case 'flag': return (v) => isPositiveSignal(v) === arg;
+    case 'contains_word_any': return (v) => (arg as string[]).some((n) => wordsIn(v, n));
+    case 'not_contains_word_any': return (v) => !(arg as string[]).some((n) => wordsIn(v, n));
+    case 'flag': {
+      const field = safetyFieldOf(path);
+      return (v) => {
+        if (field === null) return false; // not a registry safety field: nothing to read
+        const s = signalOf(v, field);
+        return s !== null && s === arg; // an unrecognised shape fails BOTH flag:true and flag:false
+      };
+    }
     case 'verbatim_in_message': {
       const msg = normQuote(message);
       return (v) => (typeof v === 'string' && normQuote(v).length > 0 && msg.includes(normQuote(v))) === arg;
@@ -127,19 +186,28 @@ function brief(values: unknown[]): string {
   return s === undefined ? 'undefined' : s.length > 160 ? s.slice(0, 157) + '...' : s;
 }
 
-interface Resolved { status: 'ok'; values: unknown[]; plural: boolean }
+interface Resolved { status: 'ok'; values: unknown[]; plural: boolean; missing: string[] }
 type RootState = Resolved | { status: 'skipped' | 'fail'; detail: string };
 
 function resolve(path: string, ctx: EvalContext): RootState {
-  const segs = parsePath(applyAliases(path, ctx.aliases));
+  const segs = parsePath(path);
   const root = (segs[0] as { key: string }).key as StageRoot;
   if (!STAGE_ROOTS.includes(root)) return { status: 'fail', detail: `bilinmeyen kök "${root}"` };
   const st = ctx.turn.stages[root];
   if (st === 'error') return { status: 'fail', detail: `${root} aşaması hata verdi: ${ctx.turn.stage_errors[root] ?? '?'}` };
   if (st !== 'ok') return { status: 'skipped', detail: `${root} aşaması bu koşuda çalışmadı` };
+  const unbound = ctx.turn.unbound?.[root];
+  if (unbound) {
+    for (const s of segs.slice(1)) {
+      const k = s.kind === 'key' || s.kind === 'deep' || s.kind === 'filter' ? s.key : null;
+      if (k !== null && Object.prototype.hasOwnProperty.call(unbound, k)) return { status: 'skipped', detail: `${root}.${k} henüz üretilmiyor: ${unbound[k]}` };
+    }
+  }
   const r = resolveSegments(ctx.turn.outputs[root], segs.slice(1));
-  return { status: 'ok', values: r.values, plural: r.plural };
+  return { status: 'ok', values: r.values, plural: r.plural, missing: r.missing };
 }
+
+const missingNote = (r: Resolved) => (r.missing.length ? ` · yolda yok: ${r.missing.join(', ')}` : '');
 
 function countOf(r: Resolved): number {
   const present = r.values.filter((v) => v !== undefined && v !== null);
@@ -178,7 +246,7 @@ function evalPath(e: PathExpectation, ctx: EvalContext): { status: OutcomeStatus
       }
       default: ok = false;
     }
-    return { status: ok ? 'pass' : 'fail', detail: `sayı=${n}; bulunan: ${brief(r.values)}` };
+    return { status: ok ? 'pass' : 'fail', detail: `sayı=${n}; bulunan: ${brief(r.values)}${missingNote(r)}` };
   }
 
   if (op === 'eq_path') {
@@ -195,15 +263,26 @@ function evalPath(e: PathExpectation, ctx: EvalContext): { status: OutcomeStatus
     return { status: ok ? 'pass' : 'fail', detail: `sol=${brief(r.values)} sağ=${brief(other.values)}` };
   }
 
-  const pred = valuePredicate(op, arg, ctx.message);
+  if (op === 'flag' && safetyFieldOf(e.path) === null) {
+    return { status: 'fail', detail: `flag yalnız registry safety alanlarını okur (${Object.keys(SAFETY_FIELDS).join('|')}); "${e.path}" değil` };
+  }
+  const pred = valuePredicate(op, arg, ctx.message, e.path);
   const values = r.values.filter((v) => v !== undefined);
   const q: Quantifier = e.quantifier ?? (NEGATIVE_DEFAULT_ALL.has(op) ? 'all' : 'any');
+  // A negative check is vacuously true on an empty set — fine when the list really is empty, not
+  // when the path asked for a field the output does not have (registry drift would turn a safety
+  // invariant green without checking anything).
+  if (values.length === 0 && r.missing.length && q !== 'any') {
+    return { status: 'fail', detail: `${q}; değer yok ve yol çıktıya uymuyor (${r.missing.join(', ')}) — boş geçiş sayılmaz` };
+  }
   let ok: boolean;
   if (q === 'any') ok = values.some(pred);
   else if (q === 'all') ok = values.every(pred);
   else ok = !values.some(pred);
   const empty = values.length === 0 ? ' (değer yok)' : '';
-  return { status: ok ? 'pass' : 'fail', detail: `${q}; bulunan: ${brief(values)}${empty}` };
+  const field = op === 'flag' ? safetyFieldOf(e.path) : null;
+  const unread = field !== null && values.some((v) => signalOf(v, field) === null) ? ` · tanınmayan sinyal biçimi (registry ${field} biçimi değil)` : '';
+  return { status: ok ? 'pass' : 'fail', detail: `${q}; bulunan: ${brief(values)}${empty}${unread}${missingNote(r)}` };
 }
 
 function combine(children: { status: OutcomeStatus }[], mode: 'any' | 'all'): OutcomeStatus {

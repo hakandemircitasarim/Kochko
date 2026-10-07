@@ -23,7 +23,9 @@ export function formatReport(rep: EvalReport, opts: { verbose?: boolean } = {}):
   if (rep.cost_usd_estimate !== null) out.push(`Tahmini maliyet: $${rep.cost_usd_estimate}`);
   out.push('');
   out.push('KAPILAR (§9.4):');
-  for (const g of rep.gates) out.push(`  [${ICON[g.status]}] ${g.package.padEnd(2)} ${g.label_tr} — ${g.detail}`);
+  for (const g of rep.gates) out.push(`  [${ICON[g.status]}${g.status === 'pass' && g.partial ? ' · KISMİ' : ''}] ${g.package.padEnd(2)} ${g.label_tr} — ${g.detail}`);
+  const canned = rep.results.filter((r) => r.canned).length;
+  if (canned) out.push(`  (T2 açık listesi ${canned} koşuda hazır cevabı verdi; Stage A çağrılmadı — üretimdeki gibi)`);
 
   const failed = rep.results.filter((r) => r.status === 'fail');
   if (failed.length) {

@@ -7,7 +7,7 @@
  * makbuzlar (luna yargıcı)"). Nothing here ever edits a reply — it only scores it.
  */
 import { JUDGE_ONLY_RUBRIC, type RubricId, type RubricOutcome, type StageOutputs, type TurnResult } from './types.ts';
-import { normTr } from './path.ts';
+import { normTr, wordTokens } from './path.ts';
 
 const TR_DIACRITICS = new Set([...'çğıöşüÇĞİÖŞÜ']);
 /** Frequent words whose ASCII spelling betrays a de-diacritized template (final2#15, mem#12). */
@@ -42,20 +42,8 @@ export function asciiFold(text: string): string {
   return stripped.split('ı').join('i');
 }
 
-/** Word tokens without regex: letters, digits and '_' stay inside a token. */
-export function tokens(text: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  for (const ch of text.toLocaleLowerCase('tr')) {
-    if (isLetter(ch) || (ch >= '0' && ch <= '9') || ch === '_') cur += ch;
-    else if (cur) {
-      out.push(cur);
-      cur = '';
-    }
-  }
-  if (cur) out.push(cur);
-  return out;
-}
+/** Word tokens without regex (path.ts owns the tokenizer; the word operators use the same one). */
+export const tokens = wordTokens;
 
 export function replyText(outputs: StageOutputs): string | null {
   const r = outputs.reply;
@@ -191,20 +179,18 @@ export const JUDGE_SYSTEM_TR = [
   'Gerekçeyi tek kısa Türkçe cümleyle yaz.',
 ].join('\n');
 
-/** Request body (Responses API shape) for a judge call; sent through the same transport/cache. */
+/** ai-decide body for a judge call (same contract as Stage A); sent through the same transport/cache. */
 export function buildJudgeRequest(input: JudgeInput, model: string): Record<string, unknown> {
   const items = input.rubric.filter((r) => r === 'claims_subset_of_receipts' || r === 'answers_user_question');
   return {
     model,
-    store: false,
-    input: [
-      { role: 'system', content: JUDGE_SYSTEM_TR },
-      {
-        role: 'user',
-        content: `PUANLANACAK MADDELER: ${items.join(', ')}\n\nKULLANICI MESAJI:\n${input.message}\n\nMAKBUZLAR:\n${JSON.stringify(input.receipts ?? [])}\n\nKOÇ CEVABI:\n${input.reply}`,
-      },
-    ],
-    text: { format: { type: 'json_schema', name: JUDGE_SCHEMA.name, schema: JUDGE_SCHEMA.schema, strict: true } },
+    effort: 'low',
+    system: JUDGE_SYSTEM_TR,
+    input: [{
+      role: 'user',
+      content: `PUANLANACAK MADDELER: ${items.join(', ')}\n\nKULLANICI MESAJI:\n${input.message}\n\nMAKBUZLAR:\n${JSON.stringify(input.receipts ?? [])}\n\nKOÇ CEVABI:\n${input.reply}`,
+    }],
+    schema: { name: JUDGE_SCHEMA.name, schema: JUDGE_SCHEMA.schema, strict: true },
   };
 }
 

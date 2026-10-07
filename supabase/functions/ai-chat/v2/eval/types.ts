@@ -18,18 +18,19 @@ export const PACKAGE_IDS: readonly PackageId[] = ['A', "A'", 'B+', 'B-', 'C', 'D
 
 /** Result roots an expectation path may start with; each one is produced by exactly one stage. */
 export type StageRoot =
-  | 'decision' //   Stage A strict-schema output (kochko_understand_vN)
-  | 'validation' // validateDecision: per-write commit | flag | ask | reject
-  | 'commit' //     simulated commit: derive() output per op (e.g. commit.water_log.liters)
-  | 'receipts' //   typed receipts {action_type, ok, user_line, failure_class, ...}
-  | 'reply' //      Stage B kochko_reply_vN (reply, suggested_foods, suggested_exercises, ...)
+  | 't2' //         T2 safety floor (shared/safety-tripwires.ts scan): explicit → canned, no Stage A
+  | 'decision' //   Stage A strict-schema output (kochko_understand_vN, the registry's schema)
+  | 'validation' // the registry's validateDecision() result, verbatim (verdicts[], safety, repair…)
+  | 'commit' //     simulated commit: commit.<op>[] = verdict.row (args ⊕ derive) + declared invariants
+  | 'receipts' //   the registry's toActionReceipt() over the simulated commit (writer assumed ok)
+  | 'reply' //      Stage B kochko_reply_vN (or the T2 canned text when Stage A never ran)
   | 'envelope' //   renderEnvelope → TurnEnvelope the client reads
   | 'facts' //      Stage B facts block ("BU TURDA OLANLAR", budget, agenda)
   | 'report' //     ai-report output (pipeline 'report')
   | 'plan' //       plan pipeline output (pipeline 'plan')
   | 'meta'; //      latency, usage, cache class
 export const STAGE_ROOTS: readonly StageRoot[] = [
-  'decision', 'validation', 'commit', 'receipts', 'reply', 'envelope', 'facts', 'report', 'plan', 'meta',
+  't2', 'decision', 'validation', 'commit', 'receipts', 'reply', 'envelope', 'facts', 'report', 'plan', 'meta',
 ];
 
 /** Which pipeline a fixture exercises. Only 'chat' runs through Stage A today. */
@@ -51,22 +52,43 @@ export interface SpineEntry {
   note?: string;
 }
 
+/** Record kinds a fixture may render; each maps to a registry RefTarget (bind.ts RECORD_TARGET). */
+export const RECORD_KINDS = ['meal', 'water', 'workout', 'sleep', 'weight', 'supplement', 'mood', 'steps', 'venue', 'profile', 'life_event', 'lab', 'food_pref'] as const;
+export type RecordKind = typeof RECORD_KINDS[number];
+
 export interface RecordLine {
   ref: string;
-  kind: string; // meal | water | workout | sleep | weight | supplement | mood | steps | venue | profile
+  kind: RecordKind;
   day: string; // YYYY-MM-DD
   line: string; // rendered one-liner, exactly what Stage A would read
   last_turn?: boolean;
+  /** Validator facts (RenderedRef), not rendered: the loader knows them, the model does not. */
+  undone?: boolean;
+  later_write_on_same_field?: boolean;
+  suspicion_declined?: boolean;
 }
 
-export interface PendingLine { ref: string; op: string; line: string }
+export interface PendingLine { ref: string; op: string; line: string; expires_at?: string; replies_since?: number }
 export interface CommitmentLine { ref: string; line: string }
 export interface DraftLine { ref: string; plan_type: 'diet' | 'workout'; version: number; line: string }
 export interface HistoryTurn { role: 'user' | 'assistant'; content: string; receipts?: string[] }
-/** A T2 tripwire hit handed to Stage A as a FACT (§3.2 T2); code computes these, fixtures declare them. */
-export interface TripwireHit { id: string; list: 'explicit' | 'ambiguous' | 'injection'; category: string; match: string }
-export interface ReferenceCandidate { key: string; line: string }
+/** A REFERANS ADAYLARI row: `line` is what the model reads; the numbers are the validator's
+ *  ReferenceRow (meal_log derive() uses them when the model picks this key). */
+export interface ReferenceCandidate {
+  key: string;
+  line: string;
+  name_tr: string;
+  kcal_per_100g: number;
+  protein_per_100g?: number | null;
+  carbs_per_100g?: number | null;
+  fat_per_100g?: number | null;
+}
 
+/**
+ * NOTE — no `tripwires` field: T2 is not declared by fixtures any more. The runner computes it
+ * from the message with shared/safety-tripwires.ts scanTripwires(), exactly as production does,
+ * and renders the facts with renderTripwireFacts(). (fixtures.ts lint rejects the old field.)
+ */
 export interface FixtureTurnInput {
   now?: { local_date: string; local_time?: string; weekday_tr?: string; tz?: string };
   profile?: Record<string, Json>;
@@ -78,10 +100,11 @@ export interface FixtureTurnInput {
   draft?: DraftLine | null;
   history?: HistoryTurn[];
   tier?: 'none' | 'watch' | 'amber' | 'red';
-  tripwires?: TripwireHit[];
   reference_candidates?: ReferenceCandidate[];
   gates?: string[]; // "yazma kapıları" lines (§4.2/4)
   image?: boolean;
+  /** Validator-only fact (ValidationContext.last_weight): the latest weigh-in of the last 14 days. */
+  last_weight?: { kg: number; day: string } | null;
 }
 
 /** T1 fixed client protocols (§3.2): exact-match literals that never reach Stage A. */
@@ -117,7 +140,18 @@ export interface PathExpectation {
   not_contains?: string;
   contains_any?: string[];
   not_contains_any?: string[];
-  /** Safety-level truthiness: true/"possible"/"clear"/{category:"purging"} are positive; false/null/"none" negative. */
+  /** Whole-word match (Turkish lower-case tokens): "kek" hits "havuçlu kek", not "kekikli tavuk".
+   *  A multi-word needle matches a run of consecutive tokens. */
+  contains_word_any?: string[];
+  not_contains_word_any?: string[];
+  /**
+   * A registry safety field read as a signal through ITS declaration (envelope.ts
+   * ENVELOPE_HEAD.safety; the path's last key names the field): a boolean (acute_medical,
+   * self_harm) is itself; ed_signal is null (negative) or {category, severity, evidence_quote} —
+   * positive unless category is `illness_vomiting` ("YB değil"); tripwire_reading is null or
+   * {benign, reason} — positive when benign is false. Any other shape is NOT guessed: the check
+   * fails (closed). On a path that is not a safety field it is a lint error.
+   */
   flag?: boolean;
   /** The value must be a substring of the normalized USER message (evidence_quote rule, §7.2). */
   verbatim_in_message?: boolean;
@@ -132,8 +166,11 @@ export type Expectation = PathExpectation | AnyOfExpectation | AllOfExpectation;
 
 export const VALUE_OPERATORS = [
   'eq', 'ne', 'in', 'not_in', 'between', 'gte', 'lte', 'gt', 'lt', 'contains', 'not_contains',
-  'contains_any', 'not_contains_any', 'flag', 'verbatim_in_message', 'eq_path',
+  'contains_any', 'not_contains_any', 'contains_word_any', 'not_contains_word_any', 'flag', 'verbatim_in_message', 'eq_path',
 ] as const;
+/** Operators that assert ABSENCE; vacuously true on an empty set, so a path that cannot resolve
+ *  (a renamed field) must fail them instead of passing silently (expect.ts). */
+export const NEGATIVE_OPERATORS: readonly string[] = ['ne', 'not_in', 'not_contains', 'not_contains_any', 'not_contains_word_any'];
 export const SET_OPERATORS = ['exists', 'absent', 'count', 'count_gte', 'count_lte', 'empty'] as const;
 export type ValueOperator = typeof VALUE_OPERATORS[number];
 export type SetOperator = typeof SET_OPERATORS[number];
@@ -182,6 +219,12 @@ export interface TurnResult {
   outputs: StageOutputs;
   stages: Partial<Record<StageRoot, StageStatus>>;
   stage_errors: Partial<Record<StageRoot, string>>;
+  /**
+   * Fields a stage that DID run does not produce yet, with the reason (the simulated receipts have
+   * no allergen_exposure until the commit layer's consumption check exists). An expectation that
+   * reads one is skipped with that reason — never failed, never passed.
+   */
+  unbound?: Partial<Record<StageRoot, Record<string, string>>>;
 }
 
 export type OutcomeStatus = 'pass' | 'fail' | 'skipped';
@@ -211,6 +254,10 @@ export interface FixtureRunResult {
   error?: string;
   skip_reason?: string;
   decision?: unknown;
+  /** validateDecision said one repair call would be made (§3.2 T5) — E gate tracks the rate. */
+  repair_needed?: boolean;
+  /** T2 answered with the canned reply; Stage A was never called (as in production). */
+  canned?: boolean;
 }
 
 export type GateStatus = 'pass' | 'fail' | 'no_data' | 'incomplete';
@@ -222,6 +269,11 @@ export interface GateResult {
   passed: number;
   rate: number | null;
   detail: string;
+  /** Checks evaluated vs skipped (a stage not built yet) across the judged runs. A gate that
+   *  passed with skipped checks is PARTIAL: green on what exists, not full coverage. */
+  checks_evaluated?: number;
+  checks_skipped?: number;
+  partial?: boolean;
 }
 
 export interface EvalReport {

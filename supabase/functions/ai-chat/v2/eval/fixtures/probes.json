@@ -26,7 +26,7 @@
       "package": "A",
       "title": "cap-probe: ‘6 tavuk nugget yedim’ → 100–120 g, 290–360 kcal civarı; tavuk göğsü referansı seçilmez.",
       "turn_input": {
-        "reference_candidates": [ { "key": "tavuk göğsü", "line": "tavuk göğsü: 165 kcal/100 g · P31 K0 Y3,6 · porsiyon ≈150 g" } ]
+        "reference_candidates": [ { "key": "tavuk göğsü", "line": "tavuk göğsü: 165 kcal/100 g · P31 K0 Y3,6 · porsiyon ≈150 g", "name_tr": "tavuk göğsü (ızgara)", "kcal_per_100g": 165, "protein_per_100g": 31, "carbs_per_100g": 0, "fat_per_100g": 3.6 } ]
       },
       "message": "6 tavuk nugget yedim",
       "expect": [
@@ -49,7 +49,7 @@
         { "path": "decision.writes[op=meal_log].items[name~tuz].grams", "lte": 3 },
         { "path": "decision.writes[op=meal_log].items[name~tuz].kcal", "lte": 1 },
         { "path": "decision.writes[op=water_log]", "count": 0 },
-        { "path": "validation.writes[op=meal_log].outcome", "ne": "reject" }
+        { "path": "validation.verdicts[op=meal_log].verdict", "ne": "REJECT" }
       ]
     },
     {
@@ -71,8 +71,8 @@
       "title": "cap-probe zayıf vakası: ‘2 dilim lahmacun’ low effort'ta 90–100 g geldi; hedef 180–330 g ya da netleştirme.",
       "turn_input": {
         "reference_candidates": [
-          { "key": "lahmacun", "line": "lahmacun: 240 kcal/100 g · 1 adet ≈130 g" },
-          { "key": "ayran", "line": "ayran: 36 kcal/100 ml · 1 bardak ≈200 ml" }
+          { "key": "lahmacun", "line": "lahmacun: 240 kcal/100 g · 1 adet ≈130 g", "name_tr": "lahmacun", "kcal_per_100g": 240, "protein_per_100g": 10, "carbs_per_100g": 30, "fat_per_100g": 9 },
+          { "key": "ayran", "line": "ayran: 36 kcal/100 ml · 1 bardak ≈200 ml", "name_tr": "ayran", "kcal_per_100g": 36, "protein_per_100g": 1.7, "carbs_per_100g": 2.6, "fat_per_100g": 1.9 }
         ]
       },
       "message": "2 dilim lahmacun ve 1 ayran",
@@ -110,11 +110,8 @@
       "message": "dün 4 saat uyudum, bugün antrenmana gideyim mi?",
       "turn_input": { "now": { "local_time": "08:15" } },
       "expect": [
-        { "path": "decision.writes[op=sleep_log].day", "eq": "2026-10-06" },
-        { "any_of": [
-          { "path": "decision.writes[op=sleep_log]..hours", "eq": 4 },
-          { "path": "decision.writes[op=sleep_log]..duration_hours", "eq": 4 }
-        ] },
+        { "path": "validation.verdicts[op=sleep_log].derived.date", "eq": "2026-10-06" },
+        { "path": "decision.writes[op=sleep_log].hours", "eq": 4 },
         { "path": "decision.writes[op=workout_log]", "count": 0 }
       ]
     },

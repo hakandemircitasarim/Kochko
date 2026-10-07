@@ -19,6 +19,7 @@ import {
   PACKAGE_IDS,
   type PackageId,
   type PathExpectation,
+  RECORD_KINDS,
   RUBRIC_IDS,
   SET_OPERATORS,
   STAGE_ROOTS,
@@ -26,6 +27,7 @@ import {
 } from './types.ts';
 import { parsePath } from './path.ts';
 import { isAllOf, isAnyOf } from './expect.ts';
+import { lintBoundPath } from './bind.ts';
 
 export interface PersonaDef { description?: string; turn_input: FixtureTurnInput }
 export interface LintIssue { file: string; fixture: string; message: string }
@@ -160,15 +162,21 @@ function lintExpectation(e: Expectation, f: EvalFixture, refs: Set<string>, say:
     case 'exists': case 'absent': case 'empty': case 'flag': case 'verbatim_in_message':
       if (typeof arg !== 'boolean') bad('true/false olmalı');
       break;
+    case 'contains_word_any': case 'not_contains_word_any':
+      if (!Array.isArray(arg) || arg.length === 0 || !arg.every((x) => typeof x === 'string' && x.trim())) bad('boş olmayan metin dizisi olmalı');
+      break;
     case 'eq_path':
       try {
         parsePath(arg as string);
+        for (const m of lintBoundPath(arg as string, 'eq_path', undefined)) say(`bağlama: ${m}`);
       } catch (err) {
         bad((err as Error).message);
       }
       break;
   }
   if (pe.quantifier !== undefined && !['any', 'all', 'none'].includes(pe.quantifier)) say(`geçersiz quantifier "${pe.quantifier}"`);
+  // The path must fit what the bound pipeline produces (registry schema / validator / receipts).
+  for (const m of lintBoundPath(pe.path, op, arg)) say(`bağlama: ${m}`);
 
   // Refs the expectation names must be refs the TurnInput actually rendered (§5.1/4).
   const last = segs[segs.length - 1];
@@ -177,9 +185,10 @@ function lintExpectation(e: Expectation, f: EvalFixture, refs: Set<string>, say:
     const named = (Array.isArray(arg) ? arg : [arg]).filter((x): x is string => typeof x === 'string' && isRefToken(x));
     for (const r of named) if (!refs.has(r)) say(`"${r}" ref'i turn_input'ta yok (${pe.path})`);
   }
-  // A logged day must be a day f.day() accepts: not in the future, at most 7 days back.
+  // A logged day must be a day f.day() accepts: not in the future, at most 7 days back (the
+  // model's `day` or the validator's resolved `derived.date`).
   const now = f.turn_input.now?.local_date;
-  if (lastKey === 'day' && now && (op === 'eq' || op === 'in')) {
+  if ((lastKey === 'day' || lastKey === 'date') && now && (op === 'eq' || op === 'in')) {
     for (const d of (Array.isArray(arg) ? arg : [arg]).filter(isIsoDay)) {
       const diff = dayDiff(d, now);
       if (diff > 0 || diff < -7) say(`gün ${d} f.day() aralığı dışında (şimdi ${now})`);
@@ -205,7 +214,11 @@ export function lintFixture(f: EvalFixture, file = '-'): LintIssue[] {
     if (!isIsoDay(ti.now?.local_date)) say('turn_input.now.local_date YYYY-MM-DD olmalı');
     if (ti.tier && !['none', 'watch', 'amber', 'red'].includes(ti.tier)) say(`geçersiz tier "${ti.tier}"`);
     for (const h of ti.history ?? []) if (h.role !== 'user' && h.role !== 'assistant') say(`geçersiz history rolü "${h.role}"`);
-    for (const t of ti.tripwires ?? []) if (!['explicit', 'ambiguous', 'injection'].includes(t.list)) say(`geçersiz tetik listesi "${t.list}"`);
+    if ('tripwires' in (ti as Record<string, unknown>)) say('turn_input.tripwires kaldırıldı: T2 mesajdan scanTripwires() ile hesaplanır (üretimdeki gibi)');
+    for (const r of ti.records ?? []) if (!(RECORD_KINDS as readonly string[]).includes(r.kind)) say(`${r.ref}: geçersiz kayıt türü "${r.kind}" (${RECORD_KINDS.join('|')})`);
+    for (const c of ti.reference_candidates ?? []) {
+      if (typeof c.name_tr !== 'string' || typeof c.kcal_per_100g !== 'number') say(`referans adayı "${c.key}": name_tr ve kcal_per_100g gerekli (validateDecision'ın ReferenceRow'u)`);
+    }
     const seen = new Set<string>();
     for (const r of [...(ti.records ?? []), ...(ti.spine ?? []), ...(ti.pending ?? []), ...(ti.commitments ?? [])]) {
       if (!isRefToken(r.ref)) say(`geçersiz ref "${r.ref}"`);

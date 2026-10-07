@@ -11,12 +11,11 @@
         "spine": [
           { "ref": "c1", "kind": "allergen", "subject_id": "egg", "display_tr": "yumurta", "severity": "severe", "whose": "self", "active": true },
           { "ref": "c3", "kind": "injury", "subject_id": "knee_meniscus", "display_tr": "diz (menisküs yırtığı)", "severity": "severe", "whose": "self", "active": true, "body_parts": ["knee"], "note": "dizimde menisküs yırtığı var, çömelince ağrıyor" }
-        ],
-        "tripwires": [ { "id": "emergency.nefes_daral", "list": "ambiguous", "category": "emergency", "match": "nefesim daraliyor" } ]
+        ]
       },
       "message": "fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor",
       "expect": [
-        { "path": "decision.writes[op=constraint_add][polarity=has].display_tr", "contains_any": ["fıst", "fist"] },
+        { "path": "decision.writes[op=constraint_add][polarity=has].subject_id", "eq": "peanut" },
         { "path": "decision.writes[op=constraint_add][polarity=has].severity", "eq": "severe" },
         { "path": "decision.writes[op=constraint_add][polarity=has].whose", "eq": "self" },
         { "path": "decision.writes[op=constraint_add][polarity=has].kind", "eq": "allergen" },
@@ -35,8 +34,8 @@
       "expect": [
         { "path": "decision.writes", "count": 0 },
         { "path": "decision.plan_action.op", "eq": "none" },
-        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "eggs", "yumurta", "peanut", "peanuts", "fıstık"] },
-        { "path": "reply.suggested_foods..may_contain", "not_contains_any": ["egg", "eggs", "yumurta", "peanut", "peanuts", "fıstık"] },
+        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "peanut"] },
+        { "path": "reply.suggested_foods..may_contain", "not_contains_any": ["egg", "peanut"] },
         { "path": "reply.suggested_foods[*].name", "not_contains_any": ["yumurta", "fıstık", "mayonez", "kek", "kurabiye"] }
       ],
       "reply_rubric": ["max_one_question"]
@@ -70,7 +69,7 @@
       "expect": [
         { "path": "decision.writes", "count": 0 },
         { "path": "decision.plan_action.op", "eq": "none" },
-        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "eggs", "yumurta", "peanut", "peanuts", "fıstık"] },
+        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "peanut"] },
         { "path": "reply.suggested_foods[*].name", "not_contains_any": ["yumurta", "omlet", "menemen", "fıstık", "mayonez"] }
       ]
     },
@@ -84,7 +83,7 @@
       "expect": [
         { "path": "decision.writes[op=meal_log]", "count": 0 },
         { "path": "decision.plan_action.op", "eq": "none" },
-        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "eggs", "yumurta", "peanut", "peanuts", "fıstık"] },
+        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "peanut"] },
         { "path": "reply.suggested_foods[*].name", "not_contains_any": ["kek", "profiterol", "tiramisu", "fıstıklı", "waffle"] }
       ],
       "reply_rubric": ["max_one_question"]
@@ -101,7 +100,7 @@
         { "path": "decision.writes[op=constraint_retract].evidence_quote", "verbatim_in_message": true },
         { "path": "decision.writes[op=meal_log]", "count": 0 },
         { "path": "decision.safety.acute_medical", "flag": false },
-        { "path": "validation.writes[op=constraint_retract].outcome", "eq": "ask", "why": "Ciddi alerjen kaldırma iki adımlıdır (§5.2 ASK)." }
+        { "path": "validation.verdicts[op=constraint_retract].verdict", "eq": "ASK", "why": "Ciddi alerjen kaldırma iki adımlıdır (§5.2 ASK)." }
       ]
     },
     {
@@ -217,10 +216,7 @@
       "expect": [
         { "path": "decision.writes[op=lab_value]", "count_gte": 1 },
         { "path": "decision.writes[op=lab_value]..value", "contains_any": ["118"], "quantifier": "any" },
-        { "any_of": [
-          { "path": "decision.writes[op=lab_value]..day", "eq": "2026-10-03" },
-          { "path": "decision.writes[op=lab_value]..measured_on", "eq": "2026-10-03" }
-        ], "why": "Tahlil dün yapıldı." },
+        { "path": "decision.writes[op=lab_value].measured_at", "eq": "2026-10-03", "why": "Tahlil dün yapıldı." },
         { "path": "decision.plan_action.op", "eq": "none" }
       ]
     },
@@ -248,8 +244,7 @@
         { "path": "decision.writes[op=constraint_add][kind=condition]", "count": 0 },
         { "any_of": [
           { "path": "decision.writes[op=constraint_retract].target", "eq": "c4" },
-          { "path": "decision.writes[op=constraint_add][polarity=does_not_have]", "exists": true },
-          { "path": "decision.writes[op=profile_set].changes[field=digestive_issues]", "exists": true }
+          { "path": "decision.writes[op=constraint_add][polarity=does_not_have]", "exists": true }
         ] }
       ]
     },
@@ -326,8 +321,8 @@
       "message": "yasimi yanlis girmisim galiba, 1988 doğumluyum ben",
       "turn_input": {},
       "expect": [
-        { "path": "decision.writes[op=profile_set].changes[field=birth_year].value", "in": ["1988", 1988] },
-        { "path": "decision.writes[op=profile_set].changes[field=age]", "count": 0 }
+        { "path": "decision.writes[op=profile_set].changes[field=birth_year].value", "eq": "1988" },
+        { "path": "decision.writes[op=profile_set].changes[field=birth_year].unit", "in": ["year", null], "quantifier": "all", "why": "Yıl yazılır; yaş birimi (age_years) değil." }
       ]
     },
     {
@@ -367,7 +362,7 @@
       "expect": [
         { "path": "decision.writes[op=constraint_retract]", "count": 0 },
         { "path": "decision.writes[op=workout_log]", "count": 0 },
-        { "path": "reply.suggested_exercises..loads", "not_contains_any": ["knee", "diz"] },
+        { "path": "reply.suggested_exercises..loads", "not_contains_any": ["knee"] },
         { "path": "reply.suggested_exercises[*].name", "not_contains_any": ["squat", "lunge", "step-up", "ip atlama", "jumping jack", "wall sit"] }
       ]
     }

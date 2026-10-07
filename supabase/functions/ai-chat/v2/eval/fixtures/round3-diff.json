@@ -77,10 +77,7 @@
       "expect": [
         { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" },
         { "path": "decision.writes[op=water_log].quantity", "in": [2, 2000] },
-        { "any_of": [
-          { "path": "decision.writes[op=profile_set].changes[field=water_target_liters].value", "contains": "3" },
-          { "path": "decision.writes[op=goal_set]..water_target_liters", "eq": 3 }
-        ] }
+        { "path": "decision.writes[op=profile_set].changes[field=water_target_liters].value", "contains": "3" }
       ]
     },
     {
@@ -175,7 +172,7 @@
       "message": "dün toplam 2 litre su içtim",
       "turn_input": {},
       "expect": [
-        { "path": "decision.writes[op=water_log].day", "eq": "2026-10-05" },
+        { "path": "validation.verdicts[op=water_log].derived.date", "eq": "2026-10-05" },
         { "path": "decision.writes[op=water_log].mode", "eq": "set_day_total" }
       ]
     },
@@ -223,15 +220,12 @@
       "package": "A",
       "title": "‘85,5 kiloyum’ bugünkü tartı kaydıdır; tartı hatırlatması kapanır.",
       "message": "85,5 kiloyum",
-      "turn_input": {},
+      "turn_input": { "profile": { "weight_kg": 86 }, "last_weight": { "kg": 85.9, "day": "2026-10-02" } },
       "expect": [
         { "path": "decision.writes[op=body_weight]", "count": 1 },
-        { "any_of": [
-          { "path": "decision.writes[op=body_weight]..kg", "eq": 85.5 },
-          { "path": "decision.writes[op=body_weight]..weight_kg", "eq": 85.5 }
-        ] },
-        { "path": "decision.writes[op=body_weight].day", "eq": "2026-10-06" },
-        { "path": "commit.body_weight.closes_weight_reminder", "eq": true }
+        { "path": "decision.writes[op=body_weight].kg", "eq": 85.5 },
+        { "path": "validation.verdicts[op=body_weight].derived.date", "eq": "2026-10-06" },
+        { "path": "commit.body_weight.invariants", "contains": "weight_reminder_close", "why": "Yazılan tartı, kayıtta beyan edilen hatırlatma kapatma değişmezini tetikler." }
       ]
     },
     {

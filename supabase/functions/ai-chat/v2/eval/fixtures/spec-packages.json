@@ -49,7 +49,7 @@
       "expect": [
         { "path": "decision.writes[op=meal_log].items[name~tuz].as_stated", "contains": "2 çimdik" },
         { "path": "decision.writes[op=meal_log].items[name~tuz].grams", "lte": 3 },
-        { "path": "validation.writes[op=meal_log].outcome", "ne": "reject" }
+        { "path": "validation.verdicts[op=meal_log].verdict", "ne": "REJECT" }
       ]
     },
     {
@@ -169,7 +169,7 @@
       },
       "message": "kalori hesabını sil",
       "expect": [
-        { "path": "decision.writes[op=account_erase_request]", "count": 0 },
+        { "path": "decision.writes[op=data_erase_request]", "count": 0 },
         { "path": "decision.record_ops", "count": 0 }
       ]
     },

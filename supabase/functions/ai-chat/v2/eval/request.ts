@@ -1,131 +1,112 @@
 /**
- * Stage A request building for the eval runner.
+ * Stage A request for a fixture — built by PRODUCTION's composer, not a look-alike.
  *
- * BEFORE the write registry lands, the runner cannot import the real schema / understand prompt,
- * so both are INPUTS (--schema, --system). `provisionalRequestBuilder` renders the fixture's
- * TurnInput into a Turkish block in the §4.2 order and wraps it in a Responses API body with
- * strict json_schema. At integration the real `buildRequest` from ai-chat/v2/understand.ts is
- * plugged in through `RequestBuilder` (cli: --builder-module), and nothing else changes.
+ * The only eval-side step is mapping the fixture's TurnInput snapshot (a loose superset with
+ * pre-rendered lines, types.ts) to the StageATurnView that ai-chat/v2/stage-a-request.ts renders.
+ * Everything else is imported:
+ *   - T2: scanTripwires(message) from shared/safety-tripwires.ts — the facts Stage A reads and the
+ *     explicit hits that never reach Stage A (resolveTripwires → canned reply, no LLM call);
+ *   - the prefix (understand-prompt rules + registry doc + few-shots), the strict schema
+ *     (buildUnderstandSchema), the cache key and the §8.4 effort: buildStageARequest().
  *
- * Determinism matters: the replay key is the sha256 of this body, so rendering must be a pure
- * function of (fixture, inputs) — no clocks, no randomness, stable ordering.
+ * The body IS what ai-decide accepts, and its sha256 is the replay key — so a prompt, schema,
+ * few-shot or registry change is a different key and an old recording can never be graded
+ * against new bytes. Deterministic: no clock, no randomness, stable ordering.
  */
-import type { EvalFixture, FixtureTurnInput } from './types.ts';
+import type { EvalFixture, FixtureTurnInput, Json, ReferenceCandidate } from './types.ts';
+import { buildStageARequest, renderTurnInputBlock as renderView, type StageARequest, type StageATurnView } from '../stage-a-request.ts';
+import { resolveTripwires, scanTripwires, tripwireFacts, type TripwireDecision, type TripwireScan } from '../../../shared/safety-tripwires.ts';
 
-export interface StrictSchema { name: string; schema: Record<string, unknown>; strict: boolean }
-export type Effort = 'auto' | 'none' | 'low' | 'medium' | 'high';
+const val = (v: Json): string => (typeof v === 'string' ? v : JSON.stringify(v));
 
-export interface StageAInputs {
-  system_prompt: string;
-  schema: StrictSchema;
-  model: string;
-  effort: Effort;
-  max_output_tokens?: number;
-  /** Stage A prefix is byte-identical for every user → one global cache key (§3.2 T4). */
-  cache_key?: string;
+/** Turkish number as the loader prints it: fixed decimals, decimal comma ("1,40"). */
+const trNum = (n: number, digits: number) => n.toFixed(digits).replace('.', ',');
+
+/**
+ * BUGÜN totals as the loader prints them — the wording the few-shots teach ("BUGÜN: su 1,40 L").
+ * A key without a Turkish label is shown as key=value (never dropped).
+ */
+export function todayPhrases(today: Readonly<Record<string, Json>>): string[] {
+  const out: string[] = [];
+  for (const [k, v] of Object.entries(today)) {
+    const n = typeof v === 'number' && Number.isFinite(v) ? v : null;
+    if (k === 'water_liters' && n !== null) out.push(`su ${trNum(n, 2)} L`);
+    else if (k === 'kcal' && n !== null) out.push(`${Math.round(n)} kcal`);
+    else if (k === 'protein_g' && n !== null) out.push(`protein ${Math.round(n)} g`);
+    else if (k === 'meals_logged' && n !== null) out.push(`${n} öğün kaydı`);
+    else out.push(`${k}=${val(v)}`);
+  }
+  return out;
 }
 
-export type RequestBuilder = (fixture: EvalFixture, inputs: StageAInputs) => Record<string, unknown> | Promise<Record<string, unknown>>;
+/**
+ * What the TurnInput renderer reads from a fixture. Reference rows need only `key` + `line` here:
+ * their numbers are the validator's ReferenceRow, never rendered (fixtures still must carry them —
+ * fixtures.ts lint).
+ */
+export type RenderableTurnInput = Omit<FixtureTurnInput, 'reference_candidates'> & {
+  reference_candidates?: ReadonlyArray<Pick<ReferenceCandidate, 'key' | 'line'>>;
+};
 
-/** §8.4: Stage A is `low`, `medium` only on facts code knows for certain. Never `none` unless asked. */
-export function effortFor(ti: FixtureTurnInput): 'low' | 'medium' {
-  const tierUp = ti.tier === 'watch' || ti.tier === 'amber' || ti.tier === 'red';
-  return ti.image || !!ti.draft || (ti.tripwires?.length ?? 0) > 0 || tierUp ? 'medium' : 'low';
-}
-
-export function resolveEffort(e: Effort, ti: FixtureTurnInput): Exclude<Effort, 'auto'> {
-  return e === 'auto' ? effortFor(ti) : e;
-}
-
-const val = (v: unknown): string => (typeof v === 'string' ? v : JSON.stringify(v));
-
-/** The TurnInput block Stage A reads (provisional renderer; input.ts replaces it). */
-export function renderTurnInputBlock(ti: FixtureTurnInput): string {
-  const L: string[] = [];
-  const now = ti.now;
-  if (now) L.push(`ŞİMDİ: ${now.local_date}${now.weekday_tr ? ` ${now.weekday_tr}` : ''}${now.local_time ? ` ${now.local_time}` : ''}${now.tz ? ` (${now.tz})` : ''}`);
-  L.push(`YB SEVİYESİ: ${ti.tier ?? 'none'}`);
-  const prof = Object.entries(ti.profile ?? {});
-  if (prof.length) L.push(`PROFİL: ${prof.map(([k, v]) => `${k}=${val(v)}`).join(' · ')}`);
-  if (ti.spine?.length) {
-    L.push('KISITLAR (omurga):');
-    for (const c of ti.spine) {
+/** Fixture snapshot → the view production renders (spine rows formatted as the loader would). */
+export function fixtureView(ti: RenderableTurnInput): StageATurnView {
+  const now = ti.now ?? { local_date: '1970-01-01' };
+  return {
+    now: { local_date: now.local_date, weekday_tr: now.weekday_tr ?? null, local_time: now.local_time ?? null, tz: now.tz ?? null },
+    ed_tier: ti.tier ?? 'none',
+    profile: Object.entries(ti.profile ?? {}).map(([k, v]) => [k, val(v)] as const),
+    constraints: (ti.spine ?? []).map((c) => {
       const bits = [c.kind, c.display_tr, c.severity ?? 'unknown', c.whose ?? 'self', c.active === false ? 'PASİF (geri alındı)' : 'aktif'];
       if (c.body_parts?.length) bits.push(`bölge: ${c.body_parts.join(',')}`);
       if (c.note) bits.push(`not: "${c.note}"`);
-      L.push(`${c.ref} · ${bits.join(' · ')}`);
-    }
-  }
-  if (ti.records?.length) {
-    L.push('KAYITLAR (son 7 gün, ref ile):');
-    for (const r of ti.records) L.push(`${r.ref} · ${r.line}${r.last_turn ? ' (son tur)' : ''}`);
-  }
-  const today = Object.entries(ti.today ?? {});
-  if (today.length) L.push(`BUGÜN: ${today.map(([k, v]) => `${k}=${val(v)}`).join(' · ')}`);
-  if (ti.pending?.length) {
-    L.push('BEKLEYEN ONAYLAR:');
-    for (const p of ti.pending) L.push(`${p.ref} · ${p.op} · ${p.line}`);
-  }
-  if (ti.commitments?.length) {
-    L.push('AÇIK SÖZLER:');
-    for (const k of ti.commitments) L.push(`${k.ref} · ${k.line}`);
-  }
-  if (ti.draft) L.push(`PLAN TASLAĞI: ${ti.draft.ref} · ${ti.draft.plan_type} v${ti.draft.version} · ${ti.draft.line}`);
-  if (ti.gates?.length) L.push(`YAZMA KAPILARI: ${ti.gates.join(' · ')}`);
-  if (ti.reference_candidates?.length) {
-    L.push('REFERANS ADAYLARI (yalnızca ipucu, kod dayatmaz):');
-    for (const c of ti.reference_candidates) L.push(`${c.key}: ${c.line}`);
-  }
-  if (ti.image) L.push('GÖRSEL: kullanıcı bir fotoğraf ekledi.');
-  if (ti.tripwires?.length) {
-    L.push('TETİKLER (kod buldu, anlamını sen oku):');
-    for (const t of ti.tripwires) L.push(`${t.id} · ${t.list} · ${t.category} · "${t.match}"`);
-  }
-  if (ti.history?.length) {
-    L.push('SON KONUŞMA:');
-    for (const h of ti.history) {
-      L.push(`${h.role === 'user' ? 'kullanıcı' : 'koç'}: ${h.content}`);
-      for (const rc of h.receipts ?? []) L.push(`  ⟦${rc}⟧`);
-    }
-  }
-  return L.join('\n');
-}
-
-export function stageAUserContent(fixture: EvalFixture): string {
-  return `${renderTurnInputBlock(fixture.turn_input)}\n\nKULLANICI MESAJI:\n${fixture.message}`;
-}
-
-/** Responses API body with strict json_schema (§3.2 T4). `store:false` explicitly (§10 Faz 1). */
-export const provisionalRequestBuilder: RequestBuilder = (fixture, inputs) => {
-  const body: Record<string, unknown> = {
-    model: inputs.model,
-    store: false,
-    input: [
-      { role: 'system', content: inputs.system_prompt },
-      { role: 'user', content: stageAUserContent(fixture) },
-    ],
-    text: { format: { type: 'json_schema', name: inputs.schema.name, schema: inputs.schema.schema, strict: inputs.schema.strict } },
-    prompt_cache_key: inputs.cache_key ?? `kochko-understand:${inputs.schema.name}`,
-    max_output_tokens: inputs.max_output_tokens ?? 4000,
+      return { ref: c.ref, line: bits.join(' · ') };
+    }),
+    records: (ti.records ?? []).map((r) => ({ ref: r.ref, line: r.line, last_turn: r.last_turn === true })),
+    today: todayPhrases(ti.today ?? {}),
+    pending: (ti.pending ?? []).map((p) => ({ ref: p.ref, line: `${p.op} · ${p.line}` })),
+    commitments: (ti.commitments ?? []).map((k) => ({ ref: k.ref, line: k.line })),
+    draft: ti.draft ? { ref: ti.draft.ref, line: `${ti.draft.plan_type} v${ti.draft.version} · ${ti.draft.line}` } : null,
+    gates: ti.gates ?? [],
+    references: (ti.reference_candidates ?? []).map((c) => ({ key: c.key, line: c.line })),
+    image: ti.image === true,
+    history: (ti.history ?? []).map((h) => ({ role: h.role, content: h.content, receipts: h.receipts ?? [] })),
   };
-  const effort = resolveEffort(inputs.effort, fixture.turn_input);
-  body.reasoning = { effort };
-  return body;
-};
-
-/** What is POSTed to ai-decide (and hashed for the replay key). */
-export function rawPayload(request: Record<string, unknown>): Record<string, unknown> {
-  return { mode: 'raw', request };
 }
 
-/** Post-registry form: ai-decide builds the prompt itself from the TurnInput. */
-export function turnPayload(fixture: EvalFixture, inputs: StageAInputs): Record<string, unknown> {
+/**
+ * The TurnInput block Stage A reads for a fixture: the fixture mapped to the view, rendered by
+ * PRODUCTION's renderer (stage-a-request.ts). Kept under this name so the brain's tests check
+ * their few-shot labels against the real renderer through the fixture shape.
+ */
+export function renderTurnInputBlock(ti: RenderableTurnInput): string {
+  return renderView(fixtureView(ti));
+}
+
+export interface FixtureT2 {
+  scan: TripwireScan;
+  /** resolveTripwires with no Stage A: `canned` = the explicit list answers, Stage A is never called. */
+  floor: TripwireDecision;
+  /** The `t2` result root. */
+  output: { canned: boolean; category: string | null; explicit: string | null; hits: unknown[]; facts: number };
+}
+
+export function fixtureT2(message: string): FixtureT2 {
+  const scan = scanTripwires(message);
+  const floor = resolveTripwires({ scan, stageA: null });
   return {
-    mode: 'turn',
-    turn_input: fixture.turn_input,
-    message: fixture.message,
-    client: fixture.client ?? null,
-    model: inputs.model,
-    effort: resolveEffort(inputs.effort, fixture.turn_input),
+    scan,
+    floor,
+    output: {
+      canned: floor.kind === 'canned',
+      category: floor.kind === 'canned' ? floor.category : null,
+      explicit: scan.explicit?.trigger ?? null,
+      hits: scan.hits.map((h) => ({ hit_id: h.hit_id, trigger: h.trigger, category: h.category, tier: h.tier, negated: h.negated })),
+      facts: tripwireFacts(scan).length,
+    },
   };
+}
+
+/** The ai-decide body for one fixture (= production's Stage A request). */
+export function buildFixtureRequest(fixture: EvalFixture, model: string, scan = scanTripwires(fixture.message)): StageARequest {
+  return buildStageARequest({ view: fixtureView(fixture.turn_input), scan, message: fixture.message, model });
 }

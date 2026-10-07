@@ -43,7 +43,8 @@ const EFFORTS: readonly ReasoningEffort[] = ['none', 'low', 'medium', 'high', 'x
 const FORMATS: readonly StructuredFormat[] = ['json_schema', 'json_object', 'auto'];
 const ROLES: readonly ChatMessage['role'][] = ['system', 'user', 'assistant'];
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/;
-const MAX_BODY_CHARS = 512 * 1024;
+/** Request bodies above this are refused with 413 (exported for the eval runner's pre-flight). */
+export const MAX_BODY_CHARS = 512 * 1024;
 const MAX_MESSAGES = 200;
 const MAX_TOOLS = 16;
 const TARGETS = ['default', 'probe_gateway'] as const;
