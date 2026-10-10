@@ -42,8 +42,10 @@ Deno.test('doc: names the schema version; every Stage A op is documented (full s
 
 Deno.test('doc: the units the model reads are generated from the table derive() multiplies by (one table)', () => {
   for (const u of ['bardak', 'su_bardagi', 'cay_bardagi', 'kupa'] as const) assert(doc.includes(`${u} ${UNIT_ML[u]} ml`), u);
-  assert(doc.includes('1 bardak su daha içtim'));
-  assert(doc.includes('+0,20 L'));
+  // The worked example is a glass COUNT turned into litres by code (not a copy of an eval fixture's
+  // message: eval/overlap.test.ts keeps the doc's quoted examples away from the fixtures).
+  assert(doc.includes('"2 kupa su daha içtim" → quantity 2, unit kupa'));
+  assert(doc.includes('+0,50 L'));
 });
 
 Deno.test('doc: says what code computes and what is two-step — and that nothing is silently changed', () => {

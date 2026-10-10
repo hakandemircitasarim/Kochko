@@ -36,7 +36,7 @@ import { supabaseAdmin } from '../../shared/supabase-admin.ts';
 import { SCHEMA_NAMES, validateDecision, type DecisionValidation, type Verdict, type WriteVerdict } from '../../shared/write-registry/mod.ts';
 import { loadTurnInput, supabaseTurnInputDb, turnRefs, validationContext, type PgClientLike, type TurnInput, type TurnInputDb, type TurnInputLoadError } from './input.ts';
 import {
-  buildUnderstandRequest, STAGE_A_LIVE_BUDGET_MS, understand,
+  buildUnderstandRequest, stageALiveBudgetMs, understand,
   type UnderstandDeps, type UnderstandOutcome, type UnderstandRequest, type UnderstandStatus,
 } from './understand.ts';
 
@@ -236,8 +236,9 @@ export function tripwireReadingsOf(decision: unknown, scan: TripwireScan): Tripw
 }
 
 /**
- * What resolveTripwires receives from Stage A. A Stage A slower than the live budget (§7.2: 4 s)
- * counts as a timeout here — the shadow reports what LIVE v2 would do. `ignoreBudget` reads a parsed
+ * What resolveTripwires receives from Stage A. A Stage A slower than the turn's live budget (§7.2:
+ * 4 s, 7 s when T2 handed it a tripwire fact — stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS) counts as a
+ * timeout here — the shadow reports what LIVE v2 would do. `ignoreBudget` reads a parsed
  * but late decision as if it had arrived in time: EVIDENCE only (the late reading, §7.4), never the
  * outcome the shadow reports as live-equivalent.
  */
@@ -246,7 +247,7 @@ export function stageASafetyOutcome(
 ): StageASafetyOutcome | null {
   if (!outcome) return null;
   if (outcome.status === 'refused') return { status: 'refused' };
-  if ((outcome.status === 'error' && outcome.error?.class === 'timeout') || (!opts.ignoreBudget && outcome.meta.latencyMs > STAGE_A_LIVE_BUDGET_MS)) {
+  if ((outcome.status === 'error' && outcome.error?.class === 'timeout') || (!opts.ignoreBudget && outcome.meta.latencyMs > stageALiveBudgetMs(scan))) {
     return { status: 'timeout' };
   }
   if (outcome.status !== 'parsed' || !validation || !isRec(outcome.decision)) return { status: 'error' };
@@ -306,7 +307,11 @@ export interface ShadowRecord {
     /** 'turn_input' | 'explicit_tripwire' | an error class / incomplete reason / refusal / first issue. */
     detail: string | null;
     latency_ms: number;
+    /** Past THIS turn's live budget (live_budget_ms). */
     over_live_budget: boolean;
+    /** §7.2 budget class and ms of the turn (null when Stage A was not asked). */
+    budget_class: 'normal' | 'tripwire' | null;
+    live_budget_ms: number | null;
     effort: string | null;
     model: string | null;
     usage: { input: number; output: number; reasoning: number; cached: number; total: number };
@@ -395,6 +400,8 @@ export function shadowIssueEntries(r: ShadowRecord, scan: TripwireScan | null): 
     });
   }
   if (r.tripwire.computed) out.push({ kind: 'safety', code: 'tripwire_outcome', path: null, outcome: null, value: r.tripwire.outcome });
+  // Which §7.2 live budget the turn was measured against (the report splits latency by it).
+  if (r.stage_a.budget_class) out.push({ kind: 'safety', code: 'live_budget', path: null, outcome: null, value: r.stage_a.budget_class });
   // Why the table fell back (timeout / error / refused / not_run), and — for a late but parsed Stage A —
   // what it would have decided in time. Both are evidence; the outcome above is what live v2 does.
   if (r.tripwire.computed && r.tripwire.outcome === 'fallback') {
@@ -533,7 +540,7 @@ export async function runShadow(input: RunShadowInput, deps: RunShadowDeps = {})
     stage: SHADOW_STAGE,
     schema_version: SCHEMA_NAMES.understand,
     stage_a: {
-      status: 'skipped', detail: null, latency_ms: 0, over_live_budget: false, effort: null, model: null,
+      status: 'skipped', detail: null, latency_ms: 0, over_live_budget: false, budget_class: null, live_budget_ms: null, effort: null, model: null,
       usage: { ...ZERO_USAGE }, attempts: 0, retries: [], sizes: null,
     },
     decision: null,
@@ -562,11 +569,13 @@ export async function runShadow(input: RunShadowInput, deps: RunShadowDeps = {})
         record.stage_a.effort = req.effort;
         record.stage_a.model = req.model;
         record.stage_a.sizes = req.sizes;
+        record.stage_a.budget_class = req.budgetClass;
+        record.stage_a.live_budget_ms = req.liveBudgetMs;
         outcome = await (deps.understand ?? ((r: UnderstandRequest) => understand(r, deps.understandDeps)))(req);
         const m = outcome.meta;
         record.stage_a.status = outcome.status;
         record.stage_a.latency_ms = m.latencyMs;
-        record.stage_a.over_live_budget = m.latencyMs > STAGE_A_LIVE_BUDGET_MS;
+        record.stage_a.over_live_budget = m.latencyMs > req.liveBudgetMs;
         record.stage_a.attempts = m.attempts;
         record.stage_a.retries = m.retries;
         record.stage_a.usage = {

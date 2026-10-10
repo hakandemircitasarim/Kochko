@@ -272,7 +272,14 @@ export interface FixtureRunResult {
   repair_needed?: boolean;
   /** T2 answered with the canned reply; Stage A was never called (as in production). */
   canned?: boolean;
+  /** The fixture is in the untouched HOLDOUT set (tag 'holdout'): graded in its own gate set, never tuned on. */
+  holdout?: boolean;
+  /** T2 handed Stage A a tripwire fact → the 7 s §7.2 live budget class (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS). */
+  tripwire?: boolean;
 }
+
+/** Stage A latency of one §7.2 budget class (real calls only: live or replay). */
+export interface LatencyClassStats { n: number; p50_ms: number | null; p90_ms: number | null; budget_ms: number; over_budget: number }
 
 export type GateStatus = 'pass' | 'fail' | 'no_data' | 'incomplete';
 export interface GateResult {
@@ -299,8 +306,13 @@ export interface EvalReport {
   reps: number;
   fixture_count: number;
   results: FixtureRunResult[];
+  /** §9.4 gates over the TUNING fixtures (everything not tagged 'holdout'). */
   gates: GateResult[];
+  /** The same gates over the HOLDOUT fixtures alone (empty when none ran) — reported apart, never used to tune. */
+  holdout_gates: GateResult[];
   totals: Record<RunStatus, number> & { cache_miss: number };
   latency: { p50_ms: number | null; p90_ms: number | null; samples: number };
+  /** Latency split by the §7.2 live budget class: a turn with a tripwire fact (7 s) vs without (4 s). */
+  latency_split: { normal: LatencyClassStats; tripwire: LatencyClassStats };
   cost_usd_estimate: number | null;
 }

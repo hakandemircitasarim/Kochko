@@ -31,7 +31,7 @@ supabase/functions/ai-chat/v2/
     fixtures/*.json         fixture grupları (round3-*, devir-*, probes, spec-packages, safety-*, contract-d, owner-decisions)
     .replay/                replay önbelleği: <sha256>.json (commit edilir; CI anahtarsız koşar)
     types.ts path.ts expect.ts fixtures.ts bind.ts request.ts transport.ts replay-store.ts
-    runner.ts gates.ts rubric.ts judge.ts capture.ts report.ts cli.ts fakes.ts preflight.ts
+    runner.ts gates.ts rubric.ts judge.ts capture.ts report.ts cli.ts fakes.ts preflight.ts overlap.ts
     *.test.ts               birim testleri (deno test, CI'da)
 scripts/eval-v2.ts          belgelenen giriş noktası (cli.ts'i çağırır)
 ```
@@ -113,6 +113,7 @@ npx deno task --config supabase/functions/deno.json v2-eval --mode judge --recor
 --only a,b | @ids.txt tam fixture id'leri (virgülle ya da dosyada satır satır); bilinmeyen id kullanım hatasıdır —
                       canlı turun kalanlarını + rastgele bir gerileme örneğini düşük maliyetle yeniden koşmak için
 --filter final2#3     id, source ya da etiket içinde geçen metin
+--holdout exclude     tutulan seti dışarıda bırakır (AYAR turları böyle koşar); only = yalnız tutulan set; varsayılan include
 --verbose             atlananları nedenleriyle listeler
 --require-full        KISMİ geçişi de başarısız sayar (Faz 3 kapısı için)
 ```
@@ -270,6 +271,19 @@ kapalı-başarısızdır. Rubrik yalnız **modelin** (ya da T2 hazır) cevabın�
 | D — sözleşme | %100 | commit == karar + derive, makbuz dili |
 | E — gecikme/maliyet | Stage A p50 ≤ 3 sn, p90 ≤ 4 sn (§3.3 tahmini 1,3–3,2 sn; §7.2 4 sn kapalı-başarısızlık), ayrıştırma/şema hatası ≤ %0,5 (Faz 2 kapısı), onarım ≤ %5 (§10 Faz 3), Stage A maliyeti/çağrı ≤ $0,0126 (§3.3 tahmini A ≈ $0,011 + ~%15 pay; sahip ayarlar) | yalnız live/replay ölçümü; T2 hazır cevapları çağrı yapmadığı için sayılmaz; çıktı token ortalaması ve önbellek oranı raporlanır |
 
+- **Tutulan set (holdout):** `fixtures/holdout.json` (`holdout` etiketi, `source: holdout:…`) model çıktısı
+  görülmeden yazıldı ve prompt/few-shot/belge ayarında **kullanılmaz**. Kapıları ayar fixture'larından ayrı
+  hesaplanır (`holdout_gates`, raporda "TUTULAN SET (holdout) KAPILARI"); `--enforce-gates` ikisini de
+  denetler. Bir holdout vakası kalırsa yalnız ilke düzeyinde düzeltilir ve 'harcanmış' diye not edilir.
+  `overlap.test.ts`: holdout mesajları ayar fixture'larına ve few-shot'lara Jaccard ≤ 0,6.
+- **Öğretim ≠ sınav:** few-shot mesajları, kural ve kayıt dokümanındaki tırnaklı örnekler hiçbir fixture
+  mesajının kopyası olamaz (kelime Jaccard > 0,6 ya da fixture mesajı aynen içinde → test düşer); few-shot
+  bağlamı bir fixture'ın ref'ini aynı yiyecekle gösteremez (`overlap.test.ts`). Yalnız "-sem ne olur /
+  -sem yeter mi" dil kalıpları serbesttir.
+- **E kapısında gecikme bölünmesi:** her çağrı §7.2 canlı bütçe sınıfıyla işaretlenir (T2 Stage A'ya tetik
+  olgusu verdiyse `tripwire`, 7 sn; yoksa `normal`, 4 sn — `stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS`).
+  E satırı ve rapor iki sınıfın p50/p90'ını ve canlıda kapalı-başarısızlığa düşecek çağrı sayısını ayrı yazar;
+  kapının kendisi (genel p50 ≤ 3 sn, p90 ≤ 4 sn) değişmedi.
 - Altyapı hatası ya da eksik replay kaydı → kapı `EKSİK`: kısmi veriyle asla yeşil yanmaz (E
   kapısı dahil: düşen bir çağrı yavaş ya da bozuk olan olabilirdi).
 - Aynı gövdeyi kuran iki fixture (aynı TurnInput + mesaj) bir koşuda tekrar başına **tek** çağrı

@@ -9,12 +9,23 @@ import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/st
 import { scanTripwires } from '../../shared/safety-tripwires.ts';
 import { sampleDecision, SAMPLE_WRITES } from '../../shared/write-registry/samples.ts';
 import { loadTurnInput } from './input.ts';
-import { percentile, renderShadowReport, stageAStatusOf, summarizeShadowRows } from './shadow-report.mjs';
+import { budgetClassOf, LIVE_BUDGET_MS, LIVE_BUDGETS_MS, percentile, renderShadowReport, stageAStatusOf, summarizeShadowRows } from './shadow-report.mjs';
+import { STAGE_A_LIVE_BUDGETS_MS } from './stage-a-request.ts';
 import { resetShadowSinkState, runShadow, v1ActionFacts, type V1ActionFact } from './shadow.ts';
 import { fakeSink, fakeTurnInputDb, NOW, seedTables, USER } from './testing.ts';
 import type { UnderstandOutcome, UnderstandRequest } from './understand.ts';
 
 const DUP = '__dup_skip__';
+
+Deno.test('report budgets mirror the ONE owner (stage-a-request.ts); old rows without a live_budget entry are classed by their tripwire entries', () => {
+  assertEquals({ ...LIVE_BUDGETS_MS }, { ...STAGE_A_LIVE_BUDGETS_MS });
+  assertEquals(LIVE_BUDGET_MS, STAGE_A_LIVE_BUDGETS_MS.normal);
+  assertEquals(budgetClassOf({ issues: [{ kind: 'safety', code: 'live_budget', value: 'tripwire' }] }), 'tripwire');
+  assertEquals(budgetClassOf({ issues: [{ kind: 'tripwire', tier: 'ambiguous' }] }), 'tripwire');
+  assertEquals(budgetClassOf({ issues: [{ kind: 'tripwire', tier: 'signal' }] }), 'tripwire', 'a declaration cue is a fact too');
+  assertEquals(budgetClassOf({ issues: [{ kind: 'tripwire', tier: 'explicit' }] }), 'normal', 'an explicit hit never reaches Stage A');
+  assertEquals(budgetClassOf({ issues: null }), 'normal');
+});
 
 function facts(actions: Record<string, unknown>[], model: Record<string, unknown>[] = actions): V1ActionFact[] {
   return v1ActionFacts({
@@ -81,6 +92,11 @@ Deno.test('summarizeShadowRows: agreement, net-vs-silent, ask/reject, parse erro
   assertEquals(s.errors, { refused: 1 });
   // latencies of the 6 turns that ran: 1200 1500 2500 5200 900 1800 → nearest-rank p50 1500, p90 5200
   assertEquals([s.latency.n, s.latency.p50, s.latency.p90, s.latency.over_live_budget], [6, 1500, 5200, 1]);
+  // Split by the §7.2 budget class: the 4 tripwire-free turns against 4 s, the 2 'bayılmıştım' turns against 7 s.
+  assertEquals(s.latency.by_class, {
+    normal: { n: 4, p50: 1500, p90: 5200, budget_ms: 4000, over_budget: 1 },
+    tripwire: { n: 2, p50: 900, p90: 1800, budget_ms: 7000, over_budget: 0 },
+  });
   assertEquals(s.tokens, { input_avg: 10000, cached_ratio: 0.9, output_avg: 200, reasoning_avg: 100 });
   assertEquals(s.ops.water_log, { both: 1, v1_only: 0, v2_only: 1, neither: 1, agreement_rate: 0.5 });
   assertEquals(s.ops.body_weight, { both: 0, v1_only: 1, v2_only: 0, neither: 0, agreement_rate: 0 });
@@ -105,7 +121,9 @@ Deno.test('renderShadowReport: every §10 Faz 2 section, counts only (no user te
   for (const s of [
     'KOCHKO v2 Stage A gölge raporu — 2026-10-07 → 2026-10-08',
     'Ayrıştırma/şema hatası: 16.7%',
-    'Stage A gecikmesi: p50 1.50 sn · p90 5.20 sn · n=6 · canlı 4 sn bütçesini aşan 1',
+    'Stage A gecikmesi: p50 1.50 sn · p90 5.20 sn · n=6 · kendi canlı bütçesini aşan 1',
+    '  tetiksiz: p50 1.50 sn · p90 5.20 sn · n=4 · 4 sn bütçesini aşan 1 (25.0%)',
+    '  tetikli: p50 0.90 sn · p90 1.80 sn · n=2 · 7 sn bütçesini aşan 0 (0.0%)',
     'OP BAŞINA UYUM',
     'body_weight',
     'v1 AĞI TETİKLENDİ, v2 SESSİZ',
@@ -119,7 +137,7 @@ Deno.test('renderShadowReport: every §10 Faz 2 section, counts only (no user te
   for (const userText of ['bardak su içtim', 'tarife bayılmıştım', 'öldürmek istiyorum', USER]) assert(!text.includes(userText), userText);
 });
 
-Deno.test('late Stage A (parsed past the 4 s budget): the fallback keeps its cause, the late reading is counted apart — never as "no Stage A"', async () => {
+Deno.test('late Stage A (parsed past the tripwire turn\'s 7 s budget): the fallback keeps its cause, the late reading is counted apart — never as "no Stage A"', async () => {
   resetShadowSinkState();
   const t = seedTables();
   t.weekly_plans = t.weekly_plans.filter((p) => p.status !== 'draft');
@@ -134,14 +152,15 @@ Deno.test('late Stage A (parsed past the 4 s budget): the fallback keeps its cau
     },
     self_check: { reported_new_facts: true, not_written_reason: 'illness_not_food' },
   });
-  await runShadow({ userId: USER, message: msg, turnInput, v1Actions: [], v1Mode: 'safety', now: NOW }, { understand: stageA(decision, 4345), sink, log: () => {} });
+  await runShadow({ userId: USER, message: msg, turnInput, v1Actions: [], v1Mode: 'safety', now: NOW }, { understand: stageA(decision, 7345), sink, log: () => {} });
   const s = summarizeShadowRows(sink.rows);
   assertEquals(s.tripwire.outcomes, { fallback: 1 });
+  assertEquals(s.latency.by_class.tripwire.over_budget, 1, 'a tripwire turn is late only past 7 s');
   assertEquals(s.tripwire.fallback_causes, { timeout: 1 });
   assertEquals(s.tripwire.on_time_outcomes, { protective: 1 });
   assertEquals(s.tripwire.matrix['ed.kustum'], { tier: 'ambiguous', positive: 0, benign: 0, missing: 0, 'n/a': 1, late_positive: 0, late_benign: 1, late_missing: 0 });
   const text = renderShadowReport(s);
-  assertStringIncludes(text, 'tabloya okuma ulaşmadı 1 (geç okuma, 4 sn üstü: pozitif 0 · benign 1 · okuma yok 0)');
+  assertStringIncludes(text, 'tabloya okuma ulaşmadı 1 (geç okuma, canlı bütçe üstü: pozitif 0 · benign 1 · okuma yok 0)');
   assertStringIncludes(text, 'fallback nedeni: timeout 1 · Stage A zamanında gelseydi: protective 1');
 });
 

@@ -4,10 +4,12 @@
  * WHY: v1 let ~60 code nets decide what a message meant (24-regex detectTaskMode, water/step/backdate
  * strippers, repair regexes) and gave the model a hand-written pseudo-schema without units. Stage A
  * inverts that: the model reads the message and makes ONE strict-schema decision; code only checks it.
- * This file is the model's side of that contract: ~1.3K tokens of understanding rules, a slot for the
- * registry's generated Turkish field doc, and few-shot decisions for the cases v1 got wrong in
- * production (final2#1/#2/#3/#4/#6, mem#7, "2 çimdik tuz", third-person allergies, "bayıldım",
- * "kustum").
+ * This file is the model's side of that contract: ~1.7K tokens of understanding rules, a slot for the
+ * registry's generated Turkish field doc, and few-shot decisions — one per PRINCIPLE v1 got wrong in
+ * production (a glass is a unit, a look-alike reference is not the food, a fuzzy amount is kept,
+ * undo/correct by ref, a question deletes nothing, third-person allergies, a figurative trigger
+ * word, illness vomiting). v5 (2026-10-11): every example was rewritten in details of its own so
+ * no eval fixture is a copy of one (teaching-to-the-test review; eval/overlap.test.ts guards it).
  *
  * The prefix is byte-identical for every user so it caches globally under one key. Nothing per-user
  * or per-turn belongs here; the TurnInput block, tripwire facts and the message are appended after it
@@ -32,7 +34,7 @@ import type { FieldSpec, Fields, Infer } from '../../shared/write-registry/dsl.t
  * + the registry doc (SCHEMA_VERSION), so the key names both. Bump the prompt version whenever the
  * rules or few-shots change.
  */
-export const UNDERSTAND_PROMPT_VERSION = 'v4';
+export const UNDERSTAND_PROMPT_VERSION = 'v5';
 export const UNDERSTAND_CACHE_KEY = `kochko-understand:${UNDERSTAND_PROMPT_VERSION}-${SCHEMA_VERSION}`;
 
 /** Decision-first top-level order of kochko_understand_vN (§3.2 T4); pinned to the schema by a test. */
@@ -105,37 +107,39 @@ export interface UnderstandFewShot {
 
 export const UNDERSTAND_RULES = `# Kochko: anlama aşaması
 
-Sen Kochko'nun anlama aşamasısın. Kişiye cevap yazmazsın: mesajı okur, ne olduğuna karar verir ve kararı şemadaki tek JSON olarak verirsin. Kod kararı denetler, geçenleri kaydeder; koç cevabını ondan sonra, olanlara bakarak yazar. Yanlış bir yazma kişinin günlüğünü bozar, yazılmayan bir şeyi ise koç tek soruyla tamamlar. Bu yüzden emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz.
+Sen Kochko'nun anlama aşamasısın. Kişiye cevap yazmazsın: mesajı okur, ne olduğuna karar verir ve kararı şemadaki tek JSON olarak verirsin. Kod kararı denetler ve kaydeder; koç cevabı sonra, olanlara bakarak yazar. Yanlış bir yazma kişinin günlüğünü bozar, yazılmayan bir şeyi ise koç tek soruyla tamamlar. Bu yüzden emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz.
 
-1. Niyet. Mesaj şimdi olan bir şeyin bildirimi mi, soru mu, varsayım mı ("yesem ne olur", "içsem yeter mi", "yarın yapacağım"), düzeltme mi, onay mı, plan isteği mi? Kayıt yalnızca bildirimden ve düzeltmeden doğar. Soru, niyet, hedef ve varsayım kayıt değildir: "82,5'ta takıldım, neden?" tartı kaydı değildir. Soruyla biten bir bildirim yine yazılır, soruyu koç cevaplar. Mesajdaki her bildirim ayrı bir yazmadır, birini yazıp ötekini atlama: "omzum ağrıyor, bench yaptım" sakatlık ve antrenmandır.
-2. Kimin hakkında. Kişinin kendisi mi, başkası mı (kızı, annesi, arkadaşı)? Başkasına ait alerji, yemek ya da ölçü kişinin kaydına yazılmaz; "kadın arkadaşımla yemeğe gittim" cinsiyet bilgisi değildir.
-3. Gün. Günü bağlamdaki yerel tarihe göre ver: today, yesterday ya da YYYY-MM-DD. Gelecek tarih ve yedi günden eski kayıt yazılmaz.
-4. Miktarın iki yüzü. as_stated kişinin ifadesidir ve aynen yazılır ("2 çimdik", "annemin tabağı kadar"); kod onu ayrıştırmaz. Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; lahmacun dilimlenmez, "2 dilim lahmacun" çoğunlukla 2 adettir. Birimi kod çevirir: 1 bardak su quantity 1, unit bardak'tır, 1 litre değil. Küçük miktarlar da geçerlidir; 2 çimdik tuz ~0,7 g ve 0 kcal'dir, soru gerektirmez.
-5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak ve kendi tahminini ver. Kelime benzerliği aynı yiyecek demek değildir (nugget tavuk göğsü değildir).
-6. Mevcut kayıtlar. Bağlamdaki kayıtlar m12, d3 gibi kısa ref'lerle gelir; geri alma ve düzeltme yalnızca bu ref'lerle yapılır. Geri alma record_ops delete'tir. Kişi gösterilen bir kaydın yanlış olduğunu söyleyip doğrusunu veriyorsa record_ops update: basis user_correction, cümlesinden birebir evidence_quote, patch'te kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır. Listedeki bir öğünü yeniden anlatıyorsa status restatement; "bir muz daha" yeni yemektir. Makul görünmeyen eski bir kaydı (6 nugget için 1708 kcal) kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, koç bir kez sorar, evet gelirse pending_ops confirm olur.
-7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda iki yazma varken "sonuncuyu sil" ikisinden biri olabilir. Yeni yenen bir şey yeni meal_log'dur; hangi öğüne ekleneceğini sormak için yazmayı bekletme. Bir soru kendiliğinden hiçbir kaydı silmez ya da değiştirmez.
-8. Bağlantılar. Son konuşma bağlamdadır; kısa bir cevap ("82", "evet", "2 bardak") koçun son mesajına verilmiş olabilir. Bekleyen onaylara (p#) ve açık sözlere (k#) bağlanan cevapları pending_ops ve commitment_ops ile bağla.
-9. Güvenlik okuması. Bağlamda tetik varsa her belirsiz tetik için tripwire_readings'e bir okuma yaz: hit_id, positive ya da benign ve gerekçe. Kelime gerçek bir durumu mu anlatıyor, mecaz mı? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Hastalık ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting); tek bir "bugün çok yedim" en fazla binge low'dur. ed_signal'in kanıtı kişinin sözüdür; koçun cümleleri sinyal sayılmaz. Alerjisi olduğu bir şeyi yediğini söylüyorsa, acil olsa da öğünü allergens ile yaz: maruziyeti kod o kayıttan görür.
-10. Alerji ve sakatlık. Her öğeyi ayrı yaz: "fıstık alerjim yok ama fındık var" iki kayıttır (does_not_have ve has); her "X alerjim yok" bir does_not_have yazmasıdır. Şiddet söylenmediyse unknown yaz; kod onu netleşene kadar ciddi sayar. Bir kısıtın artık geçmediğini söylüyorsa, ciddi alerji de olsa constraint_retract yaz; onayı kod ister.
-11. Plan. Kişi açıkça plan istiyor, değiştiriyor ya da onaylıyorsa plan_action'ı buna göre seç; açık taslağa dönük her işlemde draft_ref taslağın ref'idir. Plan isteğinin gerekçesi ("gece ağır geliyor") profil bilgisi değildir.
+1. Niyet. Mesaj şimdi olan bir şeyin bildirimi mi, soru mu, varsayım mı ("yesem ne olur", "içsem yeter mi", "yarın yapacağım"), düzeltme mi, onay mı, plan isteği mi? Kayıt yalnızca bildirimden ve düzeltmeden doğar. Soru, niyet, hedef ve varsayım kayıt değildir ("neden 70'in altına inemiyorum?" tartı kaydı değildir). Soruyla biten bildirim yine yazılır, soruyu koç cevaplar. Her bildirim ayrı bir yazmadır, birini yazıp ötekini atlama: "belim ağrıyor ama 40 dakika yüzdüm" sakatlık ve antrenmandır.
+2. Kimin hakkında. Kişinin kendisi mi, başkası mı? Başkasına ait alerji, yemek ya da ölçü kişinin kaydına yazılmaz; "ablamla alışverişe çıktım" cinsiyet bilgisi değildir.
+3. Gün. Günü bağlamdaki yerel tarihe göre ver; gelecek ve yedi günden eski kayıt yazılmaz.
+4. Miktarın iki yüzü. as_stated kişinin ifadesidir, aynen yazılır ("annemin tabağı kadar"); kod onu ayrıştırmaz. Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; dilimlenmeyen bir yiyecekte "dilim" çoğunlukla adettir. Bardak ya da şişe sayısı quantity'dir, litreyi kod hesaplar. Küçük miktarlar da geçerlidir; bir tutam baharat ~0 kcal'dir, soru gerektirmez.
+5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak ve kendi tahminini ver. Kelime benzerliği aynı yiyecek demek değildir.
+6. Mevcut kayıtlar. Geri alma (record_ops delete) ve düzeltme yalnızca bağlamdaki ref'lerle (m12, d3) yapılır. Kişi gösterilen bir kaydı düzeltiyorsa record_ops update: basis user_correction, evidence_quote onun cümlesinden, patch kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır; düzeltmeyi bir de yeni yazma olarak ekleme, çift sayım olur. Listedeki bir öğünü yeniden anlatıyorsa status restatement; "bir kase daha" yeni yemektir. Makul görünmeyen eski bir kaydı kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, koç bir kez sorar, evet gelirse pending_ops confirm olur.
+7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda birden çok yazma varken "onu sil" de, son ya da ilk gibi bir sıra sözü de hangisini söylemez; listedeki sıra anlam taşımaz. Yeni yenen bir şey yeni meal_log'dur; öğününü sormak için yazmayı bekletme. Soru hiçbir kaydı silmez ya da değiştirmez.
+8. Bağlantılar. Son konuşma bağlamdadır; kısa bir cevap ("68", "evet", "2 bardak") koçun son mesajına verilmiş olabilir. Bekleyen onaya (p#) ya da açık söze (k#) verilen cevap pending_ops ya da commitment_ops olur.
+9. Güvenlik okuması. Her belirsiz tetik için tripwire_readings'e hit_id, okuma ve gerekçe yaz. Kelime gerçek bir durumu mu anlatıyor, mecaz mı ("filme bayıldım" beğenmek, "koşarken bayıldım" bilinç kaybı)? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Hastalıkla ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting). Tek seferlik bir fazla yeme yakınması en fazla binge low'dur; tekrarlayan tıkınma, kontrol kaybı ya da telafi niyeti (kusma, aç kalma, zorlayıcı spor) en az medium'dur. ed_signal'in kanıtı kişinin sözüdür; koçun cümleleri sinyal sayılmaz. Alerjisi olduğu bir şeyi yediğini söylüyorsa, acil olsa da öğünü allergens ile yaz: maruziyeti kod o kayıttan görür.
+10. Alerji ve sakatlık. Her öğeyi ayrı yaz; olumsuzluk yalnızca ait olduğu öğeye geçer ve her "X alerjim yok" bir does_not_have yazmasıdır. Şiddet söylenmediyse unknown yaz; kod onu netleşene dek ciddi sayar. Bir kısıtın artık geçmediğini söylüyorsa, ciddi alerji de olsa constraint_retract yaz; onayı kod ister.
+11. Plan. Kişi açıkça plan istiyor, değiştiriyor ya da onaylıyorsa plan_action'ı buna göre seç; açık taslağa dönük her işlemde draft_ref taslağın ref'idir. Taslak açıkken tarif ya da öneri istemek none'dır; revise yalnız taslağı değiştirme isteğidir. Plan isteğinin gerekçesi ("öğlenleri vaktim olmuyor") profil bilgisi değildir.
 12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason listesinden seç; uyan bir neden yoksa null bırak, koç sorar. Geri alma, onay ve senin fark ettiğin şüpheli kayıt kişinin bildirdiği yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
-13. Rota. reply_route koçun hangi sözleşmeyle konuşacağıdır: acil tıbbi durumda emergency, kendine zarar ya da orta/yüksek yeme bozukluğu sinyalinde crisis (low ise coach), plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca sıkıntı, yeme bozukluğu, telafi, analiz ve plan gibi düşünmek isteyen turlarda.
+13. Rota. reply_route koçun hangi sözleşmeyle konuşacağıdır: acil tıbbi durumda emergency, kendine zarar ya da orta/yüksek yeme bozukluğu sinyalinde crisis (low ise coach), plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca düşünmek isteyen turlarda (sıkıntı, yeme bozukluğu, telafi, analiz, plan).
 
 Aşağıda önce yazabileceğin kayıtların belgesi, sonra örnek kararlar var. Örneklerde boş liste, null, false ya da 0 olan alanlar, plan_action none ve varsayılan rota (coach, low) kısalık için gösterilmedi; şema hepsini ister.`;
 
 /** The user told us something new about themselves this turn (true even when it was written). */
 const REPORTED = { reported_new_facts: true } as const;
 
-/** The "6 tane tavuk nugget" item, as the model should estimate it (~300 kcal, not the 1708 of final2#4). */
-const NUGGET = {
-  name: 'tavuk nugget', as_stated: '6 tane', grams: 110, kcal: 300, protein_g: 15, carbs_g: 18, fat_g: 18, allergens: ['gluten'],
-} as const;
-
+/**
+ * The few-shots teach PRINCIPLES, never an eval case: no example repeats a fixture's message, foods,
+ * numbers or ref+food pair (eval/overlap.test.ts fails when one drifts close — token Jaccard > 0.6
+ * against any fixture message, or a fixture's exact ref with the same food). Each example below is
+ * one principle in details of its own; the eval's fixtures (and its untouched holdout set) then
+ * measure whether the model generalises it.
+ */
 export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   {
-    id: 'su_ekle',
-    context: ['BUGÜN: su 1,40 L'],
-    message: 'çayın yanında 1 bardak su daha içtim',
+    id: 'icecek_ve_su',
+    context: ['BUGÜN: su 0,90 L'],
+    message: 'ıhlamurumu içerken yanında 3 su bardağı su da içtim',
     decision: {
       intent: { primary: 'report' },
       writes: [
@@ -143,150 +147,156 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
           op: 'meal_log',
           day: 'today',
           meal_type: 'snack',
-          raw: 'çayın yanında 1 bardak su daha içtim',
+          raw: 'ıhlamurumu içerken yanında 3 su bardağı su da içtim',
           status: 'new',
-          items: [{ name: 'çay', as_stated: 'çay', grams: 100, kcal: 1, caffeine_mg: 25, confidence: 0.6 }],
+          items: [{ name: 'ıhlamur', as_stated: 'ıhlamur', grams: 150, kcal: 2, confidence: 0.5 }],
         },
-        { op: 'water_log', day: 'today', as_stated: '1 bardak', quantity: 1, unit: 'bardak', mode: 'add' },
+        { op: 'water_log', day: 'today', as_stated: '3 su bardağı', quantity: 3, unit: 'su_bardagi', mode: 'add' },
       ],
       self_check: REPORTED,
     },
-    why: 'İki bildirim: su water_log (bardak sayısı quantity, litreyi kod hesaplar), çay meal_log; miktarı söylenmese de tahminle yazılır.',
+    why: 'İki bildirim: sade su water_log (bardak sayısı quantity, litreyi kod hesaplar); yanında geçen içecek de miktarı söylenmese tahminle meal_log.',
   },
   {
-    id: 'nugget',
-    context: ['REFERANS ADAYLARI: tavuk_gogsu: tavuk göğsü (ızgara) 165 kcal/100 g, adet ağırlığı yok'],
-    message: 'akşam 6 tane tavuk nugget yedim',
+    id: 'aday_ayni_degil',
+    context: ['REFERANS ADAYLARI: patates_haslama: patates (haşlanmış) 87 kcal/100 g, adet ağırlığı yok'],
+    message: 'öğlen 8 tane patates kroketi yedim',
     decision: {
       intent: { primary: 'report' },
       writes: [{
         op: 'meal_log',
         day: 'today',
-        meal_type: 'dinner',
-        raw: 'akşam 6 tane tavuk nugget yedim',
+        meal_type: 'lunch',
+        raw: 'öğlen 8 tane patates kroketi yedim',
         status: 'new',
-        items: [{ ...NUGGET, reference_key: null, confidence: 0.7 }],
+        items: [{
+          name: 'patates kroketi', as_stated: '8 tane', grams: 160, kcal: 420, protein_g: 6, carbs_g: 44, fat_g: 24, allergens: ['gluten', 'egg'],
+          reference_key: null, confidence: 0.65,
+        }],
       }],
       self_check: REPORTED,
     },
     why: 'Aday aynı yiyecek değil; reference_key boş kalır, sayılar senin tahminindir.',
   },
   {
-    id: 'cimdik_tuz',
+    id: 'kucuk_miktar',
     context: [],
-    message: 'kahvaltıda 2 yumurta haşladım, üstüne 2 çimdik tuz attım',
+    message: 'öğlen 2 dilim hellim yedim, üstüne bir tutam kekik',
     decision: {
       intent: { primary: 'report' },
       writes: [{
         op: 'meal_log',
         day: 'today',
-        meal_type: 'breakfast',
-        raw: 'kahvaltıda 2 yumurta haşladım, üstüne 2 çimdik tuz attım',
+        meal_type: 'lunch',
+        raw: 'öğlen 2 dilim hellim yedim, üstüne bir tutam kekik',
         status: 'new',
         items: [
-          { name: 'haşlanmış yumurta', as_stated: '2 yumurta', grams: 100, kcal: 155, protein_g: 13, carbs_g: 1, fat_g: 11, allergens: ['egg'], confidence: 0.85 },
-          { name: 'tuz', as_stated: '2 çimdik', grams: 0.7, kcal: 0, confidence: 0.6 },
+          { name: 'hellim', as_stated: '2 dilim', grams: 60, kcal: 190, protein_g: 13, carbs_g: 1, fat_g: 15, allergens: ['milk'], confidence: 0.7 },
+          { name: 'kekik', as_stated: 'bir tutam', grams: 0.3, kcal: 1, confidence: 0.6 },
         ],
       }],
       self_check: REPORTED,
     },
-    why: '"2 çimdik" aynen saklanır; küçük ve 0 kcal olması soru gerektirmez.',
+    why: '"bir tutam" aynen saklanır; küçük ve ~0 kcal olması soru gerektirmez.',
   },
   {
     id: 'su_gun_toplami',
-    context: ['BUGÜN: su 1,60 L'],
-    message: 'bugün toplam 2 litre su içtim',
+    context: ['BUGÜN: su 1,20 L'],
+    message: 'akşama kadar toplamda 9 bardak su içmişim',
     decision: {
       intent: { primary: 'report' },
-      writes: [{ op: 'water_log', day: 'today', as_stated: 'toplam 2 litre', quantity: 2, unit: 'litre', mode: 'set_day_total' }],
+      writes: [{ op: 'water_log', day: 'today', as_stated: 'toplamda 9 bardak', quantity: 9, unit: 'bardak', mode: 'set_day_total' }],
       self_check: REPORTED,
     },
-    why: 'Kişi günün toplamını söylüyor; ekleme değil, toplamı ayarlama.',
+    why: 'Kişi suyun gün toplamını söylüyor; ekleme değil, toplamı ayarlama.',
   },
   {
-    id: 'su_geri_al',
-    context: ['KAYITLAR: m30 · Paz 4 Eki akşam · mercimek çorbası, ekmek ~240 kcal', 'KAYITLAR: d3 · su +0,20 L (gün 3,40 L) (son tur)'],
-    message: 'yok o yanlış geri al',
+    id: 'son_turu_geri_al',
+    context: ['KAYITLAR: m61 · bugün kahvaltı · yulaf ezmesi, süt ~320 kcal', 'KAYITLAR: w8 · bugün · bisiklet 45 dk (son tur)'],
+    message: 'hayır, onu eklemeni istememiştim, sil',
     decision: {
       intent: { primary: 'correction' },
-      record_ops: [{ op: 'delete', ref: 'd3', reason: 'son su kaydı yanlışmış' }],
+      record_ops: [{ op: 'delete', ref: 'w8', reason: 'son turda eklenen bisiklet istenmemiş' }],
     },
-    why: 'Geri alınan, son turun su yazmasıdır (d3); adı geçmeyen akşam yemeğine dokunulmaz.',
+    why: 'Silinen, son turun yazmasıdır (w8); adı geçmeyen eski kayda dokunulmaz.',
   },
   {
-    id: 'su_duzeltme',
-    context: ['KAYITLAR: d3 · su +0,20 L (gün 1,60 L) (son tur)'],
-    message: 'su yanlış, 2 bardaktı',
+    id: 'ref_ile_duzeltme',
+    context: ['KAYITLAR: m44 · bugün akşam · "2 tabak makarna" → makarna 2 tabak ~500 g 760 kcal (son tur)'],
+    message: 'yanlış olmuş, 2 değil 1 tabak makarna yedim',
     decision: {
       intent: { primary: 'correction' },
       record_ops: [{
         op: 'update',
-        ref: 'd3',
+        ref: 'm44',
         basis: 'user_correction',
-        reason: '1 değil 2 bardak',
-        evidence_quote: '2 bardaktı',
-        patch: { op: 'water_log', day: 'today', as_stated: '2 bardak', quantity: 2, unit: 'bardak', mode: 'add' },
+        reason: '2 değil 1 tabak',
+        evidence_quote: '2 değil 1 tabak makarna yedim',
+        patch: {
+          op: 'meal_log', day: 'today', meal_type: 'dinner', raw: '1 tabak makarna yedim', status: 'new',
+          items: [{ name: 'makarna', as_stated: '1 tabak', grams: 250, kcal: 380, protein_g: 13, carbs_g: 72, fat_g: 5, allergens: ['gluten'], confidence: 0.7 }],
+        },
       }],
       self_check: REPORTED,
     },
-    why: 'Düzeltme ref ile: d3 yerine 2 bardak yazılır, ayrıca su eklenmez; alıntı kişinin cümlesinden.',
+    why: 'Düzeltme ref ile: m44 düzeltilmiş tam hâliyle yazılır, ayrıca yeni öğün eklenmez (çift sayım).',
   },
   {
     id: 'duzeltme_sorusu',
-    context: ['KAYITLAR: m14 · bugün öğle · mercimek çorbası, pilav ~520 kcal (son tur)'],
-    message: 'bunu nasıl düzeltebilirim?',
+    context: ['KAYITLAR: m52 · bugün öğle · etli kuru fasulye, pilav ~640 kcal (son tur)'],
+    message: 'bu kayıtta bir şey ters, ne yapmam lazım?',
     decision: {
       intent: { primary: 'question' },
-      clarify: { topic: 'm14 kaydında neyin yanlış olduğu', candidate_refs: ['m14'] },
+      clarify: { topic: 'm52 kaydında neyin yanlış olduğu', candidate_refs: ['m52'] },
     },
     why: 'Bu bir soru; hiçbir kayıt silinmez ya da değişmez. Koç neyin yanlış olduğunu sorar.',
   },
   {
     id: 'iki_aday_sil',
-    context: ['KAYITLAR: m14 · bugün öğle · kaşarlı tost ~390 kcal (son tur)', 'KAYITLAR: d3 · su +0,20 L (gün 1,00 L) (son tur)'],
-    message: 'son yazdığını sil',
+    context: ['KAYITLAR: m63 · bugün ara öğün · elma 1 adet ~80 kcal (son tur)', 'KAYITLAR: w9 · bugün · yoga 30 dk (son tur)'],
+    message: 'az önce yazdığını iptal et',
     decision: {
       intent: { primary: 'correction' },
-      clarify: { topic: 'hangi kaydın silineceği', candidate_refs: ['m14', 'd3'] },
+      clarify: { topic: 'hangi kaydın iptal edileceği', candidate_refs: ['m63', 'w9'] },
     },
-    why: 'Son turda iki yazma var; hangisi olduğu belli değil. Kod tahmin etmez, hiçbir şey silinmez, koç sorar.',
+    why: 'Son turda iki yazma var, hangisi olduğu belli değil: hiçbir şey silinmez, koç sorar.',
   },
   {
     id: 'supheli_kayit',
-    context: ['KAYITLAR: m12 · Per 1 Eki akşam · "6 tane tavuk nugget" → tavuk göğsü 900 g 1708 kcal [referans]'],
-    message: 'perşembe akşamki nuggetlar yüzünden mi bu hafta kilo veremedim?',
+    context: ['KAYITLAR: m19 · Cum 2 Eki öğle · "1 kase yayla çorbası" → yayla çorbası 1.500 g 1240 kcal [referans]'],
+    message: 'cuma öğlenden beri midem rahat değil, o gün ağır mı yemişim?',
     decision: {
       intent: { primary: 'question' },
       record_ops: [{
         op: 'update',
-        ref: 'm12',
+        ref: 'm19',
         basis: 'suspicious',
-        reason: '6 nugget için 1708 kcal; tavuk göğsü değerleriyle 900 g yazılmış',
+        reason: '1 kase çorbaya 1.500 g ve 1240 kcal yazılmış',
         patch: {
-          op: 'meal_log', day: '2026-10-01', meal_type: 'dinner', raw: '6 tane tavuk nugget', status: 'new',
-          items: [{ ...NUGGET, confidence: 0.6 }],
+          op: 'meal_log', day: '2026-10-02', meal_type: 'lunch', raw: '1 kase yayla çorbası', status: 'new',
+          items: [{ name: 'yayla çorbası', as_stated: '1 kase', grams: 250, kcal: 170, protein_g: 7, carbs_g: 20, fat_g: 7, allergens: ['milk'], confidence: 0.6 }],
         },
       }],
     },
-    why: 'Kişi düzeltme istemedi; fark ettiğin şüpheyi suspicious ile önerirsin, kod bekletir, koç bir kez sorar.',
+    why: 'Kişi düzeltme istemedi; şüpheyi suspicious ile önerirsin, kod bekletir, koç bir kez sorar.',
   },
   {
     id: 'supheli_kayit_onayi',
     context: [
-      'BEKLEYEN ONAYLAR: p1 · record_update · perşembe nugget kaydının düzeltmesi (6 tane, ~300 kcal)',
-      'SON KONUŞMA: koç: "Perşembe akşamki 6 nugget 1.708 kcal görünüyor. Bu kayıt yanlış görünüyor, düzelteyim mi?"',
+      'BEKLEYEN ONAYLAR: p2 · record_update · cuma öğle yayla çorbası kaydının düzeltmesi (1 kase, ~170 kcal)',
+      'SON KONUŞMA: koç: "Cuma öğlenki yayla çorbası 1.240 kcal görünüyor; 1 kase için çok yüksek. Düzelteyim mi?"',
     ],
-    message: 'evet düzelt',
+    message: 'olur, düzelt',
     decision: {
       intent: { primary: 'confirmation' },
-      pending_ops: [{ op: 'confirm', ref: 'p1' }],
+      pending_ops: [{ op: 'confirm', ref: 'p2' }],
     },
-    why: 'Evet, koçun sorduğu bekleyen düzeltmeye verildi; p1 onaylanır, yeni öğün açılmaz.',
+    why: 'Olur, koçun sorduğu bekleyen düzeltmeye verildi; p2 onaylanır, yeni öğün açılmaz.',
   },
   {
     id: 'plan_istegi',
     context: [],
-    message: 'bu hafta için bana bir beslenme planı hazırlar mısın?',
+    message: 'önümüzdeki günler için öğün öğün ne yiyeceğimi çıkarır mısın?',
     decision: {
       intent: { primary: 'plan' },
       plan_action: { op: 'generate', plan_type: 'diet' },
@@ -296,43 +306,43 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   },
   {
     id: 'taslak_onayi',
-    context: ['PLAN TASLAĞI: dft1 · beslenme taslağı v2 · 6–12 Eki haftası, her gün ~1750 kcal, 3 öğün'],
-    message: 'onaylıyorum',
+    context: ['PLAN TASLAĞI: dft4 · antrenman taslağı v1 · haftada 3 gün tüm vücut, 45 dk'],
+    message: 'güzel olmuş, bununla başlayalım',
     decision: {
       intent: { primary: 'confirmation' },
-      plan_action: { op: 'approve', plan_type: 'diet', draft_ref: 'dft1' },
+      plan_action: { op: 'approve', plan_type: 'workout', draft_ref: 'dft4' },
     },
     why: 'Taslak açıkken yazılı onay approve olur; draft_ref açık taslağın ref’i, yeni plan üretilmez.',
   },
   {
     id: 'alerji_beyani',
     context: [],
-    message: 'fıstık alerjim yok ama fındığa ciddi alerjim var',
+    message: 'susama ciddi alerjim var, ceviz ise bana hiç dokunmuyor',
     decision: {
       intent: { primary: 'report' },
       writes: [
         {
-          op: 'constraint_add', kind: 'allergen', subject_id: 'peanut', display_tr: 'fıstık', whose: 'self', polarity: 'does_not_have',
-          severity: 'unknown', evidence_quote: 'fıstık alerjim yok',
+          op: 'constraint_add', kind: 'allergen', subject_id: 'sesame', display_tr: 'susam', whose: 'self', polarity: 'has',
+          severity: 'severe', evidence_quote: 'susama ciddi alerjim var',
         },
         {
-          op: 'constraint_add', kind: 'allergen', subject_id: 'hazelnut', display_tr: 'fındık', whose: 'self', polarity: 'has',
-          severity: 'severe', evidence_quote: 'fındığa ciddi alerjim var',
+          op: 'constraint_add', kind: 'allergen', subject_id: 'walnut', display_tr: 'ceviz', whose: 'self', polarity: 'does_not_have',
+          severity: 'unknown', evidence_quote: 'ceviz ise bana hiç dokunmuyor',
         },
       ],
       self_check: REPORTED,
     },
-    why: 'İki ayrı beyan; olumsuzluk yalnızca fıstığa aittir.',
+    why: 'İki ayrı beyan; "dokunmuyor" yalnızca cevize aittir, susam has kalır.',
   },
   {
     id: 'baskasinin_alerjisi',
     context: [],
-    message: 'kızımın yumurta alerjisi var, ona da yemek yapıyorum',
+    message: 'eşim kabuklu deniz ürünlerine alerjik, evde karides pişirmiyoruz',
     decision: {
       intent: { primary: 'report', about_other_person: true },
       writes: [{
-        op: 'constraint_add', kind: 'allergen', subject_id: 'egg', display_tr: 'yumurta (kızının)', whose: 'other_person',
-        polarity: 'has', severity: 'unknown', evidence_quote: 'kızımın yumurta alerjisi var',
+        op: 'constraint_add', kind: 'allergen', subject_id: 'crustacean', display_tr: 'kabuklu deniz ürünü (eşinin)', whose: 'other_person',
+        polarity: 'has', severity: 'unknown', evidence_quote: 'eşim kabuklu deniz ürünlerine alerjik',
       }],
       self_check: REPORTED,
     },
@@ -341,12 +351,12 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   {
     id: 'sakatlik',
     context: [],
-    message: 'dün koşarken sağ dizimi burktum, biraz şişti. bugün antrenman yapayım mı?',
+    message: 'basketbolda sol ayak bileğimi burktum, hafif şişlik var. yarın salona gideyim mi?',
     decision: {
       intent: { primary: 'report' },
       writes: [{
-        op: 'constraint_add', kind: 'injury', subject_id: 'knee_sprain', display_tr: 'sağ diz burkulması', whose: 'self',
-        polarity: 'has', severity: 'unknown', body_parts: ['knee'], evidence_quote: 'sağ dizimi burktum, biraz şişti',
+        op: 'constraint_add', kind: 'injury', subject_id: 'ankle_sprain', display_tr: 'sol ayak bileği burkulması', whose: 'self',
+        polarity: 'has', severity: 'unknown', body_parts: ['ankle'], evidence_quote: 'sol ayak bileğimi burktum, hafif şişlik var',
       }],
       self_check: REPORTED,
     },
@@ -355,12 +365,12 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   {
     id: 'tetik_mecaz',
     context: ['GÜVENLİK TETİKLERİ: tw1 [acil durum · belirsiz] "bayıldım"'],
-    message: 'bu tatlıya bayıldım, tarifini sonra isteyeceğim',
+    message: 'yeni koşu ayakkabılarıma bayıldım, ayağımı hiç sıkmıyor',
     decision: {
       intent: { primary: 'chat' },
       safety: { tripwire_readings: [{ hit_id: 'tw1', reading: 'benign', reason: '"bayıldım" burada çok beğenmek anlamında; sağlık yakınması yok' }] },
     },
-    why: 'Mecaz okuma gerekçesiyle yazılır; tarif isteği henüz yapılmadı.',
+    why: 'Mecaz okuma gerekçesiyle yazılır.',
   },
   {
     id: 'tetik_gercek',
@@ -376,42 +386,45 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   },
   {
     id: 'kusma_hastalik',
-    context: ['GÜVENLİK TETİKLERİ: tw1 [yeme bozukluğu · belirsiz] "kustum"'],
-    message: 'dün gece kustum, zehirlendim galiba',
+    context: ['GÜVENLİK TETİKLERİ: tw1 [yeme bozukluğu · belirsiz] "kusuyorum"'],
+    message: 'mide üşütmesi geçirdim, sabahtan beri kusuyorum, ateşim de var',
     decision: {
       intent: { primary: 'report' },
       safety: {
-        ed_signal: { category: 'illness_vomiting', severity: 'low', evidence_quote: 'dün gece kustum' },
-        tripwire_readings: [{ hit_id: 'tw1', reading: 'benign', reason: 'zehirlenme kaynaklı kusma; kilo kontrolü için çıkarma işareti yok' }],
+        ed_signal: { category: 'illness_vomiting', severity: 'low', evidence_quote: 'sabahtan beri kusuyorum' },
+        tripwire_readings: [{ hit_id: 'tw1', reading: 'benign', reason: 'ateşli mide üşütmesi; kilo için çıkarma işareti yok' }],
       },
       self_check: { reported_new_facts: true, not_written_reason: 'illness_not_food' },
     },
-    why: 'Hastalık kusması yeme bozukluğu sinyali değildir: illness_vomiting, YB yükselmez; alıntı kişinin sözü.',
+    why: 'Hastalık kusması yeme bozukluğu sinyali değildir: illness_vomiting, YB yükselmez.',
   },
   {
     id: 'soru_kayit_degil',
     context: [],
-    message: 'günde 3 litre su içmem gerekiyor mu?',
+    message: 'haftada kaç gün koşmalıyım, 5 km yeterli mi?',
     decision: { intent: { primary: 'question' } },
-    why: 'Soru kayıt değildir; su yazılmaz.',
+    why: 'Soru kayıt değildir; antrenman yazılmaz.',
   },
   {
     id: 'bildirim_ve_soru',
-    context: [],
-    message: 'dün gece 1 kase dondurma yedim, kilo aldırır mı?',
+    context: ['REFERANS ADAYLARI: icli_kofte: içli köfte (kızartma) 260 kcal/100 g · 1 adet ≈60 g'],
+    message: 'öğlen 3 parça içli köfte yedim, yağı fazla mı?',
     decision: {
       intent: { primary: 'report' },
       writes: [{
         op: 'meal_log',
-        day: 'yesterday',
-        meal_type: 'snack',
-        raw: 'dün gece 1 kase dondurma yedim',
+        day: 'today',
+        meal_type: 'lunch',
+        raw: 'öğlen 3 parça içli köfte yedim',
         status: 'new',
-        items: [{ name: 'dondurma', as_stated: '1 kase', grams: 130, kcal: 270, protein_g: 5, carbs_g: 31, fat_g: 14, allergens: ['milk'], confidence: 0.6 }],
+        items: [{
+          name: 'içli köfte', as_stated: '3 parça', grams: 180, kcal: 470, protein_g: 18, carbs_g: 40, fat_g: 26, allergens: ['gluten'],
+          reference_key: 'icli_kofte', confidence: 0.75,
+        }],
       }],
       self_check: REPORTED,
     },
-    why: 'Soru bildirimi silmez: dünkü dondurma yazılır, soruyu koç cevaplar (question_only değil).',
+    why: 'Soru bildirimi silmez (question_only değil); aday aynı yiyecek: bütün yenen yiyecekte "parça" bir adettir, gram = 3 × 60.',
   },
 ];
 

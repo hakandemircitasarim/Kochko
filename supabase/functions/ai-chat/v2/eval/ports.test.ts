@@ -140,14 +140,20 @@ Deno.test('fixture → production Stage A request: registry prefix + schema, ren
   assert(parseDecideRequest(JSON.parse(JSON.stringify(body))).ok);
 });
 
-Deno.test('fixture BUGÜN totals are worded as the few-shots teach them ("BUGÜN: su 1,40 L"), unknown keys kept', () => {
+Deno.test('fixture BUGÜN totals are worded as the few-shots teach them ("BUGÜN: su 0,90 L"), unknown keys kept', () => {
   assertEquals(todayPhrases({ water_liters: 1.4, kcal: 1240.4, protein_g: 61.6, meals_logged: 3, week: 'w41' }), ['su 1,40 L', '1.240 kcal', 'protein 62 g', '3 öğün kaydı', 'week=w41']);
   const block = renderFixtureBlock({ now: { local_date: '2026-10-04' }, today: { water_liters: 1.4 } });
   assertEquals(block, renderTurnInputBlock(fixtureView({ now: { local_date: '2026-10-04' }, today: { water_liters: 1.4 } })), 'the fixture renderer IS production\'s renderer over the view');
   const taught = UNDERSTAND_FEW_SHOTS.flatMap((s) => s.context).filter((l) => l.startsWith('BUGÜN: su '));
   assert(taught.length > 0, 'the brain teaches a BUGÜN water line');
   assert(block.split('\n').includes('BUGÜN: su 1,40 L'), block);
-  assert(taught.includes('BUGÜN: su 1,40 L'), 'same wording the model is shown in the few-shots');
+  // Every BUGÜN water line a few-shot teaches is exactly what the fixture (= production) renderer writes.
+  for (const line of taught) {
+    const liters = Number(line.slice('BUGÜN: su '.length).split(' ')[0].replace(',', '.'));
+    const b = renderFixtureBlock({ now: { local_date: '2026-10-04' }, today: { water_liters: liters } });
+    assert(b.split('\n').includes(line), `few-shot "${line}" is not the renderer's wording:\n${b}`);
+  }
+  assert(taught.includes('BUGÜN: su 0,90 L'), 'same wording the model is shown in the few-shots');
 });
 
 Deno.test('fixtureT2: the real scan — explicit → canned floor, ambiguous → facts (fail-closed floor), nothing → none', () => {
@@ -395,4 +401,21 @@ Deno.test('cli --only: exact ids (comma list), unknown id is a usage error — n
   assertEquals(await main(['--mode', 'lint', '--only', 'spec-a-sonuncuyu-sil-iki-aday,boyle-bir-fixture-yok'], io), 2);
   assert(err.join('\n').includes('bilinmeyen fixture id: boyle-bir-fixture-yok'));
   assertEquals(await main(['--mode', 'lint', '--only', ' , '], io), 2);
+});
+
+Deno.test('cli --holdout: exclude (tuning rounds) drops the holdout set, only keeps it alone, a bad value is a usage error', async () => {
+  const out: string[] = [];
+  const err: string[] = [];
+  const io = { log: (s: string) => out.push(s), err: (s: string) => err.push(s) };
+  const lastCount = () => Number(/temiz: (\d+) fixture/.exec(out.filter((l) => l.startsWith('Fixture lint temiz')).at(-1) ?? '')?.[1] ?? NaN);
+  assertEquals(await main(['--mode', 'lint'], io), 0);
+  const all = lastCount();
+  assertEquals(await main(['--mode', 'lint', '--holdout', 'only'], io), 0);
+  const only = lastCount();
+  assertEquals(await main(['--mode', 'lint', '--holdout', 'exclude'], io), 0);
+  const excl = lastCount();
+  assert(only >= 24, `holdout ${only}`);
+  assertEquals(excl + only, all);
+  assertEquals(await main(['--mode', 'lint', '--holdout', 'bazen'], io), 2);
+  assert(err.join('\n').includes('geçersiz --holdout'));
 });

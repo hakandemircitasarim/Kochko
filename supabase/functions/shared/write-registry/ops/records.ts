@@ -37,7 +37,7 @@ export const record_delete = op({
   channel: 'record_ops',
   envelope: 'undo',
   title_tr: 'Kaydı geri al/sil',
-  when_tr: 'KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("yok o yanlış, geri al" → az önceki su yazmasının d-ref’i).',
+  when_tr: 'KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i).',
   not_when_tr: 'kısıt (constraint_retract), bekleyen (pending_ops), plan taslağı (plan_action).',
   fields: {
     ref: f.ref(DELETABLE_KINDS),
@@ -57,7 +57,7 @@ export const record_update = op({
   // The client badge follows the corrected record type; validate.ts takes it from the patch.
   envelope: 'undo',
   title_tr: 'Kaydı düzelt',
-  when_tr: 'KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (6 nugget için 1708 kcal) basis=suspicious — kod önce kullanıcıya sordurur.',
+  when_tr: 'KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir porsiyona binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur.',
   not_when_tr: 'aynı kaydı yeni yazma olarak eklemek (çift sayım).',
   fields: {
     ref: f.ref(['m', 'd', 'w', 's', 't', 'e', 'l', 'f']),

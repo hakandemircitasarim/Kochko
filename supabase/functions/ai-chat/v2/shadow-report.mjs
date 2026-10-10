@@ -14,14 +14,33 @@
  *   · turns where a v1 NET fired but v2 stayed silent, and the reverse (v2 would write, v1 did not)
  *   · ASK / REJECT rates (per verdict and per turn) with their top codes
  *   · parse / schema errors (refused, invalid, incomplete, error) and skipped turns
- *   · Stage A latency p50 / p90 and the share over the live 4 s budget
+ *   · Stage A latency p50 / p90 and the share over the live budget, split by budget class
+ *     (normal 4 s · a turn with a tripwire fact 7 s — stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS)
  *   · tripwire × reading matrix and the §7.2 outcome counts
  *   · writes v2 would make on QUESTION / HYPOTHETICAL turns (the A′ "must not write" class) and the
  *     FLAG codes, split by that intent (wave-2a review: watch koruyucu_beyan_teyidi on such turns)
  */
 
-/** Live Stage A budget (§7.2) — mirrors understand.ts STAGE_A_LIVE_BUDGET_MS. */
-export const LIVE_BUDGET_MS = 4000;
+/**
+ * Live Stage A budgets (§7.2) — mirror stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS (plain JS cannot import
+ * the TS owner; shadow-report.test.ts pins the mirror). A turn with a tripwire fact gets the longer one.
+ */
+export const LIVE_BUDGETS_MS = Object.freeze({ normal: 4000, tripwire: 7000 });
+/** The normal budget (kept by name). */
+export const LIVE_BUDGET_MS = LIVE_BUDGETS_MS.normal;
+
+/**
+ * The budget class a row was measured against: the shadow's own 'live_budget' entry; for rows written
+ * before it existed, a non-explicit tripwire entry (an ambiguous hit or a declaration cue = a fact
+ * Stage A was handed) means 'tripwire'.
+ * @param {Record<string, any>} row @returns {'normal' | 'tripwire'}
+ */
+export function budgetClassOf(row) {
+  const issues = Array.isArray(row.issues) ? row.issues : [];
+  const own = issues.find((e) => e && e.kind === 'safety' && e.code === 'live_budget');
+  if (own && (own.value === 'normal' || own.value === 'tripwire')) return own.value;
+  return issues.some((e) => e && e.kind === 'tripwire' && (e.tier === 'ambiguous' || e.tier === 'signal')) ? 'tripwire' : 'normal';
+}
 
 /**
  * Nearest-rank percentile of a numeric list (null when empty).
@@ -66,7 +85,8 @@ function topN(counts, n = 5) {
  *   rows: number, ran: number,
  *   status: Record<'parsed'|'refused'|'invalid'|'incomplete'|'function_call'|'error'|'skipped', number>,
  *   skipped: Record<string, number>, errors: Record<string, number>, parse_error_rate: number | null,
- *   latency: { n: number, p50: number | null, p90: number | null, over_live_budget: number },
+ *   latency: { n: number, p50: number | null, p90: number | null, over_live_budget: number,
+ *     by_class: Record<'normal'|'tripwire', { n: number, p50: number | null, p90: number | null, budget_ms: number, over_budget: number }> },
  *   tokens: { input_avg: number | null, cached_ratio: number | null, output_avg: number | null, reasoning_avg: number | null },
  *   ops: Record<string, OpAgreement>,
  *   net_fired_v2_silent: Record<string, number>, model_fired_v2_silent: Record<string, number>,
@@ -100,7 +120,13 @@ export function summarizeShadowRows(rows) {
     skipped: {},
     errors: {},
     parse_error_rate: null,
-    latency: { n: 0, p50: null, p90: null, over_live_budget: 0 },
+    latency: {
+      n: 0, p50: null, p90: null, over_live_budget: 0,
+      by_class: {
+        normal: { n: 0, p50: null, p90: null, budget_ms: LIVE_BUDGETS_MS.normal, over_budget: 0 },
+        tripwire: { n: 0, p50: null, p90: null, budget_ms: LIVE_BUDGETS_MS.tripwire, over_budget: 0 },
+      },
+    },
     tokens: { input_avg: null, cached_ratio: null, output_avg: null, reasoning_avg: null },
     ops: {},
     net_fired_v2_silent: {},
@@ -125,6 +151,8 @@ export function summarizeShadowRows(rows) {
     v1_sources: { model: 0, net: 0, unknown: 0 },
   };
   const latencies = [];
+  /** @type {Record<'normal'|'tripwire', number[]>} */
+  const byClass = { normal: [], tripwire: [] };
   let inTok = 0, cachedTok = 0, outTok = 0, reasonTok = 0, tokRows = 0;
 
   for (const row of rows) {
@@ -137,7 +165,12 @@ export function summarizeShadowRows(rows) {
       if (st !== 'parsed') inc(s.errors, String(row.finish_reason ?? 'error'));
       if (typeof row.latency_ms === 'number' && row.latency_ms > 0) {
         latencies.push(row.latency_ms);
-        if (row.latency_ms > LIVE_BUDGET_MS) s.latency.over_live_budget++;
+        const cls = budgetClassOf(row);
+        byClass[cls].push(row.latency_ms);
+        if (row.latency_ms > LIVE_BUDGETS_MS[cls]) {
+          s.latency.over_live_budget++;
+          s.latency.by_class[cls].over_budget++;
+        }
       }
       if (typeof row.prompt_tokens === 'number' && row.prompt_tokens > 0) {
         tokRows++;
@@ -223,6 +256,12 @@ export function summarizeShadowRows(rows) {
   s.latency.n = latencies.length;
   s.latency.p50 = percentile(latencies, 50);
   s.latency.p90 = percentile(latencies, 90);
+  for (const cls of /** @type {const} */ (['normal', 'tripwire'])) {
+    const c = s.latency.by_class[cls];
+    c.n = byClass[cls].length;
+    c.p50 = percentile(byClass[cls], 50);
+    c.p90 = percentile(byClass[cls], 90);
+  }
   if (tokRows > 0) {
     s.tokens.input_avg = Math.round(inTok / tokRows);
     s.tokens.cached_ratio = inTok > 0 ? cachedTok / inTok : null;
@@ -256,7 +295,11 @@ export function renderShadowReport(s, range = {}) {
   L.push(`Satır: ${s.rows} · Stage A çalıştı: ${s.ran} · atlandı: ${s.status.skipped}${Object.keys(s.skipped).length ? ` (${Object.entries(s.skipped).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}`);
   L.push(`Ayrıştırma/şema hatası: ${pct(s.parse_error_rate)} (kapı ≤ %0,5) · reddedildi ${s.status.refused} · geçersiz ${s.status.invalid} · yarım ${s.status.incomplete} · hata ${s.status.error} · function_call ${s.status.function_call}`);
   for (const [k, v] of topN(s.errors, 8)) L.push(`  ${k}: ${v}`);
-  L.push(`Stage A gecikmesi: p50 ${ms(s.latency.p50)} · p90 ${ms(s.latency.p90)} · n=${s.latency.n} · canlı 4 sn bütçesini aşan ${s.latency.over_live_budget}`);
+  L.push(`Stage A gecikmesi: p50 ${ms(s.latency.p50)} · p90 ${ms(s.latency.p90)} · n=${s.latency.n} · kendi canlı bütçesini aşan ${s.latency.over_live_budget}`);
+  for (const [cls, label] of /** @type {const} */ ([['normal', 'tetiksiz'], ['tripwire', 'tetikli']])) {
+    const c = s.latency.by_class[cls];
+    L.push(`  ${label}: p50 ${ms(c.p50)} · p90 ${ms(c.p90)} · n=${c.n} · ${c.budget_ms / 1000} sn bütçesini aşan ${c.over_budget}${c.n ? ` (${pct(c.over_budget / c.n)})` : ''}`);
+  }
   if (s.tokens.input_avg !== null) {
     L.push(`Token (ort.): girdi ${s.tokens.input_avg} (önbellek ${pct(s.tokens.cached_ratio)}) · çıktı ${s.tokens.output_avg} · düşünme ${s.tokens.reasoning_avg}`);
   }
@@ -300,7 +343,7 @@ export function renderShadowReport(s, range = {}) {
   if (tw.length === 0) L.push('  tetik yok');
   for (const [trigger, m] of tw) {
     const late = m.late_positive + m.late_benign + m.late_missing;
-    const lateTxt = late ? ` (geç okuma, 4 sn üstü: pozitif ${m.late_positive} · benign ${m.late_benign} · okuma yok ${m.late_missing})` : '';
+    const lateTxt = late ? ` (geç okuma, canlı bütçe üstü: pozitif ${m.late_positive} · benign ${m.late_benign} · okuma yok ${m.late_missing})` : '';
     L.push(`  ${trigger} [${m.tier}]: pozitif ${m.positive} · benign ${m.benign} · okuma yok ${m.missing} · tabloya okuma ulaşmadı ${m['n/a']}${lateTxt}`);
   }
   L.push(`  §7.2 sonuçları: ${Object.entries(s.tripwire.outcomes).map(([k, v]) => `${k} ${v}`).join(' · ') || '—'} · bastırılan benign ${s.tripwire.benign_suppressed}`);

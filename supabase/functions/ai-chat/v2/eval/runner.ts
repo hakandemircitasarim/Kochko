@@ -20,8 +20,8 @@ import { buildFixtureRequest, fixtureT2 } from './request.ts';
 import { isModelAnswer, type LlmTransport, parseDecision } from './transport.ts';
 import { requestKey } from './replay-store.ts';
 import { postStageA } from './bind.ts';
-import { type Budget, computeGates, costOf, percentile, type QualityPair } from './gates.ts';
-import { stageASchema } from '../stage-a-request.ts';
+import { type Budget, computeGates, costOf, latencySplit, percentile, type QualityPair } from './gates.ts';
+import { stageABudgetClass, stageASchema } from '../stage-a-request.ts';
 import { validateJsonSchema } from '../../../shared/json-schema-check.ts';
 
 /** Integration seam for Stage B (+ envelope, facts) once they land: extra roots after the commit. */
@@ -74,8 +74,12 @@ async function judgeRubric(fixture: EvalFixture, turn: TurnResult, opts: RunOpti
   return rubric;
 }
 
+/** The untouched holdout set (§ eval README): graded apart, never tuned on. */
+export const HOLDOUT_TAG = 'holdout';
+export const isHoldout = (f: Pick<EvalFixture, 'tags'>): boolean => (f.tags ?? []).includes(HOLDOUT_TAG);
+
 export async function runFixtureOnce(fixture: EvalFixture, rep: number, opts: RunOptions): Promise<FixtureRunResult> {
-  const base = { fixture_id: fixture.id, package: fixture.package, source: fixture.source, rep };
+  const base = { fixture_id: fixture.id, package: fixture.package, source: fixture.source, rep, ...(isHoldout(fixture) ? { holdout: true } : {}) };
   const turn = emptyTurn();
   const finish = (extra: Partial<FixtureRunResult>, rubric: RubricOutcome[] = []): FixtureRunResult => {
     const outcomes = evaluateAll(fixture.expect, { turn, message: fixture.message });
@@ -105,7 +109,8 @@ export async function runFixtureOnce(fixture: EvalFixture, rep: number, opts: Ru
   }
   const key = await requestKey(payload);
   const { response, cache } = await opts.transport.call({ fixture_id: fixture.id, rep, payload, key });
-  const common = { cache, request_key: key, latency_ms: response.latency_ms, usage: response.usage };
+  // The §7.2 live budget class this turn would get (a tripwire fact → 7 s): the E gate splits latency by it.
+  const common = { cache, request_key: key, latency_ms: response.latency_ms, usage: response.usage, tripwire: stageABudgetClass(t2.scan) === 'tripwire' };
   if (cache === 'miss') return finish({ ...common, status: 'skipped', skip_reason: 'replay kaydı yok' });
   if (!isModelAnswer(response)) return finish({ ...common, status: 'error', error: response.error ?? `HTTP ${response.status ?? '?'}` });
 
@@ -213,6 +218,10 @@ export async function runEval(opts: RunOptions): Promise<EvalReport> {
   }
   const lat = results.filter((r) => r.cache === 'live' || r.cache === 'hit').map((r) => r.latency_ms).filter((x): x is number => typeof x === 'number').sort((a, b) => a - b);
   const costs = results.map((r) => costOf(opts.model, r.usage)).filter((x): x is number => x !== null);
+  // Tuning gates and holdout gates are computed apart: a holdout case can never pad (or hide in) a tuning gate.
+  const tuning = results.filter((r) => !r.holdout);
+  const holdout = results.filter((r) => r.holdout);
+  const gateOpts = { budget: opts.budget, quality: opts.quality, model: opts.model };
   return {
     started_at,
     finished_at: new Date().toISOString(),
@@ -222,9 +231,11 @@ export async function runEval(opts: RunOptions): Promise<EvalReport> {
     reps: opts.reps,
     fixture_count: opts.fixtures.length,
     results,
-    gates: computeGates(results, { budget: opts.budget, quality: opts.quality, model: opts.model }),
+    gates: computeGates(tuning, gateOpts),
+    holdout_gates: holdout.length ? computeGates(holdout, gateOpts) : [],
     totals,
     latency: { p50_ms: percentile(lat, 0.5), p90_ms: percentile(lat, 0.9), samples: lat.length },
+    latency_split: latencySplit(results),
     cost_usd_estimate: costs.length ? Number(costs.reduce((a, b) => a + b, 0).toFixed(4)) : null,
   };
 }

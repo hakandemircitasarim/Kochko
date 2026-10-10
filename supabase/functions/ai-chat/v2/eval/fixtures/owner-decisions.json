@@ -26,6 +26,7 @@
             { "path": "decision.record_ops[*].op", "eq": "update", "quantifier": "all" },
             { "path": "decision.record_ops[*].basis", "eq": "suspicious", "quantifier": "all" },
             { "path": "decision.record_ops[*].ref", "eq": "m12", "quantifier": "all" },
+            { "path": "validation.verdicts[op=record_update]", "count_gte": 1, "why": "ASK denetimi boş kümede geçemez (2026-10-10 inceleme)." },
             { "path": "validation.verdicts[op=record_update].verdict", "eq": "ASK", "quantifier": "all" }
           ] }
         ], "why": "Toplu/sessiz düzeltme yok (sahip kararı 2026-10-06): yalnız m12 için suspicious öneri — kod bekletir (ASK), koç bir kez sorar (§6.2)." },

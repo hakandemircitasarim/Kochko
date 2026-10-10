@@ -10,12 +10,13 @@
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import { loadFixtureDir } from './fixtures.ts';
-import { runEval, runFixtureOnce, type RunOptions } from './runner.ts';
+import { isHoldout, runEval, runFixtureOnce, type RunOptions } from './runner.ts';
 import { type FakeAnswer, fakeDecideTransport, localTransport, recordingTransport, replayTransport } from './transport.ts';
 import { fsReplayStore, memoryReplayStore, type ReplayFs } from './replay-store.ts';
 import type { EvalFixture } from './types.ts';
 import { transportJudge } from './judge.ts';
 import { formatReport } from './report.ts';
+import { latencySplit } from './gates.ts';
 import { sampleDecision, sampleMeal, SAMPLE_WRITES } from '../../../shared/write-registry/samples.ts';
 import { validateJsonSchema } from '../../../shared/json-schema-check.ts';
 import { type ClassifierOutcome, resolveTripwires, type StageASafetyOutcome } from '../../../shared/safety-tripwires.ts';
@@ -232,6 +233,38 @@ Deno.test('every shipped fixture evaluates without harness errors (paths resolve
   assert(a.filter((r) => r.status === 'fail').length / a.length > 0.8);
   assertEquals(rep.gates.find((g) => g.package === 'B+')?.status, 'fail');
   assert(rep.results.some((r) => r.canned), 'explicit T2 fixtures take the canned path');
+});
+
+Deno.test('holdout fixtures are graded in their own gate set; latency is split by the §7.2 budget class (tripwire fact → 7 s)', async () => {
+  const holdout = fixtures.filter((f) => isHoldout(f));
+  assert(holdout.length >= 24);
+  const tuningIds = ['r3-final2-3-bir-bardak-su-daha', 'bminus-bu-tarife-bayildim'];
+  const subset = [...tuningIds.map(byId), ...holdout.slice(0, 3)];
+  // Latency by fixture: the plain water turn 5 s (over its 4 s budget), the 'bayıldım' turn 5 s (inside 7 s).
+  // Recorded then replayed, so the calls count as real (live/hit) latency evidence like a paid run.
+  const store = memoryReplayStore();
+  const fake = fakeDecideTransport((_b, call) => ({ decision: d(), latency_ms: call.fixture_id.startsWith('ho-') ? 1000 : 5000 }));
+  await runEval({ ...opts({}), fixtures: subset, reps: 1, transport: recordingTransport(fake, store) });
+  const transport = replayTransport(store);
+  const rep = await runEval({ ...opts({}), fixtures: subset, reps: 1, transport });
+  assertEquals(rep.results.filter((r) => r.holdout).length, 3);
+  assertEquals(rep.results.filter((r) => !r.holdout).map((r) => r.fixture_id).sort(), [...tuningIds].sort());
+  const runsIn = (gs: typeof rep.gates) => gs.reduce((a, g) => a + (g.package === 'E' || g.package === 'C' ? 0 : g.runs), 0);
+  assertEquals(runsIn(rep.gates), 2, 'tuning gates see only the tuning fixtures');
+  assertEquals(runsIn(rep.holdout_gates), 3, 'holdout gates see only the holdout fixtures');
+  assertEquals(rep.results.find((r) => r.fixture_id === 'bminus-bu-tarife-bayildim')?.tripwire, true);
+  assertEquals(rep.results.find((r) => r.fixture_id === 'r3-final2-3-bir-bardak-su-daha')?.tripwire, false);
+  const s = rep.latency_split;
+  assertEquals([s.tripwire.budget_ms, s.normal.budget_ms], [7000, 4000]);
+  assert(s.normal.over_budget >= 1 && s.tripwire.over_budget === 0, JSON.stringify(s));
+  // An infra error answers fast; it is never latency evidence for either class.
+  const errored = latencySplit([...rep.results, { ...rep.results[0], status: 'error', latency_ms: 50 }]);
+  assertEquals(errored, s);
+  assert(formatReport(rep).includes('TUTULAN SET (holdout) KAPILARI'));
+  assert(formatReport(rep).includes('canlı bütçe sınıfına göre (§7.2): tetiksiz'));
+  // No holdout fixture in the run → no holdout gate set (a tuning round runs --holdout exclude).
+  const tuningOnly = await runEval({ ...opts({}), fixtures: tuningIds.map(byId), reps: 1, transport });
+  assertEquals(tuningOnly.holdout_gates, []);
 });
 
 Deno.test('model failures (refusal, off-schema, truncated) fail the fixture; infra errors are harness errors', async () => {

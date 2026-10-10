@@ -16,7 +16,7 @@ export const data_erase_request = op({
   envelope: 'data_erase_request',
   title_tr: 'Veri silme talebi (KVKK)',
   when_tr: 'AÇIKÇA hesabın ve tüm verilerin ya da yalnız koç hafızasının silinmesi isteği.',
-  not_when_tr: '"kalori hesabını sil" (hesaplama), "nasıl silerim?" (soru), tek kayıt (record_ops); kapsam belirsizse clarify.',
+  not_when_tr: '"bu hesaplamayı sil" (hesaplama), "nasıl silerim?" (soru), tek kayıt (record_ops); kapsam belirsizse clarify.',
   fields: {
     scope: f.enum({ memory: 'yalnızca koçun hafızası (notlar, çıkarımlar, özetler)', account: 'hesap ve tüm veriler' }),
     evidence_quote: f.text({ max: 160 }),

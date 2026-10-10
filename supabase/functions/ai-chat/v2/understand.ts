@@ -18,7 +18,9 @@ import {
 } from '../../shared/openai.ts';
 import type { TripwireScan } from '../../shared/safety-tripwires.ts';
 import { stageAView, type TurnInput } from './input.ts';
-import { composeStageA, STAGE_A_MAX_OUTPUT_TOKENS, type StageARequest, type StageASizes } from './stage-a-request.ts';
+import {
+  composeStageA, STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MAX_OUTPUT_TOKENS, type StageABudgetClass, stageALiveBudgetMs, type StageARequest, type StageASizes,
+} from './stage-a-request.ts';
 import { UNDERSTAND_CACHE_KEY } from './understand-prompt.ts';
 
 /**
@@ -28,12 +30,16 @@ import { UNDERSTAND_CACHE_KEY } from './understand-prompt.ts';
  * (understand.test.ts pins the shape; never a module-level throw — v1 imports this file.)
  */
 export const STAGE_A_CACHE_KEY: string = UNDERSTAND_CACHE_KEY;
-/** §7.2: a live Stage A slower than this falls back to today's protection. The shadow measures against it. */
-export const STAGE_A_LIVE_BUDGET_MS = 4_000;
-/** The shadow waits longer than the live budget so the latency distribution is measured, not truncated. */
+/**
+ * §7.2: a live Stage A slower than its budget falls back to today's protection; the shadow measures
+ * against the same budget. Two budgets, owned by stage-a-request.ts (STAGE_A_LIVE_BUDGETS_MS): normal
+ * 4 s, a turn with a tripwire fact 7 s. This is the normal one, kept by name for readers of v1 code.
+ */
+export const STAGE_A_LIVE_BUDGET_MS: number = STAGE_A_LIVE_BUDGETS_MS.normal;
+/** The shadow waits longer than either live budget so the latency distribution is measured, not truncated. */
 export const STAGE_A_SHADOW_TIMEOUT_MS = 15_000;
 /** Visible-output budget (owned by stage-a-request.ts, carried in the request as max_tokens). */
-export { STAGE_A_MAX_OUTPUT_TOKENS };
+export { STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MAX_OUTPUT_TOKENS, stageALiveBudgetMs };
 
 /** Stage A model: KOCHKO_MODEL_UNDERSTAND (a luna/eval experiment) or the chat tier (terra). */
 export function understandModel(): string {
@@ -47,8 +53,16 @@ export interface UnderstandRequest extends StageARequest {
   timeoutMs: number;
   /** Character sizes of the parts (the shadow logs them; §3.3 budget check). */
   sizes: StageASizes;
+  /** §7.2 fail-closed budget of this turn and its class (tripwire fact → 7 s, otherwise 4 s). */
+  liveBudgetMs: number;
+  budgetClass: StageABudgetClass;
 }
 
+/**
+ * `mode` 'shadow' (default) waits STAGE_A_SHADOW_TIMEOUT_MS so the shadow measures the whole latency
+ * distribution; 'live' times the call out AT the turn's §7.2 budget, so a slow Stage A fails closed to
+ * today's protection instead of holding the reply. An explicit timeoutMs wins (tests).
+ */
 export function buildUnderstandRequest(p: {
   turnInput: TurnInput;
   message: string;
@@ -56,14 +70,16 @@ export function buildUnderstandRequest(p: {
   hasImage?: boolean;
   model?: string;
   timeoutMs?: number;
+  mode?: 'shadow' | 'live';
 }): UnderstandRequest {
-  const { request, sizes } = composeStageA({
+  const { request, sizes, budget } = composeStageA({
     view: stageAView(p.turnInput, { image: p.hasImage === true }),
     scan: p.scan,
     message: p.message,
     model: p.model ?? understandModel(),
   });
-  return { ...request, timeoutMs: p.timeoutMs ?? STAGE_A_SHADOW_TIMEOUT_MS, sizes };
+  const timeoutMs = p.timeoutMs ?? (p.mode === 'live' ? budget.live_ms : STAGE_A_SHADOW_TIMEOUT_MS);
+  return { ...request, timeoutMs, sizes, liveBudgetMs: budget.live_ms, budgetClass: budget.class };
 }
 
 /** respond()'s options for a composed request — the same mapping ai-decide applies to its body. */

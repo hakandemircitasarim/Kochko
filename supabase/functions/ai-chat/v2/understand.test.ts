@@ -14,8 +14,11 @@ import { buildWriteDoc, SCHEMA_NAMES, SCHEMA_VERSION } from '../../shared/write-
 import { sampleDecision, SAMPLE_WRITES } from '../../shared/write-registry/samples.ts';
 import { loadTurnInput, renderTurnInput, stageAView, type TurnInput } from './input.ts';
 import { fakeResponses, fakeTurnInputDb, NOW, refusalBody, responsesBody, seedTables, USER, OTHER } from './testing.ts';
-import { buildUnderstandRequest, respondArgs, STAGE_A_CACHE_KEY, STAGE_A_MAX_OUTPUT_TOKENS, understand } from './understand.ts';
-import { renderTurnInputBlock, stageASchema, stageASystemPrompt } from './stage-a-request.ts';
+import {
+  buildUnderstandRequest, respondArgs, STAGE_A_CACHE_KEY, STAGE_A_LIVE_BUDGET_MS, STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MAX_OUTPUT_TOKENS, STAGE_A_SHADOW_TIMEOUT_MS,
+  stageALiveBudgetMs, understand,
+} from './understand.ts';
+import { buildStageARequest, renderTurnInputBlock, stageABudgetClass, stageASchema, stageASystemPrompt } from './stage-a-request.ts';
 import { UNDERSTAND_CACHE_KEY, UNDERSTAND_PROMPT_VERSION, UNDERSTAND_RULES } from './understand-prompt.ts';
 
 async function turnInput(mutate?: (t: ReturnType<typeof seedTables>) => void, userId = USER): Promise<TurnInput> {
@@ -86,6 +89,35 @@ Deno.test('§8.4 effort through the wrapper: low by default; medium for image, o
   noDraft(t);
   const failedSafety = await loadTurnInput(fakeTurnInputDb(t, { user_safety_state: 'permission denied' }), { userId: USER, now: NOW });
   assertEquals(buildUnderstandRequest({ turnInput: failedSafety, message: msg, scan: scanTripwires(msg) }).effort, 'medium', 'unreadable tier');
+});
+
+Deno.test('§7.2 live budgets: ONE place (normal 4 s, tripwire 7 s), chosen by the same certain fact as effort; live mode times out at them', async () => {
+  assertEquals(STAGE_A_LIVE_BUDGETS_MS, { normal: 4_000, tripwire: 7_000 });
+  assertEquals(STAGE_A_LIVE_BUDGET_MS, STAGE_A_LIVE_BUDGETS_MS.normal, 'the old name is the normal budget, not a second constant');
+  assert(STAGE_A_LIVE_BUDGETS_MS.tripwire > STAGE_A_LIVE_BUDGETS_MS.normal);
+  assert(STAGE_A_SHADOW_TIMEOUT_MS > STAGE_A_LIVE_BUDGETS_MS.tripwire, 'the shadow measures past both budgets');
+  const ti = await turnInput(noDraft);
+  const cases: Array<[string, 'normal' | 'tripwire']> = [
+    ['1 bardak su içtim', 'normal'],
+    ['antrenmanda bir an bayılacak gibi oldum', 'tripwire'], // ambiguous emergency hit
+    ['dün gece kustum', 'tripwire'], // ambiguous ED hit
+    ['fıstık alerjim var', 'tripwire'], // declaration cue (also effort medium)
+  ];
+  for (const [msg, cls] of cases) {
+    const scan = scanTripwires(msg);
+    assertEquals(stageABudgetClass(scan), cls, msg);
+    assertEquals(stageALiveBudgetMs(scan), STAGE_A_LIVE_BUDGETS_MS[cls], msg);
+    const shadow = buildUnderstandRequest({ turnInput: ti, message: msg, scan });
+    assertEquals([shadow.budgetClass, shadow.liveBudgetMs, shadow.timeoutMs], [cls, STAGE_A_LIVE_BUDGETS_MS[cls], STAGE_A_SHADOW_TIMEOUT_MS], msg);
+    const live = buildUnderstandRequest({ turnInput: ti, message: msg, scan, mode: 'live' });
+    assertEquals(live.timeoutMs, STAGE_A_LIVE_BUDGETS_MS[cls], `${msg}: a live call fails closed AT its budget`);
+    assertEquals(respondArgs(live).timeoutMs, STAGE_A_LIVE_BUDGETS_MS[cls]);
+    // Same predicate as §8.4 effort on a plain view (no image, no draft, tier none): never two keyword guesses.
+    assertEquals(shadow.effort === 'medium', cls === 'tripwire', `${msg}: budget class and effort disagree`);
+    // The budget is the call's, not the model's: the ai-decide body never carries it.
+    const body = JSON.stringify(buildStageARequest({ view: stageAView(ti), scan, message: msg, model: 'gpt-5.6-terra' }));
+    assert(!body.includes('live_ms') && !body.includes('liveBudget'), msg);
+  }
 });
 
 Deno.test('understand(): strict schema + cache key + store:false on the wire; a valid decision is parsed', async () => {

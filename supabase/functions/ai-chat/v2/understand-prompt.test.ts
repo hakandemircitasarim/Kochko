@@ -78,30 +78,30 @@ interface Fixture {
 }
 
 const meal = (day: string, extra: Partial<RenderedRef> = {}): RenderedRef => ({ kind: 'm', target: 'meal', op: 'meal_log', day, ...extra });
-const water = (extra: Partial<RenderedRef> = {}): RenderedRef => ({ kind: 'd', target: 'water', op: 'water_log', day: TODAY, last_turn: true, ...extra });
+const workout = (extra: Partial<RenderedRef> = {}): RenderedRef => ({ kind: 'w', target: 'workout', op: 'workout_log', day: TODAY, last_turn: true, ...extra });
 
 /** One fixture per few-shot (a new example without one fails the suite). */
 const FIXTURES: Record<string, Fixture> = {
-  su_ekle: { water: 1.4, expect: { verdicts: ['meal_log:COMMIT', 'water_log:COMMIT'] } },
-  nugget: {
+  icecek_ve_su: { water: 0.9, expect: { verdicts: ['meal_log:COMMIT', 'water_log:COMMIT'] } },
+  aday_ayni_degil: {
     reference_rows: {
-      tavuk_gogsu: { key: 'tavuk_gogsu', name_tr: 'tavuk göğsü (ızgara)', kcal_per_100g: 165, protein_per_100g: 31, carbs_per_100g: 0, fat_per_100g: 3.6 },
+      patates_haslama: { key: 'patates_haslama', name_tr: 'patates (haşlanmış)', kcal_per_100g: 87, protein_per_100g: 1.9, carbs_per_100g: 20, fat_per_100g: 0.1 },
     },
     expect: { verdicts: ['meal_log:COMMIT'] },
   },
-  cimdik_tuz: { expect: { verdicts: ['meal_log:COMMIT'] } },
-  su_gun_toplami: { water: 1.6, expect: { verdicts: ['water_log:COMMIT'] } },
-  su_geri_al: { refs: { m30: meal('2026-10-04'), d3: water() }, water: 3.4, expect: { verdicts: ['record_delete:COMMIT'] } },
-  su_duzeltme: { refs: { d3: water() }, water: 1.6, expect: { verdicts: ['record_update:COMMIT'] } },
-  duzeltme_sorusu: { refs: { m14: meal(TODAY, { last_turn: true }) }, expect: { verdicts: [] } },
-  iki_aday_sil: { refs: { m14: meal(TODAY, { last_turn: true }), d3: water() }, water: 1.0, expect: { verdicts: [] } },
-  supheli_kayit: { refs: { m12: meal('2026-10-01') }, expect: { verdicts: ['record_update:ASK'], issues: ['supheli_kayit'] } },
+  kucuk_miktar: { expect: { verdicts: ['meal_log:COMMIT'] } },
+  su_gun_toplami: { water: 1.2, expect: { verdicts: ['water_log:COMMIT'] } },
+  son_turu_geri_al: { refs: { m61: meal(TODAY), w8: workout() }, expect: { verdicts: ['record_delete:COMMIT'] } },
+  ref_ile_duzeltme: { refs: { m44: meal(TODAY, { last_turn: true }) }, expect: { verdicts: ['record_update:COMMIT'] } },
+  duzeltme_sorusu: { refs: { m52: meal(TODAY, { last_turn: true }) }, expect: { verdicts: [] } },
+  iki_aday_sil: { refs: { m63: meal(TODAY, { last_turn: true }), w9: workout() }, expect: { verdicts: [] } },
+  supheli_kayit: { refs: { m19: meal('2026-10-02') }, expect: { verdicts: ['record_update:ASK'], issues: ['supheli_kayit'] } },
   supheli_kayit_onayi: {
-    refs: { p1: { kind: 'p', target: 'pending', pending: { op: 'record_update', expires_at: '2026-10-08T00:00:00Z', replies_since: 1 } } },
+    refs: { p2: { kind: 'p', target: 'pending', pending: { op: 'record_update', expires_at: '2026-10-08T00:00:00Z', replies_since: 1 } } },
     expect: { verdicts: ['pending_confirm:COMMIT'] },
   },
   plan_istegi: { expect: { verdicts: [], plan: 'generate:COMMIT' } },
-  taslak_onayi: { refs: { dft1: { kind: 'dft', target: 'plan_draft' } }, expect: { verdicts: [], plan: 'approve:COMMIT' } },
+  taslak_onayi: { refs: { dft4: { kind: 'dft', target: 'plan_draft' } }, expect: { verdicts: [], plan: 'approve:COMMIT' } },
   alerji_beyani: { expect: { verdicts: ['constraint_add:COMMIT', 'constraint_add:COMMIT'] } },
   baskasinin_alerjisi: { expect: { verdicts: ['constraint_add:COMMIT'] } },
   // A self injury of unknown severity is stored AND flagged (counts as severe, coach asks once).
@@ -114,7 +114,12 @@ const FIXTURES: Record<string, Fixture> = {
     expect: { verdicts: [], ed: { accepted: true, escalate: null }, missed_write: false, not_written_reason: 'illness_not_food' },
   },
   soru_kayit_degil: { expect: { verdicts: [] } },
-  bildirim_ve_soru: { expect: { verdicts: ['meal_log:COMMIT'] } },
+  bildirim_ve_soru: {
+    reference_rows: {
+      icli_kofte: { key: 'icli_kofte', name_tr: 'içli köfte (kızartma)', kcal_per_100g: 260, protein_per_100g: 10, carbs_per_100g: 22, fat_per_100g: 14 },
+    },
+    expect: { verdicts: ['meal_log:COMMIT'] },
+  },
 };
 
 function ctxFor(s: UnderstandFewShot): ValidationContext {
@@ -256,7 +261,7 @@ Deno.test('schema-valid is not enough: the pre-binding allergen id passes the sc
   const s = shot('alerji_beyani');
   const wrong: FewShotDecision = {
     ...s.decision,
-    writes: (s.decision.writes ?? []).map((w) => (w.subject_id === 'hazelnut' ? { ...w, subject_id: 'tree_nut:hazelnut' } : w)),
+    writes: (s.decision.writes ?? []).map((w) => (w.subject_id === 'walnut' ? { ...w, subject_id: 'tree_nut:walnut' } : w)),
   };
   assertEquals(validateJsonSchema(buildUnderstandSchema(), completeDecision(wrong)), []);
   const v = validateDecision(completeDecision(wrong), ctxFor(s));
@@ -375,7 +380,11 @@ Deno.test('few-shots: self_check is honest — reported ⇔ a user-stated fact w
 Deno.test('few-shots: water quantities use the unit enum — a glass is a glass, code converts', () => {
   for (const s of UNDERSTAND_FEW_SHOTS) {
     const waters = [...itemsOf(s.decision, 'writes', 'water_log'), ...itemsOf(s.decision, 'record_ops').map(patchOf).filter((p): p is FewShotItem => p?.op === 'water_log')];
-    for (const w of waters) if (/bardak/u.test(String(w.as_stated))) assertEquals(w.unit, 'bardak', `${s.id}: a glass is a glass`);
+    for (const w of waters) {
+      const said = String(w.as_stated);
+      if (said.includes('su bardağı')) assertEquals(w.unit, 'su_bardagi', `${s.id}: a water glass is a water glass`);
+      else if (said.includes('bardak')) assertEquals(w.unit, 'bardak', `${s.id}: a glass is a glass`);
+    }
   }
 });
 
@@ -389,7 +398,7 @@ Deno.test('few-shot context labels are the block titles the ONE renderer really 
     ed_tier: 'none',
     profile: [],
     gates: [],
-    today: ['su 1,40 L'],
+    today: ['su 0,90 L'],
     records: [{ ref: 'd3', line: 'bugün su: gün toplamı 1,40 L', last_turn: true }],
     constraints: [{ ref: 'c1', line: 'alerji · yer fıstığı · ciddi' }],
     pending: [{ ref: 'p1', line: 'record_update · düzeltme' }],
@@ -403,7 +412,7 @@ Deno.test('few-shot context labels are the block titles the ONE renderer really 
   }).split('\n');
   for (const l of labels.filter((x) => x !== TRIPWIRE_LABEL)) assert(block.some((line) => line.startsWith(l)), `the renderer never emits "${l}"`);
   assert(block.some((line) => line.endsWith('(son tur)')), 'last-turn records are a suffix, not a block');
-  assert(block.includes('BUGÜN: su 1,40 L'), 'the su_ekle context line is a line the renderer emits');
+  assert(block.includes('BUGÜN: su 0,90 L'), 'the icecek_ve_su context line is a line the renderer emits');
   assert(block.includes('koç: "Bu kayıt yanlış görünüyor, düzelteyim mi?"'), 'SON KONUŞMA lines read "koç: …" as the few-shot shows');
   // The shadow's real TurnInput goes through the same renderer: the history block is there too.
   const live = renderTurnInput(await loadTurnInput(fakeTurnInputDb(seedTables()), { userId: USER, now: NOW })).split('\n');
@@ -436,50 +445,54 @@ Deno.test('tripwire context is what the scanner really renders for that message 
 
 // ─── the production failures each example was chosen for ────────────────────────────────────────
 
-Deno.test('few-shots encode the production failures they were chosen for (§1, §8.3, §9.4 A/A\'/B−)', () => {
-  // final2#3: "1 bardak su" became +1 L. §9.4 A (live eval 2026-10-10): the tea next to the water is
-  // its own report — written as a meal even without a stated amount, never dropped for the water.
-  const suShot = shot('su_ekle').decision;
-  const su = itemsOf(suShot, 'writes', 'water_log')[0];
-  assertEquals([su.quantity, su.unit, su.mode], [1, 'bardak', 'add']);
-  assertEquals(mealItems(itemsOf(suShot, 'writes', 'meal_log')[0]).map((i) => i.name), ['çay']);
+Deno.test('few-shots encode the principles of the production failures they were chosen for (§1, §8.3, §9.4 A/A\'/B−) — in details of their own', () => {
+  // final2#3 ("1 bardak su" became +1 L): a glass COUNT is the quantity, code converts. §9.4 A (live
+  // eval 2026-10-10): the other drink next to the water is its own report — never dropped.
+  const drink = shot('icecek_ve_su').decision;
+  const su = itemsOf(drink, 'writes', 'water_log')[0];
+  assertEquals([su.quantity, su.unit, su.mode], [3, 'su_bardagi', 'add']);
+  assertEquals(mealItems(itemsOf(drink, 'writes', 'meal_log')[0]).map((i) => i.name), ['ıhlamur']);
 
-  // §9.4 A / §6.2: "sonuncuyu sil" with two last-turn writes → clarify with both, nothing deleted.
+  // §9.4 A / §6.2: an ambiguous "delete it" with two last-turn writes → clarify with both, nothing deleted.
   const two = shot('iki_aday_sil').decision;
   assertEquals([two.record_ops, two.writes], [undefined, undefined]);
-  assertEquals([...(two.clarify?.candidate_refs ?? [])].sort(), ['d3', 'm14']);
+  assertEquals([...(two.clarify?.candidate_refs ?? [])].sort(), ['m63', 'w9']);
 
   // devir §6 (live eval 2026-10-10): a report that ends in a question is still written, not question_only.
   const rq = shot('bildirim_ve_soru').decision;
-  assertEquals(itemsOf(rq, 'writes', 'meal_log').map((w) => w.day), ['yesterday']);
+  assertEquals(itemsOf(rq, 'writes', 'meal_log').length, 1);
+  // …and a whole-eaten food counted in 'parça' is pieces: grams = count × the candidate's piece weight.
+  const piece = mealItems(itemsOf(rq, 'writes', 'meal_log')[0])[0];
+  assertEquals([piece.as_stated, piece.grams, piece.reference_key], ['3 parça', 180, 'icli_kofte']);
   assertEquals(rq.self_check?.not_written_reason, undefined);
 
-  // final2#4: 6 nugget became 900 g tavuk göğsü / 1708 kcal.
-  const nug = mealItems(itemsOf(shot('nugget').decision, 'writes', 'meal_log')[0])[0];
-  assertEquals(nug.reference_key, null, 'tavuk göğsü is a candidate, not the food');
-  assert(nug.kcal >= 220 && nug.kcal <= 450);
+  // final2#4 (a look-alike reference became the food): the candidate is a hint, the numbers are the model's.
+  const look = mealItems(itemsOf(shot('aday_ayni_degil').decision, 'writes', 'meal_log')[0])[0];
+  assertEquals(look.reference_key, null, 'the boiled-potato candidate is not the croquette');
+  assert(look.kcal >= 300 && look.kcal <= 550);
 
-  // "2 çimdik tuz": kept verbatim, tiny, 0 kcal, no question.
-  const tuz = shot('cimdik_tuz');
-  const salt = mealItems(itemsOf(tuz.decision, 'writes', 'meal_log')[0]).find((i) => i.name === 'tuz');
-  assert(salt && salt.as_stated === '2 çimdik' && (salt.grams ?? 99) <= 3 && salt.kcal === 0);
-  assertEquals(tuz.decision.clarify, undefined);
+  // Owner requirement 1 (a fuzzy amount): kept verbatim, tiny, ~0 kcal, no question.
+  const small = shot('kucuk_miktar');
+  const pinch = mealItems(itemsOf(small.decision, 'writes', 'meal_log')[0]).find((i) => i.name === 'kekik');
+  assert(pinch && pinch.as_stated === 'bir tutam' && (pinch.grams ?? 99) <= 3 && pinch.kcal <= 1);
+  assertEquals(small.decision.clarify, undefined);
 
-  // diff#1/#2: "bugün toplam 2 litre" is a day total, not an addition.
+  // diff#1/#2: a stated DAY TOTAL of water is set_day_total, not an addition.
   const tot = itemsOf(shot('su_gun_toplami').decision, 'writes', 'water_log')[0];
-  assertEquals([tot.quantity, tot.unit, tot.mode], [2, 'litre', 'set_day_total']);
+  assertEquals([tot.quantity, tot.unit, tot.mode], [9, 'bardak', 'set_day_total']);
 
-  // final2#2: "geri al" right after a water log deleted the dinner from 45 min earlier.
-  const undo = shot('su_geri_al').decision;
-  assertEquals(undo.record_ops?.map((r) => [r.op, r.ref]), [['delete', 'd3']]);
+  // final2#2: "geri al" deleted an older record; the undo targets the last turn's write only.
+  const undo = shot('son_turu_geri_al').decision;
+  assertEquals(undo.record_ops?.map((r) => [r.op, r.ref]), [['delete', 'w8']]);
   assertEquals(undo.writes, undefined);
 
-  // diff#5 + "update by ref": the water correction targets d3 and adds no second water.
-  const fix = shot('su_duzeltme').decision;
-  assertEquals(fix.record_ops?.map((r) => [r.op, r.ref, r.basis]), [['update', 'd3', 'user_correction']]);
+  // diff#5 + "update by ref": the correction targets the ref and adds no second meal (double count).
+  const fix = shot('ref_ile_duzeltme').decision;
+  assertEquals(fix.record_ops?.map((r) => [r.op, r.ref, r.basis]), [['update', 'm44', 'user_correction']]);
   const fp = patchOf(fix.record_ops![0])!;
-  assertEquals([fp.op, fp.quantity, fp.unit, fp.mode], ['water_log', 2, 'bardak', 'add']);
-  assertEquals(fix.writes, undefined, 'no new water_log next to the correction (double count)');
+  assertEquals(fp.op, 'meal_log');
+  assertEquals(mealItems(fp).map((i) => i.as_stated), ['1 tabak']);
+  assertEquals(fix.writes, undefined, 'no new meal_log next to the correction (double count)');
 
   // final2#1: "nasıl düzeltebilirim?" deleted the last meal. A question writes nothing.
   const q = shot('duzeltme_sorusu').decision;
@@ -488,23 +501,23 @@ Deno.test('few-shots encode the production failures they were chosen for (§1, �
 
   // final2#6 + owner decision 2026-10-06: a noticed suspicious record is PROPOSED (held, asked once)…
   const sus = shot('supheli_kayit').decision;
-  assertEquals(sus.record_ops?.map((r) => [r.op, r.ref, r.basis]), [['update', 'm12', 'suspicious']]);
+  assertEquals(sus.record_ops?.map((r) => [r.op, r.ref, r.basis]), [['update', 'm19', 'suspicious']]);
   assertEquals(sus.record_ops![0].evidence_quote, undefined, 'suspicious → evidence_quote null');
   assertEquals(sus.writes, undefined);
-  // …and the "evet" next turn confirms the hold; it does not write a second meal.
+  // …and the "olur" next turn confirms the hold; it does not write a second meal.
   const yes = shot('supheli_kayit_onayi').decision;
-  assertEquals(yes.pending_ops?.map((p) => [p.op, p.ref]), [['confirm', 'p1']]);
+  assertEquals(yes.pending_ops?.map((p) => [p.op, p.ref]), [['confirm', 'p2']]);
   assertEquals([yes.writes, yes.record_ops], [undefined, undefined]);
 
   const plan = shot('plan_istegi').decision;
   assertEquals([plan.plan_action?.op, plan.reply_route?.contract], ['generate', 'plan']);
   // mem#7: typed approval while a draft is open approves THAT draft; nothing is generated.
   const ok = shot('taslak_onayi').decision;
-  assertEquals([ok.plan_action?.op, ok.plan_action?.draft_ref], ['approve', 'dft1']);
+  assertEquals([ok.plan_action?.op, ok.plan_action?.draft_ref], ['approve', 'dft4']);
 
-  // "fıstık yok ama fındık var": two writes with opposite polarity, ids from the registry's ALLERGENS.
+  // Negation scope: two writes with opposite polarity, ids from the registry's ALLERGENS.
   const al = itemsOf(shot('alerji_beyani').decision, 'writes', 'constraint_add');
-  assertEquals(al.map((w) => [w.subject_id, w.polarity]), [['peanut', 'does_not_have'], ['hazelnut', 'has']]);
+  assertEquals(al.map((w) => [w.subject_id, w.polarity]), [['sesame', 'has'], ['walnut', 'does_not_have']]);
   for (const w of al) assert(Object.prototype.hasOwnProperty.call(vocab.ALLERGENS, String(w.subject_id)), `${w.subject_id} is an ALLERGENS id`);
 
   // Third-person allergy never reaches the user's safety spine.
@@ -514,7 +527,7 @@ Deno.test('few-shots encode the production failures they were chosen for (§1, �
 
   const inj = itemsOf(shot('sakatlik').decision, 'writes', 'constraint_add')[0];
   assertEquals([inj.kind, inj.severity], ['injury', 'unknown']);
-  assert((inj.body_parts as string[]).every((b) => Object.prototype.hasOwnProperty.call(vocab.BODY_PARTS, b)) && (inj.body_parts as string[]).includes('knee'));
+  assert((inj.body_parts as string[]).every((b) => Object.prototype.hasOwnProperty.call(vocab.BODY_PARTS, b)) && (inj.body_parts as string[]).includes('ankle'));
 
   // Same tripwire, opposite readings — each with a reason.
   const mecaz = shot('tetik_mecaz').decision.safety?.tripwire_readings ?? [];
@@ -524,12 +537,24 @@ Deno.test('few-shots encode the production failures they were chosen for (§1, �
   assertEquals(gercek.reply_route?.contract, 'emergency');
   assertEquals(gercek.self_check?.not_written_reason, 'emergency_turn', 'an emergency turn never ends in a data-entry question');
 
-  // §7.2: "dün gece kustum, zehirlendim galiba" is illness, not an ED signal — no escalation, no crisis route.
+  // §7.2: vomiting from an illness is not an ED signal — no escalation, no crisis route.
   const kus = shot('kusma_hastalik').decision;
   assertEquals(kus.safety?.ed_signal?.category, 'illness_vomiting');
   assertEquals(kus.reply_route, undefined, 'coach route (default), not crisis');
 
-  assertEquals(shot('soru_kayit_degil').decision.writes, undefined, 'a question about water is not a water log');
+  assertEquals(shot('soru_kayit_degil').decision.writes, undefined, 'a question with a number in it is not a log');
+});
+
+Deno.test('rules keep the restored guards and the ED severity principle (2026-10-11 review)', () => {
+  // rule 6: the double-count warning trimmed in round 1 is back.
+  assert(UNDERSTAND_RULES.includes('düzeltmeyi bir de yeni yazma olarak ekleme, çift sayım olur'));
+  // rule 9: the real-vs-figurative trigger example trimmed in round 1 is back.
+  assert(UNDERSTAND_RULES.includes('"filme bayıldım" beğenmek, "koşarken bayıldım" bilinç kaybı'));
+  // rule 9 caps only a ONE-OFF complaint at binge low; repetition, loss of control or compensation is ≥ medium,
+  // and rule 13 routes medium/high to crisis — the B+ binge fixtures hold both.
+  assert(UNDERSTAND_RULES.includes("Tek seferlik bir fazla yeme yakınması en fazla binge low'dur"));
+  assert(UNDERSTAND_RULES.includes("tekrarlayan tıkınma, kontrol kaybı ya da telafi niyeti (kusma, aç kalma, zorlayıcı spor) en az medium'dur"));
+  assert(UNDERSTAND_RULES.includes('orta/yüksek yeme bozukluğu sinyalinde crisis'));
 });
 
 // ─── rendering and the prefix ────────────────────────────────────────────────────────────────────

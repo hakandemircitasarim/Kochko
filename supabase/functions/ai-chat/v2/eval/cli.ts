@@ -10,7 +10,7 @@
  * never printed, logged, cached or reported.
  */
 import { loadFixtureDir } from './fixtures.ts';
-import { runEval } from './runner.ts';
+import { isHoldout, runEval } from './runner.ts';
 import { formatReport } from './report.ts';
 import { gatesFailed } from './gates.ts';
 import { endpointTransport, type FakeAnswer, fakeDecideTransport, type LlmCall, type LlmTransport, recordingTransport, replayTransport } from './transport.ts';
@@ -180,6 +180,7 @@ const HELP = `KOCHKO v2 eval (AI_MIMARI_V2 §9) — ayrıntı: supabase/function
   Stage A isteği üretimin kurucusundan gelir (stage-a-request.ts): şema/prompt girdisi yoktur.
   --model ${DEFAULT_MODEL}  --reps N (varsayılan 5)  --concurrency 4  --timeout-ms 90000
   --only id1,id2 | @ids.txt (tam id listesi)  --filter <metin>  --package A,A',B+,B-,C,D,E  --out rapor.json  --verbose
+  --holdout include|exclude|only (varsayılan include; ayar turları exclude, tutulan set kapıları ayrı raporlanır)
   --record (live/judge: cevapları tekrar sırasıyla .replay/'e yazar)
   --enforce-gates  --allow-miss  --require-full (KISMİ geçişi de başarısız sayar)
   --dry-run (live/judge: ön kontrol + anahtar biçimi, hiçbir çağrı gönderilmez)
@@ -227,6 +228,15 @@ export async function main(argv: string[], io: Io = consoleIo): Promise<number> 
     const f = String(opts.filter).toLocaleLowerCase('tr');
     fixtures = fixtures.filter((x) => x.id.includes(f) || x.source.toLocaleLowerCase('tr').includes(f) || (x.tags ?? []).includes(f));
   }
+  // The holdout set is graded apart and never used to tune: a tuning round runs `--holdout exclude`,
+  // the final round `include` (default) and reports its gates separately; `only` grades it alone.
+  const holdoutMode = String(opts.holdout ?? 'include');
+  if (!['include', 'exclude', 'only'].includes(holdoutMode)) {
+    io.err(`geçersiz --holdout "${holdoutMode}" (include | exclude | only)`);
+    return 2;
+  }
+  if (holdoutMode === 'exclude') fixtures = fixtures.filter((x) => !isHoldout(x));
+  if (holdoutMode === 'only') fixtures = fixtures.filter((x) => isHoldout(x));
   if (opts.package) {
     const want = String(opts.package).split(',').map((s) => s.trim()) as PackageId[];
     const bad = want.filter((p) => !PACKAGE_IDS.includes(p));
@@ -326,7 +336,8 @@ export async function main(argv: string[], io: Io = consoleIo): Promise<number> 
   if (opts['enforce-gates']) {
     const failed = gatesFailed(rep, { requireFull: !!opts['require-full'] }).filter((g) => !(opts['allow-miss'] && g.status === 'incomplete'));
     if (failed.length) {
-      io.err(`Kapı başarısız: ${failed.map((g) => `${g.package} (${g.status}${g.partial ? ', kısmi' : ''})`).join(', ')}`);
+      const holdoutGates = new Set(rep.holdout_gates);
+      io.err(`Kapı başarısız: ${failed.map((g) => `${holdoutGates.has(g) ? 'holdout ' : ''}${g.package} (${g.status}${g.partial ? ', kısmi' : ''})`).join(', ')}`);
       return 1;
     }
   }
