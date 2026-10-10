@@ -20,7 +20,13 @@ export type PathSegment =
   | { kind: 'deep'; key: string }
   | { kind: 'filter'; key: string; op: '=' | '!=' | '~'; value: string };
 
-export interface Resolution { values: unknown[]; plural: boolean }
+/**
+ * `missing` lists keys the path asked for on an object that does NOT have them (or a `..key` found
+ * nowhere inside a non-empty value). That is structure, not data: an empty list or a filter that
+ * matches nothing is a legitimate "nothing here", a missing key means the path does not fit the
+ * output (a renamed field) — negative checks must not pass on it (expect.ts).
+ */
+export interface Resolution { values: unknown[]; plural: boolean; missing: string[] }
 
 const isDigits = (s: string) => s.length > 0 && [...s].every((c) => c >= '0' && c <= '9');
 
@@ -83,6 +89,34 @@ export function parsePath(path: string): PathSegment[] {
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+const isLetter = (c: string) => c.toLowerCase() !== c.toUpperCase();
+
+/** Word tokens without regex (Turkish lower-case): letters, digits and '_' stay inside a token. */
+export function wordTokens(text: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  for (const ch of text.toLocaleLowerCase('tr')) {
+    if (isLetter(ch) || (ch >= '0' && ch <= '9') || ch === '_') cur += ch;
+    else if (cur) {
+      out.push(cur);
+      cur = '';
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/** Does `needle` (one or more words) occur as whole consecutive tokens of `text`? */
+export function containsWords(text: string, needle: string): boolean {
+  const hay = wordTokens(text);
+  const want = wordTokens(needle);
+  if (!want.length) return false;
+  for (let i = 0; i + want.length <= hay.length; i++) {
+    if (want.every((w, j) => hay[i + j] === w)) return true;
+  }
+  return false;
+}
+
 /** Turkish-aware lower-case + whitespace collapse; used by `~` filters and text operators. */
 export function normTr(s: string): string {
   let out = '';
@@ -129,6 +163,11 @@ function deepCollect(v: unknown, key: string, out: unknown[]): void {
 export function resolveSegments(root: unknown, segs: PathSegment[]): Resolution {
   let cur: unknown[] = [root];
   let plural = false;
+  const missing = new Set<string>();
+  const keyOf = (o: Record<string, unknown>, key: string, out: unknown[]) => {
+    if (key in o) out.push(o[key]);
+    else missing.add(key);
+  };
   for (const seg of segs) {
     const next: unknown[] = [];
     for (const v of cur) {
@@ -137,9 +176,11 @@ export function resolveSegments(root: unknown, segs: PathSegment[]): Resolution 
         case 'key':
           if (Array.isArray(v)) {
             plural = true;
-            for (const el of v) if (isObj(el) && seg.key in el) next.push(el[seg.key]);
-          } else if (isObj(v) && seg.key in v) {
-            next.push(v[seg.key]);
+            for (const el of v) if (isObj(el)) keyOf(el, seg.key, next);
+          } else if (isObj(v)) {
+            keyOf(v, seg.key, next);
+          } else {
+            missing.add(seg.key); // a scalar has no fields: the path does not fit the value
           }
           break;
         case 'index':
@@ -150,10 +191,14 @@ export function resolveSegments(root: unknown, segs: PathSegment[]): Resolution 
           if (Array.isArray(v)) next.push(...v);
           else if (isObj(v)) next.push(...Object.values(v));
           break;
-        case 'deep':
+        case 'deep': {
           plural = true;
+          const before = next.length;
           deepCollect(v, seg.key, next);
+          const nonEmpty = Array.isArray(v) ? v.length > 0 : isObj(v) && Object.keys(v).length > 0;
+          if (next.length === before && nonEmpty) missing.add(`..${seg.key}`);
           break;
+        }
         case 'filter': {
           plural = true;
           const arr = Array.isArray(v) ? v : [v];
@@ -164,13 +209,5 @@ export function resolveSegments(root: unknown, segs: PathSegment[]): Resolution 
     }
     cur = next;
   }
-  return { values: cur, plural };
-}
-
-/** Apply prefix aliases (registry naming drift is fixed in ONE map, never in 100 fixtures). */
-export function applyAliases(path: string, aliases: Record<string, string> | undefined): string {
-  if (!aliases) return path;
-  let best = '';
-  for (const from of Object.keys(aliases)) if (path.startsWith(from) && from.length > best.length) best = from;
-  return best ? aliases[best] + path.slice(best.length) : path;
+  return { values: cur, plural, missing: [...missing] };
 }

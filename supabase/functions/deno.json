@@ -5,6 +5,7 @@
     "lib": ["deno.window", "esnext"]
   },
   "tasks": {
-    "v2-eval": "deno run --allow-read --allow-write --allow-net --allow-env ../../scripts/eval-v2.ts"
+    "v2-eval": "deno run --no-lock --allow-read --allow-write --allow-net --allow-env ../../scripts/eval-v2.ts",
+    "v2-eval-live": "deno run --no-lock --allow-read --allow-write --allow-net --allow-env ../../scripts/eval-v2.ts --mode live --record --reps 5 --concurrency 4 --enforce-gates --out TEMP/eval-v2-live.json"
   }
 }

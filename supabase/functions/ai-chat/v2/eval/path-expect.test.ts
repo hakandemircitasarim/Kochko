@@ -1,7 +1,8 @@
 import { assert, assertEquals, assertThrows } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
-import { applyAliases, parsePath, resolveSegments } from './path.ts';
-import { evaluateExpectation, isPositiveSignal } from './expect.ts';
-import { checkSchema } from './schema-check.ts';
+import { containsWords, parsePath, resolveSegments, wordTokens } from './path.ts';
+import { evaluateExpectation, safetyFieldOf, signalOf } from './expect.ts';
+import { ENVELOPE_HEAD } from '../../../shared/write-registry/mod.ts';
+import { understandSchemaForLint, walkSchema } from './bind.ts';
 import type { Expectation, StageOutputs, StageRoot, TurnResult } from './types.ts';
 
 function turn(outputs: StageOutputs, errors: Partial<Record<StageRoot, string>> = {}): TurnResult {
@@ -23,7 +24,7 @@ const decision = {
     },
   ],
   record_ops: [],
-  safety: { acute_medical: 'none', self_harm: false, ed_signal: null },
+  safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_reading: null },
 };
 const ctx = (outputs: StageOutputs = { decision }, message = 'mesaj') => ({ turn: turn(outputs), message });
 const run = (e: Expectation, outputs?: StageOutputs, message?: string) => evaluateExpectation(e, ctx(outputs, message));
@@ -46,17 +47,27 @@ Deno.test('resolveSegments: filter selects elements, implicit array mapping is p
   assertEquals(r.values, [300, 20]);
   assert(r.plural);
   const single = resolveSegments(decision, parsePath('d.record_ops').slice(1));
-  assertEquals(single, { values: [[]], plural: false });
+  assertEquals(single, { values: [[]], plural: false, missing: [] });
   const contains = resolveSegments(decision, parsePath('d.writes[op=meal_log].items[name~NUGGET].grams').slice(1));
   assertEquals(contains.values, [110], 'the ~ filter is a Turkish case-insensitive contains');
   const deep = resolveSegments(decision, parsePath('d.writes..allergens').slice(1));
   assertEquals(deep.values, [['gluten'], []]);
 });
 
-Deno.test('applyAliases: the longest matching prefix is rewritten once', () => {
-  const al = { 'decision.record_ops[op=': 'decision.record_ops[kind=', 'decision.': 'decision.' };
-  assertEquals(applyAliases('decision.record_ops[op=delete].ref', al), 'decision.record_ops[kind=delete].ref');
-  assertEquals(applyAliases('commit.water_log.liters', al), 'commit.water_log.liters');
+Deno.test('resolveSegments: a key the value does not have is reported as missing (structure, not data)', () => {
+  assertEquals(resolveSegments(decision, parsePath('d.writes[op=meal_log].venue').slice(1)).missing, [], 'null is a value');
+  assertEquals(resolveSegments(decision, parsePath('d.writes[op=sleep_log].hours').slice(1)).missing, [], 'no sleep write = empty, not missing');
+  assertEquals(resolveSegments(decision, parsePath('d.writes[op=meal_log].items[*].allergen_tags').slice(1)).missing, ['allergen_tags']);
+  assertEquals(resolveSegments(decision, parsePath('d.writes[op=meal_log]..allergen_tags').slice(1)).missing, ['..allergen_tags']);
+  assertEquals(resolveSegments({ foods: [] }, parsePath('d.foods..allergens').slice(1)).missing, [], 'an empty list has nothing to search');
+});
+
+Deno.test('word tokens: whole words only (kek ≠ kekik), multi-word needles match consecutive tokens', () => {
+  assertEquals(wordTokens('Havuçlu KEK, kekikli tavuk'), ['havuçlu', 'kek', 'kekikli', 'tavuk']);
+  assert(containsWords('havuçlu kek', 'kek'));
+  assert(!containsWords('kekikli tavuk', 'kek'));
+  assert(containsWords('fırında tavuk göğsü', 'tavuk göğsü'));
+  assert(!containsWords('tavuk ve göğsü', 'tavuk göğsü'));
 });
 
 // ── operators ─────────────────────────────────────────────────────────────────────────────────
@@ -85,15 +96,91 @@ Deno.test('set operators: count counts matches for plural paths and length for a
   assertEquals(run({ path: 'decision.writes', count_gte: 3 }).status, 'fail');
 });
 
-Deno.test('flag: booleans, level enums and signal objects', () => {
-  assert(!isPositiveSignal(null));
-  assert(!isPositiveSignal('none'));
-  assert(isPositiveSignal('possible'));
-  assert(isPositiveSignal({ category: 'purging', severity: 'high', evidence_quote: 'x' }));
-  assert(!isPositiveSignal({ level: 'none', category: 'other' }));
+Deno.test('flag reads only the registry safety shapes; anything else fails closed (review fix)', () => {
+  // acute_medical / self_harm: boolean
+  assertEquals([signalOf(true), signalOf(false)], [true, false]);
+  // ed_signal: null | {category, severity, evidence_quote}; illness_vomiting is "YB değil"
+  assertEquals(signalOf(null), false);
+  assertEquals(signalOf({ category: 'purging', severity: 'high', evidence_quote: 'x' }), true);
+  assertEquals(signalOf({ category: 'illness_vomiting', severity: 'low', evidence_quote: 'kustum' }), false, 'review: severity before category no longer turns this positive');
+  // tripwire_reading: null | {benign, reason}
+  assertEquals(signalOf({ benign: false, reason: 'gerçek bayılma' }), true);
+  assertEquals(signalOf({ benign: true, reason: 'beğeni' }), false);
+  // Not a registry shape → not guessed (the old code read these as POSITIVE).
+  for (const odd of [{ detected: false, evidence_quote: '' }, { present: false }, { category: 'other' }, 'none', 'possible', 1, [], undefined]) {
+    assertEquals(signalOf(odd), null, JSON.stringify(odd));
+  }
   assertEquals(run({ path: 'decision.safety.ed_signal', flag: false }).status, 'pass', 'null ed_signal is a negative reading');
   assertEquals(run({ path: 'decision.safety.acute_medical', flag: true }).status, 'fail');
   assertEquals(run({ path: 'decision.safety.self_harm', flag: false }).status, 'pass');
+  const odd = { decision: { safety: { ed_signal: { detected: false, evidence_quote: '' } } } };
+  const pos = run({ path: 'decision.safety.ed_signal', flag: true }, odd);
+  const neg = run({ path: 'decision.safety.ed_signal', flag: false }, odd);
+  assertEquals([pos.status, neg.status], ['fail', 'fail'], 'an unknown shape passes neither B+ nor B-');
+  assert(pos.detail.includes('tanınmayan sinyal biçimi'));
+});
+
+Deno.test('flag is read through the FIELD\'s registry declaration (ENVELOPE_HEAD.safety), not by guessing the shape', () => {
+  assertEquals(Object.keys(ENVELOPE_HEAD.safety.fields), ['acute_medical', 'self_harm', 'ed_signal', 'tripwire_reading'], 'the fields flag can read');
+  assertEquals(safetyFieldOf('decision.safety.ed_signal'), 'ed_signal');
+  assertEquals(safetyFieldOf('decision.safety.ed_signal.category'), null, 'a sub-field is not a signal');
+  assertEquals(safetyFieldOf('decision.intent.is_hypothetical'), null);
+  // A shape that belongs to ANOTHER safety field is not read under this one.
+  assertEquals(signalOf({ benign: false, reason: 'gerçek' }, 'ed_signal'), null);
+  assertEquals(signalOf({ category: 'purging', severity: 'high', evidence_quote: 'x' }, 'tripwire_reading'), null);
+  assertEquals(signalOf(true, 'ed_signal'), null);
+  assertEquals(signalOf(null, 'self_harm'), null, 'self_harm is a non-nullable bool: null is not "no"');
+  // Strict decoding emits exactly the declared keys: a missing or an extra key is not a registry shape.
+  assertEquals(signalOf({ category: 'purging' }, 'ed_signal'), null);
+  assertEquals(signalOf({ category: 'purging', severity: 'high', evidence_quote: 'x', detected: false }, 'ed_signal'), null);
+  assertEquals(signalOf({ category: 'compensatory', severity: 'high', evidence_quote: 'x' }, 'ed_signal'), null, 'an ED category the registry does not declare');
+  assertEquals(signalOf({ category: 'compensatory_exercise', severity: 'medium', evidence_quote: 'x' }, 'ed_signal'), true);
+  // A flag on a field that is not a safety field fails, whatever its value.
+  const bool = run({ path: 'decision.intent.is_hypothetical', flag: false }, { decision: { intent: { is_hypothetical: false } } });
+  assertEquals(bool.status, 'fail');
+  assert(bool.detail.includes('yalnız registry safety'));
+  // A tripwire-reading shape placed in ed_signal (drift) fails both directions.
+  const swapped = { decision: { safety: { ed_signal: { benign: true, reason: 'x' } } } };
+  assertEquals([run({ path: 'decision.safety.ed_signal', flag: true }, swapped).status, run({ path: 'decision.safety.ed_signal', flag: false }, swapped).status], ['fail', 'fail']);
+});
+
+Deno.test('negative operators: an empty list passes, a path that does not fit the output FAILS (review fix)', () => {
+  const reply = (foods: unknown) => ({ reply: { reply: 'x', suggested_foods: foods } });
+  const check: Expectation = { path: 'reply.suggested_foods..allergens', not_contains_any: ['egg'] };
+  assertEquals(run(check, reply([])).status, 'pass', 'nothing suggested = nothing with egg');
+  assertEquals(run(check, reply([{ name: 'mercimek çorbası', allergens: [], may_contain: [] }])).status, 'pass');
+  assertEquals(run(check, reply([{ name: 'omlet', allergens: ['egg'], may_contain: [] }])).status, 'fail');
+  const drift = run(check, reply([{ name: 'omlet', allergen_tags: ['egg'] }]));
+  assertEquals(drift.status, 'fail', 'a renamed field must not turn a safety invariant green');
+  assert(drift.detail.includes('yol çıktıya uymuyor'));
+  const gone = run({ path: 'reply.suggested_foods[*].name', not_contains_any: ['yumurta'] }, { reply: { reply: 'x' } });
+  assertEquals(gone.status, 'fail', 'the whole list missing is drift too');
+  // A NULL nullable object (no ED signal, no clarify) is "nothing here", not drift: B- must pass on it.
+  const noSignal = { decision: { safety: { ed_signal: null }, clarify: null } };
+  assertEquals(run({ path: 'decision.safety.ed_signal.category', not_in: ['purging', 'restriction'] }, noSignal).status, 'pass');
+  assertEquals(run({ path: 'decision.clarify.candidate_refs', not_contains: 'm12' }, noSignal).status, 'pass');
+  assertEquals(run({ path: 'decision.safety.ed_signal.category', not_in: ['purging'] }, { decision: { safety: { ed_signal: { category: 'purging', severity: 'high', evidence_quote: 'x' } } } }).status, 'fail');
+});
+
+Deno.test('word operators: not_contains_word_any does not hit "kekik" for "kek"', () => {
+  const foods = (names: string[]) => ({ reply: { suggested_foods: names.map((name) => ({ name, allergens: [], may_contain: [] })) } });
+  const e: Expectation = { path: 'reply.suggested_foods[*].name', not_contains_word_any: ['kek', 'pasta'] };
+  assertEquals(run(e, foods(['kekikli tavuk', 'bulgur pilavı'])).status, 'pass');
+  assertEquals(run(e, foods(['havuçlu kek'])).status, 'fail');
+  assertEquals(run({ path: 'reply.suggested_foods[*].name', contains_word_any: ['pilavı'] }, foods(['bulgur pilavı'])).status, 'pass');
+});
+
+Deno.test('unbound fields of a stage that ran are skipped with the reason, not failed or passed', () => {
+  const t: TurnResult = {
+    outputs: { receipts: [{ action_type: 'meal_log', ok: true, user_line: 'Öğün kaydedildi' }] },
+    stages: { receipts: 'ok' },
+    stage_errors: {},
+    unbound: { receipts: { allergen_exposure: 'commit katmanı yok' } },
+  };
+  const r = evaluateExpectation({ path: 'receipts[*].allergen_exposure', exists: true }, { turn: t, message: '' });
+  assertEquals(r.status, 'skipped');
+  assert(r.detail.includes('commit katmanı yok'));
+  assertEquals(evaluateExpectation({ path: 'receipts[*].user_line', contains: 'Öğün' }, { turn: t, message: '' }).status, 'pass');
 });
 
 Deno.test('verbatim_in_message: the evidence quote must come from the USER message (final2#9)', () => {
@@ -129,23 +216,17 @@ Deno.test('stages: not run → skipped, errored → fail, any_of/all_of combine 
   assertEquals(run({ all_of: [{ path: 'decision.writes', count: 3 }, { path: 'commit.x', exists: true }] }).status, 'fail');
 });
 
-// ── schema check ──────────────────────────────────────────────────────────────────────────────
+// ── schema walk (the bound lint walks the registry's real understand schema) ─────────────────
 
-Deno.test('checkSchema: strict subset — enum, required, additionalProperties, anyOf, $ref, nullable', () => {
-  const schema = {
-    type: 'object', additionalProperties: false, required: ['writes', 'clarify'],
-    $defs: { water: { type: 'object', additionalProperties: false, required: ['op', 'unit', 'quantity'], properties: {
-      op: { const: 'water_log' }, unit: { type: 'string', enum: ['bardak', 'ml', 'litre'] }, quantity: { type: 'number', minimum: 0, maximum: 50 },
-    } } },
-    properties: {
-      writes: { type: 'array', items: { anyOf: [{ $ref: '#/$defs/water' }] } },
-      clarify: { type: ['object', 'null'] },
-    },
-  };
-  assertEquals(checkSchema({ writes: [{ op: 'water_log', unit: 'bardak', quantity: 1 }], clarify: null }, schema), []);
-  const bad = checkSchema({ writes: [{ op: 'water_log', unit: 'cup', quantity: 1 }], extra: 1 }, schema);
-  assert(bad.some((e) => e.includes('zorunlu alan eksik "clarify"')));
-  assert(bad.some((e) => e.includes('tanımsız alan "extra"')));
-  assert(bad.some((e) => e.includes('anyOf')));
-  assertEquals(checkSchema({ writes: [{ op: 'water_log', unit: 'ml', quantity: 250 }], clarify: null }, schema).length, 1, 'range violation');
+Deno.test('walkSchema: $ref to the write union, op filters pick anyOf branches, nullable objects, deep keys', () => {
+  const schema = understandSchemaForLint() as Record<string, unknown>;
+  const leaf = (p: string) => walkSchema(parsePath(p).slice(1), schema);
+  const unit = leaf('decision.writes[op=water_log].unit');
+  assertEquals(unit.issues, []);
+  assert((unit.leaves[0].enum as string[]).includes('bardak'));
+  assertEquals(leaf('decision.writes[op=meal_log].items[*].allergens').issues, [], 'the shared $defs/allergens list is followed');
+  assertEquals(leaf('decision.safety.ed_signal.category').issues, [], 'nullable object (anyOf with null) is walked');
+  assertEquals(leaf('decision.record_ops[op=update].patch..kcal').issues, [], 'patch = the write union, searched deep');
+  assertEquals(leaf('decision.writes[op=water_log]..items').issues.length, 1, 'water_log has no items anywhere');
+  assertEquals(leaf('decision.record_ops[op=modify]').issues.length, 1, 'there is no modify op in record_ops');
 });

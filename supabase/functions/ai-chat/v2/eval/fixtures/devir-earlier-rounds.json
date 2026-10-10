@@ -37,7 +37,7 @@
       "turn_input": {},
       "expect": [
         { "path": "decision.writes[op=meal_log]", "count": 1 },
-        { "path": "decision.writes[op=meal_log].day", "eq": "2026-10-05" },
+        { "path": "validation.verdicts[op=meal_log].derived.date", "eq": "2026-10-05" },
         { "path": "decision.intent.is_hypothetical", "eq": false }
       ]
     },
@@ -51,7 +51,7 @@
       "turn_input": {},
       "expect": [
         { "path": "decision.writes[op=meal_log]", "count": 1 },
-        { "path": "decision.writes[op=meal_log]..allergens", "contains_any": ["peanut", "peanuts", "fıstık", "yer fıstığı"] },
+        { "path": "decision.writes[op=meal_log]..allergens", "contains_any": ["peanut"] },
         { "path": "receipts[*].allergen_exposure", "exists": true },
         { "path": "reply.reply", "contains_any": ["nasılsın", "iyi misin", "belirti", "112", "tepki"] }
       ]
@@ -106,11 +106,8 @@
       "message": "dün gece 7 saat uyudum",
       "turn_input": {},
       "expect": [
-        { "path": "decision.writes[op=sleep_log].day", "eq": "2026-10-06" },
-        { "any_of": [
-          { "path": "decision.writes[op=sleep_log]..hours", "eq": 7 },
-          { "path": "decision.writes[op=sleep_log]..duration_hours", "eq": 7 }
-        ] }
+                { "path": "decision.writes[op=sleep_log].hours", "eq": 7 },
+        { "path": "validation.verdicts[op=sleep_log].derived.date", "eq": "2026-10-06", "why": "Uyku = uyanılan gün; registry derive() günü (today/yesterday/tarih) kodun yazacağı tarihe çözer." }
       ]
     },
     {
@@ -161,13 +158,13 @@
       "title": "‘vegan değilim artık’ beslenme kısıtını kaldırır; yeni ‘var’ kısıtı yazmaz.",
       "turn_input": {
         "spine": [ { "ref": "c1", "kind": "dietary", "subject_id": "vegan", "display_tr": "vegan", "severity": "unknown", "whose": "self", "active": true } ],
-        "profile": { "dietary_restriction": "vegan" }
+        "profile": { "diet_mode": "vegan" }
       },
       "message": "vegan değilim artık, her şeyi yiyorum",
       "expect": [
         { "any_of": [
           { "path": "decision.writes[op=constraint_retract].target", "eq": "c1" },
-          { "path": "decision.writes[op=profile_set].changes[field=dietary_restriction]", "exists": true }
+          { "path": "decision.writes[op=profile_set].changes[field=diet_mode]", "exists": true }
         ] },
         { "path": "decision.writes[op=constraint_add][polarity=has]", "count": 0 }
       ]
@@ -183,7 +180,7 @@
       "expect": [
         { "path": "decision.writes", "count": 0 },
         { "path": "reply.suggested_foods[*].name", "not_contains_any": ["köfte", "pane", "şnitzel", "mayonez"] },
-        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "eggs", "yumurta"] }
+        { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg"] }
       ]
     },
     {

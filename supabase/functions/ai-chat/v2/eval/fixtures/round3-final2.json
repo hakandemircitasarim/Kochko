@@ -97,14 +97,14 @@
       "title": "‘6 tavuk nugget’ ~300 kcal saklanır; aday listesindeki tavuk göğsü seçilmez (1708 kcal yapısal olarak imkânsız).",
       "turn_input": {
         "reference_candidates": [
-          { "key": "tavuk göğsü", "line": "tavuk göğsü: 165 kcal/100 g · P31 K0 Y3,6 · porsiyon ≈150 g" },
-          { "key": "ketçap", "line": "ketçap: 112 kcal/100 g · 1 yemek kaşığı ≈17 g" }
+          { "key": "tavuk göğsü", "line": "tavuk göğsü: 165 kcal/100 g · P31 K0 Y3,6 · porsiyon ≈150 g", "name_tr": "tavuk göğsü (ızgara)", "kcal_per_100g": 165, "protein_per_100g": 31, "carbs_per_100g": 0, "fat_per_100g": 3.6 },
+          { "key": "ketçap", "line": "ketçap: 112 kcal/100 g · 1 yemek kaşığı ≈17 g", "name_tr": "ketçap", "kcal_per_100g": 112, "protein_per_100g": 1.2, "carbs_per_100g": 26, "fat_per_100g": 0.2 }
         ]
       },
       "message": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
       "expect": [
         { "path": "decision.writes[op=meal_log]", "count": 1 },
-        { "path": "decision.writes[op=meal_log].day", "eq": "2026-10-01" },
+        { "path": "validation.verdicts[op=meal_log].derived.date", "eq": "2026-10-01" },
         { "path": "decision.writes[op=meal_log].meal_type", "eq": "dinner" },
         { "path": "decision.writes[op=meal_log].items[name~nugget].kcal", "between": [220, 450] },
         { "path": "decision.writes[op=meal_log].items[name~nugget].grams", "between": [60, 200] },
@@ -119,13 +119,13 @@
       "title": "Tavuk şinitzel tavuk göğsüne eşlenmez; kalem başına tahmin, salata ve yoğurda kızartma çarpanı binmez.",
       "turn_input": {
         "reference_candidates": [
-          { "key": "tavuk göğsü", "line": "tavuk göğsü: 165 kcal/100 g · P31 K0 Y3,6 · porsiyon ≈150 g" },
-          { "key": "yoğurt", "line": "yoğurt (tam yağlı): 61 kcal/100 g · 1 kase ≈200 g" }
+          { "key": "tavuk göğsü", "line": "tavuk göğsü: 165 kcal/100 g · P31 K0 Y3,6 · porsiyon ≈150 g", "name_tr": "tavuk göğsü (ızgara)", "kcal_per_100g": 165, "protein_per_100g": 31, "carbs_per_100g": 0, "fat_per_100g": 3.6 },
+          { "key": "yoğurt", "line": "yoğurt (tam yağlı): 61 kcal/100 g · 1 kase ≈200 g", "name_tr": "yoğurt (tam yağlı)", "kcal_per_100g": 61, "protein_per_100g": 3.5, "carbs_per_100g": 4.7, "fat_per_100g": 3.3 }
         ]
       },
       "message": "cuma günü öğlen 1 porsiyon tavuk şinitzel kızartması, 1 kase yoğurt ve 1 porsiyon yeşil salata yemiştim",
       "expect": [
-        { "path": "decision.writes[op=meal_log].day", "eq": "2026-10-02" },
+        { "path": "validation.verdicts[op=meal_log].derived.date", "eq": "2026-10-02" },
         { "path": "decision.writes[op=meal_log].meal_type", "eq": "lunch" },
         { "path": "decision.writes[op=meal_log].items[*]", "count": 3 },
         { "path": "decision.writes[op=meal_log].items[name~nitzel].kcal", "between": [300, 750] },
@@ -141,8 +141,8 @@
       "title": "‘2 dilim lahmacun’ 60 g olmaz: 180–330 g ya da netleştirme sorusu; ayran su sayılmaz.",
       "turn_input": {
         "reference_candidates": [
-          { "key": "lahmacun", "line": "lahmacun: 240 kcal/100 g · 1 adet ≈130 g" },
-          { "key": "ayran", "line": "ayran: 36 kcal/100 ml · 1 bardak ≈200 ml" }
+          { "key": "lahmacun", "line": "lahmacun: 240 kcal/100 g · 1 adet ≈130 g", "name_tr": "lahmacun", "kcal_per_100g": 240, "protein_per_100g": 10, "carbs_per_100g": 30, "fat_per_100g": 9 },
+          { "key": "ayran", "line": "ayran: 36 kcal/100 ml · 1 bardak ≈200 ml", "name_tr": "ayran", "kcal_per_100g": 36, "protein_per_100g": 1.7, "carbs_per_100g": 2.6, "fat_per_100g": 1.9 }
         ]
       },
       "message": "dün akşam 2 dilim lahmacun yedim yanında da 1 ayran içtim",
@@ -151,7 +151,7 @@
           { "path": "decision.writes[op=meal_log].items[name~lahmacun].grams", "between": [180, 330] },
           { "path": "decision.clarify", "exists": true }
         ], "why": "§9.4 A: gram ∈ [180, 330] veya clarify." },
-        { "path": "decision.writes[op=meal_log].day", "in": ["2026-10-03"], "quantifier": "all" },
+        { "path": "validation.verdicts[op=meal_log].derived.date", "in": ["2026-10-03"], "quantifier": "all" },
         { "path": "decision.writes[op=water_log]", "count": 0 }
       ]
     },
@@ -213,7 +213,7 @@
       "message": "bugün öğlen 200 gr ızgara tavuk göğsü, 1 kase bulgur pilavı ve yarım porsiyon çoban salata yedim",
       "expect": [
         { "path": "decision.writes[op=meal_log].items[*]", "count": 3 },
-        { "path": "decision.writes[op=meal_log].day", "eq": "2026-10-04" },
+        { "path": "validation.verdicts[op=meal_log].derived.date", "eq": "2026-10-04" },
         { "path": "decision.writes[op=meal_log].meal_type", "eq": "lunch" },
         { "path": "decision.writes[op=meal_log].items[name~tavuk].grams", "between": [190, 210] },
         { "path": "decision.writes[op=meal_log].items[name~tavuk].kcal", "between": [280, 380] },
@@ -232,7 +232,11 @@
         { "path": "decision.writes[op=meal_log].items[name~pasta].as_stated", "contains": "3 dilim" },
         { "any_of": [
           { "path": "decision.safety.ed_signal", "flag": false },
-          { "path": "decision.safety.ed_signal.category", "in": ["binge_report", "other"] }
+          { "all_of": [
+            { "path": "decision.safety.ed_signal.category", "eq": "binge" },
+            { "path": "decision.safety.ed_signal.severity", "eq": "low" },
+            { "path": "validation.safety.ed_signal.escalate", "eq": null }
+          ] }
         ], "why": "Tek bir aşırı yeme raporu kusma/kısıtlama sinyali değildir." },
         { "path": "decision.safety.self_harm", "flag": false },
         { "path": "decision.reply_route.contract", "not_in": ["crisis", "emergency"] }
@@ -287,8 +291,8 @@
       "expect": [
         { "path": "decision.writes[op=supplement_log]", "count_gte": 1 },
         { "any_of": [
-          { "path": "decision.writes[op=supplement_log]..allergens", "contains_any": ["fish", "seafood", "balık", "balik", "deniz ürünleri", "deniz_urunleri", "crustaceans", "molluscs"] },
-          { "path": "decision.writes[op=supplement_log]..may_contain", "contains_any": ["fish", "seafood", "balık", "balik", "deniz ürünleri", "deniz_urunleri", "crustaceans", "molluscs"] }
+          { "path": "decision.writes[op=supplement_log]..allergens", "contains_any": ["fish", "crustacean", "mollusc"] },
+          { "path": "decision.writes[op=supplement_log]..may_contain", "contains_any": ["fish", "crustacean", "mollusc"] }
         ], "why": "Omega-3 → balık etiketi (§7.1)." },
         { "path": "receipts[*].allergen_exposure", "exists": true }
       ]
@@ -301,8 +305,7 @@
       "message": "dün akşam 2 dilim lahmacun yedim yanında da 1 ayran içtim",
       "turn_input": {},
       "expect": [
-        { "path": "decision.writes[op=meal_log].venue", "in": [null, ""], "quantifier": "all" },
-        { "path": "decision.writes[op=venue_log]", "count": 0 }
+        { "path": "decision.writes[op=meal_log].venue", "in": [null, ""], "quantifier": "all", "why": "Mekân yalnız meal_log.venue alanıdır (registry'de ayrı mekân yazması yok)." }
       ]
     },
     {
@@ -314,11 +317,8 @@
       "turn_input": {},
       "expect": [
         { "path": "decision.writes[op=step_log]", "count": 1 },
-        { "any_of": [
-          { "path": "decision.writes[op=step_log]..steps", "eq": 8500 },
-          { "path": "decision.writes[op=step_log]..quantity", "eq": 8500 }
-        ] },
-        { "path": "decision.writes[op=step_log].day", "eq": "2026-10-04" }
+        { "path": "decision.writes[op=step_log].steps", "eq": 8500 },
+        { "path": "validation.verdicts[op=step_log].derived.date", "eq": "2026-10-04" }
       ]
     },
     {
@@ -367,7 +367,7 @@
       "message": "dün sabah 9 gibi 1 kupa sütsüz filtre kahve içmiştim onu da yaz",
       "turn_input": {},
       "expect": [
-        { "path": "decision.writes[op=meal_log].day", "eq": "2026-10-03" },
+        { "path": "validation.verdicts[op=meal_log].derived.date", "eq": "2026-10-03" },
         { "path": "decision.writes[op=meal_log].meal_type", "eq": "breakfast" },
         { "path": "decision.writes[op=meal_log].time_local", "in": ["09:00", "9:00"] },
         { "path": "decision.writes[op=meal_log].items[*].caffeine_mg", "between": [60, 250] },
@@ -387,7 +387,7 @@
         { "path": "decision.writes[op=meal_log].items[name~mandalina].kcal", "between": [25, 80] },
         { "path": "decision.writes[op=meal_log].meal_type", "eq": "snack" },
         { "path": "decision.clarify", "absent": true },
-        { "path": "validation.writes[op=meal_log].outcome", "eq": "commit" }
+        { "path": "validation.verdicts[op=meal_log].verdict", "eq": "COMMIT" }
       ]
     },
     {
@@ -413,11 +413,8 @@
       "turn_input": {},
       "expect": [
         { "path": "decision.writes[op=sleep_log]", "count": 1 },
-        { "path": "decision.writes[op=sleep_log].day", "eq": "2026-10-04" },
-        { "any_of": [
-          { "path": "decision.writes[op=sleep_log]..hours", "eq": 6 },
-          { "path": "decision.writes[op=sleep_log]..duration_hours", "eq": 6 }
-        ] },
+        { "path": "validation.verdicts[op=sleep_log].derived.date", "eq": "2026-10-04" },
+        { "path": "decision.writes[op=sleep_log].hours", "eq": 6 },
         { "path": "receipts[*].user_line", "contains": "6 saat" }
       ]
     },

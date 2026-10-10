@@ -3,9 +3,12 @@
  * Deno only (tsconfig excludes this file; `deno task v2-eval` from supabase/functions runs it too).
  * All logic lives in supabase/functions/ai-chat/v2/eval/; usage is in that folder's README.md.
  *
- *   npx deno run --config supabase/functions/deno.json --allow-read --allow-write --allow-net --allow-env scripts/eval-v2.ts --mode lint
+ *   npx deno task --config supabase/functions/deno.json v2-eval --mode lint
+ *   npx deno task --config supabase/functions/deno.json v2-eval-live --dry-run   (pre-flight, no call)
+ *   npx deno task --config supabase/functions/deno.json v2-eval-live             (the full live run, N=5, records .replay/)
  *
- * Keep `--config`: without it Deno resolves the repo-root package.json and rewrites the root deno.lock.
+ * Keep `--config` and `--no-lock` (the tasks pass it): otherwise Deno resolves the repo-root
+ * package.json and rewrites the root deno.lock.
  */
 import { main } from '../supabase/functions/ai-chat/v2/eval/cli.ts';
 
