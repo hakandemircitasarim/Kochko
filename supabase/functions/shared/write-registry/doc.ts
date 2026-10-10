@@ -10,8 +10,10 @@
  * (names, enum ids, nullability) and the Stage A rules (ai-chat/v2/understand-prompt.ts) do not:
  *   • per op: when / when not (one line), notes only for non-obvious fields, explained enums,
  *     what code computes ("Kod:"), the two-step policy, at most one example;
- *   • shared conventions (day, as_stated, evidence_quote, replaces, refs, allergen and body-part
- *     ids) once, in the header;
+ *   • shared conventions (day, as_stated, evidence_quote, refs, allergen and body-part ids) once,
+ *     in the header — and the ONE correction path: record_ops update. A log op's `replaces` stays
+ *     in the schema and the validator (a legacy/internal field, still checked and committed
+ *     correctly) but is not taught: the doc says it stays null (§6.2 table);
  *   • seldom-used ops (tier 'rare') as one line each in an appendix — still complete in the schema.
  * Plausibility thresholds (what is asked or flagged) are deliberately NOT listed: the model gives
  * its honest estimate and code decides; telling it "2500 kcal is asked" only invites shading.
@@ -113,7 +115,7 @@ export function buildWriteDoc(): string {
   out.push(`YAZILABİLİR KAYITLAR (şema kochko_understand_${SCHEMA_VERSION})`);
   out.push('Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aralığı denetler, hiçbir sayını sessizce değiştirmez. Her yazma ayrı denetlenir.');
   out.push(dayLine());
-  out.push(`Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. replaces: KAYITLAR’daki aynı türden kaydın düzeltilmiş hâliyse onun ref’i, değilse null.`);
+  out.push(`Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. Kayıt düzeltmenin tek yolu record_ops update; yazmalardaki replaces hep null.`);
   out.push(refLine());
   const allergenIds = (Object.keys(ALLERGENS) as Array<keyof typeof ALLERGENS>)
     .map((id) => (ALLERGEN_DOC_HINTS[id] ? `${id} (${ALLERGEN_DOC_HINTS[id]})` : id));

@@ -221,7 +221,7 @@
       "expect": [
         { "path": "decision.writes", "count": 0 },
         { "path": "reply.suggested_foods[*].name", "not_contains_any": ["yumurta", "omlet", "menemen", "mayonez", "fıstık"] },
-        { "path": "reply.suggested_foods[*].name", "not_contains_word_any": ["kek", "keki", "kekler", "kekli", "pasta"], "why": "Kelime eşleşmesi: ‘kekikli tavuk’ (kekik) öneri değil yasak değildir." },
+        { "path": "reply.suggested_foods[*].name", "not_contains_prefix_any": { "prefixes": ["kek", "pasta"], "except": ["kekik"] }, "why": "Kelime başı eşleşmesi: kek/keke/kekleri/havuçlu kek ve pasta/pastası yakalanır; ‘kekikli tavuk’ (kekik) yasak değildir." },
         { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "peanut"] },
         { "path": "reply.suggested_foods..may_contain", "not_contains_any": ["egg", "peanut"] }
       ]

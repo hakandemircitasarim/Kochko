@@ -18,12 +18,15 @@
  * leaf by leaf.
  */
 import { MAX_BACK_DAYS, type Channel, type EvalOpts, type FieldSpec, type Fields, type Issue, type RegOp, type ValidationContext } from './dsl.ts';
-import { ENVELOPE_HEAD, ENVELOPE_TAIL } from './envelope.ts';
+import { ENVELOPE_HEAD, ENVELOPE_TAIL, NOT_WRITTEN_REASONS } from './envelope.ts';
 import { parseRef } from './refs.ts';
 import { CHANNELS, findWireOp, getOp, SCHEMA_VERSION, UNDERSTAND_CHANNELS } from './registry.ts';
 import { cloneJson, daysBetween, isHhmm, isIsoDay, isRecord, isVerbatimQuote, RELATIVE_DAY_TOKENS, resolveDay, roundTo } from './util.ts';
 
 export type Verdict = 'COMMIT' | 'FLAG' | 'ASK' | 'REJECT';
+
+/** A declared reason a reported fact was not written (envelope.ts NOT_WRITTEN_REASONS). */
+export type NotWrittenReason = keyof typeof NOT_WRITTEN_REASONS;
 
 /** A lossless column fit (SMALLINT, NUMERIC(5,1)…) — the only change code makes to a model number. */
 export interface Normalization {
@@ -94,11 +97,11 @@ export interface DecisionValidation {
    */
   missed_write: boolean;
   /**
-   * The model's own reason for a reported-but-unwritten fact (trimmed), when it gave one — then the
-   * turn is NOT a missed write; the facts layer acts on the reason. null when something was written
-   * or clarified, nothing was reported, or no reason was given.
+   * The model's declared reason (a NOT_WRITTEN_REASONS id) for a reported-but-unwritten fact — then
+   * the turn is NOT a missed write; the facts layer acts on the reason. null when something was
+   * written or clarified, nothing was reported, or no declared reason was given.
    */
-  not_written_reason: string | null;
+  not_written_reason: NotWrittenReason | null;
   counts: Record<Verdict, number>;
 }
 
@@ -587,17 +590,19 @@ export function validateDecision(decision: unknown, ctx: ValidationContext): Dec
     env.issues.push({ code: 'niyet_yazma_celiskisi', level: 'flag', tr: 'mesaj varsayım olarak okunmuş ama kayıt yazması var', path: 'intent' });
   }
 
-  // §5.1.10: a missed write is an UNEXPLAINED omission. When the model says why it wrote nothing
-  // (not_written_reason: "acil sağlık durumu; önce güvenlik", "tek seferlik rahatsızlık; kayıt alanı
-  // yok", "bilgi eksik") it decided, it did not forget — the facts layer reads that reason and the
-  // route; it must not ALSO get a "kullanıcı bir şey bildirdi ama yazılmadı → sor" fact (an
-  // emergency turn would otherwise end in a data-entry question). Only a blank reason is a miss.
+  // §5.1.10: a missed write is an UNEXPLAINED omission. When the model says why it wrote nothing it
+  // decided, it did not forget — the facts layer reads that reason and the route; it must not ALSO
+  // get a "kullanıcı bir şey bildirdi ama yazılmadı → sor" fact (an emergency turn would otherwise end
+  // in a data-entry question). The reason is a CLOSED enum (NOT_WRITTEN_REASONS: emergency_turn,
+  // illness_not_food, …): only a declared id explains; free text, a blank or an unknown id (a
+  // json_object fallback) is still a miss — never an excuse code has to interpret.
   const selfCheck = isRecord(d.self_check) ? d.self_check : null;
   const wroteSomething = verdicts.some((v) => v.channel !== 'memory');
-  const reasonGiven = typeof selfCheck?.not_written_reason === 'string' && selfCheck.not_written_reason.trim() !== '';
+  const reason = selfCheck?.not_written_reason;
+  const reasonGiven = typeof reason === 'string' && Object.prototype.hasOwnProperty.call(NOT_WRITTEN_REASONS, reason);
   const unwritten = selfCheck?.reported_new_facts === true && !wroteSomething && clarify === null;
   const missed_write = unwritten && !reasonGiven;
-  const not_written_reason = unwritten && reasonGiven ? (selfCheck!.not_written_reason as string).trim() : null;
+  const not_written_reason = unwritten && reasonGiven ? reason as NotWrittenReason : null;
 
   const repairItems = verdicts
     .filter((v) => v.verdict === 'REJECT' && v.repairable)

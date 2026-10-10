@@ -141,7 +141,14 @@ Deno.test('bound lint: registry drift is a LINT error, not a model failure after
   assert(m('decision.writes[op=meal_log]..allergen_tags', 'exists', true).includes('..allergen_tags'));
   assertEquals(m('decision.writes[op=lab_value].items[*].value', 'contains_any', ['118']), '', 'contains on a number is allowed (lab values)');
   assert(m('decision.intent.primary', 'flag', true).includes('flag yalnız registry safety'));
-  assertEquals(m('decision.safety.tripwire_reading', 'flag', false), '');
+  assertEquals(m('decision.safety.tripwire_readings', 'flag', false), '');
+  assertEquals(m('decision.safety.tripwire_readings[*].reading', 'eq', 'benign'), '');
+  assert(m('decision.safety.tripwire_readings[*].reading', 'eq', 'maybe').includes('"maybe" bu alanın değeri olamaz'));
+  assert(m('decision.safety.tripwire_reading.benign', 'eq', true).includes('"tripwire_reading" şemada yok'), 'the v3 single-object path is drift now');
+  assert(m('decision.self_check.not_written_reason', 'eq', 'acil sağlık durumu').includes('bu alanın değeri olamaz'), 'the reason is a closed enum');
+  assertEquals(m('decision.self_check.not_written_reason', 'eq', 'emergency_turn'), '');
+  assertEquals(m('reply.suggested_foods[*].name', 'not_contains_prefix_any', { prefixes: ['kek'], except: ['kekik'] }), '');
+  assert(m('decision.writes[op=water_log].quantity', 'not_contains_prefix_any', { prefixes: ['kek'] }).includes('metin alanı ister'));
   assert(m('decision.writes[op=profile_set].changes[field=birth_year].value', 'eq', 1988).includes('sayı'), 'profile values are text');
   assertEquals(m('reply.suggested_foods..may_contain', 'not_contains_any', ['egg']), '');
   assert(m('reply.suggested_food[*].name', 'not_contains_any', ['x']).includes('şemada yok'));
@@ -161,6 +168,19 @@ Deno.test('lint: declared tripwires, reference rows without numbers and unknown 
   assert(msgs({ tripwires: [{ id: 'x' }] }).includes('scanTripwires'));
   assert(msgs({ reference_candidates: [{ key: 'lahmacun', line: '240 kcal/100 g' }] }).includes('kcal_per_100g'));
   assert(msgs({ records: [{ ref: 'd3', kind: 'su', day: '2026-10-06', line: 'x' }] }).includes('geçersiz kayıt türü'));
+});
+
+Deno.test('lint: the token-prefix operator takes {prefixes, except?}; an exception must extend a prefix', () => {
+  const lint = (arg: unknown) =>
+    lintFixture(base({ expect: [{ path: 'reply.suggested_foods[*].name', not_contains_prefix_any: arg } as unknown as Expectation] })).map((i) => i.message).join(' | ');
+  assertEquals(lint({ prefixes: ['kek', 'pasta'], except: ['kekik'] }), '');
+  assertEquals(lint({ prefixes: ['kek'] }), '');
+  assert(lint(['kek']).includes('"prefixes"'), 'a bare list is not the shape');
+  assert(lint({ prefixes: [] }).includes('"prefixes"'));
+  assert(lint({ prefixes: ['havuçlu kek'] }).includes('"prefixes"'), 'one word per prefix');
+  assert(lint({ prefixes: ['kek'], except: ['pastırma'] }).includes('hiçbir önekin uzantısı değil'), 'an exception that can never apply');
+  assert(lint({ prefixes: ['kek'], except: ['kek'] }).includes('hiçbir önekin uzantısı değil'), 'an exception equal to its prefix would cancel it');
+  assert(lint({ prefixes: ['kek'], extra: 1 }).includes('bilinmeyen alan "extra"'));
 });
 
 /** Every PathExpectation in a list, any_of/all_of flattened. */
@@ -192,14 +212,14 @@ Deno.test('B+ fixtures assert the signal their title promises (review: self-harm
   assert(ed.title.includes('YB') && !leaves(ed.expect).some((e) => e.path.includes('self_harm')));
 });
 
-Deno.test('T2 binding: a fixture that reads tripwire_reading gets a live tripwire fact; an explicit hit is asserted via t2', async () => {
+Deno.test('T2 binding: a fixture that reads tripwire_readings gets a live tripwire fact; an explicit hit is asserted via t2', async () => {
   const { fixtures } = await loadFixtureDir(FIXTURES);
   for (const f of fixtures) {
     if (f.pipeline && f.pipeline !== 'chat') continue;
     const t2 = fixtureT2(f.message);
     const paths = leaves(f.expect).map((e) => e.path);
-    if (paths.some((p) => p.startsWith('decision.safety.tripwire_reading'))) {
-      assert(t2.output.facts > 0, `${f.id}: tripwire_reading bekleniyor ama gerçek T2 taraması tetik bulmuyor («${f.message}»)`);
+    if (paths.some((p) => p.startsWith('decision.safety.tripwire_readings'))) {
+      assert(t2.output.facts > 0, `${f.id}: tripwire_readings bekleniyor ama gerçek T2 taraması tetik bulmuyor («${f.message}»)`);
     }
     if (t2.output.canned && !f.client) {
       assert(paths.some((p) => p.startsWith('t2.')), `${f.id}: açık tetik → Stage A çağrılmaz; beklenti t2 üzerinden yazılmalı`);
@@ -227,4 +247,14 @@ Deno.test('validationContextFor: rendered refs carry the loader facts; reference
   assertEquals(c2.day_totals?.['2026-10-04']?.water_liters, 3.2);
   assertEquals(c2.today, '2026-10-04');
   assertEquals(c2.user_message, nug.message, 'only the verbatim-quote check reads it');
+  // Built by THE loader's builder (input.ts buildValidationContext): goal from the fixture profile,
+  // last weigh-in through the same 14-day window, typed identity keys.
+  assertEquals(ctx.goal, { goal_type: 'lose_weight', target_weight_kg: 77 });
+  assertEquals(ctx.profile, { birth_year: 1990, height_cm: 181, weight_kg: 82.5, gender: 'male', periodic_state: null });
+  const noGoal = { ...nug, turn_input: { ...nug.turn_input, profile: { weight_kg: 70 } } };
+  assertEquals(validationContextFor(noGoal).goal, null, 'no goal facts → no goal (as the loader with no active goal row)');
+  const weigh = fixtures.find((f) => f.turn_input.last_weight)!;
+  assertEquals(validationContextFor(weigh).last_weight, weigh.turn_input.last_weight, 'a weigh-in inside the window counts');
+  const stale = { ...weigh, turn_input: { ...weigh.turn_input, last_weight: { kg: 85.9, day: '2026-09-01' } } };
+  assertEquals(validationContextFor(stale).last_weight, null, 'outside 14 days it does not — same rule as the loader');
 });

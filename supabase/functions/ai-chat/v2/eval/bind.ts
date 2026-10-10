@@ -3,7 +3,8 @@
  * ve derive()'ı çalıştırır, commit'i bellekte simüle eder").
  *
  *   - validationContextFor(): a fixture's TurnInput snapshot → the registry's ValidationContext
- *     (rendered refs, day totals, profile, ED tier, reference rows). The only eval-side mapping.
+ *     (rendered refs, day totals, profile, ED tier, reference rows), through input.ts
+ *     buildValidationContext — the builder the shadow/live loader uses. The only eval-side mapping.
  *   - postStageA(): validateDecision() verbatim → `validation`; every COMMIT/FLAG verdict's `row`
  *     (args ⊕ derive, the bytes the writer would persist) + the op's declared invariants →
  *     `commit`; the registry's toActionReceipt() with the writer assumed ok → `receipts`.
@@ -20,12 +21,14 @@
 import {
   buildReplySchema, buildUnderstandSchema, getOp, type JsonSchema, parseRef, type RenderedRef, type RenderedRefs,
   toActionReceipt, type DecisionValidation, type RefTarget, type ValidationContext, validateDecision, type WriteVerdict,
-  type ReferenceRow, type DayTotals,
+  type ReferenceRow,
 } from '../../../shared/write-registry/mod.ts';
 import { sampleContext, sampleDecision, SAMPLE_MESSAGES, SAMPLE_WRITES } from '../../../shared/write-registry/samples.ts';
 import type { EvalFixture, FixtureTurnInput, Json, RecordKind, StageOutputs } from './types.ts';
 import { parsePath, type PathSegment } from './path.ts';
 import { safetyFieldOf } from './expect.ts';
+import { buildValidationContext } from '../input.ts';
+import { fixtureGoal } from './request.ts';
 
 // ── ValidationContext from a fixture ──────────────────────────────────────────────────────────
 
@@ -46,7 +49,6 @@ const RECORD_TARGET: Readonly<Record<RecordKind, { target: RefTarget; op: string
 };
 
 const num = (v: Json | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-const str = (v: Json | undefined): string | null => (typeof v === 'string' && v ? v : null);
 
 /** `now` as an ISO instant. Deterministic: the fixture's local wall clock read as UTC (holds and
  *  their expiry are generated against the same base, so only the difference matters). */
@@ -94,16 +96,15 @@ export function renderedRefsFor(ti: FixtureTurnInput): RenderedRefs {
   return refs;
 }
 
+/**
+ * The fixture's ValidationContext — built by input.ts buildValidationContext, the SAME builder the
+ * shadow/live loader uses (one place types the profile keys, picks the last weigh-in in 14 days
+ * and shapes the day totals). Only the mapping of the fixture's loose snapshot happens here.
+ */
 export function validationContextFor(f: Pick<EvalFixture, 'turn_input' | 'message'>): ValidationContext {
   const ti = f.turn_input;
   const today = ti.now?.local_date ?? '1970-01-01';
   const t = ti.today ?? {};
-  const totals: DayTotals = {};
-  if (num(t.water_liters) !== null) totals.water_liters = num(t.water_liters);
-  if (num(t.steps) !== null) totals.steps = num(t.steps);
-  if (num(t.sleep_hours) !== null) totals.sleep_hours = num(t.sleep_hours);
-  if (num(t.weight_kg) !== null) totals.weight_kg = num(t.weight_kg);
-  const p = ti.profile ?? {};
   const reference_rows: Record<string, ReferenceRow> = {};
   for (const c of ti.reference_candidates ?? []) {
     reference_rows[c.key] = {
@@ -111,21 +112,20 @@ export function validationContextFor(f: Pick<EvalFixture, 'turn_input' | 'messag
       protein_per_100g: c.protein_per_100g ?? null, carbs_per_100g: c.carbs_per_100g ?? null, fat_per_100g: c.fat_per_100g ?? null,
     };
   }
-  return {
+  const hasTotals = ['water_liters', 'steps', 'sleep_hours', 'weight_kg'].some((k) => num(t[k]) !== null);
+  const profile = ti.profile ?? {};
+  return buildValidationContext({
     today,
     now_iso: fixtureNowIso(ti),
-    user_message: f.message,
+    message: f.message,
     refs: renderedRefsFor(ti),
-    day_totals: Object.keys(totals).length ? { [today]: totals } : {},
-    profile: {
-      birth_year: num(p.birth_year), height_cm: num(p.height_cm), weight_kg: num(p.weight_kg),
-      gender: str(p.gender), periodic_state: str(p.periodic_state),
-    },
-    last_weight: ti.last_weight ?? null,
-    goal: { goal_type: str(p.goal_type), target_weight_kg: num(p.target_weight_kg) },
+    days: hasTotals ? [{ day: today, water_liters: t.water_liters, steps: t.steps, sleep_hours: t.sleep_hours, weight_kg: t.weight_kg }] : [],
+    profile,
+    goal: fixtureGoal(profile),
+    weights: ti.last_weight ? [ti.last_weight] : [],
     ed_tier: ti.tier ?? 'none',
     reference_rows,
-  };
+  });
 }
 
 // ── after Stage A: validate, simulate the commit, build receipts ───────────────────────────────
@@ -313,9 +313,12 @@ function leafIssues(op: string, arg: unknown, leaves: S[], root: S): string[] {
   }
   if (['between', 'gte', 'lte', 'gt', 'lt'].includes(op) && !types.has('number') && !types.has('integer')) out.push(`${op} sayı alanı ister, alan ${[...types].join('|') || '?'}`);
   if (op === 'verbatim_in_message' && !types.has('string')) out.push('verbatim_in_message metin alanı ister');
+  if ((op === 'contains_prefix_any' || op === 'not_contains_prefix_any') && types.size && !types.has('string')) out.push(`${op} metin alanı ister`);
   if (op === 'flag') {
-    const ok = leaves.every((s) => typesOf(s).includes('boolean') || 'category' in props(s) || 'benign' in props(s));
-    if (!ok) out.push('flag yalnız registry safety alanlarına (acute_medical, self_harm, ed_signal, tripwire_reading) uygulanır');
+    const ok = leaves.every((s) =>
+      typesOf(s).includes('boolean') || 'category' in props(s) || (isArrayNode(s) && alts(s.items, root).some((i) => 'reading' in props(i)))
+    );
+    if (!ok) out.push('flag yalnız registry safety alanlarına (acute_medical, self_harm, ed_signal, tripwire_readings) uygulanır');
     if (typeof arg !== 'boolean') out.push('flag true ya da false ister');
   }
   return out;
@@ -362,7 +365,7 @@ export function lintBoundPath(path: string, op: string, arg: unknown): string[] 
   const tag = (xs: string[]) => xs.map((x) => `${x} (${path})`);
   // `flag` reads one registry safety field by its declaration (expect.ts) — on any root.
   if (op === 'flag' && safetyFieldOf(path) === null) {
-    return tag(['flag yalnız registry safety alanlarına (acute_medical, self_harm, ed_signal, tripwire_reading) uygulanır']);
+    return tag(['flag yalnız registry safety alanlarına (acute_medical, self_harm, ed_signal, tripwire_readings) uygulanır']);
   }
   if (root === 'decision' || root === 'reply') {
     const schema = root === 'decision' ? understandSchema() : replySchema();

@@ -11,7 +11,7 @@
  *
  * The prefix is byte-identical for every user so it caches globally under one key. Nothing per-user
  * or per-turn belongs here; the TurnInput block, tripwire facts and the message are appended after it
- * by understand.ts.
+ * by stage-a-request.ts (the one Stage A composer — shadow, live and eval send the same bytes).
  *
  * Bound to the REAL registry (shared/write-registry), not to a hand-typed copy of it:
  *   • decision types come from the envelope declarations (an intent the schema lacks does not compile);
@@ -32,7 +32,7 @@ import type { FieldSpec, Fields, Infer } from '../../shared/write-registry/dsl.t
  * + the registry doc (SCHEMA_VERSION), so the key names both. Bump the prompt version whenever the
  * rules or few-shots change.
  */
-export const UNDERSTAND_PROMPT_VERSION = 'v2';
+export const UNDERSTAND_PROMPT_VERSION = 'v3';
 export const UNDERSTAND_CACHE_KEY = `kochko-understand:${UNDERSTAND_PROMPT_VERSION}-${SCHEMA_VERSION}`;
 
 /** Decision-first top-level order of kochko_understand_vN (§3.2 T4); pinned to the schema by a test. */
@@ -112,13 +112,13 @@ Sen Kochko'nun anlama aşamasısın. Kişiye cevap yazmazsın: mesajı okur, ne 
 3. Gün. Günü bağlamdaki yerel tarihe göre ver: today, yesterday ya da YYYY-MM-DD. Gelecek tarih ve yedi günden eski kayıt yazılmaz.
 4. Miktarın iki yüzü. as_stated kişinin ifadesidir ve aynen yazılır ("2 çimdik", "koca bir bardak", "annemin tabağı kadar"); kod onu ayrıştırmaz. Kanonik sayıyı sen verirsin: gram, kcal, makrolar. Ölçülebilir miktarda birimi listeden seç, listede yoksa other ile kendi ml tahminini yaz. Birim çevirmeyi kod yapar: 1 bardak su quantity 1, unit bardak'tır, 1 litre değil. Küçük miktarlar da geçerlidir; 2 çimdik tuz ~0,7 g ve 0 kcal'dir, soru gerektirmez.
 5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak ve kendi tahminini ver. Kelime benzerliği aynı yiyecek demek değildir: tavuk nugget tavuk göğsü değildir.
-6. Mevcut kayıtlar. Bağlamdaki kayıtlar m12, d3 gibi kısa ref'lerle gelir; geri alma ve düzeltme yalnızca bu listedeki bir ref'le yapılır. Kişi bir kaydı geri alıyorsa record_ops delete. Kişi gösterilen bir kaydın yanlış olduğunu söyleyip doğrusunu veriyorsa record_ops update: basis user_correction, düzeltme cümlesinden birebir evidence_quote, patch'te kaydın düzeltilmiş tam hâli. Aynı düzeltmeyi bir de replaces ile yeni yazma olarak ekleme; çift işlem olur. Kişi listede görünen bir öğünü yeniden anlatıyorsa status restatement olur; "bir muz daha" ise yeni yemektir. Makul görünmeyen eski bir kaydı (6 nugget için 1708 kcal) fark edersen kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, koç bir kez sorar, kişi evet derse sonraki turda pending_ops confirm ile işlenir.
+6. Mevcut kayıtlar. Bağlamdaki kayıtlar m12, d3 gibi kısa ref'lerle gelir; geri alma ve düzeltme yalnızca bu listedeki bir ref'le yapılır. Kişi bir kaydı geri alıyorsa record_ops delete. Kişi gösterilen bir kaydın yanlış olduğunu söyleyip doğrusunu veriyorsa record_ops update: basis user_correction, düzeltme cümlesinden birebir evidence_quote, patch'te kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır, aynı düzeltmeyi bir de yeni yazma olarak ekleme; çift işlem olur. Kişi listede görünen bir öğünü yeniden anlatıyorsa status restatement olur; "bir muz daha" ise yeni yemektir. Makul görünmeyen eski bir kaydı (6 nugget için 1708 kcal) fark edersen kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, koç bir kez sorar, kişi evet derse sonraki turda pending_ops confirm ile işlenir.
 7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse (son turda iki yazma varken "sonuncuyu sil") yazma; clarify'a aday ref'leri koy. Bir soru kendiliğinden hiçbir kaydı silmez ya da değiştirmez.
-8. Bağlantılar. Son asistan mesajı bağlamdadır; kısa bir cevap ("82", "evet", "2 bardak") ona verilmiş olabilir. Bekleyen onaylara (p#) ve açık sözlere (k#) bağlanan cevapları pending_ops ve commitment_ops ile bağla.
-9. Güvenlik okuması. Bağlamda tetik varsa tripwire_reading'i gerekçesiyle doldur: kelime gerçek bir durumu mu anlatıyor ("antrenmanda bayıldım"), mecaz mı ("bu tatlıya bayıldım")? Emin değilsen benign deme; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Hastalık ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting). ed_signal'in evidence_quote'u kişinin mesajından birebir alıntıdır; koçun cümleleri sinyal sayılmaz.
+8. Bağlantılar. Son konuşma bağlamdadır; kısa bir cevap ("82", "evet", "2 bardak") koçun son mesajına verilmiş olabilir. Bekleyen onaylara (p#) ve açık sözlere (k#) bağlanan cevapları pending_ops ve commitment_ops ile bağla.
+9. Güvenlik okuması. Bağlamda tetik varsa her belirsiz tetik için tripwire_readings'e bir okuma yaz: hit_id, positive ya da benign ve gerekçe. Kelime gerçek bir durumu mu anlatıyor ("antrenmanda bayıldım"), mecaz mı ("bu tatlıya bayıldım")? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Hastalık ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting). ed_signal'in evidence_quote'u kişinin mesajından birebir alıntıdır; koçun cümleleri sinyal sayılmaz.
 10. Alerji ve sakatlık. Her öğeyi ayrı yaz: "fıstık alerjim yok ama fındık var" iki kayıttır (does_not_have ve has). Şiddet söylenmediyse unknown yaz; kod onu netleşene kadar ciddi sayar. Bir kısıtın kaldırılması tek turda olmaz; kod onay ister.
 11. Plan. Kişi açıkça plan istiyor, değiştiriyor ya da onaylıyorsa plan_action'ı buna göre seç; açık taslağa dönük her işlemde draft_ref taslağın ref'idir. Taslak açıkken plan dışı bir mesaj plan eylemi değildir.
-12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason'a kısaca yaz (bilgi eksik, kayıt alanı yok, önce güvenlik); koç buna göre davranır. Geri alma, onay ve senin fark ettiğin şüpheli kayıt kişinin bildirdiği yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
+12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason listesinden seç (acil tur, hastalık bildirimi, yalnız soru, varsayım, başkası, zaten kayıtlı, bilgi eksik); uyan bir neden yoksa null bırak, koç sorar. Geri alma, onay ve senin fark ettiğin şüpheli kayıt kişinin bildirdiği yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
 13. Rota. reply_route koçun hangi sözleşmeyle konuşacağıdır: acil ya da kriz sinyalinde emergency veya crisis, plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca sıkıntı, yeme bozukluğu, telafi, analiz ve plan gibi düşünmek isteyen turlarda.
 
 Aşağıda önce yazabileceğin kayıtların belgesi, sonra örnek kararlar var. Örneklerde boş liste, null, false ya da 0 olan alanlar, plan_action none ve varsayılan rota (coach, low) kısalık için gösterilmedi; şema hepsini ister.`;
@@ -276,7 +276,7 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   },
   {
     id: 'taslak_onayi',
-    context: ['PLAN TASLAĞI: dft1 · diet v2 · 6–12 Eki haftası, her gün ~1750 kcal, 3 öğün'],
+    context: ['PLAN TASLAĞI: dft1 · beslenme taslağı v2 · 6–12 Eki haftası, her gün ~1750 kcal, 3 öğün'],
     message: 'onaylıyorum',
     decision: {
       intent: { primary: 'confirmation' },
@@ -338,7 +338,7 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
     message: 'bu tatlıya bayıldım, tarifini sonra isteyeceğim',
     decision: {
       intent: { primary: 'chat' },
-      safety: { tripwire_reading: { benign: true, reason: '"bayıldım" burada çok beğenmek anlamında; sağlık yakınması yok' } },
+      safety: { tripwire_readings: [{ hit_id: 'tw1', reading: 'benign', reason: '"bayıldım" burada çok beğenmek anlamında; sağlık yakınması yok' }] },
     },
     why: 'Mecaz okuma gerekçesiyle yazılır; tarif isteği henüz yapılmadı.',
   },
@@ -348,9 +348,9 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
     message: 'sabah antrenmanda bir an bayıldım, şimdi iyiyim ama başım hâlâ dönüyor',
     decision: {
       intent: { primary: 'report' },
-      safety: { acute_medical: true, tripwire_reading: { benign: false, reason: 'egzersiz sırasında gerçek bilinç kaybı ve süren baş dönmesi' } },
+      safety: { acute_medical: true, tripwire_readings: [{ hit_id: 'tw1', reading: 'positive', reason: 'egzersiz sırasında gerçek bilinç kaybı ve süren baş dönmesi' }] },
       reply_route: { contract: 'emergency', effort_hint: 'medium' },
-      self_check: { reported_new_facts: true, not_written_reason: 'acil sağlık durumu; önce güvenlik' },
+      self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
     },
     why: 'Aynı kelime, gerçek durum: koruyucu yol.',
   },
@@ -362,9 +362,9 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
       intent: { primary: 'report' },
       safety: {
         ed_signal: { category: 'illness_vomiting', severity: 'low', evidence_quote: 'dün gece kustum' },
-        tripwire_reading: { benign: true, reason: 'zehirlenme kaynaklı kusma; kilo kontrolü için çıkarma işareti yok' },
+        tripwire_readings: [{ hit_id: 'tw1', reading: 'benign', reason: 'zehirlenme kaynaklı kusma; kilo kontrolü için çıkarma işareti yok' }],
       },
-      self_check: { reported_new_facts: true, not_written_reason: 'tek seferlik rahatsızlık; kayıt alanı yok' },
+      self_check: { reported_new_facts: true, not_written_reason: 'illness_not_food' },
     },
     why: 'Hastalık kusması yeme bozukluğu sinyali değildir: illness_vomiting, YB yükselmez; alıntı kişinin sözü.',
   },

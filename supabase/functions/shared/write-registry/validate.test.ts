@@ -8,6 +8,7 @@ import { collectRefs, freezeForHold, validateChannelItems, validateConfirmedHold
 import { SAMPLE_WRITES, sampleContext, sampleDecision, sampleMeal } from './samples.ts';
 import type { ValidationContext } from './dsl.ts';
 import { SCHEMA_VERSION } from './registry.ts';
+import { NOT_WRITTEN_REASONS } from './envelope.ts';
 
 const w = (op: string, over: Record<string, unknown> = {}) => ({ ...structuredClone(SAMPLE_WRITES[op]), ...over });
 const water = (over: Record<string, unknown> = {}) => w('water_log', over);
@@ -555,7 +556,7 @@ Deno.test('json_object fallback: plan_action null (not an object) is reported as
 });
 
 Deno.test('final2#9: an ED signal counts only with a verbatim USER quote; illness vomiting never escalates', () => {
-  const sig = (q: string, category = 'purging', severity = 'high') => sampleDecision({ safety: { acute_medical: false, self_harm: false, ed_signal: { category, severity, evidence_quote: q }, tripwire_reading: null } });
+  const sig = (q: string, category = 'purging', severity = 'high') => sampleDecision({ safety: { acute_medical: false, self_harm: false, ed_signal: { category, severity, evidence_quote: q }, tripwire_readings: [] } });
   const msg = 'yemekten sonra parmağımı boğazıma sokuyorum';
   assertEquals(validateDecision(sig('parmağımı boğazıma sokuyorum'), sampleContext({ user_message: msg })).safety.ed_signal?.escalate, 'high');
   const coach = validateDecision(sig('aç kalma'), sampleContext({ user_message: msg })).safety.ed_signal;
@@ -572,28 +573,50 @@ Deno.test('§5.1.10: reported a fact but wrote nothing and did not clarify → m
   assertEquals(validateDecision(sampleDecision({ self_check: sc }), sampleContext()).not_written_reason, null);
 });
 
-Deno.test('§5.1.10: a GIVEN not_written_reason is a decision, not a miss (emergency / illness turns never become a data-entry question)', () => {
+Deno.test('§5.1.10: a DECLARED not_written_reason is a decision, not a miss (emergency / illness turns never become a data-entry question)', () => {
   const emergency = sampleDecision({
-    safety: { acute_medical: true, self_harm: false, ed_signal: null, tripwire_reading: null },
+    safety: { acute_medical: true, self_harm: false, ed_signal: null, tripwire_readings: [] },
     reply_route: { contract: 'emergency', effort_hint: 'medium' },
-    self_check: { reported_new_facts: true, not_written_reason: '  acil sağlık durumu; önce güvenlik ' },
+    self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
   });
   const e = validateDecision(emergency, sampleContext({ user_message: 'antrenmanda bayıldım, hâlâ başım dönüyor' }));
-  assertEquals([e.missed_write, e.not_written_reason], [false, 'acil sağlık durumu; önce güvenlik']);
+  assertEquals([e.missed_write, e.not_written_reason], [false, 'emergency_turn']);
+  assertEquals(e.decision_issues, []);
   const illness = validateDecision(sampleDecision({
-    self_check: { reported_new_facts: true, not_written_reason: 'tek seferlik rahatsızlık; kayıt alanı yok' },
+    self_check: { reported_new_facts: true, not_written_reason: 'illness_not_food' },
   }), sampleContext({ user_message: 'dün gece kustum, zehirlendim galiba' }));
-  assertEquals([illness.missed_write, illness.not_written_reason], [false, 'tek seferlik rahatsızlık; kayıt alanı yok']);
-  // A blank / whitespace reason explains nothing: still a miss.
-  for (const blank of ['', '   ', null]) {
-    const v = validateDecision(sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: blank } }), sampleContext());
-    assertEquals([v.missed_write, v.not_written_reason], [true, null], JSON.stringify(blank));
+  assertEquals([illness.missed_write, illness.not_written_reason], [false, 'illness_not_food']);
+  // Every declared id explains the omission.
+  for (const id of Object.keys(NOT_WRITTEN_REASONS)) {
+    const v = validateDecision(sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: id } }), sampleContext());
+    assertEquals([v.missed_write, v.not_written_reason], [false, id], id);
   }
   // The reason is only surfaced for an UNWRITTEN report: written / clarified / nothing reported → null.
-  const reason = { reported_new_facts: true, not_written_reason: 'bilgi eksik' };
+  const reason = { reported_new_facts: true, not_written_reason: 'needs_clarification' };
   assertEquals(validateDecision(sampleDecision({ self_check: reason, writes: [water()] }), sampleContext()).not_written_reason, null);
   assertEquals(validateDecision(sampleDecision({ self_check: reason, clarify: { topic: 'hangi öğün', candidate_refs: ['m14'] } }), sampleContext()).not_written_reason, null);
-  assertEquals(validateDecision(sampleDecision({ self_check: { reported_new_facts: false, not_written_reason: 'bilgi eksik' } }), sampleContext()).not_written_reason, null);
+  assertEquals(validateDecision(sampleDecision({ self_check: { reported_new_facts: false, not_written_reason: 'needs_clarification' } }), sampleContext()).not_written_reason, null);
+});
+
+Deno.test('safety.tripwire_readings: one {hit_id, reading, reason} per hit; an unknown reading or the v3 single-object shape is an envelope issue', () => {
+  const safety = (tripwire_readings: unknown) => sampleDecision({ safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_readings } });
+  const ok = validateDecision(safety([{ hit_id: 'tw1', reading: 'benign', reason: '"bayıldım" çok beğenmek' }, { hit_id: 'tw2', reading: 'positive', reason: 'emin değilim' }]), sampleContext());
+  assertEquals(ok.decision_issues, []);
+  const unknown = validateDecision(safety([{ hit_id: 'tw1', reading: 'maybe', reason: 'x' }]), sampleContext());
+  assert(unknown.decision_issues.some((i) => i.path === 'safety.tripwire_readings[0].reading' && i.level === 'hard'), JSON.stringify(unknown.decision_issues));
+  const v3 = validateDecision(safety({ benign: true, reason: 'beğeni' }), sampleContext());
+  assert(v3.decision_issues.some((i) => i.path === 'safety.tripwire_readings' && i.code === 'tip_hatasi'), JSON.stringify(v3.decision_issues));
+  assertEquals(v3.repair.needed, true, 'a fixable shape error is repaired, never read as "no trigger"');
+});
+
+Deno.test('§5.1.10: the reason list is CLOSED — free text, a blank or an unknown id explains nothing (still a miss, and an envelope issue)', () => {
+  // v3 took any non-blank text ("bilgi eksik", "acil sağlık durumu; önce güvenlik") as an excuse; a
+  // json_object fallback could then silence the coach's question with any words. Only the ids count.
+  for (const bad of ['acil sağlık durumu; önce güvenlik', 'bilgi eksik', 'Emergency_Turn', 'no_field', '', '   ', null]) {
+    const v = validateDecision(sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: bad } }), sampleContext());
+    assertEquals([v.missed_write, v.not_written_reason], [true, null], JSON.stringify(bad));
+    if (bad !== null) assert(v.decision_issues.some((i) => i.path === 'self_check.not_written_reason' && i.level === 'hard'), `${JSON.stringify(bad)}: not a declared id`);
+  }
 });
 
 Deno.test('A′: "bunu nasıl düzeltebilirim?" (no record_ops) deletes nothing; a clarify ref that was not shown is flagged', () => {

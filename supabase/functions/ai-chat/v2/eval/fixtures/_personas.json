@@ -42,7 +42,6 @@
       ],
       "draft": { "ref": "dft1", "plan_type": "diet", "version": 3, "line": "5–11 Eki haftası · her gün 2812 kcal (bakım) · akşamlar ~700 kcal · kullanıcı akşamları hafifletmeyi istedi" },
       "today": { "kcal": 1420, "protein_g": 88, "water_liters": 1.8 },
-      "gates": ["kalori hedefi düşürme: KAPALI (YB amber)"],
       "history": []
     }
   },

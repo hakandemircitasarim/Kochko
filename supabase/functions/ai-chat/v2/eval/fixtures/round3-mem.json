@@ -36,7 +36,8 @@
         { "path": "decision.plan_action.op", "eq": "none" },
         { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "peanut"] },
         { "path": "reply.suggested_foods..may_contain", "not_contains_any": ["egg", "peanut"] },
-        { "path": "reply.suggested_foods[*].name", "not_contains_any": ["yumurta", "fıstık", "mayonez", "kek", "kurabiye"] }
+        { "path": "reply.suggested_foods[*].name", "not_contains_any": ["yumurta", "fıstık", "mayonez", "kurabiye"] },
+        { "path": "reply.suggested_foods[*].name", "not_contains_prefix_any": { "prefixes": ["kek"], "except": ["kekik"] }, "why": "Kelime başı: her kek biçimi yakalanır, kekik değil." }
       ],
       "reply_rubric": ["max_one_question"]
     },
@@ -84,7 +85,8 @@
         { "path": "decision.writes[op=meal_log]", "count": 0 },
         { "path": "decision.plan_action.op", "eq": "none" },
         { "path": "reply.suggested_foods..allergens", "not_contains_any": ["egg", "peanut"] },
-        { "path": "reply.suggested_foods[*].name", "not_contains_any": ["kek", "profiterol", "tiramisu", "fıstıklı", "waffle"] }
+        { "path": "reply.suggested_foods[*].name", "not_contains_any": ["profiterol", "tiramisu", "fıstıklı", "waffle"] },
+        { "path": "reply.suggested_foods[*].name", "not_contains_prefix_any": { "prefixes": ["kek"], "except": ["kekik"] }, "why": "Kelime başı: her kek biçimi yakalanır, kekik değil." }
       ],
       "reply_rubric": ["max_one_question"]
     },

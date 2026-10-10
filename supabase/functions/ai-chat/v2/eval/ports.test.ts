@@ -127,8 +127,12 @@ Deno.test('fixture → production Stage A request: registry prefix + schema, ren
   const user = body.input[0].content;
   assert(user.startsWith(renderTurnInputBlock(fixtureView(fixture.turn_input))));
   assert(user.includes('d3 · su +0,20 L → gün 3,4 L (son tur)'));
-  assert(user.includes('c1 · allergen · deniz ürünleri · moderate · self · aktif'));
+  // Structured fixture parts are worded by input.ts's own helpers — the loader's wording.
+  assert(user.includes('c1 · alerji · deniz ürünleri · orta'), user);
   assert(user.includes('p1 · constraint_retract · c1 kaldırma — onay bekliyor'));
+  assert(user.includes('ŞİMDİ: Pazar 4 Eki 2026, saat 21:10 (Europe/Istanbul) · today = 2026-10-04 · yesterday = 2026-10-03'));
+  assert(user.includes('koç: "Ekledim."\n  ⟦d3 su +0,20 L⟧'));
+  assertEquals(body.max_tokens, 2500, 'the eval sends the output budget production uses');
   assert(user.endsWith('KULLANICI MESAJI:\nyok o yanlis, geri al'));
   assertEquals(await requestKey(body), await requestKey(buildFixtureRequest(fixture, 'gpt-5.6-terra')));
   assert((await requestKey(body)) !== (await requestKey(buildFixtureRequest(fixture, 'gpt-6-luna'))));
@@ -137,7 +141,7 @@ Deno.test('fixture → production Stage A request: registry prefix + schema, ren
 });
 
 Deno.test('fixture BUGÜN totals are worded as the few-shots teach them ("BUGÜN: su 1,40 L"), unknown keys kept', () => {
-  assertEquals(todayPhrases({ water_liters: 1.4, kcal: 1240.4, protein_g: 61.6, meals_logged: 3, week: 'w41' }), ['su 1,40 L', '1240 kcal', 'protein 62 g', '3 öğün kaydı', 'week=w41']);
+  assertEquals(todayPhrases({ water_liters: 1.4, kcal: 1240.4, protein_g: 61.6, meals_logged: 3, week: 'w41' }), ['su 1,40 L', '1.240 kcal', 'protein 62 g', '3 öğün kaydı', 'week=w41']);
   const block = renderFixtureBlock({ now: { local_date: '2026-10-04' }, today: { water_liters: 1.4 } });
   assertEquals(block, renderTurnInputBlock(fixtureView({ now: { local_date: '2026-10-04' }, today: { water_liters: 1.4 } })), 'the fixture renderer IS production\'s renderer over the view');
   const taught = UNDERSTAND_FEW_SHOTS.flatMap((s) => s.context).filter((l) => l.startsWith('BUGÜN: su '));
@@ -223,6 +227,20 @@ Deno.test('budget gate (E): latency, parse/schema error rate, repair rate (≤ %
   assert(w.detail.includes('önbellek %71') && w.detail.includes('ort. çıktı 200 token'), w.detail);
   assertEquals(computeGates(ok).map((g) => g.package), ['A', "A'", 'B+', 'B-', 'C', 'D', 'E']);
   assertEquals(costOf('gpt-5.6-terra', { input_tokens: 1_000_000, cached_tokens: 500_000, output_tokens: 100_000 }), 2.3);
+});
+
+Deno.test('budget gate (E) is never green on partial data: harness errors and replay misses make it incomplete', () => {
+  const ok = [...Array(20)].map((_, i) => res('A', 'pass', { cache: 'live', latency_ms: 1500 + i * 50 }));
+  const errored = budgetGate([...ok, res('A', 'error', { cache: 'live', error: 'HTTP 502' })]);
+  assertEquals(errored.status, 'incomplete', 'a dropped call could have been the slow or broken one');
+  assert(errored.detail.includes('1 hata'), errored.detail);
+  const missed = budgetGate([...ok, res('A', 'skipped', { cache: 'miss' })]);
+  assertEquals(missed.status, 'incomplete');
+  assert(missed.detail.includes('1 replay kaydı yok'), missed.detail);
+  assertEquals(budgetGate([res('A', 'skipped', { cache: 'miss' })]).status, 'incomplete', 'an empty replay cache is not "no data"');
+  // A real budget breach still reads as a failure, partial data or not.
+  assertEquals(budgetGate([...ok.map((r) => ({ ...r, latency_ms: (r.latency_ms ?? 0) + 3000 })), res('A', 'error')]).status, 'fail');
+  assertEquals(gatesFailed({ gates: [errored] }).map((g) => g.package), ['E'], '--enforce-gates blocks on it');
 });
 
 // ── rubric + judge request ────────────────────────────────────────────────────────────────────

@@ -77,7 +77,7 @@ export type TripwireTier = 'explicit' | 'ambiguous' | 'signal';
 export type EdSeverity = 'high' | 'medium';
 
 export interface TripwireHit {
-  /** Per-scan handle Stage A answers with in `safety.tripwire_reading` ('tw1', 'tw2', …). */
+  /** Per-scan handle Stage A answers with in `safety.tripwire_readings[].hit_id` ('tw1', 'tw2', …). */
   hit_id: string;
   /** Stable pattern id for the ledger ('emg.bayilma', 'sh.intihar', 'ed.kusma' …); a curated
    * explicit phrasing told as past, about someone else or denied is '<explicit id>.anlatim' (tier
@@ -1004,7 +1004,7 @@ export function renderTripwireFacts(scan: TripwireScan): string {
     return `- ${f.hit_id} [${tags.join(' · ')}] "${f.matched}" — ${f.question_tr}`;
   });
   return [
-    'GÜVENLİK TETİKLERİ (kod kelimeyi buldu, anlamını sen okursun). Belirsiz olanların HER BİRİ için safety.tripwire_reading içine hit_id, okuma (positive/benign) ve gerekçe yaz; emin değilsen positive say.',
+    'GÜVENLİK TETİKLERİ (kod kelimeyi buldu, anlamını sen okursun). Belirsiz olanların HER BİRİ için safety.tripwire_readings listesine hit_id, okuma (positive/benign) ve gerekçe yaz; emin değilsen positive say.',
     ...lines,
   ].join('\n');
 }

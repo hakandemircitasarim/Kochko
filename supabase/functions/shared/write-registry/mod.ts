@@ -19,7 +19,7 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from './tokens.ts';
 export { buildCapabilities } from './capabilities.ts';
 export {
   validateDecision, validateChannelItems, validateConfirmedHold, collectRefs, freezeForHold, opOf,
-  type DecisionValidation, type WriteVerdict, type PlanVerdict, type Verdict, type Normalization,
+  type DecisionValidation, type WriteVerdict, type PlanVerdict, type Verdict, type Normalization, type NotWrittenReason,
 } from './validate.ts';
 export {
   receiptLine, toActionReceipt, turnFactLine, holdLine, rejectLine, writeFailedLine, MEAL_LOGGED_MARK,
@@ -35,6 +35,9 @@ export {
 } from './dsl.ts';
 export { UNIT_ML, LIQUID_UNIT_TR, mlPerUnit } from './units.ts';
 export * as vocab from './vocab.ts';
-export { ENVELOPE_HEAD, ENVELOPE_TAIL, REPLY_HEAD, REPLY_TAIL, INTENT_PRIMARY, ED_CATEGORIES, PLAN_OPS, REPLY_CONTRACTS } from './envelope.ts';
+export {
+  ENVELOPE_HEAD, ENVELOPE_TAIL, REPLY_HEAD, REPLY_TAIL, INTENT_PRIMARY, ED_CATEGORIES, PLAN_OPS, REPLY_CONTRACTS,
+  NOT_WRITTEN_REASONS, TRIPWIRE_READINGS, TRIPWIRE_READINGS_MAX,
+} from './envelope.ts';
 export { ERASE_HOLD_OP } from './ops/pending.ts';
 export { PROFILE_FIELD_SPECS, profileFieldLabel } from './ops/profile.ts';

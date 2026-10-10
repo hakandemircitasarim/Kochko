@@ -25,7 +25,7 @@ import {
   STAGE_ROOTS,
   VALUE_OPERATORS,
 } from './types.ts';
-import { parsePath } from './path.ts';
+import { parsePath, wordTokens } from './path.ts';
 import { isAllOf, isAnyOf } from './expect.ts';
 import { lintBoundPath } from './bind.ts';
 
@@ -165,6 +165,27 @@ function lintExpectation(e: Expectation, f: EvalFixture, refs: Set<string>, say:
     case 'contains_word_any': case 'not_contains_word_any':
       if (!Array.isArray(arg) || arg.length === 0 || !arg.every((x) => typeof x === 'string' && x.trim())) bad('boş olmayan metin dizisi olmalı');
       break;
+    case 'contains_prefix_any': case 'not_contains_prefix_any': {
+      const oneWord = (x: unknown): x is string => typeof x === 'string' && wordTokens(x).length === 1;
+      const m = isPlainObj(arg) ? arg : null;
+      const prefixes = m && Array.isArray(m.prefixes) && m.prefixes.length > 0 && m.prefixes.every(oneWord) ? m.prefixes as string[] : null;
+      if (!m || !prefixes) {
+        bad('{ "prefixes": [tek kelimelik metinler], "except"?: [...] } olmalı');
+        break;
+      }
+      for (const k of Object.keys(m)) if (k !== 'prefixes' && k !== 'except') bad(`bilinmeyen alan "${k}"`);
+      const except = m.except === undefined ? [] : m.except;
+      if (!Array.isArray(except) || !except.every(oneWord)) {
+        bad('except tek kelimelik metin dizisi olmalı');
+        break;
+      }
+      // An exception that extends no prefix can never apply: it would only look like a safeguard.
+      for (const e of except) {
+        const et = wordTokens(e)[0];
+        if (!prefixes.some((p) => { const pt = wordTokens(p)[0]; return et.startsWith(pt) && et !== pt; })) bad(`except "${e}" hiçbir önekin uzantısı değil`);
+      }
+      break;
+    }
     case 'eq_path':
       try {
         parsePath(arg as string);

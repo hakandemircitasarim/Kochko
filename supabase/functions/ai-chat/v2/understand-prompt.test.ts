@@ -6,21 +6,24 @@
  *      schema lacks fails here, not in production);
  *   2. run through validateDecision with a fixture context (exactly the refs its context lines
  *      show), it gets the verdict the example teaches (COMMIT / FLAG / ASK, plan, ED reading);
- *   3. its context lines use the block labels the renderers really emit, and a tripwire line is
- *      what shared/safety-tripwires.ts renders for that very message.
+ *   3. its context lines use the block labels the ONE renderer (stage-a-request.ts) really emits,
+ *      and a tripwire line — and every reading's hit_id — is what shared/safety-tripwires.ts renders
+ *      for that very message.
  * Plus the §9.4 A/A' production failures each example was chosen for, and the Stage A budget
  * measured with the one shared token estimate.
  */
 import { assert, assertEquals, assertThrows } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import { asciiTurkishHits, devLeakHits, diacriticRatio, pileWords, shoutedWords } from '../../shared/prompt-lint.ts';
 import {
-  BLOCK_TITLES, buildUnderstandSchema, buildWriteDoc, parseRef, type RenderedRef, schemaBytes, SCHEMA_VERSION, type ValidationContext,
-  validateDecision, vocab,
+  BLOCK_TITLES, buildUnderstandSchema, buildWriteDoc, NOT_WRITTEN_REASONS, parseRef, type RenderedRef, schemaBytes, SCHEMA_VERSION,
+  type ValidationContext, validateDecision, vocab,
 } from '../../shared/write-registry/mod.ts';
 import type { DayTotals, ReferenceRow } from '../../shared/write-registry/dsl.ts';
 import { validateJsonSchema } from '../../shared/json-schema-check.ts';
 import { liveAmbiguousHits, renderTripwireFacts, scanTripwires } from '../../shared/safety-tripwires.ts';
-import { renderTurnInputBlock } from './eval/request.ts';
+import { renderTurnInputBlock } from './stage-a-request.ts';
+import { loadTurnInput, renderTurnInput } from './input.ts';
+import { fakeTurnInputDb, NOW, seedTables, USER } from './testing.ts';
 import { estimateTokens, PROMPT_BUDGETS } from './prompt-size.ts';
 import {
   buildUnderstandPrefix,
@@ -105,9 +108,9 @@ const FIXTURES: Record<string, Fixture> = {
   tetik_mecaz: { expect: { verdicts: [] } },
   // Reported but consciously not written, WITH a reason: a decision, not a miss (§5.1.10) — an
   // emergency or an illness turn must never end in a "you told me something, shall I log it?" question.
-  tetik_gercek: { expect: { verdicts: [], missed_write: false, not_written_reason: 'acil sağlık durumu; önce güvenlik' } },
+  tetik_gercek: { expect: { verdicts: [], missed_write: false, not_written_reason: 'emergency_turn' } },
   kusma_hastalik: {
-    expect: { verdicts: [], ed: { accepted: true, escalate: null }, missed_write: false, not_written_reason: 'tek seferlik rahatsızlık; kayıt alanı yok' },
+    expect: { verdicts: [], ed: { accepted: true, escalate: null }, missed_write: false, not_written_reason: 'illness_not_food' },
   },
   soru_kayit_degil: { expect: { verdicts: [] } },
 };
@@ -174,7 +177,7 @@ Deno.test('understand rules: calm Turkish with diacritics, no shouting, no piles
   assertEquals(asciiTurkishHits(UNDERSTAND_RULES), []);
   assertEquals(devLeakHits(UNDERSTAND_RULES), []);
   assert(diacriticRatio(UNDERSTAND_RULES) >= 0.05);
-  for (const concept of ['as_stated', 'replaces', 'clarify', 'evidence_quote', 'tripwire_reading', 'reference_key', 'self_check', 'not_written_reason', 'basis suspicious', 'basis user_correction', 'pending_ops confirm', 'draft_ref', 'illness_vomiting']) {
+  for (const concept of ['as_stated', 'replaces', 'clarify', 'evidence_quote', 'tripwire_readings', 'hit_id', 'reference_key', 'self_check', 'not_written_reason', 'basis suspicious', 'basis user_correction', 'pending_ops confirm', 'draft_ref', 'illness_vomiting']) {
     assert(UNDERSTAND_RULES.includes(concept), `rules never explain ${concept}`);
   }
 });
@@ -186,6 +189,14 @@ Deno.test('understand rules agree with the registry: corrections by ref, suspici
   assert(!UNDERSTAND_RULES.includes('koç sorar, kişi onaylarsa o turda düzeltirsin'), 'the old same-turn fix rule is gone');
   const doc = buildWriteDoc();
   assert(doc.includes('basis=suspicious') && doc.includes('suspicious bekletilir'), 'the doc describes the same path');
+  // ONE correction path, taught by both: record_ops update. `replaces` is never taught as a way to
+  // correct (it stays null; the validator still checks it if a model sends it).
+  assert(doc.includes('Kayıt düzeltmenin tek yolu record_ops update; yazmalardaki replaces hep null.'), 'the doc teaches update as THE path');
+  assert(!doc.includes('replaces: KAYITLAR'), 'the v3 doc line that taught replaces as a correction is gone');
+  assert(UNDERSTAND_RULES.includes('Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır'));
+  for (const s of UNDERSTAND_FEW_SHOTS) {
+    for (const w of s.decision.writes ?? []) assert(w.replaces === undefined || w.replaces === null, `${s.id}: a few-shot teaches replaces`);
+  }
   // The elision the rules promise is exactly the one completeDecision() reverses.
   assert(UNDERSTAND_RULES.includes('boş liste, null, false ya da 0 olan alanlar, plan_action none ve varsayılan rota (coach, low)'));
 });
@@ -349,7 +360,9 @@ Deno.test('few-shots: self_check is honest — reported ⇔ a user-stated fact w
   for (const s of UNDERSTAND_FEW_SHOTS) {
     const d = s.decision;
     const userFacts = (d.writes?.length ?? 0) > 0 || (d.record_ops ?? []).some((r) => r.op === 'update' && r.basis === 'user_correction');
-    const reason = typeof d.self_check?.not_written_reason === 'string' && d.self_check.not_written_reason.length > 0;
+    const given = d.self_check?.not_written_reason;
+    if (given !== undefined && given !== null) assert(Object.prototype.hasOwnProperty.call(NOT_WRITTEN_REASONS, given), `${s.id}: "${given}" is not a declared reason id`);
+    const reason = typeof given === 'string' && given.length > 0;
     const reported = d.self_check?.reported_new_facts === true;
     assertEquals(reported, userFacts || reason, `${s.id}: reported_new_facts must mean "the user told a new fact" (undo, approval and a model-noticed suspicion are not)`);
     if (reason) assert(!userFacts, `${s.id}: a not_written_reason on a turn that wrote the fact`);
@@ -365,21 +378,35 @@ Deno.test('few-shots: water quantities use the unit enum — a glass is a glass,
 
 // ─── context: bound to the renderers ─────────────────────────────────────────────────────────────
 
-Deno.test('few-shot context labels are the block titles the renderers really emit', () => {
+Deno.test('few-shot context labels are the block titles the ONE renderer really emits (stage-a-request.ts, shadow and eval alike)', async () => {
   const labels = FEW_SHOT_CONTEXT_LABELS as readonly string[];
   for (const t of Object.values(BLOCK_TITLES)) assert(labels.includes(t), `registry block ${t} has no few-shot label`);
   const block = renderTurnInputBlock({
-    spine: [{ ref: 'c1', kind: 'allergen', subject_id: 'peanut', display_tr: 'yer fıstığı', severity: 'severe' }],
-    records: [{ ref: 'd3', kind: 'water', day: TODAY, line: 'su +0,20 L', last_turn: true }],
-    today: { water_liters: 1.4 },
-    pending: [{ ref: 'p1', op: 'record_update', line: 'düzeltme' }],
-    commitments: [{ ref: 'k1', line: 'akşam 8’den sonra yememe' }],
-    draft: { ref: 'dft1', plan_type: 'diet', version: 2, line: 'haftalık plan' },
-    reference_candidates: [{ key: 'tavuk_gogsu', line: '165 kcal/100 g' }],
+    now: { today: TODAY, local_date: TODAY, local_time: '12:00', tz: 'Europe/Istanbul' },
+    ed_tier: 'none',
+    profile: [],
+    gates: [],
+    today: ['su 1,40 L'],
+    records: [{ ref: 'd3', line: 'bugün su: gün toplamı 1,40 L', last_turn: true }],
+    constraints: [{ ref: 'c1', line: 'alerji · yer fıstığı · ciddi' }],
+    pending: [{ ref: 'p1', line: 'record_update · düzeltme' }],
+    commitments: [{ ref: 'k1', line: '"akşam 8’den sonra yememe"' }],
+    drafts: [{ ref: 'dft1', line: 'beslenme taslağı v2 · haftalık plan' }],
+    active_plans: [],
+    references: [{ key: 'tavuk_gogsu', line: '165 kcal/100 g' }],
+    image: false,
+    last_turn_writes: [],
     history: [{ role: 'assistant', content: 'Bu kayıt yanlış görünüyor, düzelteyim mi?' }],
   }).split('\n');
-  for (const l of labels.filter((x) => x !== TRIPWIRE_LABEL)) assert(block.some((line) => line.startsWith(l)), `input renderer never emits "${l}"`);
+  for (const l of labels.filter((x) => x !== TRIPWIRE_LABEL)) assert(block.some((line) => line.startsWith(l)), `the renderer never emits "${l}"`);
   assert(block.some((line) => line.endsWith('(son tur)')), 'last-turn records are a suffix, not a block');
+  assert(block.includes('BUGÜN: su 1,40 L'), 'the su_ekle context line is a line the renderer emits');
+  assert(block.includes('koç: "Bu kayıt yanlış görünüyor, düzelteyim mi?"'), 'SON KONUŞMA lines read "koç: …" as the few-shot shows');
+  // The shadow's real TurnInput goes through the same renderer: the history block is there too.
+  const live = renderTurnInput(await loadTurnInput(fakeTurnInputDb(seedTables()), { userId: USER, now: NOW })).split('\n');
+  for (const l of labels.filter((x) => x !== TRIPWIRE_LABEL && x !== BLOCK_TITLES.references)) {
+    assert(live.some((line) => line.startsWith(l)), `the loader's block never carries "${l}"`);
+  }
   assert(renderTripwireFacts(scanTripwires('antrenmanda bayıldım')).startsWith(TRIPWIRE_LABEL), 'tripwire facts heading');
 });
 
@@ -387,15 +414,20 @@ Deno.test('tripwire context is what the scanner really renders for that message 
   for (const s of UNDERSTAND_FEW_SHOTS) {
     const scan = scanTripwires(s.message);
     const lines = s.context.filter((l) => l.startsWith(`${TRIPWIRE_LABEL}: `));
+    const readings = s.decision.safety?.tripwire_readings ?? [];
     if (lines.length === 0) {
       assertEquals(liveAmbiguousHits(scan).map((h) => h.trigger), [], `${s.id}: the message trips a tripwire its context does not show`);
-      assertEquals(s.decision.safety?.tripwire_reading ?? null, null, `${s.id}: tripwire_reading without a tripwire`);
+      assertEquals(readings, [], `${s.id}: tripwire_readings without a tripwire`);
       continue;
     }
     const facts = renderTripwireFacts(scan);
     for (const l of lines) assert(facts.includes(`- ${l.slice(TRIPWIRE_LABEL.length + 2)}`), `${s.id}: "${l}" is not in:\n${facts}`);
-    const reading = s.decision.safety?.tripwire_reading;
-    assert(reading && typeof reading.reason === 'string' && reading.reason.length > 10, `${s.id}: a tripwire needs a reasoned reading`);
+    // ONE reading per live ambiguous hit, by the hit_id the scan really gave it, each reasoned.
+    assertEquals(readings.map((r) => r.hit_id).sort(), liveAmbiguousHits(scan).map((h) => h.hit_id).sort(), `${s.id}: readings ↔ hits`);
+    for (const r of readings) {
+      assert(r.reading === 'positive' || r.reading === 'benign', `${s.id}: reading`);
+      assert(typeof r.reason === 'string' && r.reason.length > 10, `${s.id}: a tripwire needs a reasoned reading`);
+    }
   }
 });
 
@@ -469,11 +501,12 @@ Deno.test('few-shots encode the production failures they were chosen for (§1, �
   assert((inj.body_parts as string[]).every((b) => Object.prototype.hasOwnProperty.call(vocab.BODY_PARTS, b)) && (inj.body_parts as string[]).includes('knee'));
 
   // Same tripwire, opposite readings — each with a reason.
-  const mecaz = shot('tetik_mecaz').decision.safety?.tripwire_reading;
+  const mecaz = shot('tetik_mecaz').decision.safety?.tripwire_readings ?? [];
   const gercek = shot('tetik_gercek').decision;
-  assert(mecaz?.benign === true && (mecaz.reason ?? '').length > 10);
-  assert(gercek.safety?.tripwire_reading?.benign === false && gercek.safety.acute_medical === true);
+  assert(mecaz.length === 1 && mecaz[0].reading === 'benign' && (mecaz[0].reason ?? '').length > 10);
+  assert((gercek.safety?.tripwire_readings ?? []).every((r) => r.reading === 'positive') && gercek.safety?.acute_medical === true);
   assertEquals(gercek.reply_route?.contract, 'emergency');
+  assertEquals(gercek.self_check?.not_written_reason, 'emergency_turn', 'an emergency turn never ends in a data-entry question');
 
   // §7.2: "dün gece kustum, zehirlendim galiba" is illness, not an ED signal — no escalation, no crisis route.
   const kus = shot('kusma_hastalik').decision;

@@ -12,7 +12,7 @@
  *
  * ai-decide CONTRACT (supabase/functions/ai-decide/handler.ts — the endpoint's, not ours):
  *   POST {SUPABASE_URL}/functions/v1/ai-decide   Authorization: Bearer <service_role JWT>
- *   body  { model, effort, system, input: [{role, content}], schema: {name, schema, strict}, cache_key }
+ *   body  { model, effort, system, input: [{role, content}], schema: {name, schema, strict}, cache_key, max_tokens }
  *         (= ai-chat/v2/stage-a-request.ts buildStageARequest(); judge calls use the same keys)
  *   200   { dry_run, ok, kind: parsed|refusal|invalid|incomplete|function_call|error, decision,
  *           refusal, issues, candidate, incomplete_reason, error: {class,status,message}|null,

@@ -122,7 +122,17 @@ export function budgetGate(results: FixtureRunResult[], budget: Budget = DEFAULT
   const lat = live.map((r) => r.latency_ms).filter((x): x is number => typeof x === 'number').sort((a, b) => a - b);
   const answered = live.filter((r) => r.status === 'pass' || r.status === 'fail');
   const bad = answered.filter((r) => r.parse_error || (r.schema_errors?.length ?? 0) > 0).length;
-  if (!lat.length || !answered.length) return { package: 'E', status: 'no_data', label_tr, runs: 0, passed: 0, rate: null, detail: 'canlı/replay ölçümü yok' };
+  // Like the rate gates: a harness error or a replay miss leaves calls out of the samples, so the
+  // budget is never green on partial data (latency/cost/error rate measured on what survived).
+  const errors = results.filter((r) => r.status === 'error').length;
+  const misses = results.filter((r) => r.cache === 'miss').length;
+  const gaps = [errors ? `${errors} hata` : '', misses ? `${misses} replay kaydı yok` : ''].filter(Boolean);
+  if (!lat.length || !answered.length) {
+    return {
+      package: 'E', status: errors || misses ? 'incomplete' : 'no_data', label_tr, runs: 0, passed: 0, rate: null,
+      detail: ['canlı/replay ölçümü yok', ...gaps].join(' · '),
+    };
+  }
   const p50 = percentile(lat, 0.5)!;
   const p90 = percentile(lat, 0.9)!;
   const errRate = bad / answered.length;
@@ -142,8 +152,10 @@ export function budgetGate(results: FixtureRunResult[], budget: Budget = DEFAULT
     outMean !== null ? `ort. çıktı ${outMean} token` : '',
     cacheRatio !== null ? `önbellek %${Math.round(cacheRatio * 100)}` : '',
     costPerTurn !== null ? `maliyet/tur $${costPerTurn.toFixed(4)}` : '',
+    ...gaps,
   ].filter(Boolean).join(' · ');
-  return { package: 'E', status: ok ? 'pass' : 'fail', label_tr, runs: answered.length, passed: answered.length - bad, rate: 1 - errRate, detail };
+  const status: GateResult['status'] = !ok ? 'fail' : errors || misses ? 'incomplete' : 'pass';
+  return { package: 'E', status, label_tr, runs: answered.length, passed: answered.length - bad, rate: 1 - errRate, detail };
 }
 
 export function computeGates(results: FixtureRunResult[], opts: { budget?: Budget; quality?: QualityPair[]; model?: string } = {}): GateResult[] {

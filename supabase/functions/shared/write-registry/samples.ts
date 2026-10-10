@@ -130,7 +130,7 @@ export const SAMPLE_WRITES: Readonly<Record<string, Record<string, unknown>>> = 
 export function sampleDecision(parts: Partial<Record<'writes' | 'record_ops' | 'pending_ops' | 'commitment_ops', unknown[]>> & Record<string, unknown> = {}): Record<string, unknown> {
   return {
     intent: { primary: 'report', is_hypothetical: false, about_other_person: false },
-    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_reading: null },
+    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_readings: [] },
     writes: [],
     record_ops: [],
     pending_ops: [],

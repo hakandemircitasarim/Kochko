@@ -335,7 +335,7 @@ Alıntı denetiminin izinli yerleri (kayıt tek tek beyan eder, `rule(..., { evi
 7. **Önemlilik (materiality).** Kayıtlı kimlik değerine karşı: yaş ≥ 2, boy ≥ 3 cm, kilo ≥ max(7 kg, %8), cinsiyetin herhangi bir değişimi. Bugünkü regex çelişki motorunun (S28/G03/S53) yerini alır. Model önerir (`subject: self`), kod kıyaslar.
 8. **Güvenlik değişmezleri.** Ayrıntı §7'de. `assertTargetAllowed()`: YB seviyesi ≥ amber iken hiçbir hedef/bant/plan yazması mevcut TDEE'deki bakım kalorisinin altına inemez. Bu tek fonksiyon applyTargetAdjust, recovery, plateau, mini_cut, recalc ve plan onayı tarafından ortak kullanılır.
 9. **Tekrar.** Yalnızca idempotency anahtarı, `side_effects_at` claim'i ve modelin `status=restatement` beyanı.
-10. **Kaçırılan kayıt.** Stage A'nın `self_check.reported_new_facts=true` olup hiç yazma ve `clarify` üretmediği **ve `not_written_reason` vermediği** turlarda Stage B'ye "kullanıcı bir şey bildirdi ama yazılmadı → sor" olgusu gider. Gerekçe verilmişse ("acil sağlık durumu; önce güvenlik", "tek seferlik rahatsızlık; kayıt alanı yok") bu bilinçli bir karardır, kaçırma değildir: Stage B gerekçeyi ve rotayı olgu olarak alır, acil/hastalık turu bir kayıt sorusuyla bitmez. Kod hiçbir zaman kendisi enjekte etmez.
+10. **Kaçırılan kayıt.** Stage A'nın `self_check.reported_new_facts=true` olup hiç yazma ve `clarify` üretmediği **ve `not_written_reason` vermediği** turlarda Stage B'ye "kullanıcı bir şey bildirdi ama yazılmadı → sor" olgusu gider. Gerekçe kapalı bir listeden verilmişse (`NOT_WRITTEN_REASONS`: emergency_turn, illness_not_food, question_only, hypothetical, about_other_person, already_recorded, needs_clarification) bu bilinçli bir karardır, kaçırma değildir; serbest metin ya da listede olmayan değer gerekçe sayılmaz: Stage B gerekçeyi ve rotayı olgu olarak alır, acil/hastalık turu bir kayıt sorusuyla bitmez. Kod hiçbir zaman kendisi enjekte etmez.
 
 ### 5.2 Dört sonuç
 
@@ -426,7 +426,7 @@ Alıntı denetiminin izinli yerleri (kayıt tek tek beyan eder, `rule(..., { evi
 
 ### 7.2 LLM yargısına geçenler
 
-- **Belirsiz tetikler** ("bayıldım", "tükendim", "kustum", "kalp çarpıntısı", "aç kalma"…) Stage A'ya olgu olarak gider. Stage A'nın `safety.tripwire_reading` alanını gerekçesiyle doldurması gerekir.
+- **Belirsiz tetikler** ("bayıldım", "tükendim", "kustum", "kalp çarpıntısı", "aç kalma"…) Stage A'ya olgu olarak gider. Stage A her belirsiz tetik için `safety.tripwire_readings` listesine bir okuma yazar: `{hit_id, reading: positive|benign, reason}` (hit_id = olgu satırındaki tw#; `resolveTripwires` okumayı hit'e bu kimlikle bağlar, okunmayan ya da uydurma kimlikli hit koruyucu kalır).
 
   | Tetik | Okuma | Sonuç |
   |---|---|---|

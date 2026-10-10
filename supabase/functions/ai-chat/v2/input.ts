@@ -1,13 +1,18 @@
 /**
- * ai-chat/v2/input.ts — the TurnInput loader, renderer and validation context (AI_MIMARI_V2 §3.2 T3,
- * §4.2). What Stage A sees of the user's records BEFORE it decides anything.
+ * ai-chat/v2/input.ts — the TurnInput loader, its Stage A view and the validation context
+ * (AI_MIMARI_V2 §3.2 T3, §4.2). What Stage A sees of the user's records BEFORE it decides anything.
+ *
+ * Ownership: this file turns DATA into LINES (stageAView: meal / metric / workout / lab / hold
+ * wording, Turkish numbers, "(son tur)"); stage-a-request.ts renders those lines into the ONE
+ * TurnInput block every caller sends (shadow, live, eval). buildValidationContext is the ONE
+ * ValidationContext builder (the eval's fixture binding calls it too).
  *
  * WHY plain queries: migrations 108-113 (record_refs, turn_writes, v2_turn_input) are not applied yet,
  * but Faz 2 needs a TurnInput now to run Stage A in shadow. So this loader reads the tables v1 already
  * has, in ONE parallel wave, and returns an object with the SAME top-level keys as the v2_turn_input
  * RPC (TURN_INPUT_KEYS, in order, item shapes from shared/v2-db-types.ts) plus the TS-side extras the
  * RPC leaves to TypeScript (local clock, history, last assistant message). Swapping the body of
- * loadTurnInput() for the RPC later keeps every consumer (renderer, validation context, shadow) as is.
+ * loadTurnInput() for the RPC later keeps every consumer (view, validation context, shadow) as is.
  *
  * What the plain loader cannot know without the ledger, and says so instead of inventing it:
  *   · metric_writes / recent_writes / recently_undone are [] (they ARE turn_writes rows). Day-level
@@ -30,9 +35,10 @@ import {
   type TurnInputDay, type TurnInputMeal, type TurnInputMealItem, type TurnInputRow,
 } from '../../shared/v2-db-types.ts';
 import {
-  BLOCK_TITLES, ERASE_HOLD_OP, vocab,
-  type DayTotals, type EdTier, type RefKind, type RefTarget, type RenderedRef, type RenderedRefs, type ValidationContext,
+  ERASE_HOLD_OP, vocab,
+  type DayTotals, type EdTier, type ReferenceRow, type RefKind, type RefTarget, type RenderedRef, type RenderedRefs, type ValidationContext,
 } from '../../shared/write-registry/mod.ts';
+import { dayLabelTr, fmtTr, quoteLine, type RefLine, renderTurnInputBlock, type StageATurnView, WEEKDAY_TR } from './stage-a-request.ts';
 
 // ─── DB port ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -202,10 +208,6 @@ const TARGET_KEYS = [
   'date', 'plan_type', 'calorie_target_min', 'calorie_target_max', 'protein_target_g', 'carbs_target_g',
   'fat_target_g', 'water_target_liters', 'status', 'version',
 ] as const;
-
-const WEEKDAY_TR = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-const WEEKDAY_SHORT_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
-const MONTH_SHORT_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
 function weekdayOf(isoDay: string): number {
   return new Date(`${isoDay}T00:00:00Z`).getUTCDay();
@@ -666,53 +668,85 @@ export function edTierOf(ti: TurnInput): EdTier {
   return ti.safety?.ed_tier ?? 'none';
 }
 
-/** validateDecision's context for this turn (pure; `now` for hold expiry). */
-export function validationContext(ti: TurnInput, userMessage: string, now: Date, refs: TurnRefs = turnRefs(ti)): ValidationContext {
+/**
+ * The facts validateDecision reads, in the shape BOTH producers have: the loader's TurnInput
+ * (validationContext below) and an eval fixture snapshot (eval/bind.ts validationContextFor). The
+ * ValidationContext is built from them by ONE function, so shadow/live and the eval can never
+ * disagree on how a profile key is typed, which weigh-in counts as "last" or how a day total looks.
+ */
+export interface ValidationFacts {
+  today: string;
+  now_iso: string;
+  message: string;
+  /** Exactly the refs rendered this turn. */
+  refs: RenderedRefs;
+  /** Stored per-day totals before this turn's writes (a missing value is null). */
+  days: ReadonlyArray<{ day: string; water_liters?: unknown; steps?: unknown; sleep_hours?: unknown; weight_kg?: unknown }>;
+  /** Raw profile record (profiles row / fixture profile); identity keys are typed here. */
+  profile: Readonly<Record<string, unknown>> | null;
+  /** Raw active goal (goals row), or null. */
+  goal: Readonly<Record<string, unknown>> | null;
+  /** Stored weigh-ins (any order); the latest within LAST_WEIGHT_DAYS becomes last_weight. */
+  weights: ReadonlyArray<{ day: string; kg: number }>;
+  ed_tier: EdTier;
+  reference_rows?: Readonly<Record<string, ReferenceRow>>;
+}
+
+/** How far back a stored weigh-in still counts for the jump-plausibility check. */
+export const LAST_WEIGHT_DAYS = 14;
+
+/** THE ValidationContext builder (pure). */
+export function buildValidationContext(f: ValidationFacts): ValidationContext {
   const day_totals: Record<string, DayTotals> = {};
-  for (const d of ti.days) {
-    day_totals[d.day] = { water_liters: d.water_liters, steps: d.steps, sleep_hours: d.sleep_hours, weight_kg: d.weight_kg };
+  for (const d of f.days) {
+    day_totals[d.day] = {
+      water_liters: num(d.water_liters), steps: num(d.steps), sleep_hours: num(d.sleep_hours), weight_kg: num(d.weight_kg),
+    };
   }
-  const p = ti.profile;
-  const fourteenAgo = shiftDateString(ti.day, -14);
-  const lastW = [...ti.weights_recent].reverse().find((w) => w.day >= fourteenAgo && w.day <= ti.day) ?? null;
+  const p = f.profile ?? {};
+  const from = shiftDateString(f.today, -LAST_WEIGHT_DAYS);
+  let lastW: { kg: number; day: string } | null = null;
+  for (const w of f.weights) {
+    if (w.day < from || w.day > f.today || !(w.kg > 0)) continue;
+    if (!lastW || w.day >= lastW.day) lastW = { kg: w.kg, day: w.day };
+  }
   return {
-    today: ti.day,
-    now_iso: now.toISOString(),
-    user_message: userMessage,
-    refs: refs.rendered,
+    today: f.today,
+    now_iso: f.now_iso,
+    user_message: f.message,
+    refs: f.refs,
     day_totals,
     profile: {
       birth_year: num(p.birth_year), height_cm: num(p.height_cm), weight_kg: num(p.weight_kg),
       gender: str(p.gender), periodic_state: str(p.periodic_state),
     },
-    last_weight: lastW ? { kg: lastW.kg, day: lastW.day } : null,
-    goal: ti.goal ? { goal_type: str(ti.goal.goal_type), target_weight_kg: num(ti.goal.target_weight_kg) } : null,
-    ed_tier: edTierOf(ti),
-    reference_rows: {},
+    last_weight: lastW,
+    goal: f.goal ? { goal_type: str(f.goal.goal_type), target_weight_kg: num(f.goal.target_weight_kg) } : null,
+    ed_tier: f.ed_tier,
+    reference_rows: { ...(f.reference_rows ?? {}) },
   };
 }
 
-// ─── rendering (what Stage A reads) ────────────────────────────────────────────────────────────────
-
-/** "1540" → "1.540", 1.6 → "1,6" (Turkish number format, no Intl dependency). */
-export function fmtTr(n: number, decimals = 0): string {
-  const fixed = Math.abs(n).toFixed(decimals);
-  const [int, frac] = fixed.split('.');
-  let grouped = '';
-  for (let i = 0; i < int.length; i++) {
-    if (i > 0 && (int.length - i) % 3 === 0) grouped += '.';
-    grouped += int[i];
-  }
-  return `${n < 0 ? '-' : ''}${grouped}${frac ? `,${frac}` : ''}`;
+/** validateDecision's context for this turn (pure; `now` for hold expiry). */
+export function validationContext(ti: TurnInput, userMessage: string, now: Date, refs: TurnRefs = turnRefs(ti)): ValidationContext {
+  return buildValidationContext({
+    today: ti.day,
+    now_iso: now.toISOString(),
+    message: userMessage,
+    refs: refs.rendered,
+    days: ti.days,
+    profile: ti.profile,
+    goal: ti.goal,
+    weights: ti.weights_recent,
+    ed_tier: edTierOf(ti),
+    // REFERANS ADAYLARI are not loaded yet (§4.2 item 5).
+    reference_rows: {},
+  });
 }
 
-/** 'bugün' / 'dün' / 'Per 2 Eki'. */
-export function dayLabelTr(day: string, today: string): string {
-  if (day === today) return 'bugün';
-  if (day === shiftDateString(today, -1)) return 'dün';
-  const d = new Date(`${day}T00:00:00Z`);
-  return `${WEEKDAY_SHORT_TR[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_SHORT_TR[d.getUTCMonth()]}`;
-}
+// ─── data → lines (what Stage A reads; rendered ONCE by stage-a-request.ts) ──────────────────────
+
+export { dayLabelTr, fmtTr };
 
 /** An ISO instant as the user's local "bugün 14:20" / "dün 23:05" / "Per 2 Eki 09:00". */
 function localClock(iso: string, tz: string | null, today: string): string {
@@ -720,12 +754,6 @@ function localClock(iso: string, tz: string | null, today: string): string {
   if (!Number.isFinite(ms)) return '?';
   const lp = getLocalParts(tz, new Date(ms));
   return `${dayLabelTr(lp.dateStr, today)} ${String(lp.hour).padStart(2, '0')}:${String(lp.minute).padStart(2, '0')}`;
-}
-
-/** One line of quoted user text: newlines folded, length capped (code never interprets it). */
-function quoteLine(text: string, max: number): string {
-  const flat = text.split('\r').join(' ').split('\n').join(' ').trim();
-  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 
 const SOURCE_TAG: Record<string, string> = {
@@ -736,7 +764,11 @@ const KIND_TR: Record<string, string> = {
   medication: 'ilaç', dietary: 'beslenme kısıtı',
 };
 const SEVERITY_TR: Record<string, string> = { mild: 'hafif', moderate: 'orta', severe: 'ciddi' };
-const METRIC_TR: Record<MetricDayRef['target'], string> = { water: 'su', sleep: 'uyku', mood: 'ruh hali', steps: 'adım', weight: 'tartı' };
+
+/** 'workout' → 'antrenman', anything else → 'beslenme' (the plan types weekly_plans stores). */
+export function planTypeTr(planType: string): string {
+  return planType === 'workout' ? 'antrenman' : 'beslenme';
+}
 
 function mealSummary(m: TurnInputMeal): string {
   const shown = m.items.slice(0, 6).map((it) => {
@@ -760,107 +792,147 @@ function metricSummary(d: MetricDayRef): string {
 }
 
 /**
- * The TurnInput block of the Stage A request (§4.2 order). Block titles are the registry's
- * BLOCK_TITLES so the words of the cached doc point at the blocks the model sees. Deterministic:
- * same TurnInput → same bytes.
+ * PROFİL phrases from a raw profile record (+ the active goal). `rest: true` appends every other
+ * key as `key=value` (the eval's loose fixture profiles); the loader leaves it off because the
+ * mirrored profile row also carries plumbing columns (timezones, TDEE stamps) Stage A does not need.
  */
-export function renderTurnInput(ti: TurnInput): string {
-  const L: string[] = [];
-  const t = ti.day;
-  const [ly, lm, ld] = ti.local.date.split('-').map(Number);
-  L.push(`ŞİMDİ: ${ti.local.weekday_tr} ${ld} ${MONTH_SHORT_TR[(lm ?? 1) - 1] ?? ''} ${ly}, saat ${ti.local.time}${ti.local.tz ? ` (${ti.local.tz})` : ''} · today = ${t} · yesterday = ${shiftDateString(t, -1)}`);
-
-  const p = ti.profile;
+export function profilePhrases(
+  p: Readonly<Record<string, unknown>>,
+  goal: Readonly<Record<string, unknown>> | null,
+  opts: { rest?: boolean } = {},
+): string[] {
   const prof: string[] = [];
-  const g = str(p.gender);
+  const used = new Set<string>();
+  const take = (k: string): unknown => {
+    used.add(k);
+    return p[k];
+  };
+  const g = str(take('gender'));
   if (g) prof.push(`cinsiyet ${(vocab.GENDER as Record<string, string>)[g] ?? g}`);
-  if (num(p.birth_year) !== null) prof.push(`doğum yılı ${p.birth_year}`);
-  if (num(p.height_cm) !== null) prof.push(`boy ${fmtTr(num(p.height_cm)!)} cm`);
-  if (num(p.weight_kg) !== null) prof.push(`kilo ${fmtTr(num(p.weight_kg)!, 1)} kg`);
+  const by = num(take('birth_year'));
+  if (by !== null) prof.push(`doğum yılı ${by}`);
+  const h = num(take('height_cm'));
+  if (h !== null) prof.push(`boy ${fmtTr(h)} cm`);
+  const w = num(take('weight_kg'));
+  if (w !== null) prof.push(`kilo ${fmtTr(w, 1)} kg`);
   for (const k of ['activity_level', 'diet_mode', 'dietary_restriction', 'periodic_state', 'occupation', 'wake_time', 'sleep_time'] as const) {
-    const v = p[k];
+    const v = take(k);
     if (typeof v === 'string' && v) prof.push(`${k}=${quoteLine(v, 40)}`);
     else if (typeof v === 'number') prof.push(`${k}=${v}`);
   }
-  if (num(p.water_target_liters) !== null) prof.push(`su hedefi ${fmtTr(num(p.water_target_liters)!, 1)} L`);
-  if (num(p.step_target) !== null) prof.push(`adım hedefi ${fmtTr(num(p.step_target)!)}`);
-  if (p.onboarding_completed === false) prof.push('tanışma tamamlanmadı');
-  if (ti.goal) {
-    const gt = str(ti.goal.goal_type);
-    const tw = num(ti.goal.target_weight_kg);
+  const wt = num(take('water_target_liters'));
+  if (wt !== null) prof.push(`su hedefi ${fmtTr(wt, 1)} L`);
+  const st = num(take('step_target'));
+  if (st !== null) prof.push(`adım hedefi ${fmtTr(st)}`);
+  if (take('onboarding_completed') === false) prof.push('tanışma tamamlanmadı');
+  if (goal) {
+    const gt = str(goal.goal_type);
+    const tw = num(goal.target_weight_kg);
     if (gt) prof.push(`hedef ${(vocab.GOAL_TYPES as Record<string, string>)[gt] ?? gt}${tw !== null ? ` (hedef kilo ${fmtTr(tw, 1)})` : ''}`);
+    else if (tw !== null) prof.push(`hedef kilo ${fmtTr(tw, 1)}`);
   }
-  L.push(`PROFİL: ${prof.length ? prof.join(' · ') : 'bilgi yok'}`);
-
-  const tier = edTierOf(ti);
-  if (tier === 'amber' || tier === 'red' || tier === 'unknown') {
-    L.push('YAZMA KAPILARI: kalori açığı ya da hedef düşürme KAPALI (güvenlik)');
+  if (opts.rest) {
+    for (const [k, v] of Object.entries(p)) {
+      if (used.has(k) || (goal !== null && (k === 'goal_type' || k === 'target_weight_kg'))) continue;
+      prof.push(`${k}=${typeof v === 'string' ? quoteLine(v, 80) : JSON.stringify(v)}`);
+    }
   }
+  return prof;
+}
 
+/** One KISITLAR line body (after the ref): kind · subject · severity [· başkasının] [· PASİF] [· bölge] [· not]. */
+export function constraintLine(c: {
+  kind: string;
+  subject: string;
+  severity: string | null;
+  body_parts?: readonly string[];
+  note?: string | null;
+  whose?: string | null;
+  active?: boolean;
+}): string {
+  const bits = [KIND_TR[c.kind] ?? c.kind, quoteLine(c.subject, 40), (c.severity && SEVERITY_TR[c.severity]) || 'şiddeti belirtilmemiş'];
+  if (c.whose === 'other_person') bits.push('başkasının');
+  if (c.active === false) bits.push('PASİF (geri alındı)');
+  if (c.body_parts?.length) bits.push(`bölge: ${c.body_parts.join(',')}`);
+  if (c.note) bits.push(`not: "${quoteLine(c.note, 80)}"`);
+  return bits.join(' · ');
+}
+
+/**
+ * TurnInput → the view stage-a-request.ts renders (§4.2). Every line is worded here; the block
+ * order, headings, "yok" lines, the ED-tier gate, the history window and the user-turn assembly
+ * are the renderer's. Pure; no row id reaches a line (refs only).
+ */
+export function stageAView(ti: TurnInput, opts: { image?: boolean } = {}): StageATurnView {
+  const t = ti.day;
   const todayRow = ti.days.find((d) => d.day === t);
+  const today: string[] = [];
   if (todayRow) {
-    const b: string[] = [`${todayRow.meal_count} öğün ${fmtTr(todayRow.kcal)} kcal`];
-    if (todayRow.water_liters !== null && todayRow.water_liters > 0) b.push(`su ${fmtTr(todayRow.water_liters, 2)} L`);
-    if (todayRow.steps !== null) b.push(`adım ${fmtTr(todayRow.steps)}`);
-    if (todayRow.sleep_hours !== null) b.push(`uyku ${fmtTr(todayRow.sleep_hours, 1)} saat`);
-    if (todayRow.weight_kg !== null) b.push(`tartı ${fmtTr(todayRow.weight_kg, 1)} kg`);
-    L.push(`BUGÜN: ${b.join(' · ')}`);
+    today.push(`${todayRow.meal_count} öğün ${fmtTr(todayRow.kcal)} kcal`);
+    if (todayRow.water_liters !== null && todayRow.water_liters > 0) today.push(`su ${fmtTr(todayRow.water_liters, 2)} L`);
+    if (todayRow.steps !== null) today.push(`adım ${fmtTr(todayRow.steps)}`);
+    if (todayRow.sleep_hours !== null) today.push(`uyku ${fmtTr(todayRow.sleep_hours, 1)} saat`);
+    if (todayRow.weight_kg !== null) today.push(`tartı ${fmtTr(todayRow.weight_kg, 1)} kg`);
   }
 
-  const rec: string[] = [];
   const last = new Set(ti.last_turn_refs);
-  const son = (b: boolean) => (b ? ' (son tur)' : '');
+  const records: RefLine[] = [];
   for (const m of ti.meals) {
     const mt = (vocab.MEAL_TYPES as Record<string, string>)[m.meal_type] ?? m.meal_type;
-    rec.push(`${m.ref} · ${dayLabelTr(m.day, t)} ${mt} · "${quoteLine(m.raw_input, 100)}" → ${mealSummary(m)}${son(m.last_turn)}`);
+    records.push({ ref: m.ref, line: `${dayLabelTr(m.day, t)} ${mt} · "${quoteLine(m.raw_input, 100)}" → ${mealSummary(m)}`, last_turn: m.last_turn });
   }
-  for (const d of ti.metric_days) rec.push(`${d.ref} · ${dayLabelTr(d.day, t)} ${metricSummary(d)}${son(d.last_turn)}`);
+  for (const d of ti.metric_days) records.push({ ref: d.ref, line: `${dayLabelTr(d.day, t)} ${metricSummary(d)}`, last_turn: d.last_turn });
   for (const w of ti.workouts) {
     const it = w.intensity ? ` ${(vocab.INTENSITY as Record<string, string>)[w.intensity] ?? w.intensity}` : '';
     const kc = w.calories_burned ? ` ~${fmtTr(w.calories_burned)} kcal` : '';
     const sets = w.set_count ? ` · ${w.set_count} set` : '';
-    rec.push(`${w.ref} · ${dayLabelTr(w.day, t)} antrenman · "${quoteLine(w.raw_input, 80)}" → ${w.workout_type ?? '?'} ${fmtTr(w.duration_min)} dk${it}${kc}${sets}${son(last.has(w.ref))}`);
+    records.push({
+      ref: w.ref,
+      line: `${dayLabelTr(w.day, t)} antrenman · "${quoteLine(w.raw_input, 80)}" → ${w.workout_type ?? '?'} ${fmtTr(w.duration_min)} dk${it}${kc}${sets}`,
+      last_turn: last.has(w.ref),
+    });
   }
   for (const s of ti.supplements) {
-    rec.push(`${s.ref} · ${dayLabelTr(s.day, t)} takviye · ${quoteLine(s.name, 40)}${s.amount ? ` (${quoteLine(s.amount, 20)})` : ''}${son(last.has(s.ref))}`);
+    records.push({
+      ref: s.ref,
+      line: `${dayLabelTr(s.day, t)} takviye · ${quoteLine(s.name, 40)}${s.amount ? ` (${quoteLine(s.amount, 20)})` : ''}`,
+      last_turn: last.has(s.ref),
+    });
   }
   for (const l of ti.labs) {
-    const range = l.reference_min !== null || l.reference_max !== null
-      ? ` (referans ${l.reference_min ?? '?'}–${l.reference_max ?? '?'})` : '';
-    rec.push(`${l.ref} · ${dayLabelTr(l.day, t)} tahlil · ${quoteLine(l.parameter, 40)} ${fmtTr(l.value, 2)} ${l.unit}${range}`);
+    const range = l.reference_min !== null || l.reference_max !== null ? ` (referans ${l.reference_min ?? '?'}–${l.reference_max ?? '?'})` : '';
+    records.push({ ref: l.ref, line: `${dayLabelTr(l.day, t)} tahlil · ${quoteLine(l.parameter, 40)} ${fmtTr(l.value, 2)} ${l.unit}${range}` });
   }
-  for (const e of ti.life_events) rec.push(`${e.ref} · olay · ${e.event_date} · ${quoteLine(e.title, 60)} (${e.event_type})`);
-  L.push(`${BLOCK_TITLES.records} (son 7 gün; düzeltme/silme yalnız bu ref'lerle):`);
-  L.push(...(rec.length ? rec : ['yok']));
+  for (const e of ti.life_events) records.push({ ref: e.ref, line: `olay · ${e.event_date} · ${quoteLine(e.title, 60)} (${e.event_type})` });
 
-  L.push(`${BLOCK_TITLES.constraints}:`);
-  L.push(...(ti.constraints.length
-    ? ti.constraints.map((c) => {
-      const bits = [KIND_TR[c.kind] ?? c.kind, quoteLine(c.subject, 40), c.severity ? SEVERITY_TR[c.severity] : 'şiddeti belirtilmemiş'];
-      if (c.body_parts.length) bits.push(`bölge: ${c.body_parts.join(',')}`);
-      if (c.note) bits.push(`not: "${quoteLine(c.note, 80)}"`);
-      return `${c.ref} · ${bits.join(' · ')}`;
-    })
-    : ['yok']));
+  return {
+    now: { today: t, local_date: ti.local.date, local_time: ti.local.time, tz: ti.local.tz },
+    ed_tier: edTierOf(ti),
+    profile: profilePhrases(ti.profile, ti.goal),
+    gates: [],
+    today,
+    records,
+    constraints: ti.constraints.map((c) => ({
+      ref: c.ref, line: constraintLine({ kind: c.kind, subject: c.subject, severity: c.severity, body_parts: c.body_parts, note: c.note }),
+    })),
+    pending: ti.pending.map((h) => ({
+      ref: h.ref, line: `${h.op} · açıldı ${localClock(h.created_at, ti.local.tz, t)} · bitiş ${localClock(h.expires_at, ti.local.tz, t)}`,
+    })),
+    commitments: ti.commitments.map((k) => ({
+      ref: k.ref, line: `"${quoteLine(k.commitment, 100)}"${k.follow_up_at ? ` · takip ${dayLabelTr(k.follow_up_at.slice(0, 10), t)}` : ''}`,
+    })),
+    drafts: ti.plans.drafts.map((d) => ({
+      ref: d.ref, line: `${planTypeTr(d.plan_type)} taslağı · hafta ${d.week_start}${d.revision_count ? ` · ${d.revision_count} revizyon` : ''}`,
+    })),
+    active_plans: ti.plans.active.map((a) => `${planTypeTr(a.plan_type)} (hafta ${a.week_start})`),
+    references: [],
+    image: opts.image === true,
+    last_turn_writes: ti.last_turn_action_types,
+    history: ti.history.map((h) => ({ role: h.role, content: h.content })),
+  };
+}
 
-  L.push(`${BLOCK_TITLES.pending}:`);
-  L.push(...(ti.pending.length
-    ? ti.pending.map((h) => `${h.ref} · ${h.op} · açıldı ${localClock(h.created_at, ti.local.tz, t)} · bitiş ${localClock(h.expires_at, ti.local.tz, t)}`)
-    : ['yok']));
-
-  L.push(`${BLOCK_TITLES.commitments}:`);
-  L.push(...(ti.commitments.length
-    ? ti.commitments.map((k) => `${k.ref} · "${quoteLine(k.commitment, 100)}"${k.follow_up_at ? ` · takip ${dayLabelTr(k.follow_up_at.slice(0, 10), t)}` : ''}`)
-    : ['yok']));
-
-  const planTr = (pt: string) => (pt === 'workout' ? 'antrenman' : 'beslenme');
-  L.push(`${BLOCK_TITLES.draft}:`);
-  L.push(...(ti.plans.drafts.length
-    ? ti.plans.drafts.map((d) => `${d.ref} · ${planTr(d.plan_type)} taslağı · hafta ${d.week_start}${d.revision_count ? ` · ${d.revision_count} revizyon` : ''}`)
-    : ['yok']));
-  L.push(`AKTİF PLAN: ${ti.plans.active.length ? ti.plans.active.map((a) => `${planTr(a.plan_type)} (hafta ${a.week_start})`).join(' · ') : 'yok'}`);
-
-  if (ti.last_turn_action_types.length) L.push(`SON TUR (koçun son cevabıyla kaydedilenler): ${ti.last_turn_action_types.join(', ')}`);
-  if (ti.last_assistant) L.push(`SON ASİSTAN MESAJI: "${quoteLine(ti.last_assistant.content, 600)}"`);
-  return L.join('\n');
+/** The TurnInput block exactly as Stage A receives it (= stage-a-request.ts renderTurnInputBlock over stageAView). */
+export function renderTurnInput(ti: TurnInput): string {
+  return renderTurnInputBlock(stageAView(ti));
 }

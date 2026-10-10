@@ -9,19 +9,25 @@
  * begin(); finish() schedules once and never throws).
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
-import { scanTripwires } from '../../shared/safety-tripwires.ts';
-import { SCHEMA_NAMES, validateDecision } from '../../shared/write-registry/mod.ts';
+import { scanTripwires, type TripwireReading } from '../../shared/safety-tripwires.ts';
+import { ENVELOPE_HEAD, SCHEMA_NAMES, TRIPWIRE_READINGS, validateDecision } from '../../shared/write-registry/mod.ts';
+import type { Infer } from '../../shared/write-registry/dsl.ts';
 import { sampleContext, sampleDecision, sampleMeal, SAMPLE_WRITES } from '../../shared/write-registry/samples.ts';
 import { loadTurnInput, type TurnInput } from './input.ts';
 import {
   beginShadowTurn, computeAgreement, isMissingColumnError, resetShadowSinkState, runShadow, scheduleBackground,
-  SHADOW_FUNCTION_NAME, shadowTurnLogRow, stageASafetyOutcome, v1ActionFacts, v1AgreementKeys, writeShadowRow,
+  SHADOW_FUNCTION_NAME, shadowTurnLogRow, stageASafetyOutcome, tripwireReadingsOf, v1ActionFacts, v1AgreementKeys, writeShadowRow,
   type RunShadowInput, type ShadowRecord, type V1ActionFact,
 } from './shadow.ts';
 import { fakeResponses, fakeSink, fakeTurnInputDb, NOW, responsesBody, seedTables, USER } from './testing.ts';
 import type { UnderstandOutcome, UnderstandRequest } from './understand.ts';
 
 const DUP = '__dup_skip__';
+
+/** Stage A's tripwire_readings: one reading per ambiguous hit of the message's real scan. */
+function readingsFor(message: string, reading: 'positive' | 'benign', reason: string) {
+  return scanTripwires(message).hits.filter((h) => h.tier === 'ambiguous').map((h) => ({ hit_id: h.hit_id, reading, reason }));
+}
 
 async function ti(mutate?: (t: ReturnType<typeof seedTables>) => void): Promise<TurnInput> {
   const t = seedTables();
@@ -141,7 +147,7 @@ Deno.test('computeAgreement: both / v1_only / v2_only / neither, noop and reject
 
 // ─── safety mapping ──────────────────────────────────────────────────────────────────────────────
 
-Deno.test('stageASafetyOutcome: one reading for every ambiguous hit, positives, live budget = timeout', () => {
+Deno.test('stageASafetyOutcome: the per-hit readings, positives, live budget = timeout', () => {
   const scan = scanTripwires('bu tarife bayılmıştım');
   const base = stageA(null).fn;
   void base;
@@ -149,7 +155,7 @@ Deno.test('stageASafetyOutcome: one reading for every ambiguous hit, positives, 
     status: 'parsed', decision, refusal: null, issues: [], candidate: null, reason: null, error: null,
     meta: { model: 'm', providerModel: null, api: 'responses', format: 'json_schema', effort: 'low', latencyMs, attempts: 1, retries: [], responseId: null, finishReason: 'stop', usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, reasoningTokens: 0, cachedTokens: 0 } },
   });
-  const d = sampleDecision({ safety: { acute_medical: false, self_harm: true, ed_signal: null, tripwire_reading: { benign: true, reason: 'beğeni' } } });
+  const d = sampleDecision({ safety: { acute_medical: false, self_harm: true, ed_signal: null, tripwire_readings: readingsFor('bu tarife bayılmıştım', 'benign', 'beğeni') } });
   const v = validateDecision(d, sampleContext({ user_message: 'bu tarife bayılmıştım' }));
   const out = stageASafetyOutcome(parsed(d), v, scan);
   assert(out && out.status === 'ok');
@@ -161,6 +167,30 @@ Deno.test('stageASafetyOutcome: one reading for every ambiguous hit, positives, 
   assertEquals(stageASafetyOutcome({ ...parsed(d), status: 'refused', decision: null, refusal: 'no' }, null, scan), { status: 'refused' });
   assertEquals(stageASafetyOutcome({ ...parsed(d), status: 'invalid', decision: null }, null, scan), { status: 'error' });
   assertEquals(stageASafetyOutcome(null, null, scan), null);
+});
+
+// The registry's reading item IS safety-tripwires' TripwireReading: one shape, checked by the compiler.
+type RegistryReading = Infer<typeof ENVELOPE_HEAD.safety.fields.tripwire_readings.fields>;
+const SAME_READING_SHAPE: [RegistryReading, TripwireReading] extends [TripwireReading, RegistryReading] ? true : never = true;
+
+Deno.test('the registry tripwire_readings item and safety-tripwires TripwireReading are the same shape (hit_id, reading, reason)', () => {
+  assert(SAME_READING_SHAPE);
+  assertEquals(Object.keys(ENVELOPE_HEAD.safety.fields.tripwire_readings.fields), ['hit_id', 'reading', 'reason']);
+  assertEquals(Object.keys(TRIPWIRE_READINGS), ['positive', 'benign']);
+});
+
+Deno.test('tripwireReadingsOf: only hits this scan has; a positive beats a benign for the same hit; malformed items read nothing', () => {
+  const scan = scanTripwires('bu tarife bayılmıştım');
+  const hit = scan.hits.find((h) => h.tier === 'ambiguous')!.hit_id;
+  const read = (list: unknown) => tripwireReadingsOf(sampleDecision({ safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_readings: list } }), scan);
+  assertEquals(read([{ hit_id: hit, reading: 'benign', reason: 'beğeni' }]), [{ hit_id: hit, reading: 'benign', reason: 'beğeni' }]);
+  // An invented hit id reads nothing: its real hit stays "missing" → protective in resolveTripwires.
+  assertEquals(read([{ hit_id: 'tw99', reading: 'benign', reason: 'beğeni' }]), []);
+  // Two readings for one hit → the protective one, in either order.
+  const both = [{ hit_id: hit, reading: 'benign', reason: 'beğeni' }, { hit_id: hit, reading: 'positive', reason: 'emin değilim' }];
+  assertEquals(read(both).map((r) => r.reading), ['positive']);
+  assertEquals(read([...both].reverse()).map((r) => r.reading), ['positive']);
+  for (const bad of [[{ hit_id: hit, reading: 'maybe', reason: 'x' }], [{ reading: 'benign', reason: 'x' }], 'tw1', null]) assertEquals(read(bad), [], JSON.stringify(bad));
 });
 
 // ─── runShadow ───────────────────────────────────────────────────────────────────────────────────
@@ -224,7 +254,7 @@ Deno.test('runShadow: a reasoned benign tripwire reading is logged but protectio
   const msg = 'bu tarife bayılmıştım';
   const decision = sampleDecision({
     intent: { primary: 'chat', is_hypothetical: false, about_other_person: false },
-    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_reading: { benign: true, reason: '"bayılmıştım" çok beğenmek anlamında' } },
+    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_readings: readingsFor(msg, 'benign', '"bayılmıştım" çok beğenmek anlamında') },
   });
   const { rec, row, reqs } = await shadow({ message: msg }, decision);
   assertEquals(reqs[0].effort, 'medium', '§8.4: a tripwire fact raises Stage A effort');
@@ -271,7 +301,7 @@ Deno.test('runShadow: a v1-instant phrase on the spec\'s ambiguous list asks Sta
   // default: a benign reading is suppressed until the B+ gate, so the outcome is never 'normal'.
   const decision = sampleDecision({
     intent: { primary: 'chat', is_hypothetical: false, about_other_person: false },
-    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_reading: { benign: true, reason: '"bayıldım" çok beğenmek anlamında' } },
+    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_readings: readingsFor('bu tarife bayıldım', 'benign', '"bayıldım" çok beğenmek anlamında') },
   });
   const { rec, row, reqs } = await shadow({ message: 'bu tarife bayıldım' }, decision);
   assertEquals(reqs.length, 1, 'Stage A is asked');

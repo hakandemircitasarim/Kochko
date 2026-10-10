@@ -117,6 +117,16 @@ export function containsWords(text: string, needle: string): boolean {
   return false;
 }
 
+/**
+ * Does any token of `text` start with one of `prefixes` — unless it starts with one of `except`?
+ * ("kek" hits keke / kekleri / havuçlu kek; with except "kekik", "kekikli tavuk" does not.)
+ */
+export function hasTokenPrefix(text: string, prefixes: readonly string[], except: readonly string[] = []): boolean {
+  const pre = prefixes.flatMap((p) => wordTokens(p).slice(0, 1));
+  const exc = except.flatMap((e) => wordTokens(e).slice(0, 1));
+  return wordTokens(text).some((tok) => pre.some((p) => tok.startsWith(p)) && !exc.some((e) => tok.startsWith(e)));
+}
+
 /** Turkish-aware lower-case + whitespace collapse; used by `~` filters and text operators. */
 export function normTr(s: string): string {
   let out = '';

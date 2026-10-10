@@ -1,13 +1,12 @@
 /**
- * ai-chat/v2/understand.ts — Stage A: the request and the call (AI_MIMARI_V2 §3.2 T4, §8.3, §8.4).
+ * ai-chat/v2/understand.ts — Stage A: the CALL (AI_MIMARI_V2 §3.2 T4, §8.3).
  *
- * Request order = cache order:
- *   system  : understand rules + the registry's Turkish doc + few-shots — byte-identical for EVERY
- *             user, so the provider caches it globally under STAGE_A_CACHE_KEY
- *             ('kochko-understand:<prompt version>-<SCHEMA_VERSION>')
- *             (the strict schema in text.format is part of that same cached prefix);
- *   user    : the rendered TurnInput (input.ts) → the tripwire facts (safety-tripwires.ts) → the
- *             user's message, verbatim.
+ * A thin respond() wrapper. The request itself — prefix, TurnInput block, tripwire facts, message,
+ * strict schema, cache key, §8.4 effort and the output budget — is composed in ONE place,
+ * stage-a-request.ts (composeStageA over input.ts stageAView), so the shadow, the live turn and
+ * the eval (ai-decide body) send the same bytes. This file adds only what a live call needs:
+ * timeouts, store:false, the injected transport, and the outcome statuses.
+ *
  * The model answers in the strict 'kochko_understand_vN' schema. respond() validates the JSON
  * shape; MEANING is checked afterwards by validateDecision (shadow.ts / the future handler).
  *
@@ -15,13 +14,12 @@
  * off-schema answer is 'invalid' with the issues — both are counted by the Faz 2 shadow report.
  */
 import {
-  MODELS, respond,
-  type ChatMessage, type RespondError, type RespondResult, type RespondUsage, type StructuredSchema, type Transport,
+  MODELS, respond, type RespondError, type RespondOptions, type RespondResult, type RespondUsage, type Transport,
 } from '../../shared/openai.ts';
-import { renderTripwireFacts, tripwireFacts, type TripwireScan } from '../../shared/safety-tripwires.ts';
-import { buildUnderstandSchema, buildWriteDoc, SCHEMA_NAMES, type EdTier } from '../../shared/write-registry/mod.ts';
-import { edTierOf, renderTurnInput, type TurnInput } from './input.ts';
-import { buildUnderstandPrefix, UNDERSTAND_CACHE_KEY } from './understand-prompt.ts';
+import type { TripwireScan } from '../../shared/safety-tripwires.ts';
+import { stageAView, type TurnInput } from './input.ts';
+import { composeStageA, STAGE_A_MAX_OUTPUT_TOKENS, type StageARequest, type StageASizes } from './stage-a-request.ts';
+import { UNDERSTAND_CACHE_KEY } from './understand-prompt.ts';
 
 /**
  * Global Stage A cache key (§3.2 T4): the prefix + schema are the same bytes for every user. It is
@@ -34,23 +32,8 @@ export const STAGE_A_CACHE_KEY: string = UNDERSTAND_CACHE_KEY;
 export const STAGE_A_LIVE_BUDGET_MS = 4_000;
 /** The shadow waits longer than the live budget so the latency distribution is measured, not truncated. */
 export const STAGE_A_SHADOW_TIMEOUT_MS = 15_000;
-/** Visible-output budget; respond() adds the reasoning reserve on top. A decision is 60–350 tokens. */
-export const STAGE_A_MAX_OUTPUT_TOKENS = 2_500;
-
-let prefixMemo: string | null = null;
-let schemaMemo: StructuredSchema | null = null;
-
-/** The cached system prefix (rules → registry doc → few-shots). Built once per isolate. */
-export function understandPrefix(): string {
-  prefixMemo ??= buildUnderstandPrefix({ registryDoc: buildWriteDoc() });
-  return prefixMemo;
-}
-
-/** The strict schema sent as text.format (Responses) / response_format (legacy). Built once per isolate. */
-export function understandSchema(): StructuredSchema {
-  schemaMemo ??= { name: SCHEMA_NAMES.understand, schema: buildUnderstandSchema(), strict: true };
-  return schemaMemo;
-}
+/** Visible-output budget (owned by stage-a-request.ts, carried in the request as max_tokens). */
+export { STAGE_A_MAX_OUTPUT_TOKENS };
 
 /** Stage A model: KOCHKO_MODEL_UNDERSTAND (a luna/eval experiment) or the chat tier (terra). */
 export function understandModel(): string {
@@ -59,39 +42,11 @@ export function understandModel(): string {
   return own.trim() || MODELS.primary;
 }
 
-export interface EffortFacts {
-  hasImage: boolean;
-  /** An open plan draft (PLAN TASLAĞI not empty). */
-  draftOpen: boolean;
-  /** Tripwire facts handed to Stage A (ambiguous/signal hits). */
-  tripwireFacts: number;
-  edTier: EdTier;
-}
-
-/**
- * §8.4 — from facts code knows for CERTAIN, never from keyword guesses: base `low` (never `none`),
- * `medium` for an image, an open plan draft, a tripwire fact, or ED tier ≥ watch. An unreadable tier
- * ('unknown') thinks harder too: it is the fail-closed side.
- */
-export function stageAEffort(f: EffortFacts): 'low' | 'medium' {
-  return f.hasImage || f.draftOpen || f.tripwireFacts > 0 || f.edTier !== 'none' ? 'medium' : 'low';
-}
-
-export interface UnderstandRequest {
-  model: string;
-  effort: 'low' | 'medium';
-  schema: StructuredSchema;
-  cacheKey: string;
-  messages: ChatMessage[];
-  maxTokens: number;
+/** The composed Stage A request (= ai-decide's body) + what a live call adds. */
+export interface UnderstandRequest extends StageARequest {
   timeoutMs: number;
   /** Character sizes of the parts (the shadow logs them; §3.3 budget check). */
-  sizes: { prefix: number; turn_input: number; tripwires: number; message: number };
-}
-
-/** The per-turn user content: TurnInput block, tripwire facts (only when there are any), the message. */
-export function stageAUserContent(turnBlock: string, tripwireBlock: string, message: string): string {
-  return [turnBlock, tripwireBlock, `KULLANICI MESAJI:\n${message}`].filter((s) => s !== '').join('\n\n');
+  sizes: StageASizes;
 }
 
 export function buildUnderstandRequest(p: {
@@ -102,27 +57,26 @@ export function buildUnderstandRequest(p: {
   model?: string;
   timeoutMs?: number;
 }): UnderstandRequest {
-  const prefix = understandPrefix();
-  const turnBlock = renderTurnInput(p.turnInput);
-  const tripwireBlock = renderTripwireFacts(p.scan);
-  const effort = stageAEffort({
-    hasImage: p.hasImage === true,
-    draftOpen: p.turnInput.plans.drafts.length > 0,
-    tripwireFacts: tripwireFacts(p.scan).length,
-    edTier: edTierOf(p.turnInput),
-  });
-  return {
+  const { request, sizes } = composeStageA({
+    view: stageAView(p.turnInput, { image: p.hasImage === true }),
+    scan: p.scan,
+    message: p.message,
     model: p.model ?? understandModel(),
-    effort,
-    schema: understandSchema(),
-    cacheKey: STAGE_A_CACHE_KEY,
-    messages: [
-      { role: 'system', content: prefix },
-      { role: 'user', content: stageAUserContent(turnBlock, tripwireBlock, p.message) },
-    ],
-    maxTokens: STAGE_A_MAX_OUTPUT_TOKENS,
-    timeoutMs: p.timeoutMs ?? STAGE_A_SHADOW_TIMEOUT_MS,
-    sizes: { prefix: prefix.length, turn_input: turnBlock.length, tripwires: tripwireBlock.length, message: p.message.length },
+  });
+  return { ...request, timeoutMs: p.timeoutMs ?? STAGE_A_SHADOW_TIMEOUT_MS, sizes };
+}
+
+/** respond()'s options for a composed request — the same mapping ai-decide applies to its body. */
+export function respondArgs(req: UnderstandRequest): RespondOptions {
+  return {
+    model: req.model,
+    effort: req.effort,
+    input: [{ role: 'system', content: req.system }, ...req.input],
+    schema: req.schema,
+    maxTokens: req.max_tokens,
+    cacheKey: req.cache_key,
+    store: false,
+    timeoutMs: req.timeoutMs,
   };
 }
 
@@ -192,14 +146,7 @@ export async function understand(req: UnderstandRequest, deps: UnderstandDeps = 
   const started = Date.now();
   try {
     const r = await call({
-      model: req.model,
-      effort: req.effort,
-      input: req.messages,
-      schema: req.schema,
-      maxTokens: req.maxTokens,
-      cacheKey: req.cacheKey,
-      store: false,
-      timeoutMs: req.timeoutMs,
+      ...respondArgs(req),
       ...(deps.transport ? { transport: deps.transport } : {}),
       ...(deps.apiKey ? { apiKey: deps.apiKey } : {}),
       ...(deps.baseUrl ? { baseUrl: deps.baseUrl } : {}),

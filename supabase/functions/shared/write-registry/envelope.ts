@@ -40,6 +40,33 @@ export const PLAN_OPS = {
   discard: 'taslağı iptal et',
 } as const;
 
+/**
+ * Stage A's reading of ONE ambiguous tripwire hit — the vocabulary of shared/safety-tripwires.ts
+ * TripwireReading ({hit_id, reading, reason}); resolveTripwires matches readings to hits by hit_id.
+ */
+export const TRIPWIRE_READINGS = {
+  positive: 'gerçek durum ya da emin değil (koruma)',
+  benign: 'açıkça başka anlam, gerekçeli',
+} as const;
+
+/** More hits than this in one message is not a reading, it is a list to repair (envelope issue). */
+export const TRIPWIRE_READINGS_MAX = 12;
+
+/**
+ * Why a fact the user reported was consciously NOT written (§5.1.10). A CLOSED list: only these
+ * turn "reported but nothing written" from a missed write into a decision (validate.ts) — free
+ * text could excuse any omission, an enum id can be counted and reviewed in the shadow.
+ */
+export const NOT_WRITTEN_REASONS = {
+  emergency_turn: 'acil/kriz turu',
+  illness_not_food: 'hastalık bildirimi',
+  question_only: 'yalnız soru',
+  hypothetical: 'varsayım/niyet',
+  about_other_person: 'başkasına ait',
+  already_recorded: 'zaten kayıtlı',
+  needs_clarification: 'bilgi eksik',
+} as const;
+
 export const REPLY_CONTRACTS = {
   coach: 'normal koçluk',
   plan: 'plan sözleşmesi',
@@ -67,10 +94,11 @@ export const ENVELOPE_HEAD = {
       severity: f.enum({ low: 'düşük', medium: 'orta', high: 'yüksek' }),
       evidence_quote: f.text({ max: 160 }),
     }, { nullable: true }),
-    tripwire_reading: f.obj({
-      benign: f.bool(),
+    tripwire_readings: f.list({ min: 0, max: TRIPWIRE_READINGS_MAX, tr: 'belirsiz tetik (tw#) başına bir okuma; GÜVENLİK TETİKLERİ yoksa boş' }, {
+      hit_id: f.text({ max: 12 }),
+      reading: f.enum(TRIPWIRE_READINGS),
       reason: f.text({ max: 200 }),
-    }, { nullable: true, tr: 'yalnız GÜVENLİK TETİKLERİ bloğu verildiyse; yoksa null' }),
+    }),
   }),
 } as const satisfies Fields;
 
@@ -96,7 +124,7 @@ export const ENVELOPE_TAIL = {
   }),
   self_check: f.obj({
     reported_new_facts: f.bool(),
-    not_written_reason: f.text({ nullable: true, max: 200 }),
+    not_written_reason: f.enum(NOT_WRITTEN_REASONS, { nullable: true, explain: true }),
   }),
 } as const satisfies Fields;
 

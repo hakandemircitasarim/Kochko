@@ -215,9 +215,29 @@ export function computeAgreement(verdicts: readonly WriteVerdict[], v1: readonly
 // ─── safety: Stage A's reading → the §7.2 decision table (shadow: benignOverride off) ───────────
 
 /**
- * What resolveTripwires receives from Stage A. The registry envelope carries ONE tripwire_reading
- * {benign, reason}, so it is applied to every ambiguous hit of the scan. A Stage A slower than the
- * live budget (§7.2: 4 s) counts as a timeout here — the shadow reports what LIVE v2 would do.
+ * Stage A's safety.tripwire_readings → TripwireReading[] (the registry's list is the same
+ * {hit_id, reading, reason} shape resolveTripwires consumes). Only readings of hits THIS scan has
+ * are kept — an invented hit_id reads nothing, so its hit stays "missing" → protective. Two readings
+ * for one hit resolve to the protective one (a positive wins over a benign); never the other way.
+ */
+export function tripwireReadingsOf(decision: unknown, scan: TripwireScan): TripwireReading[] {
+  const safety = isRec(decision) && isRec(decision.safety) ? decision.safety : {};
+  const list = Array.isArray(safety.tripwire_readings) ? safety.tripwire_readings : [];
+  const known = new Set(scan.hits.map((h) => h.hit_id));
+  const byHit = new Map<string, TripwireReading>();
+  for (const r of list) {
+    if (!isRec(r) || typeof r.hit_id !== 'string' || !known.has(r.hit_id)) continue;
+    if (r.reading !== 'positive' && r.reading !== 'benign') continue;
+    const reading: TripwireReading = { hit_id: r.hit_id, reading: r.reading, reason: typeof r.reason === 'string' ? r.reason : '' };
+    const prev = byHit.get(r.hit_id);
+    if (!prev || (prev.reading === 'benign' && reading.reading === 'positive')) byHit.set(r.hit_id, reading);
+  }
+  return [...byHit.values()];
+}
+
+/**
+ * What resolveTripwires receives from Stage A. A Stage A slower than the live budget (§7.2: 4 s)
+ * counts as a timeout here — the shadow reports what LIVE v2 would do.
  */
 export function stageASafetyOutcome(outcome: UnderstandOutcome | null, validation: DecisionValidation | null, scan: TripwireScan): StageASafetyOutcome | null {
   if (!outcome) return null;
@@ -227,14 +247,7 @@ export function stageASafetyOutcome(outcome: UnderstandOutcome | null, validatio
   }
   if (outcome.status !== 'parsed' || !validation || !isRec(outcome.decision)) return { status: 'error' };
   const safety = isRec(outcome.decision.safety) ? outcome.decision.safety : {};
-  const tr = isRec(safety.tripwire_reading) ? safety.tripwire_reading : null;
-  const readings: TripwireReading[] = [];
-  if (tr && typeof tr.benign === 'boolean') {
-    for (const h of scan.hits) {
-      if (h.tier !== 'ambiguous') continue;
-      readings.push({ hit_id: h.hit_id, reading: tr.benign ? 'benign' : 'positive', reason: typeof tr.reason === 'string' ? tr.reason : '' });
-    }
-  }
+  const readings = tripwireReadingsOf(outcome.decision, scan);
   const positives: StageASafetyPositive[] = [];
   if (safety.acute_medical === true) positives.push({ category: 'emergency' });
   if (safety.self_harm === true) positives.push({ category: 'self_harm' });

@@ -39,7 +39,7 @@ import { memory_note } from './ops/memory.ts';
 
 /**
  * Bump on ANY change to the generated schema or doc bytes (field, enum, order, description).
- * It names the strict schema ('kochko_understand_v3') and the cache key, and is stamped on every
+ * It names the strict schema ('kochko_understand_vN') and the cache key, and is stamped on every
  * ai_turn_log row and pending_writes payload (an older hold is never applied blindly).
  *
  * v2 (2026-10-07): Stage A budget — no descriptions in the understand schema (semantics once, in
@@ -48,8 +48,14 @@ import { memory_note } from './ops/memory.ts';
  * v3 (2026-10-07): the doc states the `day` vocabulary again (today | yesterday | YYYY-MM-DD,
  * ≤7 days back, no future), generated from the validator's own tokens; the tripwire_reading note
  * names the real block (GÜVENLİK TETİKLERİ, shared/safety-tripwires.ts). Schema bytes unchanged.
+ * v4 (2026-10-10): safety.tripwire_readings is a LIST of {hit_id, reading: positive|benign, reason}
+ * — one reading per ambiguous hit, the shape safety-tripwires.ts renderTripwireFacts asks for and
+ * resolveTripwires consumes (v3's single {benign, reason} was applied to every hit at once);
+ * self_check.not_written_reason is a CLOSED enum (NOT_WRITTEN_REASONS) and only its ids turn a
+ * reported-but-unwritten fact into a decision; the doc teaches record_ops update as THE correction
+ * path (a log op's `replaces` stays null — still validated, no longer taught).
  */
-export const SCHEMA_VERSION = 'v3';
+export const SCHEMA_VERSION = 'v4';
 
 export const REGISTRY: readonly RegOp[] = [
   // writes[] — what the user reported

@@ -170,13 +170,36 @@ async function pool<T>(jobs: (() => Promise<T>)[], n: number): Promise<T[]> {
   return out;
 }
 
+/**
+ * One transport call per (request key, rep) within a run. Two fixtures whose bodies are
+ * byte-identical (same TurnInput, same message) are the same Stage A request: they share the
+ * answer instead of paying twice and racing to write the same replay slot (each is still graded
+ * against its own expectations).
+ */
+export function dedupeTransport(inner: LlmTransport): LlmTransport {
+  const inflight = new Map<string, ReturnType<LlmTransport['call']>>();
+  return {
+    name: inner.name,
+    call(c) {
+      const k = `${c.key}#${c.rep}`;
+      let p = inflight.get(k);
+      if (!p) {
+        p = inner.call(c);
+        inflight.set(k, p);
+      }
+      return p;
+    },
+  };
+}
+
 export async function runEval(opts: RunOptions): Promise<EvalReport> {
   const started_at = new Date().toISOString();
+  const run: RunOptions = { ...opts, transport: dedupeTransport(opts.transport) };
   const jobs: (() => Promise<FixtureRunResult>)[] = [];
   for (const f of opts.fixtures) {
     for (let rep = 0; rep < Math.max(1, opts.reps); rep++) {
       jobs.push(async () => {
-        const r = await runFixtureOnce(f, rep, opts);
+        const r = await runFixtureOnce(f, rep, run);
         opts.onResult?.(r);
         return r;
       });

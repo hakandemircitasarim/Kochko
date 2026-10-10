@@ -14,6 +14,7 @@ import {
   NEGATIVE_OPERATORS,
   type OutcomeStatus,
   type PathExpectation,
+  type PrefixMatch,
   type Quantifier,
   SET_OPERATORS,
   STAGE_ROOTS,
@@ -21,8 +22,8 @@ import {
   type TurnResult,
   VALUE_OPERATORS,
 } from './types.ts';
-import { containsWords, normTr, parsePath, resolveSegments } from './path.ts';
-import { ED_CATEGORIES, ENVELOPE_HEAD } from '../../../shared/write-registry/mod.ts';
+import { containsWords, hasTokenPrefix, normTr, parsePath, resolveSegments } from './path.ts';
+import { ED_CATEGORIES, ENVELOPE_HEAD, TRIPWIRE_READINGS } from '../../../shared/write-registry/mod.ts';
 import type { FieldSpec } from '../../../shared/write-registry/dsl.ts';
 
 export interface EvalContext {
@@ -33,6 +34,8 @@ export interface EvalContext {
 const NEGATIVE_DEFAULT_ALL = new Set(NEGATIVE_OPERATORS);
 /** The registry's "not an eating-disorder signal" category (envelope.ts ED_CATEGORIES). */
 const ED_NOT_A_SIGNAL: keyof typeof ED_CATEGORIES = 'illness_vomiting';
+/** The registry's protective tripwire reading (envelope.ts TRIPWIRE_READINGS). */
+const TRIPWIRE_POSITIVE: keyof typeof TRIPWIRE_READINGS = 'positive';
 /** The registry's own safety field declarations (envelope.ts ENVELOPE_HEAD.safety) — the ONLY
  *  shapes `flag` reads. A field added or reshaped there changes what is recognised here. */
 const SAFETY_FIELDS: Readonly<Record<string, FieldSpec>> = ENVELOPE_HEAD.safety.fields;
@@ -86,24 +89,39 @@ export function safetyFieldOf(path: string): string | null {
  *   bool (acute_medical, self_harm)            → itself
  *   nullable obj with an enum `category` (ed_signal) → null = negative; positive unless the
  *                                                 category is illness_vomiting ("YB değil")
- *   nullable obj with a bool `benign` (tripwire_reading) → null = negative; positive when benign is false
- * The object must carry exactly the declared keys (strict decoding emits all of them and nothing
- * else) and the enum value must be one the registry declares. Anything else → null.
+ *   list of {hit_id, reading, reason} (tripwire_readings) → [] = negative; positive when ANY
+ *                                                 reading is `positive` (one per hit; any positive protects)
+ * Every object must carry exactly the declared keys (strict decoding emits all of them and nothing
+ * else) and every enum value must be one the registry declares. Anything else → null.
  */
+function exactKeys(fields: Readonly<Record<string, FieldSpec>>, v: unknown): v is Record<string, unknown> {
+  if (!isPlainObj(v)) return false;
+  const keys = Object.keys(fields);
+  return Object.keys(v).length === keys.length && keys.every((k) => hasOwn(v, k));
+}
+
 function readSafetyField(spec: FieldSpec, v: unknown): boolean | null {
   if (spec.kind === 'bool') return typeof v === 'boolean' ? v : null;
+  if (spec.kind === 'list') {
+    const reading = spec.fields.reading;
+    if (!Array.isArray(v) || reading?.kind !== 'enum') return null;
+    let positive = false;
+    for (const el of v) {
+      if (!exactKeys(spec.fields, el)) return null;
+      const r = el.reading;
+      if (typeof r !== 'string' || !hasOwn(reading.values, r)) return null;
+      if (r === TRIPWIRE_POSITIVE) positive = true;
+    }
+    return positive;
+  }
   if (spec.kind !== 'obj') return null;
   if (v === null) return spec.nullable ? false : null;
-  if (!isPlainObj(v)) return null;
-  const keys = Object.keys(spec.fields);
-  if (Object.keys(v).length !== keys.length || !keys.every((k) => hasOwn(v, k))) return null;
+  if (!exactKeys(spec.fields, v)) return null;
   const cat = spec.fields.category;
   if (cat?.kind === 'enum') {
     const c = v.category;
     return typeof c === 'string' && hasOwn(cat.values, c) ? c !== ED_NOT_A_SIGNAL : null;
   }
-  const benign = spec.fields.benign;
-  if (benign?.kind === 'bool') return typeof v.benign === 'boolean' ? !v.benign : null;
   return null;
 }
 
@@ -132,6 +150,13 @@ function textContains(hay: unknown, needle: string): boolean {
 function wordsIn(hay: unknown, needle: string): boolean {
   if (typeof hay === 'string') return containsWords(hay, needle);
   if (Array.isArray(hay)) return hay.some((x) => typeof x === 'string' && normTr(x) === normTr(needle));
+  return false;
+}
+
+/** Token-prefix variant: text by tokens (with exceptions); a list matches when any element does. */
+function prefixIn(hay: unknown, m: PrefixMatch): boolean {
+  if (typeof hay === 'string') return hasTokenPrefix(hay, m.prefixes, m.except ?? []);
+  if (Array.isArray(hay)) return hay.some((x) => typeof x === 'string' && hasTokenPrefix(x, m.prefixes, m.except ?? []));
   return false;
 }
 
@@ -165,6 +190,8 @@ function valuePredicate(op: string, arg: unknown, message: string, path: string)
     case 'not_contains_any': return (v) => !(arg as string[]).some((n) => textContains(v, n));
     case 'contains_word_any': return (v) => (arg as string[]).some((n) => wordsIn(v, n));
     case 'not_contains_word_any': return (v) => !(arg as string[]).some((n) => wordsIn(v, n));
+    case 'contains_prefix_any': return (v) => prefixIn(v, arg as PrefixMatch);
+    case 'not_contains_prefix_any': return (v) => !prefixIn(v, arg as PrefixMatch);
     case 'flag': {
       const field = safetyFieldOf(path);
       return (v) => {

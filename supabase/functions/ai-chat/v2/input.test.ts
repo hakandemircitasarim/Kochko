@@ -3,17 +3,19 @@
  *
  * Pinned: the RPC mirror contract (TURN_INPUT_KEYS in order), the one-wave read (every query is
  * issued before the first await), own-rows-only + window + soft-delete filtering, per-turn refs in
- * the registry grammar with "son tur", the Turkish rendering Stage A reads, fail-closed ED tier on a
- * failed safety read, and the supabase-js adapter's translation.
+ * the registry grammar with "son tur", the Turkish lines of the Stage A view (rendered by the ONE
+ * renderer, stage-a-request.ts), the ONE ValidationContext builder, fail-closed ED tier on a failed
+ * safety read, and the supabase-js adapter's translation.
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import { TURN_INPUT_KEYS } from '../../shared/v2-db-types.ts';
 import { parseRef, REF_KINDS } from '../../shared/write-registry/mod.ts';
 import {
-  dayLabelTr, edTierOf, fmtTr, loadTurnInput, PLAIN_TURN_INPUT_SCHEMA, renderTurnInput, supabaseTurnInputDb,
-  turnInputKeyOrder, turnInputQueries, turnRefs, validationContext,
+  buildValidationContext, constraintLine, dayLabelTr, edTierOf, fmtTr, loadTurnInput, PLAIN_TURN_INPUT_SCHEMA, profilePhrases, renderTurnInput,
+  stageAView, supabaseTurnInputDb, turnInputKeyOrder, turnInputQueries, turnRefs, validationContext,
   type DbResult, type PgClientLike, type SelectQuery,
 } from './input.ts';
+import { renderTurnInputBlock } from './stage-a-request.ts';
 import { fakeTurnInputDb, NOW, OTHER, seedTables, USER } from './testing.ts';
 
 async function load(tables = seedTables(), fail: Record<string, string> = {}, clientTimezone: string | null = null, now = NOW) {
@@ -173,7 +175,10 @@ Deno.test('renderTurnInput: §4.2 blocks with registry titles, refs, Turkish num
   assertStringIncludes(r, 'PLAN TASLAĞI:\ndft1 · beslenme taslağı · hafta 2026-10-05 · 2 revizyon');
   assertStringIncludes(r, 'AKTİF PLAN: antrenman (hafta 2026-09-28)');
   assertStringIncludes(r, 'SON TUR (koçun son cevabıyla kaydedilenler): meal_log, water_log');
-  assertStringIncludes(r, 'SON ASİSTAN MESAJI: "Afiyet olsun! Öğle yemeğini kaydettim.');
+  // The recent conversation (oldest first) — the last assistant message is its last coach line.
+  assertStringIncludes(r, 'SON KONUŞMA:\n');
+  assertStringIncludes(r, '\nkoç: "Afiyet olsun! Öğle yemeğini kaydettim.');
+  assert(r.trimEnd().endsWith('Akşam için protein ağırlıklı bir şey düşünür müsün?"'), 'the conversation sits nearest the message');
   for (const id of [USER, 'ml-1', 'dm-7', 'uc-1', 'pw-1', 'wp-d']) assert(!r.includes(id), `no row id in the prompt: ${id}`);
   assertEquals(renderTurnInput(ti), r, 'deterministic');
   assert(!r.includes('YAZMA KAPILARI'), 'tier none → no gate line');
@@ -186,7 +191,49 @@ Deno.test('renderTurnInput: an empty user still gets every block, with "yok"', a
     assertStringIncludes(r, block);
   }
   assertStringIncludes(r, "ref'lerle):\nyok");
-  assert(!r.includes('SON ASİSTAN MESAJI'));
+  assert(!r.includes('SON KONUŞMA'));
+});
+
+Deno.test('stageAView: data → lines only; the block is the shared renderer over it (image flag, tier gate, no ids)', async () => {
+  const { ti } = await load();
+  const v = stageAView(ti);
+  assertEquals(renderTurnInput(ti), renderTurnInputBlock(v));
+  assertEquals(v.now, { today: '2026-10-07', local_date: '2026-10-07', local_time: '14:30', tz: 'Europe/Istanbul' });
+  assertEquals(v.gates, [], 'the ED-tier gate is the renderer\'s, not a line the loader writes');
+  assertEquals(v.image, false);
+  assertEquals(stageAView(ti, { image: true }).image, true);
+  assertEquals(v.records.find((r) => r.ref === 'm3')?.last_turn, true);
+  assertEquals(v.last_turn_writes, ['meal_log', 'water_log']);
+  assertEquals(v.history.length, ti.history.length);
+  assert(!JSON.stringify(v).includes('ml-1') && !JSON.stringify(v).includes(USER), 'no row ids, no user id');
+});
+
+Deno.test('profilePhrases / constraintLine: the shared wording (the eval words fixtures with the same helpers)', () => {
+  assertEquals(profilePhrases({ gender: 'female', height_cm: 165, home_timezone: 'Europe/Istanbul' }, null), ['cinsiyet kadın', 'boy 165 cm']);
+  assertEquals(
+    profilePhrases({ weight_kg: 69.4, target_weight_kg: 70, digestive_issues: 'süt alerjisi', water_target_liters: null }, { goal_type: null, target_weight_kg: 70 }, { rest: true }),
+    ['kilo 69,4 kg', 'hedef kilo 70,0', 'digestive_issues=süt alerjisi'],
+  );
+  assertEquals(constraintLine({ kind: 'allergen', subject: 'fıstık', severity: 'severe' }), 'alerji · fıstık · ciddi');
+  assertEquals(constraintLine({ kind: 'allergen', subject: 'süt', severity: 'unknown', whose: 'self', active: false }), 'alerji · süt · şiddeti belirtilmemiş · PASİF (geri alındı)');
+  assertEquals(constraintLine({ kind: 'allergen', subject: 'yumurta', severity: null, whose: 'other_person' }), 'alerji · yumurta · şiddeti belirtilmemiş · başkasının');
+});
+
+Deno.test('buildValidationContext: the ONE builder — typed identity, last weigh-in within 14 days, null goal, day totals', () => {
+  const ctx = buildValidationContext({
+    today: '2026-10-07', now_iso: '2026-10-07T11:30:00Z', message: 'm', refs: {},
+    days: [{ day: '2026-10-07', water_liters: 1.6 }],
+    profile: { birth_year: '1990', height_cm: 165, gender: 'female', unrelated: 'x' },
+    goal: null,
+    weights: [{ day: '2026-09-01', kg: 72 }, { day: '2026-10-06', kg: 70.4 }, { day: '2026-10-08', kg: 69 }, { day: '2026-10-05', kg: 0 }],
+    ed_tier: 'amber',
+  });
+  assertEquals(ctx.day_totals, { '2026-10-07': { water_liters: 1.6, steps: null, sleep_hours: null, weight_kg: null } });
+  assertEquals(ctx.profile, { birth_year: 1990, height_cm: 165, weight_kg: null, gender: 'female', periodic_state: null });
+  assertEquals(ctx.last_weight, { kg: 70.4, day: '2026-10-06' }, 'a future or out-of-window weigh-in never counts');
+  assertEquals(ctx.goal, null);
+  assertEquals(ctx.ed_tier, 'amber');
+  assertEquals(ctx.reference_rows, {});
 });
 
 Deno.test('fmtTr and dayLabelTr', () => {

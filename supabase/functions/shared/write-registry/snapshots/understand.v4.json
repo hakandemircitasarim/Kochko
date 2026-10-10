@@ -80,35 +80,39 @@
       }
      ]
     },
-    "tripwire_reading": {
-     "anyOf": [
-      {
-       "type": "object",
-       "properties": {
-        "benign": {
-         "type": "boolean"
-        },
-        "reason": {
-         "type": "string"
-        }
+    "tripwire_readings": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "hit_id": {
+        "type": "string"
        },
-       "required": [
-        "benign",
-        "reason"
-       ],
-       "additionalProperties": false
+       "reading": {
+        "type": "string",
+        "enum": [
+         "positive",
+         "benign"
+        ]
+       },
+       "reason": {
+        "type": "string"
+       }
       },
-      {
-       "type": "null"
-      }
-     ]
+      "required": [
+       "hit_id",
+       "reading",
+       "reason"
+      ],
+      "additionalProperties": false
+     }
     }
    },
    "required": [
     "acute_medical",
     "self_harm",
     "ed_signal",
-    "tripwire_reading"
+    "tripwire_readings"
    ],
    "additionalProperties": false
   },
@@ -452,6 +456,16 @@
      "type": [
       "string",
       "null"
+     ],
+     "enum": [
+      "emergency_turn",
+      "illness_not_food",
+      "question_only",
+      "hypothetical",
+      "about_other_person",
+      "already_recorded",
+      "needs_clarification",
+      null
      ]
     }
    },
@@ -460,142 +474,6 @@
     "not_written_reason"
    ],
    "additionalProperties": false
-  },
-  "suggested_foods": {
-   "type": "array",
-   "items": {
-    "type": "object",
-    "properties": {
-     "name": {
-      "type": "string"
-     },
-     "allergens": {
-      "$ref": "#/$defs/allergens"
-     },
-     "may_contain": {
-      "$ref": "#/$defs/allergens"
-     }
-    },
-    "required": [
-     "name",
-     "allergens",
-     "may_contain"
-    ],
-    "additionalProperties": false
-   },
-   "description": "cevapta ÖNERDİĞİN her yiyecek, alerjen etiketleriyle (cevaptan ÖNCE)"
-  },
-  "suggested_exercises": {
-   "type": "array",
-   "items": {
-    "type": "object",
-    "properties": {
-     "name": {
-      "type": "string"
-     },
-     "loads": {
-      "$ref": "#/$defs/body_parts"
-     }
-    },
-    "required": [
-     "name",
-     "loads"
-    ],
-    "additionalProperties": false
-   },
-   "description": "cevapta ÖNERDİĞİN her egzersiz ve yüklediği bölgeler"
-  },
-  "reply": {
-   "type": "string",
-   "description": "kullanıcıya cevap"
-  },
-  "why": {
-   "type": [
-    "string",
-    "null"
-   ],
-   "description": "kısa gerekçe (istemci \"neden?\" altında gösterir)"
-  },
-  "memory": {
-   "type": "array",
-   "items": {
-    "type": "object",
-    "description": "Hafıza notu",
-    "properties": {
-     "op": {
-      "type": "string",
-      "enum": [
-       "memory_note"
-      ]
-     },
-     "kind": {
-      "type": "string",
-      "enum": [
-       "person_note",
-       "coach_note",
-       "pattern",
-       "portion_calibration",
-       "forget"
-      ]
-     },
-     "text": {
-      "type": "string"
-     },
-     "food": {
-      "type": [
-       "string",
-       "null"
-      ],
-      "description": "yalnız portion_calibration"
-     },
-     "grams": {
-      "type": [
-       "number",
-       "null"
-      ],
-      "description": "yalnız portion_calibration"
-     },
-     "confidence": {
-      "type": "number"
-     }
-    },
-    "required": [
-     "op",
-     "kind",
-     "text",
-     "food",
-     "grams",
-     "confidence"
-    ],
-    "additionalProperties": false
-   }
-  },
-  "ui": {
-   "type": "object",
-   "properties": {
-    "navigate_to": {
-     "type": [
-      "string",
-      "null"
-     ],
-     "description": "yönlendirilecek uygulama ekranı, gerekiyorsa"
-    },
-    "task_completion_summary": {
-     "type": [
-      "string",
-      "null"
-     ]
-    }
-   },
-   "required": [
-    "navigate_to",
-    "task_completion_summary"
-   ],
-   "additionalProperties": false
-  },
-  "referral_included": {
-   "type": "boolean",
-   "description": "cevapta uzman/112 yönlendirmesi var mı"
   }
  },
  "required": [
@@ -609,14 +487,7 @@
   "simulation",
   "clarify",
   "reply_route",
-  "self_check",
-  "suggested_foods",
-  "suggested_exercises",
-  "reply",
-  "why",
-  "memory",
-  "ui",
-  "referral_included"
+  "self_check"
  ],
  "additionalProperties": false,
  "$defs": {

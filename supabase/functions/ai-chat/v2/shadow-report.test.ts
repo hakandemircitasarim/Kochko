@@ -6,6 +6,7 @@
  * the owner's terminal a week into the shadow.
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
+import { scanTripwires } from '../../shared/safety-tripwires.ts';
 import { sampleDecision, SAMPLE_WRITES } from '../../shared/write-registry/samples.ts';
 import { loadTurnInput } from './input.ts';
 import { percentile, renderShadowReport, stageAStatusOf, summarizeShadowRows } from './shadow-report.mjs';
@@ -60,7 +61,10 @@ async function rows(): Promise<Record<string, unknown>[]> {
   await run('bu tarife bayılmıştım', [], stageA(null, 900, { status: 'refused', decision: null, refusal: 'no' }));
   // 6. a benign reading on a tripwire turn.
   await run('bu tarife bayılmıştım', [], stageA(sampleDecision({
-    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_reading: { benign: true, reason: 'beğeni' } },
+    safety: {
+      acute_medical: false, self_harm: false, ed_signal: null,
+      tripwire_readings: scanTripwires('bu tarife bayılmıştım').hits.filter((h) => h.tier === 'ambiguous').map((h) => ({ hit_id: h.hit_id, reading: 'benign', reason: 'beğeni' })),
+    },
   }), 1800));
   // 7. an explicit hit: skipped, canned.
   await run('kendimi öldürmek istiyorum', [], stageA(question, 1000));
@@ -125,16 +129,17 @@ Deno.test('self_check: an unexplained omission is a missed write; a reasoned one
   const missed = await run('bugün 3 km yürüdüm', sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: null } }));
   const explained = await run('dün gece kustum, zehirlendim galiba', sampleDecision({
     safety: {
-      acute_medical: false, self_harm: false, tripwire_reading: { benign: true, reason: 'zehirlenme' },
+      acute_medical: false, self_harm: false,
+      tripwire_readings: scanTripwires('dün gece kustum, zehirlendim galiba').hits.filter((h) => h.tier === 'ambiguous').map((h) => ({ hit_id: h.hit_id, reading: 'benign', reason: 'zehirlenme' })),
       ed_signal: { category: 'illness_vomiting', severity: 'low', evidence_quote: 'dün gece kustum' },
     },
-    self_check: { reported_new_facts: true, not_written_reason: 'tek seferlik rahatsızlık; kayıt alanı yok' },
+    self_check: { reported_new_facts: true, not_written_reason: 'illness_not_food' },
   }));
   assertEquals([missed.validation?.missed_write, explained.validation?.missed_write], [true, false]);
   const s = summarizeShadowRows(sink.rows);
   assertEquals([s.missed_write, s.not_written_explained], [1, 1]);
   assertStringIncludes(renderShadowReport(s), 'kaçırılan kayıt (self_check) 1 · gerekçeyle yazılmayan 1');
-  assert(!JSON.stringify(sink.rows.map((r) => r.issues)).includes('tek seferlik'), 'issues carry codes, the reason stays in the decision');
+  assert(!JSON.stringify(sink.rows.map((r) => r.issues)).includes('illness_not_food'), 'issues carry codes, the reason stays in the decision');
 });
 
 Deno.test('A′ watch: writes v2 would make on a QUESTION / hypothetical turn, and FLAG codes split by that intent', async () => {

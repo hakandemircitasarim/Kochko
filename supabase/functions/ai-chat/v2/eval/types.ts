@@ -90,6 +90,7 @@ export interface ReferenceCandidate {
  * and renders the facts with renderTripwireFacts(). (fixtures.ts lint rejects the old field.)
  */
 export interface FixtureTurnInput {
+  /** `weekday_tr` is informational: the renderer derives the weekday from `local_date` (as for a live turn). */
   now?: { local_date: string; local_time?: string; weekday_tr?: string; tz?: string };
   profile?: Record<string, Json>;
   spine?: SpineEntry[];
@@ -101,7 +102,7 @@ export interface FixtureTurnInput {
   history?: HistoryTurn[];
   tier?: 'none' | 'watch' | 'amber' | 'red';
   reference_candidates?: ReferenceCandidate[];
-  gates?: string[]; // "yazma kapıları" lines (§4.2/4)
+  gates?: string[]; // extra "yazma kapıları" lines (§4.2/4); the ED-tier gate is derived from `tier` by the renderer
   image?: boolean;
   /** Validator-only fact (ValidationContext.last_weight): the latest weigh-in of the last 14 days. */
   last_weight?: { kg: number; day: string } | null;
@@ -145,12 +146,21 @@ export interface PathExpectation {
   contains_word_any?: string[];
   not_contains_word_any?: string[];
   /**
+   * Token-prefix match (Turkish lower-case tokens): a token that STARTS WITH a prefix hits, so every
+   * suffixed form is caught ("kek" → keke, kekleri, havuçlu kek; "pasta" → pastası), unless the
+   * token starts with one of `except` ("kekik" → kekikli tavuk is not cake). Each exception must
+   * itself extend one of the prefixes (lint).
+   */
+  contains_prefix_any?: PrefixMatch;
+  not_contains_prefix_any?: PrefixMatch;
+  /**
    * A registry safety field read as a signal through ITS declaration (envelope.ts
    * ENVELOPE_HEAD.safety; the path's last key names the field): a boolean (acute_medical,
    * self_harm) is itself; ed_signal is null (negative) or {category, severity, evidence_quote} —
-   * positive unless category is `illness_vomiting` ("YB değil"); tripwire_reading is null or
-   * {benign, reason} — positive when benign is false. Any other shape is NOT guessed: the check
-   * fails (closed). On a path that is not a safety field it is a lint error.
+   * positive unless category is `illness_vomiting` ("YB değil"); tripwire_readings is a list of
+   * {hit_id, reading, reason} — [] is negative, positive when ANY reading is `positive`. Any other
+   * shape is NOT guessed: the check fails (closed). On a path that is not a safety field it is a
+   * lint error.
    */
   flag?: boolean;
   /** The value must be a substring of the normalized USER message (evidence_quote rule, §7.2). */
@@ -160,17 +170,19 @@ export interface PathExpectation {
   quantifier?: Quantifier;
   why?: string;
 }
+export interface PrefixMatch { prefixes: string[]; except?: string[] }
 export interface AnyOfExpectation { any_of: Expectation[]; why?: string }
 export interface AllOfExpectation { all_of: Expectation[]; why?: string }
 export type Expectation = PathExpectation | AnyOfExpectation | AllOfExpectation;
 
 export const VALUE_OPERATORS = [
   'eq', 'ne', 'in', 'not_in', 'between', 'gte', 'lte', 'gt', 'lt', 'contains', 'not_contains',
-  'contains_any', 'not_contains_any', 'contains_word_any', 'not_contains_word_any', 'flag', 'verbatim_in_message', 'eq_path',
+  'contains_any', 'not_contains_any', 'contains_word_any', 'not_contains_word_any', 'contains_prefix_any', 'not_contains_prefix_any',
+  'flag', 'verbatim_in_message', 'eq_path',
 ] as const;
 /** Operators that assert ABSENCE; vacuously true on an empty set, so a path that cannot resolve
  *  (a renamed field) must fail them instead of passing silently (expect.ts). */
-export const NEGATIVE_OPERATORS: readonly string[] = ['ne', 'not_in', 'not_contains', 'not_contains_any', 'not_contains_word_any'];
+export const NEGATIVE_OPERATORS: readonly string[] = ['ne', 'not_in', 'not_contains', 'not_contains_any', 'not_contains_word_any', 'not_contains_prefix_any'];
 export const SET_OPERATORS = ['exists', 'absent', 'count', 'count_gte', 'count_lte', 'empty'] as const;
 export type ValueOperator = typeof VALUE_OPERATORS[number];
 export type SetOperator = typeof SET_OPERATORS[number];
