@@ -704,7 +704,7 @@ Acil/kriz/YB sözlüklerine (ör. "bayıldım") **dokunulmaz**; o adım gölge k
 
 1. **Örnek diyaloglar:** 8–12 altın diyaloğu kim yazacak/onaylayacak? Koçun "fine-tuned" hissinin en ucuz kaldıracı bu; sahibin sesi gerekiyor. *Öneri: ben taslak çıkarayım, sen düzelt.*
 2. **Faz 0 deploy onayı:** Faz 0'daki 9 değişiklik v1'e, testlerden sonra deploy edilecek (alışılmış iş akışı). Food-reference ezmesinin kaldırılması dashboard'daki geçmiş kayıtları değiştirmez, yalnızca yenileri etkiler; geçmişte bozuk kayıtların (ör. 1708 kcal nugget) toplu düzeltmesi isteniyor mu?
-3. **Maliyet tavanı:** sıradan turda +%40'a kadar kabul edilebilir mi, yoksa Stage A'nın luna'ya indirilmesi için daha agresif bir eval hedefi mi konulsun?
+3. **Maliyet tavanı:** sıradan turda +%40'a kadar kabul edilebilir mi, yoksa Stage A'nın luna'ya indirilmesi için daha agresif bir eval hedefi mi konulsun? **Sahip kararı (2026-10-10):** önce doğruluk — maliyet kapısı Faz 3'te bloklayıcı değil; v2 doğru çalıştıktan sonra tasarruf (Stage A'yı luna'ya indirme, önek kırpma) ayrı bir adım olarak ölçülerek yapılır.
 4. **Saklama:** `ai_turn_log.decision` ve gölge kayıtları için 30 gün uygun mu (KVKK)?
 5. **İstemci sürümü:** akış (streaming) ve yapılandırılmış `reasoning`/`simulation` için bir sonraki istemci sürümü ne zaman? Bu, algılanan gecikmeyi ~2,5–4 sn'ye indiren tek kaldıraç.
 6. **ai-extractor:** nightly çıkarıcı silinsin mi (sohbet artık doğru yazıyor), yoksa kayıt üzerinden yazacak şekilde mi tutulsun? *Öneri: Faz 5'te sil.*
