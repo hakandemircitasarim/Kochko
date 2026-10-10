@@ -6,9 +6,12 @@
  * Stage A a FACT it must read and justify (ambiguous list). Writes, intents and amounts are never
  * derived from these patterns.
  *
- *   EXPLICIT   (intihar, kendimi öldürmek, nefes alamıyorum, göğsüm sıkışıyor…)
- *              → the canned reply below, instantly, no LLM (today's behaviour, sen-voice, 112).
- *   AMBIGUOUS  (bayıldım, tükendim, kustum, kalp çarpıntısı, aç kalma…)
+ *   EXPLICIT   → the canned reply below, instantly, no LLM (today's behaviour, sen-voice, 112).
+ *              Two parts: the CURATED patterns (intihar, kendimi öldürmek, nefes alamıyorum,
+ *              göğsüm sıkışıyor… — the user, now, in more spellings and inflections than v1 knew)
+ *              and the V1 FLOOR: every message v1's detectEmergency/detectCrisis answers
+ *              instantly is answered instantly here too (§7.1, §7.4 — see V1_FLOOR_TRIPWIRES).
+ *   AMBIGUOUS  (bayılacak gibiyim, nefesim daralıyor, keşke uyanmasam, kustum, aç kalma…)
  *              → a tripwire fact for Stage A (+ a parallel classifier for emergency/self-harm).
  *              resolveTripwires() applies the §7.2 table: no reasoned benign reading → protective
  *              path; Stage A timeout/error/refusal → today's canned reply (fail-closed).
@@ -16,34 +19,43 @@
  *   INJECTION  → logged, never refused (§7.3).
  *
  * Why a split instead of today's single list: every v1 hit is an instant canned reply, so
- * "bu tarife bayıldım" got 112 and "dün gece kustum, zehirlendim galiba" an ED referral plus a
- * 14-day deficit lock. The explicit list keeps only phrasings with no plausible benign reading,
+ * "bu tarife bayıldım" gets 112 and "dün gece kustum, zehirlendim galiba" an ED referral plus a
+ * 14-day deficit lock. The CURATED list keeps only phrasings with no plausible benign reading,
  * about the user, NOW: the same words told as past or about someone else ("koşuda nefes
- * alamıyordum, normal mi?", "babam hayata veda etti") are reported as an ambiguous `<id>.anlatim`
- * hit (see `narration`), and an explicit pattern never reaches into a neighbouring word
- * ("hayatımı son derece kolaylaştırdı" is praise, not "hayatıma son"). A simile is NOT narration:
- * "sanki kalp krizi geçiriyormuşum gibi", "göğsüm sıkışıyormuş gibi" is how Turkish describes a
- * symptom happening now, and v1 answers it instantly — so does this list (wave-2a review).
- * The instant tier never shrinks below v1 for the user, now: the golden test in
- * safety-tripwires.test.ts classifies every v1 phrase as explicit here or as a documented,
- * reasoned "Stage A reads it" entry.
- * Everything else is ambiguous WITHOUT losing recall: v1's own phrase lists and root regexes live
- * here (guardrails.ts imports them — a pure move, v1 behaviour unchanged) and also run as
- * catch-all ambiguous triggers, so every v1 hit is still a hit by construction (golden parity
- * test in safety-tripwires.test.ts). Rules for editing (§7.4): ADDING a pattern ships any time;
- * moving one from explicit to ambiguous, or deleting one, needs shadow evidence and 100% recall
- * on the golden positive set. Editing a V1_* list changes v1 too.
+ * alamıyordum, normal mi?") are reported as an ambiguous `<id>.anlatim` hit (see `narration`),
+ * and a curated pattern never reaches into a neighbouring word ("hayatımı son derece
+ * kolaylaştırdı" is praise, not "hayatıma son"). A simile is NOT narration: "sanki kalp krizi
+ * geçiriyormuşum gibi", "göğsüm sıkışıyormuş gibi" is how Turkish describes a symptom happening
+ * now (wave-2a review) — and no "… gibi değil" denial heuristic exists here on purpose: one that
+ * read any negative verb after "gibi" demoted real emergencies (rejected, d1fd68b SIMILE_DENIED).
+ *
+ * THE V1 FLOOR. Demoting a phrase v1 answers instantly (bare "kalp krizi", "felç", "bayıldım",
+ * "tükendim", "kan küstüm", "yutamıyorum", "nefesim kesildi", "hayata veda", "babam … göğüs ağrısı
+ * vardı" …) to Stage A removes an instant block, and §7.4 needs owner approval AND shadow evidence
+ * for that — which we do not have. So until then v1's own lists and root regexes run as the LAST
+ * explicit tier: a curated pattern still names the words first, and a curated ambiguous reading of
+ * the same words (emg.bayilma, `<id>.anlatim` …) is still recorded next to the floor hit — ledger
+ * evidence for that future decision — but the outcome is instant. The golden parity test in
+ * safety-tripwires.test.ts holds this over a broad Turkish corpus: v1 instant ⇒ v2 explicit.
+ * v1's lists and regexes live here (guardrails.ts imports them — a pure move, v1 behaviour
+ * unchanged); editing a V1_* list changes v1 too. Rules for editing (§7.4): ADDING a pattern
+ * ships any time; a curated pattern may be narrowed (an `.anlatim` reading) with a review and a
+ * golden test, never below v1 — only where v1 is silent, since the floor answers the rest; moving
+ * anything out of the floor needs owner approval, shadow evidence and 100% recall on the golden
+ * positive set.
  *
  * Matching: the message is NFC-normalised, tr-lowercased, apostrophes dropped, whitespace
  * collapsed, then diacritic-folded (ş→s, ı→i, ğ→g …), so a curated pattern covers both "ölmek
  * istiyorum" and "olmek istiyorum". Word starts use (?<!\p{L}) — JS \b only knows ASCII letters.
  * A few patterns run on the unfolded lowercase text instead: v1's regexes (their v1 semantics)
- * and "kendimi as…", because folding would merge "aşmak" (exceed) into "asmak" (hang).
+ * and "kendimi as…", because folding would merge "aşmak" (exceed) into "asmak" (hang). The floor
+ * finally runs v1 verbatim on the RAW text (v1VerbatimMatch, the backstop in scanTripwires), so no
+ * normalisation step can make v2 miss what v1 answers.
  *
  * Pure: no I/O, no Deno/npm imports (the eval runner and any runtime can load it).
  */
 
-export const TRIPWIRES_VERSION = 'tw-2026-10-07b';
+export const TRIPWIRES_VERSION = 'tw-2026-10-10a';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -55,8 +67,9 @@ export type EdSeverity = 'high' | 'medium';
 export interface TripwireHit {
   /** Per-scan handle Stage A answers with in `safety.tripwire_reading` ('tw1', 'tw2', …). */
   hit_id: string;
-  /** Stable pattern id for the ledger ('emg.bayilma', 'sh.intihar', 'ed.kusma' …); an explicit
-   * phrasing told as past or about someone else is '<explicit id>.anlatim' (tier 'ambiguous'). */
+  /** Stable pattern id for the ledger ('emg.bayilma', 'sh.intihar', 'ed.kusma' …); a curated
+   * explicit phrasing told as past, about someone else or denied is '<explicit id>.anlatim' (tier
+   * 'ambiguous'); a hit only the v1 floor makes instant is one of V1_FLOOR_TRIGGERS. */
   trigger: string;
   category: TripwireCategory;
   tier: TripwireTier;
@@ -80,9 +93,11 @@ export interface InjectionHit {
 }
 
 export interface TripwireScan {
-  /** The explicit hit that decides the canned reply (emergency before self-harm, as v1). */
+  /** The explicit hit that decides the canned reply (emergency before self-harm, as v1); a
+   * curated hit wins over a floor hit of the same category. */
   explicit: TripwireHit | null;
-  /** Every explicit, ambiguous and signal hit, in priority then text order. */
+  /** Every hit: curated explicit, ambiguous, signal, then the v1 floor — each tier in list then
+   * text order. */
   hits: TripwireHit[];
   injection: InjectionHit[];
 }
@@ -103,11 +118,12 @@ export interface TripwireDef {
   /** ED: a same-clause refusal after the match marks the hit negated (v1 F2/A8 rule). */
   negatable?: boolean;
   /**
-   * EXPLICIT only — is this occurrence past narration or someone else's? Gets the folded last word
-   * of the match (completed to its end), the word right after it, and the folded text right after
-   * it (up to 60 characters; '' when punctuation, not a space, follows the word). True → the
-   * occurrence is reported as an AMBIGUOUS hit with trigger `<id>.anlatim`: Stage A reads it, a
-   * failed Stage A still gives today's canned reply, so nothing is lost — it is only not instant.
+   * CURATED EXPLICIT only — is this occurrence past narration, someone else's, or denied? Gets the
+   * folded last word of the match (completed to its end), the word right after it, and the folded
+   * text right after it (up to 60 characters; '' when punctuation, not a space, follows the word).
+   * True → the occurrence is reported as an AMBIGUOUS hit with trigger `<id>.anlatim`: Stage A
+   * reads it, a failed Stage A still gives today's canned reply. It never lowers v1: when v1
+   * answers the message instantly, the v1 floor still makes it explicit.
    */
   narration?: (verb: string, next: string, after: string) => boolean;
   /** Stage A's question for a narrated occurrence (default: `question_tr`). */
@@ -235,6 +251,44 @@ const notMeNow = (verb: string, _next: string, after: string): boolean =>
 const someoneElsesDeath = (_verb: string, next: string): boolean =>
   /^(?:etti(?!m)|etmis(?!im)|eden|ettig|ettikt|ettiler|etmisler)/u.test(next);
 
+/** An infinitive hands the person to the next word: "son vermek İSTİYORUM", "vermeyi DÜŞÜNÜYORUM". */
+const INTENT_INFINITIVE = /m[ae](?:k|yi|ye)?$/u;
+/** The verbs a sh.hayatima_son phrasing ends in: its own (ver, koy, bitir, sonlandır) or the
+ * auxiliary after the infinitive (iste, düşün, planla). Folded spelling. */
+const INTENT_STEM = '(?:iste|isti|ist|dusun|planla|planli|ver|sonver|koy|bitir|sonlandir)';
+/** A negated form of one of those verbs: -mıyor, -meyecek, -medi, -memiş, -mez. Not "-mem"
+ * ("son vermem gerek" = I must end it) and never any other verb ("umuyorum" = I hope). */
+const INTENT_DENIED = new RegExp(`^${INTENT_STEM}m(?:[iu]yo|[ae]y[ae]c|[ae]d[iu]|[ae]m[iu]s|[ae]z)`, 'u');
+/** A finite form of one of those verbs in the 2nd/3rd person or plural: istiyor(sun/lar),
+ * verecek(sin), verdi(n), vermiş, ister(sin). Never a bare stem or a plea ("son ver", "son versin"),
+ * and never the first person: every Turkish 1sg ending ends in -m. */
+const INTENT_OTHER_PERSON = new RegExp(
+  `^${INTENT_STEM}\\p{L}*?(?:yo(?:r)?|[ae]c[ae]k|[dt][iu]|m[iu]s|[aeiu]r)(?:s[iu]n(?:[iu]z)?|[iu]z|l[ae]r|n[iu]z|n)?$`, 'u');
+/** Nothing but non-letters up to punctuation or the end: the person-bearing word closes the clause. */
+const clauseEnds = (rest: string): boolean => !/^[^.,;:!?…]*\p{L}/u.test(rest);
+
+/**
+ * sh.hayatima_son is an INTENT; it is not the user's own when the person-bearing word is clearly
+ * someone else's or denied AND closes the clause: "patronum hayatımı bitirmek istiyor", "hayatımı
+ * bitirmek istiyorsun", "hayatıma son vermeyi düşünmüyorum". Everything else stays instant — the
+ * first person, a bare "hayatıma son", a plea ("Allah'ım hayatıma son ver"), a question ("istiyor
+ * muyum"), a simile ("istiyor gibiyim"), an unknown word: when unsure, explicit. v1 answers most of
+ * these phrasings instantly anyway (phrase "hayatıma son", root "hayatımı … bitir"), and then the v1
+ * floor keeps them instant; this only stops the intent pattern from claiming them.
+ */
+const notMyIntent = (verb: string, _next: string, after: string): boolean => {
+  let word = verb;
+  let rest = after;
+  if (INTENT_INFINITIVE.test(verb)) {
+    const aux = /^\p{L}+/u.exec(after);
+    if (!aux) return false;
+    word = aux[0];
+    rest = after.slice(word.length);
+  }
+  if (!clauseEnds(rest)) return false;
+  return INTENT_DENIED.test(word) || (!/m$/u.test(word) && INTENT_OTHER_PERSON.test(word));
+};
+
 /**
  * v1's dangerously-low calorie INTENT rule (#live-L7 / AI-GRD-02), copied verbatim from
  * guardrails.detectEDRisk and run on the same lowercase text: a 2–4 digit kcal figure under 1100
@@ -348,16 +402,18 @@ const Q_EMERGENCY = 'Şu an akut bir tıbbi acil durum mu anlatıyor, yoksa geç
 const Q_EMERGENCY_NARRATED = 'Şu an süren bir belirti mi, yoksa geçmişte kalmış ya da başkasına ait bir anlatım (ör. "koşuda nefes alamıyordum, normal mi?") mı?';
 const Q_SELF_HARM = 'Kendine zarar verme ya da yaşamak istememe düşüncesi mi, yoksa yorgunluk/mecaz mı?';
 
-// Explicit = the user, now. Each emergency pattern carries `narration`, so the same words told as
-// past or about someone else land in the ambiguous tier as `<id>.anlatim` (never lost). No pattern
-// may run into a following word: "hayatımı son derece …", "kendimi zararlı …" are not crises.
+// Curated explicit = the user, now. Each emergency pattern carries `narration`, so the same words
+// told as past or about someone else land in the ambiguous tier as `<id>.anlatim` (never lost) —
+// and when v1 answers that message instantly anyway, the v1 floor below keeps it instant. No
+// pattern may run into a following word: "hayatımı son derece …", "kendimi zararlı …".
 export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
   // ── emergency (acute medical) ──
   { id: 'emg.nefes_alamiyorum', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:nefes|soluk)\s*alami?yo/u, narration: notMeNow, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.gogus_sikismasi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:gogus\s+sikis|gogsum\s+(?:cok\s+)?sikis|gogsumde\s+(?:bir\s+|cok\s+)?(?:sikisma|baski))/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.gogus_agrisi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})(?:gogus\s+agri|gogsum\s+(?:cok\s+)?agri|gogsumde\s+(?:bir\s+|cok\s+)?agri)/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   // "geçiriyorum / geçiriyormuşum gibi / geçirecek gibiyim / geçirecek gibi hissediyorum": now or
-  // about to. "geçirecektim", "geçirecek gibiydim" (past) and a bare "kalp krizi" stay ambiguous.
+  // about to. Not "geçirecektim", "geçirecek gibiydim" (past) — but v1 answers every "kalp krizi"
+  // instantly, so the v1 floor does too until a §7.4 demotion.
   { id: 'emg.kalp_krizi_simdi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kalp\s*kriz\p{L}*\s+(?:mi\s+)?gecir(?:iyo|ecek(?:mis)?\s+gibi(?:yim|\s+\p{L}+yo(?:ru)?m))/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.kan_kusuyorum', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})kan\s+kusuyo/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
   { id: 'emg.bilinc_kaybi', category: 'emergency', tier: 'explicit', re: /(?<!\p{L})bilinc\p{L}*\s+(?:kaybed|kaybet|kapan|gidiyo)/u, narration: pastNarration, narration_q: Q_EMERGENCY_NARRATED, question_tr: Q_EMERGENCY },
@@ -369,26 +425,29 @@ export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
   // istiyorum" is a goal, and v1 is silent on it. "kendime zararlı bir şey yaptım" stays instant.
   { id: 'sh.kendime_zarar', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})kendime\s+zarar/u, question_tr: Q_SELF_HARM },
   { id: 'sh.olmek_istiyorum', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})olmek\s+ist(?:iyo|erdim|edim|erim)/u, question_tr: Q_SELF_HARM },
-  // "böyle / bu kiloyla yaşamak istemiyorum" is a common weight-loss sentence → ambiguous list.
+  // "böyle / bu kiloyla yaşamak istemiyorum" is a common weight-loss sentence, so this pattern does
+  // not claim it (sh.yasamak_istemiyorum_nitelikli records the reading) — v1 does, so the floor does.
   { id: 'sh.yasamak_istemiyorum', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?<!(?:boyle|bu sekilde|bu kiloyla|bu kilolarla|bu halde|bu bedenle|bu vucutla) )yasamak\s+ist(?:emiyo|emem)/u, question_tr: Q_SELF_HARM },
   { id: 'sh.canima_kiymak', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:canima\s+kiy(?:mak|maya|mayi|acag|acak|dim|arim|sam)|kendime\s+kiy(?:mak|acag|acak|dim|arim|sam))/u, question_tr: Q_SELF_HARM },
   // "hayatıma (bir) son ver…" (also typed joined: "sonvereceğim"), "hayatıma son noktayı koy…", a
   // bare "hayatıma son" ending the clause, "hayatımı sonlandır…", first-person "hayatımı bitir…"
-  // intent. Never "hayatımı sonsuza dek değiştirdi" / "hayatıma son derece iyi geldi" (praise; the
-  // latter is a v1 hit, so the sh.v1 catch-all still reports it as an ambiguous fact), nor "bu
-  // tatlılar hayatımı bitirecek" (third person: "will ruin my life").
-  { id: 'sh.hayatima_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:hayat|yasam)(?:ima\s+(?:bir\s+)?son(?:\s*ver|\s+nokta\p{L}*\s+koy|(?!\s*\p{L}))|imi\s+(?:sonlandir|bitir(?:ecegim|ecem|mek\s+isti|meyi\s+dusun)))/u, question_tr: Q_SELF_HARM },
-  // Intent forms only: "antrenmanda kendimi öldürdüm" (gym idiom) is ambiguous below. "öldüreğim" is
-  // v1's own spelling of the future ("kendimi olduregim" is in V1_CRISIS_PHRASES).
+  // intent. Never "hayatımı sonsuza dek değiştirdi" / "hayatıma son derece iyi geldi" (praise),
+  // nor "bu tatlılar hayatımı bitirecek" (third person: "will ruin my life"); a 2nd/3rd person or
+  // denied form is `.anlatim` (notMyIntent). v1 answers "hayatıma son …" and "hayatımı … bitir…"
+  // instantly whatever follows, so for those the v1 floor still gives the instant reply.
+  { id: 'sh.hayatima_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:hayat|yasam)(?:ima\s+(?:bir\s+)?son(?:\s*ver|\s+nokta\p{L}*\s+koy|(?!\s*\p{L}))|imi\s+(?:sonlandir|bitir(?:ecegim|ecem|mek\s+isti|meyi\s+dusun)))/u, narration: notMyIntent, narration_q: 'Kendi yaşamına son verme niyeti mi, yoksa olumsuzlanmış ya da başkası hakkında bir cümle mi?', question_tr: Q_SELF_HARM },
+  // Intent forms only: "antrenmanda kendimi öldürdüm" (gym idiom) is recorded as sh.kendimi_oldurdum
+  // and made instant by the v1 floor (v1's root regex). "öldüreğim" is v1's own spelling of the
+  // future ("kendimi olduregim" is in V1_CRISIS_PHRASES).
   { id: 'sh.kendimi_oldurmek', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})kendimi\s+oldur(?:ec|eg|mek|meyi|meye|sem|eyim)/u, question_tr: Q_SELF_HARM },
   // Unfolded: "kendimi aşmak istiyorum" (outdo myself) must not read as "asmak" (hang).
   { id: 'sh.kendimi_asmak', category: 'self_harm', tier: 'explicit', on: 'lower', re: /(?<!\p{L})kendimi\s+as(?:aca[gğ]|acak|mak|may[ıi]|maya|sam|ay[ıi]m)/u, question_tr: Q_SELF_HARM },
-  // Unfolded, intent forms only: folding merges "ölüp kurtulmak" with "(zayıf) olup kurtulmak", so
-  // the ASCII spelling stays ambiguous (sh.olup_kurtul), and so does the passive wish "ölüp
-  // kurtulsam" (read like "keşke ölsem").
+  // Unfolded, intent forms only: folding merges "ölüp kurtulmak" with "(zayıf) olup kurtulmak". Both
+  // spellings, and the passive wish "ölüp kurtulsam", are v1 phrases, so the v1 floor answers them
+  // instantly; sh.olup_kurtul records the reading next to it.
   { id: 'sh.olup_kurtulmak', category: 'self_harm', tier: 'explicit', on: 'lower', re: /(?<!\p{L})ölüp\s+kurtul(?:mak\s+isti|aca[gğ][ıi]m|acam)/u, question_tr: Q_SELF_HARM },
   // First-person object + first-person intent only: "ekmek keserken bileğimi kestim" (an accident)
-  // and "bilekliğimi kesmek istiyorum" (a wristband) stay with v1's root regex in the ambiguous list.
+  // and "bilekliğimi kesmek istiyorum" (a wristband) are left to v1's root regex — the v1 floor.
   { id: 'sh.bilek_kesme_niyeti', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:bilegimi|bileklerimi|(?:sah\s*)?damar(?:imi|larimi))\s+kes(?:ecegim|ecem|icem|mek\s+isti|meyi\s+dusun)/u, question_tr: Q_SELF_HARM },
   { id: 'sh.hayata_veda', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})hayata\s+veda/u, narration: someoneElsesDeath, narration_q: 'Kendi yaşamına son verme düşüncesi mi, yoksa başka birinin vefatını mı anlatıyor?', question_tr: Q_SELF_HARM },
   { id: 'sh.her_seye_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})her\s*seye\s+son\s+ver/u, question_tr: Q_SELF_HARM },
@@ -396,6 +455,10 @@ export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
 ];
 
 export const AMBIGUOUS_TRIPWIRES: readonly TripwireDef[] = [
+  // A reading per phrasing. Where v1 answers the message instantly ("bayıldım", "kalp krizi",
+  // "tükendim" …) the v1 floor decides and these only record what Stage A would be asked (§7.4
+  // evidence); for everything v1 is silent on ("bayılacak gibiyim", "nefesim daralıyor") they are
+  // the live §7.2 trigger.
   // ── emergency ──
   // "bayılırım" (I'd love it) is not even a fact; "bayıldım/bayılıyorum" can be either.
   { id: 'emg.bayilma', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})bayil(?!ir(?:im|sin|iz|siniz)(?!\p{L}))/u, question_tr: 'Gerçekten bayılma mı, yoksa "çok beğendim" anlamında mı?' },
@@ -420,12 +483,7 @@ export const AMBIGUOUS_TRIPWIRES: readonly TripwireDef[] = [
   // Both spellings stay: folding merges "ölüp kurtul" with "zayıf olup kurtulmak".
   { id: 'sh.olup_kurtul', category: 'self_harm', tier: 'ambiguous', re: /(?<!\p{L})olup\s+kurtul/u, question_tr: '"Ölüp kurtulmak" mı, yoksa "(zayıf) olup kurtulmak" mı?' },
   { id: 'sh.pasif_dusunce', category: 'self_harm', tier: 'ambiguous', re: /(?<!\p{L})(?:keske\s+(?:\p{L}+\s+)?(?:uyanmasam|olsem|olseydim|dogmasaydim)|uyanmasam\s+keske|olsem\s+(?:de\s+)?kurtulsam|yasam(?:anin|amin)\s+(?:bir\s+)?anlami\s+(?:yok|kalmadi))/u, question_tr: 'Pasif ölüm/yaşamak istememe düşüncesi mi?' },
-  // v1's root regexes, verbatim, on the unfolded lowercase text (v1 semantics: "kendimi aşmak"
-  // stays out; "tipik … kendim" and "vitamin hapını kendim" stay IN — as facts, not as 112).
-  { id: 'sh.yontem', category: 'self_harm', tier: 'ambiguous', on: 'lower', re: V1_CRISIS_PATTERNS[0], question_tr: Q_SELF_HARM },
-  { id: 'sh.ifade', category: 'self_harm', tier: 'ambiguous', on: 'lower', re: V1_CRISIS_PATTERNS[1], question_tr: 'Yaşamına son verme düşüncesi mi, yoksa "bu alışkanlığa son vermek istiyorum" gibi sıradan bir cümle mi?' },
-  { id: 'sh.bilek_kesmek', category: 'self_harm', tier: 'ambiguous', on: 'lower', re: V1_CRISIS_PATTERNS[2], question_tr: 'Kendine zarar verme mi, yoksa bir kaza/yaralanma ya da alakasız bir kelime mi?' },
-  { id: 'sh.ip_bicak_hap', category: 'self_harm', tier: 'ambiguous', on: 'lower', re: V1_CRISIS_PATTERNS[3], question_tr: 'Bir yöntemle kendine zarar verme mi, yoksa sıradan bir cümle (vitamin hapı, ipek, tipik…) mi?' },
+  // v1's root regexes are not here: whatever they match, v1 answers instantly → V1_FLOOR_TRIPWIRES.
   // ── eating disorder (all ambiguous: recordEDSignal is fed by Stage A, §7.2) ──
   { id: 'ed.kustum', category: 'ed', tier: 'ambiguous', ed_severity: 'high', re: /(?<!\p{L})kus(?:tum|uyo)/u, question_tr: 'Kilo kontrolü için kusma mı, yoksa hastalık/zehirlenme/gebelik mi?' },
   { id: 'ed.kusma', category: 'ed', tier: 'ambiguous', ed_severity: 'high', negatable: true, re: /(?<!\p{L})kusma/u, question_tr: 'Kilo kontrolü için kusma (isteği) mi, yoksa hastalık ya da reddetme mi?' },
@@ -443,10 +501,9 @@ export const AMBIGUOUS_TRIPWIRES: readonly TripwireDef[] = [
   { id: 'ed.yemek_korkusu', category: 'ed', tier: 'ambiguous', ed_severity: 'medium', negatable: true, re: /(?<!\p{L})(?:yemek\s+yemekten\s+kork|yemekten\s+nefret)/u, question_tr: 'Yemekle ilgili korku/nefret (YB sinyali) mi?' },
   { id: 'ed.beden_algisi', category: 'ed', tier: 'ambiguous', ed_severity: 'medium', negatable: true, re: /(?<!\p{L})(?:cok\s+sismanim|sisman\s+hissed|kilolu\s+hissed|igrenc\s+gorunuyo)/u, question_tr: 'Olumsuz beden algısı (YB sinyali) mi, yoksa sıradan bir ifade mi?' },
   { id: 'ed.sadece_su', category: 'ed', tier: 'ambiguous', ed_severity: 'medium', negatable: true, re: /(?<!\p{L})sadece\s+su\s+(?:iciyo|icerek)/u, question_tr: 'Günlerdir yalnızca su ile beslenme (kısıtlama) mı?' },
-  // ── v1 catch-alls: LAST, so a curated pattern over the same words always wins the dedupe.
+  // ── v1 ED catch-alls: LAST, so a curated pattern over the same words always wins the dedupe.
   // They only surface for v1 hits nothing above recognised (e.g. a phrase glued inside a word).
-  { id: 'emg.v1', category: 'emergency', tier: 'ambiguous', find: phraseFinder(V1_EMERGENCY_PHRASES), question_tr: Q_EMERGENCY },
-  { id: 'sh.v1', category: 'self_harm', tier: 'ambiguous', find: phraseFinder(V1_CRISIS_PHRASES), question_tr: Q_SELF_HARM },
+  // (v1's emergency/crisis lists are the v1 floor, explicit, below.)
   { id: 'ed.v1_kanit', category: 'ed', tier: 'ambiguous', ed_severity: 'high', find: phraseFinder(V1_ED_EVIDENCE_PHRASES), question_tr: 'Kilo kontrolü için kusma mı, yoksa hastalık/zehirlenme/gebelik mi?' },
   { id: 'ed.v1_yuksek', category: 'ed', tier: 'ambiguous', ed_severity: 'high', negatable: true, find: phraseFinder(V1_ED_HIGH_PHRASES.filter((p) => !V1_ED_EVIDENCE_PHRASES.includes(p))), question_tr: 'Çıkarma davranışı (kusma, laksatif) mı, yoksa hastalık ya da reddetme mi?' },
   { id: 'ed.v1_orta', category: 'ed', tier: 'ambiguous', ed_severity: 'medium', negatable: true, find: phraseFinder(V1_ED_MEDIUM_PHRASES), question_tr: 'Kısıtlayıcı yeme ya da olumsuz beden algısı (YB sinyali) mi, yoksa sıradan bir ifade mi?' },
@@ -457,6 +514,53 @@ export const SIGNAL_TRIPWIRES: readonly TripwireDef[] = [
   { id: 'decl.alerji', category: 'declaration', tier: 'signal', re: /(?<!\p{L})(?:alerj|intolerans|anafila)/u, question_tr: 'Kullanıcı kendisi (ya da başkası) için bir alerji/intolerans mı bildiriyor? Bildiriyorsa constraint_add yaz; yazmıyorsan nedenini self_check\'te söyle.' },
   { id: 'decl.sakatlik', category: 'declaration', tier: 'signal', re: /(?<!\p{L})(?:sakat|incin|incit|burkul|fitik|menisk|ameliyat|operasyon|yirtik|yirtil|zedelen)/u, question_tr: 'Kullanıcı kendisi için bir sakatlık/ameliyat mı bildiriyor? Bildiriyorsa constraint_add yaz; yazmıyorsan nedenini self_check\'te söyle.' },
 ];
+
+/**
+ * THE V1 FLOOR (§7.1, §7.4) — explicit, scanned LAST. Every message guardrails.detectEmergency /
+ * detectCrisis answers instantly is answered instantly by v2: v1's phrase lists (folded, so every
+ * spelling v1 knew and more: "KALP KRIZI", "kan kustum") and v1's root regexes (lowercase + the
+ * dotted pass, v1 semantics). Scanned after the curated tiers, so a curated explicit pattern names
+ * the words first and a curated ambiguous reading of the same words is still in `hits` — the
+ * ledger then shows "instant only because v1 is" next to what Stage A would have been asked.
+ * Moving anything out of this floor is a §7.4 decision: owner approval + shadow evidence.
+ */
+export const V1_FLOOR_TRIPWIRES: readonly TripwireDef[] = [
+  { id: 'emg.v1', category: 'emergency', tier: 'explicit', find: phraseFinder(V1_EMERGENCY_PHRASES), question_tr: Q_EMERGENCY },
+  { id: 'sh.v1', category: 'self_harm', tier: 'explicit', find: phraseFinder(V1_CRISIS_PHRASES), question_tr: Q_SELF_HARM },
+  { id: 'sh.v1_yontem', category: 'self_harm', tier: 'explicit', on: 'lower', re: V1_CRISIS_PATTERNS[0], question_tr: Q_SELF_HARM },
+  { id: 'sh.v1_ifade', category: 'self_harm', tier: 'explicit', on: 'lower', re: V1_CRISIS_PATTERNS[1], question_tr: Q_SELF_HARM },
+  { id: 'sh.v1_bilek', category: 'self_harm', tier: 'explicit', on: 'lower', re: V1_CRISIS_PATTERNS[2], question_tr: Q_SELF_HARM },
+  { id: 'sh.v1_ip_bicak_hap', category: 'self_harm', tier: 'explicit', on: 'lower', re: V1_CRISIS_PATTERNS[3], question_tr: Q_SELF_HARM },
+];
+
+/** Triggers of the backstop below: v1, verbatim, on the raw text. */
+const V1_BACKSTOP_TRIGGER = { emergency: 'emg.v1_ham', self_harm: 'sh.v1_ham' } as const;
+
+/** Every trigger that is instant ONLY because v1 is (ledger filter for the §7.4 evidence). */
+export const V1_FLOOR_TRIGGERS: ReadonlySet<string> = new Set([
+  ...V1_FLOOR_TRIPWIRES.map((d) => d.id), ...Object.values(V1_BACKSTOP_TRIGGER),
+]);
+
+/**
+ * guardrails.detectEmergency / detectCrisis VERBATIM — same lists, same RegExp objects, the raw
+ * text tr-lowercased with no NFC and no folding. The floor's last word: normalisation can move a
+ * v1 match out of the patterns' reach (a combining accent NFC merges into a letter of "kendimi"),
+ * and parity must hold by construction, not only on the golden corpus.
+ */
+function v1VerbatimMatch(raw: string, category: 'emergency' | 'self_harm'): { index: number; text: string } | null {
+  const lower = raw.toLocaleLowerCase('tr');
+  for (const p of category === 'emergency' ? V1_EMERGENCY_PHRASES : V1_CRISIS_PHRASES) {
+    const i = lower.indexOf(p);
+    if (i >= 0) return { index: i, text: p };
+  }
+  if (category === 'self_harm') {
+    for (const r of V1_CRISIS_PATTERNS) {
+      const m = r.exec(lower);
+      if (m) return { index: m.index, text: m[0] };
+    }
+  }
+  return null;
+}
 
 // ─── injection: log only (§7.3) ──────────────────────────────────────────────
 // Moved here verbatim from guardrails.ts (v1 still REFUSES on the first list via
@@ -696,6 +800,29 @@ export function scanTripwires(userMessage: string): TripwireScan {
   for (const def of EXPLICIT_TRIPWIRES) consider(def);
   for (const def of AMBIGUOUS_TRIPWIRES) consider(def);
   for (const def of SIGNAL_TRIPWIRES) consider(def);
+  for (const def of V1_FLOOR_TRIPWIRES) consider(def);
+
+  // The backstop: v1 verbatim on the raw text. Only reached when normalisation moved a v1 match
+  // out of every pattern's reach; then the whole message is the span (nothing is scanned after).
+  const raw = userMessage ?? '';
+  for (const category of ['emergency', 'self_harm'] as const) {
+    if (hits.some((h) => h.tier === 'explicit' && h.category === category)) continue;
+    const m = v1VerbatimMatch(raw, category);
+    if (!m) continue;
+    const quotable = raw.toLocaleLowerCase('tr').length === raw.length;
+    spans.push({ index: 0, length: t.folded.length });
+    hits.push({
+      hit_id: `tw${++n}`,
+      trigger: V1_BACKSTOP_TRIGGER[category],
+      category,
+      tier: 'explicit',
+      matched: (quotable ? raw.slice(m.index, m.index + m.text.length) : m.text).normalize('NFC').trim(),
+      context: (quotable ? raw.slice(Math.max(0, m.index - 40), m.index + m.text.length + 40) : m.text).normalize('NFC').trim(),
+      negated: false,
+      ed_severity: null,
+      question_tr: category === 'emergency' ? Q_EMERGENCY : Q_SELF_HARM,
+    });
+  }
 
   // v1 order: emergency outranks self-harm (both answers carry 112).
   const explicit = hits.find((h) => h.tier === 'explicit' && h.category === 'emergency')
@@ -703,9 +830,9 @@ export function scanTripwires(userMessage: string): TripwireScan {
     ?? null;
 
   const injection: InjectionHit[] = [];
-  const raw = t.src;
-  for (const p of INJECTION_REFUSAL_PATTERNS) if (p.test(raw) || p.test(t.folded)) injection.push({ pattern: p.source, refused_in_v1: true });
-  for (const p of INJECTION_LOG_ONLY_PATTERNS) if (p.test(raw) || p.test(t.folded)) injection.push({ pattern: p.source, refused_in_v1: false });
+  const src = t.src;
+  for (const p of INJECTION_REFUSAL_PATTERNS) if (p.test(src) || p.test(t.folded)) injection.push({ pattern: p.source, refused_in_v1: true });
+  for (const p of INJECTION_LOG_ONLY_PATTERNS) if (p.test(src) || p.test(t.folded)) injection.push({ pattern: p.source, refused_in_v1: false });
 
   return { explicit, hits, injection };
 }
