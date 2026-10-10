@@ -66,6 +66,11 @@ import { getEffectiveDateForUser, shiftDateString, getLocalParts, getLocalHour }
 import { judgeTodayWeighIn } from '../shared/weigh-in-guard.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
 import { beginShadowTurn } from './v2/shadow.ts';
+// AI_MIMARI_V2 §10 Faz 3 — the v2 turn behind KOCHKO_ROLLOUT_V2_TURN (default off → v1, untouched).
+import { handleV2Turn, honestCrashResponse, type AppliedWrite } from './v2/handler.ts';
+import { routeTurn, v2TurnConfigured, V2_TURN_STEP } from './v2/route.ts';
+import { buildLiveV2Deps, type StoreV2Extras } from './v2/live.ts';
+import type { TurnInput } from './v2/input.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -110,12 +115,64 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = STT_
 
 serve(async (req: Request) => {
   const timer = createTurnTimer();
-  const res = await handleChat(req, timer);
+  const res = await routeChatTurn(req, timer);
   const timings = timer.summary();
   if (req.method !== 'OPTIONS') console.log('[timing]', timings);
   try { res.headers.set('x-kochko-timings', timings); } catch { /* immutable headers — log line still has it */ }
   return res;
 });
+
+/**
+ * AI_MIMARI_V2 §3.2 — v1 or v2 for this request (v2/route.ts). With KOCHKO_ROLLOUT_V2_TURN unset or
+ * off this is exactly `handleChat(req, timer)`: no clone, no decode, no extra I/O. For a user the
+ * step routes to v2, the v2 turn runs with v1's own helpers; it hands the ORIGINAL request back to
+ * v1 only before any side effect (and answers honestly from its receipts after one).
+ */
+async function routeChatTurn(req: Request, timer: TurnTimer): Promise<Response> {
+  return await routeTurn(req, {
+    configured: () => v2TurnConfigured(),
+    mode: (uid) => rolloutMode(V2_TURN_STEP, uid),
+    v1: (r) => handleChat(r, timer),
+    v2: (r, uid, state) => handleV2Turn(r, uid, buildLiveV2Deps({
+      respond, claimOrAwaitRequest, commitRequestEnvelope, failRequest, storeMessages,
+      afterCommit: v2AfterCommit, mark: (stage) => timer.mark(`v2_${stage}`),
+    }), state),
+    honest: (state) => honestCrashResponse(state, {
+      respond,
+      journal: { claim: claimOrAwaitRequest, commit: commitRequestEnvelope, fail: failRequest, claimSideEffects: () => Promise.resolve(false) },
+      log: (line, data) => console.error(line, JSON.stringify(data ?? {})),
+    }),
+    log: (line, data) => console.warn(line, JSON.stringify(data)),
+  });
+}
+
+/**
+ * v2 post-commit hooks (background, after the reply): the same TDEE / onboarding / weigh-in
+ * follow-ups v1's executeActions runs inline, driven by what the v2 commit REALLY wrote.
+ */
+async function v2AfterCommit(p: { userId: string; turnInput: TurnInput; applied: AppliedWrite[] }): Promise<void> {
+  const today = p.turnInput.day;
+  let weight = typeof p.turnInput.profile.weight_kg === 'number' ? p.turnInput.profile.weight_kg as number : null;
+  let forced: string | null = null;
+  for (const a of p.applied) {
+    if (a.op === 'body_weight' && a.row.date === today && typeof a.row.kg === 'number') {
+      weight = a.row.kg;
+      await recalculateTDEEIfNeeded(p.userId, a.row.kg).catch((e) => console.error('[v2_hooks] TDEE check failed:', (e as Error).message));
+      // The weigh-in answers a pending "N gündür tartı kaydı yok" card (v1 weight_log parity).
+      await supabaseAdmin.from('coaching_messages').update({ read: true })
+        .eq('user_id', p.userId).eq('trigger_type', 'weight_reminder').eq('read', false)
+        .then(() => {}, () => {});
+    }
+    if (a.op === 'profile_set' && ['activity_level', 'birth_year', 'height_cm', 'gender'].includes(String(a.row.field))) forced = 'Profilin güncellendi';
+    if (a.op === 'goal_set') forced = 'Hedefin güncellendi';
+  }
+  if (forced && weight) {
+    await recalculateTDEEIfNeeded(p.userId, weight, true, forced).catch((e) => console.error('[v2_hooks] TDEE recalc failed:', (e as Error).message));
+  }
+  if (p.turnInput.profile.onboarding_completed !== true && p.applied.some((a) => ['profile_set', 'body_weight', 'goal_set'].includes(a.op))) {
+    await checkOnboardingCompletion(p.userId).catch((e) => console.error('[v2_hooks] onboarding check failed:', (e as Error).message));
+  }
+}
 
 async function handleChat(req: Request, timer: TurnTimer): Promise<Response> {
   if (req.method === 'OPTIONS') {
@@ -4870,7 +4927,10 @@ async function validateTaskCompletion(
 // row id so the response payload can carry it (`assistant_message_id`) — the client's feedback
 // buttons previously minted a client-side id the feedback service discarded, so votes never linked
 // to the message. Additive: existing callers that ignore the return value are unaffected.
-async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string, reservedUserMessageId?: string | null): Promise<string | null> {
+// `v2` (AI_MIMARI_V2 §3.2 T9, migration 112): the v2 turn's server-only columns — turn_id, pipeline,
+// the user row's quota_class, the assistant row's code_notes and FULL receipts in actions_executed.
+// Absent (every v1 call site) → the rows are written exactly as before.
+async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string, reservedUserMessageId?: string | null, v2?: StoreV2Extras): Promise<string | null> {
   let sessionId: string | null = null;
   let assistantMessageId: string | null = null;
 
@@ -4927,8 +4987,14 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
   // FIX (audit AI-MDL-05): when the user row was already inserted up-front as a rate-limit
   // RESERVATION, do NOT insert a second user row — append only the assistant reply, and backfill
   // the reserved row's session_id/task_mode so it shares the conversation we just resolved.
+  // v2 only (empty for v1): server-only columns of migration 112 on both rows.
+  const v2UserCols: Record<string, unknown> = v2 ? { turn_id: v2.turnId, pipeline: v2.pipeline, quota_class: v2.quotaClass } : {};
+  const v2AssistantCols: Record<string, unknown> = v2 ? { turn_id: v2.turnId, pipeline: v2.pipeline, code_notes: v2.codeNotes } : {};
+  const actionsExecuted = v2
+    ? v2.actionsExecuted
+    : (executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null);
   if (reservedUserMessageId) {
-    const patch: Record<string, unknown> = {};
+    const patch: Record<string, unknown> = { ...v2UserCols };
     if (sessionId) patch.session_id = sessionId;
     if (taskMode) patch.task_mode = taskMode;
     if (Object.keys(patch).length > 0) {
@@ -4938,17 +5004,19 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
       user_id: userId, session_id: sessionId, role: 'assistant', content: assistantMsg,
       task_mode: taskMode, model_version: modelUsed ?? null,
       token_count: tokenCount ?? null,
-      actions_executed: executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null,
+      actions_executed: actionsExecuted,
+      ...v2AssistantCols,
     }).select('id').maybeSingle();
     assistantMessageId = (aRow?.id as string | undefined) ?? null;
   } else {
     const { data: insRows } = await supabaseAdmin.from('chat_messages').insert([
-      { user_id: userId, session_id: sessionId, role: 'user', content: userMsg, task_mode: taskMode },
+      { user_id: userId, session_id: sessionId, role: 'user', content: userMsg, task_mode: taskMode, ...v2UserCols },
       {
         user_id: userId, session_id: sessionId, role: 'assistant', content: assistantMsg,
         task_mode: taskMode, model_version: modelUsed ?? null,
         token_count: tokenCount ?? null,
-        actions_executed: executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null,
+        actions_executed: actionsExecuted,
+        ...v2AssistantCols,
       },
     ]).select('id, role');
     assistantMessageId = ((insRows ?? []).find((r: { id: string; role: string }) => r.role === 'assistant')?.id as string | undefined) ?? null;
