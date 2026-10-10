@@ -82,7 +82,7 @@ const water = (extra: Partial<RenderedRef> = {}): RenderedRef => ({ kind: 'd', t
 
 /** One fixture per few-shot (a new example without one fails the suite). */
 const FIXTURES: Record<string, Fixture> = {
-  su_ekle: { water: 1.4, expect: { verdicts: ['water_log:COMMIT'] } },
+  su_ekle: { water: 1.4, expect: { verdicts: ['meal_log:COMMIT', 'water_log:COMMIT'] } },
   nugget: {
     reference_rows: {
       tavuk_gogsu: { key: 'tavuk_gogsu', name_tr: 'tavuk göğsü (ızgara)', kcal_per_100g: 165, protein_per_100g: 31, carbs_per_100g: 0, fat_per_100g: 3.6 },
@@ -94,6 +94,7 @@ const FIXTURES: Record<string, Fixture> = {
   su_geri_al: { refs: { m30: meal('2026-10-04'), d3: water() }, water: 3.4, expect: { verdicts: ['record_delete:COMMIT'] } },
   su_duzeltme: { refs: { d3: water() }, water: 1.6, expect: { verdicts: ['record_update:COMMIT'] } },
   duzeltme_sorusu: { refs: { m14: meal(TODAY, { last_turn: true }) }, expect: { verdicts: [] } },
+  iki_aday_sil: { refs: { m14: meal(TODAY, { last_turn: true }), d3: water() }, water: 1.0, expect: { verdicts: [] } },
   supheli_kayit: { refs: { m12: meal('2026-10-01') }, expect: { verdicts: ['record_update:ASK'], issues: ['supheli_kayit'] } },
   supheli_kayit_onayi: {
     refs: { p1: { kind: 'p', target: 'pending', pending: { op: 'record_update', expires_at: '2026-10-08T00:00:00Z', replies_since: 1 } } },
@@ -113,6 +114,7 @@ const FIXTURES: Record<string, Fixture> = {
     expect: { verdicts: [], ed: { accepted: true, escalate: null }, missed_write: false, not_written_reason: 'illness_not_food' },
   },
   soru_kayit_degil: { expect: { verdicts: [] } },
+  bildirim_ve_soru: { expect: { verdicts: ['meal_log:COMMIT'] } },
 };
 
 function ctxFor(s: UnderstandFewShot): ValidationContext {
@@ -206,7 +208,8 @@ Deno.test('understand rules agree with the registry: corrections by ref, suspici
 Deno.test('few-shots: well-formed — unique ids, a fixture each, decision keys from the schema, labelled context', () => {
   const ids = UNDERSTAND_FEW_SHOTS.map((s) => s.id);
   assertEquals(new Set(ids).size, ids.length);
-  assert(UNDERSTAND_FEW_SHOTS.length >= 10 && UNDERSTAND_FEW_SHOTS.length <= 18, '§8.3 list + the review additions; the token budget is the real cap');
+  // 20 since the first live eval (2026-10-10: iki_aday_sil, bildirim_ve_soru); the token budget is the real cap.
+  assert(UNDERSTAND_FEW_SHOTS.length >= 10 && UNDERSTAND_FEW_SHOTS.length <= 20, '§8.3 list + the review and live-eval additions; the token budget is the real cap');
   assertEquals(Object.keys(FIXTURES).sort(), [...ids].sort(), 'every few-shot has exactly one validation fixture');
   for (const s of UNDERSTAND_FEW_SHOTS) {
     assert(s.message.trim() && s.why.trim(), `${s.id}: empty message/why`);
@@ -434,9 +437,22 @@ Deno.test('tripwire context is what the scanner really renders for that message 
 // ─── the production failures each example was chosen for ────────────────────────────────────────
 
 Deno.test('few-shots encode the production failures they were chosen for (§1, §8.3, §9.4 A/A\'/B−)', () => {
-  // final2#3: "1 bardak su" became +1 L.
-  const su = itemsOf(shot('su_ekle').decision, 'writes', 'water_log')[0];
+  // final2#3: "1 bardak su" became +1 L. §9.4 A (live eval 2026-10-10): the tea next to the water is
+  // its own report — written as a meal even without a stated amount, never dropped for the water.
+  const suShot = shot('su_ekle').decision;
+  const su = itemsOf(suShot, 'writes', 'water_log')[0];
   assertEquals([su.quantity, su.unit, su.mode], [1, 'bardak', 'add']);
+  assertEquals(mealItems(itemsOf(suShot, 'writes', 'meal_log')[0]).map((i) => i.name), ['çay']);
+
+  // §9.4 A / §6.2: "sonuncuyu sil" with two last-turn writes → clarify with both, nothing deleted.
+  const two = shot('iki_aday_sil').decision;
+  assertEquals([two.record_ops, two.writes], [undefined, undefined]);
+  assertEquals([...(two.clarify?.candidate_refs ?? [])].sort(), ['d3', 'm14']);
+
+  // devir §6 (live eval 2026-10-10): a report that ends in a question is still written, not question_only.
+  const rq = shot('bildirim_ve_soru').decision;
+  assertEquals(itemsOf(rq, 'writes', 'meal_log').map((w) => w.day), ['yesterday']);
+  assertEquals(rq.self_check?.not_written_reason, undefined);
 
   // final2#4: 6 nugget became 900 g tavuk göğsü / 1708 kcal.
   const nug = mealItems(itemsOf(shot('nugget').decision, 'writes', 'meal_log')[0])[0];

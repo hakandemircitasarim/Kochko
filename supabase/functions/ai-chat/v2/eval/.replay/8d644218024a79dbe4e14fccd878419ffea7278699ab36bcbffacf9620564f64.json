@@ -1,0 +1,264 @@
+{
+  "key": "8d644218024a79dbe4e14fccd878419ffea7278699ab36bcbffacf9620564f64",
+  "recorded_at": "2026-10-10T16:42:56.228Z",
+  "fixture_ids": [
+    "probe-dtm-diz-agrisi-squat-yaptim"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"knee_pain\",\"display_tr\":\"diz ağrısı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":\"2026-10-06\",\"note\":null,\"evidence_quote\":\"dizim ağrıyor\"},{\"op\":\"workout_log\",\"day\":\"today\",\"raw\":\"squat yaptım bugün\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[{\"exercise\":\"squat\",\"as_stated\":\"squat\",\"sets\":1,\"reps\":1,\"weight_kg\":null}],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "knee_pain",
+            "display_tr": "diz ağrısı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": "2026-10-06",
+            "note": null,
+            "evidence_quote": "dizim ağrıyor"
+          },
+          {
+            "op": "workout_log",
+            "day": "today",
+            "raw": "squat yaptım bugün",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [
+              {
+                "exercise": "squat",
+                "as_stated": "squat",
+                "sets": 1,
+                "reps": 1,
+                "weight_kg": null
+              }
+            ],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11712,
+        "output_tokens": 294,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2963,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"knee_pain\",\"display_tr\":\"diz ağrısı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":\"2026-10-06\",\"note\":null,\"evidence_quote\":\"dizim ağrıyor\"},{\"op\":\"workout_log\",\"day\":\"today\",\"raw\":\"squat yaptım bugün\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[{\"exercise\":\"squat\",\"as_stated\":\"squat\",\"sets\":0,\"reps\":0,\"weight_kg\":null}],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "knee_pain",
+            "display_tr": "diz ağrısı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": "2026-10-06",
+            "note": null,
+            "evidence_quote": "dizim ağrıyor"
+          },
+          {
+            "op": "workout_log",
+            "day": "today",
+            "raw": "squat yaptım bugün",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [
+              {
+                "exercise": "squat",
+                "as_stated": "squat",
+                "sets": 0,
+                "reps": 0,
+                "weight_kg": null
+              }
+            ],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11712,
+        "output_tokens": 294,
+        "cached_tokens": 11709,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3307,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"knee_pain\",\"display_tr\":\"diz ağrısı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":\"2026-10-06\",\"note\":null,\"evidence_quote\":\"dizim ağrıyor\"},{\"op\":\"workout_log\",\"day\":\"today\",\"raw\":\"squat yaptım bugün\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[{\"exercise\":\"squat\",\"as_stated\":\"squat\",\"sets\":1,\"reps\":1,\"weight_kg\":null}],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "knee_pain",
+            "display_tr": "diz ağrısı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": "2026-10-06",
+            "note": null,
+            "evidence_quote": "dizim ağrıyor"
+          },
+          {
+            "op": "workout_log",
+            "day": "today",
+            "raw": "squat yaptım bugün",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [
+              {
+                "exercise": "squat",
+                "as_stated": "squat",
+                "sets": 1,
+                "reps": 1,
+                "weight_kg": null
+              }
+            ],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11712,
+        "output_tokens": 294,
+        "cached_tokens": 11709,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3564,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

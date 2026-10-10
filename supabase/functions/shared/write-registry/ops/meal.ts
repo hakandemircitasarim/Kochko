@@ -25,7 +25,7 @@ export const LOW_CONFIDENCE = 0.5;
 const itemFields = {
   name: f.text({ max: 80 }),
   as_stated: f.text({ max: 60 }),
-  grams: f.num({ unit: 'g', nullable: true, hard: [0, 3000], decimals: 1, tr: 'bilinmiyorsa null' }),
+  grams: f.num({ unit: 'g', nullable: true, hard: [0, 3000], decimals: 1, tr: 'as_stated’in toplamı (adet × adet ağırlığı); bilinmiyorsa null' }),
   kcal: f.num({ unit: 'kcal', hard: [0, 5000], decimals: 0, tr: 'pişirme dahil' }),
   protein_g: f.num({ unit: 'g', hard: [0, 400], decimals: 1 }),
   carbs_g: f.num({ unit: 'g', hard: [0, 800], decimals: 1 }),
@@ -78,7 +78,7 @@ export const meal_log = op({
   when_tr: 'Şimdi yediği/içtiği şey (sade su hariç).',
   fields: {
     day: f.day(),
-    meal_type: f.enum(MEAL_TYPES),
+    meal_type: f.enum(MEAL_TYPES, { tr: 'söylenmediyse saatinden (sabah → breakfast); snack yalnız öğün arası' }),
     time_local: f.text({ nullable: true, format: 'hhmm' }),
     raw: f.text({ max: 300 }),
     status: f.enum({ new: 'yeni yenen', restatement: 'KAYITLAR’daki öğünü yeniden anlatıyor' }, { tr: 'restatement yazılmaz' }),

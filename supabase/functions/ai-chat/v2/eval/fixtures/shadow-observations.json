@@ -1,0 +1,30 @@
+{
+  "group": "shadow-observations",
+  "defaults": {
+    "persona": "fresh",
+    "source": "shadow:2026-10-10",
+    "tags": ["shadow"],
+    "turn_input": { "now": { "local_time": "20:40" } }
+  },
+  "fixtures": [
+    {
+      "id": "shadow-yemege-tuz-bir-de-yogurt",
+      "package": "A",
+      "title": "Faz 2 gölgesi: ‘yemeğe 2 çimdik tuz attım, bir de 1 kase yoğurt yedim’ → net kısım (yoğurt) yazılır; tuz 0 kcal küçük kalemdir, mesajın tamamı soruya dönmez.",
+      "note": "Canlı gölge (2026-10-10, test hesabı): Stage A tüm mesaj için clarify seçti ('yoğurt ve tuzun hangi öğüne ekleneceği', m17/m18) ve hiçbir şey yazmadı; v1 öğünü yazmıştı. Kural 7: net kısmı yaz, yeni yenen şey yeni meal_log'dur; tuzu eklemek istenirse ya yeni öğünde küçük kalem ya da son öğünün ref'li update'i olur — ikisi de kabul.",
+      "turn_input": {
+        "records": [
+          { "ref": "m18", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki akşam 20:15 · \"akşam tavuklu pilav yedim\" → tavuklu pilav 1 tabak ~300 g 480 kcal [model]", "last_turn": true }
+        ]
+      },
+      "message": "yemeğe 2 çimdik tuz attım, bir de 1 kase yoğurt yedim",
+      "expect": [
+        { "path": "decision.writes[op=meal_log].items[name~yoğurt]", "exists": true, "why": "Net kısım soruya takılmadan yazılır." },
+        { "path": "decision.writes[op=meal_log].items[name~yoğurt].grams", "between": [120, 300] },
+        { "path": "decision.writes[op=meal_log].items[name~tuz].grams", "lte": 3, "quantifier": "all", "why": "Tuz yazıldıysa küçük ve aynen (§9.4 A: gram ≤ 3, reddedilmez)." },
+        { "path": "decision.record_ops[op=delete]", "count": 0 },
+        { "path": "decision.writes[op=water_log]", "count": 0 }
+      ]
+    }
+  ]
+}

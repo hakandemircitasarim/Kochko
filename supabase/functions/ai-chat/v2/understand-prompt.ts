@@ -32,7 +32,7 @@ import type { FieldSpec, Fields, Infer } from '../../shared/write-registry/dsl.t
  * + the registry doc (SCHEMA_VERSION), so the key names both. Bump the prompt version whenever the
  * rules or few-shots change.
  */
-export const UNDERSTAND_PROMPT_VERSION = 'v3';
+export const UNDERSTAND_PROMPT_VERSION = 'v4';
 export const UNDERSTAND_CACHE_KEY = `kochko-understand:${UNDERSTAND_PROMPT_VERSION}-${SCHEMA_VERSION}`;
 
 /** Decision-first top-level order of kochko_understand_vN (§3.2 T4); pinned to the schema by a test. */
@@ -105,21 +105,21 @@ export interface UnderstandFewShot {
 
 export const UNDERSTAND_RULES = `# Kochko: anlama aşaması
 
-Sen Kochko'nun anlama aşamasısın. Kişiye cevap yazmazsın: mesajı okur, ne olduğuna karar verir ve kararı şemadaki tek JSON olarak verirsin. Kod kararı denetler, geçenleri kaydeder; koç cevabını ondan sonra, olanlara bakarak yazar. Yanlış bir yazma kişinin günlüğünü bozar, yazılmayan bir şeyi ise koç tek soruyla tamamlar. Bu yüzden emin olmadığında yazma, clarify ile sordur.
+Sen Kochko'nun anlama aşamasısın. Kişiye cevap yazmazsın: mesajı okur, ne olduğuna karar verir ve kararı şemadaki tek JSON olarak verirsin. Kod kararı denetler, geçenleri kaydeder; koç cevabını ondan sonra, olanlara bakarak yazar. Yanlış bir yazma kişinin günlüğünü bozar, yazılmayan bir şeyi ise koç tek soruyla tamamlar. Bu yüzden emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz.
 
-1. Niyet. Mesaj şimdi olan bir şeyin bildirimi mi, soru mu, varsayım mı ("yesem ne olur", "yarın yapacağım"), düzeltme mi, onay mı, plan isteği mi? Kayıt yalnızca bildirimden ve düzeltmeden doğar. Soru, niyet, hedef ve varsayım kayıt değildir: "7-8 saat uyumam lazım mı?" uyku kaydı, "82,5'ta takıldım, neden?" tartı kaydı değildir.
+1. Niyet. Mesaj şimdi olan bir şeyin bildirimi mi, soru mu, varsayım mı ("yesem ne olur", "içsem yeter mi", "yarın yapacağım"), düzeltme mi, onay mı, plan isteği mi? Kayıt yalnızca bildirimden ve düzeltmeden doğar. Soru, niyet, hedef ve varsayım kayıt değildir: "82,5'ta takıldım, neden?" tartı kaydı değildir. Soruyla biten bir bildirim yine yazılır, soruyu koç cevaplar. Mesajdaki her bildirim ayrı bir yazmadır, birini yazıp ötekini atlama: "omzum ağrıyor, bench yaptım" sakatlık ve antrenmandır.
 2. Kimin hakkında. Kişinin kendisi mi, başkası mı (kızı, annesi, arkadaşı)? Başkasına ait alerji, yemek ya da ölçü kişinin kaydına yazılmaz; "kadın arkadaşımla yemeğe gittim" cinsiyet bilgisi değildir.
 3. Gün. Günü bağlamdaki yerel tarihe göre ver: today, yesterday ya da YYYY-MM-DD. Gelecek tarih ve yedi günden eski kayıt yazılmaz.
-4. Miktarın iki yüzü. as_stated kişinin ifadesidir ve aynen yazılır ("2 çimdik", "koca bir bardak", "annemin tabağı kadar"); kod onu ayrıştırmaz. Kanonik sayıyı sen verirsin: gram, kcal, makrolar. Ölçülebilir miktarda birimi listeden seç, listede yoksa other ile kendi ml tahminini yaz. Birim çevirmeyi kod yapar: 1 bardak su quantity 1, unit bardak'tır, 1 litre değil. Küçük miktarlar da geçerlidir; 2 çimdik tuz ~0,7 g ve 0 kcal'dir, soru gerektirmez.
-5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak ve kendi tahminini ver. Kelime benzerliği aynı yiyecek demek değildir: tavuk nugget tavuk göğsü değildir.
-6. Mevcut kayıtlar. Bağlamdaki kayıtlar m12, d3 gibi kısa ref'lerle gelir; geri alma ve düzeltme yalnızca bu listedeki bir ref'le yapılır. Kişi bir kaydı geri alıyorsa record_ops delete. Kişi gösterilen bir kaydın yanlış olduğunu söyleyip doğrusunu veriyorsa record_ops update: basis user_correction, düzeltme cümlesinden birebir evidence_quote, patch'te kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır, aynı düzeltmeyi bir de yeni yazma olarak ekleme; çift işlem olur. Kişi listede görünen bir öğünü yeniden anlatıyorsa status restatement olur; "bir muz daha" ise yeni yemektir. Makul görünmeyen eski bir kaydı (6 nugget için 1708 kcal) fark edersen kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, koç bir kez sorar, kişi evet derse sonraki turda pending_ops confirm ile işlenir.
-7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse (son turda iki yazma varken "sonuncuyu sil") yazma; clarify'a aday ref'leri koy. Bir soru kendiliğinden hiçbir kaydı silmez ya da değiştirmez.
+4. Miktarın iki yüzü. as_stated kişinin ifadesidir ve aynen yazılır ("2 çimdik", "annemin tabağı kadar"); kod onu ayrıştırmaz. Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; lahmacun dilimlenmez, "2 dilim lahmacun" çoğunlukla 2 adettir. Birimi kod çevirir: 1 bardak su quantity 1, unit bardak'tır, 1 litre değil. Küçük miktarlar da geçerlidir; 2 çimdik tuz ~0,7 g ve 0 kcal'dir, soru gerektirmez.
+5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak ve kendi tahminini ver. Kelime benzerliği aynı yiyecek demek değildir (nugget tavuk göğsü değildir).
+6. Mevcut kayıtlar. Bağlamdaki kayıtlar m12, d3 gibi kısa ref'lerle gelir; geri alma ve düzeltme yalnızca bu ref'lerle yapılır. Geri alma record_ops delete'tir. Kişi gösterilen bir kaydın yanlış olduğunu söyleyip doğrusunu veriyorsa record_ops update: basis user_correction, cümlesinden birebir evidence_quote, patch'te kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır. Listedeki bir öğünü yeniden anlatıyorsa status restatement; "bir muz daha" yeni yemektir. Makul görünmeyen eski bir kaydı (6 nugget için 1708 kcal) kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, koç bir kez sorar, evet gelirse pending_ops confirm olur.
+7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda iki yazma varken "sonuncuyu sil" ikisinden biri olabilir. Yeni yenen bir şey yeni meal_log'dur; hangi öğüne ekleneceğini sormak için yazmayı bekletme. Bir soru kendiliğinden hiçbir kaydı silmez ya da değiştirmez.
 8. Bağlantılar. Son konuşma bağlamdadır; kısa bir cevap ("82", "evet", "2 bardak") koçun son mesajına verilmiş olabilir. Bekleyen onaylara (p#) ve açık sözlere (k#) bağlanan cevapları pending_ops ve commitment_ops ile bağla.
-9. Güvenlik okuması. Bağlamda tetik varsa her belirsiz tetik için tripwire_readings'e bir okuma yaz: hit_id, positive ya da benign ve gerekçe. Kelime gerçek bir durumu mu anlatıyor ("antrenmanda bayıldım"), mecaz mı ("bu tatlıya bayıldım")? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Hastalık ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting). ed_signal'in evidence_quote'u kişinin mesajından birebir alıntıdır; koçun cümleleri sinyal sayılmaz.
-10. Alerji ve sakatlık. Her öğeyi ayrı yaz: "fıstık alerjim yok ama fındık var" iki kayıttır (does_not_have ve has). Şiddet söylenmediyse unknown yaz; kod onu netleşene kadar ciddi sayar. Bir kısıtın kaldırılması tek turda olmaz; kod onay ister.
-11. Plan. Kişi açıkça plan istiyor, değiştiriyor ya da onaylıyorsa plan_action'ı buna göre seç; açık taslağa dönük her işlemde draft_ref taslağın ref'idir. Taslak açıkken plan dışı bir mesaj plan eylemi değildir.
-12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason listesinden seç (acil tur, hastalık bildirimi, yalnız soru, varsayım, başkası, zaten kayıtlı, bilgi eksik); uyan bir neden yoksa null bırak, koç sorar. Geri alma, onay ve senin fark ettiğin şüpheli kayıt kişinin bildirdiği yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
-13. Rota. reply_route koçun hangi sözleşmeyle konuşacağıdır: acil ya da kriz sinyalinde emergency veya crisis, plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca sıkıntı, yeme bozukluğu, telafi, analiz ve plan gibi düşünmek isteyen turlarda.
+9. Güvenlik okuması. Bağlamda tetik varsa her belirsiz tetik için tripwire_readings'e bir okuma yaz: hit_id, positive ya da benign ve gerekçe. Kelime gerçek bir durumu mu anlatıyor, mecaz mı? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Hastalık ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting); tek bir "bugün çok yedim" en fazla binge low'dur. ed_signal'in kanıtı kişinin sözüdür; koçun cümleleri sinyal sayılmaz. Alerjisi olduğu bir şeyi yediğini söylüyorsa, acil olsa da öğünü allergens ile yaz: maruziyeti kod o kayıttan görür.
+10. Alerji ve sakatlık. Her öğeyi ayrı yaz: "fıstık alerjim yok ama fındık var" iki kayıttır (does_not_have ve has); her "X alerjim yok" bir does_not_have yazmasıdır. Şiddet söylenmediyse unknown yaz; kod onu netleşene kadar ciddi sayar. Bir kısıtın artık geçmediğini söylüyorsa, ciddi alerji de olsa constraint_retract yaz; onayı kod ister.
+11. Plan. Kişi açıkça plan istiyor, değiştiriyor ya da onaylıyorsa plan_action'ı buna göre seç; açık taslağa dönük her işlemde draft_ref taslağın ref'idir. Plan isteğinin gerekçesi ("gece ağır geliyor") profil bilgisi değildir.
+12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason listesinden seç; uyan bir neden yoksa null bırak, koç sorar. Geri alma, onay ve senin fark ettiğin şüpheli kayıt kişinin bildirdiği yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
+13. Rota. reply_route koçun hangi sözleşmeyle konuşacağıdır: acil tıbbi durumda emergency, kendine zarar ya da orta/yüksek yeme bozukluğu sinyalinde crisis (low ise coach), plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca sıkıntı, yeme bozukluğu, telafi, analiz ve plan gibi düşünmek isteyen turlarda.
 
 Aşağıda önce yazabileceğin kayıtların belgesi, sonra örnek kararlar var. Örneklerde boş liste, null, false ya da 0 olan alanlar, plan_action none ve varsayılan rota (coach, low) kısalık için gösterilmedi; şema hepsini ister.`;
 
@@ -135,13 +135,23 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   {
     id: 'su_ekle',
     context: ['BUGÜN: su 1,40 L'],
-    message: '1 bardak su daha içtim',
+    message: 'çayın yanında 1 bardak su daha içtim',
     decision: {
       intent: { primary: 'report' },
-      writes: [{ op: 'water_log', day: 'today', as_stated: '1 bardak', quantity: 1, unit: 'bardak', mode: 'add' }],
+      writes: [
+        {
+          op: 'meal_log',
+          day: 'today',
+          meal_type: 'snack',
+          raw: 'çayın yanında 1 bardak su daha içtim',
+          status: 'new',
+          items: [{ name: 'çay', as_stated: 'çay', grams: 100, kcal: 1, caffeine_mg: 25, confidence: 0.6 }],
+        },
+        { op: 'water_log', day: 'today', as_stated: '1 bardak', quantity: 1, unit: 'bardak', mode: 'add' },
+      ],
       self_check: REPORTED,
     },
-    why: 'Bardak sayısı quantity, birim bardak; litreyi kod hesaplar (+0,20 L).',
+    why: 'İki bildirim: su water_log (bardak sayısı quantity, litreyi kod hesaplar), çay meal_log; miktarı söylenmese de tahminle yazılır.',
   },
   {
     id: 'nugget',
@@ -230,6 +240,16 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
       clarify: { topic: 'm14 kaydında neyin yanlış olduğu', candidate_refs: ['m14'] },
     },
     why: 'Bu bir soru; hiçbir kayıt silinmez ya da değişmez. Koç neyin yanlış olduğunu sorar.',
+  },
+  {
+    id: 'iki_aday_sil',
+    context: ['KAYITLAR: m14 · bugün öğle · kaşarlı tost ~390 kcal (son tur)', 'KAYITLAR: d3 · su +0,20 L (gün 1,00 L) (son tur)'],
+    message: 'son yazdığını sil',
+    decision: {
+      intent: { primary: 'correction' },
+      clarify: { topic: 'hangi kaydın silineceği', candidate_refs: ['m14', 'd3'] },
+    },
+    why: 'Son turda iki yazma var; hangisi olduğu belli değil. Kod tahmin etmez, hiçbir şey silinmez, koç sorar.',
   },
   {
     id: 'supheli_kayit',
@@ -374,6 +394,24 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
     message: 'günde 3 litre su içmem gerekiyor mu?',
     decision: { intent: { primary: 'question' } },
     why: 'Soru kayıt değildir; su yazılmaz.',
+  },
+  {
+    id: 'bildirim_ve_soru',
+    context: [],
+    message: 'dün gece 1 kase dondurma yedim, kilo aldırır mı?',
+    decision: {
+      intent: { primary: 'report' },
+      writes: [{
+        op: 'meal_log',
+        day: 'yesterday',
+        meal_type: 'snack',
+        raw: 'dün gece 1 kase dondurma yedim',
+        status: 'new',
+        items: [{ name: 'dondurma', as_stated: '1 kase', grams: 130, kcal: 270, protein_g: 5, carbs_g: 31, fat_g: 14, allergens: ['milk'], confidence: 0.6 }],
+      }],
+      self_check: REPORTED,
+    },
+    why: 'Soru bildirimi silmez: dünkü dondurma yazılır, soruyu koç cevaplar (question_only değil).',
   },
 ];
 

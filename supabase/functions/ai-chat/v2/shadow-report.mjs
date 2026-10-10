@@ -61,7 +61,7 @@ function topN(counts, n = 5) {
 /**
  * @typedef {{ both: number, v1_only: number, v2_only: number, neither: number, agreement_rate: number | null }} OpAgreement
  * @typedef {{ total: number, commit: number, flag: number, ask: number, reject: number }} OutcomeCounts
- * @typedef {{ tier: string, positive: number, benign: number, missing: number, 'n/a': number }} TripwireRow
+ * @typedef {{ tier: string, positive: number, benign: number, missing: number, 'n/a': number, late_positive: number, late_benign: number, late_missing: number }} TripwireRow
  * @typedef {{
  *   rows: number, ran: number,
  *   status: Record<'parsed'|'refused'|'invalid'|'incomplete'|'function_call'|'error'|'skipped', number>,
@@ -78,7 +78,8 @@ function topN(counts, n = 5) {
  *   intents: Record<string, number>, hypothetical: number, writes_on_question: Record<string, number>,
  *   turns_with_verdicts: number, turns_with_ask: number, turns_with_reject: number,
  *   turn_ask_rate: number | null, turn_reject_rate: number | null, missed_write: number, not_written_explained: number,
- *   tripwire: { matrix: Record<string, TripwireRow>, outcomes: Record<string, number>, benign_suppressed: number, v1_safety: Record<string, number> },
+ *   tripwire: { matrix: Record<string, TripwireRow>, outcomes: Record<string, number>, fallback_causes: Record<string, number>,
+ *     on_time_outcomes: Record<string, number>, benign_suppressed: number, v1_safety: Record<string, number> },
  *   v1_sources: { model: number, net: number, unknown: number },
  * }} ShadowSummary
  */
@@ -120,7 +121,7 @@ export function summarizeShadowRows(rows) {
     turn_reject_rate: null,
     missed_write: 0,
     not_written_explained: 0,
-    tripwire: { matrix: {}, outcomes: {}, benign_suppressed: 0, v1_safety: {} },
+    tripwire: { matrix: {}, outcomes: {}, fallback_causes: {}, on_time_outcomes: {}, benign_suppressed: 0, v1_safety: {} },
     v1_sources: { model: 0, net: 0, unknown: 0 },
   };
   const latencies = [];
@@ -192,10 +193,16 @@ export function summarizeShadowRows(rows) {
           if (e.v2 === 'write' || e.v2 === 'ask') v[e.v2]++;
         }
       } else if (e.kind === 'tripwire') {
-        const m = (s.tripwire.matrix[e.trigger] ??= { tier: e.tier, positive: 0, benign: 0, missing: 0, 'n/a': 0 });
+        const m = (s.tripwire.matrix[e.trigger] ??= { tier: e.tier, positive: 0, benign: 0, missing: 0, 'n/a': 0, late_positive: 0, late_benign: 0, late_missing: 0 });
         if (e.reading in m) m[e.reading]++;
+        // Stage A parsed past the live budget: the table fell back, yet the reading exists (§7.4 evidence).
+        if (e.late_reading === 'positive') m.late_positive++;
+        else if (e.late_reading === 'benign') m.late_benign++;
+        else if (e.late_reading === 'missing') m.late_missing++;
       } else if (e.kind === 'safety') {
         if (e.code === 'tripwire_outcome') inc(s.tripwire.outcomes, String(e.value));
+        else if (e.code === 'tripwire_fallback_cause') inc(s.tripwire.fallback_causes, String(e.value));
+        else if (e.code === 'tripwire_outcome_on_time') inc(s.tripwire.on_time_outcomes, String(e.value));
         else if (e.code === 'benign_suppressed') s.tripwire.benign_suppressed++;
         else if (e.code === 'v1_safety') inc(s.tripwire.v1_safety, String(e.value));
       } else if (e.kind === 'envelope' && e.code === 'missed_write') {
@@ -292,9 +299,15 @@ export function renderShadowReport(s, range = {}) {
   const tw = Object.entries(s.tripwire.matrix).sort((a, b) => (a[0] < b[0] ? -1 : 1));
   if (tw.length === 0) L.push('  tetik yok');
   for (const [trigger, m] of tw) {
-    L.push(`  ${trigger} [${m.tier}]: pozitif ${m.positive} · benign ${m.benign} · okuma yok ${m.missing} · Stage A yok ${m['n/a']}`);
+    const late = m.late_positive + m.late_benign + m.late_missing;
+    const lateTxt = late ? ` (geç okuma, 4 sn üstü: pozitif ${m.late_positive} · benign ${m.late_benign} · okuma yok ${m.late_missing})` : '';
+    L.push(`  ${trigger} [${m.tier}]: pozitif ${m.positive} · benign ${m.benign} · okuma yok ${m.missing} · tabloya okuma ulaşmadı ${m['n/a']}${lateTxt}`);
   }
   L.push(`  §7.2 sonuçları: ${Object.entries(s.tripwire.outcomes).map(([k, v]) => `${k} ${v}`).join(' · ') || '—'} · bastırılan benign ${s.tripwire.benign_suppressed}`);
+  if (Object.keys(s.tripwire.fallback_causes).length) {
+    const onTime = Object.entries(s.tripwire.on_time_outcomes).map(([k, v]) => `${k} ${v}`).join(' · ');
+    L.push(`  fallback nedeni: ${Object.entries(s.tripwire.fallback_causes).map(([k, v]) => `${k} ${v}`).join(' · ')}${onTime ? ` · Stage A zamanında gelseydi: ${onTime}` : ''}`);
+  }
   if (Object.keys(s.tripwire.v1_safety).length) {
     L.push(`  v1 güvenlik: ${Object.entries(s.tripwire.v1_safety).map(([k, v]) => `${k} ${v}`).join(' · ')}`);
   }

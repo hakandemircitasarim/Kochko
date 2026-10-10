@@ -1,0 +1,186 @@
+{
+  "key": "4507042de615c034e4907276799c5a317b600c50d2f0ff7d67c9becc8afd8b3d",
+  "recorded_at": "2026-10-10T16:43:30.166Z",
+  "fixture_ids": [
+    "r3-mem-2b-yemedim-iyiyim-kaldir"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"confirmation\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisinin tamamen geçtiğini ve doktorun onayladığını belirtiyor; bekleyen alerji kaldırma işlemine açık onay veriyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[{\"op\":\"confirm\",\"ref\":\"p1\"}],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "confirmation",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisinin tamamen geçtiğini ve doktorun onayladığını belirtiyor; bekleyen alerji kaldırma işlemine açık onay veriyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [
+          {
+            "op": "confirm",
+            "ref": "p1"
+          }
+        ],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12257,
+        "output_tokens": 328,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 130
+      },
+      "latency_ms": 3951,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"confirmation\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Yeni bir alerji bildirmiyor; mevcut yumurta alerjisi kaldırma işlemini doktor onayıyla açıkça onaylıyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[{\"op\":\"confirm\",\"ref\":\"p1\"}],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "confirmation",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Yeni bir alerji bildirmiyor; mevcut yumurta alerjisi kaldırma işlemini doktor onayıyla açıkça onaylıyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [
+          {
+            "op": "confirm",
+            "ref": "p1"
+          }
+        ],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12257,
+        "output_tokens": 340,
+        "cached_tokens": 12254,
+        "reasoning_tokens": 150
+      },
+      "latency_ms": 4243,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"confirmation\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Yeni bir alerji bildirimi değil; mevcut yumurta alerjisi kaydının kaldırılması için açık onay veriyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[{\"op\":\"confirm\",\"ref\":\"p1\"}],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "confirmation",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Yeni bir alerji bildirimi değil; mevcut yumurta alerjisi kaydının kaldırılması için açık onay veriyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [
+          {
+            "op": "confirm",
+            "ref": "p1"
+          }
+        ],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12257,
+        "output_tokens": 301,
+        "cached_tokens": 12254,
+        "reasoning_tokens": 113
+      },
+      "latency_ms": 4164,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

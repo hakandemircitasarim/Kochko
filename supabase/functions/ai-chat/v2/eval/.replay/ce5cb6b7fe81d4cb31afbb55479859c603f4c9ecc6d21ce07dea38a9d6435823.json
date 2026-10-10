@@ -1,0 +1,228 @@
+{
+  "key": "ce5cb6b7fe81d4cb31afbb55479859c603f4c9ecc6d21ce07dea38a9d6435823",
+  "recorded_at": "2026-10-10T16:43:42.478Z",
+  "fixture_ids": [
+    "r3-mem-11-alerji-beyani-simulasyon-degil"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Nefes darlığı şu anda yaşanan bir belirti olarak değil, fıstığı yanlışlıkla yerse oluşan ciddi alerjik reaksiyon belirtisi olarak anlatılıyor.\"},{\"hit_id\":\"tw2\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için ciddi fıstık alerjisi bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"severe\",\"body_parts\":[],\"event_date\":null,\"note\":\"Yanlışlıkla yediğinde nefes darlığı oluyor.\",\"evidence_quote\":\"fistiga alerjim var, ciddi\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Nefes darlığı şu anda yaşanan bir belirti olarak değil, fıstığı yanlışlıkla yerse oluşan ciddi alerjik reaksiyon belirtisi olarak anlatılıyor."
+            },
+            {
+              "hit_id": "tw2",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için ciddi fıstık alerjisi bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "severe",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Yanlışlıkla yediğinde nefes darlığı oluyor.",
+            "evidence_quote": "fistiga alerjim var, ciddi"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12073,
+        "output_tokens": 359,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 62
+      },
+      "latency_ms": 4197,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Nefes darlığı şu anda yaşanan akut belirti olarak değil, fıstık yanlışlıkla yenirse oluşan alerjik reaksiyon olarak anlatılıyor.\"},{\"hit_id\":\"tw2\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için ciddi fıstık alerjisi bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"severe\",\"body_parts\":[],\"event_date\":null,\"note\":\"Yanlışlıkla yediğinde nefes darlığı gelişiyor.\",\"evidence_quote\":\"fistiga alerjim var, ciddi\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Nefes darlığı şu anda yaşanan akut belirti olarak değil, fıstık yanlışlıkla yenirse oluşan alerjik reaksiyon olarak anlatılıyor."
+            },
+            {
+              "hit_id": "tw2",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için ciddi fıstık alerjisi bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "severe",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Yanlışlıkla yediğinde nefes darlığı gelişiyor.",
+            "evidence_quote": "fistiga alerjim var, ciddi"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12073,
+        "output_tokens": 293,
+        "cached_tokens": 12070,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 4004,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Nefes darlığı şu anda yaşanan bir belirti olarak değil, fıstığı yanlışlıkla yerse ortaya çıkan ciddi alerjik reaksiyon belirtisi olarak anlatılıyor.\"},{\"hit_id\":\"tw2\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için ciddi fıstık alerjisi bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"severe\",\"body_parts\":[],\"event_date\":null,\"note\":\"Yanlışlıkla yediğinde nefes darlığı oluyor.\",\"evidence_quote\":\"fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Nefes darlığı şu anda yaşanan bir belirti olarak değil, fıstığı yanlışlıkla yerse ortaya çıkan ciddi alerjik reaksiyon belirtisi olarak anlatılıyor."
+            },
+            {
+              "hit_id": "tw2",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için ciddi fıstık alerjisi bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "severe",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Yanlışlıkla yediğinde nefes darlığı oluyor.",
+            "evidence_quote": "fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12073,
+        "output_tokens": 392,
+        "cached_tokens": 12070,
+        "reasoning_tokens": 82
+      },
+      "latency_ms": 5100,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

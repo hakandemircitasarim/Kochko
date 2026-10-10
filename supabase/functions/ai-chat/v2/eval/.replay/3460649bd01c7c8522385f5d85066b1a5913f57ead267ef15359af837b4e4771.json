@@ -1,0 +1,338 @@
+{
+  "key": "3460649bd01c7c8522385f5d85066b1a5913f57ead267ef15359af837b4e4771",
+  "recorded_at": "2026-10-10T16:43:04.408Z",
+  "fixture_ids": [
+    "r3-final2-8-izgara-tavuk-kalem-basi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"bugün öğlen 200 gr ızgara tavuk göğsü, 1 kase bulgur pilavı ve yarım porsiyon çoban salata yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"ızgara tavuk göğsü\",\"as_stated\":\"200 gr\",\"grams\":200,\"kcal\":330,\"protein_g\":62,\"carbs_g\":0,\"fat_g\":7,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"ızgara\",\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.9},{\"name\":\"bulgur pilavı\",\"as_stated\":\"1 kase\",\"grams\":180,\"kcal\":230,\"protein_g\":6,\"carbs_g\":43,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"çoban salata\",\"as_stated\":\"yarım porsiyon\",\"grams\":100,\"kcal\":55,\"protein_g\":1,\"carbs_g\":5,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "bugün öğlen 200 gr ızgara tavuk göğsü, 1 kase bulgur pilavı ve yarım porsiyon çoban salata yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "ızgara tavuk göğsü",
+                "as_stated": "200 gr",
+                "grams": 200,
+                "kcal": 330,
+                "protein_g": 62,
+                "carbs_g": 0,
+                "fat_g": 7,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": "ızgara",
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.9
+              },
+              {
+                "name": "bulgur pilavı",
+                "as_stated": "1 kase",
+                "grams": 180,
+                "kcal": 230,
+                "protein_g": 6,
+                "carbs_g": 43,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "çoban salata",
+                "as_stated": "yarım porsiyon",
+                "grams": 100,
+                "kcal": 55,
+                "protein_g": 1,
+                "carbs_g": 5,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11771,
+        "output_tokens": 449,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 4402,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"bugün öğlen 200 gr ızgara tavuk göğsü, 1 kase bulgur pilavı ve yarım porsiyon çoban salata yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"ızgara tavuk göğsü\",\"as_stated\":\"200 gr\",\"grams\":200,\"kcal\":330,\"protein_g\":62,\"carbs_g\":0,\"fat_g\":7,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"ızgara\",\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.9},{\"name\":\"bulgur pilavı\",\"as_stated\":\"1 kase\",\"grams\":180,\"kcal\":250,\"protein_g\":6,\"carbs_g\":45,\"fat_g\":5,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"çoban salata\",\"as_stated\":\"yarım porsiyon\",\"grams\":100,\"kcal\":65,\"protein_g\":2,\"carbs_g\":7,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.6}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "bugün öğlen 200 gr ızgara tavuk göğsü, 1 kase bulgur pilavı ve yarım porsiyon çoban salata yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "ızgara tavuk göğsü",
+                "as_stated": "200 gr",
+                "grams": 200,
+                "kcal": 330,
+                "protein_g": 62,
+                "carbs_g": 0,
+                "fat_g": 7,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": "ızgara",
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.9
+              },
+              {
+                "name": "bulgur pilavı",
+                "as_stated": "1 kase",
+                "grams": 180,
+                "kcal": 250,
+                "protein_g": 6,
+                "carbs_g": 45,
+                "fat_g": 5,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "çoban salata",
+                "as_stated": "yarım porsiyon",
+                "grams": 100,
+                "kcal": 65,
+                "protein_g": 2,
+                "carbs_g": 7,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.6
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11771,
+        "output_tokens": 452,
+        "cached_tokens": 11768,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3992,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"bugün öğlen 200 gr ızgara tavuk göğsü, 1 kase bulgur pilavı ve yarım porsiyon çoban salata yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"ızgara tavuk göğsü\",\"as_stated\":\"200 gr\",\"grams\":200,\"kcal\":330,\"protein_g\":62,\"carbs_g\":0,\"fat_g\":7,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"ızgara\",\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.9},{\"name\":\"bulgur pilavı\",\"as_stated\":\"1 kase\",\"grams\":180,\"kcal\":270,\"protein_g\":6,\"carbs_g\":46,\"fat_g\":7,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"çoban salata\",\"as_stated\":\"yarım porsiyon\",\"grams\":100,\"kcal\":70,\"protein_g\":1,\"carbs_g\":6,\"fat_g\":5,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.6}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "bugün öğlen 200 gr ızgara tavuk göğsü, 1 kase bulgur pilavı ve yarım porsiyon çoban salata yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "ızgara tavuk göğsü",
+                "as_stated": "200 gr",
+                "grams": 200,
+                "kcal": 330,
+                "protein_g": 62,
+                "carbs_g": 0,
+                "fat_g": 7,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": "ızgara",
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.9
+              },
+              {
+                "name": "bulgur pilavı",
+                "as_stated": "1 kase",
+                "grams": 180,
+                "kcal": 270,
+                "protein_g": 6,
+                "carbs_g": 46,
+                "fat_g": 7,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "çoban salata",
+                "as_stated": "yarım porsiyon",
+                "grams": 100,
+                "kcal": 70,
+                "protein_g": 1,
+                "carbs_g": 6,
+                "fat_g": 5,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.6
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11771,
+        "output_tokens": 449,
+        "cached_tokens": 11768,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3910,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

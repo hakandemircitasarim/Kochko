@@ -112,7 +112,7 @@ export const ENVELOPE_TAIL = {
   simulation: f.obj({
     food: f.text({ max: 80 }),
     kcal_estimate: f.num({ unit: 'kcal', hard: [0, 5000] }),
-    target_day: f.date({ past_days: 0, future_days: 7 }),
+    target_day: f.date({ past_days: 0, future_days: 7, tr: 'YYYY-MM-DD ("today" değil)' }),
   }, { nullable: true, tr: '"yesem ne olur?" varsayımı (kod bütçe sayısını hesaplar); yoksa null' }),
   clarify: f.obj({
     topic: f.text({ max: 160 }),

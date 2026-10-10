@@ -172,8 +172,16 @@ Deno.test('golden owner decision: a suspicious old record is surfaced for one qu
   const ask = d({ intent: intent('question'), clarify: { topic: 'şüpheli kayıt', candidate_refs: ['m12'] } });
   assertEquals((await run(id, ask)).status, 'pass');
   const patch = sampleMeal([{ name: 'tavuk nugget', grams: 110, kcal: 300 }], { day: '2026-10-01' });
-  const silent = d({ record_ops: [{ op: 'update', ref: 'm12', basis: 'suspicious', reason: 'şüpheli', evidence_quote: '', patch }] });
+  // §6.2 (live eval 2026-10-10): the suspicious PROPOSAL is the one-question path — the validator
+  // holds it (ASK, nothing written) and the coach asks "düzelteyim mi?". It passes.
+  const proposal = d({ record_ops: [{ op: 'update', ref: 'm12', basis: 'suspicious', reason: 'şüpheli', evidence_quote: null, patch }] });
+  assertEquals((await run(id, proposal)).status, 'pass');
+  // A silent fix stays a failure: a correction the user never asked for, a delete, or another ref.
+  const silent = d({ record_ops: [{ op: 'update', ref: 'm12', basis: 'user_correction', reason: 'şüpheli', evidence_quote: 'iyi gidiyor muyum', patch }] });
   assertEquals((await run(id, silent)).status, 'fail');
+  assertEquals((await run(id, d({ record_ops: [{ op: 'delete', ref: 'm12', reason: 'şüpheli' }] }))).status, 'fail');
+  const otherRef = d({ record_ops: [{ op: 'update', ref: 'm30', basis: 'suspicious', reason: 'şüpheli', evidence_quote: null, patch }] });
+  assertEquals((await run(id, otherRef)).status, 'fail');
   // Without Stage B the "ask in the reply" branch is unknown → that check is skipped, not failed.
   const quiet = await run(id, d());
   assertEquals(quiet.status, 'pass');

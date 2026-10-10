@@ -110,6 +110,8 @@ npx deno task --config supabase/functions/deno.json v2-eval --mode judge --recor
 
 # Filtreler
 --package "B+,B-"     yalnız bu paketler
+--only a,b | @ids.txt tam fixture id'leri (virgülle ya da dosyada satır satır); bilinmeyen id kullanım hatasıdır —
+                      canlı turun kalanlarını + rastgele bir gerileme örneğini düşük maliyetle yeniden koşmak için
 --filter final2#3     id, source ya da etiket içinde geçen metin
 --verbose             atlananları nedenleriyle listeler
 --require-full        KISMİ geçişi de başarısız sayar (Faz 3 kapısı için)

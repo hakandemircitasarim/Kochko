@@ -92,8 +92,9 @@ Deno.test('summarizeShadowRows: agreement, net-vs-silent, ask/reject, parse erro
   assertEquals(s.verdicts.top_ask_codes, [['water_log:toplam_kayittan_az', 1]]);
   assertEquals(s.verdicts.top_reject_codes, [['water_log:other_ml_eksik', 1]]);
   assertEquals([s.turns_with_ask, s.turns_with_reject, s.turn_ask_rate], [1, 1, 1 / 5]);
-  assertEquals(s.tripwire.matrix['emg.bayilma'], { tier: 'ambiguous', positive: 0, benign: 1, missing: 0, 'n/a': 1 });
+  assertEquals(s.tripwire.matrix['emg.bayilma'], { tier: 'ambiguous', positive: 0, benign: 1, missing: 0, 'n/a': 1, late_positive: 0, late_benign: 0, late_missing: 0 });
   assertEquals(s.tripwire.outcomes, { normal: 4, fallback: 1, protective: 1, canned: 1 });
+  assertEquals([s.tripwire.fallback_causes, s.tripwire.on_time_outcomes], [{ refused: 1 }, {}], 'a refusal has no late reading');
   assertEquals(s.tripwire.benign_suppressed, 1);
   assertEquals(s.v1_sources, { model: 1, net: 1, unknown: 0 });
 });
@@ -116,6 +117,32 @@ Deno.test('renderShadowReport: every §10 Faz 2 section, counts only (no user te
     'emg.bayilma [ambiguous]: pozitif 0 · benign 1',
   ]) assertStringIncludes(text, s);
   for (const userText of ['bardak su içtim', 'tarife bayılmıştım', 'öldürmek istiyorum', USER]) assert(!text.includes(userText), userText);
+});
+
+Deno.test('late Stage A (parsed past the 4 s budget): the fallback keeps its cause, the late reading is counted apart — never as "no Stage A"', async () => {
+  resetShadowSinkState();
+  const t = seedTables();
+  t.weekly_plans = t.weekly_plans.filter((p) => p.status !== 'draft');
+  const turnInput = await loadTurnInput(fakeTurnInputDb(t), { userId: USER, now: NOW });
+  const sink = fakeSink();
+  const msg = 'dün gece kustum, zehirlendim galiba';
+  const decision = sampleDecision({
+    safety: {
+      acute_medical: false, self_harm: false,
+      tripwire_readings: scanTripwires(msg).hits.filter((h) => h.tier === 'ambiguous').map((h) => ({ hit_id: h.hit_id, reading: 'benign', reason: 'zehirlenme' })),
+      ed_signal: { category: 'illness_vomiting', severity: 'low', evidence_quote: 'dün gece kustum' },
+    },
+    self_check: { reported_new_facts: true, not_written_reason: 'illness_not_food' },
+  });
+  await runShadow({ userId: USER, message: msg, turnInput, v1Actions: [], v1Mode: 'safety', now: NOW }, { understand: stageA(decision, 4345), sink, log: () => {} });
+  const s = summarizeShadowRows(sink.rows);
+  assertEquals(s.tripwire.outcomes, { fallback: 1 });
+  assertEquals(s.tripwire.fallback_causes, { timeout: 1 });
+  assertEquals(s.tripwire.on_time_outcomes, { protective: 1 });
+  assertEquals(s.tripwire.matrix['ed.kustum'], { tier: 'ambiguous', positive: 0, benign: 0, missing: 0, 'n/a': 1, late_positive: 0, late_benign: 1, late_missing: 0 });
+  const text = renderShadowReport(s);
+  assertStringIncludes(text, 'tabloya okuma ulaşmadı 1 (geç okuma, 4 sn üstü: pozitif 0 · benign 1 · okuma yok 0)');
+  assertStringIncludes(text, 'fallback nedeni: timeout 1 · Stage A zamanında gelseydi: protective 1');
 });
 
 Deno.test('self_check: an unexplained omission is a missed write; a reasoned one (emergency/illness) is counted apart', async () => {

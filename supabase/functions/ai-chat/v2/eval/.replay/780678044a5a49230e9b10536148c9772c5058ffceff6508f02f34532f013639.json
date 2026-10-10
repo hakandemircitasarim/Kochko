@@ -1,0 +1,243 @@
+{
+  "key": "780678044a5a49230e9b10536148c9772c5058ffceff6508f02f34532f013639",
+  "recorded_at": "2026-10-10T16:43:09.279Z",
+  "fixture_ids": [
+    "r3-final2-11-omega3-deniz-urunu-etiketi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"supplement_log\",\"day\":\"today\",\"name\":\"omega_3\",\"as_stated\":\"1 omega 3 kapsulu\",\"kcal\":null,\"protein_g\":null,\"carbs_g\":null,\"fat_g\":null,\"allergens\":[],\"may_contain\":[\"fish\",\"crustacean\"],\"replaces\":null},{\"op\":\"supplement_log\",\"day\":\"today\",\"name\":\"d_vitamini\",\"as_stated\":\"1 tane D vitamini\",\"kcal\":null,\"protein_g\":null,\"carbs_g\":null,\"fat_g\":null,\"allergens\":[],\"may_contain\":[],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "supplement_log",
+            "day": "today",
+            "name": "omega_3",
+            "as_stated": "1 omega 3 kapsulu",
+            "kcal": null,
+            "protein_g": null,
+            "carbs_g": null,
+            "fat_g": null,
+            "allergens": [],
+            "may_contain": [
+              "fish",
+              "crustacean"
+            ],
+            "replaces": null
+          },
+          {
+            "op": "supplement_log",
+            "day": "today",
+            "name": "d_vitamini",
+            "as_stated": "1 tane D vitamini",
+            "kcal": null,
+            "protein_g": null,
+            "carbs_g": null,
+            "fat_g": null,
+            "allergens": [],
+            "may_contain": [],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11914,
+        "output_tokens": 338,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 72
+      },
+      "latency_ms": 4212,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"supplement_log\",\"day\":\"today\",\"name\":\"omega_3\",\"as_stated\":\"1 omega 3 kapsulu\",\"kcal\":null,\"protein_g\":null,\"carbs_g\":null,\"fat_g\":null,\"allergens\":[],\"may_contain\":[\"fish\",\"crustacean\"],\"replaces\":null},{\"op\":\"supplement_log\",\"day\":\"today\",\"name\":\"d_vitamini\",\"as_stated\":\"1 tane D vitamini\",\"kcal\":null,\"protein_g\":null,\"carbs_g\":null,\"fat_g\":null,\"allergens\":[],\"may_contain\":[],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "supplement_log",
+            "day": "today",
+            "name": "omega_3",
+            "as_stated": "1 omega 3 kapsulu",
+            "kcal": null,
+            "protein_g": null,
+            "carbs_g": null,
+            "fat_g": null,
+            "allergens": [],
+            "may_contain": [
+              "fish",
+              "crustacean"
+            ],
+            "replaces": null
+          },
+          {
+            "op": "supplement_log",
+            "day": "today",
+            "name": "d_vitamini",
+            "as_stated": "1 tane D vitamini",
+            "kcal": null,
+            "protein_g": null,
+            "carbs_g": null,
+            "fat_g": null,
+            "allergens": [],
+            "may_contain": [],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11914,
+        "output_tokens": 337,
+        "cached_tokens": 11911,
+        "reasoning_tokens": 71
+      },
+      "latency_ms": 3454,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"supplement_log\",\"day\":\"today\",\"name\":\"omega_3\",\"as_stated\":\"1 omega 3 kapsulu\",\"kcal\":null,\"protein_g\":null,\"carbs_g\":null,\"fat_g\":null,\"allergens\":[],\"may_contain\":[\"fish\",\"crustacean\"],\"replaces\":null},{\"op\":\"supplement_log\",\"day\":\"today\",\"name\":\"d_vitamini\",\"as_stated\":\"1 tane D vitamini\",\"kcal\":null,\"protein_g\":null,\"carbs_g\":null,\"fat_g\":null,\"allergens\":[],\"may_contain\":[],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "supplement_log",
+            "day": "today",
+            "name": "omega_3",
+            "as_stated": "1 omega 3 kapsulu",
+            "kcal": null,
+            "protein_g": null,
+            "carbs_g": null,
+            "fat_g": null,
+            "allergens": [],
+            "may_contain": [
+              "fish",
+              "crustacean"
+            ],
+            "replaces": null
+          },
+          {
+            "op": "supplement_log",
+            "day": "today",
+            "name": "d_vitamini",
+            "as_stated": "1 tane D vitamini",
+            "kcal": null,
+            "protein_g": null,
+            "carbs_g": null,
+            "fat_g": null,
+            "allergens": [],
+            "may_contain": [],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11914,
+        "output_tokens": 457,
+        "cached_tokens": 11911,
+        "reasoning_tokens": 191
+      },
+      "latency_ms": 4767,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}
