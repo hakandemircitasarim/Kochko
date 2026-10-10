@@ -203,6 +203,11 @@ Deno.test('T2 binding: a fixture that reads tripwire_reading gets a live tripwir
     }
     if (t2.output.canned && !f.client) {
       assert(paths.some((p) => p.startsWith('t2.')), `${f.id}: açık tetik → Stage A çağrılmaz; beklenti t2 üzerinden yazılmalı`);
+      // A B− case the v1 floor still answers canned is a KNOWN false positive: it must be counted
+      // (t2.canned: false fails until a §7.4 demotion), never encoded as the expected behaviour.
+      if (f.package === 'B-') {
+        assert(leaves(f.expect).some((e) => e.path === 't2.canned' && e.eq === false), `${f.id}: B− fixture on a v1-floor phrase must expect t2.canned=false`);
+      }
     }
   }
 });

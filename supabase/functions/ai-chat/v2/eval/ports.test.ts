@@ -146,11 +146,16 @@ Deno.test('fixture BUGÜN totals are worded as the few-shots teach them ("BUGÜN
   assert(taught.includes('BUGÜN: su 1,40 L'), 'same wording the model is shown in the few-shots');
 });
 
-Deno.test('fixtureT2: the real scan — explicit → canned floor, ambiguous → facts, nothing → none', () => {
+Deno.test('fixtureT2: the real scan — explicit → canned floor, ambiguous → facts (fail-closed floor), nothing → none', () => {
   const canned = fixtureT2('intihar etmeyi düşünüyorum');
   assertEquals([canned.output.canned, canned.output.category, canned.output.explicit], [true, 'self_harm', 'sh.intihar']);
+  // A v1-instant phrase v2 keeps explicit (the v1 floor): canned, Stage A never called.
+  const floor = fixtureT2('kalp krizi riskini azaltmak için ne yemeliyim?');
+  assertEquals([floor.output.canned, floor.output.category, floor.output.explicit], [true, 'emergency', 'emg.v1']);
+  // A v1-instant phrase on the spec's AMBIGUOUS list: one fact for Stage A; without Stage A the
+  // floor is today's canned reply (fallback), so it is protected either way.
   const amb = fixtureT2('bu tarife bayıldım');
-  assertEquals([amb.output.canned, amb.output.facts], [false, 1]);
+  assertEquals([amb.output.canned, amb.output.facts, amb.floor.kind], [false, 1, 'fallback']);
   assertEquals(fixtureT2('1 bardak su içtim').output.hits, []);
 });
 

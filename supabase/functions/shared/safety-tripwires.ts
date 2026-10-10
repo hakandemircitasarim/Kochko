@@ -10,11 +10,15 @@
  *              Two parts: the CURATED patterns (intihar, kendimi öldürmek, nefes alamıyorum,
  *              göğsüm sıkışıyor… — the user, now, in more spellings and inflections than v1 knew)
  *              and the V1 FLOOR: every message v1's detectEmergency/detectCrisis answers
- *              instantly is answered instantly here too (§7.1, §7.4 — see V1_FLOOR_TRIPWIRES).
- *   AMBIGUOUS  (bayılacak gibiyim, nefesim daralıyor, keşke uyanmasam, kustum, aç kalma…)
- *              → a tripwire fact for Stage A (+ a parallel classifier for emergency/self-harm).
- *              resolveTripwires() applies the §7.2 table: no reasoned benign reading → protective
- *              path; Stage A timeout/error/refusal → today's canned reply (fail-closed).
+ *              instantly is answered instantly here too (§7.1, §7.4 — see V1_FLOOR_TRIPWIRES) —
+ *              except the phrases the spec itself puts on the AMBIGUOUS list (below).
+ *   AMBIGUOUS  (bayıldım, tükendim, kalp çarpıntısı, bayılacak gibiyim, nefesim daralıyor, keşke
+ *              uyanmasam, kustum, aç kalma…) → a tripwire fact for Stage A (+ a parallel classifier
+ *              for emergency/self-harm). resolveTripwires() applies the §7.2 table, PROTECTIVE BY
+ *              DEFAULT: without a qualifying benign reading the protective path runs; Stage A
+ *              timeout/error/refusal → today's canned reply (fail-closed). A benign reading lifts
+ *              protection only behind the B+ gate (`benignOverride`, default off) and, for
+ *              emergency/self-harm, only with the classifier's independent benign (§7.4.1).
  *   SIGNAL     (alerji / sakatlık beyanı) → a fact only: "Stage A wrote no constraint — why?"
  *   INJECTION  → logged, never refused (§7.3).
  *
@@ -29,20 +33,28 @@
  * now (wave-2a review) — and no "… gibi değil" denial heuristic exists here on purpose: one that
  * read any negative verb after "gibi" demoted real emergencies (rejected, d1fd68b SIMILE_DENIED).
  *
- * THE V1 FLOOR. Demoting a phrase v1 answers instantly (bare "kalp krizi", "felç", "bayıldım",
- * "tükendim", "kan küstüm", "yutamıyorum", "nefesim kesildi", "hayata veda", "babam … göğüs ağrısı
- * vardı" …) to Stage A removes an instant block, and §7.4 needs owner approval AND shadow evidence
- * for that — which we do not have. So until then v1's own lists and root regexes run as the LAST
- * explicit tier: a curated pattern still names the words first, and a curated ambiguous reading of
- * the same words (emg.bayilma, `<id>.anlatim` …) is still recorded next to the floor hit — ledger
- * evidence for that future decision — but the outcome is instant. The golden parity test in
- * safety-tripwires.test.ts holds this over a broad Turkish corpus: v1 instant ⇒ v2 explicit.
+ * THE V1 FLOOR. Demoting a phrase v1 answers instantly (bare "kalp krizi", "felç", "kan küstüm",
+ * "yutamıyorum", "nefesim kesildi", "ben bittim", "hayata veda", "babam … göğüs ağrısı vardı" …)
+ * to Stage A removes an instant block, and §7.4 needs owner approval AND shadow evidence for that
+ * — which we do not have. So until then v1's own lists and root regexes run as the LAST explicit
+ * tier: a curated pattern still names the words first, and a curated ambiguous reading of the same
+ * words (emg.kalp_krizi, `<id>.anlatim` …) is still recorded next to the floor hit — ledger
+ * evidence for that future decision — but the outcome is instant.
+ * The one exception is the spec's own AMBIGUOUS list (§3.2 T2, §7.2: "bayıldım, tükendim, kustum,
+ * kalp çarpıntısı, aç kalma…" — V1_AMBIGUOUS_PHRASES; "kustum"/"aç kalma" are ED, ambiguous in v2
+ * anyway): v1 over-fires on exactly these ("bu tarife bayıldım" → 112, §1), and §7.4.1 already
+ * says how they stay protected — "her hit ya korumayı uygular ya da iki bağımsız benign okuma
+ * ister". They are ambiguous hits, PROTECTIVE BY DEFAULT: with the override gate off (production
+ * today) every one of them ends in the protective path or, when Stage A fails, in today's canned
+ * reply — never in a normal turn. The golden parity test in safety-tripwires.test.ts holds this
+ * over a broad Turkish corpus: v1 instant ⇒ v2 explicit, or an ambiguous-list hit that resolves
+ * protective without a qualifying benign reading.
  * v1's lists and regexes live here (guardrails.ts imports them — a pure move, v1 behaviour
  * unchanged); editing a V1_* list changes v1 too. Rules for editing (§7.4): ADDING a pattern
  * ships any time; a curated pattern may be narrowed (an `.anlatim` reading) with a review and a
  * golden test, never below v1 — only where v1 is silent, since the floor answers the rest; moving
- * anything out of the floor needs owner approval, shadow evidence and 100% recall on the golden
- * positive set.
+ * anything out of the floor, or adding a phrase to V1_AMBIGUOUS_PHRASES, needs owner approval,
+ * shadow evidence and 100% recall on the golden positive set.
  *
  * Matching: the message is NFC-normalised, tr-lowercased, apostrophes dropped, whitespace
  * collapsed, then diacritic-folded (ş→s, ı→i, ğ→g …), so a curated pattern covers both "ölmek
@@ -55,7 +67,7 @@
  * Pure: no I/O, no Deno/npm imports (the eval runner and any runtime can load it).
  */
 
-export const TRIPWIRES_VERSION = 'tw-2026-10-10a';
+export const TRIPWIRES_VERSION = 'tw-2026-10-10b';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -69,7 +81,8 @@ export interface TripwireHit {
   hit_id: string;
   /** Stable pattern id for the ledger ('emg.bayilma', 'sh.intihar', 'ed.kusma' …); a curated
    * explicit phrasing told as past, about someone else or denied is '<explicit id>.anlatim' (tier
-   * 'ambiguous'); a hit only the v1 floor makes instant is one of V1_FLOOR_TRIGGERS. */
+   * 'ambiguous'); a hit only the v1 floor makes instant is one of V1_FLOOR_TRIGGERS; a v1
+   * ambiguous-list phrase no curated pattern recognised is one of V1_AMBIGUOUS_FLOOR_TRIGGERS. */
   trigger: string;
   category: TripwireCategory;
   tier: TripwireTier;
@@ -92,14 +105,25 @@ export interface InjectionHit {
   refused_in_v1: boolean;
 }
 
+/**
+ * What v1 (guardrails.detectEmergency / detectCrisis, verbatim on the raw text) does with the
+ * message, per category: null = silent; 'explicit' = it fires through a phrase or root regex v2
+ * keeps explicit; 'ambiguous' = it fires ONLY through the spec's ambiguous-list phrases
+ * (V1_AMBIGUOUS_PHRASES) — v2 then holds a live ambiguous hit that is protective by default.
+ */
+export type V1Verdict = 'explicit' | 'ambiguous' | null;
+export interface V1Verdicts { emergency: V1Verdict; self_harm: V1Verdict }
+
 export interface TripwireScan {
   /** The explicit hit that decides the canned reply (emergency before self-harm, as v1); a
    * curated hit wins over a floor hit of the same category. */
   explicit: TripwireHit | null;
-  /** Every hit: curated explicit, ambiguous, signal, then the v1 floor — each tier in list then
-   * text order. */
+  /** Every hit: curated explicit, ambiguous (curated, then v1's ambiguous-list phrases), signal,
+   * then the v1 floor — each tier in list then text order. */
   hits: TripwireHit[];
   injection: InjectionHit[];
+  /** v1's own verdict on this message (§7.4 parity, ledger evidence for a future demotion). */
+  v1: V1Verdicts;
 }
 
 export interface Span { index: number; length: number }
@@ -119,16 +143,26 @@ export interface TripwireDef {
   negatable?: boolean;
   /**
    * CURATED EXPLICIT only — is this occurrence past narration, someone else's, or denied? Gets the
-   * folded last word of the match (completed to its end), the word right after it, and the folded
-   * text right after it (up to 60 characters; '' when punctuation, not a space, follows the word).
+   * folded last word of the match (completed to its end), the word right after it, the folded
+   * text right after it (up to 60 characters; '' when punctuation, not a space, follows the word)
+   * and, in `ctx`, the folded text before the match (up to 80 characters) and everything after
+   * the word to the END of the message.
    * True → the occurrence is reported as an AMBIGUOUS hit with trigger `<id>.anlatim`: Stage A
-   * reads it, a failed Stage A still gives today's canned reply. It never lowers v1: when v1
-   * answers the message instantly, the v1 floor still makes it explicit.
+   * reads it, no qualifying benign reading → protective path, a failed Stage A still gives today's
+   * canned reply. It never lowers v1: when v1 answers the message instantly, the v1 floor still
+   * makes it explicit.
    */
-  narration?: (verb: string, next: string, after: string) => boolean;
+  narration?: (verb: string, next: string, after: string, ctx: NarrationContext) => boolean;
   /** Stage A's question for a narrated occurrence (default: `question_tr`). */
   narration_q?: string;
   question_tr: string;
+}
+
+export interface NarrationContext {
+  /** Folded text right before the match (up to 80 characters). */
+  before: string;
+  /** Folded text after the matched word, to the end of the message (punctuation included). */
+  tail: string;
 }
 
 // ─── normalisation ───────────────────────────────────────────────────────────
@@ -259,34 +293,73 @@ const INTENT_STEM = '(?:iste|isti|ist|dusun|planla|planli|ver|sonver|koy|bitir|s
 /** A negated form of one of those verbs: -mıyor, -meyecek, -medi, -memiş, -mez. Not "-mem"
  * ("son vermem gerek" = I must end it) and never any other verb ("umuyorum" = I hope). */
 const INTENT_DENIED = new RegExp(`^${INTENT_STEM}m(?:[iu]yo|[ae]y[ae]c|[ae]d[iu]|[ae]m[iu]s|[ae]z)`, 'u');
-/** A finite form of one of those verbs in the 2nd/3rd person or plural: istiyor(sun/lar),
- * verecek(sin), verdi(n), vermiş, ister(sin). Never a bare stem or a plea ("son ver", "son versin"),
- * and never the first person: every Turkish 1sg ending ends in -m. */
-const INTENT_OTHER_PERSON = new RegExp(
-  `^${INTENT_STEM}\\p{L}*?(?:yo(?:r)?|[ae]c[ae]k|[dt][iu]|m[iu]s|[aeiu]r)(?:s[iu]n(?:[iu]z)?|[iu]z|l[ae]r|n[iu]z|n)?$`, 'u');
-/** Nothing but non-letters up to punctuation or the end: the person-bearing word closes the clause. */
-const clauseEnds = (rest: string): boolean => !/^[^.,;:!?…]*\p{L}/u.test(rest);
+/** The tense of a finite form: -iyor/-iyo, -ecek, -di, -miş, aorist -er/-ir. */
+const INTENT_TENSE = '(?:yo(?:r)?|[ae]c[ae]k|[dt][iu]|m[iu]s|[aeiu]r)';
+/** 2nd person — the person is in the ending itself: istiyorsun, istersin, verdin, istiyon,
+ * verdiniz. Never a plea ("son ver", "son versin": no tense before the ending). */
+const INTENT_SECOND = new RegExp(`^${INTENT_STEM}\\p{L}*?${INTENT_TENSE}(?:s[iu]n(?:[iu]z)?|n(?:[iu]z)?)$`, 'u');
+/** 3rd person plural — also in the ending: istiyorlar, istiyolar, verecekler, isterler. */
+const INTENT_THIRD_PLURAL = new RegExp(`^${INTENT_STEM}\\p{L}*?${INTENT_TENSE}l[ae]r$`, 'u');
+/** A bare tense with no person ending: istiyor, istiyo, verecek, verdi, vermiş, ister. Third
+ * person singular — or a first person typed short ("hayatımı sonlandırmak istiyo"), which is why
+ * it narrows only with an explicit other subject (otherSubjectBefore). */
+const INTENT_THIRD = new RegExp(`^${INTENT_STEM}\\p{L}*?${INTENT_TENSE}$`, 'u');
+
+/** Third-person pronouns that can only be the subject when they stand right before the object
+ * ("o hayatımı …", "onlar hayatıma …"). Not "bu/şu": "bu hayatıma son vermek istiyo" is "this life
+ * of mine". */
+const OTHER_PRONOUN = /^(?:o|onlar|biri|birisi|birileri|herkes|kimse|insanlar)$/u;
+/** Possessed person nouns ("patronum", "annem", "eşim", "kocası" …), closed list, folded. Never a
+ * word Turkish also uses to ADDRESS someone ("hocam", "abi", "abla", "kardeşim", "kızım", "canım"):
+ * "hocam hayatımı sonlandırmak istiyo" is the user talking to the coach. */
+const OTHER_PERSON_NOUN = new RegExp(
+  '^(?:patron|mudur|amir|sef|anne|baba|es|koca|kari|sevgili|nisanli|dede|nine|babaanne|anneanne|teyze|hala|amca|dayi|yenge|kuzen|komsu|kaynana|kayinvalide|kayinpeder|arkadas|aile)' +
+    '(?:ler|lar)?(?:im|um|m|imiz|umuz|miz|si|i|u|leri|lari)$', 'u');
+/**
+ * An explicit subject that is not the user, in the clause right before "hayatımı/hayatıma": a
+ * pronoun right before it, or a possessed person noun within the last two words ("patronum resmen
+ * hayatımı …"). An unknown word is not a subject — when unsure, explicit.
+ */
+function otherSubjectBefore(before: string): boolean {
+  const clause = before.split(/[.,;:!?…]/u).pop() ?? '';
+  const words = clause.split(' ').filter((w) => /^\p{L}+$/u.test(w));
+  const last = words[words.length - 1] ?? '';
+  const prev = words[words.length - 2] ?? '';
+  return OTHER_PRONOUN.test(last) || OTHER_PERSON_NOUN.test(last) || OTHER_PERSON_NOUN.test(prev);
+}
+
+/** Nothing but non-letters to the END of the message: no further clause or sentence follows. */
+const endsMessage = (rest: string): boolean => !/\p{L}/u.test(rest);
 
 /**
  * sh.hayatima_son is an INTENT; it is not the user's own when the person-bearing word is clearly
- * someone else's or denied AND closes the clause: "patronum hayatımı bitirmek istiyor", "hayatımı
- * bitirmek istiyorsun", "hayatıma son vermeyi düşünmüyorum". Everything else stays instant — the
- * first person, a bare "hayatıma son", a plea ("Allah'ım hayatıma son ver"), a question ("istiyor
- * muyum"), a simile ("istiyor gibiyim"), an unknown word: when unsure, explicit. v1 answers most of
- * these phrasings instantly anyway (phrase "hayatıma son", root "hayatımı … bitir"), and then the v1
- * floor keeps them instant; this only stops the intent pattern from claiming them.
+ * someone else's or denied AND is the message's last word: "hayatımı sonlandırmak istemiyorum",
+ * "hayatımı sonlandırmak istiyorsun", "onlar … istiyorlar", "patronum hayatımı sonlandırmak
+ * istiyor". Everything else stays instant (parity review, 95e766c):
+ *  - anything after it — "… istemiyorum. ama çarem yok" is a denial with a crisis continuation;
+ *  - a bare third-person form with no explicit other subject — "hayatımı sonlandırmak istiyo",
+ *    "hayatımı sonlandırıyo", "… düşünüyo" are as likely the user typing short;
+ *  - the first person, a bare "hayatıma son", a plea ("Allah'ım hayatıma son ver"), a question
+ *    ("istiyor muyum"), a simile ("istiyor gibiyim"), an unknown word: when unsure, explicit.
+ * v1 answers most of these phrasings instantly anyway (phrase "hayatıma son", root "hayatımı …
+ * bitir"), and then the v1 floor keeps them instant; this only stops the intent pattern from
+ * claiming them.
  */
-const notMyIntent = (verb: string, _next: string, after: string): boolean => {
+const notMyIntent = (verb: string, _next: string, _after: string, ctx: NarrationContext): boolean => {
   let word = verb;
-  let rest = after;
+  let rest = ctx.tail;
   if (INTENT_INFINITIVE.test(verb)) {
-    const aux = /^\p{L}+/u.exec(after);
+    // "son vermek İSTİYORUM": the person is on the auxiliary, the next word.
+    const aux = /^ (\p{L}+)/u.exec(ctx.tail);
     if (!aux) return false;
-    word = aux[0];
-    rest = after.slice(word.length);
+    word = aux[1];
+    rest = ctx.tail.slice(aux[0].length);
   }
-  if (!clauseEnds(rest)) return false;
-  return INTENT_DENIED.test(word) || (!/m$/u.test(word) && INTENT_OTHER_PERSON.test(word));
+  if (!endsMessage(rest)) return false;
+  if (INTENT_DENIED.test(word)) return true;
+  if (/m$/u.test(word)) return false; // every Turkish 1sg ending ends in -m
+  if (INTENT_SECOND.test(word) || INTENT_THIRD_PLURAL.test(word)) return true;
+  return INTENT_THIRD.test(word) && otherSubjectBefore(ctx.before);
 };
 
 /**
@@ -432,9 +505,10 @@ export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
   // "hayatıma (bir) son ver…" (also typed joined: "sonvereceğim"), "hayatıma son noktayı koy…", a
   // bare "hayatıma son" ending the clause, "hayatımı sonlandır…", first-person "hayatımı bitir…"
   // intent. Never "hayatımı sonsuza dek değiştirdi" / "hayatıma son derece iyi geldi" (praise),
-  // nor "bu tatlılar hayatımı bitirecek" (third person: "will ruin my life"); a 2nd/3rd person or
-  // denied form is `.anlatim` (notMyIntent). v1 answers "hayatıma son …" and "hayatımı … bitir…"
-  // instantly whatever follows, so for those the v1 floor still gives the instant reply.
+  // nor "bu tatlılar hayatımı bitirecek" (third person: "will ruin my life"); a denied, 2nd
+  // person, 3rd plural, or 3rd singular form with an explicit other subject that ends the message
+  // is `.anlatim` (notMyIntent). v1 answers "hayatıma son …" and "hayatımı … bitir…" instantly
+  // whatever follows, so for those the v1 floor still gives the instant reply.
   { id: 'sh.hayatima_son', category: 'self_harm', tier: 'explicit', re: /(?<!\p{L})(?:hayat|yasam)(?:ima\s+(?:bir\s+)?son(?:\s*ver|\s+nokta\p{L}*\s+koy|(?!\s*\p{L}))|imi\s+(?:sonlandir|bitir(?:ecegim|ecem|mek\s+isti|meyi\s+dusun)))/u, narration: notMyIntent, narration_q: 'Kendi yaşamına son verme niyeti mi, yoksa olumsuzlanmış ya da başkası hakkında bir cümle mi?', question_tr: Q_SELF_HARM },
   // Intent forms only: "antrenmanda kendimi öldürdüm" (gym idiom) is recorded as sh.kendimi_oldurdum
   // and made instant by the v1 floor (v1's root regex). "öldüreğim" is v1's own spelling of the
@@ -455,10 +529,11 @@ export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
 ];
 
 export const AMBIGUOUS_TRIPWIRES: readonly TripwireDef[] = [
-  // A reading per phrasing. Where v1 answers the message instantly ("bayıldım", "kalp krizi",
-  // "tükendim" …) the v1 floor decides and these only record what Stage A would be asked (§7.4
-  // evidence); for everything v1 is silent on ("bayılacak gibiyim", "nefesim daralıyor") they are
-  // the live §7.2 trigger.
+  // A reading per phrasing. Where v1 answers the message instantly through an explicit-floor
+  // phrase ("kalp krizi", "ben bittim" …) the v1 floor decides and these only record what Stage A
+  // would be asked (§7.4 evidence); for the spec's ambiguous-list phrases ("bayıldım", "tükendim",
+  // "kalp çarpıntısı") and everything v1 is silent on ("bayılacak gibiyim", "nefesim daralıyor")
+  // they are the live §7.2 trigger — protective by default.
   // ── emergency ──
   // "bayılırım" (I'd love it) is not even a fact; "bayıldım/bayılıyorum" can be either.
   { id: 'emg.bayilma', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})bayil(?!ir(?:im|sin|iz|siniz)(?!\p{L}))/u, question_tr: 'Gerçekten bayılma mı, yoksa "çok beğendim" anlamında mı?' },
@@ -516,21 +591,55 @@ export const SIGNAL_TRIPWIRES: readonly TripwireDef[] = [
 ];
 
 /**
+ * The v1 phrases the SPEC puts on the AMBIGUOUS list (§3.2 T2 "BELİRSİZ liste (bayıldım, tükendim,
+ * kustum, kalp çarpıntısı, aç kalma…)", §7.2) — every spelling v1's own lists carry. v1 answers
+ * them instantly and over-fires ("bu tarife bayıldım" → 112, a verified v1 defect in §1); v2 asks
+ * Stage A and stays PROTECTIVE BY DEFAULT (resolveTripwires): without a qualifying benign reading
+ * the protective path, on a Stage A failure today's canned reply. ("kustum", "aç kalma" are ED:
+ * v1's ED list is ambiguous in v2 already.) Every other v1 phrase and root regex stays explicit.
+ * Adding a phrase here removes an instant block: a §7.4 decision (owner approval, shadow
+ * evidence, 100% golden-positive recall) — never a code-review call.
+ */
+export const V1_AMBIGUOUS_PHRASES: Readonly<Record<'emergency' | 'self_harm', readonly string[]>> = {
+  emergency: ['bayiliyorum', 'bayılıyorum', 'bayildim', 'bayıldım', 'kalp çarpıntısı', 'kalp carpintisi'],
+  self_harm: ['tukendim', 'tükendim'],
+};
+
+/** v1's phrases v2 keeps explicit: everything not on the spec's ambiguous list. */
+const V1_EXPLICIT_PHRASES: Readonly<Record<'emergency' | 'self_harm', readonly string[]>> = {
+  emergency: V1_EMERGENCY_PHRASES.filter((p) => !V1_AMBIGUOUS_PHRASES.emergency.includes(p)),
+  self_harm: V1_CRISIS_PHRASES.filter((p) => !V1_AMBIGUOUS_PHRASES.self_harm.includes(p)),
+};
+
+/**
  * THE V1 FLOOR (§7.1, §7.4) — explicit, scanned LAST. Every message guardrails.detectEmergency /
- * detectCrisis answers instantly is answered instantly by v2: v1's phrase lists (folded, so every
- * spelling v1 knew and more: "KALP KRIZI", "kan kustum") and v1's root regexes (lowercase + the
- * dotted pass, v1 semantics). Scanned after the curated tiers, so a curated explicit pattern names
- * the words first and a curated ambiguous reading of the same words is still in `hits` — the
- * ledger then shows "instant only because v1 is" next to what Stage A would have been asked.
- * Moving anything out of this floor is a §7.4 decision: owner approval + shadow evidence.
+ * detectCrisis answers instantly through a phrase or root regex NOT on the spec's ambiguous list
+ * is answered instantly by v2: v1's phrase lists (folded, so every spelling v1 knew and more:
+ * "KALP KRIZI", "kan kustum") and v1's root regexes (lowercase + the dotted pass, v1 semantics).
+ * Unconditional — no narration, person or clause rule applies here. Scanned after the curated
+ * tiers, so a curated explicit pattern names the words first and a curated ambiguous reading of
+ * the same words is still in `hits` — the ledger then shows "instant only because v1 is" next to
+ * what Stage A would have been asked. Moving anything out of this floor is a §7.4 decision: owner
+ * approval + shadow evidence.
  */
 export const V1_FLOOR_TRIPWIRES: readonly TripwireDef[] = [
-  { id: 'emg.v1', category: 'emergency', tier: 'explicit', find: phraseFinder(V1_EMERGENCY_PHRASES), question_tr: Q_EMERGENCY },
-  { id: 'sh.v1', category: 'self_harm', tier: 'explicit', find: phraseFinder(V1_CRISIS_PHRASES), question_tr: Q_SELF_HARM },
+  { id: 'emg.v1', category: 'emergency', tier: 'explicit', find: phraseFinder(V1_EXPLICIT_PHRASES.emergency), question_tr: Q_EMERGENCY },
+  { id: 'sh.v1', category: 'self_harm', tier: 'explicit', find: phraseFinder(V1_EXPLICIT_PHRASES.self_harm), question_tr: Q_SELF_HARM },
   { id: 'sh.v1_yontem', category: 'self_harm', tier: 'explicit', on: 'lower', re: V1_CRISIS_PATTERNS[0], question_tr: Q_SELF_HARM },
   { id: 'sh.v1_ifade', category: 'self_harm', tier: 'explicit', on: 'lower', re: V1_CRISIS_PATTERNS[1], question_tr: Q_SELF_HARM },
   { id: 'sh.v1_bilek', category: 'self_harm', tier: 'explicit', on: 'lower', re: V1_CRISIS_PATTERNS[2], question_tr: Q_SELF_HARM },
   { id: 'sh.v1_ip_bicak_hap', category: 'self_harm', tier: 'explicit', on: 'lower', re: V1_CRISIS_PATTERNS[3], question_tr: Q_SELF_HARM },
+];
+
+/**
+ * The spec's ambiguous-list phrases as v1 spells them (folded, glued into words too): AMBIGUOUS,
+ * scanned right after the curated ambiguous tier, so "bayıldım" is read as emg.bayilma and this
+ * only surfaces where no curated pattern recognised the words ("çokbayıldım"). Either way the
+ * message holds a live ambiguous hit — protective by default.
+ */
+export const V1_AMBIGUOUS_FLOOR_TRIPWIRES: readonly TripwireDef[] = [
+  { id: 'emg.v1_belirsiz', category: 'emergency', tier: 'ambiguous', find: phraseFinder(V1_AMBIGUOUS_PHRASES.emergency), question_tr: 'Şu an süren bir belirti (bayılma, çarpıntı) mı, yoksa "çok beğendim" gibi bir deyim ya da geçici/genel bir soru mu?' },
+  { id: 'sh.v1_belirsiz', category: 'self_harm', tier: 'ambiguous', find: phraseFinder(V1_AMBIGUOUS_PHRASES.self_harm), question_tr: 'Umutsuzluk/kendine zarar düşüncesi mi, yoksa iş/antrenman yorgunluğu mu?' },
 ];
 
 /** Triggers of the backstop below: v1, verbatim, on the raw text. */
@@ -541,25 +650,38 @@ export const V1_FLOOR_TRIGGERS: ReadonlySet<string> = new Set([
   ...V1_FLOOR_TRIPWIRES.map((d) => d.id), ...Object.values(V1_BACKSTOP_TRIGGER),
 ]);
 
+/** Ambiguous triggers that exist only because v1 answers the phrase instantly (spec's list). */
+export const V1_AMBIGUOUS_FLOOR_TRIGGERS: ReadonlySet<string> = new Set(V1_AMBIGUOUS_FLOOR_TRIPWIRES.map((d) => d.id));
+
 /**
  * guardrails.detectEmergency / detectCrisis VERBATIM — same lists, same RegExp objects, the raw
- * text tr-lowercased with no NFC and no folding. The floor's last word: normalisation can move a
- * v1 match out of the patterns' reach (a combining accent NFC merges into a letter of "kendimi"),
- * and parity must hold by construction, not only on the golden corpus.
+ * text tr-lowercased with no NFC and no folding — split by what v2 does with the match: `explicit`
+ * = v1's phrases minus the spec's ambiguous list, plus the root regexes; `ambiguous` = the spec's
+ * ambiguous-list phrases. The floor's last word: normalisation can move a v1 match out of the
+ * patterns' reach (a combining accent NFC merges into a letter of "kendimi"), and parity must hold
+ * by construction, not only on the golden corpus.
  */
-function v1VerbatimMatch(raw: string, category: 'emergency' | 'self_harm'): { index: number; text: string } | null {
-  const lower = raw.toLocaleLowerCase('tr');
-  for (const p of category === 'emergency' ? V1_EMERGENCY_PHRASES : V1_CRISIS_PHRASES) {
+function v1VerbatimMatch(lower: string, category: 'emergency' | 'self_harm', part: 'explicit' | 'ambiguous'): { index: number; text: string } | null {
+  // `lower` = the raw message, tr-lowercased (v1's `text.toLocaleLowerCase('tr')`), nothing else.
+  for (const p of (part === 'explicit' ? V1_EXPLICIT_PHRASES : V1_AMBIGUOUS_PHRASES)[category]) {
     const i = lower.indexOf(p);
     if (i >= 0) return { index: i, text: p };
   }
-  if (category === 'self_harm') {
+  if (category === 'self_harm' && part === 'explicit') {
     for (const r of V1_CRISIS_PATTERNS) {
       const m = r.exec(lower);
       if (m) return { index: m.index, text: m[0] };
     }
   }
   return null;
+}
+
+/** v1's verdict per category (TripwireScan.v1): explicit beats ambiguous, as v1 fires either way. */
+export function v1Verdicts(raw: string): V1Verdicts {
+  const lower = (raw ?? '').toLocaleLowerCase('tr');
+  const of = (c: 'emergency' | 'self_harm'): V1Verdict =>
+    v1VerbatimMatch(lower, c, 'explicit') ? 'explicit' : v1VerbatimMatch(lower, c, 'ambiguous') ? 'ambiguous' : null;
+  return { emergency: of('emergency'), self_harm: of('self_harm') };
 }
 
 // ─── injection: log only (§7.3) ──────────────────────────────────────────────
@@ -754,9 +876,10 @@ export function scanTripwires(userMessage: string): TripwireScan {
     const end = wordEnd(s);
     const span = t.folded.slice(s.index, end);
     const verb = span.slice(span.lastIndexOf(' ') + 1);
-    const next = /^ (\p{L}+)/u.exec(t.folded.slice(end))?.[1] ?? '';
+    const tail = t.folded.slice(end);
+    const next = /^ (\p{L}+)/u.exec(tail)?.[1] ?? '';
     const after = t.folded[end] === ' ' ? t.folded.slice(end + 1, end + 61) : '';
-    return def.narration(verb, next, after);
+    return def.narration(verb, next, after, { before: t.folded.slice(Math.max(0, s.index - 80), s.index), tail });
   };
 
   const consider = (def: TripwireDef) => {
@@ -799,17 +922,22 @@ export function scanTripwires(userMessage: string): TripwireScan {
   };
   for (const def of EXPLICIT_TRIPWIRES) consider(def);
   for (const def of AMBIGUOUS_TRIPWIRES) consider(def);
+  for (const def of V1_AMBIGUOUS_FLOOR_TRIPWIRES) consider(def);
   for (const def of SIGNAL_TRIPWIRES) consider(def);
   for (const def of V1_FLOOR_TRIPWIRES) consider(def);
 
   // The backstop: v1 verbatim on the raw text. Only reached when normalisation moved a v1 match
   // out of every pattern's reach; then the whole message is the span (nothing is scanned after).
+  // (A v1 match only on the spec's ambiguous list needs no hit here: the folded phrase search finds
+  // every substring v1's does, and resolveTripwires protects a v1-ambiguous category that holds no
+  // live hit anyway — `v1` below.)
   const raw = userMessage ?? '';
+  const rawLower = raw.toLocaleLowerCase('tr');
   for (const category of ['emergency', 'self_harm'] as const) {
     if (hits.some((h) => h.tier === 'explicit' && h.category === category)) continue;
-    const m = v1VerbatimMatch(raw, category);
+    const m = v1VerbatimMatch(rawLower, category, 'explicit');
     if (!m) continue;
-    const quotable = raw.toLocaleLowerCase('tr').length === raw.length;
+    const quotable = rawLower.length === raw.length;
     spans.push({ index: 0, length: t.folded.length });
     hits.push({
       hit_id: `tw${++n}`,
@@ -823,6 +951,7 @@ export function scanTripwires(userMessage: string): TripwireScan {
       question_tr: category === 'emergency' ? Q_EMERGENCY : Q_SELF_HARM,
     });
   }
+  const v1 = v1Verdicts(raw);
 
   // v1 order: emergency outranks self-harm (both answers carry 112).
   const explicit = hits.find((h) => h.tier === 'explicit' && h.category === 'emergency')
@@ -834,7 +963,7 @@ export function scanTripwires(userMessage: string): TripwireScan {
   for (const p of INJECTION_REFUSAL_PATTERNS) if (p.test(src) || p.test(t.folded)) injection.push({ pattern: p.source, refused_in_v1: true });
   for (const p of INJECTION_LOG_ONLY_PATTERNS) if (p.test(src) || p.test(t.folded)) injection.push({ pattern: p.source, refused_in_v1: false });
 
-  return { explicit, hits, injection };
+  return { explicit, hits, injection, v1 };
 }
 
 /** Ambiguous hits that would trigger today's protection (a negated ED hit is a fact only). */
@@ -1021,6 +1150,10 @@ export interface TripwireLog {
   benign_suppressed: boolean;
   /** ±40-char windows, only where a benign reading was accepted or suppressed (§7.2 triage). */
   contexts: string[];
+  /** v1's own verdict on the message (TripwireScan.v1): a 'normal' or 'protective' outcome on a
+   * v1-instant message is the §7.4 evidence a future demotion needs. Set by resolveTripwires;
+   * absent only on a hand-built placeholder log. */
+  v1?: V1Verdicts;
 }
 
 export type TripwireDecision =
@@ -1066,18 +1199,50 @@ function cannedFor(c: Concern): CannedSafetyResponse {
 
 const isSafety = (c: TripwireCategory): c is SafetyCategory => c !== 'declaration';
 
+type ReadingVerdict = 'protect' | 'suppressed' | 'lift' | 'silent';
+
+/**
+ * What one ambiguous safety hit's reading does — PROTECTIVE BY DEFAULT (§7.2, §7.4.1: "her hit ya
+ * korumayı uygular ya da iki bağımsız benign okuma ister"):
+ *   protect     no reading, a positive one, an unreasoned benign, or (emergency/self-harm) a
+ *               reasoned benign the classifier did not independently confirm
+ *   suppressed  a reasoned benign while the override gate is off (§10 Faz 3: B+ gate) — logged as
+ *               shadow evidence, protection applies
+ *   lift        a QUALIFYING benign: reasoned, override on, and for emergency/self-harm the
+ *               classifier's own benign too
+ *   silent      a negated ED hit Stage A did not read as positive (v1 is silent on it too)
+ */
+function readingVerdict(h: TripwireHit, r: TripwireReading | undefined, benignOverride: boolean, classifierBenign: boolean): ReadingVerdict {
+  if (r?.reading === 'positive') return 'protect';
+  if (h.negated) return 'silent';
+  if (!(r?.reading === 'benign' && r.reason.trim().length > 0)) return 'protect';
+  if (!benignOverride) return 'suppressed';
+  if ((h.category === 'emergency' || h.category === 'self_harm') && !classifierBenign) return 'protect';
+  return 'lift';
+}
+
 /**
  * §7.2 as a pure function. Protection never drops below today's:
  *   explicit hit                         → canned, no LLM
  *   live trigger + Stage A failed        → today's canned reply (fail-closed)
- *   trigger without a reasoned benign    → protective path
- *   reasoned benign (override enabled)   → normal; emergency/self-harm also need the classifier's
- *                                          independent benign — anything else is protective
+ *   trigger without a QUALIFYING benign  → protective path (readingVerdict)
+ *   qualifying benign on every trigger   → normal — only with the override gate on, and for
+ *                                          emergency/self-harm only with the classifier's benign
  *   no trigger + Stage A positive        → protective path
+ * The v1 floor holds by construction: a message v1 answers instantly is canned when v1 fires on an
+ * explicit-floor phrase, and when it fires only on the spec's ambiguous list (TripwireScan.v1) its
+ * category is protected unless a live hit of that category carries a qualifying benign — the scan
+ * always leaves such a hit; a scan without one is treated as a trigger nobody read.
  */
 export function resolveTripwires(input: ResolveTripwiresInput): TripwireDecision {
   const { scan, stageA, classifier = null, benignOverride = false } = input;
   const live = liveAmbiguousHits(scan).filter((h) => isSafety(h.category));
+  const holds = (c: 'emergency' | 'self_harm', tier: TripwireTier) => scan.hits.some((h) => h.category === c && h.tier === tier && !h.negated);
+  /** v1-instant categories with no hit that carries them (never for a scan from scanTripwires). */
+  const v1Explicit = (['emergency', 'self_harm'] as const).find((c) => scan.v1?.[c] === 'explicit' && !holds(c, 'explicit')) ?? null;
+  const v1Unread: Concern[] = (['emergency', 'self_harm'] as const)
+    .filter((c) => scan.v1?.[c] === 'ambiguous' && !holds(c, 'explicit') && !holds(c, 'ambiguous'))
+    .map((c) => ({ category: c, ed_severity: null }));
   const log: TripwireLog = {
     version: TRIPWIRES_VERSION,
     explicit: scan.explicit?.trigger ?? null,
@@ -1092,16 +1257,22 @@ export function resolveTripwires(input: ResolveTripwiresInput): TripwireDecision
     outcome: 'normal',
     benign_suppressed: false,
     contexts: [],
+    v1: scan.v1,
   };
 
-  if (scan.explicit && isSafety(scan.explicit.category) && scan.explicit.category !== 'ed') {
+  // v1 order: emergency before self-harm.
+  const explicitCategory = scan.explicit?.category;
+  const cannedCategory = explicitCategory === 'emergency' || v1Explicit === 'emergency' ? 'emergency'
+    : explicitCategory === 'self_harm' || v1Explicit === 'self_harm' ? 'self_harm' : null;
+  if (cannedCategory) {
     log.outcome = 'canned';
-    return { kind: 'canned', category: scan.explicit.category, response: CANNED_SAFETY[scan.explicit.category], log };
+    return { kind: 'canned', category: cannedCategory, response: CANNED_SAFETY[cannedCategory], log };
   }
 
   if (!stageA || stageA.status !== 'ok') {
-    if (live.length === 0) return { kind: 'normal', log };
-    const c = worst(live.map((h) => ({ category: h.category as SafetyCategory, ed_severity: h.ed_severity })));
+    const unread = [...live.map((h) => ({ category: h.category as SafetyCategory, ed_severity: h.ed_severity })), ...v1Unread];
+    if (unread.length === 0) return { kind: 'normal', log };
+    const c = worst(unread);
     log.outcome = 'fallback';
     const appendOnly = c.category === 'ed' && c.ed_severity !== 'high';
     return {
@@ -1113,20 +1284,17 @@ export function resolveTripwires(input: ResolveTripwiresInput): TripwireDecision
   }
 
   const readings = new Map(stageA.readings.map((r) => [r.hit_id, r]));
-  const concerns: Concern[] = [];
+  const concerns: Concern[] = [...v1Unread];
   const classifierBenign = classifier?.status === 'ok' && classifier.verdict.reading === 'benign';
   for (const h of scan.hits) {
     if (h.tier !== 'ambiguous' || !isSafety(h.category)) continue;
     const r = readings.get(h.hit_id);
     log.readings.push({ trigger: h.trigger, reading: r?.reading ?? 'missing' });
-    const concern: Concern = { category: h.category, ed_severity: h.ed_severity };
-    if (r?.reading === 'positive') { concerns.push(concern); continue; }
-    if (h.negated) continue; // a refusal Stage A did not read as positive: today's detector is silent too
-    const reasoned = r?.reading === 'benign' && r.reason.trim().length > 0;
-    if (!reasoned) { concerns.push(concern); continue; }
-    log.contexts.push(h.context);
-    if (!benignOverride) { log.benign_suppressed = true; concerns.push(concern); continue; }
-    if ((h.category === 'emergency' || h.category === 'self_harm') && !classifierBenign) { concerns.push(concern); continue; }
+    const verdict = readingVerdict(h, r, benignOverride, classifierBenign);
+    if (verdict === 'silent') continue;
+    if (r?.reading === 'benign' && r.reason.trim()) log.contexts.push(h.context);
+    if (verdict === 'suppressed') log.benign_suppressed = true;
+    if (verdict !== 'lift') concerns.push({ category: h.category, ed_severity: h.ed_severity });
   }
   for (const p of stageA.positives) concerns.push({ category: p.category, ed_severity: p.category === 'ed' ? (p.ed_severity ?? 'medium') : null });
 
