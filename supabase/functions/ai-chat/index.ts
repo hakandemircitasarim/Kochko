@@ -301,6 +301,9 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
       const emergency = detectEmergency(message);
       if (emergency.isEmergency) {
         await safeStore(userId, message, emergency.message, 'emergency', session_id);
+        // v2 shadow on the canned paths too: these are exactly the turns whose tripwire readings
+        // (§7.2 benign-override evidence, e.g. "bu tarife bayıldım") the shadow exists to collect.
+        v2Shadow?.finish({ actions: [], feedback: [], receipts: [], dupSkip: DUP_SKIP, v1Mode: 'emergency', v1Safety: ['v1_emergency_canned'] });
         return respond({ message: emergency.message, actions: [], task_mode: 'emergency' });
       }
       // #S2 (fact-capture on safety early-returns): crisis/ED turns return BEFORE the deterministic
@@ -348,6 +351,7 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
       if (crisis.isCrisis) {
         await salvageSafetyFacts();
         await safeStore(userId, message, crisis.message, 'safety', session_id);
+        v2Shadow?.finish({ actions: [], feedback: [], receipts: [], dupSkip: DUP_SKIP, v1Mode: 'safety', v1Safety: ['v1_crisis_canned'] });
         return respond({ message: crisis.message, actions: [], task_mode: 'safety' });
       }
       const edRisk = detectEDRisk(message);
@@ -357,6 +361,7 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
         await recordEDSignal(userId, 'high');
         await salvageSafetyFacts();
         await safeStore(userId, message, edRisk.message, 'safety', session_id);
+        v2Shadow?.finish({ actions: [], feedback: [], receipts: [], dupSkip: DUP_SKIP, v1Mode: 'safety', v1Safety: ['v1_ed_high_canned'] });
         return respond({ message: edRisk.message, actions: [], task_mode: 'safety' });
       }
       // Medium severity: keep coaching but ensure the referral reaches the user (appended
@@ -461,6 +466,8 @@ Bu turda o öneriyi somut adıma çevir (gerekiyorsa uygun action'ı da emit et)
         // gösteriyor ve panoyu tazelemiyordu — kayıt gerçekten silinmişken kullanıcıya
         // silinmedi deniyordu. Sonuç artık zarfta taşınıyor.
         const undone = undoResult.undoneAction != null;
+        // v2 shadow: an undo is a record op — Stage A should pick the same record by ref.
+        v2Shadow?.finish({ actions: [], feedback: [], receipts: [], dupSkip: DUP_SKIP, v1Mode: undone ? 'repair:undo' : 'repair:undo_nothing', v1Safety: [] });
         return await commitAndRespond({
           message: undoResult.response,
           actions: undone ? [{ type: 'undo', feedback: undoResult.response }] : [],
