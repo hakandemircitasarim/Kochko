@@ -53,7 +53,7 @@ Deno.test('the cached prefix: rules → registry doc → few-shots, identical fo
 
 Deno.test('per-turn content: TurnInput block, then tripwire facts, then the message verbatim and last', async () => {
   const ti = await turnInput();
-  const msg = 'antrenmanda bir an bayıldım, başım dönüyor';
+  const msg = 'antrenmanda bir an bayılacak gibi oldum, başım dönüyor';
   const scan = scanTripwires(msg);
   assert(scan.hits.length > 0, 'precondition: an ambiguous tripwire');
   const req = buildUnderstandRequest({ turnInput: ti, message: msg, scan });

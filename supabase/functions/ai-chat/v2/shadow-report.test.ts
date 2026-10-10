@@ -57,9 +57,9 @@ async function rows(): Promise<Record<string, unknown>[]> {
   // 4. a REJECT (unit other without ml).
   await run('bir şişe su içtim', [], stageA(sampleDecision({ writes: [{ ...SAMPLE_WRITES.water_log, unit: 'other', other_ml_each: null }] }), 5200));
   // 5. a refusal (parse/schema error class) on a tripwire turn.
-  await run('bu tarife bayıldım', [], stageA(null, 900, { status: 'refused', decision: null, refusal: 'no' }));
+  await run('bu tarife bayılmıştım', [], stageA(null, 900, { status: 'refused', decision: null, refusal: 'no' }));
   // 6. a benign reading on a tripwire turn.
-  await run('bu tarife bayıldım', [], stageA(sampleDecision({
+  await run('bu tarife bayılmıştım', [], stageA(sampleDecision({
     safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_reading: { benign: true, reason: 'beğeni' } },
   }), 1800));
   // 7. an explicit hit: skipped, canned.
@@ -111,7 +111,7 @@ Deno.test('renderShadowReport: every §10 Faz 2 section, counts only (no user te
     'TETİK × OKUMA',
     'emg.bayilma [ambiguous]: pozitif 0 · benign 1',
   ]) assertStringIncludes(text, s);
-  for (const userText of ['bardak su içtim', 'tarife bayıldım', 'öldürmek istiyorum', USER]) assert(!text.includes(userText), userText);
+  for (const userText of ['bardak su içtim', 'tarife bayılmıştım', 'öldürmek istiyorum', USER]) assert(!text.includes(userText), userText);
 });
 
 Deno.test('self_check: an unexplained omission is a missed write; a reasoned one (emergency/illness) is counted apart', async () => {

@@ -142,7 +142,7 @@ Deno.test('computeAgreement: both / v1_only / v2_only / neither, noop and reject
 // ─── safety mapping ──────────────────────────────────────────────────────────────────────────────
 
 Deno.test('stageASafetyOutcome: one reading for every ambiguous hit, positives, live budget = timeout', () => {
-  const scan = scanTripwires('bu tarife bayıldım');
+  const scan = scanTripwires('bu tarife bayılmıştım');
   const base = stageA(null).fn;
   void base;
   const parsed = (decision: Record<string, unknown>, latencyMs = 1000): UnderstandOutcome => ({
@@ -150,7 +150,7 @@ Deno.test('stageASafetyOutcome: one reading for every ambiguous hit, positives, 
     meta: { model: 'm', providerModel: null, api: 'responses', format: 'json_schema', effort: 'low', latencyMs, attempts: 1, retries: [], responseId: null, finishReason: 'stop', usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, reasoningTokens: 0, cachedTokens: 0 } },
   });
   const d = sampleDecision({ safety: { acute_medical: false, self_harm: true, ed_signal: null, tripwire_reading: { benign: true, reason: 'beğeni' } } });
-  const v = validateDecision(d, sampleContext({ user_message: 'bu tarife bayıldım' }));
+  const v = validateDecision(d, sampleContext({ user_message: 'bu tarife bayılmıştım' }));
   const out = stageASafetyOutcome(parsed(d), v, scan);
   assert(out && out.status === 'ok');
   if (out?.status === 'ok') {
@@ -221,10 +221,10 @@ Deno.test('runShadow: ASK and REJECT verdicts land in the row with their codes',
 });
 
 Deno.test('runShadow: a reasoned benign tripwire reading is logged but protection stays (override OFF in shadow)', async () => {
-  const msg = 'bu tarife bayıldım';
+  const msg = 'bu tarife bayılmıştım';
   const decision = sampleDecision({
     intent: { primary: 'chat', is_hypothetical: false, about_other_person: false },
-    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_reading: { benign: true, reason: '"bayıldım" çok beğenmek anlamında' } },
+    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_reading: { benign: true, reason: '"bayılmıştım" çok beğenmek anlamında' } },
   });
   const { rec, row, reqs } = await shadow({ message: msg }, decision);
   assertEquals(reqs[0].effort, 'medium', '§8.4: a tripwire fact raises Stage A effort');
@@ -238,10 +238,10 @@ Deno.test('runShadow: a reasoned benign tripwire reading is logged but protectio
 });
 
 Deno.test('runShadow: refusal or a Stage A over the live budget → the canned fallback (fail-closed)', async () => {
-  const refused = await shadow({ message: 'bu tarife bayıldım' }, null, { over: { status: 'refused', decision: null, refusal: 'Yardımcı olamam.' } });
+  const refused = await shadow({ message: 'bu tarife bayılmıştım' }, null, { over: { status: 'refused', decision: null, refusal: 'Yardımcı olamam.' } });
   assertEquals([refused.rec.stage_a.status, refused.row?.finish_reason, refused.rec.tripwire.outcome], ['refused', 'refused', 'fallback']);
   assertEquals(refused.rec.validation, null);
-  const slow = await shadow({ message: 'bu tarife bayıldım' }, sampleDecision(), { latencyMs: 5200 });
+  const slow = await shadow({ message: 'bu tarife bayılmıştım' }, sampleDecision(), { latencyMs: 5200 });
   assertEquals([slow.rec.stage_a.status, slow.rec.stage_a.over_live_budget, slow.rec.tripwire.outcome], ['parsed', true, 'fallback']);
   const invalid = await shadow({ message: 'merhaba' }, null, { over: { status: 'invalid', decision: null, issues: ['$.writes: eksik'], candidate: {} } });
   assertEquals(invalid.row?.finish_reason, 'invalid');
@@ -255,6 +255,15 @@ Deno.test('runShadow: an explicit self-harm/emergency hit never asks Stage A (v2
   assertEquals(reqs.length, 0);
   assertEquals([rec.stage_a.status, rec.stage_a.detail, row?.finish_reason], ['skipped', 'explicit_tripwire', 'skipped:explicit_tripwire']);
   assertEquals(rec.tripwire.outcome, 'canned');
+});
+
+Deno.test('runShadow: a hit only the v1 floor makes instant is canned too; the ledger keeps the curated reading beside it', async () => {
+  // v1 answers "bayıldım" instantly (§7.4: no demotion without owner approval + shadow evidence).
+  const { rec, row, reqs } = await shadow({ message: 'bu tarife bayıldım' }, sampleDecision());
+  assertEquals(reqs.length, 0);
+  assertEquals([rec.stage_a.detail, rec.tripwire.outcome, rec.tripwire.log.explicit], ['explicit_tripwire', 'canned', 'emg.v1']);
+  const trip = (row!.issues as Record<string, unknown>[]).filter((e) => e.kind === 'tripwire').map((e) => [e.trigger, e.tier, e.reading]);
+  assertEquals(trip, [['emg.bayilma', 'ambiguous', 'n/a'], ['emg.v1', 'explicit', 'n/a']]);
 });
 
 Deno.test('runShadow: no TurnInput → skipped row; a crashing Stage A → error row; never throws', async () => {
