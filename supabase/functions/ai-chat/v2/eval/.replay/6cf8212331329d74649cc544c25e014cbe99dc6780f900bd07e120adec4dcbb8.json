@@ -1,0 +1,216 @@
+{
+  "key": "6cf8212331329d74649cc544c25e014cbe99dc6780f900bd07e120adec4dcbb8",
+  "recorded_at": "2026-10-10T16:44:33.526Z",
+  "fixture_ids": [
+    "spec-a-isimi-degistirdim-taslak-acik"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"profile_set\",\"subject\":\"self\",\"changes\":[{\"field\":\"occupation\",\"value\":\"kurye\",\"unit\":null,\"list_op\":null,\"as_stated\":\"işimi değiştirdim, artık kuryeyim\"},{\"field\":\"activity_level\",\"value\":\"active\",\"unit\":null,\"list_op\":null,\"as_stated\":\"gün boyu ayaktayım\"}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "profile_set",
+            "subject": "self",
+            "changes": [
+              {
+                "field": "occupation",
+                "value": "kurye",
+                "unit": null,
+                "list_op": null,
+                "as_stated": "işimi değiştirdim, artık kuryeyim"
+              },
+              {
+                "field": "activity_level",
+                "value": "active",
+                "unit": null,
+                "list_op": null,
+                "as_stated": "gün boyu ayaktayım"
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11751,
+        "output_tokens": 211,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2094,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"profile_set\",\"subject\":\"self\",\"changes\":[{\"field\":\"occupation\",\"value\":\"kurye\",\"unit\":null,\"list_op\":null,\"as_stated\":\"artık kuryeyim\"},{\"field\":\"activity_level\",\"value\":\"active\",\"unit\":null,\"list_op\":null,\"as_stated\":\"gün boyu ayaktayım\"}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "profile_set",
+            "subject": "self",
+            "changes": [
+              {
+                "field": "occupation",
+                "value": "kurye",
+                "unit": null,
+                "list_op": null,
+                "as_stated": "artık kuryeyim"
+              },
+              {
+                "field": "activity_level",
+                "value": "active",
+                "unit": null,
+                "list_op": null,
+                "as_stated": "gün boyu ayaktayım"
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11751,
+        "output_tokens": 206,
+        "cached_tokens": 11748,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2501,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"profile_set\",\"subject\":\"self\",\"changes\":[{\"field\":\"occupation\",\"value\":\"kurye\",\"unit\":null,\"list_op\":null,\"as_stated\":\"işimi değiştirdim, artık kuryeyim\"},{\"field\":\"activity_level\",\"value\":\"active\",\"unit\":null,\"list_op\":null,\"as_stated\":\"gün boyu ayaktayım\"}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "profile_set",
+            "subject": "self",
+            "changes": [
+              {
+                "field": "occupation",
+                "value": "kurye",
+                "unit": null,
+                "list_op": null,
+                "as_stated": "işimi değiştirdim, artık kuryeyim"
+              },
+              {
+                "field": "activity_level",
+                "value": "active",
+                "unit": null,
+                "list_op": null,
+                "as_stated": "gün boyu ayaktayım"
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11751,
+        "output_tokens": 211,
+        "cached_tokens": 11748,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2735,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

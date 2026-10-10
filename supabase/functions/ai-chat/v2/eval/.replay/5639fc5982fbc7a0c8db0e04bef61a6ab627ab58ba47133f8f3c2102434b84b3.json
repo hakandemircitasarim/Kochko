@@ -1,0 +1,256 @@
+{
+  "key": "5639fc5982fbc7a0c8db0e04bef61a6ab627ab58ba47133f8f3c2102434b84b3",
+  "recorded_at": "2026-10-10T16:43:58.062Z",
+  "fixture_ids": [
+    "bplus-yanlislikla-fistikli-kurabiye"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":true,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":\"19:40\",\"raw\":\"az önce yanlışlıkla fıstıklı kurabiye yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fıstıklı kurabiye\",\"as_stated\":\"fıstıklı kurabiye\",\"grams\":null,\"kcal\":180,\"protein_g\":3,\"carbs_g\":22,\"fat_g\":9,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"peanut\",\"gluten\",\"egg\",\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.35}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"emergency\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"emergency_turn\"}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": true,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": "19:40",
+            "raw": "az önce yanlışlıkla fıstıklı kurabiye yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fıstıklı kurabiye",
+                "as_stated": "fıstıklı kurabiye",
+                "grams": null,
+                "kcal": 180,
+                "protein_g": 3,
+                "carbs_g": 22,
+                "fat_g": 9,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "peanut",
+                  "gluten",
+                  "egg",
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.35
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "emergency",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "emergency_turn"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11740,
+        "output_tokens": 288,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3511,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":true,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":\"19:40\",\"raw\":\"az önce yanlışlıkla fıstıklı kurabiye yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fıstıklı kurabiye\",\"as_stated\":\"fıstıklı kurabiye\",\"grams\":30,\"kcal\":150,\"protein_g\":2,\"carbs_g\":18,\"fat_g\":8,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"peanut\"],\"may_contain\":[\"egg\",\"gluten\",\"milk\"],\"reference_key\":null,\"confidence\":0.45}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"emergency\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": true,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": "19:40",
+            "raw": "az önce yanlışlıkla fıstıklı kurabiye yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fıstıklı kurabiye",
+                "as_stated": "fıstıklı kurabiye",
+                "grams": 30,
+                "kcal": 150,
+                "protein_g": 2,
+                "carbs_g": 18,
+                "fat_g": 8,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "peanut"
+                ],
+                "may_contain": [
+                  "egg",
+                  "gluten",
+                  "milk"
+                ],
+                "reference_key": null,
+                "confidence": 0.45
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "emergency",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11740,
+        "output_tokens": 636,
+        "cached_tokens": 11737,
+        "reasoning_tokens": 348
+      },
+      "latency_ms": 7751,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":true,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":\"19:40\",\"raw\":\"az önce yanlışlıkla fıstıklı kurabiye yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fıstıklı kurabiye\",\"as_stated\":\"fıstıklı kurabiye\",\"grams\":null,\"kcal\":180,\"protein_g\":3,\"carbs_g\":22,\"fat_g\":9,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"peanut\",\"gluten\",\"egg\",\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.35}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"emergency\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"emergency_turn\"}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": true,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": "19:40",
+            "raw": "az önce yanlışlıkla fıstıklı kurabiye yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fıstıklı kurabiye",
+                "as_stated": "fıstıklı kurabiye",
+                "grams": null,
+                "kcal": 180,
+                "protein_g": 3,
+                "carbs_g": 22,
+                "fat_g": 9,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "peanut",
+                  "gluten",
+                  "egg",
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.35
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "emergency",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "emergency_turn"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11740,
+        "output_tokens": 288,
+        "cached_tokens": 11737,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3571,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

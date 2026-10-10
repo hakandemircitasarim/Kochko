@@ -220,6 +220,8 @@ export interface EvalFixture {
   expect: Expectation[];
   reply_rubric?: RubricId[];
   tags?: string[];
+  /** Why an expectation was changed after a live round (date · evidence · spec reference); never read by the runner. */
+  note?: string;
 }
 
 // ── Results ─────────────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,171 @@
+{
+  "key": "b5d549f9347298cff5e59179d23c8dca824ab95dcd5e81a5d2b494ef7d8c4b4f",
+  "recorded_at": "2026-10-10T16:43:47.080Z",
+  "fixture_ids": [
+    "r3-mem-15-meniskus-tekrar-antrenman-istegi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"plan\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi dizindeki menisküs kaynaklı süren ağrıyı bildiriyor; mevcut ciddi diz sakatlığı kaydıyla uyumlu.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"generate\",\"plan_type\":\"workout\",\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"plan\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"already_recorded\"}}",
+      "decision": {
+        "intent": {
+          "primary": "plan",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi dizindeki menisküs kaynaklı süren ağrıyı bildiriyor; mevcut ciddi diz sakatlığı kaydıyla uyumlu."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "generate",
+          "plan_type": "workout",
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "plan",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "already_recorded"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12119,
+        "output_tokens": 400,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 216
+      },
+      "latency_ms": 4959,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"plan\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi dizindeki menisküs kaynaklı ağrının tekrar ettiğini bildiriyor; mevcut ciddi diz sakatlığı kaydıyla uyumlu.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"generate\",\"plan_type\":\"workout\",\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"plan\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"already_recorded\"}}",
+      "decision": {
+        "intent": {
+          "primary": "plan",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi dizindeki menisküs kaynaklı ağrının tekrar ettiğini bildiriyor; mevcut ciddi diz sakatlığı kaydıyla uyumlu."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "generate",
+          "plan_type": "workout",
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "plan",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "already_recorded"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12119,
+        "output_tokens": 343,
+        "cached_tokens": 12116,
+        "reasoning_tokens": 159
+      },
+      "latency_ms": 4845,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"plan\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kendi dizindeki menisküs kaynaklı ağrının sürdüğünü bildiriyor; mevcut ciddi diz sakatlığı kaydıyla uyumlu.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"generate\",\"plan_type\":\"workout\",\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"plan\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"already_recorded\"}}",
+      "decision": {
+        "intent": {
+          "primary": "plan",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kendi dizindeki menisküs kaynaklı ağrının sürdüğünü bildiriyor; mevcut ciddi diz sakatlığı kaydıyla uyumlu."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "generate",
+          "plan_type": "workout",
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "plan",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "already_recorded"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12119,
+        "output_tokens": 317,
+        "cached_tokens": 12116,
+        "reasoning_tokens": 135
+      },
+      "latency_ms": 4635,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

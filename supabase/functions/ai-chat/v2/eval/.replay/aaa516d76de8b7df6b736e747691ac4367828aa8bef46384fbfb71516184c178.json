@@ -1,0 +1,174 @@
+{
+  "key": "aaa516d76de8b7df6b736e747691ac4367828aa8bef46384fbfb71516184c178",
+  "recorded_at": "2026-10-10T16:42:41.778Z",
+  "fixture_ids": [
+    "devir-8-vegan-degilim-artik"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"vegan değilim artık\",\"note\":\"Kullanıcı vegan beslenme kısıtının artık geçerli olmadığını belirtiyor.\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "vegan değilim artık",
+            "note": "Kullanıcı vegan beslenme kısıtının artık geçerli olmadığını belirtiyor."
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11733,
+        "output_tokens": 177,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2711,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"vegan değilim artık\",\"note\":\"Kullanıcı vegan beslenme kısıtının artık geçerli olmadığını belirtiyor.\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "vegan değilim artık",
+            "note": "Kullanıcı vegan beslenme kısıtının artık geçerli olmadığını belirtiyor."
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11733,
+        "output_tokens": 177,
+        "cached_tokens": 11730,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3113,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"vegan değilim artık\",\"note\":\"Kullanıcı vegan beslenme kısıtının artık geçerli olmadığını belirtiyor.\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "vegan değilim artık",
+            "note": "Kullanıcı vegan beslenme kısıtının artık geçerli olmadığını belirtiyor."
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11733,
+        "output_tokens": 177,
+        "cached_tokens": 11730,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3376,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

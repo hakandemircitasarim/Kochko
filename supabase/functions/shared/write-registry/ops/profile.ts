@@ -256,7 +256,7 @@ export const profile_set = op({
   envelope: 'profile_update',
   title_tr: 'Profil',
   when_tr: 'KENDİSİ hakkında kalıcı bilgi (yaş, boy, meslek, saatler, antrenman geçmişi, su/adım hedefi…); her alan ayrı denetlenir.',
-  not_when_tr: 'kilo → body_weight, hedef → goal_set, alerji/sakatlık/hastalık/ilaç/diyet → constraint_add.',
+  not_when_tr: 'kilo → body_weight, hedef → goal_set, alerji/sakatlık/hastalık/ilaç/diyet → constraint_add, plan isteğinin gerekçesi → plan_action.',
   fields: {
     subject: f.enum({ self: 'yalnızca kullanıcının kendisi' }),
     changes: f.list({ min: 1, max: 12 }, {

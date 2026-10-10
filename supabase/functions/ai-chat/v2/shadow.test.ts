@@ -273,11 +273,43 @@ Deno.test('runShadow: refusal or a Stage A over the live budget → the canned f
   assertEquals(refused.rec.validation, null);
   const slow = await shadow({ message: 'bu tarife bayılmıştım' }, sampleDecision(), { latencyMs: 5200 });
   assertEquals([slow.rec.stage_a.status, slow.rec.stage_a.over_live_budget, slow.rec.tripwire.outcome], ['parsed', true, 'fallback']);
+  assertEquals(refused.rec.tripwire.late, null, 'no late reading without a parsed decision');
+  assert((refused.row!.issues as Record<string, unknown>[]).some((e) => e.code === 'tripwire_fallback_cause' && e.value === 'refused'));
   const invalid = await shadow({ message: 'merhaba' }, null, { over: { status: 'invalid', decision: null, issues: ['$.writes: eksik'], candidate: {} } });
   assertEquals(invalid.row?.finish_reason, 'invalid');
   assertEquals(invalid.rec.stage_a.detail, '$.writes: eksik');
   const err = await shadow({ message: 'merhaba' }, null, { over: { status: 'error', decision: null, error: { class: 'timeout', status: null, message: 't' } } });
   assertEquals(err.row?.finish_reason, 'error:timeout');
+});
+
+Deno.test('runShadow: a parsed Stage A past the live budget stays a fail-closed fallback, and its late reading is kept as evidence', async () => {
+  // 2026-10-10 live shadow: "dün gece kustum, zehirlendim galiba" — Stage A read illness_vomiting +
+  // a reasoned benign in 4,3 s. Live v2 would fail closed at 4 s → 'fallback' (ED-high canned = the
+  // v1 floor) is the CORRECT outcome; the row used to show the hit as "n/a" (read: no Stage A).
+  const msg = 'dün gece kustum, zehirlendim galiba';
+  const decision = sampleDecision({
+    safety: {
+      acute_medical: false, self_harm: false,
+      ed_signal: { category: 'illness_vomiting', severity: 'low', evidence_quote: 'dün gece kustum' },
+      tripwire_readings: readingsFor(msg, 'benign', 'zehirlenme kaynaklı kusma; kilo kontrolü için çıkarma yok'),
+    },
+  });
+  const late = await shadow({ message: msg }, decision, { latencyMs: 4345 });
+  assertEquals([late.rec.stage_a.status, late.rec.stage_a.over_live_budget], ['parsed', true]);
+  assertEquals(late.rec.tripwire.outcome, 'fallback', 'protection never drops: the live-equivalent outcome is the fail-closed one');
+  assertEquals(late.rec.tripwire.log.stage_a, 'timeout');
+  // In time, the same reading is still protective (benign override OFF until the B+ gate, §10 Faz 3).
+  assertEquals(late.rec.tripwire.late?.outcome, 'protective');
+  assertEquals(late.rec.tripwire.late?.readings, [{ trigger: 'ed.kustum', reading: 'benign' }]);
+  const issues = late.row!.issues as Record<string, unknown>[];
+  assertEquals(issues.filter((e) => e.kind === 'tripwire').map((e) => [e.trigger, e.reading, e.late_reading]), [['ed.kustum', 'n/a', 'benign']]);
+  assert(issues.some((e) => e.code === 'tripwire_outcome' && e.value === 'fallback'));
+  assert(issues.some((e) => e.code === 'tripwire_fallback_cause' && e.value === 'timeout'));
+  assert(issues.some((e) => e.code === 'tripwire_outcome_on_time' && e.value === 'protective'));
+  // The same decision in time: no late block, no fallback cause.
+  const onTime = await shadow({ message: msg }, decision, { latencyMs: 2500 });
+  assertEquals([onTime.rec.tripwire.outcome, onTime.rec.tripwire.late], ['protective', null]);
+  assert(!(onTime.row!.issues as Record<string, unknown>[]).some((e) => e.code === 'tripwire_fallback_cause' || e.code === 'tripwire_outcome_on_time' || 'late_reading' in e));
 });
 
 Deno.test('runShadow: an explicit self-harm/emergency hit never asks Stage A (v2 answers canned)', async () => {

@@ -15,7 +15,7 @@ export const periodic_state = op({
   channel: 'writes',
   envelope: 'periodic_state_update',
   title_tr: 'Dönemsel durum',
-  when_tr: 'Geçici bir dönemin (ramazan, hastalık, sınav, seyahat, hamilelik…) başlaması ya da bitmesi.',
+  when_tr: 'Geçici bir dönemin (ramazan, hastalık, sınav, seyahat, hamilelik…) bugün başlaması ya da bitmesi; yarın başlayacak dönem henüz yazılmaz.',
   not_when_tr: 'bakım, mini cut gibi kalori programları (target_change).',
   fields: {
     state: f.enum(PERIODIC_STATES, { tr: 'none = dönem bitti' }),

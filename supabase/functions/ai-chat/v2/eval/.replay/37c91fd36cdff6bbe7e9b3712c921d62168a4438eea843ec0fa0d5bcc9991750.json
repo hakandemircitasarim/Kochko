@@ -1,0 +1,252 @@
+{
+  "key": "37c91fd36cdff6bbe7e9b3712c921d62168a4438eea843ec0fa0d5bcc9991750",
+  "recorded_at": "2026-10-10T16:44:26.290Z",
+  "fixture_ids": [
+    "bplus-fistik-yok-ama-findik-var"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için fıstık alerjisi olmadığını ve fındık alerjisi olduğunu bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fıstık alerjim yok\"},{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"hazelnut\",\"display_tr\":\"fındık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fındık alerjim var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için fıstık alerjisi olmadığını ve fındık alerjisi olduğunu bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fıstık alerjim yok"
+          },
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "hazelnut",
+            "display_tr": "fındık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fındık alerjim var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11844,
+        "output_tokens": 302,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3103,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için fıstık alerjisi olmadığını ve fındık alerjisi olduğunu bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fıstık alerjim yok\"},{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"hazelnut\",\"display_tr\":\"fındık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fındık alerjim var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için fıstık alerjisi olmadığını ve fındık alerjisi olduğunu bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fıstık alerjim yok"
+          },
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "hazelnut",
+            "display_tr": "fındık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fındık alerjim var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11844,
+        "output_tokens": 302,
+        "cached_tokens": 11841,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2934,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için fıstıkta alerji olmadığını ve fındık alerjisi olduğunu bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fıstık alerjim yok\"},{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"hazelnut\",\"display_tr\":\"fındık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fındık alerjim var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için fıstıkta alerji olmadığını ve fındık alerjisi olduğunu bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fıstık alerjim yok"
+          },
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "hazelnut",
+            "display_tr": "fındık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fındık alerjim var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11844,
+        "output_tokens": 302,
+        "cached_tokens": 11841,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2994,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

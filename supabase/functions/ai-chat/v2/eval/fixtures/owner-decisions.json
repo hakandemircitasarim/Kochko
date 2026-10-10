@@ -18,13 +18,23 @@
       "title": "Bağlamdaki şüpheli eski kayıt (1708 kcal nugget) sessizce düzeltilmez; koç bir kez ‘düzelteyim mi?’ diye sorar.",
       "message": "bu hafta toplam kaç kalori aldım sence, iyi gidiyor muyum?",
       "turn_input": {},
+      "note": "2026-10-10 ilk canlı eval: model 5/5 m12 için record_ops update{basis:suspicious} önerdi — AI_MIMARI_V2 §6.2 tablosunun bu durum için öngördüğü yol (\"kişi düzeltme istememiş → update{basis:'suspicious'} → SOR, bekletme p#; koç bir kez 'düzelteyim mi?' der\") ve supheli_kayit few-shot'unun öğrettiği karar. Eski beklenti 'record_ops count 0' bu tasarımdan önce yazılmıştı ve tek sorma yolunu yasaklıyordu. Sahip kararının özü (sessiz/toplu düzeltme yok) korunur: ya hiç işlem yok ya da yalnız m12 için suspicious öneri ve validator ASK verir (hiçbir şey yazılmaz, koç sorar); delete, user_correction ya da başka ref kalır.",
       "expect": [
-        { "path": "decision.record_ops", "count": 0, "why": "Toplu/sessiz düzeltme yok (sahip kararı 2026-10-06)." },
+        { "any_of": [
+          { "path": "decision.record_ops", "count": 0 },
+          { "all_of": [
+            { "path": "decision.record_ops[*].op", "eq": "update", "quantifier": "all" },
+            { "path": "decision.record_ops[*].basis", "eq": "suspicious", "quantifier": "all" },
+            { "path": "decision.record_ops[*].ref", "eq": "m12", "quantifier": "all" },
+            { "path": "validation.verdicts[op=record_update].verdict", "eq": "ASK", "quantifier": "all" }
+          ] }
+        ], "why": "Toplu/sessiz düzeltme yok (sahip kararı 2026-10-06): yalnız m12 için suspicious öneri — kod bekletir (ASK), koç bir kez sorar (§6.2)." },
         { "path": "decision.writes", "count": 0 },
         { "any_of": [
           { "path": "decision.clarify.candidate_refs", "contains": "m12" },
+          { "path": "decision.record_ops[basis=suspicious].ref", "eq": "m12" },
           { "path": "reply.reply", "contains_any": ["düzelteyim", "yanlış görünüyor", "hatalı görünüyor"] }
-        ], "why": "Model kaydı GÖRÜR ve bir kez sorar." }
+        ], "why": "Model kaydı GÖRÜR ve bir kez sorar (suspicious öneri → ASK → koç 'düzelteyim mi?', ya da clarify)." }
       ],
       "reply_rubric": ["max_one_question"]
     },

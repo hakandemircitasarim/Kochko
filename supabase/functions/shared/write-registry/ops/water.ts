@@ -53,7 +53,7 @@ export const water_log = op({
     quantity: f.num({ tr: 'kullanıcının sayısı, unit cinsinden ("500 ml" → 500 ml)' }),
     unit: f.enum(WATER_UNITS, { tr: UNIT_DOC }),
     other_ml_each: f.num({ nullable: true, hard: [1, 3000], unit: 'ml' }),
-    mode: f.enum({ add: 'içilen miktar toplama eklenir', set_day_total: 'kullanıcı GÜNÜN TOPLAMINI söyledi' }, { explain: true }),
+    mode: f.enum({ add: 'içilen miktar toplama eklenir', set_day_total: 'kullanıcı SUYUN gün toplamını söyledi ("toplam" başka şeye aitse add)' }, { explain: true }),
     replaces: f.ref(['d'], { nullable: true, targets: ['water'] }),
   },
   derive: (a, ctx) => {

@@ -1,0 +1,186 @@
+{
+  "key": "4f4704363340ad2965f0ca6d39258ec78aef45df2002fb0b19fbd96fc4b4ee8f",
+  "recorded_at": "2026-10-10T16:43:32.641Z",
+  "fixture_ids": [
+    "r3-mem-2c-onay-cumlesi-p1"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"confirmation\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisinin geçtiğini gerçek bir sağlık beyanı olarak ifade ediyor; bu, bekleyen ciddi alerji kısıtı kaldırma onayına karşılık geliyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[{\"op\":\"confirm\",\"ref\":\"p1\"}],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "confirmation",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisinin geçtiğini gerçek bir sağlık beyanı olarak ifade ediyor; bu, bekleyen ciddi alerji kısıtı kaldırma onayına karşılık geliyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [
+          {
+            "op": "confirm",
+            "ref": "p1"
+          }
+        ],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12130,
+        "output_tokens": 343,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 142
+      },
+      "latency_ms": 4674,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"confirmation\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisinin tamamen geçtiğini söylüyor; bu mevcut alerji kısıtının kaldırılmasına ilişkin gerçek bir beyan.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[{\"op\":\"confirm\",\"ref\":\"p1\"}],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "confirmation",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisinin tamamen geçtiğini söylüyor; bu mevcut alerji kısıtının kaldırılmasına ilişkin gerçek bir beyan."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [
+          {
+            "op": "confirm",
+            "ref": "p1"
+          }
+        ],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12130,
+        "output_tokens": 306,
+        "cached_tokens": 12127,
+        "reasoning_tokens": 113
+      },
+      "latency_ms": 4865,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"confirmation\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisinin geçtiğini açıkça belirtiyor; bu, bekleyen ciddi alerji geri alma onayına karşılık geliyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[{\"op\":\"confirm\",\"ref\":\"p1\"}],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "confirmation",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisinin geçtiğini açıkça belirtiyor; bu, bekleyen ciddi alerji geri alma onayına karşılık geliyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [
+          {
+            "op": "confirm",
+            "ref": "p1"
+          }
+        ],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12130,
+        "output_tokens": 294,
+        "cached_tokens": 12127,
+        "reasoning_tokens": 100
+      },
+      "latency_ms": 3835,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

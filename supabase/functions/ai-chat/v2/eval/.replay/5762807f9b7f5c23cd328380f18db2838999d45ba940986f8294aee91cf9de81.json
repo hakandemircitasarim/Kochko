@@ -1,0 +1,153 @@
+{
+  "key": "5762807f9b7f5c23cd328380f18db2838999d45ba940986f8294aee91cf9de81",
+  "recorded_at": "2026-10-10T16:44:30.531Z",
+  "fixture_ids": [
+    "bplus-ciddi-yumurta-alerjisi-ne-yesem"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"question\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"question_only\"}}",
+      "decision": {
+        "intent": {
+          "primary": "question",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "question_only"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11721,
+        "output_tokens": 133,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2849,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"question\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"question_only\"}}",
+      "decision": {
+        "intent": {
+          "primary": "question",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "question_only"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11721,
+        "output_tokens": 133,
+        "cached_tokens": 11718,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2252,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"question\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"question_only\"}}",
+      "decision": {
+        "intent": {
+          "primary": "question",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "question_only"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11721,
+        "output_tokens": 133,
+        "cached_tokens": 11718,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 1904,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

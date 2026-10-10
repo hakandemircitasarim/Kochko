@@ -35,7 +35,7 @@ export const constraint_add = op({
     kind: f.enum(CONSTRAINT_KINDS),
     subject_id: f.text({
       max: 60,
-      tr: `alerjende ALERJENLER id’si; diyette ${Object.keys(DIETARY_SUBJECTS).join('|')}; diğerlerinde kısa id; listede yoksa custom:<ad>`,
+      tr: `alerji ve intoleransta ALERJENLER id’si (laktoz → milk); diyette ${Object.keys(DIETARY_SUBJECTS).join('|')}; diğerlerinde kısa id; listede yoksa custom:<ad>`,
     }),
     display_tr: f.text({ max: 60 }),
     whose: f.enum({ self: 'kullanıcının kendisi', other_person: 'başkası (kızı, annesi, eşi…)' }, { tr: 'other_person → yalnız koç notu olur, omurgaya girmez' }),
@@ -97,7 +97,7 @@ export const constraint_retract = op({
     evidence_quote: f.text({ max: 160 }),
     note: f.text({ nullable: true, max: 200 }),
   },
-  hold_tr: 'ciddi/bilinmeyen alerjen, ameliyat ya da ciddi sakatlık bekletilir; SONRAKİ turdaki açık onayla (pending_ops confirm) kalkar.',
+  hold_tr: 'yazma bu turda yapılır; ciddi/bilinmeyen alerjen, ameliyat ya da ciddi sakatlığı kod bekletir, SONRAKİ turdaki açık onayla (pending_ops confirm) kalkar.',
   writes: { fn: 'deactivateConstraint', tables: ['user_constraints', 'health_events', 'food_preferences', 'profiles', 'belief_events', 'turn_writes'], undo: 'restore_previous', hold_op: 'constraint_retract' },
   invariants: ['spine_sync', 'two_step_severe_removal', 'only_named_constraint'],
 }).rules({

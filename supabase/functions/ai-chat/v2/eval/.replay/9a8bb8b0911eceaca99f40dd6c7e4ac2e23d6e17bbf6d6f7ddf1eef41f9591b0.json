@@ -1,0 +1,240 @@
+{
+  "key": "9a8bb8b0911eceaca99f40dd6c7e4ac2e23d6e17bbf6d6f7ddf1eef41f9591b0",
+  "recorded_at": "2026-10-10T16:43:09.806Z",
+  "fixture_ids": [
+    "r3-final2-14b-mandalina-alisilmadik-uyarisi-yok"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":\"21:10\",\"raw\":\"az önce 1 tane mandalina yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"mandalina\",\"as_stated\":\"1 tane\",\"grams\":90,\"kcal\":47,\"protein_g\":0.7,\"carbs_g\":12,\"fat_g\":0.3,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": "21:10",
+            "raw": "az önce 1 tane mandalina yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "mandalina",
+                "as_stated": "1 tane",
+                "grams": 90,
+                "kcal": 47,
+                "protein_g": 0.7,
+                "carbs_g": 12,
+                "fat_g": 0.3,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11903,
+        "output_tokens": 266,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2938,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":\"21:10\",\"raw\":\"az önce 1 tane mandalina yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"mandalina\",\"as_stated\":\"1 tane\",\"grams\":90,\"kcal\":48,\"protein_g\":0.7,\"carbs_g\":12,\"fat_g\":0.3,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": "21:10",
+            "raw": "az önce 1 tane mandalina yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "mandalina",
+                "as_stated": "1 tane",
+                "grams": 90,
+                "kcal": 48,
+                "protein_g": 0.7,
+                "carbs_g": 12,
+                "fat_g": 0.3,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11903,
+        "output_tokens": 266,
+        "cached_tokens": 11900,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3343,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":\"21:10\",\"raw\":\"az önce 1 tane mandalina yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"mandalina\",\"as_stated\":\"1 tane\",\"grams\":90,\"kcal\":47,\"protein_g\":0.7,\"carbs_g\":12,\"fat_g\":0.3,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": "21:10",
+            "raw": "az önce 1 tane mandalina yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "mandalina",
+                "as_stated": "1 tane",
+                "grams": 90,
+                "kcal": 47,
+                "protein_g": 0.7,
+                "carbs_g": 12,
+                "fat_g": 0.3,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11903,
+        "output_tokens": 301,
+        "cached_tokens": 11900,
+        "reasoning_tokens": 33
+      },
+      "latency_ms": 3192,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

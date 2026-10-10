@@ -168,11 +168,18 @@ async function fakeTransport(opts: Record<string, string | boolean>, io: Io): Pr
   return fakeDecideTransport(fn as (body: Record<string, unknown>, call: LlmCall) => FakeAnswer | Promise<FakeAnswer>);
 }
 
+/** `--only a,b,c` or `--only @ids.txt` (one id per line, `#` comments) → the exact ids, in order, deduplicated. */
+export async function onlyIds(spec: string): Promise<string[]> {
+  const raw = spec.startsWith('@') ? await Deno.readTextFile(resolveUserPath(spec.slice(1))) : spec;
+  const ids = raw.split(/[\n,]/).map((s) => s.split('#')[0].trim()).filter((s) => s !== '');
+  return [...new Set(ids)];
+}
+
 const HELP = `KOCHKO v2 eval (AI_MIMARI_V2 §9) — ayrıntı: supabase/functions/ai-chat/v2/eval/README.md
   --mode lint|replay|live|fake|judge|captures   (varsayılan lint)
   Stage A isteği üretimin kurucusundan gelir (stage-a-request.ts): şema/prompt girdisi yoktur.
   --model ${DEFAULT_MODEL}  --reps N (varsayılan 5)  --concurrency 4  --timeout-ms 90000
-  --filter <metin>  --package A,A',B+,B-,C,D,E  --out rapor.json  --verbose
+  --only id1,id2 | @ids.txt (tam id listesi)  --filter <metin>  --package A,A',B+,B-,C,D,E  --out rapor.json  --verbose
   --record (live/judge: cevapları tekrar sırasıyla .replay/'e yazar)
   --enforce-gates  --allow-miss  --require-full (KISMİ geçişi de başarısız sayar)
   --dry-run (live/judge: ön kontrol + anahtar biçimi, hiçbir çağrı gönderilmez)
@@ -202,6 +209,20 @@ export async function main(argv: string[], io: Io = consoleIo): Promise<number> 
     return 1;
   }
   let fixtures = loaded.fixtures;
+  if (opts.only !== undefined) {
+    // Exact ids (comma-separated, or @file with one id per line): the targeted re-run of a live
+    // round's failures plus a regression sample. An unknown id is a usage error, never a silent
+    // smaller run.
+    const ids = await onlyIds(String(opts.only));
+    const known = new Set(fixtures.map((x) => x.id));
+    const unknown = ids.filter((id) => !known.has(id));
+    if (!ids.length || unknown.length) {
+      io.err(ids.length ? `--only: bilinmeyen fixture id: ${unknown.join(', ')}` : '--only: en az bir fixture id gerekir');
+      return 2;
+    }
+    const want = new Set(ids);
+    fixtures = fixtures.filter((x) => want.has(x.id));
+  }
   if (opts.filter) {
     const f = String(opts.filter).toLocaleLowerCase('tr');
     fixtures = fixtures.filter((x) => x.id.includes(f) || x.source.toLocaleLowerCase('tr').includes(f) || (x.tags ?? []).includes(f));

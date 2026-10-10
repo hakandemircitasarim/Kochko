@@ -1,0 +1,165 @@
+{
+  "key": "6d2b7e0a40d13fdb3591173f507373dc5f4e8cb1b1d855e64e0b7b35941f9b54",
+  "recorded_at": "2026-10-10T16:42:47.534Z",
+  "fixture_ids": [
+    "devir-8-pizza-haftalik-simulasyon"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"hypothetical\",\"is_hypothetical\":true,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":{\"food\":\"3 dilim pizza\",\"kcal_estimate\":750,\"target_day\":\"2026-10-06\"},\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"hypothetical\"}}",
+      "decision": {
+        "intent": {
+          "primary": "hypothetical",
+          "is_hypothetical": true,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": {
+          "food": "3 dilim pizza",
+          "kcal_estimate": 750,
+          "target_day": "2026-10-06"
+        },
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "hypothetical"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11716,
+        "output_tokens": 159,
+        "cached_tokens": 11713,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2652,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"hypothetical\",\"is_hypothetical\":true,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":{\"food\":\"3 dilim pizza\",\"kcal_estimate\":750,\"target_day\":\"2026-10-06\"},\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"hypothetical\"}}",
+      "decision": {
+        "intent": {
+          "primary": "hypothetical",
+          "is_hypothetical": true,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": {
+          "food": "3 dilim pizza",
+          "kcal_estimate": 750,
+          "target_day": "2026-10-06"
+        },
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "hypothetical"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11716,
+        "output_tokens": 159,
+        "cached_tokens": 11470,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2401,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"hypothetical\",\"is_hypothetical\":true,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":{\"food\":\"3 dilim pizza\",\"kcal_estimate\":750,\"target_day\":\"2026-10-06\"},\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"hypothetical\"}}",
+      "decision": {
+        "intent": {
+          "primary": "hypothetical",
+          "is_hypothetical": true,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": {
+          "food": "3 dilim pizza",
+          "kcal_estimate": 750,
+          "target_day": "2026-10-06"
+        },
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "hypothetical"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 11716,
+        "output_tokens": 159,
+        "cached_tokens": 11713,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2242,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

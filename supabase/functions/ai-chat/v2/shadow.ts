@@ -237,12 +237,16 @@ export function tripwireReadingsOf(decision: unknown, scan: TripwireScan): Tripw
 
 /**
  * What resolveTripwires receives from Stage A. A Stage A slower than the live budget (§7.2: 4 s)
- * counts as a timeout here — the shadow reports what LIVE v2 would do.
+ * counts as a timeout here — the shadow reports what LIVE v2 would do. `ignoreBudget` reads a parsed
+ * but late decision as if it had arrived in time: EVIDENCE only (the late reading, §7.4), never the
+ * outcome the shadow reports as live-equivalent.
  */
-export function stageASafetyOutcome(outcome: UnderstandOutcome | null, validation: DecisionValidation | null, scan: TripwireScan): StageASafetyOutcome | null {
+export function stageASafetyOutcome(
+  outcome: UnderstandOutcome | null, validation: DecisionValidation | null, scan: TripwireScan, opts: { ignoreBudget?: boolean } = {},
+): StageASafetyOutcome | null {
   if (!outcome) return null;
   if (outcome.status === 'refused') return { status: 'refused' };
-  if ((outcome.status === 'error' && outcome.error?.class === 'timeout') || outcome.meta.latencyMs > STAGE_A_LIVE_BUDGET_MS) {
+  if ((outcome.status === 'error' && outcome.error?.class === 'timeout') || (!opts.ignoreBudget && outcome.meta.latencyMs > STAGE_A_LIVE_BUDGET_MS)) {
     return { status: 'timeout' };
   }
   if (outcome.status !== 'parsed' || !validation || !isRec(outcome.decision)) return { status: 'error' };
@@ -269,7 +273,13 @@ export type ShadowIssueEntry =
   | { kind: 'envelope'; code: string; path: string | null; outcome: null; level: string }
   | { kind: 'intent'; code: 'intent'; path: null; outcome: null; primary: string; hypothetical: boolean; other_person: boolean }
   | { kind: 'agreement'; code: 'agreement'; path: null; outcome: null; op: string; v1: V1State; v1_source: AgreementEntry['v1_source']; v2: V2State; class: AgreementClass }
-  | { kind: 'tripwire'; code: 'tripwire'; path: null; outcome: null; trigger: string; tier: string; category: string; negated: boolean; reading: 'positive' | 'benign' | 'missing' | 'n/a' }
+  | {
+    kind: 'tripwire'; code: 'tripwire'; path: null; outcome: null; trigger: string; tier: string; category: string; negated: boolean;
+    /** What the §7.2 table read ('n/a' = it never saw a reading: explicit hit, or Stage A failed / was late). */
+    reading: 'positive' | 'benign' | 'missing' | 'n/a';
+    /** Only when Stage A parsed past the live budget: what it read, late (§7.4 evidence, not acted on). */
+    late_reading?: 'positive' | 'benign' | 'missing';
+  }
   | { kind: 'safety'; code: string; path: null; outcome: null; value: string | boolean | null };
 
 export interface CompactVerdict {
@@ -307,8 +317,19 @@ export interface ShadowRecord {
   decision: unknown | null;
   validation: DecisionValidation | null;
   verdicts: CompactVerdict[];
-  /** `computed` is false only when the shadow itself crashed before the §7.2 table ran. */
-  tripwire: { outcome: TripwireDecision['kind']; log: TripwireLog; computed: boolean };
+  /**
+   * `computed` is false only when the shadow itself crashed before the §7.2 table ran. `late` is set
+   * only when Stage A PARSED but finished past the live budget: the outcome stays the live-equivalent
+   * fail-closed 'fallback', and `late` records what the table would have decided had the same
+   * decision arrived in time (readings included) — so a 'fallback' is never read as "Stage A could
+   * not read it" (2026-10-10 shadow: "dün gece kustum, zehirlendim galiba", 4,3 s, benign reading).
+   */
+  tripwire: {
+    outcome: TripwireDecision['kind'];
+    log: TripwireLog;
+    computed: boolean;
+    late?: { outcome: TripwireDecision['kind']; readings: TripwireLog['readings'] } | null;
+  };
   agreement: AgreementEntry[];
   v1: { mode: string | null; actions: V1ActionFact[]; safety: string[] };
   turn_input: { schema: string; day: string; refs: number; load_errors: TurnInputLoadError[] } | null;
@@ -364,14 +385,22 @@ export function shadowIssueEntries(r: ShadowRecord, scan: TripwireScan | null): 
   for (const a of r.agreement) {
     out.push({ kind: 'agreement', code: 'agreement', path: null, outcome: null, op: a.key, v1: a.v1, v1_source: a.v1_source, v2: a.v2, class: a.class });
   }
+  const late = r.tripwire.late ?? null;
   for (const h of scan?.hits ?? []) {
     const read = r.tripwire.log.readings.find((x) => x.trigger === h.trigger);
+    const lateRead = late?.readings.find((x) => x.trigger === h.trigger);
     out.push({
       kind: 'tripwire', code: 'tripwire', path: null, outcome: null, trigger: h.trigger, tier: h.tier, category: h.category,
-      negated: h.negated, reading: read ? read.reading : 'n/a',
+      negated: h.negated, reading: read ? read.reading : 'n/a', ...(lateRead ? { late_reading: lateRead.reading } : {}),
     });
   }
   if (r.tripwire.computed) out.push({ kind: 'safety', code: 'tripwire_outcome', path: null, outcome: null, value: r.tripwire.outcome });
+  // Why the table fell back (timeout / error / refused / not_run), and — for a late but parsed Stage A —
+  // what it would have decided in time. Both are evidence; the outcome above is what live v2 does.
+  if (r.tripwire.computed && r.tripwire.outcome === 'fallback') {
+    out.push({ kind: 'safety', code: 'tripwire_fallback_cause', path: null, outcome: null, value: r.tripwire.log.stage_a });
+  }
+  if (late) out.push({ kind: 'safety', code: 'tripwire_outcome_on_time', path: null, outcome: null, value: late.outcome });
   if (r.tripwire.log.benign_suppressed) out.push({ kind: 'safety', code: 'benign_suppressed', path: null, outcome: null, value: true });
   for (const s of r.v1.safety) out.push({ kind: 'safety', code: 'v1_safety', path: null, outcome: null, value: s });
   return out;
@@ -564,10 +593,17 @@ export async function runShadow(input: RunShadowInput, deps: RunShadowDeps = {})
       record.stage_a.detail = 'turn_input';
     }
     // Only a Stage A that was asked feeds the table; an explicit hit is decided without it.
-    const decision = resolveTripwires({
-      scan, stageA: stageASafetyOutcome(outcome, record.validation, scan), classifier: null, benignOverride: false,
-    });
-    record.tripwire = { outcome: decision.kind, log: decision.log, computed: true };
+    const safetyIn = stageASafetyOutcome(outcome, record.validation, scan);
+    const decision = resolveTripwires({ scan, stageA: safetyIn, classifier: null, benignOverride: false });
+    record.tripwire = { outcome: decision.kind, log: decision.log, computed: true, late: null };
+    // Parsed but past the live budget: live v2 fails closed (the outcome above stands); the late
+    // reading is still recorded, with what the same table would have done in time (§7.4 evidence).
+    if (decision.kind === 'fallback' && safetyIn?.status === 'timeout' && outcome?.status === 'parsed' && record.validation) {
+      const onTime = resolveTripwires({
+        scan, stageA: stageASafetyOutcome(outcome, record.validation, scan, { ignoreBudget: true }), classifier: null, benignOverride: false,
+      });
+      record.tripwire.late = { outcome: onTime.kind, readings: onTime.log.readings };
+    }
   } catch (e) {
     record.stage_a.status = 'error';
     record.stage_a.detail = `shadow_crash: ${errMsg(e)}`;

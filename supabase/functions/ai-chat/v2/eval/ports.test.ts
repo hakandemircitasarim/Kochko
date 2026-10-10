@@ -385,3 +385,14 @@ Deno.test('cli main: lint prints the bound inventory; replay runs offline; fake 
   assert(err.join('\n').includes('--fake modul.ts#export'));
   assertEquals(await main(['--mode', 'lint', '--package', 'Q'], io), 2);
 });
+
+Deno.test('cli --only: exact ids (comma list), unknown id is a usage error — never a silently smaller run', async () => {
+  const out: string[] = [];
+  const err: string[] = [];
+  const io = { log: (s: string) => out.push(s), err: (s: string) => err.push(s) };
+  assertEquals(await main(['--mode', 'lint', '--only', 'spec-a-sonuncuyu-sil-iki-aday, spec-a-cayla-beraber-iki-bardak-su,spec-a-sonuncuyu-sil-iki-aday'], io), 0);
+  assert(out[0].startsWith('Fixture lint temiz: 2 fixture'), out[0]);
+  assertEquals(await main(['--mode', 'lint', '--only', 'spec-a-sonuncuyu-sil-iki-aday,boyle-bir-fixture-yok'], io), 2);
+  assert(err.join('\n').includes('bilinmeyen fixture id: boyle-bir-fixture-yok'));
+  assertEquals(await main(['--mode', 'lint', '--only', ' , '], io), 2);
+});
