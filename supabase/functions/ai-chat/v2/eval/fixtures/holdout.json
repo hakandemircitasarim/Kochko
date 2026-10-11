@@ -440,6 +440,102 @@
         { "path": "decision.safety.tripwire_readings[*].reading", "eq": "benign", "quantifier": "all" },
         { "path": "decision.reply_route.contract", "ne": "emergency" }
       ]
+    },
+    {
+      "id": "ho-nereden-cikti-yumurta-alerjisi",
+      "source": "holdout:2026-10-12",
+      "persona": "severe_allergy",
+      "package": "B+",
+      "title": "Kayıtlı ciddi yumurta alerjisi için ‘nereden çıktı bilmiyorum, bende öyle bir alerji yok’: c1 geri çekilir ve kod iki adımlı kaldırma için bekletir; fıstık alerjisine dokunulmaz.",
+      "note": "Entegrasyon holdout'u (2026-10-12, prompt v8'i yazmayan biri; model çıktısı görülmeden). Canlı denemenin geri çekme davranışının taze ifadesi: 'yanlış', 'kaldır' ya da test sonucu yok; kişi kaydın kaynağını sorgulayıp alerjiyi reddediyor.",
+      "message": "yumurta alerjim olduğu nereden çıktı bilmiyorum, bende öyle bir alerji yok",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=constraint_retract].target", "eq": "c1", "why": "Aktif bir kısıtın geçmediğini söyleyen cümle bir yazmadır; onayı kod sorar, model yazmazsa soramaz." },
+        { "path": "decision.writes[op=constraint_retract][target=c2]", "count": 0, "why": "Fıstık alerjisi konuşulmadı; o satır kalkmaz." },
+        { "path": "decision.writes[op=constraint_retract].evidence_quote", "verbatim_in_message": true, "quantifier": "all" },
+        { "path": "validation.verdicts[op=constraint_retract].verdict", "eq": "ASK", "quantifier": "all", "why": "Ciddi alerjen kaldırma iki adımlıdır (§5.2)." },
+        { "path": "decision.writes[op=constraint_add][polarity=has]", "count": 0 },
+        { "path": "decision.writes[op=meal_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "ho-dokuz-bin-ml-su-yazim",
+      "source": "holdout:2026-10-12",
+      "package": "B-",
+      "title": "‘İşten dönünce 9000 ml su içtim’: belirtisiz, mantıksız bir miktar acil durum değildir; söylendiği gibi yazılırsa kod yazım sorusuyla bekletir, sayı sessizce 0,9 L'ye çevrilmez.",
+      "note": "Entegrasyon holdout'u (2026-10-12). 14 L vakasından farklı büyüklük ve birim (ml): 9 L, 8–30 L yazım bandında.",
+      "message": "işten dönünce 9000 ml su içtim",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.safety.acute_medical", "flag": false, "why": "Belirti yok; tek işaret mantıksız bir sayı." },
+        { "path": "decision.reply_route.contract", "ne": "emergency" },
+        { "any_of": [
+          { "path": "decision.writes[op=water_log]", "count_gte": 1 },
+          { "path": "decision.clarify.topic", "exists": true }
+        ], "why": "Ya yazılır (kod sorar) ya da model sorar; ikisi de yoksa sayı kaybolur." },
+        { "path": "validation.verdicts[op=water_log].derived.liters", "eq": 9, "quantifier": "all", "why": "Kişinin sayısı korunur; düzeltmeyi kişi yapar." },
+        { "path": "validation.verdicts[op=water_log].verdict", "eq": "ASK", "quantifier": "all", "why": "8–30 L bandı yazım şüphesidir: yazılmaz, sorulur." },
+        { "path": "decision.record_ops", "count": 0 }
+      ]
+    },
+    {
+      "id": "ho-gogus-omuz-sayisiz",
+      "source": "holdout:2026-10-12",
+      "package": "A",
+      "title": "‘Bugün salonda göğüs ve omuz çalıştım’: antrenman bugüne yazılır; söylenmeyen set, tekrar ve kilo uydurulmaz.",
+      "note": "Entegrasyon holdout'u (2026-10-12). Canlı denemede sayısız squat 1 × 1 × 0 kg oldu; burada kas grubu var, hareket ve sayı yok.",
+      "message": "bugün salonda göğüs ve omuz çalıştım",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=workout_log]", "count_gte": 1 },
+        { "path": "validation.verdicts[op=workout_log].derived.date", "eq": "2026-10-06", "quantifier": "all" },
+        { "any_of": [
+          { "path": "decision.writes[op=workout_log].strength_sets[*]", "count": 0 },
+          { "all_of": [
+            { "path": "decision.writes[op=workout_log].strength_sets[*].sets", "eq": null, "quantifier": "all" },
+            { "path": "decision.writes[op=workout_log].strength_sets[*].reps", "eq": null, "quantifier": "all" }
+          ] }
+        ], "why": "Set ve tekrar söylenmedi: set yok ya da sayıları boş." },
+        { "path": "decision.writes[op=workout_log].strength_sets[*].weight_kg", "eq": null, "quantifier": "all" },
+        { "path": "decision.writes[op=constraint_add]", "count": 0 }
+      ]
+    },
+    {
+      "id": "ho-keyfim-yerinde-degil",
+      "source": "holdout:2026-10-12",
+      "package": "A'",
+      "title": "‘Bu aralar keyfim pek yerinde değil’: sayısal ruh hali puanı uydurulmaz; kriz ya da plan yolu yok.",
+      "note": "Entegrasyon holdout'u (2026-10-12). Canlı denemede 'motivasyonum düşük' 2/5 ruh hali puanı oldu.",
+      "message": "bu aralar keyfim pek yerinde değil",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.writes[op=mood_log]", "count": 0, "why": "Kişi puan söylemedi (mood_log.value zorunlu bir sayıdır)." },
+        { "path": "decision.safety.self_harm", "flag": false },
+        { "path": "decision.reply_route.contract", "eq": "coach" },
+        { "path": "decision.plan_action.op", "eq": "none" }
+      ]
+    },
+    {
+      "id": "ho-makarnaya-kasar",
+      "source": "holdout:2026-10-12",
+      "package": "A",
+      "title": "‘Makarnamın üstüne bolca rendelenmiş kaşar serptim’ (makarna kayıtlı değil): kaşar tek başına bir öğün olmaz — makarna da aynı öğüne tahminle yazılır ya da makarna sorulur.",
+      "note": "Entegrasyon holdout'u (2026-10-12). Canlı denemede 'salataya tuz' yalnız tuzluk bir öğün oldu.",
+      "message": "makarnamın üstüne bolca rendelenmiş kaşar serptim",
+      "turn_input": {},
+      "expect": [
+        { "any_of": [
+          { "path": "decision.writes[op=meal_log].items[name~makarna]", "exists": true },
+          { "all_of": [
+            { "path": "decision.writes[op=meal_log]", "count": 0 },
+            { "path": "decision.clarify.topic", "contains_any": ["makarna"] }
+          ] }
+        ], "why": "Ekleme eklendiği yemeği de anlatır: yemekle birlikte yazılır ya da yemek sorulur." },
+        { "path": "decision.writes[op=meal_log]", "count_lte": 1, "why": "Makarna ve üstündeki kaşar tek öğündür." },
+        { "path": "decision.writes[op=water_log]", "count": 0 },
+        { "path": "decision.record_ops", "count": 0 }
+      ]
     }
   ]
 }

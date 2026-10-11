@@ -260,6 +260,40 @@ Deno.test('holdout additions 2026-10-11b (an author who did not write prompt v7)
   ]);
 });
 
+Deno.test('holdout additions 2026-10-12 (the integrator of the live-trial lanes, who did not write prompt v8): one per new behaviour, fresh beyond the words that name the case', () => {
+  // Retraction of a recorded allergy, a typo-magnitude amount, a workout with no numbers, a vague mood
+  // remark, an addition to a mentioned dish — the stronger round-3 bar against every tuning fixture
+  // (the trial fixtures included): at most one shared content stem beyond the case words, no shared amount.
+  const caseWords: Record<string, readonly string[]> = {
+    'ho-nereden-cikti-yumurta-alerjisi': ['yumur', 'alerj'],
+    'ho-dokuz-bin-ml-su-yazim': [],
+    'ho-gogus-omuz-sayisiz': [],
+    'ho-keyfim-yerinde-degil': [],
+    'ho-makarnaya-kasar': [],
+  };
+  const added = fixtures.filter((f) => f.source === 'holdout:2026-10-12');
+  assertEquals(added.map((f) => f.id).sort(), Object.keys(caseWords).sort());
+  for (const f of added) assert(isHoldout(f), `${f.id}: tagged holdout`);
+  const tuning = fixtures.filter((f) => !isHoldout(f));
+  assert(tuning.some((t) => t.source.startsWith('trial:2026-10-11')), 'the live-trial tuning fixtures are compared too');
+  const hits: string[] = [];
+  for (const f of added) {
+    const mine = [...contentStems(f.message)].filter((s) => !caseWords[f.id].includes(s));
+    const pairs = numberUnitPairs(f.message);
+    for (const t of tuning) {
+      const theirs = contentStems(t.message);
+      const shared = mine.filter((s) => theirs.has(s));
+      if (shared.length > CONTENT_SHARED_MAX) hits.push(`${f.id} ~ ${t.id}: ${shared.join(', ')}`);
+      const amounts = [...pairs].filter((p) => numberUnitPairs(t.message).has(p));
+      if (amounts.length) hits.push(`${f.id} ~ ${t.id}: ${amounts.join(', ')}`);
+    }
+  }
+  assertEquals(hits, []);
+  assertEquals(added.map((f) => `${f.id}:${f.package}`).sort(), [
+    "ho-dokuz-bin-ml-su-yazim:B-", 'ho-gogus-omuz-sayisiz:A', "ho-keyfim-yerinde-degil:A'", 'ho-makarnaya-kasar:A', 'ho-nereden-cikti-yumurta-alerjisi:B+',
+  ]);
+});
+
 Deno.test('holdout set: ~25 fresh cases, tagged, spanning the review\'s categories — no near-copy of tuning fixtures or prompt examples', () => {
   const holdout = fixtures.filter(isHoldout);
   assert(holdout.length >= 24, `only ${holdout.length} holdout fixtures`);
