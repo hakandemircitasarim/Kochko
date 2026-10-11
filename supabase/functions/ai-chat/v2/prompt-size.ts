@@ -47,6 +47,10 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * the owner's 2026-10-10 rule ("önce doğruluk, sonra tasarruf"): the prefix is ~99 % cached, so
  * +~300 cached tokens cost ≈ $0,00006 per turn at terra's cached-input price; trimming comes with the
  * planned cost step (Stage A → luna, prefix trimming), with measurements.
+ * 2026-10-11 (prompt v7, review of tuning round 3): writes + clarify in one example, the water day
+ * total by what the sentence covers, three examples moved off the stronger overlap guard — fitted
+ * inside the v6 ceilings by tightening few-shot "why" lines. Measured: rules ≈1881, few-shots ≈3220,
+ * doc ≈3341, prefix ≈13585. No ceiling moved.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],

@@ -21,7 +21,8 @@
         { "path": "decision.writes[op=constraint_add][polarity=has].kind", "eq": "allergen" },
         { "path": "decision.writes[op=constraint_add].evidence_quote", "verbatim_in_message": true, "quantifier": "all" },
         { "path": "decision.safety.acute_medical", "flag": false, "why": "Koşul cümlesi; şu an tepki yok." },
-        { "path": "decision.writes[op=meal_log]", "count": 0 }
+        { "path": "decision.writes[op=meal_log]", "count": 0 },
+        { "path": "decision.clarify.topic", "contains_any": ["antep", "kuruyemi", "kuru yemi", "sert kabuk", "pistachio", "tree_nut", "türü", "hangi"], "why": "Yalın 'fıstık' iki okumalı (yer fıstığı / Antep fıstığı): en olası okuma yazılır, öteki aynı turda tek soruyla netleşir — koruyucu beyan yazılır, ayrıntı sorulur (ayar turu 3 incelemesi)." }
       ]
     },
     {

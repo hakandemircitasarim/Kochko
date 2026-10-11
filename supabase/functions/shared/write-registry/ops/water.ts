@@ -53,7 +53,13 @@ export const water_log = op({
     quantity: f.num({ tr: 'kullanıcının sayısı, unit cinsinden ("500 ml" → 500 ml)' }),
     unit: f.enum(WATER_UNITS, { tr: UNIT_DOC }),
     other_ml_each: f.num({ nullable: true, hard: [1, 3000], unit: 'ml' }),
-    mode: f.enum({ add: 'içilen miktar toplama eklenir', set_day_total: 'kullanıcı SUYUN gün toplamını söyledi ("toplam" başka şeye aitse add)' }, { explain: true }),
+    // What the SENTENCE covers decides, not the word "toplam" (review of tuning round 3): a sentence
+    // about the whole day with an amount no single drink holds is the day total even without
+    // "toplam"; one drink (a glass, a bottle, "daha") is an addition, "bugün" or not.
+    mode: f.enum({
+      add: 'bir içiş; miktar toplama eklenir',
+      set_day_total: 'günün SU TOPLAMI: "toplam" denir ya da cümle günün tamamını anlatır, miktar tek içişe sığmaz ("toplam" başka şeye aitse add)',
+    }, { explain: true }),
     replaces: f.ref(['d'], { nullable: true, targets: ['water'] }),
   },
   derive: (a, ctx) => {

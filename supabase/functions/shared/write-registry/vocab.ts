@@ -43,7 +43,11 @@ export const ALLERGEN_DOC_HINTS: Readonly<Partial<Record<AllergenId, string>>> =
   crustacean: 'karides, yengeç, ıstakoz, krill',
   // A bare "fıstık" is mostly peanut in everyday Turkish, and tree_nut does NOT cover peanuts (a
   // legume): reading "fıstık" as tree_nut leaves a peanut-allergic user unprotected (tuning round 3).
-  peanut: 'yer fıstığı; yalın "fıstık" çoğunlukla budur',
+  // But it can also be pistachio ("fıstıklı baklava"): the hint names BOTH readings so rule 10
+  // applies — the most likely one (peanut) is written, the other is asked in the same turn (review
+  // of tuning round 3: "mostly peanut" alone made the model sure, and the pistachio reading was
+  // never asked).
+  peanut: 'yer fıstığı; yalın "fıstık" en olası budur, Antep fıstığı da olabilir: sor',
   tree_nut: 'sert kabuklu, türü belirsiz; yer fıstığı değil',
   pistachio: 'antep fıstığı',
   lupin: 'acı bakla',

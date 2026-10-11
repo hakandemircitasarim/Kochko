@@ -4,17 +4,23 @@
  * the example, not understanding. The holdout set (tag 'holdout') must also be fresh wording: no
  * near-copy of any tuning fixture or prompt example. Round 3 (review of tuning round 2): the same
  * CASE in other words is a copy too — shared content words (by stem) or a shared number+word pair —
- * and the coach's capability text is held to the same checks.
+ * and the coach's capability text is held to the same checks. Round 4 (review of tuning round 3):
+ * spelled numerals pair like digits, "dilim"/"ciddi"/"alerji" are content, and the tripwire questions
+ * Stage A reads on a turn may not describe the fixture they fire on.
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import { buildWriteDoc } from '../../../shared/write-registry/mod.ts';
 import { buildCapabilities } from '../../../shared/write-registry/capabilities.ts';
+import {
+  AMBIGUOUS_TRIPWIRES, EXPLICIT_TRIPWIRES, scanTripwires, SIGNAL_TRIPWIRES, type TripwireDef, tripwireFacts, V1_AMBIGUOUS_FLOOR_TRIPWIRES,
+  V1_FLOOR_TRIPWIRES,
+} from '../../../shared/safety-tripwires.ts';
 import { UNDERSTAND_FEW_SHOTS, UNDERSTAND_RULES } from '../understand-prompt.ts';
 import { loadFixtureDir } from './fixtures.ts';
 import {
-  capabilityExamples, CONTENT_SHARED_MAX, containsRun, contentOverlaps, contentStems, contextRefLine, foldTokens, GRAMMAR_CUES, lineFoods,
-  MIN_QUOTE_TOKENS, messageOverlaps, numberUnitOverlaps, numberUnitPairs, OVERLAP_JACCARD_MAX, quotedPhrases, quoteOverlaps,
-  refFoodOverlaps, type RefLineCase, STEM_LEN, type TextCase, tokenJaccard,
+  capabilityExamples, CONTENT_SHARED_MAX, CONTENT_WORDS_KEPT, containsRun, contentOverlaps, contentStems, contextRefLine, foldTokens,
+  GRAMMAR_CUES, isUnitWord, lineFoods, MIN_QUOTE_TOKENS, messageOverlaps, numberUnitOverlaps, numberUnitPairs, OVERLAP_JACCARD_MAX,
+  questionEcho, quotedPhrases, quoteOverlaps, refFoodOverlaps, type RefLineCase, STEM_LEN, type TextCase, tokenJaccard,
 } from './overlap.ts';
 import type { EvalFixture } from './types.ts';
 
@@ -86,9 +92,9 @@ Deno.test('overlap detector catches the round-1 copies it was written for (self-
 });
 
 Deno.test('overlap detector (round 3): content words by stem and number+word pairs catch the paraphrases Jaccard missed', () => {
-  // Inflections fold onto one stem; the principle vocabulary (alerji, ciddi) and log verbs are not content.
+  // Inflections fold onto one stem; log verbs are not content. Since round 4 "alerji"/"ciddi" are.
   assertEquals(STEM_LEN, 5);
-  assertEquals([...contentStems('fıstık alerjim yok ama fındığa ciddi alerjim var')].sort(), ['findi', 'fisti']);
+  assertEquals([...contentStems('fıstık alerjim yok ama fındığa ciddi alerjim var')].sort(), ['alerj', 'ciddi', 'findi', 'fisti']);
   assertEquals([...numberUnitPairs('yanlış olmuş, 2 değil 1 tabak makarna yedim')].sort(), ['1 tabak', '2 degil']);
   assertEquals([...numberUnitPairs('saat 8')], [], 'a number with nothing after it pairs with nothing');
   // v5 examples the review of tuning round 2 flagged — each is caught now (Jaccard let them through).
@@ -116,6 +122,32 @@ Deno.test('overlap detector (round 3): content words by stem and number+word pai
   assertEquals(CONTENT_SHARED_MAX, 1);
   // Capability asides and quotes are extracted as examples.
   assertEquals(capabilityExamples('- Kaydı düzelt: düzeltmek (ör. küçük bir porsiyona binlerce kcal). - Hedef: ("3 ayda 5 kilo")'), ['küçük bir porsiyona binlerce kcal', '3 ayda 5 kilo']);
+});
+
+Deno.test('overlap detector (round 4): spelled numerals pair with units, the hotspot words count, an echoing tripwire question is caught', () => {
+  // A spelled numeral pairs as its digit — next to a unit (inflected, softened) or "değil" only.
+  assertEquals([...numberUnitPairs('dün iki dilim pide yedim')], ['2 dilim']);
+  assertEquals([...numberUnitPairs('karnıyarık 2 değil tek porsiyondu')].sort(), ['1 porsi', '2 degil']);
+  assertEquals([...numberUnitPairs('yarım litre su, üç bardağı da ayran')].sort(), ['0.5 litre', '3 barda']);
+  assertEquals([...numberUnitPairs('bir tabağı bitirdim, iki değil')].sort(), ['1 tabag', '2 degil']);
+  // …but not where the word has its everyday meaning: the article, "only", "under", "ate", "ön".
+  assertEquals([...numberUnitPairs('bir an durdum, tek istediğim bu, masanın altı, o yedi, on bacak')], []);
+  assert(isUnitWord('kasigi') && isUnitWord('porsiyondu') && isUnitWord('kez') && !isUnitWord('an') && !isUnitWord('sey'), 'folded tokens');
+  // The same amount in two spellings is one pair: the round-3 guard missed this shape.
+  const word = numberUnitOverlaps([{ id: 'ornek', text: 'akşam iki dilim kek yedim' }], [{ id: 'fixture', text: 'dün 2 dilim lahmacun yedim' }]);
+  assertEquals(word.map((h) => h.why), ['ortak sayı+birim: 2 dilim']);
+  // "dilim", "ciddi", "alerji" are content now: two of them (or one + a food) are a shared case.
+  assertEquals([...CONTENT_WORDS_KEPT], ['dilim', 'ciddi', 'alerji']);
+  assert(contentStems('4 dilim krep').has('dilim'));
+  const v6shot: TextCase = { id: 'alerji_beyani@v6', text: 'hardala ciddi alerjim var, kereviz ise bana hiç dokunmuyor' };
+  const allergyFixture: TextCase = { id: 'r3-mem-1a', text: 'fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor' };
+  assertEquals(contentOverlaps([v6shot], [allergyFixture]).map((h) => h.why), ['ortak içerik kelimeleri: ciddi, alerj']);
+  // A tripwire question that describes the fixture it fires on (the 2026-10-11 yutamıyorum wording)
+  // is caught beyond the trigger word itself; a question naming only the two readings is not.
+  const v6q = 'Bir belirti mi (boğazda şişme, takılma, hiçbir şeyi yutamama), yoksa yemeğin dokusu, miktarı ya da tadı yüzünden mi?';
+  const bplus = 'kahvaltıdan beri boğazımda bir şey takılı kaldı, tükürüğümü bile yutamıyorum';
+  assertEquals(questionEcho(v6q, 'yutamıyorum', bplus).sort(), ['bogaz', 'takil']);
+  assertEquals(questionEcho('Gerçek bir yutma güçlüğü mü, yoksa sıradan bir yakınma mı?', 'yutamıyorum', bplus), []);
 });
 
 Deno.test('few-shot messages are not copies of any fixture message (Jaccard ≤ 0.6, no fixture inside)', () => {
@@ -169,6 +201,30 @@ Deno.test('the coach\'s capability text (Stage B) quotes no fixture case (review
   assertEquals(quoteOverlaps(examples, fixtureTexts), []);
   assertEquals(contentOverlaps(examples, fixtureTexts), []);
   assertEquals(numberUnitOverlaps(examples, fixtureTexts), []);
+});
+
+Deno.test('tripwire questions Stage A reads (curated and v1-floor) quote no fixture and do not describe the fixture they fire on', () => {
+  // Every question a hit can carry: curated, signal, the v1 floor lists, and narrated occurrences.
+  const defs: readonly TripwireDef[] = [...EXPLICIT_TRIPWIRES, ...AMBIGUOUS_TRIPWIRES, ...SIGNAL_TRIPWIRES, ...V1_FLOOR_TRIPWIRES, ...V1_AMBIGUOUS_FLOOR_TRIPWIRES];
+  const questions: TextCase[] = [...new Set(defs.flatMap((d) => [d.question_tr, ...(d.narration_q ? [d.narration_q] : [])]))].map((t) => ({ id: `soru: ${t}`, text: t }));
+  assert(questions.length >= 30, `the questions are read (${questions.length})`);
+  assertEquals(messageOverlaps(questions, fixtureTexts), []);
+  const quotes: TextCase[] = questions.flatMap((q) => quotedPhrases(q.text).map((t) => ({ id: q.id, text: t })));
+  assertEquals(quoteOverlaps(quotes, fixtureTexts), []);
+  // On the turn it fires: beyond the trigger words, at most one shared content word, no shared amount.
+  const echoes: string[] = [];
+  let facts = 0;
+  for (const f of fixtures) {
+    for (const x of tripwireFacts(scanTripwires(f.message))) {
+      facts++;
+      const shared = questionEcho(x.question_tr, x.matched, f.message);
+      if (shared.length > CONTENT_SHARED_MAX) echoes.push(`${f.id} ${x.trigger}: ${shared.join(', ')}`);
+      const pairs = [...numberUnitPairs(x.question_tr)].filter((p) => numberUnitPairs(f.message).has(p));
+      if (pairs.length) echoes.push(`${f.id} ${x.trigger}: ${pairs.join(', ')}`);
+    }
+  }
+  assert(facts >= 30, `tripwire facts on the fixtures are read (${facts})`);
+  assertEquals(echoes, []);
 });
 
 Deno.test('holdout set: ~25 fresh cases, tagged, spanning the review\'s categories — no near-copy of tuning fixtures or prompt examples', () => {

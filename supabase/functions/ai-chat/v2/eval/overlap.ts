@@ -17,8 +17,10 @@
  *   · (round 3) more than CONTENT_SHARED_MAX shared content words (by stem: "fındık/fındığa") between
  *     a prompt example and a fixture message — or between a few-shot context line and ANY fixture
  *     ref line, whatever the ref — i.e. the same case in other words;
- *   · (round 3) a shared number+word pair ("2 dilim", "2 değil"): the same amount, the same template.
- * The coach's capability text (write-registry capabilities, Stage B) is held to the same checks.
+ *   · (round 3) a shared number+word pair ("2 dilim", "2 değil"): the same amount, the same template;
+ *     (round 4) a spelled numeral next to a unit pairs as its digit ("iki dilim" = "2 dilim").
+ * The coach's capability text (write-registry capabilities, Stage B) and the tripwire questions
+ * Stage A reads as facts (shared/safety-tripwires.ts question_tr) are held to the same checks.
  */
 
 /** Above this token Jaccard a prompt example is a near-copy of a fixture message. */
@@ -147,17 +149,25 @@ export function refFoodOverlaps(shots: readonly RefLineCase[], fixtures: readonl
 
 /**
  * Words that say who/when/how, not WHAT (function words, pronouns, auxiliaries, the everyday verbs
- * of a log message, time words, units, quantity words, record-line markers) and the vocabulary of a
- * principle the rules teach ("alerji", "ciddi": every allergy example needs them, as every
- * hypothetical needs "-sem ne olur"). Folded spelling, matched on the 5-letter stem, so inflections
- * ("yedim/yedik", "bardağı/bardak") fall out together. Anything left is a content word: a food, a
- * drink, an activity, a body part, a symptom.
+ * of a log message, time words, units, quantity words, record-line markers). Folded spelling,
+ * matched on the 5-letter stem, so inflections ("yedim/yedik", "bardağı/bardak") fall out together.
+ * Anything left is a content word: a food, a drink, an activity, a body part, a symptom — and the
+ * words in CONTENT_WORDS_KEPT.
  */
+/**
+ * Words that LOOK like units or principle vocabulary but are exactly what the eval's hotspot cases
+ * are about (review of tuning round 3): "dilim" (the sliced vs whole-cooked food case), "ciddi" and
+ * "alerji" (the severe-allergy declaration). Until round 3 they were stop words, so an example could
+ * share "ciddi alerji" + a third word with a fixture and still pass. They count as content now: an
+ * allergy example may share ONE of them with a fixture (CONTENT_SHARED_MAX), not the whole case.
+ */
+export const CONTENT_WORDS_KEPT: readonly string[] = ['dilim', 'ciddi', 'alerji'];
+
 const CONTENT_STOP_WORDS = [
-  ...LINE_STOP,
-  // weekdays, log verbs in the evidential, the principle vocabulary
+  ...[...LINE_STOP].filter((w) => !CONTENT_WORDS_KEPT.includes(w)),
+  // weekdays, log verbs in the evidential
   'pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar', 'ikindi',
-  'yemisim', 'yemis', 'icmisim', 'icmis', 'girmissin', 'girmis', 'girdin', 'alerji', 'alerjim', 'alerjisi', 'ciddi',
+  'yemisim', 'yemis', 'icmisim', 'icmis', 'girmissin', 'girmis', 'girdin',
   // function words, pronouns, particles
   've', 'ile', 'ama', 'fakat', 'ise', 'de', 'da', 'ki', 'mi', 'mu', 'bu', 'su', 'o', 'bir', 'hic', 'cok', 'az', 'daha', 'en',
   'gibi', 'kadar', 'icin', 'sonra', 'once', 'beri', 'yine', 'artik', 'zaten', 'sadece', 'bile', 'hem', 'ya', 'yok', 'var',
@@ -175,7 +185,7 @@ const CONTENT_STOP_WORDS = [
   'bugun', 'dun', 'yarin', 'sabah', 'ogle', 'oglen', 'aksam', 'gece', 'kahvalti', 'kahvaltida', 'ogun', 'gun', 'gunde', 'gunu', 'gunler', 'hafta',
   'haftada', 'saat', 'dakika', 'simdi', 'az', 'once', 'demin', 'biraz', 'onceki', 'gelecek', 'onumuzdeki',
   // units and quantity words (not "çay"/"tatlı": in "çay kaşığı" they are units, but mostly they are food)
-  'adet', 'tane', 'parca', 'porsiyon', 'kase', 'tabak', 'dilim', 'bardak', 'bardagi', 'fincan', 'kupa', 'sise', 'kutu', 'paket',
+  'adet', 'tane', 'parca', 'porsiyon', 'kase', 'tabak', 'bardak', 'bardagi', 'fincan', 'kupa', 'sise', 'kutu', 'paket',
   'avuc', 'tutam', 'cimdik', 'kasik', 'litre', 'gram', 'kilo', 'kilogram', 'kalori', 'kcal', 'dk',
 ];
 
@@ -191,15 +201,47 @@ export function contentStems(text: string): Set<string> {
 }
 
 /**
- * Number + following word pairs ("2 dilim", "1 tabak", "2 degil"), the word stemmed. A number at
- * the end of a text pairs with nothing. Catches a reused amount of a thing AND a reused correction
- * template — the shapes token Jaccard cannot see.
+ * Spelled-out Turkish numerals (folded) and the digit form they pair as, so "iki dilim" and
+ * "2 dilim", "tek porsiyon" and "1 porsiyon" are ONE amount (review of tuning round 3: the guard
+ * only paired digits, so "iki dilim …" never met "2 dilim …").
+ */
+export const NUMBER_WORDS: Readonly<Record<string, string>> = {
+  bir: '1', tek: '1', iki: '2', uc: '3', dort: '4', bes: '5', alti: '6', yedi: '7', sekiz: '8', dokuz: '9', on: '10', yarim: '0.5',
+};
+
+/**
+ * What a SPELLED numeral pairs with: a unit or quantity word (4-letter prefix, so the inflected and
+ * consonant-softened forms count: "tabaktı/tabağı", "porsiyondu", "bardağı", "kaşığı") or the
+ * correction template "değil". A digit pairs with any word, but a numeral word also has an everyday
+ * meaning — "bir" is the indefinite article ("bir an", "bir şey"), "tek" is "only", "altı" is
+ * "under", "yedi" is "ate", folded "on" is also "ön" — so it counts only next to a unit, where it
+ * can only be an amount.
+ */
+const UNIT_PREFIXES: readonly string[] = [
+  'adet', 'tane', 'parc', 'pors', 'kase', 'taba', 'dili', 'bard', 'finc', 'kupa', 'sise', 'kutu', 'pake', 'avuc', 'tuta', 'cimd',
+  'kasi', 'litr', 'gram', 'kilo', 'kalo', 'kcal', 'saat', 'daki', 'kere', 'defa', 'adim', 'degi',
+];
+const SHORT_UNITS: ReadonlySet<string> = new Set(['kez', 'gun', 'dk', 'km', 'ml', 'lt']);
+
+/** Is `t` (a folded token) a unit / quantity word or "değil" — what a spelled numeral may pair with? */
+export function isUnitWord(t: string): boolean {
+  return SHORT_UNITS.has(t) || (t.length >= 4 && UNIT_PREFIXES.includes(t.slice(0, 4)));
+}
+
+/**
+ * Number + following word pairs ("2 dilim", "1 tabak", "2 degil"), the word stemmed. A digit pairs
+ * with any word; a spelled numeral (NUMBER_WORDS) pairs as its digit, but only with a unit word or
+ * "değil" (isUnitWord). A number at the end of a text pairs with nothing. Catches a reused amount of
+ * a thing AND a reused correction template — the shapes token Jaccard cannot see.
  */
 export function numberUnitPairs(text: string): Set<string> {
   const toks = foldTokens(text);
   const out = new Set<string>();
   for (let i = 0; i + 1 < toks.length; i++) {
-    if (/^\d+$/.test(toks[i]) && /^[a-z]+$/.test(toks[i + 1])) out.add(`${toks[i]} ${stemOf(toks[i + 1])}`);
+    const next = toks[i + 1];
+    if (!/^[a-z]+$/.test(next)) continue;
+    if (/^\d+$/.test(toks[i])) out.add(`${toks[i]} ${stemOf(next)}`);
+    else if (Object.prototype.hasOwnProperty.call(NUMBER_WORDS, toks[i]) && isUnitWord(next)) out.add(`${NUMBER_WORDS[toks[i]]} ${stemOf(next)}`);
   }
   return out;
 }
@@ -233,6 +275,19 @@ export function numberUnitOverlaps(probes: readonly TextCase[], fixtures: readon
     }
   }
   return out;
+}
+
+/**
+ * A tripwire question (shared/safety-tripwires.ts question_tr, read by Stage A as a fact on the turn
+ * it fires) against the message it fired on: the content stems both share BEYOND the words that
+ * fired it (`matched` — the trigger is in both by construction). More than CONTENT_SHARED_MAX means
+ * the question describes that case, not the two readings (review of tuning round 3: the yutamıyorum
+ * question echoed the B+ fixture written with it — "boğaz", "takıl").
+ */
+export function questionEcho(question: string, matched: string, message: string): string[] {
+  const trigger = contentStems(matched);
+  const msg = contentStems(message);
+  return [...contentStems(question)].filter((s) => msg.has(s) && !trigger.has(s));
 }
 
 /** The examples a capability text gives: "(ör. …)" asides and "…" quotes (the coach reads both). */

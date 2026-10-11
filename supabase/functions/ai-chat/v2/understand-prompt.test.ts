@@ -497,6 +497,9 @@ Deno.test('few-shots encode the principles of the production failures they were 
   // diff#1/#2: a stated DAY TOTAL of water is set_day_total, not an addition.
   const tot = itemsOf(shot('su_gun_toplami').decision, 'writes', 'water_log')[0];
   assertEquals([tot.quantity, tot.unit, tot.mode], [9, 'bardak', 'set_day_total']);
+  // v7 (review of tuning round 3): the day total is what the sentence COVERS (the whole day, an
+  // amount no single drink holds), not the word "toplam" — so the example does not lean on it.
+  assert(!lc(shot('su_gun_toplami').message).includes('toplam'), 'the day total is taught without the word "toplam"');
 
   // final2#2: "geri al" deleted an older record; the undo targets the last turn's write only.
   const undo = shot('son_turu_geri_al').decision;
@@ -508,7 +511,7 @@ Deno.test('few-shots encode the principles of the production failures they were 
   assertEquals(fix.record_ops?.map((r) => [r.op, r.ref, r.basis]), [['update', 'm44', 'user_correction']]);
   const fp = patchOf(fix.record_ops![0])!;
   assertEquals(fp.op, 'meal_log');
-  assertEquals(mealItems(fp).map((i) => i.as_stated), ['bir tabak']);
+  assertEquals(mealItems(fp).map((i) => i.as_stated), ['yarım tabak']);
   assertEquals(fix.writes, undefined, 'no new meal_log next to the correction (double count)');
 
   // final2#1: "nasıl düzeltebilirim?" deleted the last meal. A question writes nothing.
@@ -542,9 +545,16 @@ Deno.test('few-shots encode the principles of the production failures they were 
   assertEquals(other.intent.about_other_person, true);
   assertEquals(itemsOf(other, 'writes', 'constraint_add')[0].whose, 'other_person');
 
-  const inj = itemsOf(shot('sakatlik').decision, 'writes', 'constraint_add')[0];
-  assertEquals([inj.kind, inj.severity], ['injury', 'unknown']);
-  assert((inj.body_parts as string[]).every((b) => Object.prototype.hasOwnProperty.call(vocab.BODY_PARTS, b)) && (inj.body_parts as string[]).includes('ankle'));
+  // Rule 10 (v7, review of tuning round 3): a protective declaration with an unclear detail is
+  // written with the most likely reading AND the detail is asked in the same turn — the one example
+  // that shows writes and clarify together (an unclear region; a bare two-reading allergen word such
+  // as "fıstık" follows the same rule through the doc's hint).
+  const sak = shot('sakatlik').decision;
+  const inj = itemsOf(sak, 'writes', 'constraint_add')[0];
+  assertEquals([inj.kind, inj.severity, inj.whose, inj.polarity], ['injury', 'unknown', 'self', 'has']);
+  assert((inj.body_parts as string[]).every((b) => Object.prototype.hasOwnProperty.call(vocab.BODY_PARTS, b)) && (inj.body_parts as string[]).includes('shoulder'));
+  assert((sak.clarify?.topic ?? '').length > 5, 'the unclear region is asked in the same turn');
+  assertEquals(sak.self_check?.not_written_reason, undefined, 'written, not held');
 
   // Same tripwire, opposite readings — each with a reason.
   const mecaz = shot('tetik_mecaz').decision.safety?.tripwire_readings ?? [];
@@ -574,13 +584,14 @@ Deno.test('rules keep the restored guards and the ED severity principle (2026-10
   assert(UNDERSTAND_RULES.includes('orta/yüksek yeme bozukluğu sinyalinde crisis'));
 });
 
-Deno.test('rules (v6): a protective declaration is never held for a detail — the "ask what you are unsure of" rule names it as the exception', () => {
+Deno.test('rules (v6, v7): a protective declaration is never held for a detail — written AND its detail asked in the same turn', () => {
   // Tuning round 3: a severe allergy declaration whose KIND was unclear ("which nut?") was answered
   // with clarify and NO write in 2/5 reps (B+). Protection is never held (§7.4; constraints.ts
-  // "ADDING protection is never held"): write the most likely reading now, ask the detail.
+  // "ADDING protection is never held"): write the most likely reading now, ask the detail. v7 (its
+  // review): with "fıstık" read as peanut the detail was then never asked — both happen together.
   const head = UNDERSTAND_RULES.slice(0, UNDERSTAND_RULES.indexOf('\n1. '));
   assert(head.includes('emin olmadığın kısmı yazma, clarify ile sordur') && head.includes('Tek istisna kişinin kendi alerjisi ya da sakatlığıdır'));
-  assert(UNDERSTAND_RULES.includes('Kişinin kendi alerjisini ya da sakatlığını bu turda yaz: türü ya da bölgesi belirsizse en olası okumayı seç, ayrıntıyı clarify ile sordur.'));
+  assert(UNDERSTAND_RULES.includes('Kişinin kendi alerjisini ya da sakatlığını bu turda yaz: türü ya da bölgesi belirsizse en olası okumayla yaz, ayrıntıyı aynı turda clarify ile sor.'));
   assert(UNDERSTAND_RULES.includes('Tepkiyi anlatan koşul cümlesi varsayım değil, beyandır.'));
   // A retraction of a constraint that was never true is written as well (listed → retract, else does_not_have).
   assert(UNDERSTAND_RULES.includes('etkin bir kısıtsa constraint_retract, pasifse ya da listede yoksa does_not_have'));

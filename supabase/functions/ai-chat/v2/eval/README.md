@@ -289,6 +289,11 @@ kapalı-başarısızdır. Rubrik yalnız **modelin** (ya da T2 hazır) cevabın�
   bir fixture mesajıyla (ya da bağlam satırı, ref ne olursa olsun, bir fixture kayıt satırıyla) birden fazla
   ortak içerik kelimesi (5 harflik kök: "fındık/fındığa") ya da ortak sayı+kelime çifti ("2 dilim",
   "2 değil") → test düşer. Koçun yetenek metnindeki "(ör. …)" ve tırnaklı örnekler de aynı denetimden geçer.
+  Ayar turu 3 incelemesinden beri: yazıyla sayı birimle eşleşir ve rakam gibi sayılır ("iki dilim" = "2 dilim",
+  "tek porsiyon" = "1 porsiyon"; "bir an" gibi gündelik anlamlar eşleşmez), "dilim", "ciddi", "alerji" içerik
+  kelimesidir (eskiden durak kelimesiydi); Stage A'nın tetik olgusu olarak okuduğu soru metinleri
+  (`safety-tripwires.ts question_tr`, kürasyonlu ve v1 tabanı) hiçbir fixture'ı alıntılayamaz ve tetiklendiği
+  fixture'la tetik kelimesinin ötesinde birden fazla içerik kelimesi paylaşamaz (`questionEcho`).
 - **E kapısında gecikme bölünmesi:** her çağrı §7.2 canlı bütçe sınıfıyla işaretlenir (T2 Stage A'ya tetik
   olgusu verdiyse `tripwire`, 10 sn; yoksa `normal`, 6 sn — `stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS`,
   sahip kararı 2026-10-11). E satırı ve rapor iki sınıfın p50/p90'ını ve canlıda kapalı-başarısızlığa düşecek

@@ -68,7 +68,7 @@
  * Pure: no I/O, no Deno/npm imports (the eval runner and any runtime can load it).
  */
 
-export const TRIPWIRES_VERSION = 'tw-2026-10-11';
+export const TRIPWIRES_VERSION = 'tw-2026-10-11b';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -547,7 +547,10 @@ export const AMBIGUOUS_TRIPWIRES: readonly TripwireDef[] = [
   { id: 'emg.felc', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})felc/u, question_tr: 'Şu an yaşanan bir felç belirtisi mi, yoksa geçmiş/başkası/risk sorusu mu?' },
   { id: 'emg.gogus_genis', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})gogu?s\p{L}*\s+(?:\p{L}+\s+)?(?:agri|sikis|baski)/u, question_tr: 'Göğüs ağrısı/sıkışması akut mu, yoksa antrenman sonrası kas ağrısı mı?' },
   { id: 'emg.kan_kusma', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})kan\s+kus(?:tum|dum|tu(?!r)|ma)/u, question_tr: 'Gerçekten kan kusma mı, yoksa "çok zorlandım" deyimi mi?' },
-  { id: 'emg.yutamiyorum', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:yutamiyo|yutkunamiyo)/u, question_tr: 'Bir belirti mi (boğazda şişme, takılma, hiçbir şeyi yutamama), yoksa yemeğin dokusu, miktarı ya da tadı yüzünden mi?' },
+  // The question names the two readings in general words only (review of tuning round 3: the
+  // 2026-10-11 wording echoed the details of the B+/B- fixtures written alongside it; overlap.test.ts
+  // now holds every question Stage A reads against the fixtures it fires on).
+  { id: 'emg.yutamiyorum', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:yutamiyo|yutkunamiyo)/u, question_tr: 'Gerçek bir yutma güçlüğü (sağlık belirtisi) mi, yoksa bir yiyecekle ilgili sıradan bir yakınma mı?' },
   { id: 'emg.gorme_kaybi', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:goremiyo|gorme\s+kayb|goz\p{L}*\s+karar)/u, question_tr: 'Ani görme kaybı/kararma mı, yoksa ekrandaki bir yazıyı görememek mi?' },
   { id: 'emg.siddetli_agri', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:siddetli|dayanilmaz|cekilmez)\s+(?:bir\s+)?agri/u, question_tr: 'Acil müdahale gerektiren şiddetli bir ağrı mı, yoksa bilinen/hafif bir ağrı mı?' },
   { id: 'emg.anafilaksi_belirti', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:anafila(?:ksi|ktik)|(?:bogaz|dil|dudak|yuz)\p{L}*\s+(?:\p{L}+\s+)?(?:sis(?:iyo|ti|mis|me|ik)|kapan))/u, question_tr: 'Şu an süren bir alerjik reaksiyon (şişme, nefes darlığı) mı, yoksa geçmişten/genel bilgi mi?' },
@@ -649,7 +652,7 @@ export const V1_FLOOR_TRIPWIRES: readonly TripwireDef[] = [
  * protective by default.
  */
 export const V1_AMBIGUOUS_FLOOR_TRIPWIRES: readonly TripwireDef[] = [
-  { id: 'emg.v1_belirsiz', category: 'emergency', tier: 'ambiguous', find: phraseFinder(V1_AMBIGUOUS_PHRASES.emergency), question_tr: 'Şu an süren bir belirti (bayılma, çarpıntı, yutma güçlüğü) mı, yoksa "çok beğendim" gibi bir deyim, bir yemeği sevmemek ya da geçici/genel bir soru mu?' },
+  { id: 'emg.v1_belirsiz', category: 'emergency', tier: 'ambiguous', find: phraseFinder(V1_AMBIGUOUS_PHRASES.emergency), question_tr: 'Şu an süren bir belirti (bayılma, çarpıntı, yutma güçlüğü) mı, yoksa "çok beğendim" gibi bir deyim, sıradan bir yakınma ya da genel bir soru mu?' },
   { id: 'sh.v1_belirsiz', category: 'self_harm', tier: 'ambiguous', find: phraseFinder(V1_AMBIGUOUS_PHRASES.self_harm), question_tr: 'Umutsuzluk/kendine zarar düşüncesi mi, yoksa iş/antrenman yorgunluğu mu?' },
 ];
 

@@ -57,7 +57,7 @@ export const record_update = op({
   // The client badge follows the corrected record type; validate.ts takes it from the patch.
   envelope: 'undo',
   title_tr: 'Kaydı düzelt',
-  when_tr: 'KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir porsiyona binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur.',
+  when_tr: 'KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir öğüne binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur.',
   not_when_tr: 'aynı kaydı yeni yazma olarak eklemek (çift sayım).',
   fields: {
     ref: f.ref(['m', 'd', 'w', 's', 't', 'e', 'l', 'f']),
@@ -70,7 +70,7 @@ export const record_update = op({
     patch: f.write({ tr: 'kaydın düzeltilmiş TAM hâli, ref’in kayıt türündeki op ile' }),
   },
   hold_tr: 'suspicious bekletilir, koç bir kez sorar; reddedilen şüphe yeniden önerilmez.',
-  capability_tr: 'Yanlış bir kaydı düzeltmek; fark ettiğin şüpheli bir geçmiş kaydı (ör. küçük bir porsiyona binlerce kcal) önce kullanıcıya sorarak.',
+  capability_tr: 'Yanlış bir kaydı düzeltmek; fark ettiğin şüpheli bir geçmiş kaydı (ör. küçük bir öğüne binlerce kcal) önce kullanıcıya sorarak.',
   writes: { rpc: 'w_record_supersede', tables: ['turn_writes'], undo: 'restore_previous', hold_op: 'record_update' },
   invariants: ['supersede_in_one_transaction', 'no_double_count'],
 }).rules({

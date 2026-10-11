@@ -3,7 +3,7 @@ Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aral
 day: today | yesterday | YYYY-MM-DD; en fazla 7 gün geri, gelecek yok.
 Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. Kayıt düzeltmenin tek yolu record_ops update; yazmalardaki replaces hep null.
 Ref’ler yalnız bu turda gösterilenler: KAYITLAR: m=öğün · d=günlük metrik (su, uyku, ruh hali, adım, tartı) · w=antrenman · s=takviye · t=son tur yazması · e=olay · l=tahlil · f=yemek tercihi | KISITLAR: c | BEKLEYEN ONAYLAR: p | AÇIK SÖZLER: k | PLAN TASLAĞI: dft.
-ALERJENLER: gluten (buğday, arpa, çavdar, yulaf) · crustacean (karides, yengeç, ıstakoz, krill) · egg · fish · peanut (yer fıstığı; yalın "fıstık" çoğunlukla budur) · soy · milk · tree_nut (sert kabuklu, türü belirsiz; yer fıstığı değil) · hazelnut · walnut · almond · pistachio (antep fıstığı) · cashew · celery · mustard · sesame · sulphite · lupin (acı bakla) · mollusc (midye, kalamar, ahtapot) · listede yoksa (yalnız kısıtta) custom:<ad>
+ALERJENLER: gluten (buğday, arpa, çavdar, yulaf) · crustacean (karides, yengeç, ıstakoz, krill) · egg · fish · peanut (yer fıstığı; yalın "fıstık" en olası budur, Antep fıstığı da olabilir: sor) · soy · milk · tree_nut (sert kabuklu, türü belirsiz; yer fıstığı değil) · hazelnut · walnut · almond · pistachio (antep fıstığı) · cashew · celery · mustard · sesame · sulphite · lupin (acı bakla) · mollusc (midye, kalamar, ahtapot) · listede yoksa (yalnız kısıtta) custom:<ad>
 BÖLGELER: knee=diz · back=sırt/bel · shoulder=omuz · ankle=ayak bileği · wrist=el bileği · elbow=dirsek · hip=kalça · neck=boyun · hamstring=arka bacak · quad=ön bacak · groin=kasık
 
 ## writes[] — kullanıcının bildirdikleri
@@ -22,7 +22,7 @@ Kod: reference_key seçtiysen kcal/makro = grams × referans/100 (senin kcal’�
 Şimdi içtiği sade su. Değil: çay, kahve, ayran, maden suyu (meal_log).
 - quantity: kullanıcının sayısı, unit cinsinden ("500 ml" → 500 ml)
 - unit: bardak 200 ml · su_bardagi 200 ml · cay_bardagi 100 ml · kupa 250 ml · sise_330 330 ml · sise_500 500 ml · sise_1500 1500 ml · listede yoksa other + other_ml_each (bir biriminin ml tahmini)
-- mode: add=içilen miktar toplama eklenir · set_day_total=kullanıcı SUYUN gün toplamını söyledi ("toplam" başka şeye aitse add)
+- mode: add=bir içiş; miktar toplama eklenir · set_day_total=günün SU TOPLAMI: "toplam" denir ya da cümle günün tamamını anlatır, miktar tek içişe sığmaz ("toplam" başka şeye aitse add)
 Kod: litre = quantity × birimin ml’si / 1000.
 Örnek: "2 kupa su daha içtim" → quantity 2, unit kupa, mode add (kod +0,50 L yazar)
 
@@ -98,7 +98,7 @@ AÇIKÇA hesabın ve tüm verilerin ya da yalnız koç hafızasının silinmesi 
 KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i). Değil: kısıt (constraint_retract), bekleyen (pending_ops), plan taslağı (plan_action).
 
 ### update
-KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir porsiyona binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur. Değil: aynı kaydı yeni yazma olarak eklemek (çift sayım).
+KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir öğüne binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur. Değil: aynı kaydı yeni yazma olarak eklemek (çift sayım).
 - evidence_quote: suspicious ise null
 - patch: kaydın düzeltilmiş TAM hâli, ref’in kayıt türündeki op ile
 İki adım: suspicious bekletilir, koç bir kez sorar; reddedilen şüphe yeniden önerilmez.
