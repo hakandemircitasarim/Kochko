@@ -292,7 +292,7 @@ export function missedWrite(decision: UnderstandDecision): { missed: boolean; re
   return { missed: unwritten && !given, reason: unwritten && given ? reason as keyof typeof NOT_WRITTEN_REASONS : null };
 }
 
-/** Holds that §5.2 calls safety holds (code adds the template question when the coach does not ask). */
+/** Holds that §5.2 calls safety holds (code appends the template question unless the reply carries it). */
 export const SAFETY_HOLD_OPS: ReadonlySet<string> = new Set(['constraint_retract', 'data_erase_request', 'account_erase_request', 'target_change']);
 export const SAFETY_HOLD_REASONS: ReadonlySet<string> = new Set([
   'iki_adimli_kaldirma', 'kvkk_onay', 'kimlik_degisimi', 'kimlik_kaniti', 'hedef_degisiyor', 'bant_degisimi',
@@ -352,6 +352,10 @@ export function renderTurnEvents(ti: TurnInput, decision: UnderstandDecision, co
     const what = `- BEKLETİLDİ, yazılmadı (${HOLD_OP_TR[h.op] ?? opTitle(h.op)}): kullanıcının onayı gerekiyor`;
     lines.push(safetyTurn
       ? `${what}; bu bir güvenlik turu, bu turda sorulmaz ("${h.question_tr}")`
+      : i === 0 && isSafetyHold(h)
+      // §5.2/§7.1: a safety hold's question is code's — postcheck appends the template verbatim at the
+      // end unless the reply already carries it, so the coach's own paraphrase would only ask it twice.
+      ? `${what}; bu bir güvenlik onayı, sorusunu kod cevabın sonuna aynen ekler: "${h.question_tr}" Bu soruyu kendin tekrar sorma ve başka soru ekleme; istersen neden beklettiğini yarım cümleyle söyle`
       : i === 0
       ? `${what}; sorulacak tek soru: "${h.question_tr}"`
       : `${what}; bu turun sorusu yukarıdaki, bunu sonraki bir turda sor ("${h.question_tr}")`);

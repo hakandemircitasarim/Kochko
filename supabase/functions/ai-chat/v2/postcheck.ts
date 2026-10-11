@@ -16,16 +16,32 @@
  *   4. Mandatory lines, appended in this order and only when missing — 112 / specialist referral when
  *      the tripwire resolution demands it, the allergen-exposure acknowledgement, the safety-hold
  *      question. Each is a CodeNote (chat_messages.code_notes); none deletes or rewrites another
- *      line or any of the coach's sentences (§5.3).
+ *      line or any of the coach's sentences (§5.3). A code-authored reply also gets the reject
+ *      reasons (before the mandatory lines) and, when no hold is asked, the clarify question.
  *
- * Reads the coach's reply and structured data only — never the user's message (§2 rule 2). The few
- * presence checks over the reply are substring tests that err toward "missing": a false "missing"
- * costs one appended line, a false "present" would drop protection.
+ * Reads the coach's reply and structured data only — never the user's message (§2 rule 2). The
+ * presence checks over the reply err toward "missing": a false "missing" costs one appended line, a
+ * false "present" would drop protection. So a safety line is judged by the TEXT alone, never by a
+ * model flag (referral_included is logged, not trusted), and a safety hold counts as asked only when
+ * the reply carries its template question itself.
+ *
+ * Latency (§3.3, §7.2): the whole T6+T7 run has ONE budget (coach.ts: 6 s on the protective path,
+ * 25 s otherwise) covering the coach, the judge and the regen; `remainingMs` reports what is left.
+ * A judge that cannot run inside it counts as failed (fail-closed) and a regen that cannot start
+ * goes straight to the fallback — on the protective path the ready-made safety reply.
+ *
+ * Deliberate cost/latency decision (§3.3): for a user with a severe constraint EVERY reply with
+ * prose is judged (one gpt-6-luna call, ~0.5–1.5 s), not only replies whose lists are non-empty —
+ * code has no food/exercise lexicon to tell "a food name appears" (§7.2 (a)), and the hidden
+ * allergen the judge exists for is exactly the one no list or dictionary names. A luna outage
+ * therefore turns these users' replies into the safe fallback (fail-closed); log.judge records every
+ * failure so the shadow can alert on it. Narrowing this is a protection removal (§7: shadow proof).
  */
 import type { CoachInput, CoachReply, V2Hold } from './contracts.ts';
 import type { CoachRun } from './coach.ts';
-import type { TurnInput } from './input.ts';
-import { isSafetyHold, orderHolds, vocabLabel } from './facts.ts';
+import { isSafetyHold, opTitle, orderHolds, vocabLabel } from './facts.ts';
+import { turnRefs, type TurnInput } from './input.ts';
+import { quoteLine } from './stage-a-request.ts';
 import {
   allergenSpine, checkSuggestionInvariants, injuredRegionsFromSpine, type SpineRow, type SuggestionViolation, unlocatedInjuries,
 } from '../../shared/safety-invariants.ts';
@@ -87,6 +103,8 @@ export interface JudgeRequest {
   suggested_foods: CoachReply['suggested_foods'];
   suggested_exercises: CoachReply['suggested_exercises'];
   profile: SafetyProfile;
+  /** What is left of the turn's budget for this call (postcheck also stops waiting at this point). */
+  timeoutMs?: number;
 }
 
 export interface JudgeItem {
@@ -175,7 +193,7 @@ export function lunaJudge(deps: {
         schema: JUDGE_SCHEMA,
         maxTokens: 600,
         store: false,
-        timeoutMs: deps.timeoutMs ?? JUDGE_TIMEOUT_MS,
+        timeoutMs: Math.max(1, Math.min(deps.timeoutMs ?? JUDGE_TIMEOUT_MS, req.timeoutMs ?? Infinity)),
         ...(deps.transport ? { transport: deps.transport } : {}),
         ...(deps.apiKey ? { apiKey: deps.apiKey } : {}),
         ...(deps.baseUrl ? { baseUrl: deps.baseUrl } : {}),
@@ -227,16 +245,30 @@ function lastAssistant(input: CoachInput): string {
   return '';
 }
 
-function emptyReply(text: string, memory: unknown[] = []): CoachReply {
-  return { reply: text, suggested_foods: [], suggested_exercises: [], memory, ui: { navigate_to: null, task_completion_summary: null }, referral_included: false, why: null };
+/**
+ * A code-authored reply. It never carries memory[]: a draft that failed the safety check (or never
+ * arrived) is not a source of durable notes about the person.
+ */
+function emptyReply(text: string): CoachReply {
+  return { reply: text, suggested_foods: [], suggested_exercises: [], memory: [], ui: { navigate_to: null, task_completion_summary: null }, referral_included: false, why: null };
 }
 
-export function safeFallbackReply(input: CoachInput, profile: SafetyProfile, memory: unknown[] = []): CoachReply {
+/** The receipts line of a code-authored reply: "in place" only when EVERY write of the turn landed. */
+export const RECEIPTS_BELOW_TR = 'Bu turdaki kayıtların durumunu aşağıda görebilirsin.';
+
+function receiptsLead(input: CoachInput): string {
+  const rs = input.commit.receipts;
+  if (rs.length === 0) return '';
+  if (rs.every((r) => r.ok)) return rs.length === 1 ? 'Bu turdaki kaydın yerinde.' : 'Bu turdaki kayıtların yerinde.';
+  return RECEIPTS_BELOW_TR;
+}
+
+export function safeFallbackReply(input: CoachInput, profile: SafetyProfile): CoachReply {
   const c = constraintPhrase(profile);
   const first = SAFE_FALLBACK_VARIANTS[0](c);
   const pick = lastAssistant(input).includes(first) ? SAFE_FALLBACK_VARIANTS[1](c) : first;
-  const okWrites = input.commit.receipts.some((r) => r.ok);
-  return emptyReply(okWrites ? `Bu turdaki kaydın yerinde. ${pick}` : pick, memory);
+  const lead = receiptsLead(input);
+  return emptyReply(lead ? `${lead} ${pick}` : pick);
 }
 
 /** Stage B produced nothing usable on a normal turn: an honest line, the receipts speak for the writes. */
@@ -244,7 +276,7 @@ export const COACH_UNAVAILABLE_TR = 'Şu an cevabımı toparlayamadım; birkaç 
 
 export function coachFailedReply(input: CoachInput): CoachReply {
   const any = input.commit.receipts.length > 0;
-  return emptyReply(any ? `Bu turdaki kayıtların durumunu aşağıda görebilirsin. ${COACH_UNAVAILABLE_TR}` : COACH_UNAVAILABLE_TR);
+  return emptyReply(any ? `${RECEIPTS_BELOW_TR} ${COACH_UNAVAILABLE_TR}` : COACH_UNAVAILABLE_TR);
 }
 
 // ─── mandatory lines ───────────────────────────────────────────────────────────────────────────────
@@ -257,29 +289,52 @@ function fold(s: string): string {
     .replaceAll('ı', 'i');
 }
 
-/** Folded keyword stems that show the coach asked THIS hold (code-owned, per hold kind). */
-const HOLD_KEYWORDS: Record<string, readonly string[]> = {
-  constraint_retract: ['kaldir', 'sil', 'cikar'],
-  iki_adimli_kaldirma: ['kaldir', 'sil', 'cikar'],
-  data_erase_request: ['sil'],
-  account_erase_request: ['sil'],
-  kvkk_onay: ['sil'],
-  goal_set: ['hedef'],
-  hedef_degisiyor: ['hedef'],
-  target_change: ['kalori', 'aralig', 'program', 'baslat'],
-  bant_degisimi: ['kalori', 'aralig', 'program', 'baslat'],
-};
+/** fold() + every run of whitespace as one space (index scans: ai-chat/v2 carries no regex, G13). */
+function foldSpaced(s: string): string {
+  let out = '';
+  let space = false;
+  for (const ch of fold(s)) {
+    const ws = ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r' || ch.codePointAt(0) === 0xa0;
+    if (ws) { space = out !== ''; continue; }
+    if (space) out += ' ';
+    space = false;
+    out += ch;
+  }
+  return out;
+}
 
 /**
- * Did the reply ask this hold's question? It must contain a question mark AND either the template
- * itself or one of the hold's keyword stems. Errs toward "not asked" (then the template is added).
+ * Did the reply ask this hold's question? Only when it carries the hold's TEMPLATE question itself
+ * (case, diacritics and spacing aside). No keyword guess: "nasılsın?" contains "sil", "kaç kalori
+ * aldın?" contains "kalori" — a stem match would let a KVKK erase or an allergy removal lapse without
+ * the user ever being asked (§5.2, §7.1). A false "not asked" costs one appended line.
  */
 export function replyAsksHold(reply: string, h: V2Hold): boolean {
-  if (!reply.includes('?')) return false;
-  const r = fold(reply);
-  if (h.question_tr && r.includes(fold(h.question_tr))) return true;
-  const keys = [...(HOLD_KEYWORDS[h.reason_code] ?? []), ...(HOLD_KEYWORDS[h.op] ?? [])];
-  return keys.some((k) => r.includes(k));
+  const q = foldSpaced(h.question_tr ?? '');
+  return q !== '' && foldSpaced(reply ?? '').includes(q);
+}
+
+/** A reject the code tells in its own words when the reply is code-authored (nobody else will). */
+export function rejectLine(r: CoachInput['commit']['rejects'][number]): string {
+  const why = (r.reason_tr ?? '').trim();
+  const end = why.endsWith('.') || why.endsWith('!') || why.endsWith('?') ? '' : '.';
+  return `${opTitle(r.op)} kaydedilmedi: ${why || 'denetimden geçmedi'}${end}`;
+}
+
+/** The clarify question of a code-authored reply: the topic Stage A named, with what each candidate is. */
+export function clarifyLine(input: CoachInput): string | null {
+  const c = input.decision.clarify;
+  if (typeof c !== 'object' || c === null || Array.isArray(c)) return null;
+  const rec = c as Record<string, unknown>;
+  const topic = typeof rec.topic === 'string' ? quoteLine(rec.topic, 160).trim() : '';
+  if (topic === '') return null;
+  const refs = turnRefs(input.turnInput).rendered;
+  const cands = (Array.isArray(rec.candidate_refs) ? rec.candidate_refs : [])
+    .map((r) => (typeof r === 'string' ? refs[r]?.summary_tr : null))
+    .filter((s): s is string => typeof s === 'string' && s.trim() !== '')
+    .map((s) => quoteLine(s, 80));
+  const bare = topic.endsWith('?') || topic.endsWith('.') ? topic.slice(0, -1).trimEnd() : topic;
+  return `Devam etmeden önce netleştirmem gereken bir şey var: ${bare}${cands.length ? ` (${cands.join(' / ')})` : ''}. Kısaca yazar mısın?`;
 }
 
 function exposureLine(e: CoachInput['commit']['exposures'][number], severe: boolean): string {
@@ -292,10 +347,29 @@ function exposureLine(e: CoachInput['commit']['exposures'][number], severe: bool
   return `⚠️ Dikkat: profilinde ${what} kayıtlı ve kaydettiğin öğün ${labels.join(', ')} içeriyor. Kaydettim; kendini nasıl hissettiğini takip et.${urgent}`;
 }
 
+/** The safety categories whose 112 / referral line this turn's resolution demands. */
+function requiredCategories(t: CoachInput['tripwire']): SafetyCategory[] {
+  if (t.kind === 'protective') return [...new Set([t.category, ...t.categories])];
+  if (t.kind === 'fallback' || t.kind === 'canned') return [t.category];
+  return [];
+}
+
 /**
- * The code lines this reply still needs, in order (referral/112 → exposure → hold question), each
- * judged against the text INCLUDING the lines added before it. `codeAuthored` = the reply is a
- * fallback written by code: then an ordinary hold's question is added too (nobody else will ask it).
+ * The coach SAID it included the referral but its text carries no 112 / referral line (shadow
+ * triage only: the flag never suppresses the line — mandatoryLines appends it anyway).
+ */
+export function referralFlagMismatch(input: CoachInput, reply: CoachReply): boolean {
+  return reply.referral_included === true && requiredCategories(input.tripwire).some((cat) => !hasRequiredSafetyLine(reply.reply ?? '', cat));
+}
+
+/**
+ * The code lines this reply still needs, in order, each judged against the text INCLUDING the lines
+ * added before it:
+ *   (code-authored reply, normal turn) the reject reasons — facts, not safety lines, so they go first
+ *   112 / referral → allergen exposure → the turn's ONE question (the hold; for a code-authored reply
+ *   with no hold to ask, the clarify question)
+ * so the mandatory safety lines stay LAST. `codeAuthored` = the reply is a fallback written by code:
+ * then an ordinary hold's question is added too (nobody else will ask it).
  */
 export function mandatoryLines(input: CoachInput, reply: CoachReply, opts: { codeAuthored?: boolean } = {}): CodeNote[] {
   const notes: CodeNote[] = [];
@@ -310,10 +384,15 @@ export function mandatoryLines(input: CoachInput, reply: CoachReply, opts: { cod
   };
   const t = input.tripwire;
 
-  // 112 is a literal requirement (the number in the text); an ED referral may be confirmed by the
-  // coach's own structured flag (the constitution promises that flag prevents a duplicate line).
-  const need = (cat: SafetyCategory): boolean =>
-    cat === 'ed' ? !(reply.referral_included || hasRequiredSafetyLine(text, 'ed')) : !hasRequiredSafetyLine(text, cat);
+  // The coach told the rejects in its own words from the facts; a code-authored reply cannot, so the
+  // reasons are stated here (a red badge alone says nothing). Never next to a safety reply.
+  if (opts.codeAuthored && t.kind === 'normal') {
+    for (const r of input.commit.rejects) add('other', rejectLine(r));
+  }
+
+  // The 112 / referral line is guaranteed by the TEXT: 112 literally, a referral by hasRequiredSafetyLine.
+  // The coach's referral_included flag is never trusted for a safety line (§7.2 "kod garanti eder").
+  const need = (cat: SafetyCategory): boolean => !hasRequiredSafetyLine(text, cat);
   if (t.kind === 'protective') {
     for (const cat of t.categories) {
       if (need(cat)) add(cat === 'emergency' ? 'emergency' : 'referral', cat === t.category ? t.required_line : REQUIRED_SAFETY_LINE[cat]);
@@ -331,11 +410,16 @@ export function mandatoryLines(input: CoachInput, reply: CoachReply, opts: { cod
   }
 
   // The turn's ONE hold question (facts.ts orderHolds: safety holds first) — added when it is a safety
-  // hold the coach did not ask, or when the reply is code-authored (nobody else will ask it). Never on
-  // a safety turn (crisis, ED, emergency): the hold waits and expires unconfirmed, which changes nothing.
+  // hold whose template the reply does not carry (facts.ts tells the coach code appends it), or when the
+  // reply is code-authored (nobody else will ask it). Never on a safety turn (crisis, ED, emergency):
+  // the hold waits and expires unconfirmed, which changes nothing.
   const h = t.kind === 'normal' ? orderHolds(input.commit.holds)[0] : undefined;
-  if (h && h.question_tr && (isSafetyHold(h) || opts.codeAuthored) && !replyAsksHold(text, h)) {
-    add(isSafetyHold(h) ? 'safety_hold' : 'other', h.question_tr);
+  if (h && h.question_tr && (isSafetyHold(h) || opts.codeAuthored)) {
+    if (!replyAsksHold(text, h)) add(isSafetyHold(h) ? 'safety_hold' : 'other', h.question_tr);
+  } else if (opts.codeAuthored && t.kind === 'normal') {
+    // No hold to ask: a code-authored reply still asks what Stage A needed clarified (one question).
+    const q = clarifyLine(input);
+    if (q) add('other', q);
   }
   return notes;
 }
@@ -355,8 +439,38 @@ export interface PostcheckLog {
   invariant_hits: string[][];
   /** Judge result per attempt ('skipped' when the user has no severe constraint). */
   judge: ('skipped' | 'clean' | 'violation' | 'failed')[];
+  /** Why each failed judge call failed ('timeout', 'budget_exhausted', 'no_judge', an error class …). */
+  judge_fail_reasons: string[];
   regens: number;
+  /** The turn's budget ran out before a judge or the regen could start (the fallback went out). */
+  budget_exhausted: boolean;
+  /** The coach set referral_included but its text had no 112/referral line (code appended it). */
+  referral_flag_mismatch: boolean;
   code_notes: CodeNoteKind[];
+}
+
+export function emptyPostcheckLog(outcome: PostcheckOutcome): PostcheckLog {
+  return { outcome, invariant_hits: [], judge: [], judge_fail_reasons: [], regens: 0, budget_exhausted: false, referral_flag_mismatch: false, code_notes: [] };
+}
+
+/** Do not start a (re)generation with less than this left of the turn's budget: it could not finish. */
+export const MIN_COACH_CALL_MS = 2_000;
+/** Do not start a judge call with less than this left: the reply then counts as unconfirmed (fail-closed). */
+export const MIN_JUDGE_CALL_MS = 750;
+
+/**
+ * `p`, or `late()` once `ms` have passed — whichever comes first — so a callee that ignores its own
+ * timeout still cannot stretch the turn. An infinite `ms` means no bound. The timer is always cleared.
+ */
+export async function withinBudget<T>(p: Promise<T>, ms: number, late: () => T): Promise<T> {
+  if (!Number.isFinite(ms)) return await p;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const guard = new Promise<T>((resolve) => { timer = setTimeout(() => resolve(late()), Math.max(0, ms)); });
+  try {
+    return await Promise.race([p, guard]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export interface PostcheckResult {
@@ -369,8 +483,11 @@ export interface PostcheckResult {
 }
 
 export interface PostcheckDeps {
-  /** One regeneration with the excluded items named (coach.ts runCoach with a RegenNote). */
-  regen: (note: RegenNote) => Promise<CoachRun>;
+  /**
+   * One regeneration with the excluded items named (coach.ts runCoach with a RegenNote), bounded by
+   * `timeoutMs` (what is left of the turn's budget; undefined = no turn budget).
+   */
+  regen: (note: RegenNote, timeoutMs?: number) => Promise<CoachRun>;
   /** null = no judge configured; a severe-constraint reply then cannot be confirmed (fail-closed). */
   judge: ProseJudge | null;
   /**
@@ -379,6 +496,11 @@ export interface PostcheckDeps {
    * only replies with a non-empty suggestion list (latency escape hatch, weaker).
    */
   judgeScope?: 'always' | 'suggestions';
+  /**
+   * Milliseconds left of the turn's ONE budget (coach + judge + regen). Undefined = unbounded.
+   * coach.ts sets it: CRISIS_TIMEOUT_MS on the protective path (§7.2 "6 sn'yi aşarsa hazır cevap").
+   */
+  remainingMs?: () => number;
 }
 
 interface Check {
@@ -389,8 +511,25 @@ interface Check {
 
 export async function postcheckReply(input: CoachInput, first: CoachRun, deps: PostcheckDeps): Promise<PostcheckResult> {
   const profile = safetyProfileOf(input.turnInput, input.decision);
-  const log: PostcheckLog = { outcome: 'first', invariant_hits: [], judge: [], regens: 0, code_notes: [] };
+  const log = emptyPostcheckLog('first');
   const crisis = input.tripwire.kind === 'protective' && input.tripwire.route === 'crisis';
+  const remaining = deps.remainingMs ?? (() => Infinity);
+  const failedJudge = (reason: string): JudgeOutcome => ({ status: 'failed', reason, ms: 0 });
+
+  const runJudge = async (reply: CoachReply): Promise<JudgeOutcome> => {
+    if (!deps.judge) return failedJudge('no_judge');
+    const left = remaining();
+    if (left < MIN_JUDGE_CALL_MS) {
+      log.budget_exhausted = true;
+      return failedJudge('budget_exhausted');
+    }
+    const req: JudgeRequest = {
+      reply: reply.reply, suggested_foods: reply.suggested_foods, suggested_exercises: reply.suggested_exercises, profile,
+      ...(Number.isFinite(left) ? { timeoutMs: left } : {}),
+    };
+    const call = deps.judge(req).catch((e) => failedJudge(((e as Error)?.message ?? 'error').slice(0, 120)));
+    return await withinBudget(call, left, () => failedJudge('timeout'));
+  };
 
   const check = async (reply: CoachReply): Promise<Check> => {
     const violations = suggestionViolations(reply, profile);
@@ -400,10 +539,9 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
       && ((deps.judgeScope ?? 'always') === 'always' || hasSuggestions);
     let judge: JudgeOutcome | null = null;
     if (judgeIt) {
-      judge = deps.judge
-        ? await deps.judge({ reply: reply.reply, suggested_foods: reply.suggested_foods, suggested_exercises: reply.suggested_exercises, profile })
-        : { status: 'failed', reason: 'no_judge', ms: 0 };
+      judge = await runJudge(reply);
       log.judge.push(judge.status === 'failed' ? 'failed' : judge.violation ? 'violation' : 'clean');
+      if (judge.status === 'failed') log.judge_fail_reasons.push(judge.reason);
     } else {
       log.judge.push('skipped');
     }
@@ -415,13 +553,15 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
     const codeNotes = mandatoryLines(input, reply, { codeAuthored });
     log.outcome = outcome;
     log.code_notes = codeNotes.map((n) => n.kind);
+    if (!codeAuthored) log.referral_flag_mismatch = referralFlagMismatch(input, reply);
     return { reply, text: withCodeNotes(reply.reply, codeNotes), codeNotes, log };
   };
-  const failedPath = (memory: unknown[]): PostcheckResult => input.tripwire.kind === 'protective'
-    ? finish({ ...emptyReply(input.tripwire.fallback.message, memory), referral_included: true }, 'crisis_canned', true)
-    : finish({ ...coachFailedReply(input), memory }, 'coach_failed', true);
+  // Code-authored: the protective path's ready-made safety reply, or the honest coach-failed line.
+  const failedPath = (): PostcheckResult => input.tripwire.kind === 'protective'
+    ? finish({ ...emptyReply(input.tripwire.fallback.message), referral_included: true }, 'crisis_canned', true)
+    : finish(coachFailedReply(input), 'coach_failed', true);
 
-  if (first.status !== 'ok' || !first.reply) return failedPath([]);
+  if (first.status !== 'ok' || !first.reply) return failedPath();
 
   const c1 = await check(first.reply);
   if (!c1.bad) return finish(first.reply, 'first', false);
@@ -433,15 +573,20 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
     ],
     judgeFailed: c1.judge?.status === 'failed',
   };
-  log.regens = 1;
-  const second = await deps.regen(note);
-  let memory = first.reply.memory;
-  if (second.status === 'ok' && second.reply) {
-    const c2 = await check(second.reply);
-    if (!c2.bad) return finish(second.reply, 'regen', false);
-    memory = second.reply.memory;
+  const left = remaining();
+  if (left < MIN_COACH_CALL_MS) {
+    // No time for the ONE regen: straight to the fallback (never a late reply on the protective path).
+    log.budget_exhausted = true;
+  } else {
+    log.regens = 1;
+    const call = deps.regen(note, Number.isFinite(left) ? left : undefined).catch(() => null);
+    const second = await withinBudget<CoachRun | null>(call, left, () => null);
+    if (second && second.status === 'ok' && second.reply) {
+      const c2 = await check(second.reply);
+      if (!c2.bad) return finish(second.reply, 'regen', false);
+    }
   }
   // A protective (crisis/ED) turn falls back to its ready-made safety reply, never to a food fallback.
-  if (input.tripwire.kind === 'protective') return failedPath(memory);
-  return finish(safeFallbackReply(input, profile, memory), 'safe_fallback', true);
+  if (input.tripwire.kind === 'protective') return failedPath();
+  return finish(safeFallbackReply(input, profile), 'safe_fallback', true);
 }

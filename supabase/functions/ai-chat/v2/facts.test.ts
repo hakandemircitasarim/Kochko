@@ -111,7 +111,7 @@ Deno.test('BU TURDA OLANLAR: stored, held with the ONE question, rejected with t
     '- KAYDEDİLDİ: Öğün kaydedildi — ızgara tavuk (1 porsiyon) ~400 kcal · toplam 400 kcal',
     '- KAYDEDİLEMEDİ (teknik hata, write_failed): Tartı kaydedilemedi',
     '- KAYDEDİLDİ AMA BELİRSİZ (Öğün): porsiyon tahmini belirsiz',
-    '- BEKLETİLDİ, yazılmadı (Kısıt kaldırma): kullanıcının onayı gerekiyor; sorulacak tek soru: "Bu kaydı gerçekten kaldırmamı istiyor musun? Güvenlik filtrelerin buna göre değişecek."',
+    '- BEKLETİLDİ, yazılmadı (Kısıt kaldırma): kullanıcının onayı gerekiyor; bu bir güvenlik onayı, sorusunu kod cevabın sonuna aynen ekler: "Bu kaydı gerçekten kaldırmamı istiyor musun? Güvenlik filtrelerin buna göre değişecek." Bu soruyu kendin tekrar sorma ve başka soru ekleme; istersen neden beklettiğini yarım cümleyle söyle',
     '- REDDEDİLDİ, yazılmadı (Su): 250 L su fiziksel olarak mümkün değil',
     '- ALERJEN ÇAKIŞMASI: kaydedilen öğün (m4) profildeki fıstık alerjisiyle (ciddi) çakışıyor; kayıt yapıldı ve cevapta anılması gerekiyor',
   ]);
@@ -202,4 +202,13 @@ Deno.test('the facts block reads as facts: Turkish with diacritics, no v1 shouti
   assertStringIncludes(text, 'EK OLGULAR\nKişi notu: kısa cevapları seviyor');
   assert(text.indexOf('KULLANICI DURUMU') < text.indexOf('BU TURDA OLANLAR'));
   assert(text.indexOf('BU TURDA OLANLAR') < text.indexOf('GÜVENLİK DURUMU'));
+  // A normal turn: the safety hold's "code appends the question" line reads as facts too.
+  const normal = renderStageBFacts(buildStageBFacts(coachInput(ti, {
+    commit: commit({ holds: [{ op: 'constraint_retract', reason_code: 'iki_adimli_kaldirma', question_tr: 'Bu kaydı gerçekten kaldırmamı istiyor musun?', hold_id: null }] }),
+  })));
+  assertStringIncludes(normal, 'sorusunu kod cevabın sonuna aynen ekler');
+  assertEquals(shoutedWords(normal, LABELS), []);
+  assertEquals(pileWords(normal), []);
+  for (const w of SHOUT_WORDS) assert(!normal.includes(w), w);
+  assertEquals(asciiTurkishHits(LABELS.reduce((t, l) => t.split(l).join(' '), normal)), []);
 });

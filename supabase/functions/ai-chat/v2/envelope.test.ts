@@ -10,15 +10,19 @@
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import type { TurnEnvelope } from '../../shared/contracts/turn-envelope.ts';
-import { CANNED_SAFETY } from '../../shared/safety-tripwires.ts';
+import { CANNED_SAFETY, resolveTripwires, scanTripwires } from '../../shared/safety-tripwires.ts';
+import type { CodeNote } from '../../shared/v2-db-types.ts';
 import { MEAL_LOGGED_MARK, receiptLine, REGISTRY, validateDecision } from '../../shared/write-registry/mod.ts';
+import { coachTurn } from './coach.ts';
 import {
-  envelopeActions, mealConfidence, planHonestyLine, renderCannedEnvelope, renderEnvelope, renderMessage, stripMachineMarkers,
-  v2TaskMode, VALID_NAVIGATE_ROUTES,
+  envelopeActions, insertBeforeCodeNotes, mealConfidence, planHonestyLine, planHonestyNote, renderCannedEnvelope, renderEnvelope,
+  renderMessage, stripMachineMarkers, v2TaskMode, VALID_NAVIGATE_ROUTES,
 } from './envelope.ts';
 import { validationContext } from './input.ts';
 import type { V2Receipt } from './contracts.ts';
-import { commit, decision, mealWrite, normalTripwire, NOW, protectiveTripwire, seededTurnInput } from './stage-b-testing.ts';
+import {
+  coachInput, commit, decision, mealWrite, normalTripwire, NOW, protectiveTripwire, seededTurnInput, USER,
+} from './stage-b-testing.ts';
 
 const root = new URL('../../../../', import.meta.url);
 const CLIENT = Deno.readTextFileSync(new URL('src/screens/ChatThreadScreen.tsx', root));
@@ -262,6 +266,25 @@ Deno.test('plan honesty: a failed draft save gets one appended line and no navig
   assertEquals(env.navigate_to, null);
   assertEquals(env.plan_persist_error, 'persist_failed');
   assertEquals(planHonestyLine({ ...failed, persistError: 'ed_gate_blocked' }), null);
+  assertEquals(planHonestyNote(failed), { kind: 'plan_honesty', text: planHonestyLine(failed)! });
+  assertEquals(planHonestyNote({ ...failed, persistError: null }), null);
+});
+
+Deno.test('plan honesty goes BEFORE the code notes: 112 / exposure / hold question stay last (§3.2 T7, §7.1)', () => {
+  const failed = { snapshot: null, draftId: null, type: 'diet' as const, persistError: 'persist_failed' };
+  const honesty = planHonestyLine(failed)!;
+  const notes: CodeNote[] = [
+    { kind: 'allergen_exposure', text: '⚠️ Dikkat: profilinde ciddi fıstık alerjisi kayıtlı.' },
+    { kind: 'safety_hold', text: 'Bu kaydı gerçekten kaldırmamı istiyor musun?' },
+  ];
+  const text = ['Planını hazırladım.', ...notes.map((n) => n.text)].join('\n\n');
+  const env = renderEnvelope({ text, codeNotes: notes, plan: failed });
+  assertEquals(env.message, ['Planını hazırladım.', honesty, ...notes.map((n) => n.text)].join('\n\n'));
+  assert(env.message.endsWith(notes[1].text), 'the safety-hold question is still the last line');
+  // Nothing of the coach's text or the notes is lost or reworded.
+  assertEquals(insertBeforeCodeNotes(text, notes, honesty).split(honesty).join('').split('\n\n').filter((s) => s !== ''), text.split('\n\n'));
+  // No notes: the line is simply appended (the old behaviour).
+  assertEquals(insertBeforeCodeNotes('Planını hazırladım.', [], honesty), `Planını hazırladım.\n\n${honesty}`);
 });
 
 Deno.test('task_mode: canonical strings from facts code holds', () => {
@@ -277,7 +300,27 @@ Deno.test('task_mode: canonical strings from facts code holds', () => {
 });
 
 Deno.test('canned envelope: v1\'s {message, actions: [], task_mode} plus only what v2 really has', () => {
-  assertEquals(renderCannedEnvelope(CANNED_SAFETY.emergency), { message: CANNED_SAFETY.emergency.message, actions: [], task_mode: 'emergency' });
-  const env = renderCannedEnvelope(CANNED_SAFETY.self_harm, { remaining: 3, assistantMessageId: 'msg-7' });
+  assertEquals(renderCannedEnvelope(CANNED_SAFETY.emergency, CANNED_SAFETY.emergency.message), { message: CANNED_SAFETY.emergency.message, actions: [], task_mode: 'emergency' });
+  const env = renderCannedEnvelope(CANNED_SAFETY.self_harm, CANNED_SAFETY.self_harm.message, { remaining: 3, assistantMessageId: 'msg-7' });
   assertEquals(env, { message: CANNED_SAFETY.self_harm.message, actions: [], task_mode: 'safety', assistant_message_id: 'msg-7', remaining: 3 });
+});
+
+Deno.test('canned envelope: the code notes coachTurn appended to the ready-made reply reach the screen', async () => {
+  const ti = await seededTurnInput();
+  const canned = resolveTripwires({ scan: scanTripwires('kendimi öldürmek istiyorum'), stageA: null });
+  assert(canned.kind === 'canned');
+  const input = coachInput(ti, {
+    tripwire: canned,
+    commit: commit({
+      receipts: [MEAL_RECEIPT],
+      exposures: [{ allergens: ['fıstık'], source: 'meal', ref: 'm4' }],
+    }),
+  });
+  const out = await coachTurn(input, { userId: USER, judge: null });
+  assertEquals(out.codeNotes.map((n) => n.kind), ['allergen_exposure'], 'the exposure of the salvaged meal is acknowledged');
+  const env = renderCannedEnvelope(canned.response, out.text, { commit: input.commit });
+  assertEquals(env.message, out.text);
+  assert(env.message.startsWith(CANNED_SAFETY.self_harm.message), 'the ready-made reply first, untouched');
+  assertStringIncludes(env.message, '\n\n⚠️ Dikkat: profilinde ciddi fıstık alerjisi', 'the note survives');
+  assertEquals(env.task_mode, 'safety');
 });

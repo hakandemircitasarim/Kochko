@@ -30,6 +30,7 @@ import type {
 } from '../../shared/contracts/turn-envelope.ts';
 import type { CannedSafetyResponse } from '../../shared/safety-tripwires.ts';
 import { failureLine } from '../../shared/turn-failures.ts';
+import type { CodeNote } from '../../shared/v2-db-types.ts';
 import type { CommitResult, TripwireResolution, UnderstandDecision, V2Receipt } from './contracts.ts';
 
 /** v1 index.ts VALID_NAVIGATE_ROUTES (envelope.test.ts pins the two lists together). */
@@ -184,6 +185,11 @@ export function envelopeActions(commit: CommitResult | null | undefined, decisio
 export interface RenderEnvelopeInput {
   /** Final visible text: Stage B's reply + postcheck's code notes (already appended LAST). */
   text: string;
+  /**
+   * The code notes `text` ends with (coachTurn's codeNotes). Given, a plan-honesty line goes BEFORE
+   * them, so the mandatory safety lines (112 / exposure / hold question) stay last (§3.2 T7, §7.1).
+   */
+  codeNotes?: readonly CodeNote[];
   /** Stage B's `why` → <reasoning> (the "Neden?" toggle). */
   why?: string | null;
   commit?: CommitResult | null;
@@ -219,13 +225,34 @@ export function renderMessage(p: { text: string; why?: string | null; simulation
 /**
  * v1 parity: a plan meant to be saved whose persistence FAILED gets one honest line (the prose may
  * claim success) and no "planına git" button. An ED-gate refusal is not a failed save — its reply
- * already says why. The line is appended, never replacing anything (§5.3 "plan dürüstlük satırı");
- * the handler records it as the 'plan_honesty' code note.
+ * already says why. The line is added, never replacing anything (§5.3 "plan dürüstlük satırı"),
+ * between the coach's text and the mandatory code notes; the handler records it as the
+ * 'plan_honesty' code note (planHonestyNote).
  */
 export function planHonestyLine(plan: EnvelopePlan | null | undefined): string | null {
   return plan && plan.persistError && !plan.snapshot && plan.persistError !== 'ed_gate_blocked'
     ? `(Not: ${failureLine('persist_failed')})`
     : null;
+}
+
+/** planHonestyLine as the CodeNote the handler stores (chat_messages.code_notes kind 'plan_honesty'). */
+export function planHonestyNote(plan: EnvelopePlan | null | undefined): CodeNote | null {
+  const line = planHonestyLine(plan);
+  return line ? { kind: 'plan_honesty', text: line } : null;
+}
+
+/**
+ * `line` inserted between the coach's text and the trailing code notes (joined as withCodeNotes
+ * joins them). Without notes — or when the text does not end with them — the line is simply last.
+ */
+export function insertBeforeCodeNotes(text: string, notes: readonly CodeNote[] | undefined, line: string): string {
+  const body = stripMachineMarkers(text);
+  const tail = (notes ?? []).map((n) => n.text.trim()).filter((s) => s !== '').join('\n\n');
+  if (tail !== '' && body.endsWith(tail)) {
+    const head = body.slice(0, body.length - tail.length).trimEnd();
+    return [head, line, tail].filter((s) => s !== '').join('\n\n');
+  }
+  return body === '' ? line : `${body}\n\n${line}`;
 }
 
 /** The normal-turn envelope (TurnEnvelope, v1 key order). */
@@ -237,7 +264,7 @@ export function renderEnvelope(input: RenderEnvelopeInput): TurnEnvelope {
   const receipts = envelopeReceipts(input.commit);
   const honesty = planHonestyLine(plan);
   const nav = input.navigateTo && VALID_NAVIGATE_ROUTES.has(input.navigateTo) && honesty === null ? input.navigateTo : null;
-  const text = honesty ? `${stripMachineMarkers(input.text)}\n\n${honesty}` : input.text;
+  const text = honesty ? insertBeforeCodeNotes(input.text, input.codeNotes, honesty) : input.text;
   const env: TurnEnvelope = {
     message: renderMessage({ text, why: input.why, simulation: input.simulation ?? null, confirmReject }),
     actions: envelopeActions(input.commit, input.decision),
@@ -261,14 +288,18 @@ export function renderEnvelope(input: RenderEnvelopeInput): TurnEnvelope {
 /**
  * The explicit-tripwire / fail-closed reply (§7.1: no LLM). v1 returned {message, actions: [],
  * task_mode}; the v2 extras are the persisted row id and any receipt of facts salvaged before it.
+ * `text` is the FINAL text — coachTurn's `text` (the ready-made message + its code notes, e.g. an
+ * allergen-exposure line), or `response.message` on a path with no notes — never re-derived from
+ * `response`, so no appended line is dropped on the way to the screen.
  */
 export function renderCannedEnvelope(
   response: CannedSafetyResponse,
+  text: string,
   extra: { remaining?: number; assistantMessageId?: string | null; commit?: CommitResult | null } = {},
 ): TurnEnvelope {
   const receipts = envelopeReceipts(extra.commit);
   const env: TurnEnvelope = {
-    message: response.message,
+    message: stripMachineMarkers(text) || response.message,
     actions: envelopeActions(extra.commit),
     task_mode: response.task_mode,
   };

@@ -11,10 +11,13 @@ import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/st
 import { buildCapabilities, buildReplySchema, SCHEMA_NAMES } from '../../shared/write-registry/mod.ts';
 import { buildCoachPrefix, coachCacheKey } from './coach-constitution.ts';
 import {
-  buildCoachRequest, COACH_TIMEOUT_MS, coachContract, coachEffort, coachTurn, CONTRACT_TEXT, CRISIS_TIMEOUT_MS, normalizeCoachReply,
-  renderHistory, renderRegenNote, runCoach,
+  buildCoachRequest, COACH_TIMEOUT_MS, COACH_TURN, coachContract, coachEffort, coachTurn, coachTurnBudgetMs, CONTRACT_TEXT,
+  CRISIS_TIMEOUT_MS, normalizeCoachReply, renderHistory, renderRegenNote, runCoach,
 } from './coach.ts';
+import type { CoachReply } from './contracts.ts';
 import { navigateOf, renderEnvelope } from './envelope.ts';
+import type { ProseJudge } from './postcheck.ts';
+import type { respond } from '../../shared/openai.ts';
 import { CANNED_SAFETY, resolveTripwires, scanTripwires } from '../../shared/safety-tripwires.ts';
 import { refusalBody } from './testing.ts';
 import {
@@ -170,6 +173,75 @@ Deno.test('an explicit tripwire never reaches a model: the ready-made reply, wit
   assertEquals(out.runs, []);
   assertEquals(navigateOf({ navigate_to: ' /plan/diet ' }), '/plan/diet');
   assertEquals(navigateOf(null), null);
+});
+
+/** A respond() fake on a fake clock: each coach call "takes" `ms` and answers with the next reply. */
+function clockedCoach(clock: { t: number }, steps: Array<{ ms: number; reply: CoachReply }>) {
+  const timeouts: number[] = [];
+  let i = 0;
+  const fake = ((o: { timeoutMs?: number }) => {
+    timeouts.push(o.timeoutMs ?? -1);
+    const s = steps[Math.min(i++, steps.length - 1)];
+    clock.t += s.ms;
+    return Promise.resolve({ kind: 'parsed', value: s.reply, latencyMs: s.ms, usage: null, attempts: 1, retries: [] });
+  }) as unknown as typeof respond;
+  return { respond: fake, timeouts };
+}
+
+Deno.test('coachTurn budget is END TO END on the protective path: coach + judge + regen share 6 s, then the ready-made reply', async () => {
+  const ti = await seededTurnInput();
+  const ed = protectiveTripwire('ed');
+  assert(ed.kind === 'protective');
+  assertEquals(coachTurnBudgetMs(coachInput(ti, { tripwire: ed })), CRISIS_TIMEOUT_MS);
+  assertEquals(coachTurnBudgetMs(coachInput(ti)), COACH_TIMEOUT_MS);
+  const peanut = replyJson({ suggested_foods: [{ name: 'fıstık ezmeli tost', allergens: ['peanut'], may_contain: [] }], reply: 'Bir dilim fıstık ezmeli tost ye.' });
+  const safe = replyJson({ reply: 'Yanındayım; bunu bir diyetisyenle konuşman iyi gelebilir.' });
+
+  // Coach 4,5 s + judge 1 s → 0,5 s left: no regen can finish → the canned ED reply, ~6 s, not ~22 s.
+  const clock = { t: 0 };
+  const coach = clockedCoach(clock, [{ ms: 4_500, reply: peanut }, { ms: 4_500, reply: safe }]);
+  let judged = 0;
+  const judge: ProseJudge = (req) => { judged++; assertEquals(req.timeoutMs, 1_500); clock.t += 1_000; return Promise.resolve({ status: 'ok', violation: false, items: [], ms: 1_000 }); };
+  const out = await coachTurn(coachInput(ti, { tripwire: ed }), { userId: USER, respond: coach.respond, judge, now: () => clock.t });
+  assertEquals(coach.timeouts, [CRISIS_TIMEOUT_MS], 'one coach call, given the whole 6 s');
+  assertEquals([out.log.outcome, out.log.regens, out.log.budget_exhausted, judged], ['crisis_canned', 0, true, 1]);
+  assertEquals(out.reply.reply, ed.fallback.message);
+  assert(clock.t <= CRISIS_TIMEOUT_MS, `spent ${clock.t} ms`);
+
+  // Coach 1 s + judge 0,5 s → the ONE regen gets exactly what is left (4,5 s), and its judge what is left after it.
+  const c2 = { t: 0 };
+  const coach2 = clockedCoach(c2, [{ ms: 1_000, reply: peanut }, { ms: 1_000, reply: safe }]);
+  const left: number[] = [];
+  const judge2: ProseJudge = (req) => { left.push(req.timeoutMs ?? -1); c2.t += 500; return Promise.resolve({ status: 'ok', violation: false, items: [], ms: 500 }); };
+  const out2 = await coachTurn(coachInput(ti, { tripwire: ed }), { userId: USER, respond: coach2.respond, judge: judge2, now: () => c2.t });
+  assertEquals(coach2.timeouts, [CRISIS_TIMEOUT_MS, 4_500]);
+  assertEquals(left, [5_000, 3_500]);
+  assertEquals([out2.log.outcome, out2.runs.map((r) => r.regen)], ['regen', [false, true]]);
+  assertStringIncludes(out2.text, 'diyetisyenle konuşman');
+  assertEquals(out2.codeNotes, [], 'the regen carries a real referral in its text');
+});
+
+Deno.test('coachTurn: a Stage B call that ignores its timeout is cut at the turn budget', async () => {
+  const ti = await seededTurnInput((t) => { t.user_constraints = []; });
+  const hang = (() => new Promise(() => { /* never settles, holds no timer */ })) as unknown as typeof respond;
+  const started = Date.now();
+  const crisis = await coachTurn(coachInput(ti, { tripwire: protectiveTripwire('self_harm') }), { userId: USER, respond: hang, judge: null, budgetMs: 50 });
+  assertEquals([crisis.log.outcome, crisis.runs.map((r) => r.status)], ['crisis_canned', ['timeout']]);
+  assertStringIncludes(crisis.text, '112');
+  const normal = await coachTurn(coachInput(ti), { userId: USER, respond: hang, judge: null, budgetMs: 50 });
+  assertEquals(normal.log.outcome, 'coach_failed');
+  assert(Date.now() - started < 2_000, 'both cut at ~50 ms');
+});
+
+Deno.test('fail-closed ED replace: the ready-made referral reply, no duplicate referral line, no model', async () => {
+  const ti = await seededTurnInput();
+  const log = protectiveTripwire('ed').log;
+  for (const response of [CANNED_SAFETY.ed_high, CANNED_SAFETY.ed_medium]) {
+    const t = stageBTransport({ coach: [replyJson()] });
+    const out = await coachTurn(coachInput(ti, { tripwire: { kind: 'fallback', category: 'ed', response, mode: 'replace', ed_signal: 'high', log } }), { userId: USER, transport: t.transport });
+    assertEquals([t.calls.length, out.text, out.codeNotes], [0, response.message, []], response.kind);
+  }
+  assertEquals(COACH_TURN, coachTurn, 'coachTurn is the contracts.ts CoachTurnFn the handler calls');
 });
 
 Deno.test('T6 → T7 → T8: the coach reply, the code lines LAST and the envelope the app parses', async () => {

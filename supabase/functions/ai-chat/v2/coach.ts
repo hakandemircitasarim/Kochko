@@ -17,15 +17,19 @@
  * A protective tripwire resolution adds the crisis (or ED-support) contract and a 6 s budget: when
  * Stage B fails or is late, postcheck.ts sends the ready-made safety reply (§7.2).
  *
- * coachTurn() = runCoach() + postcheck (one regen, judge, mandatory lines). Never throws.
+ * coachTurn() = runCoach() + postcheck (one regen, judge, mandatory lines). Never throws. Its budget
+ * is END TO END: coach + judge + regen + judge share one deadline (CRISIS_TIMEOUT_MS on the protective
+ * path, COACH_TIMEOUT_MS otherwise); every call gets only what is left, and a step that cannot start
+ * in time goes to the fallback. It is the contracts.ts CoachTurnFn the handler calls.
  */
-import type { CoachInput, CoachReply } from './contracts.ts';
+import type { CoachInput, CoachReply, CoachTurnFn } from './contracts.ts';
 import { buildCoachPrefix, coachCacheKey } from './coach-constitution.ts';
 import { stripMachineMarkers } from './envelope.ts';
 import { buildStageBFacts, FACT_BLOCK_TITLES, renderStageBFacts, type StageBFacts } from './facts.ts';
 import { edTierOf } from './input.ts';
 import {
-  lunaJudge, mandatoryLines, postcheckReply, type PostcheckResult, type ProseJudge, type RegenNote, withCodeNotes,
+  emptyPostcheckLog, lunaJudge, mandatoryLines, postcheckReply, type PostcheckResult, type ProseJudge, type RegenNote, withCodeNotes,
+  withinBudget,
 } from './postcheck.ts';
 import {
   type ChatMessage, MODELS, type ReasoningEffort, respond, type RespondUsage, type StructuredSchema, type Transport,
@@ -34,10 +38,19 @@ import { buildCapabilities, buildReplySchema, SCHEMA_NAMES } from '../../shared/
 
 /** Visible-output budget (a reply ≤ 4000 chars + suggestion lists); respond() adds the reasoning reserve. */
 export const COACH_MAX_OUTPUT_TOKENS = 1_800;
-/** A normal Stage B call's overall budget. */
+/** A normal turn's Stage B budget — one call, and coachTurn's whole T6+T7 (coach + judge + regen). */
 export const COACH_TIMEOUT_MS = 25_000;
-/** §7.2: on the protective path the ready-made reply goes out if Stage B is slower than this. */
+/**
+ * §7.2: on the protective path the ready-made reply goes out if Stage B is slower than this — the
+ * whole T6+T7 run (coach, judge, regen), not each call.
+ */
 export const CRISIS_TIMEOUT_MS = 6_000;
+
+/** coachTurn's end-to-end budget for this turn (a handler's outer guard must not be shorter). */
+export function coachTurnBudgetMs(input: CoachInput): number {
+  return input.tripwire.kind === 'protective' ? CRISIS_TIMEOUT_MS : COACH_TIMEOUT_MS;
+}
+
 /** How much of the conversation Stage B sees (oldest dropped first) and how long one line may be. */
 export const COACH_HISTORY_MESSAGES = 8;
 const HISTORY_CHARS = { user: 600, assistant: 1200 } as const;
@@ -286,6 +299,10 @@ export interface CoachTurnOptions extends CoachOptions {
   /** The §7.2 prose judge; default lunaJudge() over the same transport. null = none (fail-closed). */
   judge?: ProseJudge | null;
   judgeScope?: 'always' | 'suggestions';
+  /** Override the end-to-end T6+T7 budget (default coachTurnBudgetMs). */
+  budgetMs?: number;
+  /** Clock (tests); default Date.now. */
+  now?: () => number;
 }
 
 export interface CoachTurnResult extends PostcheckResult {
@@ -293,8 +310,22 @@ export interface CoachTurnResult extends PostcheckResult {
   runs: CoachRun[];
 }
 
+/** runCoach bounded by `ms`, even if the transport ignores its timeout: late = status 'timeout'. */
+async function runCoachWithin(input: CoachInput, opts: CoachOptions, regen: RegenNote | null, ms: number): Promise<CoachRun> {
+  const bounded = Math.max(1, Math.floor(ms));
+  const timedOut = (): CoachRun => {
+    const req = buildCoachRequest(input, opts, regen);
+    return {
+      status: 'timeout', reply: null, model: req.model, effort: req.effort, contract: req.contract, latencyMs: bounded,
+      usage: null, attempts: 0, retries: [], detail: `turn budget: no answer within ${bounded}ms`, regen: regen !== null,
+    };
+  };
+  return await withinBudget(runCoach(input, { ...opts, timeoutMs: Math.min(opts.timeoutMs ?? bounded, bounded) }, regen), bounded, timedOut);
+}
+
 /**
- * T6 + T7: Stage B, then the structural checks, the ONE regen and the mandatory lines.
+ * T6 + T7: Stage B, then the structural checks, the ONE regen and the mandatory lines, all inside
+ * ONE budget (coachTurnBudgetMs: 6 s protective, 25 s otherwise).
  * An explicit tripwire (canned) or a fail-closed replace never reaches a model (§7.1: no LLM, no
  * latency): the ready-made reply is returned as is, with the turn's other notices.
  */
@@ -308,11 +339,14 @@ export async function coachTurn(input: CoachInput, opts: CoachTurnOptions): Prom
     const codeNotes = mandatoryLines(input, reply, { codeAuthored: true });
     return {
       reply, text: withCodeNotes(reply.reply, codeNotes), codeNotes, runs: [],
-      log: { outcome: 'crisis_canned', invariant_hits: [], judge: [], regens: 0, code_notes: codeNotes.map((n) => n.kind) },
+      log: { ...emptyPostcheckLog('crisis_canned'), code_notes: codeNotes.map((n) => n.kind) },
     };
   }
+  const now = opts.now ?? Date.now;
+  const deadline = now() + (opts.budgetMs ?? coachTurnBudgetMs(input));
+  const remainingMs = () => Math.max(0, deadline - now());
   const runs: CoachRun[] = [];
-  const first = await runCoach(input, opts);
+  const first = await runCoachWithin(input, opts, null, remainingMs());
   runs.push(first);
   const judge = opts.judge === undefined
     ? lunaJudge({ respond: opts.respond, transport: opts.transport, apiKey: opts.apiKey, baseUrl: opts.baseUrl })
@@ -320,14 +354,19 @@ export async function coachTurn(input: CoachInput, opts: CoachTurnOptions): Prom
   const result = await postcheckReply(input, first, {
     judge,
     judgeScope: opts.judgeScope,
-    regen: async (note) => {
-      const r = await runCoach(input, opts, note);
+    remainingMs,
+    regen: async (note, timeoutMs) => {
+      const r = await runCoachWithin(input, opts, note, timeoutMs ?? remainingMs());
       runs.push(r);
       return r;
     },
   });
-  return { ...result, runs };
+  // A copy: a regen postcheck stopped waiting for cannot change the returned record afterwards.
+  return { ...result, runs: [...runs] };
 }
+
+/** coachTurn IS the contracts.ts coach entry point (compile-time pin of the T6/T7 seam). */
+export const COACH_TURN: CoachTurnFn = coachTurn;
 
 /** The facts block alone (eval/shadow triage: what Stage B was told). */
 export function coachFactsText(input: CoachInput): string {
