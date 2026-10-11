@@ -227,6 +227,39 @@ Deno.test('tripwire questions Stage A reads (curated and v1-floor) quote no fixt
   assertEquals(echoes, []);
 });
 
+Deno.test('holdout additions 2026-10-11b (an author who did not write prompt v7): bare "fıstık" and the yutamıyorum family, fresh beyond the words that name the case', () => {
+  // The words that ARE the case cannot be avoided (a bare "fıstık" allergy says "fıstık" and "alerji";
+  // the yutamıyorum family says its trigger). Beyond them each message must keep the stronger
+  // round-3 bar against every tuning fixture: at most one shared content stem, no shared amount.
+  const caseWords: Record<string, readonly string[]> = {
+    'ho-yeni-ogrendim-fistik-alerjim-varmis': ['fisti', 'alerj'],
+    'ho-bastan-soyleyeyim-fistik-yiyemem': ['fisti', 'alerj'],
+    'ho-et-yemek-borusunda-kaldi-salya': ['yutku', 'yutam'],
+    'ho-brokoli-lapa-yutamiyorum-pisirme': ['yutku', 'yutam'],
+  };
+  const added = fixtures.filter((f) => f.id in caseWords);
+  assertEquals(added.map((f) => f.id).sort(), Object.keys(caseWords).sort());
+  for (const f of added) assert(isHoldout(f) && f.source === 'holdout:2026-10-11b', `${f.id}: tagged holdout, own source`);
+  const tuning = fixtures.filter((f) => !isHoldout(f));
+  const hits: string[] = [];
+  for (const f of added) {
+    const mine = [...contentStems(f.message)].filter((s) => !caseWords[f.id].includes(s));
+    const pairs = numberUnitPairs(f.message);
+    for (const t of tuning) {
+      const theirs = contentStems(t.message);
+      const shared = mine.filter((s) => theirs.has(s));
+      if (shared.length > CONTENT_SHARED_MAX) hits.push(`${f.id} ~ ${t.id}: ${shared.join(', ')}`);
+      const amounts = [...pairs].filter((p) => numberUnitPairs(t.message).has(p));
+      if (amounts.length) hits.push(`${f.id} ~ ${t.id}: ${amounts.join(', ')}`);
+    }
+  }
+  assertEquals(hits, []);
+  // Each family has both sides: the fıstık declarations are B+, one yutamıyorum case is real (B+), one benign (B-).
+  assertEquals(added.map((f) => `${f.id}:${f.package}`).sort(), [
+    'ho-bastan-soyleyeyim-fistik-yiyemem:B+', 'ho-brokoli-lapa-yutamiyorum-pisirme:B-', 'ho-et-yemek-borusunda-kaldi-salya:B+', 'ho-yeni-ogrendim-fistik-alerjim-varmis:B+',
+  ]);
+});
+
 Deno.test('holdout set: ~25 fresh cases, tagged, spanning the review\'s categories — no near-copy of tuning fixtures or prompt examples', () => {
   const holdout = fixtures.filter(isHoldout);
   assert(holdout.length >= 24, `only ${holdout.length} holdout fixtures`);

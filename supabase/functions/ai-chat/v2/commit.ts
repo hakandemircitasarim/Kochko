@@ -872,10 +872,16 @@ export function exposuresOf(
 }
 
 /**
- * The ONE turn quota class (112), from what the commit REALLY did — never a pre-LLM guess: a write
- * that landed, or a hold opened (a stored decision awaiting the user's yes, not idle chat), is a
- * record turn; everything else is conversation. (The handler adds 'exempt' for protective turns.)
+ * The ONE turn quota class (migration 112), from what the commit REALLY did — never a pre-LLM guess.
+ * The spec decides the hold-only case: 'record' = "tur en az bir kayıt yazdı" (112_chat_receipts.sql)
+ * and the class follows "T5'te gerçekten yazılana göre" (AI_MIMARI_V2 §3.2 T0). A hold writes no
+ * record — it stores a pending decision (pending_writes) that becomes a record only on the user's
+ * yes, and THAT confirming turn is the record turn. So:
+ *   a write that landed (ok receipt)       → 'record'
+ *   holds only, failed writes, no writes   → 'conversation'
+ * (The handler adds 'exempt' for protective turns, and never lets the conversation cap strand a hold
+ * it just opened: handler.ts answers that turn and asks the question.)
  */
 export function quotaClassOf(commit: CommitResult | null): 'record' | 'conversation' {
-  return commit && (commit.receipts.some((r) => r.ok) || commit.holds.length > 0) ? 'record' : 'conversation';
+  return commit && commit.receipts.some((r) => r.ok) ? 'record' : 'conversation';
 }

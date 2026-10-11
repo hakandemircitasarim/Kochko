@@ -308,8 +308,12 @@ Deno.test('mandatory 112/referral: only when the resolution demands it and the r
   const ti = await seededTurnInput();
   const sh = protectiveTripwire('self_harm');
   const without = mandatoryLines(coachInput(ti, { tripwire: sh }), replyJson({ reply: 'Bunu paylaştığın için teşekkür ederim, buradayım.', referral_included: true }));
-  assertEquals(without, [{ kind: 'referral', text: REQUIRED_SAFETY_LINE.self_harm }], '112 is a literal requirement; the flag alone is not enough');
-  assertEquals(mandatoryLines(coachInput(ti, { tripwire: sh }), replyJson({ reply: "Güvende değilsen hemen 112'yi ara." })), []);
+  assertEquals(without, [{ kind: 'referral', text: REQUIRED_SAFETY_LINE.self_harm }], 'the code-owned line is the requirement; the flag alone is not enough');
+  // The coach's own mention of 112 is not the guarantee (a mention can wave it away: "112'yi aramana
+  // gerek yok"): the code-owned line is appended; with that line already in the text, nothing is.
+  assertEquals(mandatoryLines(coachInput(ti, { tripwire: sh }), replyJson({ reply: "Güvende değilsen hemen 112'yi ara." })), [{ kind: 'referral', text: REQUIRED_SAFETY_LINE.self_harm }]);
+  assertEquals(mandatoryLines(coachInput(ti, { tripwire: sh }), replyJson({ reply: "112'yi aramana gerek yok, buradayım." })), [{ kind: 'referral', text: REQUIRED_SAFETY_LINE.self_harm }]);
+  assertEquals(mandatoryLines(coachInput(ti, { tripwire: sh }), replyJson({ reply: `Buradayım.\n\n${REQUIRED_SAFETY_LINE.self_harm}` })), []);
   const em = protectiveTripwire('emergency');
   assertEquals(mandatoryLines(coachInput(ti, { tripwire: em }), replyJson({ reply: 'Hemen dinlen.' }))[0].kind, 'emergency');
   const ed = protectiveTripwire('ed');

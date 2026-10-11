@@ -11,8 +11,9 @@
  *      (on the protective path: today's ready-made safety reply). The default port (postcheck.ts)
  *      already enforces this with its ONE regen; this re-check only fires when a port did not.
  *   2. The code-owned lines, appended LAST and only when missing, never removing a character:
- *        112 / specialist referral when the tripwire resolution demands it (judged by the TEXT, never
- *        by the model's referral_included flag) · the KVKK erase outcome · the allergen-exposure
+ *        112 / specialist referral when the tripwire resolution demands it (safetyLines: judged by the
+ *        TEXT — the code-owned 112 line itself, never a mere "112" — and never by the model's
+ *        referral_included flag) · the KVKK erase outcome · the allergen-exposure
  *        acknowledgement · EVERY safety hold's template question (on a normal turn; on a safety turn
  *        the hold waits and expires unconfirmed — no allergy-removal question next to a crisis reply).
  *      A code-authored reply also gets the reject reasons first and, when no safety hold is asked,
@@ -267,6 +268,31 @@ export function withCodeNotes(reply: string, notes: readonly CodeNote[]): string
 }
 
 /**
+ * THE 112 / referral lines this tripwire resolution demands and `text` still lacks, in order, each
+ * judged against the text INCLUDING the lines added before it. The ONE source of these lines:
+ * mandatoryLines (T7) and the handler's crash path (honestCrashResponse, where no T7 ran) both call
+ * it, so a protective turn carries the same code-owned line whichever way it ends.
+ * Presence is judged by the TEXT (shared/safety-tripwires.ts hasRequiredSafetyLine: the code-owned
+ * 112 line itself, never a mere "112"; a referral that is not waved away), never by the coach's
+ * referral_included flag (§7.2 "kod garanti eder").
+ */
+export function safetyLines(t: TripwireResolution, text: string): CodeNote[] {
+  const out: CodeNote[] = [];
+  let acc = text ?? '';
+  const addIfMissing = (cat: SafetyCategory, line: string) => {
+    if (hasRequiredSafetyLine(acc, cat)) return;
+    out.push({ kind: cat === 'emergency' ? 'emergency' : 'referral', text: line });
+    acc = `${acc}\n\n${line}`;
+  };
+  if (t.kind === 'protective') {
+    for (const cat of requiredCategories(t)) addIfMissing(cat, cat === t.category ? t.required_line : REQUIRED_SAFETY_LINE[cat]);
+  } else if (t.kind === 'fallback' || t.kind === 'canned') {
+    addIfMissing(t.category, t.kind === 'fallback' && t.mode === 'append' ? t.response.message : REQUIRED_SAFETY_LINE[t.category]);
+  }
+  return out;
+}
+
+/**
  * The code lines this reply still needs, in order, each judged against the text INCLUDING `existing`
  * notes and the lines added before it:
  *   (code-authored reply, normal turn) the reject reasons — facts, not safety lines, so they go first
@@ -301,16 +327,8 @@ export function mandatoryLines(
     }
   }
 
-  // The 112 / referral line is guaranteed by the TEXT: 112 literally, a referral by hasRequiredSafetyLine.
-  // The coach's referral_included flag is never trusted for a safety line (§7.2 "kod garanti eder").
-  const need = (cat: SafetyCategory): boolean => !hasRequiredSafetyLine(text, cat);
-  if (t.kind === 'protective') {
-    for (const cat of requiredCategories(t)) {
-      if (need(cat)) add(cat === 'emergency' ? 'emergency' : 'referral', cat === t.category ? t.required_line : REQUIRED_SAFETY_LINE[cat]);
-    }
-  } else if (t.kind === 'fallback' || t.kind === 'canned') {
-    if (need(t.category)) add(t.category === 'emergency' ? 'emergency' : 'referral', t.kind === 'fallback' && t.mode === 'append' ? t.response.message : REQUIRED_SAFETY_LINE[t.category]);
-  }
+  // The 112 / referral line (safetyLines: the code-owned line, judged by the TEXT, never the flag).
+  for (const n of safetyLines(t, text)) add(n.kind, n.text);
 
   // The KVKK erase outcome is a fact the code owns (erase-hold.ts lines), never the model's claim.
   for (const r of input.commit.receipts) {

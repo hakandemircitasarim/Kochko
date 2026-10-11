@@ -1152,11 +1152,32 @@ Deno.test('required lines: present in the canned copy; ensure… appends only wh
   const reply = 'Bunu duyduğuma üzüldüm. Şu an güvende misin?';
   const out = ensureRequiredSafetyLine(reply, 'self_harm');
   assert(out.startsWith(reply) && out.endsWith(REQUIRED_SAFETY_LINE.self_harm), 'append-only, never rewrites');
-  const has = "Lütfen hemen 112'yi ara.";
-  assertEquals(ensureRequiredSafetyLine(has, 'emergency'), has);
+  const has = `Geçmiş olsun.\n\n${REQUIRED_SAFETY_LINE.emergency}`;
+  assertEquals(ensureRequiredSafetyLine(has, 'emergency'), has, 'the code-owned line already there: nothing appended');
+  assert(hasRequiredSafetyLine(`Geçmiş olsun. ${REQUIRED_SAFETY_LINE.emergency.toLocaleUpperCase('tr')}`, 'emergency'), 'case and spacing aside');
   assert(!hasRequiredSafetyLine('Saat 1120 civarı', 'emergency'), '112 must be the number itself');
   assert(hasRequiredSafetyLine('Bir diyetisyenle konuşmanı öneririm.', 'ed'));
   assertEquals(ensureRequiredSafetyLine('', 'ed'), REQUIRED_SAFETY_LINE.ed);
+});
+
+Deno.test('112 required line: only the CODE-OWNED line counts — a mention of the number (even a waved-away one) is not the guarantee (Faz 3 review)', () => {
+  for (const cat of ['emergency', 'self_harm'] as const) {
+    for (const s of [
+      "112'yi aramana gerek yok, biraz dinlen geçer.",
+      "Şu an 112'yi aramak zorunda değilsin.",
+      "Lütfen hemen 112'yi ara.",
+      'Acil numara 112, ama bence sorun yok.',
+    ]) {
+      assert(!hasRequiredSafetyLine(s, cat), `${cat}: ${s}`);
+      const out = ensureRequiredSafetyLine(s, cat);
+      assert(out.startsWith(s) && out.endsWith(REQUIRED_SAFETY_LINE[cat]), `appended, never rewritten: ${cat}: ${s}`);
+    }
+  }
+  // Today's canned reply is code-owned too (the explicit / fail-closed path), each for its own category.
+  assert(hasRequiredSafetyLine(CANNED_SAFETY.emergency.message, 'emergency'));
+  assert(hasRequiredSafetyLine(CANNED_SAFETY.self_harm.message, 'self_harm'));
+  assert(!hasRequiredSafetyLine(REQUIRED_SAFETY_LINE.emergency, 'self_harm'), 'the emergency line does not stand in for the self-harm line');
+  assert(!hasRequiredSafetyLine(CANNED_SAFETY.ed_high.message, 'emergency'), 'an ED reply that mentions 112 is not the emergency line');
 });
 
 Deno.test('ED required line: a referral, not a mere mention of a profession (wave-1 review)', () => {

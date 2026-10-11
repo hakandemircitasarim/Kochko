@@ -13,7 +13,8 @@ import { REQUIRED_SAFETY_LINE } from '../../shared/safety-tripwires.ts';
 import type { CodeNote } from '../../shared/v2-db-types.ts';
 import type { CoachReply, PostcheckOutput, V2Hold, V2Receipt } from './contracts.ts';
 import {
-  applyGuarantees, exposureLine, mandatoryLines, SAFE_FALLBACK_VARIANTS, safetyProfileOf, suggestionCheck, SUGGESTION_UNVERIFIED_LINE, withCodeNotes,
+  applyGuarantees, exposureLine, mandatoryLines, SAFE_FALLBACK_VARIANTS, safetyLines, safetyProfileOf, suggestionCheck, SUGGESTION_UNVERIFIED_LINE,
+  withCodeNotes,
 } from './guarantees.ts';
 import { emptyPostcheckLog, postcheckReply } from './postcheck.ts';
 import { coachInput, commit, edFallbackTripwire, protectiveTripwire, replyJson, seededTurnInput } from './stage-b-testing.ts';
@@ -62,6 +63,25 @@ Deno.test('the 112 / referral line is judged by the TEXT: a model flag never sta
   assert(fb.kind === 'fallback');
   const append = applyGuarantees(coachInput(ti, { tripwire: fb }), dropped(replyJson({ reply: 'Akşam hafif bir şey ye.' })));
   assertEquals(append.codeNotes, [{ kind: 'referral', text: fb.response.message }]);
+});
+
+Deno.test('the 112 line: a reply that merely contains "112" — even waving it away — does not count; the code-owned line is appended', async () => {
+  const ti = await seededTurnInput();
+  for (const cat of ['emergency', 'self_harm'] as const) {
+    const t = protectiveTripwire(cat);
+    for (const reply of ["112'yi aramana gerek yok, biraz uzan geçer.", "Gerekirse 112'yi ararsın ama bence önemli değil.", "Lütfen hemen 112'yi ara."]) {
+      const out = applyGuarantees(coachInput(ti, { tripwire: t }), dropped(replyJson({ reply })));
+      assertEquals(out.codeNotes, [{ kind: cat === 'emergency' ? 'emergency' : 'referral', text: REQUIRED_SAFETY_LINE[cat] }], `${cat}: ${reply}`);
+      assert(out.text.startsWith(reply) && out.text.endsWith(REQUIRED_SAFETY_LINE[cat]), 'append-only, the line LAST');
+    }
+    // The canonical line already in the text (e.g. a port that appended it): never doubled.
+    const has = applyGuarantees(coachInput(ti, { tripwire: t }), dropped(replyJson({ reply: `Yanındayım.\n\n${REQUIRED_SAFETY_LINE[cat]}` })));
+    assertEquals(has.codeNotes, []);
+  }
+  // safetyLines is the single source the crash path reuses: same lines for the same text.
+  const t = protectiveTripwire('emergency');
+  assertEquals(safetyLines(t, "112'yi aramana gerek yok."), [{ kind: 'emergency', text: REQUIRED_SAFETY_LINE.emergency }]);
+  assertEquals(safetyLines(coachInput(ti).tripwire, 'Merhaba.'), [], 'a normal turn needs no safety line');
 });
 
 Deno.test('append-only: the port\'s own notes are kept as they are, the code-owned step only adds what is missing', async () => {

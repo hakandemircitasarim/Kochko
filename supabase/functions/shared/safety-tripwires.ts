@@ -826,15 +826,31 @@ function hasEdReferral(reply: string): boolean {
 }
 
 /**
+ * The code-owned texts that carry the 112 guarantee of a category: the required line itself and
+ * today's canned reply (the explicit / fail-closed path). Folded once (case, diacritics, apostrophes
+ * and spacing aside), the way hasRequiredSafetyLine compares them.
+ */
+const CODE_OWNED_112_LINES: Readonly<Record<'emergency' | 'self_harm', readonly string[]>> = {
+  emergency: [REQUIRED_SAFETY_LINE.emergency, CANNED_SAFETY.emergency.message].map(foldTripwireText),
+  self_harm: [REQUIRED_SAFETY_LINE.self_harm, CANNED_SAFETY.self_harm.message].map(foldTripwireText),
+};
+
+/**
  * Reads the REPLY (never the user's message): does it already carry the required line?
- * HEURISTIC over the coach's prose, and the ONLY signal: Stage B's structured referral_included flag
- * is logged, never trusted — a flag can claim a referral the text does not carry (§7.2 "kod garanti
- * eder"). It errs toward "missing": a false "missing" costs one appended line, a false "present"
- * would drop the referral.
+ * Stage B's structured referral_included flag is logged, never trusted — a flag can claim a referral
+ * the text does not carry (§7.2 "kod garanti eder"). It errs toward "missing": a false "missing"
+ * costs one appended line, a false "present" would drop the protection.
+ *   emergency / self_harm  only the CODE-OWNED line counts (CODE_OWNED_112_LINES). A mention of the
+ *                          number is not the guarantee: "112'yi aramana gerek yok" contains "112" and
+ *                          waves it away (Faz 3 review). Whatever the coach wrote about 112 in its own
+ *                          words, the canonical line is appended unless it is already there.
+ *   ed                     a referral (HEURISTIC over the prose, hasEdReferral: a waved-away referral
+ *                          does not count either).
  */
 export function hasRequiredSafetyLine(reply: string, category: SafetyCategory): boolean {
   if (category === 'ed') return hasEdReferral(reply ?? '');
-  return /(?<!\d)112(?!\d)/.test(reply ?? '');
+  const text = foldTripwireText(reply ?? '');
+  return CODE_OWNED_112_LINES[category].some((line) => text.includes(line));
 }
 
 /** Append-only (§5.3: code never deletes from a reply): adds the required line if it is missing. */

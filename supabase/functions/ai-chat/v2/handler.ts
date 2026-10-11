@@ -36,6 +36,7 @@
  * (route.ts then refuses a v1 re-run and answers honestly instead).
  */
 import { liveAmbiguousHits, resolveTripwires, scanTripwires, type SafetyCategory, type TripwireScan } from '../../shared/safety-tripwires.ts';
+import { checkTaskModeHint, isPlanTaskHint } from '../../shared/task-mode-hints.ts';
 import { guardVerdictOf, type GuardFlag } from '../../shared/turn-failures.ts';
 import type { ActionReceipt, TurnEnvelope } from '../../shared/contracts/turn-envelope.ts';
 import type { RespondUsage } from '../../shared/openai.ts';
@@ -51,7 +52,7 @@ import type {
   CoachInput, CoachPort, CommitResult, EnvelopePort, PostcheckPort, TripwireResolution, UnderstandDecision, V2Receipt,
 } from './contracts.ts';
 import { navigateOf } from './envelope.ts';
-import { applyGuarantees, exposureLine, type GuaranteedReply } from './guarantees.ts';
+import { applyGuarantees, exposureLine, safetyLines, type GuaranteedReply } from './guarantees.ts';
 import { turnRefs, validationContext, type TurnInput } from './input.ts';
 import { runStageB, type StageBRun } from './ports.ts';
 import { stageASafetyOutcome } from './shadow.ts';
@@ -85,9 +86,6 @@ export const UNDO_LITERALS: Readonly<Record<string, { op: string; label: string 
   'Son antrenman kaydını geri al': { op: 'workout_log', label: 'antrenman' },
   'Son supplement kaydını geri al': { op: 'supplement_log', label: 'takviye' },
 };
-
-/** Client hints that belong to v1 until Faz 4 (plan pipeline): plan chips and the approval button. */
-const PLAN_HINTS: ReadonlySet<string> = new Set(['plan_diet', 'plan_workout']);
 
 // ─── ports ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -200,12 +198,18 @@ export interface TurnState {
   turnId: string | null;
   journalKey: string | null;
   commit: CommitResult | null;
+  /**
+   * The turn's §7.2 resolution as it stands: T2's (an unread live trigger already resolves to the
+   * fail-closed fallback), then the one after Stage A. honestCrashResponse reads it: a protective turn
+   * that crashes still carries its code-owned 112 / referral line.
+   */
+  tripwire: TripwireResolution | null;
   /** Set when the journal claim must NOT be released (side effects exist): the route commits instead. */
   journalOwned: boolean;
 }
 
 export function newTurnState(): TurnState {
-  return { sideEffects: false, cleanup: [], userId: null, turnId: null, journalKey: null, commit: null, journalOwned: false };
+  return { sideEffects: false, cleanup: [], userId: null, turnId: null, journalKey: null, commit: null, tripwire: null, journalOwned: false };
 }
 
 export type V2Outcome =
@@ -236,7 +240,8 @@ export function v1OnlyReason(body: ChatBody): string | null {
   if (typeof body.message !== 'string' || body.message.trim() === '') return 'no_text';
   if (body.user_approved === true) return 'plan_approval';
   if (typeof body.plan_type === 'string' && body.plan_type) return 'plan_type';
-  if (typeof body.task_mode_hint === 'string' && PLAN_HINTS.has(body.task_mode_hint)) return 'plan_hint';
+  // Plan chips belong to v1 until Faz 4 (plan pipeline); the list's one owner is shared/task-mode-hints.ts.
+  if (isPlanTaskHint(body.task_mode_hint)) return 'plan_hint';
   return null;
 }
 
@@ -287,16 +292,25 @@ export function betterOf(a: DecisionValidation, b: DecisionValidation): 'origina
   return rejectsB <= rejectsA ? 'repaired' : 'original';
 }
 
+/** ai_turn_log issue code: the client's task_mode_hint was on no list (shared/task-mode-hints.ts) and was dropped. */
+export const TASK_MODE_HINT_UNKNOWN = 'task_mode_hint_unknown';
+
 /**
  * CoachInput.userState: the EXTRA facts only the handler can see (the onboarding card the user wrote
  * from, an accepted nudge). Never the profile, targets, today, constraints, ED tier or clock — facts.ts
  * renders those from the TurnInput itself, once (contracts.ts).
+ * The raw task_mode_hint is client text: it reaches the trusted EK OLGULAR block ONLY as one of the
+ * client registry's onboarding hints (shared/task-mode-hints.ts, exact equality). A known non-fact
+ * hint (repair guess, daily_log) adds nothing; any other value is dropped and reported as an issue.
  */
-export function extraFactLines(p: { taskModeHint: string | null; nudge: string | null }): string[] {
-  const out: string[] = [];
-  if (p.taskModeHint && p.taskModeHint.startsWith('onboarding_')) out.push(`TANIŞMA KARTI: kullanıcı "${p.taskModeHint}" kartından yazıyor`);
-  if (p.nudge) out.push(`KABUL EDİLEN TEKLİF (bu turda): "${p.nudge.slice(0, 200)}"`);
-  return out;
+export function extraFacts(p: { taskModeHint: unknown; nudge: string | null }): { lines: string[]; issues: string[] } {
+  const lines: string[] = [];
+  const issues: string[] = [];
+  const hint = checkTaskModeHint(p.taskModeHint);
+  if (hint.kind === 'onboarding') lines.push(`TANIŞMA KARTI: kullanıcı "${hint.hint}" kartından yazıyor`);
+  else if (hint.kind === 'unknown') issues.push(TASK_MODE_HINT_UNKNOWN);
+  if (p.nudge) lines.push(`KABUL EDİLEN TEKLİF (bu turda): "${p.nudge.slice(0, 200)}"`);
+  return { lines, issues };
 }
 
 /**
@@ -412,6 +426,7 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   // ── T2 explicit tripwire: canned at once (before the journal, like v1's safety early returns) ──
   const scan = scanTripwires(message);
   const pre = resolveTripwires({ scan, stageA: null });
+  state.tripwire = pre;
   if (pre.kind === 'canned') return { kind: 'response', response: await cannedTurn(tc, scan, pre) };
 
   // ── request journal (exactly-once) ──
@@ -508,6 +523,7 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     ? { status: 'timeout' as const }
     : stageASafetyOutcome({ ...outcome, decision }, validation, scan, { ignoreBudget: true });
   const tripwire = resolveTripwires({ scan, stageA: safetyIn, classifier: null, benignOverride: false });
+  state.tripwire = tripwire;
   if (tripwire.kind === 'fallback') {
     return { kind: 'response', response: await failClosedTurn(tc, tripwire, reservedId, stageARows) };
   }
@@ -550,13 +566,17 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   let remaining: number | undefined = -1;
   if (quotaClass === 'conversation') {
     const cap = await deps.quota.conversationCap(userId, reservedId !== null);
-    if (!cap.allowed) {
+    // A turn that opened a hold (pending_writes: a KVKK erase, an allergy removal, a suspicious amount)
+    // counts as conversation (commit.ts quotaClassOf) but is never stopped here: the stored decision
+    // waits for the user's answer, and only this reply asks the question. Stopping it would strand the
+    // hold behind the rate-limit text and release the journal after a side effect.
+    if (!cap.allowed && commit.holds.length === 0) {
       if (reservedId) await deps.quota.release(reservedId);
       await releaseJournal(tc);
       await logRows(tc, stageARows);
       return { kind: 'response', response: deps.respond({ message: cap.message, actions: [], task_mode: 'rate_limited', rate_limited: true, remaining: 0 }) };
     }
-    remaining = cap.remaining;
+    remaining = cap.allowed ? cap.remaining : 0;
   }
 
   // ── T6 Stage B + T7 post-checks, through the ports, under ONE end-to-end budget ──
@@ -567,10 +587,12 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
       nudgeText = (await deps.nudge.read(userId, nudgeId))?.content ?? null;
     } catch (e) { deps.log('[v2_turn] nudge read failed', { error: errMsg(e) }); }
   }
+  const extra = extraFacts({ taskModeHint: body.task_mode_hint, nudge: nudgeText });
+  if (extra.issues.length) deps.log('[v2_turn] task_mode_hint dropped (not a known client hint)', { turn_id: turnId, issues: extra.issues });
   const coachInput: CoachInput = {
     turnInput: ti, message, decision, commit, tripwire,
     history: ti.history.map((h) => ({ role: h.role, content: h.content, ...(h.action_types.length ? { receipts: h.action_types } : {}) })),
-    userState: extraFactLines({ taskModeHint: typeof body.task_mode_hint === 'string' ? body.task_mode_hint : null, nudge: nudgeText }),
+    userState: extra.lines,
   };
   const stage = await runStageB(coachInput, { coach: deps.coach, postcheck: deps.postcheck }, { userId, log: deps.log });
 
@@ -596,7 +618,7 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     return { kind: 'response', response: deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404) };
   }
   envelope.assistant_message_id = assistantId;
-  await logRows(tc, [...stageARows, commitRow(tc, commit, validation), coachRow(tc, stage, final, tripwire, commit, taskMode)]);
+  await logRows(tc, [...stageARows, commitRow(tc, commit, validation), coachRow(tc, stage, final, tripwire, commit, taskMode, extra.issues)]);
   if (tc.idemKey) await deps.journal.commit(userId, tc.idemKey, envelope);
 
   // ── background: memory notes, nudge stamp, hooks ──
@@ -618,14 +640,21 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
  * The route's answer when v2 crashed AFTER a side effect: v1 must not run again (double write).
  * The receipts of what was really written are returned; the journal stores this envelope so a
  * client retry replays it instead of re-running the writes. No T7 ran on this path, so the code-owned
- * lines it can still state are appended here: the exposure acknowledgement (severity unknown on this
- * path → worded as severe, §7.1) and every open hold's question.
+ * lines it can still state are appended here, in mandatoryLines' order: the 112 / referral line of a
+ * protective turn (guarantees.ts safetyLines — the same single source T7 uses, from the resolution
+ * the handler recorded in TurnState), the exposure acknowledgement (severity unknown on this path →
+ * worded as severe, §7.1) and, on a normal turn only, every open hold's question (on a safety turn the
+ * hold waits and expires unconfirmed — no allergy-removal question next to a crisis line, as in T7).
  */
 export async function honestCrashResponse(state: TurnState, deps: Pick<V2Deps, 'respond' | 'journal' | 'log'>): Promise<Response> {
   const commit = state.commit;
-  const questions = (commit?.holds ?? []).map((h) => h.question_tr).filter((q) => !!q);
+  const t = state.tripwire;
+  const asksHolds = !t || t.kind === 'normal';
+  const lead = commit ? honestFallbackText(commit, { holdsAsked: asksHolds }) : STAGE_B_FAILED_NOTHING_LINE;
+  const safety = t ? safetyLines(t, lead).map((n) => n.text) : [];
   const exposures = (commit?.exposures ?? []).map((e) => exposureLine(e, true));
-  const message = commit ? [honestFallbackText(commit), ...exposures, ...questions].join('\n\n') : STAGE_B_FAILED_NOTHING_LINE;
+  const questions = asksHolds ? (commit?.holds ?? []).map((h) => h.question_tr).filter((q) => !!q) : [];
+  const message = [lead, ...safety, ...exposures, ...questions].join('\n\n');
   const envelope: TurnEnvelope = {
     message,
     actions: (commit?.receipts ?? []).filter((r) => r.ok).map((r) => ({ type: r.legacy_type, feedback: r.user_line })),
@@ -663,11 +692,11 @@ export function receiptFactLines(commit: CommitResult): { written: string[]; fai
 /**
  * The turn crashed after the commit (honestCrashResponse): the receipts are the truth, said plainly.
  * "Kaydedildi" only when something WAS written; a holds-only turn says nothing is saved yet and points
- * at its question.
+ * at its question — only when that question is asked below (`holdsAsked`: not on a safety turn).
  */
-export function honestFallbackText(commit: CommitResult): string {
+export function honestFallbackText(commit: CommitResult, opts: { holdsAsked?: boolean } = {}): string {
   const { written, failed } = receiptFactLines(commit);
-  const held = commit.holds.length > 0;
+  const held = opts.holdsAsked !== false && commit.holds.length > 0;
   const tail = written.length > 0
     ? (held ? STAGE_B_FAILED_WRITTEN_HELD_LINE : STAGE_B_FAILED_LINE)
     : (held ? STAGE_B_FAILED_HELD_LINE : STAGE_B_FAILED_NOTHING_LINE);
@@ -758,6 +787,7 @@ async function failClosedTurn(
   opts: { capMessage?: string } = {},
 ): Promise<Response> {
   const { deps } = tc;
+  tc.state.tripwire = t;
   // At the daily cap (opts.capMessage): the turn was never processed — the cap text replaces the
   // "could not process" line, and the safety reply is quota-exempt.
   const atCap = opts.capMessage !== undefined;
@@ -916,7 +946,9 @@ function commitRow(tc: TurnCtx, commit: CommitResult, v: DecisionValidation): Re
  * outcome, judge verdicts, regen count and invariant hits (§7.4 item 4), and every line the code-owned
  * step had to add (a port that kept its contract leaves none).
  */
-function coachRow(tc: TurnCtx, stage: StageBRun, final: GuaranteedReply, t: TripwireResolution, commit: CommitResult, taskMode: string): Record<string, unknown> {
+function coachRow(
+  tc: TurnCtx, stage: StageBRun, final: GuaranteedReply, t: TripwireResolution, commit: CommitResult, taskMode: string, turnIssues: readonly string[],
+): Record<string, unknown> {
   const runs = stage.runs;
   const sum = (k: keyof RespondUsage) => runs.reduce((a, r) => a + (r.usage?.[k] ?? 0), 0);
   const log = stage.out.log;
@@ -937,7 +969,7 @@ function coachRow(tc: TurnCtx, stage: StageBRun, final: GuaranteedReply, t: Trip
         regens: log.regens, invariant_hits: log.invariant_hits, budget_exhausted: log.budget_exhausted,
         referral_flag_mismatch: log.referral_flag_mismatch, code_notes: final.codeNotes.map((n) => n.kind),
       },
-      ...[...stage.issues, ...final.issues].map((code) => ({ code, path: null, outcome: null })),
+      ...[...stage.issues, ...final.issues, ...turnIssues].map((code) => ({ code, path: null, outcome: null })),
     ],
   };
 }

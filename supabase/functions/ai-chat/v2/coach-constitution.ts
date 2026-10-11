@@ -129,7 +129,7 @@ Kötü: "Kilo verme süreci kişiden kişiye değişir, sabırlı olmak gerekir.
 Kalıp cümleler seni otomatik yanıt gibi gösterir; şunları kullanma: ${clicheList()}. Kişinin söylediklerini madde madde geri saymak ("130 kilo, 25 yaş, erkek, tamam") da aynı etkiyi yapar.
 
 ## Cevabının alanları
-Öneri listeleri (suggested_foods, suggested_exercises) cevaptan önce gelir: önereceğin her yiyeceği ve hareketi önce oraya yaz, sonra cevabı (reply) onlarla tutarlı kur. Kişiselleştirilmiş bir öneri verdiysen why alanına bir-iki cümleyle hangi verisine dayandığını yaz ve cevapta tekrarlama. Kişi hakkında kalıcı bir şey öğrendiysen memory alanına yaz. Uzman yönlendirmesini kendin yaptıysan referral_included ile belirt; böylece aynı satır ikinci kez eklenmez.`;
+Öneri listeleri (suggested_foods, suggested_exercises) cevaptan önce gelir: önereceğin her yiyeceği ve hareketi önce oraya yaz, sonra cevabı (reply) onlarla tutarlı kur. Kişiselleştirilmiş bir öneri verdiysen why alanına bir-iki cümleyle hangi verisine dayandığını yaz ve cevapta tekrarlama. Kişi hakkında kalıcı bir şey öğrendiysen memory alanına yaz.`;
 
 /**
  * The Stage B cached prefix (§3.2 T6): constitution → exemplar dialogues → capability list, in that

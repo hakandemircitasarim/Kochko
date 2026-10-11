@@ -52,6 +52,14 @@ Deno.test('constitution: carries the load-bearing principles', () => {
   assert(c.includes('yetenek listesi'), 'promises bounded by the capability list');
 });
 
+Deno.test('constitution: the 112 / referral line is code-owned — no claim that the model\'s flag stops it (Faz 3 review)', () => {
+  // guarantees.ts judges the line by the TEXT and never reads referral_included (it is only logged):
+  // telling the coach the flag prevents a second copy would be a false statement about the code.
+  assert(!COACH_CONSTITUTION.includes('referral_included'), 'stale flag mention');
+  assert(!COACH_CONSTITUTION.includes('ikinci kez eklenmez'));
+  assert(COACH_CONSTITUTION.includes('Kodun eklediği zorunlu satırlar (112, uzman yönlendirmesi, alerjen maruziyeti)'), 'the code-owned lines are still announced');
+});
+
 Deno.test('constitution: names the clichés only once, in the avoid list, and uses no emoji', () => {
   assertEquals(emojiHits(COACH_CONSTITUTION), []);
   for (const e of BANNED_EMOJI) assert(!COACH_CONSTITUTION.includes(e));
