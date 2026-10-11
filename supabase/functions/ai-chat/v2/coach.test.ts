@@ -102,6 +102,10 @@ Deno.test('crisis contract + 6 s budget on the protective path; onboarding contr
   assertEquals([crisis.contract, crisis.timeoutMs, crisis.effort], ['crisis', CRISIS_TIMEOUT_MS, 'medium']);
   assertStringIncludes(String(crisis.messages.at(-1)!.content), CONTRACT_TEXT.crisis);
   assertEquals(coachContract(coachInput(ti, { tripwire: protectiveTripwire('emergency') })), 'emergency');
+  // Live trial 2026-10-11 ("14 litre su" → a flat 112 command): a number alone gets ONE conditional line
+  // and the number is asked; the plain duty stays first for real symptoms.
+  assert(CONTRACT_TEXT.emergency.indexOf("kişiyi hemen 112'yi aramaya") < CONTRACT_TEXT.emergency.indexOf('koşullu tek cümle'));
+  assertStringIncludes(CONTRACT_TEXT.emergency, 'sayıyı doğrulamak için tek soru sor');
   const fresh = await seededTurnInput((t) => { (t.profiles[0] as Record<string, unknown>).onboarding_completed = false; });
   assertEquals(coachContract(coachInput(fresh)), 'onboarding');
   assertEquals(coachContract(coachInput(ti)), null);
@@ -268,6 +272,6 @@ Deno.test('T6 → T7 → T8: the coach reply, the code lines LAST and the envelo
   assertEquals(env.task_mode, 'register');
   // Stage B saw the post-turn number and the exposure as facts.
   const user = String((t.coachCalls()[0].body.input as { content: string }[]).at(-1)!.content);
-  assertStringIncludes(user, 'Bugün (sunucu): 1.195 kcal (bu turdaki kayıtlar dahil)');
+  assertStringIncludes(user, 'Bugün (sunucu): 1.195 kcal (az önce yazılanlar dahil)');
   assertStringIncludes(user, 'ALERJEN ÇAKIŞMASI: kaydedilen öğün (m4)');
 });

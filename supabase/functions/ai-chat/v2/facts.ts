@@ -15,10 +15,18 @@
  * number is pre-turn and gives no "kalan" — the coach then speaks without a number instead of
  * inventing one.
  *
- * The missed-write question (§5.1.10) appears ONLY when Stage A's self_check reported new facts,
+ * The missed-write line (§5.1.10) appears ONLY when Stage A's self_check reported new facts,
  * nothing was written or clarified, and no CLOSED reason (NOT_WRITTEN_REASONS) was given; a declared
  * reason is rendered as the reason itself, so an emergency or illness turn never ends with a
  * data-entry question.
+ *
+ * 2026-10-11 (first live trial): a missed write used to end in "güncelleyeyim mi?" / "kaydedeyim
+ * mi?" — a yes/no offer with NO pending hold behind it, so the user's "evet" resolved nothing. A
+ * missed write now says plainly that nothing was saved and asks an OPEN question
+ * (unanchoredQuestionForbidden); the turn-level commit flags (op 'turn') are rendered as what they
+ * are instead of "KAYDEDİLDİ AMA BELİRSİZ (turn)"; a hold shows the numbers code knows (old → new);
+ * a confirmed hold's ask reason is no longer passed on as a doubt; the budget line speaks without
+ * pipeline words the coach used to echo ("bu turdaki kayıtlar", "koda göre").
  *
  * Pure: no I/O, no clock, no reading of the user's words (the message is only placed by coach.ts).
  */
@@ -26,7 +34,7 @@ import type { CoachInput, CommitResult, TripwireResolution, UnderstandDecision, 
 import { constraintLine, edTierOf, planTypeTr, profilePhrases, turnRefs, type TurnInput } from './input.ts';
 import { dayLabelTr, fmtTr, quoteLine } from './stage-a-request.ts';
 import {
-  ED_CATEGORIES, getOp, mlPerUnit, NOT_WRITTEN_REASONS, PLAN_OPS, type RenderedRefs, vocab,
+  ED_CATEGORIES, findWireOp, getOp, mlPerUnit, NOT_WRITTEN_REASONS, PLAN_OPS, type RenderedRefs, vocab,
 } from '../../shared/write-registry/mod.ts';
 import { resolveDay } from '../../shared/write-registry/util.ts';
 import { allergenSpine } from '../../shared/safety-invariants.ts';
@@ -197,9 +205,9 @@ export function budgetFacts(ti: TurnInput, delta: TurnIntakeDelta | null = null)
 export function renderBudgetLine(b: BudgetFacts): string {
   const parts: string[] = [];
   if (!b.certain) {
-    parts.push(`${fmtTr(b.consumedKcal)} kcal (bu turdan önceki toplam; bu turdaki değişiklik koda göre kesinleşmedi, kalan sayısı yok)`);
+    parts.push(`${fmtTr(b.consumedKcal)} kcal (az önceki değişiklikten önceki toplam; yeni toplam hesaplanamadı, toplam ya da kalan sayısı verme)`);
   } else {
-    parts.push(`${fmtTr(b.consumedKcal)} kcal${b.includesThisTurn ? ' (bu turdaki kayıtlar dahil)' : ''}`);
+    parts.push(`${fmtTr(b.consumedKcal)} kcal${b.includesThisTurn ? ' (az önce yazılanlar dahil)' : ''}`);
     if (b.band) {
       const pos = b.consumedKcal < b.band.min ? `alt sınıra ${fmtTr(b.band.min - b.consumedKcal)} kcal var`
         : b.consumedKcal > b.band.max ? `üst sınırı ${fmtTr(b.consumedKcal - b.band.max)} kcal aştı`
@@ -292,6 +300,100 @@ export function missedWrite(decision: UnderstandDecision): { missed: boolean; re
   return { missed: unwritten && !given, reason: unwritten && given ? reason as keyof typeof NOT_WRITTEN_REASONS : null };
 }
 
+/** commit.flags about the whole turn (commit.ts §5.1.10 notes, the handler's retry note): not a record. */
+export const TURN_FLAG_OP = 'turn';
+
+/**
+ * Stage B may not offer a write confirmation ("kaydedeyim mi?", "güncelleyeyim mi?") for what the user
+ * just told: nothing was written, no hold anchors such a question, and the user's "evet" would resolve
+ * nothing (live trial 2026-10-11). The contract with the handler side is read loosely, so either
+ * wiring works: an explicit `unanchoredQuestionForbidden` on the input or on `input.facts`, an issue
+ * list on the input (`issues`, ai_turn_log style: { code } or a bare code) naming 'missed_write', the
+ * commit's turn flag 'missed_write', or — always — the validator's own rule read off the decision.
+ */
+export function unanchoredQuestionForbidden(input: CoachInput): boolean {
+  const loose = input as unknown as Record<string, unknown>;
+  if (loose.unanchoredQuestionForbidden === true) return true;
+  if (isRec(loose.facts) && loose.facts.unanchoredQuestionForbidden === true) return true;
+  if (arr(loose.issues).some((i) => i === 'missed_write' || (isRec(i) && i.code === 'missed_write'))) return true;
+  return missedWriteFlagged(input.commit, input.decision);
+}
+
+/** The commit's own turn flag, else the decision (same rule as validateDecision). */
+function missedWriteFlagged(commit: CommitResult, decision: UnderstandDecision): boolean {
+  return commit.flags.some((f) => f.op === TURN_FLAG_OP && f.code === 'missed_write') || missedWrite(decision).missed;
+}
+
+/**
+ * A FLAG left by a hold the user CONFIRMED (validate.ts: a confirmed ask issue becomes a flag
+ * "kullanıcı onayladı — …"): the question was answered, so it is not a doubt any more. Recognised by
+ * the op's own ask-rule code, or by that registry-written prefix for the field-level asks.
+ */
+const CONFIRMED_ASK_PREFIX = 'kullanıcı onayladı — ';
+function isConfirmedAsk(f: { op: string; code: string; note_tr: string }): boolean {
+  return f.note_tr.startsWith(CONFIRMED_ASK_PREFIX) || (getOp(f.op)?.rule_docs.ask ?? []).some((r) => r.code === f.code);
+}
+
+/** Holds on a value the user typed themselves (not on the model's estimate, like a meal's kcal). */
+const USER_VALUE_HOLD_OPS: ReadonlySet<string> = new Set(['body_weight', 'water_log', 'sleep_log', 'step_log']);
+
+/** Today's stored weigh-in window (input.ts LAST_WEIGHT_DAYS): the one the jump check compared with. */
+const LAST_WEIGHT_WINDOW_DAYS = 14;
+
+function shiftDay(day: string, days: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The ONE write of `op` this decision proposed (a hold of that op is about it); null if not exactly one. */
+function onlyWriteOf(decision: UnderstandDecision, op: string): Record<string, unknown> | null {
+  const ws = arr(decision.writes).filter(isRec).filter((w) => w.op === op || findWireOp('writes', w.op)?.type === op);
+  return ws.length === 1 ? ws[0] : null;
+}
+
+/**
+ * The numbers a held write is about, as code knows them (old → new), so the coach's ONE question can
+ * show them ("son tartı 78,2 kg → yazdığı 81,6 kg") instead of a bare "doğru mu?". Arithmetic on
+ * structured data only: the decision's value and the stored value. An explicit `detail_tr` on the
+ * hold (commit side, optional) wins. null when code knows no number for that op.
+ */
+export function holdNumbers(h: V2Hold, decision: UnderstandDecision, ti: TurnInput): string | null {
+  const explicit = (h as V2Hold & { detail_tr?: unknown }).detail_tr;
+  if (typeof explicit === 'string' && explicit.trim() !== '') return explicit.trim();
+  const w = onlyWriteOf(decision, h.op);
+  if (!w) return null;
+  if (h.op === 'body_weight') {
+    const kg = num(w.kg);
+    if (kg === null) return null;
+    const from = shiftDay(ti.day, -LAST_WEIGHT_WINDOW_DAYS);
+    let last: { kg: number; day: string } | null = null;
+    for (const x of ti.weights_recent ?? []) {
+      const xkg = num(x.kg);
+      if (xkg === null || xkg <= 0 || x.day < from || x.day > ti.day) continue;
+      if (!last || x.day >= last.day) last = { kg: xkg, day: x.day };
+    }
+    const stored = last?.kg ?? num(ti.profile.weight_kg);
+    const before = stored !== null ? `${last ? 'son tartı' : 'kayıtlı kilo'} ${fmtTr(stored, 1)} kg → ` : '';
+    return `${before}yazdığı ${fmtTr(kg, 1)} kg`;
+  }
+  if (h.op === 'water_log') {
+    const ml = mlPerUnit(String(w.unit ?? ''), num(w.other_ml_each));
+    const qty = num(w.quantity);
+    if (ml === null || qty === null) return null;
+    const liters = Math.round((qty * ml) / 10) / 100;
+    const day = resolveDay(w.day, ti.day);
+    const stored = num(ti.days.find((d) => d.day === day)?.water_liters);
+    const said = `yazdığı ${fmtTr(liters, 2)} L (${w.mode === 'set_day_total' ? 'günün toplamı olarak' : 'ekleme olarak'})`;
+    return stored !== null ? `kayıtlı ${fmtTr(stored, 2)} L · ${said}` : said;
+  }
+  if (h.op === 'meal_log') {
+    const t = mealTotals(w);
+    return t.kcal > 0 ? `öğün ~${fmtTr(Math.round(t.kcal))} kcal` : null;
+  }
+  return null;
+}
+
 /**
  * Holds that §5.2 calls safety holds — allergen/injury removal, goal and band changes, KVKK erase,
  * identity changes. Code appends the template question unless the reply carries it (guarantees.ts).
@@ -331,13 +433,22 @@ function severeSet(ti: TurnInput): Set<string> {
   return new Set(spine.severe.map((s) => s.toLocaleLowerCase('tr')));
 }
 
+/** What a missed write tells the coach: nothing saved, no hold — say so, ask openly, offer no "yes". */
+export const MISSED_WRITE_LINE = '- Kayıt yok: kullanıcı kendisi hakkında yeni bir şey söyledi ama hiçbir şey kaydedilmedi ve bunun için bekleyen bir onay yok. Kaydetmediğini açıkça söyle ve ne olduğunu açık uçlu sor; "kaydedeyim mi?", "güncelleyeyim mi?" gibi bir onay teklif etme, arkasında bekleyen kayıt olmadığı için "evet" hiçbir şeyi değiştirmez';
+/** The same fact on a turn where something else did happen (a stale/loose flag never claims "Kayıt yok"). */
+export const MISSED_WRITE_ALSO_LINE = '- Kullanıcının söylediklerinden yukarıda görünmeyen bir şey kaydedilmedi; onun için onay teklif etme (bekleyen kayıt yok), gerekirse açık uçlu sor';
+
 /**
  * The receipts/holds/rejects/flags/exposures of this turn as fact lines. A failed receipt that a
  * reject already explains is not listed twice (the reject carries the reason). On a safety turn
  * (`safetyTurn`: any tripwire resolution other than normal) no hold is the turn's question — a
  * portion or settings question next to a crisis or an ED signal does harm; the hold simply waits.
+ * `forbidUnanchored` is unanchoredQuestionForbidden(input) when the caller has the whole input;
+ * left out, it is derived from the commit flag / the decision.
  */
-export function renderTurnEvents(ti: TurnInput, decision: UnderstandDecision, commit: CommitResult, safetyTurn = false): string[] {
+export function renderTurnEvents(
+  ti: TurnInput, decision: UnderstandDecision, commit: CommitResult, safetyTurn = false, forbidUnanchored?: boolean,
+): string[] {
   const lines: string[] = [];
   const rejectsLeft = new Map<string, number>();
   for (const r of commit.rejects) rejectsLeft.set(r.op, (rejectsLeft.get(r.op) ?? 0) + 1);
@@ -356,11 +467,26 @@ export function renderTurnEvents(ti: TurnInput, decision: UnderstandDecision, co
       lines.push(`- KAYDEDİLEMEDİ (teknik hata, ${r.failure_class ?? 'bilinmiyor'}): ${r.user_line ?? opTitle(r.action_type)}`);
     }
   }
-  for (const f of commit.flags) lines.push(`- KAYDEDİLDİ AMA BELİRSİZ (${opTitle(f.op)}): ${f.note_tr}`);
+  for (const f of commit.flags) {
+    // Turn-level notes are not records: §5.1.10 is rendered below from the same rule, a declared
+    // not-written reason from the decision; anything else (the retry note) as the plain fact it is.
+    if (f.op === TURN_FLAG_OP) {
+      if (f.code !== 'missed_write' && !f.code.startsWith('not_written:')) lines.push(`- Not: ${f.note_tr}`);
+      continue;
+    }
+    // A confirmed hold: the user answered its question, so its reason is no longer a doubt to repeat.
+    if (isConfirmedAsk(f)) {
+      const detail = f.note_tr.startsWith(CONFIRMED_ASK_PREFIX) ? f.note_tr.slice(CONFIRMED_ASK_PREFIX.length) : f.note_tr;
+      lines.push(`- ONAYLANDI (${opTitle(f.op)}): kullanıcı doğruladı ve kayıt yazıldı (${detail}); kesinleşti, yeniden sorgulama`);
+      continue;
+    }
+    lines.push(`- KAYDEDİLDİ AMA BELİRSİZ (${opTitle(f.op)}): ${f.note_tr}`);
+  }
   const ordered = orderHolds(commit.holds);
   const anySafety = ordered.some(isSafetyHold);
   ordered.forEach((h, i) => {
-    const what = `- BEKLETİLDİ, yazılmadı (${HOLD_OP_TR[h.op] ?? opTitle(h.op)}): kullanıcının onayı gerekiyor`;
+    const nums = holdNumbers(h, decision, ti);
+    const what = `- BEKLETİLDİ, yazılmadı (${HOLD_OP_TR[h.op] ?? opTitle(h.op)}): kullanıcının onayı gerekiyor${nums ? ` (${nums})` : ''}`;
     lines.push(safetyTurn
       ? `${what}; bu bir güvenlik turu, bu turda sorulmaz ("${h.question_tr}")`
       : isSafetyHold(h)
@@ -368,7 +494,10 @@ export function renderTurnEvents(ti: TurnInput, decision: UnderstandDecision, co
       // the end unless the reply already carries it, so the coach's own paraphrase would only ask it twice.
       ? `${what}; bu bir güvenlik onayı, sorusunu kod cevabın sonuna aynen ekler: "${h.question_tr}" Bu soruyu kendin tekrar sorma ve başka soru ekleme; istersen neden beklettiğini yarım cümleyle söyle`
       : i === 0 && !anySafety
-      ? `${what}; sorulacak tek soru: "${h.question_tr}"`
+      // The template is the question's MEANING; the coach asks it in its own words, with the numbers —
+      // and a value the USER typed (a weigh-in, a water amount) is asked about what they wrote
+      // ("doğru mu yazdın?"), not about the coach ("doğru mu yazdım?", live trial 2026-10-11).
+      ? `${what}; sorulacak tek soru: "${h.question_tr}" Bunu kendi sözlerinle${nums ? ', sayılarıyla' : ''} sor${USER_VALUE_HOLD_OPS.has(h.op) ? '; soru kişinin yazdığı değer hakkında ("doğru mu yazdın?")' : ''}`
       : `${what}; bu turun sorusu yukarıdaki, bunu sonraki bir turda sor ("${h.question_tr}")`);
   });
   for (const r of commit.rejects) lines.push(`- REDDEDİLDİ, yazılmadı (${opTitle(r.op)}): ${r.reason_tr}`);
@@ -387,15 +516,21 @@ export function renderTurnEvents(ti: TurnInput, decision: UnderstandDecision, co
     lines.push(`- NETLEŞTİRME GEREKİYOR: ${quoteLine(String(clarify.topic ?? ''), 160)}${cands.length ? `; adaylar: ${cands.join(', ')}` : ''}`);
   }
 
+  const missed = forbidUnanchored ?? missedWriteFlagged(commit, decision);
   if (lines.length === 0) {
     const m = missedWrite(decision);
-    if (m.missed) {
-      lines.push('- Kayıt yok: kullanıcı yeni bir şey bildirdi ama hiçbir şey yazılmadı ve bunun bir gerekçesi yok; ne olduğunu sor, yazılmış gibi davranma');
+    if (missed && safetyTurn) {
+      // Next to a crisis or an emergency no data-entry question is asked, open or not.
+      lines.push('- Kayıt yok (güvenlik turu; kayıt konusu açılmaz)');
+    } else if (missed) {
+      lines.push(MISSED_WRITE_LINE);
     } else if (m.reason) {
       lines.push(`- Kayıt yok (bilinçli: ${NOT_WRITTEN_REASONS[m.reason]})`);
     } else {
       lines.push('- Kayıt yok');
     }
+  } else if (missed && !safetyTurn && !commit.holds.length) {
+    lines.push(MISSED_WRITE_ALSO_LINE);
   }
   return lines;
 }
@@ -456,17 +591,21 @@ export interface StageBFacts {
   turn: string[];
   safety: string[];
   budget: BudgetFacts;
+  /** No write-confirmation offer this turn: the user's fact was not written and no hold backs a "yes". */
+  unanchoredQuestionForbidden: boolean;
 }
 
 export function buildStageBFacts(input: CoachInput): StageBFacts {
   const ti = input.turnInput;
   const budget = budgetFacts(ti, turnIntakeDelta(ti, input.decision, input.commit));
+  const forbid = unanchoredQuestionForbidden(input);
   return {
     state: renderUserState(ti, budget),
     extra: input.userState.filter((l) => typeof l === 'string' && l.trim() !== ''),
-    turn: [...renderTurnEvents(ti, input.decision, input.commit, input.tripwire.kind !== 'normal'), ...renderDecisionFacts(input.decision, budget)],
+    turn: [...renderTurnEvents(ti, input.decision, input.commit, input.tripwire.kind !== 'normal', forbid), ...renderDecisionFacts(input.decision, budget)],
     safety: renderTripwireFacts(input.tripwire),
     budget,
+    unanchoredQuestionForbidden: forbid,
   };
 }
 

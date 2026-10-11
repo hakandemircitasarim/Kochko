@@ -526,7 +526,7 @@ export function planCommit(input: PlanCommitInput): CommitPlan {
 
   // §5.1.10: the turn-level facts the coach needs (reported but not written / declared reason).
   if (validation.missed_write) {
-    plan.flags.push({ op: 'turn', code: 'missed_write', note_tr: 'kullanıcı yeni bir şey bildirdi ama hiçbir şey yazılmadı ve gerekçe verilmedi — kısaca sor' });
+    plan.flags.push({ op: 'turn', code: 'missed_write', note_tr: 'kullanıcı yeni bir şey bildirdi ama hiçbir şey yazılmadı, gerekçe yok ve bekleyen onay yok — kaydedilmediğini söyle, açık uçlu sor; onay teklif etme' });
   }
   if (validation.not_written_reason) {
     plan.flags.push({ op: 'turn', code: `not_written:${validation.not_written_reason}`, note_tr: 'bildirilen şey bilinçli olarak yazılmadı (gerekçe karar içinde)' });

@@ -10,9 +10,10 @@
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import {
-  budgetFacts, buildStageBFacts, missedWrite, renderBudgetLine, renderStageBFacts, renderTripwireFacts, renderTurnEvents,
-  renderUserState, turnIntakeDelta,
+  budgetFacts, buildStageBFacts, holdNumbers, MISSED_WRITE_ALSO_LINE, MISSED_WRITE_LINE, missedWrite, renderBudgetLine, renderStageBFacts,
+  renderTripwireFacts, renderTurnEvents, renderUserState, turnIntakeDelta, unanchoredQuestionForbidden,
 } from './facts.ts';
+import type { CoachInput } from './contracts.ts';
 import { validationContext } from './input.ts';
 import { validateDecision } from '../../shared/write-registry/mod.ts';
 import { asciiTurkishHits, pileWords, shoutedWords, SHOUT_WORDS } from '../../shared/prompt-lint.ts';
@@ -50,7 +51,7 @@ Deno.test('budget: a committed meal of today is added (the coach can quote post-
   const delta = turnIntakeDelta(ti, d, commit({ receipts: [MEAL_OK] }));
   assertEquals(delta, { kcal: 400, proteinG: 45, waterLiters: null, changed: true, certain: true });
   const line = renderBudgetLine(budgetFacts(ti, delta));
-  assertStringIncludes(line, '1.075 kcal (bu turdaki kayıtlar dahil)');
+  assertStringIncludes(line, '1.075 kcal (az önce yazılanlar dahil)');
   assertStringIncludes(line, 'alt sınıra 425 kcal var');
   assertStringIncludes(line, 'protein 73 / 110 g');
 });
@@ -74,7 +75,7 @@ Deno.test('budget: an outcome code cannot total exactly gives NO remaining numbe
   }));
   assertEquals(mixed.certain, false);
   const line = renderBudgetLine(budgetFacts(ti, mixed));
-  assertStringIncludes(line, '675 kcal (bu turdan önceki toplam; bu turdaki değişiklik koda göre kesinleşmedi, kalan sayısı yok)');
+  assertStringIncludes(line, '675 kcal (az önceki değişiklikten önceki toplam; yeni toplam hesaplanamadı, toplam ya da kalan sayısı verme)');
   assert(!line.includes('alt sınıra'), line);
   // A delete of one of today's meals: uncertain too.
   const del = turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış' }] }), commit());
@@ -143,7 +144,7 @@ Deno.test('BU TURDA OLANLAR: clarify names the candidates with what the model wa
 Deno.test('§5.1.10: the missed-write question only for an UNEXPLAINED omission; a closed reason is rendered as the reason', async () => {
   const ti = await seededTurnInput();
   const missed = decision({ intent: { primary: 'report' }, self_check: { reported_new_facts: true, not_written_reason: null } });
-  assertEquals(renderTurnEvents(ti, missed, commit()), ['- Kayıt yok: kullanıcı yeni bir şey bildirdi ama hiçbir şey yazılmadı ve bunun bir gerekçesi yok; ne olduğunu sor, yazılmış gibi davranma']);
+  assertEquals(renderTurnEvents(ti, missed, commit()), [MISSED_WRITE_LINE]);
   const emergency = decision({ self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' } });
   const lines = renderTurnEvents(ti, emergency, commit());
   assertEquals(lines, ['- Kayıt yok (bilinçli: acil/kriz turu)']);
@@ -226,4 +227,105 @@ Deno.test('the facts block reads as facts: Turkish with diacritics, no v1 shouti
   assertEquals(pileWords(normal), []);
   for (const w of SHOUT_WORDS) assert(!normal.includes(w), w);
   assertEquals(asciiTurkishHits(LABELS.reduce((t, l) => t.split(l).join(' '), normal)), []);
+});
+
+// ─── live trial 2026-10-11 (lane C): no hold-less write offers, numbers on holds, confirmed holds are final ───
+
+const MISSED = decision({ intent: { primary: 'report' }, self_check: { reported_new_facts: true, not_written_reason: null } });
+
+Deno.test('trial 2026-10-11: a missed write says nothing was saved and forbids a yes/no write offer (no hold behind it)', async () => {
+  const ti = await seededTurnInput();
+  // The commit's turn flag is NOT a stored record: never "KAYDEDİLDİ AMA BELİRSİZ (turn)".
+  const flagged = commit({ flags: [{ op: 'turn', code: 'missed_write', note_tr: 'kullanıcı yeni bir şey bildirdi ama hiçbir şey yazılmadı' }] });
+  const lines = renderTurnEvents(ti, MISSED, flagged);
+  assertEquals(lines, [MISSED_WRITE_LINE]);
+  for (const l of lines) assert(!l.includes('KAYDEDİLDİ') && !l.includes('(turn)'), l);
+  assertStringIncludes(MISSED_WRITE_LINE, 'Kaydetmediğini açıkça söyle');
+  assertStringIncludes(MISSED_WRITE_LINE, 'açık uçlu sor');
+  assertStringIncludes(MISSED_WRITE_LINE, 'onay teklif etme');
+  // A declared reason's turn flag is not listed either: the reason line comes from the decision.
+  const declared = decision({ self_check: { reported_new_facts: true, not_written_reason: 'question_only' } });
+  assertEquals(renderTurnEvents(ti, declared, commit({ flags: [{ op: 'turn', code: 'not_written:question_only', note_tr: 'bilinçli' }] })), ['- Kayıt yok (bilinçli: yalnız soru)']);
+  // Any other turn note (the handler's retry note) is the plain fact it is.
+  assertEquals(renderTurnEvents(ti, decision(), commit({ flags: [{ op: 'turn', code: 'retry_side_effects_skipped', note_tr: 'tekrar yazılmadı' }] })), ['- Not: tekrar yazılmadı']);
+  // Next to a crisis no data-entry question is asked, open or not.
+  const safety = renderTurnEvents(ti, MISSED, flagged, true);
+  assertEquals(safety.length, 1);
+  assert(!safety[0].includes('sor'), safety[0]);
+});
+
+Deno.test('unanchoredQuestionForbidden: robust to every wiring (explicit flag, input.facts, issue list, commit flag, the decision itself)', async () => {
+  const ti = await seededTurnInput();
+  const base = coachInput(ti);
+  assertEquals(unanchoredQuestionForbidden(base), false);
+  const loose = (extra: Record<string, unknown>) => ({ ...base, ...extra }) as unknown as CoachInput;
+  assertEquals(unanchoredQuestionForbidden(loose({ unanchoredQuestionForbidden: true })), true);
+  assertEquals(unanchoredQuestionForbidden(loose({ facts: { unanchoredQuestionForbidden: true } })), true);
+  assertEquals(unanchoredQuestionForbidden(loose({ issues: [{ code: 'missed_write', path: null, outcome: null }] })), true);
+  assertEquals(unanchoredQuestionForbidden(loose({ issues: ['missed_write'] })), true);
+  assertEquals(unanchoredQuestionForbidden(loose({ issues: [{ code: 'repair' }] })), false);
+  assertEquals(unanchoredQuestionForbidden(coachInput(ti, { commit: commit({ flags: [{ op: 'turn', code: 'missed_write', note_tr: 'x' }] }) })), true);
+  assertEquals(unanchoredQuestionForbidden(coachInput(ti, { decision: MISSED })), true);
+  // The fact block carries it, and an explicit flag on a turn where something else happened adds the softer line.
+  const f = buildStageBFacts(loose({ unanchoredQuestionForbidden: true, commit: commit({ receipts: [MEAL_OK] }) }));
+  assertEquals(f.unanchoredQuestionForbidden, true);
+  assertEquals(f.turn.slice(0, 2), ['- KAYDEDİLDİ: Öğün kaydedildi — ızgara tavuk (1 porsiyon) ~400 kcal · toplam 400 kcal', MISSED_WRITE_ALSO_LINE]);
+  assertEquals(buildStageBFacts(coachInput(ti, { decision: MISSED })).turn[0], MISSED_WRITE_LINE);
+  assertEquals(buildStageBFacts(base).unanchoredQuestionForbidden, false);
+});
+
+Deno.test('a confirmed hold is final: its ask reason reaches the coach as confirmed, not as "belirsiz"', async () => {
+  const ti = await seededTurnInput();
+  // validate.ts turns the answered ask issue into a flag "kullanıcı onayladı — …" (kilo_sicramasi is body_weight's ask rule).
+  const lines = renderTurnEvents(ti, decision(), commit({
+    receipts: [{ action_type: 'body_weight', legacy_type: 'weight_log', ok: true, rows_affected: 1, failure_class: null, user_line: 'Tartı kaydedildi: 81,6 kg' }],
+    flags: [
+      { op: 'body_weight', code: 'kilo_sicramasi', note_tr: 'kullanıcı onayladı — son tartı 78,2 kg, şimdi 81,6 kg' },
+      { op: 'meal_log', code: 'dusuk_guven', note_tr: 'porsiyon tahmini belirsiz' },
+    ],
+  }));
+  assertEquals(lines[1], '- ONAYLANDI (Tartı): kullanıcı doğruladı ve kayıt yazıldı (son tartı 78,2 kg, şimdi 81,6 kg); kesinleşti, yeniden sorgulama');
+  assert(!lines[1].includes('BELİRSİZ') && !lines[1].includes('kullanıcı onayladı —'), lines[1]);
+  assertEquals(lines[2], '- KAYDEDİLDİ AMA BELİRSİZ (Öğün): porsiyon tahmini belirsiz', 'a real doubt stays a doubt');
+  // A field-level ask (no op rule) is recognised by the registry's prefix.
+  assertStringIncludes(renderTurnEvents(ti, decision(), commit({ flags: [{ op: 'sleep_log', code: 'alisilmadik_deger', note_tr: 'kullanıcı onayladı — hours: 13 alışılmadık' }] }))[0], '- ONAYLANDI (Uyku): kullanıcı doğruladı');
+});
+
+Deno.test('a held value shows its numbers (old → new) and is asked about what the USER wrote', async () => {
+  const ti = await seededTurnInput();
+  const weight = decision({ intent: { primary: 'report' }, writes: [{ op: 'body_weight', day: 'today', kg: 74.6, as_stated: '74.6', replaces: null }] });
+  const hold = { op: 'body_weight', reason_code: 'kilo_sicramasi', question_tr: 'Kısa sürede büyük bir değişim görünüyor; tartı sonucunu doğru mu yazdım?', hold_id: 'pw-1' };
+  // The seed's last weigh-in: 70,4 kg on 6 Eki (today 7 Eki).
+  assertEquals(holdNumbers(hold, weight, ti), 'son tartı 70,4 kg → yazdığı 74,6 kg');
+  const line = renderTurnEvents(ti, weight, commit({ holds: [hold] }))[0];
+  assertStringIncludes(line, 'kullanıcının onayı gerekiyor (son tartı 70,4 kg → yazdığı 74,6 kg)');
+  assertStringIncludes(line, `sorulacak tek soru: "${hold.question_tr}"`);
+  assertStringIncludes(line, 'kendi sözlerinle, sayılarıyla sor; soru kişinin yazdığı değer hakkında ("doğru mu yazdın?")');
+  // No weigh-in in the window: the stored profile weight is the comparison.
+  const noHistory = await seededTurnInput((t) => { t.weight_history = []; });
+  assertEquals(holdNumbers(hold, weight, noHistory), 'kayıtlı kilo 70,0 kg → yazdığı 74,6 kg');
+  // Water: the stored day total next to what the user wrote (the 14 L typo case is an ASK hold on lane B's side).
+  const water = decision({ writes: [{ op: 'water_log', day: 'today', as_stated: '14 litre', quantity: 14, unit: 'litre', other_ml_each: null, mode: 'add', replaces: null }] });
+  assertEquals(holdNumbers({ op: 'water_log', reason_code: 'gunluk_toplam_cok', question_tr: '?', hold_id: null }, water, ti), 'kayıtlı 1,60 L · yazdığı 14,00 L (ekleme olarak)');
+  // A meal: its total — and the kcal is the model's estimate, so that question is NOT turned on the user.
+  const pizza = decision({ writes: [mealWrite([['büyük pizza', 2600, 90]])] });
+  const mealHold = { op: 'meal_log', reason_code: 'ogun_toplam_yuksek', question_tr: 'Bu öğün çok yüksek kalorili çıktı; porsiyonları doğru anladım mı?', hold_id: null };
+  assertEquals(holdNumbers(mealHold, pizza, ti), 'öğün ~2.600 kcal');
+  const mealLine = renderTurnEvents(ti, pizza, commit({ holds: [mealHold] }))[0];
+  assertStringIncludes(mealLine, '(öğün ~2.600 kcal); sorulacak tek soru:');
+  assert(!mealLine.includes('doğru mu yazdın'), mealLine);
+  // An explicit detail from the commit side wins; two writes of the op (which one?) give no number.
+  assertEquals(holdNumbers({ ...hold, detail_tr: 'son tartı 78,2 kg, şimdi 81,6 kg' } as typeof hold, weight, ti), 'son tartı 78,2 kg, şimdi 81,6 kg');
+  const two = decision({ writes: [...(weight.writes as unknown[]), { op: 'body_weight', day: 'yesterday', kg: 74, as_stated: '74', replaces: null }] });
+  assertEquals(holdNumbers(hold, two, ti), null);
+  assertEquals(holdNumbers({ op: 'goal_set', reason_code: 'hedef_degisiyor', question_tr: '?', hold_id: null }, weight, ti), null);
+});
+
+Deno.test('the facts speak without the pipeline words the coach echoed in the trial ("bu turdaki kayıtlar", "koda göre", "makbuz")', async () => {
+  const ti = await seededTurnInput();
+  const certain = renderBudgetLine(budgetFacts(ti, turnIntakeDelta(ti, decision({ writes: [mealWrite([['ızgara tavuk', 400, 45]])] }), commit({ receipts: [MEAL_OK] }))));
+  const uncertain = renderBudgetLine(budgetFacts(ti, turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış' }] }), commit())));
+  for (const text of [certain, uncertain, MISSED_WRITE_LINE, MISSED_WRITE_ALSO_LINE]) {
+    for (const w of ['bu turdaki kayıtlar', 'koda göre', 'makbuz', 'sistem']) assert(!text.includes(w), `${w} in: ${text}`);
+  }
 });

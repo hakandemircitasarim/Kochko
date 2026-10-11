@@ -86,6 +86,10 @@ export const CONTRACT_TEXT: Record<Exclude<CoachContract, null>, string> = {
   emergency: [
     '## Bu turun sözleşmesi: acil durum',
     'Mesajda acil bir tıbbi durum işareti var ve dakikalar önemli. Koçluğu bırak, kısa ve net yaz: kişiyi hemen 112\'yi aramaya ya da en yakın acil servise gitmeye yönlendir, yanında biri varsa haber vermesini söyle. Kalori, kayıt ya da plan konuşma; bir soru soracaksan yalnızca şu anki güvenliğiyle ilgili olsun.',
+    // Live trial 2026-10-11: "14 litre su" minutes after 2 L got a flat 112 command. A number alone is
+    // most often a typo; the conditional line keeps the safety net without the false alarm. A real
+    // tripwire still gets its code-owned 112 line from guarantees.ts whatever this text says.
+    'Mesajdaki tek işaret mantıksız bir sayıysa ve hiçbir belirti anlatılmıyorsa bu çoğu zaman bir yazım hatasıdır: düz bir 112 komutu yerine koşullu tek cümle kur ("gerçekten bu kadarsa ve kendini kötü hissediyorsan hemen 112\'yi ara") ve sayıyı doğrulamak için tek soru sor.',
   ].join('\n'),
   crisis: [
     '## Bu turun sözleşmesi: kriz',

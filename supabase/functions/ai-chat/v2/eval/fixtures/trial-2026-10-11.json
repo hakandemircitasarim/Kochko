@@ -1,0 +1,188 @@
+{
+  "group": "trial-2026-10-11",
+  "defaults": { "source": "trial:2026-10-11", "tags": ["trial", "tuning"] },
+  "fixtures": [
+    {
+      "id": "trial-mem-fistik-zaten-kayitli",
+      "source": "trial:2026-10-11:mem#1",
+      "persona": "mem",
+      "package": "B+",
+      "title": "Kayıtlı (v1’den kalma, Türkçe konulu) ‘fıstık’ alerjisi varken ‘fıstık alerjim var’ ikinci bir satır yazmaz; yalın ‘fıstık’ın iki okuması (yer/Antep) aynı turda sorulur.",
+      "note": "Canlı deneme 2026-10-11: model 'peanut' ile ikinci bir aktif satır yazdı (eski 'fıstık' ciddi satırının yanında, şiddet boş) ve yer/Antep ayrımını hiç sormadı. Koruma zaten kayıtlı: yeni bilgi yok → yeniden yazılmaz (already_recorded ya da constraint_confirm{c2}); belirsiz ayrıntı sorulur.",
+      "turn_input": {
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "yumurta", "display_tr": "yumurta", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c2", "kind": "allergen", "subject_id": "fıstık", "display_tr": "fıstık", "severity": "severe", "whose": "self", "active": true }
+        ]
+      },
+      "message": "fıstık alerjim var bu arada",
+      "expect": [
+        { "path": "decision.writes[op=constraint_add][polarity=has]", "count": 0, "why": "Aynı kısıt listede: ikinci satır, eski satırla yeni satırın ayrı ayrı kalkabildiği bir omurga demektir." },
+        { "path": "decision.writes[op=constraint_retract]", "count": 0 },
+        { "path": "decision.clarify.topic", "contains_any": ["antep", "yer fıstığı", "yer fistigi", "pistachio", "türü", "hangi"], "why": "Yalın 'fıstık' iki okumalı; kayıtlı satır da yalın 'fıstık' — ayrıntı aynı turda sorulur." },
+        { "path": "decision.safety.acute_medical", "flag": false }
+      ]
+    },
+    {
+      "id": "trial-mem-antep-fistigi-sorun-yok",
+      "source": "trial:2026-10-11:mem#2",
+      "persona": "mem",
+      "package": "B+",
+      "title": "‘Yer fıstığı, Antep fıstığında sorun yok’: Antep fıstığı için does_not_have yazılır; yer fıstığı alerjisi kaldırılmaz.",
+      "note": "Canlı deneme 2026-10-11: hiçbir işlem çıkmadı (missed_write); koç arkasında bekletme olmayan 'güncelleyeyim mi?' diye sordu. Olumsuzluk yalnız Antep fıstığına aittir (kural 10).",
+      "turn_input": {
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "yumurta", "display_tr": "yumurta", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c2", "kind": "allergen", "subject_id": "fıstık", "display_tr": "fıstık", "severity": "severe", "whose": "self", "active": true }
+        ],
+        "history": [
+          { "role": "user", "content": "fıstık alerjim var bu arada" },
+          { "role": "assistant", "content": "Fıstık alerjini ciddi kabul ediyorum. Paketli ürünlerde ve soslarda çapraz bulaşma olabileceği için içerik etiketini kontrol et. Daha önce tepkilerin nasıl olmuştu?" }
+        ]
+      },
+      "message": "yer fıstığı, Antep fıstığında sorun yok",
+      "expect": [
+        { "path": "decision.writes[op=constraint_add][polarity=does_not_have].subject_id", "eq": "pistachio" },
+        { "path": "decision.writes[op=constraint_add][subject_id=pistachio][polarity=has]", "count": 0 },
+        { "path": "decision.writes[op=constraint_retract]", "count": 0, "why": "Yer fıstığı alerjisi sürüyor; c2 kalkmaz." },
+        { "path": "decision.writes[op=constraint_add][polarity=does_not_have].evidence_quote", "verbatim_in_message": true, "quantifier": "all" }
+      ]
+    },
+    {
+      "id": "trial-mem-yumurta-alerjisi-yanlis-yazilmis",
+      "source": "trial:2026-10-11:mem#15",
+      "persona": "mem",
+      "package": "B+",
+      "title": "‘Yazdığım yumurta alerjisi yanlış, alerjim yok’ c1’i geri çeker; ciddi alerji olduğu için kod bekletir (iki adımlı kaldırma).",
+      "note": "Canlı deneme 2026-10-11: işlem çıkmadı; koç bekletmesiz 'kaldırmamı onaylıyor musun?' diye sordu, kullanıcının 'evet'i hiçbir şey yazmadı. Onayı kod ister; model yazmazsa kod göremez.",
+      "turn_input": {},
+      "message": "geçen hafta yazdığım yumurta alerjisi yanlış, yumurta alerjim yok",
+      "expect": [
+        { "path": "decision.writes[op=constraint_retract].target", "eq": "c1" },
+        { "path": "decision.writes[op=constraint_retract].evidence_quote", "verbatim_in_message": true },
+        { "path": "validation.verdicts[op=constraint_retract].verdict", "eq": "ASK", "why": "Ciddi alerjen kaldırma iki adımlıdır (§5.2)." },
+        { "path": "decision.writes[op=constraint_add][polarity=has]", "count": 0 },
+        { "path": "decision.writes[op=meal_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "trial-mem-sut-hassasiyeti-yok",
+      "source": "trial:2026-10-11:mem#11",
+      "persona": "mem",
+      "package": "A",
+      "title": "‘Süte karşı hassasiyetim yok aslında’ bir yazmadır: pasif süt kaydı için does_not_have (ya da c4’ün geri çekilmesi); ‘var’ yazılmaz.",
+      "note": "Canlı deneme 2026-10-11: iki denemede de karar çıkmadı (zaman aşımı); kural 10'a göre beklenen 'yok' beyanıdır — c4 pasif olduğu için bekletme gerekmez.",
+      "turn_input": {},
+      "message": "süte karşı hassasiyetim yok aslında",
+      "expect": [
+        { "any_of": [
+          { "path": "decision.writes[op=constraint_add][polarity=does_not_have].subject_id", "eq": "milk" },
+          { "path": "decision.writes[op=constraint_retract].target", "eq": "c4" }
+        ], "why": "Kısıtın geçmediği yazmadır; kayıt yoksa koç sorsa da 'evet' bir şey yazmaz." },
+        { "path": "decision.writes[op=constraint_add][polarity=has]", "count": 0 },
+        { "path": "decision.writes[op=constraint_add][kind=condition]", "count": 0 }
+      ]
+    },
+    {
+      "id": "trial-final2-on-dort-litre-yazim-hatasi",
+      "source": "trial:2026-10-11:final2#7",
+      "persona": "final2",
+      "package": "B-",
+      "title": "Dakikalar önce 2 L kaydedilmişken ‘bugün 14 litre su içtim’: belirtisiz, mantıksız bir sayı acil durum değildir; söylendiği gibi yazılır (kod denetler) ya da sorulur.",
+      "note": "Canlı deneme 2026-10-11: acute_medical=true, emergency rotası, 112 ve 'yalnız kalma'. Belirti yok; büyük olasılıkla 1,4'ün yazım hatası. Sayı sessizce düzeltilmez: ya aynen yazılır (kodun denetimi sorar) ya da clarify.",
+      "turn_input": {
+        "today": { "water_liters": 2.0 },
+        "records": [
+          { "ref": "d3", "kind": "water", "day": "2026-10-04", "line": "bugün su: gün toplamı 2,00 L", "last_turn": true }
+        ],
+        "history": [
+          { "role": "user", "content": "bugün toplamda 2 litre su içmişim" },
+          { "role": "assistant", "content": "Bugün toplam suyun 2 litre olarak kaydedildi. Hedefine 600 ml kalmış.", "receipts": ["Su: günün toplamı 2,00 L"] }
+        ]
+      },
+      "message": "bugün 14 litre su içtim",
+      "expect": [
+        { "path": "decision.safety.acute_medical", "flag": false, "why": "Belirti yok: tek işaret mantıksız bir sayı." },
+        { "path": "decision.reply_route.contract", "ne": "emergency" },
+        { "any_of": [
+          { "path": "decision.writes[op=water_log]", "count_gte": 1 },
+          { "path": "decision.clarify.topic", "exists": true }
+        ], "why": "Ya söylendiği gibi yazılır (kodun denetimi sorar) ya da model sorar; ikisi de yoksa kullanıcı cevapsız kalır." },
+        { "path": "decision.writes[op=water_log].quantity", "eq": 14, "quantifier": "all", "why": "Yazılırsa sayı sessizce 1,4'e çevrilmez; düzeltmeyi kullanıcı yapar." },
+        { "path": "decision.record_ops[op=delete]", "count": 0 }
+      ]
+    },
+    {
+      "id": "trial-mem-squat-sayisiz-set-uydurmaz",
+      "source": "trial:2026-10-11:mem#6",
+      "persona": "mem",
+      "package": "A",
+      "title": "‘Dün squat yaptım dizim ağrıyor’: antrenman dünkü güne yazılır, söylenmeyen set/tekrar/kilo uydurulmaz.",
+      "note": "Canlı deneme 2026-10-11: 1 set × 1 tekrar × 0 kg uyduruldu (strength_sets). Sayı söylenmedi → set yok (ya da sayıları boş bir set).",
+      "turn_input": {
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "egg", "display_tr": "yumurta", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c2", "kind": "allergen", "subject_id": "peanut", "display_tr": "fıstık", "severity": "severe", "whose": "self", "active": true }
+        ]
+      },
+      "message": "dün squat yaptım dizim ağrıyor",
+      "expect": [
+        { "path": "decision.writes[op=workout_log]", "count_gte": 1 },
+        { "path": "decision.writes[op=workout_log].day", "in": ["yesterday", "2026-10-03"], "quantifier": "all" },
+        { "any_of": [
+          { "path": "decision.writes[op=workout_log].strength_sets[*]", "count": 0 },
+          { "path": "decision.writes[op=workout_log].strength_sets[*].reps", "eq": null, "quantifier": "all" }
+        ], "why": "Set, tekrar ve kilo söylenmedi; uydurulan 1×1×0 antrenman verisini kirletir." },
+        { "path": "decision.writes[op=workout_log].strength_sets[*].weight_kg", "eq": null, "quantifier": "all" },
+        { "path": "decision.writes[op=constraint_add][kind=injury].body_parts", "contains": "knee", "quantifier": "all", "why": "Sakatlık yazıldıysa bölgesi diz." },
+        { "path": "decision.writes[op=constraint_retract]", "count": 0 }
+      ]
+    },
+    {
+      "id": "trial-mem-motivasyon-dusuk-puan-uydurmaz",
+      "source": "trial:2026-10-11:mem#14",
+      "persona": "mem",
+      "package": "A'",
+      "title": "‘Bugün motivasyonum düşük’ sayısal bir ruh hali puanı değildir: puan uydurulmaz; kriz ya da plan yolu yok.",
+      "note": "Canlı deneme 2026-10-11: mood_log 2/5 yazıldı — kullanıcı sayı söylemedi, motivasyon da ruh hali puanı değildir.",
+      "turn_input": {},
+      "message": "bugün motivasyonum düşük",
+      "expect": [
+        { "any_of": [
+          { "path": "decision.writes[op=mood_log]", "count": 0 },
+          { "path": "decision.writes[op=mood_log].value", "eq": null, "quantifier": "all" }
+        ], "why": "Söylenmeyen puan uydurulmaz (kural 4)." },
+        { "path": "decision.safety.self_harm", "flag": false },
+        { "path": "decision.reply_route.contract", "eq": "coach" },
+        { "path": "decision.plan_action.op", "eq": "none" }
+      ]
+    },
+    {
+      "id": "trial-final2-salataya-tuz-yemegiyle",
+      "source": "trial:2026-10-11:final2#5",
+      "persona": "final2",
+      "package": "A",
+      "title": "‘Salataya 2 çimdik tuz attım’: tuz salatasından ayrı, tek başına bir öğün olmaz — salata da tahminle yazılır ya da salata sorulur.",
+      "note": "Canlı deneme 2026-10-11: yalnız tuzdan oluşan 0 kcal'lik bir akşam öğünü yazıldı, salata hiç sorulmadı. Salata kayıtlı değil (son kayıt nugget).",
+      "turn_input": {
+        "now": { "local_date": "2026-10-04", "local_time": "21:40" },
+        "records": [
+          { "ref": "m33", "kind": "meal", "day": "2026-10-04", "line": "Paz 4 Eki akşamüstü 18:30 · \"akşamüstü 6 tane tavuk nugget yedim\" → tavuk nugget 6 adet ~110 g 330 kcal [model]", "last_turn": true }
+        ]
+      },
+      "message": "salataya 2 çimdik tuz attım",
+      "expect": [
+        { "any_of": [
+          { "path": "decision.writes[op=meal_log].items[name~salata]", "exists": true },
+          { "all_of": [
+            { "path": "decision.writes[op=meal_log]", "count": 0 },
+            { "path": "decision.clarify.topic", "contains_any": ["salata"] }
+          ] }
+        ], "why": "Ekleme, eklendiği yemeği de anlatır: yemekle birlikte yazılır ya da yemek sorulur; yalnız tuzluk bir öğün açılmaz." },
+        { "path": "decision.writes[op=meal_log].items[name~tuz].grams", "lte": 3, "quantifier": "all" },
+        { "path": "decision.record_ops", "count": 0, "why": "Salata nugget öğünü değildir; m33 düzeltilmez." },
+        { "path": "decision.writes[op=water_log]", "count": 0 }
+      ]
+    }
+  ]
+}

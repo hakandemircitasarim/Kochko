@@ -51,11 +51,27 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * total by what the sentence covers, three examples moved off the stronger overlap guard — fitted
  * inside the v6 ceilings by tightening few-shot "why" lines. Measured: rules ≈1881, few-shots ≈3220,
  * doc ≈3341, prefix ≈13585. No ceiling moved.
+ * 2026-10-11 (prompt v8, the FIRST LIVE TRIAL on the test accounts): Stage A left real statements
+ * unwritten or over-read them — "yumurta alerjisi yanlış, alerjim yok", "süte karşı hassasiyetim yok
+ * aslında" (no retraction, so the code could not ask), "14 litre su" minutes after 2 L (routed to 112),
+ * "motivasyonum düşük" (an invented mood score), "salataya tuz" (a salt-only dinner), "fıstık alerjim
+ * var" next to a stored fıstık row (a duplicate). Fixed at principle level: a retraction is a write the
+ * code must see (rule 10), an implausible amount with no symptom is not acute (rule 9), no unstated
+ * score/set/rep (rule 4), an addition carries its dish (rule 7), a stored constraint is not re-added
+ * but a two-reading name on it is still asked, a narrowed constraint is not removed (rule 10) — plus
+ * ONE new few-shot (kisit_yanlis: no example had ever shown a retraction). Trimmed first (the intro's
+ * "the coach will ask" excuse, rule 2/11/13 wording, the doc pointer, rule 6, four few-shot "why"
+ * lines); live probes then showed each remaining clause pulling its weight (removing the salad's
+ * "clarify" or the typo's "clarify" regressed them). Measured: rules ≈2047, few-shots ≈3314, prefix
+ * ≈13844 (+249 over v7). The ceilings move by the owner's "quality first" allowance — +250 on the
+ * prefix (the binding, cost-relevant number), split +150 rules / +50 few-shots; the prefix is ~99 %
+ * cached, so this is ≈ $0,00005 per turn at terra's cached-input price. The registry doc (another
+ * lane) is NOT inside this headroom: a doc change has to be measured against the merged bytes.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],
-  understandRules: [900, 1900],
-  understandFewShots: [1500, 3300],
+  understandRules: [900, 2050],
+  understandFewShots: [1500, 3350],
   exemplars: [1100, 2400],
-  stageAPrefix: [9000, 13600],
+  stageAPrefix: [9000, 13850],
 } as const satisfies Record<string, readonly [number, number]>;
