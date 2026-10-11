@@ -30,6 +30,7 @@ import {
   STAGE_A_FAILED_LINE, STAGE_A_FALLBACK_V1_CODES, STAGE_B_FAILED_HELD_LINE, STAGE_B_FAILED_LINE, STAGE_B_FAILED_NOTHING_LINE,
   STAGE_B_FAILED_WRITTEN_HELD_LINE, TASK_MODE_HINT_UNKNOWN, UNANCHORED_QUESTION_FORBIDDEN_ISSUE, undoTargetOf, v1OnlyReason, type TurnState,
 } from './handler.ts';
+import { MISSED_WRITE_ALSO_LINE, MISSED_WRITE_LINE } from './facts.ts';
 import { turnRefs, validationContext } from './input.ts';
 // The owner's §7.2 budgets live in stage-a-request.ts (a tuning branch moves them): imported, never hard-coded.
 import { STAGE_A_LIVE_BUDGETS_MS } from './stage-a-request.ts';
@@ -147,6 +148,21 @@ Deno.test('water day total: w_water_apply in set_day_total mode; Stage B is told
   assertEquals(t.env!.actions[0].type, 'water_log');
   assertEquals(t.env!.message, 'Günün suyu 2 litre oldu, güzel gidiyorsun.');
   assertEquals(t.rec.persisted[0].quotaClass, 'record');
+});
+
+Deno.test('SEAM write layer → Stage B (integration of the live-trial lanes): "bugün 14 litre" is an ASK hold with the code-owned typo question; the coach gets the numbers and that ONE question — nothing stored, no emergency contract', async () => {
+  const typo = w('water_log', { quantity: 14, unit: 'litre', as_stated: 'bugün 14 litre', mode: 'set_day_total' });
+  const t = await turn({ message: 'bugün 14 litre su içtim' }, { stageA: parsed(sampleDecision({ writes: [typo] })), coach: () => coachReply('14 litre mi yazdın, yoksa 1,4 litre mi?') });
+  assertEquals(t.commit.rpcCalls.filter((c) => c.name === 'w_water_apply').length, 0, 'a typo is never stored');
+  const holds = t.rec.coachInputs[0].commit.holds;
+  assertEquals(holds.map((h) => [h.op, h.reason_code, h.question_tr]), [['water_log', 'litre_yazim_suphesi', '14 L mi, yoksa 1,4 L mi?']]);
+  const user = stageBUser(t.rec.coachCalls[0]);
+  assertStringIncludes(user, 'sorulacak tek soru: "14 L mi, yoksa 1,4 L mi?"', 'lane B\'s question reaches lane C\'s hold line');
+  assertStringIncludes(user, 'yazdığı 14', 'the hold line carries the number the user typed');
+  assertStringIncludes(user, '"doğru mu yazdın?"', 'a typed value is asked about what the user wrote');
+  assert(!user.includes('acil durum'), 'an implausible number alone is not an emergency');
+  assert(!user.includes('REDDEDİLDİ'), user);
+  assertEquals(t.rec.persisted[0].quotaClass, 'conversation');
 });
 
 Deno.test('correction by ref: record_update m1 → the patch through w_meal_apply replacing that record; Stage B speaks from the receipt', async () => {
@@ -1071,6 +1087,34 @@ Deno.test('missed write the repair does NOT fix (same miss, or the repair times 
   const r = await turn({ message: 'bugün iş çok yoğundu, yorgunum' }, { stageA: parsed(reasoned) });
   assertEquals(r.rec.understandReqs.length, 1);
   assertEquals(r.rec.coachInputs[0].facts, { unanchoredQuestionForbidden: false });
+});
+
+Deno.test('SEAM handler → Stage B (integration of the live-trial lanes): the unfixed missed write reaches the REAL coach request as the open-question line, never as a confirmation offer; a repaired one does not', async () => {
+  // Lane A sets CoachInput.facts.unanchoredQuestionForbidden; lane C's facts.ts renders it. This pins the
+  // wire end to end: handler → ports.coach → coach.ts buildCoachRequest → the HTTP body the model gets.
+  const missed = sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: null } });
+  const msg = 'geçen hafta yazdığım yumurta alerjisi yanlış';
+  const t = await turn({ message: msg }, { stageA: (req) => parsedOutcome(missed, req), coach: () => coachReply('Bunu henüz kaydetmedim; tam olarak ne değişti?') });
+  assertEquals(t.rec.coachInputs[0].facts, { unanchoredQuestionForbidden: true });
+  const user = stageBUser(t.rec.coachCalls[0]);
+  assertStringIncludes(user, MISSED_WRITE_LINE, 'the coach is told: nothing saved, ask openly, no "evet" offer');
+  assert(!user.includes('kısaca sor'), 'the old commit note ("— kısaca sor") never reaches the coach');
+  assert(!user.includes('(turn)'), 'a turn-level flag is not rendered as a record');
+  assert(!user.includes('KAYDEDİLDİ'), user);
+  const system = (t.rec.coachCalls[0].input as { role: string; content: string }[])[0].content;
+  assertStringIncludes(system, 'yalnızca olgularda bekletilen bir kayıt ya da bekleyen onay varsa sorulur', 'the constitution carries the rule the fact line applies');
+  assertEquals(t.rec.coachInputs[0].commit.holds, [], 'and indeed no hold exists');
+
+  // The repair fixed it: the write's receipt is the fact, no missed-write line, no forbid flag.
+  const fixed = sampleDecision({
+    self_check: { reported_new_facts: true, not_written_reason: null },
+    writes: [w('constraint_add', { subject_id: 'egg', display_tr: 'yumurta', polarity: 'does_not_have', severity: 'unknown', evidence_quote: 'yumurta alerjisi yanlış' })],
+  });
+  const ok = await turn({ message: msg }, { stageA: (req, n) => parsedOutcome(n === 1 ? missed : fixed, req) });
+  const okUser = stageBUser(ok.rec.coachCalls[0]);
+  assert(!okUser.includes(MISSED_WRITE_LINE), okUser);
+  assert(!okUser.includes(MISSED_WRITE_ALSO_LINE), okUser);
+  assertStringIncludes(okUser, '- KAYDEDİLDİ');
 });
 
 Deno.test('betterOf: a missed write is one defect like a REJECT — writing the stated fact wins a tie, two refusals lose to it', async () => {

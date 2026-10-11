@@ -12,10 +12,11 @@ import { TURN_INPUT_KEYS } from '../../shared/v2-db-types.ts';
 import { parseRef, REF_KINDS, validateChannelItems } from '../../shared/write-registry/mod.ts';
 import {
   buildValidationContext, canonicalConstraintSubject, constraintLine, constraintSummaryTr, dayLabelTr, edTierOf, fmtTr, loadTurnInput, PLAIN_TURN_INPUT_SCHEMA, profilePhrases, renderTurnInput,
-  stageAView, supabaseTurnInputDb, turnInputKeyOrder, turnInputQueries, turnRefs, validationContext,
+  stageAView, supabaseTurnInputDb, TURN_INPUT_HISTORY_MESSAGES, turnInputKeyOrder, turnInputQueries, turnRefs, validationContext,
   type DbResult, type PgClientLike, type SelectQuery,
 } from './input.ts';
-import { renderTurnInputBlock } from './stage-a-request.ts';
+import { COACH_HISTORY_MESSAGES } from './coach.ts';
+import { renderTurnInputBlock, STAGE_A_HISTORY_MESSAGES } from './stage-a-request.ts';
 import { fakeTurnInputDb, NOW, OTHER, seedTables, USER } from './testing.ts';
 
 async function load(tables = seedTables(), fail: Record<string, string> = {}, clientTimezone: string | null = null, now = NOW) {
@@ -43,6 +44,13 @@ Deno.test('all reads leave in ONE wave, before the loader awaits anything', () =
   void loadTurnInput(db, { userId: USER, now: NOW });
   assertEquals(calls.length, turnInputQueries(USER, NOW).length, 'every query issued synchronously');
   assert(calls.every((q) => q.filters.some((f) => f.op === 'eq' && f.value === USER)), 'every query is scoped to the user');
+});
+
+Deno.test('history window: the loader reads at least what Stage B renders (coach.ts COACH_HISTORY_MESSAGES) — the coach sees its own last replies and does not repeat them', () => {
+  const chat = turnInputQueries(USER, NOW).find((q) => q.table === 'chat_messages')!;
+  assertEquals(chat.limit, TURN_INPUT_HISTORY_MESSAGES);
+  assert(TURN_INPUT_HISTORY_MESSAGES >= COACH_HISTORY_MESSAGES, `loader ${TURN_INPUT_HISTORY_MESSAGES} < coach window ${COACH_HISTORY_MESSAGES}`);
+  assert(TURN_INPUT_HISTORY_MESSAGES >= STAGE_A_HISTORY_MESSAGES);
 });
 
 Deno.test('effective day from the user tz + day boundary; client_timezone wins like v1', async () => {

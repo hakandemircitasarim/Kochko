@@ -166,7 +166,7 @@ export interface LoadTurnInputOptions {
   now?: Date;
   /** Request body's client_timezone — v1's precedence: client → active_timezone → home_timezone. */
   clientTimezone?: string | null;
-  /** How many recent chat messages to load (default 6). */
+  /** How many recent chat messages to load (default TURN_INPUT_HISTORY_MESSAGES). */
   historyLimit?: number;
 }
 
@@ -217,7 +217,15 @@ function weekdayOf(isoDay: string): number {
 // ─── loader ────────────────────────────────────────────────────────────────────────────────────────
 
 /** The parallel read wave. Windows are UTC-wide (±1 day) because the user's tz comes in the same wave. */
-export function turnInputQueries(userId: string, now: Date, historyLimit = 6): SelectQuery[] {
+/**
+ * Recent chat messages the loader reads: Stage B's window (coach.ts COACH_HISTORY_MESSAGES = 8, four
+ * coach turns) — the loader used to read 6, so the coach saw three of its own replies and repeated
+ * advice it had given a turn earlier (first live trial: the "telafi etme" line four times). Stage A
+ * reads only the last STAGE_A_HISTORY_MESSAGES of it.
+ */
+export const TURN_INPUT_HISTORY_MESSAGES = 8;
+
+export function turnInputQueries(userId: string, now: Date, historyLimit = TURN_INPUT_HISTORY_MESSAGES): SelectQuery[] {
   const utcDay = now.toISOString().slice(0, 10);
   const lo = shiftDateString(utcDay, -8);
   const hi = shiftDateString(utcDay, 1);
@@ -292,7 +300,7 @@ export function turnInputQueries(userId: string, now: Date, historyLimit = 6): S
  */
 export async function loadTurnInput(db: TurnInputDb, opts: LoadTurnInputOptions): Promise<TurnInput> {
   const now = opts.now ?? new Date();
-  const queries = turnInputQueries(opts.userId, now, opts.historyLimit ?? 6);
+  const queries = turnInputQueries(opts.userId, now, opts.historyLimit ?? TURN_INPUT_HISTORY_MESSAGES);
   const pending = queries.map((q) => {
     try {
       return db.select(q).catch((e) => ({ data: null, error: { message: (e as Error)?.message ?? String(e) } }) as DbResult);

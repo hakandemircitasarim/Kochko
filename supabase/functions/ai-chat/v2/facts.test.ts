@@ -133,12 +133,14 @@ Deno.test('BU TURDA OLANLAR: EVERY safety hold is code-asked (facts and guarante
   for (const l of renderTurnEvents(ti, decision(), commit({ holds: [retract, goal] }), true)) assertStringIncludes(l, 'bu bir güvenlik turu, bu turda sorulmaz');
 });
 
-Deno.test('BU TURDA OLANLAR: clarify names the candidates with what the model was shown', async () => {
+Deno.test('BU TURDA OLANLAR: clarify names the candidates with what the model was shown — the user-facing summary, no provenance tag to echo', async () => {
   const ti = await seededTurnInput();
   const lines = renderTurnEvents(ti, decision({ clarify: { topic: 'hangi kaydı silmemi istiyorsun?', candidate_refs: ['m2', 'm3'] } }), commit());
   assertEquals(lines.length, 1);
   assertStringIncludes(lines[0], '- NETLEŞTİRME GEREKİYOR: hangi kaydı silmemi istiyorsun?; adaylar: m2 (haşlanmış yumurta');
   assertStringIncludes(lines[0], 'm3 (mercimek çorbası');
+  // The live trial's "[model]" leak (input.ts SOURCE_TAG) is Stage A context; the coach gets user_summary_tr.
+  assert(!/\[(model|user|kullanıcı)[^\]]*\]/u.test(lines[0]), lines[0]);
 });
 
 Deno.test('§5.1.10: the missed-write question only for an UNEXPLAINED omission; a closed reason is rendered as the reason', async () => {
@@ -254,20 +256,19 @@ Deno.test('trial 2026-10-11: a missed write says nothing was saved and forbids a
   assert(!safety[0].includes('sor'), safety[0]);
 });
 
-Deno.test('unanchoredQuestionForbidden: robust to every wiring (explicit flag, input.facts, issue list, commit flag, the decision itself)', async () => {
+Deno.test('unanchoredQuestionForbidden: the handler\'s typed fact (CoachInput.facts), the commit flag, or the decision itself — any one forbids', async () => {
   const ti = await seededTurnInput();
   const base = coachInput(ti);
   assertEquals(unanchoredQuestionForbidden(base), false);
-  const loose = (extra: Record<string, unknown>) => ({ ...base, ...extra }) as unknown as CoachInput;
-  assertEquals(unanchoredQuestionForbidden(loose({ unanchoredQuestionForbidden: true })), true);
-  assertEquals(unanchoredQuestionForbidden(loose({ facts: { unanchoredQuestionForbidden: true } })), true);
-  assertEquals(unanchoredQuestionForbidden(loose({ issues: [{ code: 'missed_write', path: null, outcome: null }] })), true);
-  assertEquals(unanchoredQuestionForbidden(loose({ issues: ['missed_write'] })), true);
-  assertEquals(unanchoredQuestionForbidden(loose({ issues: [{ code: 'repair' }] })), false);
+  const withFacts = (extra: Partial<CoachInput>): CoachInput => ({ ...base, ...extra });
+  assertEquals(unanchoredQuestionForbidden(withFacts({ facts: { unanchoredQuestionForbidden: true } })), true);
+  assertEquals(unanchoredQuestionForbidden(withFacts({ facts: { unanchoredQuestionForbidden: false } })), false);
+  // An explicit false never switches the protection off when the decision/commit say it was missed (an OR).
+  assertEquals(unanchoredQuestionForbidden(coachInput(ti, { decision: MISSED, facts: { unanchoredQuestionForbidden: false } })), true);
   assertEquals(unanchoredQuestionForbidden(coachInput(ti, { commit: commit({ flags: [{ op: 'turn', code: 'missed_write', note_tr: 'x' }] }) })), true);
   assertEquals(unanchoredQuestionForbidden(coachInput(ti, { decision: MISSED })), true);
-  // The fact block carries it, and an explicit flag on a turn where something else happened adds the softer line.
-  const f = buildStageBFacts(loose({ unanchoredQuestionForbidden: true, commit: commit({ receipts: [MEAL_OK] }) }));
+  // The fact block carries it, and the handler's flag on a turn where something else happened adds the softer line.
+  const f = buildStageBFacts(withFacts({ facts: { unanchoredQuestionForbidden: true }, commit: commit({ receipts: [MEAL_OK] }) }));
   assertEquals(f.unanchoredQuestionForbidden, true);
   assertEquals(f.turn.slice(0, 2), ['- KAYDEDİLDİ: Öğün kaydedildi — ızgara tavuk (1 porsiyon) ~400 kcal · toplam 400 kcal', MISSED_WRITE_ALSO_LINE]);
   assertEquals(buildStageBFacts(coachInput(ti, { decision: MISSED })).turn[0], MISSED_WRITE_LINE);

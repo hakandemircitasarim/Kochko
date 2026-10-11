@@ -306,16 +306,14 @@ export const TURN_FLAG_OP = 'turn';
 /**
  * Stage B may not offer a write confirmation ("kaydedeyim mi?", "güncelleyeyim mi?") for what the user
  * just told: nothing was written, no hold anchors such a question, and the user's "evet" would resolve
- * nothing (live trial 2026-10-11). The contract with the handler side is read loosely, so either
- * wiring works: an explicit `unanchoredQuestionForbidden` on the input or on `input.facts`, an issue
- * list on the input (`issues`, ai_turn_log style: { code } or a bare code) naming 'missed_write', the
- * commit's turn flag 'missed_write', or — always — the validator's own rule read off the decision.
+ * nothing (live trial 2026-10-11). The handler's typed fact is the contract (contracts.ts
+ * CoachTurnFacts.unanchoredQuestionForbidden = validation.missed_write of the ADOPTED decision, after
+ * the one repair); the commit's turn flag 'missed_write' and the validator's own rule read off the
+ * decision are the same fact for callers that build a CoachInput without the handler (tests, eval).
+ * Any one of them forbids the offer — an OR, so no wiring can switch the protection off.
  */
 export function unanchoredQuestionForbidden(input: CoachInput): boolean {
-  const loose = input as unknown as Record<string, unknown>;
-  if (loose.unanchoredQuestionForbidden === true) return true;
-  if (isRec(loose.facts) && loose.facts.unanchoredQuestionForbidden === true) return true;
-  if (arr(loose.issues).some((i) => i === 'missed_write' || (isRec(i) && i.code === 'missed_write'))) return true;
+  if (input.facts?.unanchoredQuestionForbidden === true) return true;
   return missedWriteFlagged(input.commit, input.decision);
 }
 
@@ -422,9 +420,11 @@ export function orderHolds(holds: readonly V2Hold[]): V2Hold[] {
   return [...holds.filter(isSafetyHold), ...holds.filter((h) => !isSafetyHold(h))];
 }
 
+/** A clarify candidate for the coach: the user-facing summary (no '[model]' provenance tag to echo). */
 function refSummary(ref: string, refs: RenderedRefs): string {
   const r = refs[ref];
-  return r?.summary_tr ? `${ref} (${quoteLine(r.summary_tr, 80)})` : ref;
+  const s = r?.user_summary_tr ?? r?.summary_tr;
+  return s ? `${ref} (${quoteLine(s, 80)})` : ref;
 }
 
 /** Severe-or-unknown allergen subjects of the user's spine (the exposure line's "ciddi" mark). */
