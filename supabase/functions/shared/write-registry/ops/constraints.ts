@@ -12,17 +12,58 @@
  *   • ADDING protection is never held (§7.4: protection never below v1). A self+has declaration
  *     whose quote is paraphrased, or an injury with no region, is STORED and FLAGged so the coach
  *     confirms once — uncertainty makes the filter stricter, it never leaves the spine without it.
+ *   • A self+has declaration of a constraint that is ALREADY ACTIVE (same kind, same canonical
+ *     subject — a legacy 'fıstık' row reads as 'peanut', input.ts canonicalConstraintSubject) never
+ *     becomes a second row (trial 2026-10-11: "fıstık alerjim var" added 'peanut' beside the active
+ *     'fıstık'): derive's `existing` names the stored row; a pure restatement is effect
+ *     'already_active' (the row is confirmed), a stated different severity is 'activate' on that row.
  * Replaces food_preference(is_allergen)/clear, health_event, health_event_resolve and the regex
  * allergy/retract/injury/heal nets.
  */
-import { f, op, rule } from '../dsl.ts';
+import { f, op, rule, type ValidationContext } from '../dsl.ts';
 import { evidenceIsVerbatim } from '../rules.ts';
 import { ALLERGENS, BODY_PARTS, CONSTRAINT_KINDS, DIETARY_SUBJECTS, FOOD_PREFERENCE, SEVERITY } from '../vocab.ts';
-import { isVerbatimQuote } from '../util.ts';
+import { isRecord, isVerbatimQuote } from '../util.ts';
 
 const CUSTOM = /^custom:[\p{L}\p{N}_-]{2,40}$/u;
 const isAllergenId = (s: string) => Object.prototype.hasOwnProperty.call(ALLERGENS, s) || CUSTOM.test(s);
 const isDietaryId = (s: string) => Object.prototype.hasOwnProperty.call(DIETARY_SUBJECTS, s) || CUSTOM.test(s);
+
+/** The stored spine row a self+has declaration restates (derive output `existing`). */
+export interface ExistingConstraint {
+  /** The c-ref it was rendered as this turn. */
+  ref: string;
+  /** user_constraints.subject exactly as stored (the writer matches the row by it). */
+  subject: string;
+  severity: string | null;
+  body_parts: string[];
+}
+
+/** The user's own ACTIVE constraint with the same kind and canonical subject, if one was rendered. */
+function activeSame(a: { whose: string; polarity: string; kind: string; subject_id: string }, ctx: ValidationContext): ExistingConstraint | null {
+  if (a.whose !== 'self' || a.polarity !== 'has') return null;
+  for (const [ref, r] of Object.entries(ctx.refs)) {
+    const c = r.constraint;
+    if (r.kind !== 'c' || r.undone || !c || c.kind !== a.kind || c.subject !== a.subject_id) continue;
+    return { ref, subject: c.stored_subject ?? c.subject, severity: c.severity ?? null, body_parts: [...(c.body_parts ?? [])] };
+  }
+  return null;
+}
+
+/**
+ * The severity a restatement of a stored row writes onto it: the STATED one when it is known and
+ * differs from the row's (the answer to "ne kadar ciddi?" must land); never 'unknown' — that would
+ * erase a severity the user stated before. null = the row's severity stays.
+ */
+function statedSeverityChange(severity: unknown, existing: { severity: unknown } | null): 'mild' | 'moderate' | 'severe' | null {
+  if (!existing || (severity !== 'mild' && severity !== 'moderate' && severity !== 'severe')) return null;
+  return severity === existing.severity ? null : severity;
+}
+
+/** restatedSeverity over a stored verdict row (receipts, adapter): the change to write, or null. */
+export function restatedSeverity(row: Record<string, unknown>): 'mild' | 'moderate' | 'severe' | null {
+  return statedSeverityChange(row.severity, isRecord(row.existing) ? { severity: row.existing.severity } : null);
+}
 
 export const constraint_add = op({
   type: 'constraint_add',
@@ -46,14 +87,24 @@ export const constraint_add = op({
     note: f.text({ nullable: true, max: 280 }),
     evidence_quote: f.text({ max: 160 }),
   },
-  derive: (a) => ({
-    effect: a.whose === 'other_person' ? 'coach_note' : a.polarity === 'has' ? 'activate' : 'record_absence',
-    spine: a.whose === 'self' && a.polarity === 'has',
-    treat_as_severe: a.severity === 'severe' || a.severity === 'unknown',
-    // An injury stored without a region cannot be matched to exercise loads yet; the safety layer
-    // treats it strictly (judge every exercise mention) until the coach learns the region.
-    region_unknown: a.whose === 'self' && a.polarity === 'has' && a.kind === 'injury' && a.body_parts.length === 0,
-  }),
+  derive: (a, ctx) => {
+    const existing = activeSame(a, ctx);
+    // A pure restatement changes nothing: 'already_active' (confirm). One that states a different
+    // severity still CHANGES protection: 'activate' with `existing` — the stored row is updated, never
+    // duplicated (the writer matches it by its stored subject).
+    const restated = existing !== null && statedSeverityChange(a.severity, existing) === null;
+    return {
+      effect: a.whose === 'other_person' ? 'coach_note' : a.polarity === 'has' ? (restated ? 'already_active' : 'activate') : 'record_absence',
+      spine: a.whose === 'self' && a.polarity === 'has',
+      treat_as_severe: a.severity === 'severe' || a.severity === 'unknown',
+      // An injury stored without a region cannot be matched to exercise loads yet; the safety layer
+      // treats it strictly (judge every exercise mention) until the coach learns the region. A
+      // restatement of a stored injury that HAS a region is not region-unknown.
+      region_unknown: a.whose === 'self' && a.polarity === 'has' && a.kind === 'injury' && a.body_parts.length === 0 &&
+        !(existing && existing.body_parts.length > 0),
+      existing,
+    };
+  },
   writes: { fn: 'syncConstraint', tables: ['user_constraints', 'health_events', 'food_preferences', 'belief_events', 'turn_writes'], undo: 'deactivate' },
   invariants: ['spine_sync', 'note_append_with_history', 'plan_repair', 'unknown_severity_is_severe', 'region_unknown_is_strict'],
 }).rules({
@@ -80,8 +131,9 @@ export const constraint_add = op({
       { evidence: true }),
     rule('bolge_belirsiz', 'sakatlığın bölgesi belirtilmedi — kaydedildi, bölge netleşene kadar sıkı filtrelenir; koç bir kez sorar', (_a, d) =>
       d.region_unknown),
-    rule('siddet_bilinmiyor', 'şiddet bilinmiyor: netleşene kadar ciddi sayılır, koç bir kez sorar', (a) =>
-      a.whose === 'self' && a.polarity === 'has' && a.severity === 'unknown'),
+    // A restatement of a row whose severity is stored is not an unknown severity (no re-ask).
+    rule('siddet_bilinmiyor', 'şiddet bilinmiyor: netleşene kadar ciddi sayılır, koç bir kez sorar', (a, d) =>
+      a.whose === 'self' && a.polarity === 'has' && a.severity === 'unknown' && !(d.existing && d.existing.severity !== null)),
   ],
 });
 

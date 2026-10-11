@@ -94,10 +94,13 @@ export function isDeletableRefKind(kind: RefKind): boolean {
  * workout soft-deletes its achievements AND its sets in the same group, and restoring brings them back,
  * so an undone mis-logged "200 kg squat" stops being the historical max (readers must filter is_deleted —
  * see migration 110's reader checklist).
+ * 114 adds the safety spine and its mirrors (user_constraints, health_events, food_preferences): a
+ * wrongly added allergy/injury is undoable as one group (the spine row is deactivated, never deleted).
  */
 export const LEDGER_TABLES = [
   'meal_logs', 'workout_logs', 'supplement_logs', 'daily_metrics', 'weight_history',
   'profiles', 'user_venues', 'life_events', 'lab_values', 'achievements', 'strength_sets',
+  'user_constraints', 'health_events', 'food_preferences',
 ] as const;
 export type LedgerTable = typeof LEDGER_TABLES[number];
 

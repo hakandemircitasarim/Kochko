@@ -196,10 +196,12 @@ Deno.test('v1OnlyReason: exact client protocols only (no language parsing)', () 
 // ─── T2 safety ───────────────────────────────────────────────────────────────────────────────────
 
 Deno.test('explicit tripwire → today’s canned reply at once: no Stage A, no Stage B, no reservation; facts salvaged later (spine only)', async () => {
-  const msg = 'kendimi öldürmek istiyorum, fıstık alerjim var zaten, hiçbir şey yemiyorum';
+  // (sesame: the seeded spine already holds the legacy 'fıstık' row, and a restatement of an ACTIVE
+  // allergy is not a new protective fact to salvage — see the next test)
+  const msg = 'kendimi öldürmek istiyorum, susam alerjim var zaten, hiçbir şey yemiyorum';
   const salvageDecision = sampleDecision({
     writes: [
-      { op: 'constraint_add', kind: 'allergen', subject_id: 'peanut', display_tr: 'fıstık', whose: 'self', polarity: 'has', severity: 'unknown', body_parts: [], event_date: null, note: null, evidence_quote: 'fıstık alerjim var' },
+      { op: 'constraint_add', kind: 'allergen', subject_id: 'sesame', display_tr: 'susam', whose: 'self', polarity: 'has', severity: 'unknown', body_parts: [], event_date: null, note: null, evidence_quote: 'susam alerjim var' },
       sampleMeal(),
     ],
   });
@@ -218,6 +220,17 @@ Deno.test('explicit tripwire → today’s canned reply at once: no Stage A, no 
   await t.rec.jobs[0]();
   assertEquals(t.commit.adapter.calls.map((c) => c.op), ['constraint_add'], 'only the protective spine fact; never the meal');
   assertEquals(t.commit.rpcCalls.length, 0);
+});
+
+Deno.test('safety salvage: restating an allergy the spine ALREADY holds (legacy "fıstık" = peanut) writes nothing — protection is there', async () => {
+  const msg = 'kendimi öldürmek istiyorum, fıstık alerjim var zaten';
+  const salvageDecision = sampleDecision({
+    writes: [{ op: 'constraint_add', kind: 'allergen', subject_id: 'peanut', display_tr: 'fıstık', whose: 'self', polarity: 'has', severity: 'unknown', body_parts: [], event_date: null, note: null, evidence_quote: 'fıstık alerjim var' }],
+  });
+  const t = await turn({ message: msg }, { stageA: parsed(salvageDecision) });
+  assertEquals(t.rec.jobs.length, 1);
+  await t.rec.jobs[0]();
+  assertEquals(t.commit.adapter.calls.length, 0, 'no duplicate spine row (trial 2026-10-11: "peanut" beside the active "fıstık")');
 });
 
 Deno.test('ambiguous emergency trigger + Stage A failure → today’s canned reply (fail-closed), nothing written', async () => {

@@ -4,6 +4,11 @@
  * Fractional minutes/kcal used to fail the SMALLINT insert and lose the whole workout (22P02);
  * now they are rounded at the boundary and listed in `normalized[]`. Supplements carry the
  * model's kcal/macros (whey finally counts) and allergen tags (omega-3 → fish, final2#11).
+ *
+ * A strength set's numbers are the user's or nothing (trial 2026-10-11: "dün squat yaptım" was
+ * stored as 1 set × 1 rep × 0 kg because sets/reps were required): sets, reps and weight are
+ * nullable, and the writer stores set rows only for an exercise whose sets AND reps were stated
+ * (strength_sets.reps is NOT NULL) — the workout itself is always written.
  */
 import { f, op, rule } from '../dsl.ts';
 import { ALLERGENS, INTENSITY, WORKOUT_TYPES } from '../vocab.ts';
@@ -31,10 +36,10 @@ export const workout_log = op({
     rpe: f.num({ nullable: true, hard: [1, 10], decimals: 0 }),
     time_local: f.text({ nullable: true, format: 'hhmm' }),
     strength_sets: f.list({ min: 0, max: 30 }, {
-      exercise: f.text({ max: 60, tr: 'snake_case (bench_press, squat…)' }),
+      exercise: f.text({ max: 60, tr: 'snake_case (bench_press, squat…); söylenmeyen sayı null' }),
       as_stated: f.text({ max: 60 }),
-      sets: f.num({ hard: [1, 20], decimals: 0 }),
-      reps: f.num({ hard: [1, 100], decimals: 0 }),
+      sets: f.num({ nullable: true, hard: [1, 20], decimals: 0 }),
+      reps: f.num({ nullable: true, hard: [1, 100], decimals: 0 }),
       weight_kg: f.num({ unit: 'kg', nullable: true, hard: [0, 500], decimals: 1 }),
     }),
     replaces: f.ref(['w'], { nullable: true }),

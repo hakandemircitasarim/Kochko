@@ -51,11 +51,15 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * total by what the sentence covers, three examples moved off the stronger overlap guard — fitted
  * inside the v6 ceilings by tightening few-shot "why" lines. Measured: rules ≈1881, few-shots ≈3220,
  * doc ≈3341, prefix ≈13585. No ceiling moved.
+ * 2026-10-11 (SCHEMA_VERSION v5, live-trial write fixes): stageAPrefix 13600 → 13610. The strict
+ * schema's strength_sets sets/reps became `["number","null"]` (+18 chars, unavoidable — the required
+ * number is what made the model invent "1 × 1 × 0 kg") and the doc says "söylenmeyen sayı null"
+ * (+23 chars). Measured prefix ≈13607.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],
   understandRules: [900, 1900],
   understandFewShots: [1500, 3300],
   exemplars: [1100, 2400],
-  stageAPrefix: [9000, 13600],
+  stageAPrefix: [9000, 13610],
 } as const satisfies Record<string, readonly [number, number]>;

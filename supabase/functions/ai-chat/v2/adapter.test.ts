@@ -55,6 +55,29 @@ Deno.test('workout_log: workout + expanded sets, model numbers only (no MET gues
   assertEquals(out.ref, 'x1', 'the ledger ref is the write handle');
 });
 
+Deno.test('workout_log "dün squat yaptım" (no numbers): the workout alone — no invented 1 × 1 × 0 kg set (trial 2026-10-11)', async () => {
+  const db = fakeAdapterDb();
+  const item = w('workout_log', {
+    raw: 'dün squat yaptım', duration_min: null, intensity: null, calories_burned: null, rpe: null, time_local: null,
+    strength_sets: [{ exercise: 'squat', as_stated: 'squat', sets: null, reps: null, weight_kg: null }],
+  });
+  const r = await req(item, 'dün squat yaptım dizim ağrıyor');
+  assertEquals(r.verdict.verdict, 'COMMIT', JSON.stringify(r.verdict.issues));
+  const out = await createAdapter({ db, helpers: fakeHelpers() }).apply(r);
+  assertEquals(out.ok, true);
+  assertEquals(db.rows.workout_logs.length, 1);
+  assertEquals(db.rows.strength_sets, undefined, 'no set rows for numbers the user never said');
+  assertEquals((ledgerEntries(db)[0].meta as Record<string, unknown>).exercises_without_numbers, ['squat']);
+});
+
+Deno.test('workout_log: stated sets × reps without a weight → rows with weight NULL, never 0 kg', async () => {
+  const db = fakeAdapterDb();
+  const item = w('workout_log', { strength_sets: [{ exercise: 'push_up', as_stated: '3x12 şınav', sets: 3, reps: 12, weight_kg: null }] });
+  await createAdapter({ db, helpers: fakeHelpers() }).apply(await req(item));
+  assertEquals(db.rows.strength_sets.length, 3);
+  assert(db.rows.strength_sets.every((s) => s.weight_kg === null && s.reps === 12));
+});
+
 Deno.test('supplement_log: macros when stated, column defaults when not; allergen tags ride in the ledger meta', async () => {
   const db = fakeAdapterDb();
   const a = createAdapter({ db, helpers: fakeHelpers() });
@@ -92,11 +115,12 @@ Deno.test('profile_set list field: add/remove one item, never a joined-string ov
   assertEquals(db.rows.profiles[0].disliked_exercises, 'koşu, burpee');
 });
 
-Deno.test('constraint_add self+has allergen → spine via syncConstraint (canonical id) + legacy allergen mirror for v1 readers', async () => {
+Deno.test('constraint_add self+has allergen → spine via syncConstraint (canonical id) + legacy allergen mirror, ONE undoable group (undo = deactivate)', async () => {
   const db = fakeAdapterDb();
-  const h = fakeHelpers();
+  const h = fakeHelpers({ db });
   const out = await createAdapter({ db, helpers: h }).apply(await req(w('constraint_add'), 'Fındık alerjim var, ciddi.'));
   assertEquals(out.ok, true);
+  assertEquals(out.ledger_missing, undefined);
   assertEquals(h.synced.length, 1);
   assertEquals(h.synced[0].c.kind, 'allergen');
   assertEquals(h.synced[0].c.subject, 'hazelnut');
@@ -104,7 +128,71 @@ Deno.test('constraint_add self+has allergen → spine via syncConstraint (canoni
   const fp = db.rows.food_preferences[0];
   assertEquals(fp.food_name, 'fındık');
   assertEquals(fp.is_allergen, true);
-  assertEquals(ledgerEntries(db)[0].undo_mode, 'none', 'the spine is not ref-undoable: removal is its own two-step op');
+  const [spine, mirror] = ledgerEntries(db);
+  // Trial 2026-10-11: these were audit-only ('profiles', row_id null, undo none) — "geri al" could not
+  // take back a wrongly added allergy. Now the spine row is named and its undo deactivates it.
+  assertEquals(spine.table_name, 'user_constraints');
+  assertEquals(spine.row_id, db.rows.user_constraints[0].id);
+  assertEquals(spine.undo_mode, 'restore_previous');
+  assertEquals([spine.field_set, spine.before, spine.after], [['active'], { active: false }, { active: true }], 'undo = deactivate, never a delete');
+  assertEquals(spine.is_primary, true);
+  assertEquals(mirror.table_name, 'food_preferences');
+  assertEquals(mirror.row_id, fp.id);
+  assertEquals(mirror.before, null, 'the mirror row was created by this write: undo removes it');
+  assertEquals(mirror.group, spine.group, 'one logical write');
+});
+
+Deno.test('constraint_add re-activating a retracted row: undo restores exactly the prior state (inactive)', async () => {
+  const db = fakeAdapterDb({ user_constraints: [{ id: 'uc-x', user_id: USER, kind: 'allergen', subject: 'hazelnut', severity: 'mild', active: false }] });
+  await createAdapter({ db, helpers: fakeHelpers({ db }) }).apply(await req(w('constraint_add'), 'Fındık alerjim var, ciddi.'));
+  const [spine] = ledgerEntries(db);
+  assertEquals(spine.row_id, 'uc-x');
+  assertEquals(spine.before, { active: false });
+  assertEquals(db.rows.user_constraints.length, 1, 'the upsert reused the row');
+});
+
+Deno.test('constraint_add restating an ACTIVE legacy row ("fıstık" stored, model says peanut) → the stored row is confirmed, no second row', async () => {
+  const db = fakeAdapterDb({ user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', severity: 'severe', active: true }] });
+  const h = fakeHelpers({ db });
+  const item = { ...w('constraint_add'), subject_id: 'peanut', display_tr: 'fıstık', severity: 'unknown', evidence_quote: 'fıstık alerjim var' };
+  const r = await req(item, 'fıstık alerjim var bu arada');
+  assertEquals(r.row.effect, 'already_active');
+  const out = await createAdapter({ db, helpers: h }).apply(r);
+  assertEquals(out.ok, true);
+  assertEquals(h.synced.length, 0, 'never a new spine row');
+  assertEquals(db.rows.user_constraints.length, 1);
+  assertEquals(db.rows.user_constraints[0].severity, 'severe', 'an unknown restatement never erases the stated severity');
+  assertEquals(db.rows.user_constraints[0].source, 'confirmed');
+  assertEquals(db.rows.food_preferences, undefined, 'no new legacy mirror either');
+  const [led] = ledgerEntries(db);
+  assertEquals([led.table_name, led.row_id, led.undo_mode], ['user_constraints', 'uc-1', 'none'], 'a confirmation adds no protection to undo');
+});
+
+Deno.test('constraint_add restating a stored row WITH a new severity → that row takes it (undoable), still no second row', async () => {
+  const db = fakeAdapterDb({ user_constraints: [{ id: 'uc-2', user_id: USER, kind: 'injury', subject: 'sol_diz', severity: null, body_parts: ['knee'], active: true }] });
+  const h = fakeHelpers({ db });
+  const item = { op: 'constraint_add', kind: 'injury', subject_id: 'sol_diz', display_tr: 'sol diz', whose: 'self', polarity: 'has', severity: 'moderate', body_parts: ['knee'], event_date: null, note: null, evidence_quote: 'dizim orta derecede ağrıyor' };
+  const r = await req(item, 'dizim orta derecede ağrıyor');
+  assertEquals(r.row.effect, 'activate', 'a severity change is a protective change (the safety salvage keeps it)');
+  const out = await createAdapter({ db, helpers: h }).apply(r);
+  assertEquals(out.ok, true);
+  assertEquals(h.synced.length, 0);
+  assertEquals(db.rows.health_events, undefined, 'no duplicate health_events mirror');
+  assertEquals(db.rows.user_constraints[0].severity, 'moderate');
+  const [led] = ledgerEntries(db);
+  assertEquals([led.table_name, led.row_id, led.undo_mode, led.before, led.after], ['user_constraints', 'uc-2', 'restore_previous', { severity: null }, { severity: 'moderate' }]);
+});
+
+Deno.test('constraint_add restatement whose stored row vanished since the turn loaded → written as new (protection never drops)', async () => {
+  const db = fakeAdapterDb();
+  const h = fakeHelpers({ db });
+  const item = { ...w('constraint_add'), subject_id: 'peanut', display_tr: 'fıstık', severity: 'unknown', evidence_quote: 'fıstık alerjim var' };
+  const r = await req(item, 'fıstık alerjim var');
+  assertEquals(r.row.effect, 'already_active');
+  const out = await createAdapter({ db, helpers: h }).apply(r);
+  assertEquals(out.ok, true);
+  assertEquals(h.synced.map((s) => s.c.subject), ['peanut']);
+  assertEquals(out.note_tr, 'kayıt yeniden yazıldı');
 });
 
 Deno.test('constraint_add unknown severity → spine severity NULL (= severe in every filter); someone else\'s → coach note only', async () => {
@@ -119,17 +207,32 @@ Deno.test('constraint_add unknown severity → spine severity NULL (= severe in 
   assertEquals(db2.rows.food_preferences, undefined);
 });
 
-Deno.test('constraint_add injury → spine with body parts + the health_events mirror v1 guards read', async () => {
+Deno.test('constraint_add injury → spine with body parts + the health_events mirror v1 guards read, both in the undoable group', async () => {
   const db = fakeAdapterDb();
-  const h = fakeHelpers();
+  const h = fakeHelpers({ db });
   const item = { op: 'constraint_add', kind: 'injury', subject_id: 'left_knee', display_tr: 'sol diz', whose: 'self', polarity: 'has', severity: 'moderate', body_parts: ['knee'], event_date: null, note: 'koşarken burktum', evidence_quote: 'dizimi burktum' };
   await createAdapter({ db, helpers: h }).apply(await req(item, 'koşarken dizimi burktum'));
   assertEquals(h.synced[0].c.body_parts, ['knee']);
   assertEquals(db.rows.health_events[0].event_type, 'injury');
   assertEquals(db.rows.health_events[0].is_ongoing, true);
+  const [spine, he] = ledgerEntries(db);
+  assertEquals([spine.table_name, spine.undo_mode, spine.before], ['user_constraints', 'restore_previous', { active: false }]);
+  // Trial 2026-10-11: the health_events mirror had no ledger row at all.
+  assertEquals([he.table_name, he.row_id, he.undo_mode, he.before, he.after], ['health_events', db.rows.health_events[0].id, 'restore_previous', null, { is_ongoing: true }]);
+  assertEquals(he.group, spine.group);
 });
 
-Deno.test('constraint_retract by row id: deactivated (never deleted), legacy allergen flag lowered, audit ledger', async () => {
+Deno.test('constraint_add dietary → profiles.dietary_restriction mirror with its previous value in the group', async () => {
+  const db = fakeAdapterDb({ profiles: [{ id: USER, dietary_restriction: null }] });
+  const item = { op: 'constraint_add', kind: 'dietary', subject_id: 'vegan', display_tr: 'vegan', whose: 'self', polarity: 'has', severity: 'unknown', body_parts: [], event_date: null, note: null, evidence_quote: 'veganım' };
+  await createAdapter({ db, helpers: fakeHelpers({ db }) }).apply(await req(item, 'veganım'));
+  assertEquals(db.rows.profiles[0].dietary_restriction, 'vegan');
+  const entries = ledgerEntries(db);
+  assertEquals(entries.map((e) => e.table_name), ['user_constraints', 'profiles']);
+  assertEquals([entries[1].before, entries[1].after], [{ dietary_restriction: null }, { dietary_restriction: 'vegan' }]);
+});
+
+Deno.test('constraint_retract by row id: deactivated (never deleted), legacy allergen flag lowered, undoable group (undo re-activates)', async () => {
   const db = fakeAdapterDb({
     user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', active: true }],
     food_preferences: [{ id: 'fp1', user_id: USER, food_name: 'fıstık', preference: 'never', is_allergen: true }],
@@ -143,6 +246,9 @@ Deno.test('constraint_retract by row id: deactivated (never deleted), legacy all
   assertEquals(db.rows.user_constraints[0].active, false);
   assertEquals(db.rows.food_preferences[0].is_allergen, false);
   assertEquals(db.rows.food_preferences.length, 1, 'nothing is hard-deleted');
+  const [spine, fp] = ledgerEntries(db);
+  assertEquals([spine.table_name, spine.row_id, spine.undo_mode, spine.before, spine.after], ['user_constraints', 'uc-1', 'restore_previous', { active: true }, { active: false }]);
+  assertEquals([fp.table_name, fp.row_id, fp.before, fp.after], ['food_preferences', 'fp1', { is_allergen: true }, { is_allergen: false }]);
 });
 
 Deno.test('food_pref: a taste preference never clears an allergy flag', async () => {
@@ -196,13 +302,18 @@ Deno.test('a failed insert is ok:false write_failed; a failed LEDGER append stil
   assertEquals(out2.ledger_missing, true, 'an undoable write without its ledger row is reported, never a silent ok');
 });
 
-Deno.test('a failed AUDIT-only ledger append (goal, spine, prefs…) is not reported as an undo loss', async () => {
-  const noLedger = fakeAdapterDb({}, { rpc: (name) => (name === 'v2_ledger_append' ? { data: null, error: { message: 'boom' } } : undefined) });
-  const out = await createAdapter({ db: noLedger, helpers: fakeHelpers() }).apply(await req(w('constraint_add'), 'fıstık alerjim var'));
+Deno.test('a failed AUDIT-only ledger append (goal, prefs…) is not reported as an undo loss; the spine group is (114 not applied)', async () => {
+  const boom = () => fakeAdapterDb({}, { rpc: (name) => (name === 'v2_ledger_append' ? { data: null, error: { message: 'boom' } } : undefined) });
+  const out = await createAdapter({ db: boom(), helpers: fakeHelpers() }).apply(await req(w('food_pref')));
   assertEquals(out.ok, true);
   assertEquals(out.ledger_missing, undefined, 'audit-only entries were never undoable by ref');
   const ok = await createAdapter({ db: fakeAdapterDb(), helpers: fakeHelpers() }).apply(await req(w('workout_log')));
   assertEquals(ok.ledger_missing, undefined, 'a landed ledger row carries no flag');
+  // The spine add IS undoable now: a lost ledger row (e.g. migration 114 missing) is said, never a silent ok.
+  const db = boom();
+  const spine = await createAdapter({ db, helpers: fakeHelpers({ db }) }).apply(await req(w('constraint_add'), 'Fındık alerjim var, ciddi.'));
+  assertEquals(spine.ok, true);
+  assertEquals(spine.ledger_missing, true);
 });
 
 Deno.test('correction on an adapter op: undo the old record first; a failed new write restores it', async () => {

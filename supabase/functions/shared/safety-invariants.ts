@@ -60,6 +60,27 @@ function normAllergen(x: string): string {
   return EN_ALLERGEN_ALIAS[fold(s)] ?? s;
 }
 
+/**
+ * The ONE vocabulary id among `ids` that names the same allergen as `subject`, compared through
+ * the SAME normalisation allergenTagsHit uses (normAllergen + fold over EN_ALLERGEN_ALIAS). It lets a
+ * legacy v1 spine subject ('fıstık', 'yumurta', 'süt') be read as the canonical id v2 writes
+ * ('peanut', 'egg', 'milk'), so a re-statement is recognised and a "yok" finds the legacy row.
+ *
+ * Exact concept equality only — never the looser "touches" overlap (a pistachio tag touching the
+ * legacy 'fındık' category must not make "Antep fıstığında sorun yok" retract that row). Returns
+ * the subject itself when it already is an id, and null when no id or MORE than one names it
+ * ('kabuklu' is crustacean AND mollusc): the caller then keeps the stored subject as it is.
+ */
+export function canonicalAllergenId(subject: string, ids: readonly string[]): string | null {
+  const s = (subject ?? '').trim();
+  if (!s) return null;
+  if (ids.includes(s)) return s;
+  const key = fold(normAllergen(s));
+  if (!key) return null;
+  const hits = ids.filter((id) => fold(normAllergen(id)) === key);
+  return hits.length === 1 ? hits[0] : null;
+}
+
 function allergenTerms(x: string, expand?: (id: string) => readonly string[]): string[] {
   const out = new Set<string>([normAllergen(x)]);
   for (const e of expand?.(x) ?? []) out.add(normAllergen(e));

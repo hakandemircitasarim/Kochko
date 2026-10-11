@@ -5,7 +5,8 @@
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import { holdLine, MEAL_LOGGED_MARK, receiptLine, rejectLine, toActionReceipt, turnFactLine } from './receipts.ts';
 import { validateChannelItems, type WriteVerdict } from './validate.ts';
-import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleContext, sampleMeal } from './samples.ts';
+import { SAMPLE_MESSAGES, SAMPLE_REFS, SAMPLE_TODAY, SAMPLE_WRITES, sampleContext, sampleMeal } from './samples.ts';
+import type { RenderedRef } from './refs.ts';
 import { REGISTRY } from './registry.ts';
 import type { Channel } from './dsl.ts';
 
@@ -57,9 +58,89 @@ Deno.test('spine receipts say what really happened (activated / absence noted / 
   assertEquals(receiptLine(v1('writes', w('constraint_retract'), 'dizim tamamen iyileşti'), ctx), 'Kaldırıldı: diz sakatlığı (orta)');
 });
 
-Deno.test('record receipts quote the record the user was shown', () => {
+Deno.test('record receipts quote the record the user was shown; a correction shows the STORED patch (old record quoted only without a snapshot)', () => {
   assertEquals(receiptLine(v1('record_ops', w('record_delete')), ctx), 'Kayıt geri alındı: su +0,20 L (gün 1,60 L)');
-  assertEquals(receiptLine(v1('record_ops', w('record_update'), SAMPLE_MESSAGES.record_update), ctx), 'Kayıt düzeltildi: Per 2 Eki akşam · "6 tavuk nugget" → 900 g 1708 kcal');
+  assertEquals(
+    receiptLine(v1('record_ops', w('record_update'), SAMPLE_MESSAGES.record_update), ctx),
+    'Kayıt düzeltildi — tavuk nugget (6 küçük) ~290 kcal · toplam 290 kcal (2026-10-02); önceki kayıt: Per 2 Eki akşam · "6 tavuk nugget" → 900 g 1708 kcal',
+  );
+});
+
+// ─── live trial 2026-10-11 (final2 "pardon lahmacun aslında tek dilimdi") ──────────────────────────
+
+/** The trial's m1 as the loader renders it: model-facing summary WITH the tag, user summary + snapshot without. */
+const LAHMACUN_REF: RenderedRef = {
+  kind: 'm', target: 'meal', op: 'meal_log', day: '2026-10-06', last_turn: true,
+  summary_tr: 'lahmacun (2 dilim ~200 g) 500 kcal; ayran (bir ayran ~250 g) 90 kcal · toplam 590 kcal [model]',
+  user_summary_tr: 'lahmacun (2 dilim ~200 g) 500 kcal; ayran (bir ayran ~250 g) 90 kcal · toplam 590 kcal',
+  snapshot: { items: [{ name: 'lahmacun', portion: '2 dilim', kcal: 500 }, { name: 'ayran', portion: 'bir ayran', kcal: 90 }], total_kcal: 590 },
+};
+const trialCtx = (msg: string) => sampleContext({ user_message: msg, refs: { ...SAMPLE_REFS, m1: LAHMACUN_REF } });
+const lahmacunFix = () => ({
+  op: 'update', ref: 'm1', basis: 'user_correction', reason: 'tek dilim', evidence_quote: 'lahmacun aslında tek dilimdi',
+  patch: sampleMeal([
+    { name: 'lahmacun', as_stated: 'tek dilim', grams: 100, kcal: 250, protein_g: 10, carbs_g: 30, fat_g: 9, allergens: ['gluten'], may_contain: [] },
+    { name: 'ayran', as_stated: 'bir ayran', grams: 250, kcal: 90, protein_g: 5, carbs_g: 7, fat_g: 4, allergens: ['milk'], may_contain: [] },
+  ], { day: 'today', meal_type: 'lunch', raw: 'lahmacun tek dilim, ayran' }),
+});
+
+Deno.test('trial: a meal record_update receipt renders the PATCH kcal, old → new — never the old record (the coach believed it)', () => {
+  const msg = 'pardon lahmacun aslında tek dilimdi';
+  const v = validateChannelItems('record_ops', [lahmacunFix()], trialCtx(msg))[0];
+  assertEquals(v.verdict, 'COMMIT', JSON.stringify(v.issues));
+  const line = receiptLine(v, { today: SAMPLE_TODAY, refs: trialCtx(msg).refs })!;
+  assertEquals(line, 'Kayıt düzeltildi — lahmacun 2 dilim → tek dilim (500 → ~250 kcal) · toplam 590 → 340 kcal');
+  assert(!line.includes('[model]'), 'the provenance tag is model-facing');
+  // The Stage B fact is the same line: the coach reads the corrected record as the fact.
+  const fact = turnFactLine(v, { today: SAMPLE_TODAY, refs: trialCtx(msg).refs });
+  assertEquals(fact, `KAYDEDİLDİ: ${line}`);
+  assert(fact.includes('340') && !fact.includes('toplam 590 kcal'), fact);
+});
+
+Deno.test('trial: undo / delete receipts quote the USER summary — no "[model]" tag', () => {
+  const del = validateChannelItems('record_ops', [{ op: 'delete', ref: 'm1', reason: 'geri al' }], trialCtx('geri al'))[0];
+  const line = receiptLine(del, { today: SAMPLE_TODAY, refs: trialCtx('geri al').refs })!;
+  assertEquals(line, 'Kayıt geri alındı: lahmacun (2 dilim ~200 g) 500 kcal; ayran (bir ayran ~250 g) 90 kcal · toplam 590 kcal');
+});
+
+Deno.test('a correction diff names added and removed items; a metric correction is old → new in its unit', () => {
+  const msg = 'ayranı yanlış yazmışım, kola içtim';
+  const fix = lahmacunFix();
+  (fix.patch as Record<string, unknown>).items = [
+    (fix.patch as { items: unknown[] }).items[0],
+    { name: 'kola', as_stated: '1 kutu', grams: 330, kcal: 139, protein_g: 0, carbs_g: 35, fat_g: 0, alcohol_g: 0, caffeine_mg: 32, preparation: null, allergens: [], may_contain: [], reference_key: null, confidence: 0.8 },
+  ];
+  fix.evidence_quote = 'kola içtim';
+  const v = validateChannelItems('record_ops', [fix], trialCtx(msg))[0];
+  const line = receiptLine(v, { today: SAMPLE_TODAY, refs: trialCtx(msg).refs })!;
+  assertEquals(line, 'Kayıt düzeltildi — lahmacun 2 dilim → tek dilim (500 → ~250 kcal) · kola (1 kutu) ~139 kcal (yeni) · ayran çıkarıldı · toplam 590 → 389 kcal');
+  const weightRef: RenderedRef = { kind: 'd', target: 'weight', op: 'body_weight', day: SAMPLE_TODAY, summary_tr: 'tartı: 78,2 kg', snapshot: { value: 78.2 } };
+  const wctx = sampleContext({ user_message: 'tartı 81,6 olacaktı', refs: { ...SAMPLE_REFS, d9: weightRef } });
+  const wv = validateChannelItems('record_ops', [{
+    op: 'update', ref: 'd9', basis: 'user_correction', reason: 'yanlış', evidence_quote: 'tartı 81,6 olacaktı',
+    patch: { op: 'body_weight', day: 'today', kg: 81.6, as_stated: '81,6', replaces: null },
+  }], wctx)[0];
+  assertEquals(wv.verdict, 'COMMIT', JSON.stringify(wv.issues));
+  assertEquals(receiptLine(wv, { today: SAMPLE_TODAY, refs: wctx.refs }), 'Kayıt düzeltildi — tartı 78,2 → 81,6 kg');
+});
+
+Deno.test('trial: someone else\'s constraint — ONE pair of parentheses even when display_tr names the owner', () => {
+  const kid = v1('writes', w('constraint_add', { subject_id: 'egg', display_tr: 'yumurta (kızının)', whose: 'other_person', evidence_quote: 'kızımın da yumurta alerjisi var' }), 'kızımın da yumurta alerjisi var');
+  assertEquals(receiptLine(kid, ctx), 'Not aldım: yumurta (kızının; senin kısıtlarına eklenmedi)');
+  const pref = v1('writes', w('food_pref', { food: 'brokoli (eşimin)', whose: 'other_person' }));
+  assertEquals(receiptLine(pref, ctx), 'Not aldım: brokoli (eşimin; senin tercihlerine eklenmedi)');
+  assertEquals(receiptLine(v1('writes', w('food_pref', { whose: 'other_person' })), ctx), 'Not aldım: brokoli (başkasının tercihi)');
+});
+
+Deno.test('a restatement of an active spine row says "zaten kayıtlı" (or the severity it updated) — never "kaydedildi" as if new', () => {
+  // SAMPLE_REFS c1 = peanut (severe), c3 = milk (severity unknown).
+  const again = v1('writes', w('constraint_add', { subject_id: 'peanut', display_tr: 'fıstık', severity: 'unknown', evidence_quote: 'fıstık alerjim var' }), 'fıstık alerjim var');
+  assertEquals(again.row?.effect, 'already_active');
+  assertEquals(receiptLine(again, ctx), 'Alerji zaten kayıtlı: fıstık (ciddi)');
+  assertEquals(again.issues.filter((i) => i.code === 'siddet_bilinmiyor').length, 0, 'the stored severity is known: no re-ask');
+  const milder = v1('writes', w('constraint_add', { subject_id: 'milk', display_tr: 'süt', severity: 'severe', evidence_quote: 'süt alerjim ciddi' }), 'süt alerjim ciddi');
+  assertEquals(milder.row?.effect, 'activate');
+  assertEquals(receiptLine(milder, ctx), 'Alerji güncellendi: süt (şiddet: ciddi)');
 });
 
 Deno.test('every registry op yields a non-empty Turkish line or an intentional silence for its sample', () => {

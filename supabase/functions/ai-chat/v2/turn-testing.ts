@@ -199,10 +199,27 @@ export interface FakeHelpers extends AdapterHelpers {
   layer2: Record<string, unknown>[];
 }
 
-export function fakeHelpers(opts: { syncOk?: boolean } = {}): FakeHelpers {
+/**
+ * Shared-writer doubles. With `db`, syncConstraint behaves like shared/constraints.ts on that fake
+ * DB: an upsert on (user_id, kind, lowercased subject) that leaves the row active, so the adapter
+ * can read the spine row back (its ledger entry names the row).
+ */
+export function fakeHelpers(opts: { syncOk?: boolean; db?: FakeAdapterDb } = {}): FakeHelpers {
   const h: FakeHelpers = {
     synced: [], notes: [], patterns: [], layer2: [],
-    syncConstraint(userId, c) { h.synced.push({ userId, c }); return Promise.resolve(opts.syncOk ?? true); },
+    syncConstraint(userId, c) {
+      h.synced.push({ userId, c });
+      const ok = opts.syncOk ?? true;
+      if (ok && opts.db) {
+        const subject = c.subject.trim().toLocaleLowerCase('tr').slice(0, 80);
+        const list = (opts.db.rows.user_constraints ??= []);
+        const row = { user_id: userId, kind: c.kind, subject, severity: c.severity ?? null, body_parts: c.body_parts ?? [], active: true };
+        const i = list.findIndex((r) => r.user_id === userId && r.kind === c.kind && r.subject === subject);
+        if (i >= 0) list[i] = { ...list[i], ...row };
+        else list.push({ id: `uc-${list.length + 1}-${subject}`, ...row });
+      }
+      return Promise.resolve(ok);
+    },
     appendCoachingNote(_u, _s, text) { h.notes.push(text); return Promise.resolve({ ok: true }); },
     appendBehavioralPatterns(_u, p) { h.patterns.push(...p); return Promise.resolve(); },
     updateLayer2(_u, patch) { h.layer2.push(patch); return Promise.resolve(); },

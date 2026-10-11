@@ -217,6 +217,33 @@ Deno.test('erase hold confirm → shared/erase-hold.ts path; discard → v2_hold
   if (s.kind === 'hold_resolve') assertEquals(s.status, 'discarded');
 });
 
+Deno.test('trial 2026-10-11: a hold answered with the OTHER option (discard + same-kind write) shows only the write — no "Vazgeçildi" chip', async () => {
+  const ti = await withWaterHold();
+  const water = ti.pending.find((p) => p.id === 'pw-w')!;
+  const msg = 'ek olarak, 2 litrenin üstüne';
+  const decision = sampleDecision({
+    pending_ops: [{ op: 'discard', ref: water.ref }],
+    writes: [w('water_log', { quantity: 1.4, unit: 'litre', as_stated: '1.4', mode: 'add' })],
+  });
+  const { plan } = planFor(ti, decision, msg);
+  const discard = plan.steps.find((s) => s.kind === 'hold_resolve');
+  assert(discard && discard.kind === 'hold_resolve' && discard.superseded === true);
+  const ports = fakeCommitPorts();
+  const result = await executeCommit(plan, ports);
+  assertEquals(ports.rpcCalls.find((c) => c.name === 'v2_hold_resolve')?.args.p_status, 'discarded', 'the old hold is still closed');
+  assertEquals(result.receipts.map((r) => r.legacy_type), ['water_log'], 'only the write');
+  assert(!result.receipts.some((r) => r.user_line === 'Vazgeçildi'));
+  // A plain discard (or one next to an unrelated write) keeps its receipt.
+  const alone = await executeCommit(planFor(ti, sampleDecision({ pending_ops: [{ op: 'discard', ref: water.ref }] }), 'vazgeçtim').plan, fakeCommitPorts());
+  assertEquals(alone.receipts.map((r) => r.user_line), ['Vazgeçildi']);
+  const other = planFor(ti, sampleDecision({ pending_ops: [{ op: 'discard', ref: water.ref }], writes: [w('step_log')] }), 'vazgeçtim, 12 bin adım attım');
+  assertEquals((other.plan.steps.find((s) => s.kind === 'hold_resolve') as { superseded?: boolean }).superseded, undefined);
+  // A FAILED discard still reports, superseded or not (a hold left open must not be silent).
+  const failing = fakeCommitPorts({ rpc: (name) => (name === 'v2_hold_resolve' ? { ok: false, op: 'hold_resolve', failure_class: 'hold_not_open', detail: {} } : undefined) });
+  const failed = await executeCommit(plan, failing);
+  assert(failed.receipts.some((r) => r.action_type === 'pending_discard' && r.ok === false));
+});
+
 Deno.test('holdPayloadOf / isHoldPayloadV2 round trip', async () => {
   const ti = await seededTurnInput();
   const msg = 'fıstık alerjim geçti';

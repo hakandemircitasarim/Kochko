@@ -36,7 +36,7 @@ import { WATER_MAX_LITERS_PER_WRITE } from './water-intent.ts';
 const MIG_DIR = new URL('../../migrations/', import.meta.url);
 const V2_MIGRATIONS = [
   '108_turn_writes.sql', '109_pending_writes_v2.sql', '110_soft_delete_and_types.sql',
-  '111_turn_log_v2.sql', '112_chat_receipts.sql', '113_v2_writer_rpcs.sql',
+  '111_turn_log_v2.sql', '112_chat_receipts.sql', '113_v2_writer_rpcs.sql', '114_ledger_spine_tables.sql',
 ];
 // CRLF-safe: a Windows checkout must not turn a parity check red.
 const sql = (f: string) => Deno.readTextFileSync(new URL(f, MIG_DIR)).replace(/\r\n/g, '\n');
@@ -86,13 +86,24 @@ Deno.test('REF_KINDS and REF_KIND_TABLE match record_refs CHECKs (108)', () => {
   assertEquals(Object.fromEntries([...pairs].sort()), Object.fromEntries(Object.entries(REF_KIND_TABLE).sort()));
 });
 
-Deno.test('LEDGER_TABLES, UNDO_MODES and the ledger pipeline match turn_writes CHECKs (108)', () => {
+Deno.test('LEDGER_TABLES, UNDO_MODES and the ledger pipeline match turn_writes CHECKs (108 + 114)', () => {
   const m108 = sql('108_turn_writes.sql');
-  assertEquals(sorted(quoted(grab(m108, /table_name\s+text NOT NULL CHECK \(table_name IN \(([\s\S]*?)\)\),/, 'table_name CHECK'))), sorted(LEDGER_TABLES));
+  const m114 = sql('114_ledger_spine_tables.sql');
+  // 114 replaced the table_name CHECK and the engine's whitelist: it is the CURRENT list…
+  // (the code statement, not the DOWN recipe in the header comment, which restores 108's list)
+  const now = sorted(quoted(grab(m114, /^ALTER TABLE public\.turn_writes ADD CONSTRAINT turn_writes_table_name_check CHECK \(table_name IN \(([\s\S]*?)\)\);/m, '114 table_name CHECK')));
+  assertEquals(now, sorted(LEDGER_TABLES));
+  assertEquals(sorted(quoted(grab(m114, /p_table NOT IN \(([\s\S]*?)\) THEN/, '114 _v2_assert_table list'))), sorted(LEDGER_TABLES));
+  // …and only ADDS the spine tables to 108's (nothing the engine already handled is dropped).
+  const was = sorted(quoted(grab(m108, /table_name\s+text NOT NULL CHECK \(table_name IN \(([\s\S]*?)\)\),/, 'table_name CHECK')));
+  assertEquals(sorted(quoted(grab(m108, /p_table NOT IN \(([\s\S]*?)\) THEN/, '_v2_assert_table list'))), was);
+  assertEquals(now.filter((t) => !was.includes(t)), ['food_preferences', 'health_events', 'user_constraints']);
+  assert(was.every((t) => now.includes(t)));
+  // The spine row is never hard-deleted by the engine (restore_previous before=NULL → _v2_delete_row).
+  assert(/IF p_table IN \([^)]*'user_constraints'\) THEN\s+--[^\n]*\n\s+RAISE EXCEPTION/.test(m114), 'user_constraints must be in _v2_delete_row\'s never-delete list');
   assertEquals(sorted(quoted(grab(m108, /undo_mode\s+text NOT NULL CHECK \(undo_mode IN \(([^)]*)\)\)/, 'undo_mode CHECK'))), sorted(UNDO_MODES));
   assertEquals(sorted(quoted(grab(m108, /pipeline\s+text NOT NULL DEFAULT 'v2' CHECK \(pipeline IN \(([^)]*)\)\)/, 'pipeline CHECK'))), ['v1', 'v2']);
-  // The engine's dynamic SQL whitelist is the same list.
-  assertEquals(sorted(quoted(grab(m108, /p_table NOT IN \(([\s\S]*?)\) THEN/, '_v2_assert_table list'))), sorted(LEDGER_TABLES));
+  assert(m114.includes('DOWN:'), '114 documents its DOWN');
 });
 
 Deno.test('every failure_class the SQL can return is a V2_FAILURE_CLASSES member, and none is dead', () => {

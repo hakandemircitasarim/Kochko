@@ -7,12 +7,31 @@ import { checkAllergens, filterExercisesByInjury } from './guardrails.ts';
 import {
   allergenSpine,
   allergenTagsHit,
+  canonicalAllergenId,
   checkSuggestionInvariants,
   injuredRegionsFromSpine,
   injuryLoadHit,
   severeAllergenSubjects,
   unlocatedInjuries,
 } from './safety-invariants.ts';
+
+// ─── canonicalAllergenId (legacy subject → vocabulary id, the SAME normalisation) ─────
+
+const IDS = ['gluten', 'crustacean', 'egg', 'fish', 'peanut', 'soy', 'milk', 'tree_nut', 'hazelnut', 'walnut', 'pistachio', 'sesame', 'mollusc'];
+
+Deno.test('canonicalAllergenId: a legacy Turkish subject is read as the one id that names the same allergen', () => {
+  assertEquals(canonicalAllergenId('fıstık', IDS), 'peanut');
+  assertEquals(canonicalAllergenId('Yumurta ', IDS), 'egg');
+  assertEquals(canonicalAllergenId('süt', IDS), 'milk');
+  assertEquals(canonicalAllergenId('antep fıstığı', IDS), 'pistachio', 'not peanut: exact concept, never the looser overlap');
+  assertEquals(canonicalAllergenId('peanut', IDS), 'peanut');
+  assertEquals(canonicalAllergenId('kabuklu', IDS), null, 'crustacean AND mollusc name it: ambiguous, the caller keeps the subject');
+  assertEquals(canonicalAllergenId('laktoz', IDS), null);
+  assertEquals(canonicalAllergenId('', IDS), null);
+  // The canonical id compares exactly like the legacy subject did (one dictionary).
+  assertEquals(allergenTagsHit(['peanut'], ['fıstık']).length, 1);
+  assertEquals(allergenTagsHit(['fıstık'], ['peanut']).length, 1);
+});
 
 // ─── allergenTagsHit ─────────────────────────────────────────────────────────
 
