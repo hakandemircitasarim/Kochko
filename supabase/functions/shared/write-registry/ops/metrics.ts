@@ -52,7 +52,7 @@ export const sleep_log = op({
   channel: 'writes',
   envelope: 'sleep_log',
   title_tr: 'Uyku',
-  when_tr: 'Uyuduğu süre; day = UYANDIĞI gün ("dün gece 1\'de yatıp 8\'de kalktım" → today).',
+  when_tr: 'Uyuduğu süre; day = UYANDIĞI gün, gece uykusunda "dün" yatılan gecedir ("dün gece 1\'de yatıp 8\'de kalktım" → today).',
   capability_tr: 'Uyku süresini ve kalitesini kaydetmek.',
   fields: {
     day: f.day(),
@@ -103,7 +103,7 @@ export const step_log = op({
   envelope: 'step_log',
   title_tr: 'Adım',
   when_tr: 'Attığı adım sayısı (süre yoksa antrenman değil).',
-  not_when_tr: '"her gün 8 bin adımı hedefliyorum" (profile_set step_target).',
+  not_when_tr: 'bir adım hedefi (profile_set step_target).',
   fields: {
     day: f.day(),
     steps: f.num({ hard: [0, 100000], plausible: [100, 60000], decimals: 0 }),

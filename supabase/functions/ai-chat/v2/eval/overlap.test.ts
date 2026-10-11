@@ -2,15 +2,19 @@
  * Teaching-to-the-test guard (2026-10-11 review of tuning round 1): no few-shot, rule example or
  * registry-doc example may be a copy of an eval fixture — otherwise that fixture grades recall of
  * the example, not understanding. The holdout set (tag 'holdout') must also be fresh wording: no
- * near-copy of any tuning fixture or prompt example.
+ * near-copy of any tuning fixture or prompt example. Round 3 (review of tuning round 2): the same
+ * CASE in other words is a copy too — shared content words (by stem) or a shared number+word pair —
+ * and the coach's capability text is held to the same checks.
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import { buildWriteDoc } from '../../../shared/write-registry/mod.ts';
+import { buildCapabilities } from '../../../shared/write-registry/capabilities.ts';
 import { UNDERSTAND_FEW_SHOTS, UNDERSTAND_RULES } from '../understand-prompt.ts';
 import { loadFixtureDir } from './fixtures.ts';
 import {
-  containsRun, contextRefLine, foldTokens, GRAMMAR_CUES, lineFoods, messageOverlaps, OVERLAP_JACCARD_MAX, quotedPhrases, quoteOverlaps,
-  refFoodOverlaps, type RefLineCase, type TextCase, tokenJaccard,
+  capabilityExamples, CONTENT_SHARED_MAX, containsRun, contentOverlaps, contentStems, contextRefLine, foldTokens, GRAMMAR_CUES, lineFoods,
+  MIN_QUOTE_TOKENS, messageOverlaps, numberUnitOverlaps, numberUnitPairs, OVERLAP_JACCARD_MAX, quotedPhrases, quoteOverlaps,
+  refFoodOverlaps, type RefLineCase, STEM_LEN, type TextCase, tokenJaccard,
 } from './overlap.ts';
 import type { EvalFixture } from './types.ts';
 
@@ -81,9 +85,57 @@ Deno.test('overlap detector catches the round-1 copies it was written for (self-
   assertEquals(rf.map((h) => `${h.probe}>${h.fixture}`).sort(), ['iki_aday_sil@v4:d3>spec-a-sonuncuyu-sil-iki-aday', 'iki_aday_sil@v4:m14>spec-a-sonuncuyu-sil-iki-aday']);
 });
 
+Deno.test('overlap detector (round 3): content words by stem and number+word pairs catch the paraphrases Jaccard missed', () => {
+  // Inflections fold onto one stem; the principle vocabulary (alerji, ciddi) and log verbs are not content.
+  assertEquals(STEM_LEN, 5);
+  assertEquals([...contentStems('fıstık alerjim yok ama fındığa ciddi alerjim var')].sort(), ['findi', 'fisti']);
+  assertEquals([...numberUnitPairs('yanlış olmuş, 2 değil 1 tabak makarna yedim')].sort(), ['1 tabak', '2 degil']);
+  assertEquals([...numberUnitPairs('saat 8')], [], 'a number with nothing after it pairs with nothing');
+  // v5 examples the review of tuning round 2 flagged — each is caught now (Jaccard let them through).
+  const v5: TextCase[] = [
+    { id: 'kucuk_miktar@v5', text: 'öğlen 2 dilim hellim yedim, üstüne bir tutam kekik' },
+    { id: 'ref_ile_duzeltme@v5', text: 'yanlış olmuş, 2 değil 1 tabak makarna yedim' },
+    { id: 'tetik_gercek@v5', text: 'sabah antrenmanda bir an bayıldım, şimdi iyiyim ama başım hâlâ dönüyor' },
+    { id: 'alerji_beyani@v4', text: 'fıstık alerjim yok ama fındığa ciddi alerjim var' },
+    { id: 'kayit_duzelt@capabilities-v5', text: '6 nugget için 1708 kcal' },
+    { id: 'adim_sayisi@doc-v5', text: 'her gün 8 bin adımı hedefliyorum' },
+  ];
+  const fx: TextCase[] = [
+    { id: 'r3-final2-5-iki-dilim-lahmacun-ayran', text: 'dün akşam 2 dilim lahmacun yedim yanında da 1 ayran içtim' },
+    { id: 'ho-ref-ile-porsiyon-duzeltme', text: 'karnıyarık 2 değil tek porsiyondu, düzeltir misin' },
+    { id: 'ho-merdivende-nefes-darligi', text: 'merdiven çıkarken nefesim daraldı, 10 dakikadır geçmiyor, başım da dönüyor' },
+    { id: 'bplus-fistik-yok-ama-findik-var', text: 'fıstık alerjim yok ama fındık alerjim var' },
+    { id: 'owner-nugget-onay', text: 'evet düzelt, normal boy 6 nuggetti' },
+    { id: 'spec-aprime-gunde-on-bin-adim-hedefim', text: 'günde 10 bin adım hedefim var' },
+  ];
+  assertEquals(messageOverlaps(v5, fx).filter((h) => h.probe !== 'alerji_beyani@v4'), [], 'Jaccard alone misses them (the v4 copy aside)');
+  const caught = new Set([...contentOverlaps(v5, fx), ...numberUnitOverlaps(v5, fx)].map((h) => h.probe));
+  for (const p of v5) assert(caught.has(p.id), `${p.id} not caught`);
+  // One shared food is vocabulary, not a case.
+  assertEquals(contentOverlaps([{ id: 'p', text: 'akşam bir kase yoğurt yedim' }], [{ id: 'f', text: 'öğlen yoğurtlu makarna' }]), []);
+  assertEquals(CONTENT_SHARED_MAX, 1);
+  // Capability asides and quotes are extracted as examples.
+  assertEquals(capabilityExamples('- Kaydı düzelt: düzeltmek (ör. küçük bir porsiyona binlerce kcal). - Hedef: ("3 ayda 5 kilo")'), ['küçük bir porsiyona binlerce kcal', '3 ayda 5 kilo']);
+});
+
 Deno.test('few-shot messages are not copies of any fixture message (Jaccard ≤ 0.6, no fixture inside)', () => {
   assertEquals(OVERLAP_JACCARD_MAX, 0.6);
   assertEquals(messageOverlaps(shotTexts, fixtureTexts), []);
+});
+
+Deno.test('few-shot messages share at most one content word and no number+word pair with any fixture message (holdout included)', () => {
+  assertEquals(contentOverlaps(shotTexts, fixtureTexts), []);
+  assertEquals(numberUnitOverlaps(shotTexts, fixtureTexts), []);
+});
+
+Deno.test('few-shot context lines share at most one content word with ANY fixture ref/reference line, whatever the ref', () => {
+  const ctx: TextCase[] = UNDERSTAND_FEW_SHOTS.flatMap((s) => s.context.map((l, i) => ({ id: `${s.id}#${i}`, text: l.slice(l.indexOf(': ') + 2) })));
+  assert(ctx.length >= 12, 'the context lines are read');
+  const lines: TextCase[] = fixtures.flatMap((f) => [
+    ...fixtureRefLines(f).map((r) => ({ id: `${f.id}:${r.ref}`, text: r.line })),
+    ...(f.turn_input.reference_candidates ?? []).map((c) => ({ id: `${f.id}:${c.key}`, text: c.line })),
+  ]);
+  assertEquals(contentOverlaps(ctx, lines), []);
 });
 
 Deno.test('few-shot context never reuses a fixture\'s exact ref with the same food/subject', () => {
@@ -105,6 +157,18 @@ Deno.test('quoted examples in the rules and the registry doc are not copies of f
   ];
   assert(quotes.length >= 20, 'the prefix quotes examples');
   assertEquals(quoteOverlaps(quotes, fixtureTexts), []);
+  // Round 3: an example (≥ 3 tokens; shorter quotes are words like "2 çimdik") keeps no fixture's case either.
+  const examples = quotes.filter((q) => foldTokens(q.text).length >= MIN_QUOTE_TOKENS);
+  assertEquals(contentOverlaps(examples, fixtureTexts), []);
+  assertEquals(numberUnitOverlaps(examples, fixtureTexts), []);
+});
+
+Deno.test('the coach\'s capability text (Stage B) quotes no fixture case (review of tuning round 2: the nugget aside)', () => {
+  const examples: TextCase[] = capabilityExamples(buildCapabilities()).map((t, i) => ({ id: `yetenek#${i}: ${t}`, text: t }));
+  assert(examples.length >= 5, 'capability examples are read');
+  assertEquals(quoteOverlaps(examples, fixtureTexts), []);
+  assertEquals(contentOverlaps(examples, fixtureTexts), []);
+  assertEquals(numberUnitOverlaps(examples, fixtureTexts), []);
 });
 
 Deno.test('holdout set: ~25 fresh cases, tagged, spanning the review\'s categories — no near-copy of tuning fixtures or prompt examples', () => {

@@ -3,12 +3,12 @@ import { endpointTransport, fakeDecideTransport, isModelAnswer, normalizeLlmResp
 import { canonicalJson, memoryReplayStore, requestKey } from './replay-store.ts';
 import { buildFixtureRequest, fixtureT2, fixtureView, renderTurnInputBlock as renderFixtureBlock, todayPhrases } from './request.ts';
 import { UNDERSTAND_FEW_SHOTS } from '../understand-prompt.ts';
-import { budgetGate, computeGates, costOf, gatesFailed, qualityGate, rateGate } from './gates.ts';
+import { budgetGate, computeGates, costOf, DEFAULT_BUDGET, gatesFailed, latencySplit, latencyWithinBudget, qualityGate, rateGate } from './gates.ts';
 import { asciiFold, buildJudgeRequest, claimsLint, diacriticsOk, evaluateRubric, parseJudgeVerdicts, questionCount } from './rubric.ts';
 import { captureToFixture, type CapturedTurn, isExpired, opDiff, validateCapture } from './capture.ts';
 import { looksLikeJwt, main, parseArgs } from './cli.ts';
 import type { EvalFixture, FixtureRunResult, PackageId, TurnResult } from './types.ts';
-import { renderTurnInputBlock, stageASchema, stageASystemPrompt } from '../stage-a-request.ts';
+import { renderTurnInputBlock, STAGE_A_LIVE_BUDGETS_MS, stageASchema, stageASystemPrompt } from '../stage-a-request.ts';
 import { MAX_BODY_CHARS, parseDecideRequest } from '../../../ai-decide/handler.ts';
 import { formatPreflight, preflight } from './preflight.ts';
 import { loadFixtureDir } from './fixtures.ts';
@@ -235,6 +235,27 @@ Deno.test('budget gate (E): latency, parse/schema error rate, repair rate (≤ %
   assertEquals(costOf('gpt-5.6-terra', { input_tokens: 1_000_000, cached_tokens: 500_000, output_tokens: 100_000 }), 2.3);
 });
 
+Deno.test('budget gate (E): p90 is judged per §7.2 budget class (owner 2026-10-11: normal 6 s, tripwire 10 s), p50 on ordinary turns', () => {
+  assertEquals(DEFAULT_BUDGET.p90_ms_by_class, STAGE_A_LIVE_BUDGETS_MS, 'the gate reads the live budgets, never a copy');
+  const plain = [...Array(20)].map((_, i) => res('A', 'pass', { cache: 'live', latency_ms: 1500 + i * 50 }));
+  // Tripwire turns at 6–9,8 s: past the ordinary budget, inside their own 10 s → pass.
+  const slowTripwire = [...Array(10)].map((_, i) => res('B+', 'pass', { cache: 'live', tripwire: true, latency_ms: 6000 + i * 420 }));
+  const g = budgetGate([...plain, ...slowTripwire]);
+  assertEquals(g.status, 'pass', g.detail);
+  assert(g.detail.includes('>10 sn: 0'), g.detail);
+  // The same 6–9,8 s latencies on ORDINARY turns breach the 6 s class budget.
+  const slowPlain = slowTripwire.map((r) => ({ ...r, tripwire: false }));
+  const bad = budgetGate([...plain.slice(0, 5), ...slowPlain]);
+  assertEquals(bad.status, 'fail');
+  assert(bad.detail.includes('bütçe aşımı: tetiksiz p50') && bad.detail.includes('tetiksiz p90'), bad.detail);
+  // Tripwire turns past 10 s at p90 breach their own budget even when ordinary turns are fast.
+  const lateTripwire = slowTripwire.map((r) => ({ ...r, latency_ms: (r.latency_ms ?? 0) + 4500 }));
+  const late = budgetGate([...plain, ...lateTripwire]);
+  assertEquals(late.status, 'fail');
+  assert(late.detail.includes('tetikli p90'), late.detail);
+  assertEquals(latencyWithinBudget(latencySplit(plain)).ok, true, 'no tripwire turn → the tripwire class is not judged');
+});
+
 Deno.test('budget gate (E) is never green on partial data: harness errors and replay misses make it incomplete', () => {
   const ok = [...Array(20)].map((_, i) => res('A', 'pass', { cache: 'live', latency_ms: 1500 + i * 50 }));
   const errored = budgetGate([...ok, res('A', 'error', { cache: 'live', error: 'HTTP 502' })]);
@@ -418,4 +439,24 @@ Deno.test('cli --holdout: exclude (tuning rounds) drops the holdout set, only ke
   assertEquals(excl + only, all);
   assertEquals(await main(['--mode', 'lint', '--holdout', 'bazen'], io), 2);
   assert(err.join('\n').includes('geçersiz --holdout'));
+});
+
+Deno.test('cli --holdout: a GRADED run leaves the holdout out by default; include warns loudly; a named holdout id is never dropped silently', async () => {
+  const out: string[] = [];
+  const err: string[] = [];
+  const io = { log: (s: string) => out.push(s), err: (s: string) => err.push(s) };
+  const count = () => Number(/(\d+) fixture × /.exec(out.filter((l) => l.startsWith('KOCHKO v2 eval')).at(-1) ?? '')?.[1] ?? NaN);
+  const { fixtures } = await loadFixtureDir(new URL('./fixtures/', import.meta.url));
+  const holdoutBPlus = fixtures.filter((f) => f.package === 'B+' && (f.tags ?? []).includes('holdout')).length;
+  assert(holdoutBPlus > 0);
+  assertEquals(await main(['--mode', 'replay', '--reps', '1', '--package', 'B+'], io), 0);
+  const tuning = count();
+  assert(!err.join('\n').includes('UYARI'), 'the default (tuning) run grades no holdout case, so no warning');
+  assertEquals(await main(['--mode', 'replay', '--reps', '1', '--package', 'B+', '--holdout', 'include'], io), 0);
+  assertEquals(count(), tuning + holdoutBPlus);
+  assert(err.join('\n').includes('!!! UYARI: TUTULAN SET (holdout) BU KOŞUDA DEĞERLENDİRİLİYOR'), err.join('\n'));
+  err.length = 0;
+  assertEquals(await main(['--mode', 'replay', '--reps', '1', '--only', 'ho-kivi-alerjisi-beyani'], io), 2);
+  assert(err.join('\n').includes('--only tutulan set vakası içeriyor (ho-kivi-alerjisi-beyani)'), err.join('\n'));
+  assertEquals(await main(['--mode', 'lint', '--only', 'ho-kivi-alerjisi-beyani'], io), 0, 'lint lists every fixture (no model output)');
 });

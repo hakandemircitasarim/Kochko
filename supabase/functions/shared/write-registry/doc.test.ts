@@ -55,7 +55,9 @@ Deno.test('doc: says what code computes and what is two-step — and that nothin
   for (const o of ['constraint_retract', 'data_erase_request', 'update']) assert(section(o).includes('İki adım:'), `${o}: two-step policy`);
   assert(section('water_log').includes('Kod: litre = quantity'), 'what code computes is stated where it applies');
   assert(doc.includes('ALERJENLER: gluten'));
-  assert(doc.includes('peanut (yer fıstığı)') && doc.includes('pistachio (antep fıstığı)'), 'the ambiguous "fıstık" ids carry their hint');
+  assert(doc.includes('peanut (yer fıstığı; yalın "fıstık" çoğunlukla budur)') && doc.includes('pistachio (antep fıstığı)'), 'the ambiguous "fıstık" ids carry their hint');
+  // tree_nut does not cover peanuts (a legume): a bare "fıstık" read as tree_nut left a peanut allergy unprotected.
+  assert(doc.includes('tree_nut (sert kabuklu, türü belirsiz; yer fıstığı değil)'));
   assert(doc.includes('BÖLGELER: knee=diz'));
   for (const d of Object.keys(DIETARY_SUBJECTS)) assert(doc.includes(d), `dietary id ${d} is listed for constraint_add.subject_id`);
 });

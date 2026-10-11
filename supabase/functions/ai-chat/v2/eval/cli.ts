@@ -180,13 +180,15 @@ const HELP = `KOCHKO v2 eval (AI_MIMARI_V2 §9) — ayrıntı: supabase/function
   Stage A isteği üretimin kurucusundan gelir (stage-a-request.ts): şema/prompt girdisi yoktur.
   --model ${DEFAULT_MODEL}  --reps N (varsayılan 5)  --concurrency 4  --timeout-ms 90000
   --only id1,id2 | @ids.txt (tam id listesi)  --filter <metin>  --package A,A',B+,B-,C,D,E  --out rapor.json  --verbose
-  --holdout include|exclude|only (varsayılan include; ayar turları exclude, tutulan set kapıları ayrı raporlanır)
+  --holdout exclude|include|only (puanlanan kiplerde varsayılan exclude = ayar turu; include yalnız SON tam tur,
+    yüksek sesle uyarır; tutulan set kapıları ayrı raporlanır; lint hepsini listeler)
   --record (live/judge: cevapları tekrar sırasıyla .replay/'e yazar)
   --enforce-gates  --allow-miss  --require-full (KISMİ geçişi de başarısız sayar)
   --dry-run (live/judge: ön kontrol + anahtar biçimi, hiçbir çağrı gönderilmez)
   --endpoint <url>  --key-file <dosya>  --judge-model ${DEFAULT_JUDGE_MODEL}  --fake <ts#export>  --captures <klasör>
-  Tek komutla canlı koşu:  npx deno task --config supabase/functions/deno.json v2-eval-live
-  Önce kuru koşu:          npx deno task --config supabase/functions/deno.json v2-eval-live --dry-run`;
+  Canlı ayar turu (holdout hariç):  npx deno task --config supabase/functions/deno.json v2-eval-live
+  Son tam tur (holdout dahil):      npx deno task --config supabase/functions/deno.json v2-eval-final
+  Önce kuru koşu:                   npx deno task --config supabase/functions/deno.json v2-eval-live --dry-run`;
 
 export async function main(argv: string[], io: Io = consoleIo): Promise<number> {
   const { opts, errors } = parseArgs(argv);
@@ -228,15 +230,35 @@ export async function main(argv: string[], io: Io = consoleIo): Promise<number> 
     const f = String(opts.filter).toLocaleLowerCase('tr');
     fixtures = fixtures.filter((x) => x.id.includes(f) || x.source.toLocaleLowerCase('tr').includes(f) || (x.tags ?? []).includes(f));
   }
-  // The holdout set is graded apart and never used to tune: a tuning round runs `--holdout exclude`,
-  // the final round `include` (default) and reports its gates separately; `only` grades it alone.
-  const holdoutMode = String(opts.holdout ?? 'include');
+  // The holdout set is graded apart and never used to tune. A GRADED run (replay/live/fake/judge/
+  // captures) leaves it out unless asked — `--holdout include` for the one final round, `only` to
+  // grade it alone — and then says so loudly: a single forgotten `exclude` used to grade the holdout
+  // and show its failures to the tuner, using it up silently (review of tuning round 2). Lint shows
+  // no model output, so it lists every fixture.
+  const graded = mode !== 'lint';
+  const holdoutMode = String(opts.holdout ?? (graded ? 'exclude' : 'include'));
   if (!['include', 'exclude', 'only'].includes(holdoutMode)) {
     io.err(`geçersiz --holdout "${holdoutMode}" (include | exclude | only)`);
     return 2;
   }
-  if (holdoutMode === 'exclude') fixtures = fixtures.filter((x) => !isHoldout(x));
+  if (holdoutMode === 'exclude') {
+    const named = opts.only !== undefined ? fixtures.filter((x) => isHoldout(x)).map((x) => x.id) : [];
+    if (named.length) {
+      // An explicitly named holdout id is never dropped silently (like an unknown id).
+      io.err(`--only tutulan set vakası içeriyor (${named.join(', ')}): holdout varsayılan olarak dışarıda; bilerek istiyorsan --holdout include`);
+      return 2;
+    }
+    fixtures = fixtures.filter((x) => !isHoldout(x));
+  }
   if (holdoutMode === 'only') fixtures = fixtures.filter((x) => isHoldout(x));
+  const holdoutGraded = graded ? fixtures.filter((x) => isHoldout(x)).length : 0;
+  if (holdoutGraded) {
+    io.err([
+      '!!! UYARI: TUTULAN SET (holdout) BU KOŞUDA DEĞERLENDİRİLİYOR — ' + `${holdoutGraded} vaka.`,
+      '!!! Sonuçlarına bakıp prompt/kural ayarlanırsa holdout HARCANIR. Yalnız SON tam tur için kullan;',
+      '!!! ayar turları varsayılanla (holdout hariç) koşar. Kapıları ayrı raporlanır.',
+    ].join('\n'));
+  }
   if (opts.package) {
     const want = String(opts.package).split(',').map((s) => s.trim()) as PackageId[];
     const bad = want.filter((p) => !PACKAGE_IDS.includes(p));

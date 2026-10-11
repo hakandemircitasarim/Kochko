@@ -16,7 +16,7 @@
 import {
   MODELS, respond, type RespondError, type RespondOptions, type RespondResult, type RespondUsage, type Transport,
 } from '../../shared/openai.ts';
-import type { TripwireScan } from '../../shared/safety-tripwires.ts';
+import { type ClassifierOutcome, runTripwireClassifier, type TripwireClassifier, type TripwireScan } from '../../shared/safety-tripwires.ts';
 import { stageAView, type TurnInput } from './input.ts';
 import {
   composeStageA, STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MAX_OUTPUT_TOKENS, type StageABudgetClass, stageALiveBudgetMs, type StageARequest, type StageASizes,
@@ -32,8 +32,9 @@ import { UNDERSTAND_CACHE_KEY } from './understand-prompt.ts';
 export const STAGE_A_CACHE_KEY: string = UNDERSTAND_CACHE_KEY;
 /**
  * §7.2: a live Stage A slower than its budget falls back to today's protection; the shadow measures
- * against the same budget. Two budgets, owned by stage-a-request.ts (STAGE_A_LIVE_BUDGETS_MS): normal
- * 4 s, a turn with a tripwire fact 7 s. This is the normal one, kept by name for readers of v1 code.
+ * against the same budget. Two budgets, owned by stage-a-request.ts (STAGE_A_LIVE_BUDGETS_MS, owner
+ * decision 2026-10-11): normal 6 s, a turn with a tripwire fact 10 s. This is the normal one, kept by
+ * name for readers of v1 code.
  */
 export const STAGE_A_LIVE_BUDGET_MS: number = STAGE_A_LIVE_BUDGETS_MS.normal;
 /** The shadow waits longer than either live budget so the latency distribution is measured, not truncated. */
@@ -53,7 +54,7 @@ export interface UnderstandRequest extends StageARequest {
   timeoutMs: number;
   /** Character sizes of the parts (the shadow logs them; §3.3 budget check). */
   sizes: StageASizes;
-  /** §7.2 fail-closed budget of this turn and its class (tripwire fact → 7 s, otherwise 4 s). */
+  /** §7.2 fail-closed budget of this turn and its class (tripwire fact → 10 s, otherwise 6 s). */
   liveBudgetMs: number;
   budgetClass: StageABudgetClass;
 }
@@ -80,6 +81,25 @@ export function buildUnderstandRequest(p: {
   });
   const timeoutMs = p.timeoutMs ?? (p.mode === 'live' ? budget.live_ms : STAGE_A_SHADOW_TIMEOUT_MS);
   return { ...request, timeoutMs, sizes, liveBudgetMs: budget.live_ms, budgetClass: budget.class };
+}
+
+/**
+ * §7.2 / §7.4.1: how long the independent luna second reading (emergency/self-harm ambiguous hits)
+ * may take. It runs in PARALLEL with live Stage A, so it waits exactly as long as Stage A may — the
+ * turn's live budget. One owner for the tripwire-turn wait (review of tuning round 2: a separate 4 s
+ * default meant a Stage A benign reading at 4–10 s could never be confirmed).
+ */
+export function tripwireClassifierTimeoutMs(scan: TripwireScan): number {
+  return stageALiveBudgetMs(scan);
+}
+
+/** The live second reading: runTripwireClassifier at the turn's Stage A budget. Never throws; fail-closed. */
+export function runLiveTripwireClassifier(
+  scan: TripwireScan,
+  userMessage: string,
+  classifier: TripwireClassifier | null | undefined,
+): Promise<ClassifierOutcome> {
+  return runTripwireClassifier(scan, userMessage, classifier, { timeoutMs: tripwireClassifierTimeoutMs(scan) });
 }
 
 /** respond()'s options for a composed request — the same mapping ai-decide applies to its body. */

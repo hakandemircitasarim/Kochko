@@ -89,7 +89,12 @@ const FIXTURES: Record<string, Fixture> = {
     },
     expect: { verdicts: ['meal_log:COMMIT'] },
   },
-  kucuk_miktar: { expect: { verdicts: ['meal_log:COMMIT'] } },
+  dilim_adet_tutam: {
+    reference_rows: {
+      krep: { key: 'krep', name_tr: 'krep (sade)', kcal_per_100g: 220, protein_per_100g: 6.5, carbs_per_100g: 28, fat_per_100g: 9 },
+    },
+    expect: { verdicts: ['meal_log:COMMIT'] },
+  },
   su_gun_toplami: { water: 1.2, expect: { verdicts: ['water_log:COMMIT'] } },
   son_turu_geri_al: { refs: { m61: meal(TODAY), w8: workout() }, expect: { verdicts: ['record_delete:COMMIT'] } },
   ref_ile_duzeltme: { refs: { m44: meal(TODAY, { last_turn: true }) }, expect: { verdicts: ['record_update:COMMIT'] } },
@@ -261,7 +266,7 @@ Deno.test('schema-valid is not enough: the pre-binding allergen id passes the sc
   const s = shot('alerji_beyani');
   const wrong: FewShotDecision = {
     ...s.decision,
-    writes: (s.decision.writes ?? []).map((w) => (w.subject_id === 'walnut' ? { ...w, subject_id: 'tree_nut:walnut' } : w)),
+    writes: (s.decision.writes ?? []).map((w) => (w.subject_id === 'celery' ? { ...w, subject_id: 'vegetable:celery' } : w)),
   };
   assertEquals(validateJsonSchema(buildUnderstandSchema(), completeDecision(wrong)), []);
   const v = validateDecision(completeDecision(wrong), ctxFor(s));
@@ -472,10 +477,22 @@ Deno.test('few-shots encode the principles of the production failures they were 
   assert(look.kcal >= 300 && look.kcal <= 550);
 
   // Owner requirement 1 (a fuzzy amount): kept verbatim, tiny, ~0 kcal, no question.
-  const small = shot('kucuk_miktar');
-  const pinch = mealItems(itemsOf(small.decision, 'writes', 'meal_log')[0]).find((i) => i.name === 'kekik');
+  const small = shot('dilim_adet_tutam');
+  const pinch = mealItems(itemsOf(small.decision, 'writes', 'meal_log')[0]).find((i) => i.name === 'tarçın');
   assert(pinch && pinch.as_stated === 'bir tutam' && (pinch.grams ?? 99) <= 3 && pinch.kcal <= 1);
   assertEquals(small.decision.clarify, undefined);
+  // final2#5 ("2 dilim lahmacun" as 65 g; review of tuning round 2: the only "dilim" example was a truly
+  // sliced food): a food cooked and eaten whole counted in "dilim" is pieces — grams = count × the
+  // candidate's piece weight. Contrasting details of its own (not lahmacun, not pide).
+  const whole = mealItems(itemsOf(small.decision, 'writes', 'meal_log')[0]).find((i) => i.name === 'krep');
+  assert(whole);
+  assertEquals([whole.as_stated, whole.grams, whole.reference_key], ['4 dilim', 4 * 55, 'krep']);
+  assert(small.context.some((l) => l.includes('1 adet ≈55 g')), 'the piece weight the arithmetic uses is shown');
+  for (const s of UNDERSTAND_FEW_SHOTS) {
+    for (const w of itemsOf(s.decision, 'writes', 'meal_log')) {
+      for (const it of mealItems(w)) assert(!/lahmacun|pide/.test(lc(it.name)), `${s.id}: an eval case's food (${it.name})`);
+    }
+  }
 
   // diff#1/#2: a stated DAY TOTAL of water is set_day_total, not an addition.
   const tot = itemsOf(shot('su_gun_toplami').decision, 'writes', 'water_log')[0];
@@ -491,7 +508,7 @@ Deno.test('few-shots encode the principles of the production failures they were 
   assertEquals(fix.record_ops?.map((r) => [r.op, r.ref, r.basis]), [['update', 'm44', 'user_correction']]);
   const fp = patchOf(fix.record_ops![0])!;
   assertEquals(fp.op, 'meal_log');
-  assertEquals(mealItems(fp).map((i) => i.as_stated), ['1 tabak']);
+  assertEquals(mealItems(fp).map((i) => i.as_stated), ['bir tabak']);
   assertEquals(fix.writes, undefined, 'no new meal_log next to the correction (double count)');
 
   // final2#1: "nasıl düzeltebilirim?" deleted the last meal. A question writes nothing.
@@ -517,7 +534,7 @@ Deno.test('few-shots encode the principles of the production failures they were 
 
   // Negation scope: two writes with opposite polarity, ids from the registry's ALLERGENS.
   const al = itemsOf(shot('alerji_beyani').decision, 'writes', 'constraint_add');
-  assertEquals(al.map((w) => [w.subject_id, w.polarity]), [['sesame', 'has'], ['walnut', 'does_not_have']]);
+  assertEquals(al.map((w) => [w.subject_id, w.polarity]), [['mustard', 'has'], ['celery', 'does_not_have']]);
   for (const w of al) assert(Object.prototype.hasOwnProperty.call(vocab.ALLERGENS, String(w.subject_id)), `${w.subject_id} is an ALLERGENS id`);
 
   // Third-person allergy never reaches the user's safety spine.
@@ -555,6 +572,18 @@ Deno.test('rules keep the restored guards and the ED severity principle (2026-10
   assert(UNDERSTAND_RULES.includes("Tek seferlik bir fazla yeme yakınması en fazla binge low'dur"));
   assert(UNDERSTAND_RULES.includes("tekrarlayan tıkınma, kontrol kaybı ya da telafi niyeti (kusma, aç kalma, zorlayıcı spor) en az medium'dur"));
   assert(UNDERSTAND_RULES.includes('orta/yüksek yeme bozukluğu sinyalinde crisis'));
+});
+
+Deno.test('rules (v6): a protective declaration is never held for a detail — the "ask what you are unsure of" rule names it as the exception', () => {
+  // Tuning round 3: a severe allergy declaration whose KIND was unclear ("which nut?") was answered
+  // with clarify and NO write in 2/5 reps (B+). Protection is never held (§7.4; constraints.ts
+  // "ADDING protection is never held"): write the most likely reading now, ask the detail.
+  const head = UNDERSTAND_RULES.slice(0, UNDERSTAND_RULES.indexOf('\n1. '));
+  assert(head.includes('emin olmadığın kısmı yazma, clarify ile sordur') && head.includes('Tek istisna kişinin kendi alerjisi ya da sakatlığıdır'));
+  assert(UNDERSTAND_RULES.includes('Kişinin kendi alerjisini ya da sakatlığını bu turda yaz: türü ya da bölgesi belirsizse en olası okumayı seç, ayrıntıyı clarify ile sordur.'));
+  assert(UNDERSTAND_RULES.includes('Tepkiyi anlatan koşul cümlesi varsayım değil, beyandır.'));
+  // A retraction of a constraint that was never true is written as well (listed → retract, else does_not_have).
+  assert(UNDERSTAND_RULES.includes('etkin bir kısıtsa constraint_retract, pasifse ya da listede yoksa does_not_have'));
 });
 
 // ─── rendering and the prefix ────────────────────────────────────────────────────────────────────

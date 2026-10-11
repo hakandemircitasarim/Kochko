@@ -10,6 +10,14 @@
  * undo/correct by ref, a question deletes nothing, third-person allergies, a figurative trigger
  * word, illness vomiting). v5 (2026-10-11): every example was rewritten in details of its own so
  * no eval fixture is a copy of one (teaching-to-the-test review; eval/overlap.test.ts guards it).
+ * v6 (2026-10-11, tuning round 3): a protective declaration (the user's own allergy/injury) is
+ * never held for a detail — written with the most likely reading, the detail asked via clarify
+ * (the severe-allergy B+ miss: "which kind?" had suppressed the write); the sleep day is the day
+ * one woke up; food added to a logged meal is a new meal_log; a food or drink mentioned alongside
+ * is a report of its own; a retraction of a constraint that was never true is written too (an
+ * inactive one cannot be retracted → does_not_have); "dilim" of a food cooked whole is a count and
+ * no unstated fraction is invented — taught by a contrasting example (the only "dilim" example used
+ * to be a truly sliced food).
  *
  * The prefix is byte-identical for every user so it caches globally under one key. Nothing per-user
  * or per-turn belongs here; the TurnInput block, tripwire facts and the message are appended after it
@@ -34,7 +42,7 @@ import type { FieldSpec, Fields, Infer } from '../../shared/write-registry/dsl.t
  * + the registry doc (SCHEMA_VERSION), so the key names both. Bump the prompt version whenever the
  * rules or few-shots change.
  */
-export const UNDERSTAND_PROMPT_VERSION = 'v5';
+export const UNDERSTAND_PROMPT_VERSION = 'v6';
 export const UNDERSTAND_CACHE_KEY = `kochko-understand:${UNDERSTAND_PROMPT_VERSION}-${SCHEMA_VERSION}`;
 
 /** Decision-first top-level order of kochko_understand_vN (§3.2 T4); pinned to the schema by a test. */
@@ -107,18 +115,18 @@ export interface UnderstandFewShot {
 
 export const UNDERSTAND_RULES = `# Kochko: anlama aşaması
 
-Sen Kochko'nun anlama aşamasısın. Kişiye cevap yazmazsın: mesajı okur, ne olduğuna karar verir ve kararı şemadaki tek JSON olarak verirsin. Kod kararı denetler ve kaydeder; koç cevabı sonra, olanlara bakarak yazar. Yanlış bir yazma kişinin günlüğünü bozar, yazılmayan bir şeyi ise koç tek soruyla tamamlar. Bu yüzden emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz.
+Sen Kochko'nun anlama aşamasısın. Kişiye cevap yazmazsın: mesajı okur, ne olduğuna karar verir ve kararı şemadaki tek JSON olarak verirsin. Kod kararı denetler ve kaydeder; koç cevabı sonra, olanlara bakarak yazar. Yanlış bir yazma kişinin günlüğünü bozar, yazılmayan bir şeyi ise koç tek soruyla tamamlar. Bu yüzden emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz. Tek istisna kişinin kendi alerjisi ya da sakatlığıdır: ayrıntısı belirsiz diye bekletilmez.
 
-1. Niyet. Mesaj şimdi olan bir şeyin bildirimi mi, soru mu, varsayım mı ("yesem ne olur", "içsem yeter mi", "yarın yapacağım"), düzeltme mi, onay mı, plan isteği mi? Kayıt yalnızca bildirimden ve düzeltmeden doğar. Soru, niyet, hedef ve varsayım kayıt değildir ("neden 70'in altına inemiyorum?" tartı kaydı değildir). Soruyla biten bildirim yine yazılır, soruyu koç cevaplar. Her bildirim ayrı bir yazmadır, birini yazıp ötekini atlama: "belim ağrıyor ama 40 dakika yüzdüm" sakatlık ve antrenmandır.
+1. Niyet. Mesaj şimdi olan bir şeyin bildirimi mi, soru mu, varsayım mı ("yesem ne olur", "içsem yeter mi", "yarın yapacağım"), düzeltme mi, onay mı, plan isteği mi? Kayıt yalnızca bildirimden ve düzeltmeden doğar. Soru, niyet, hedef ve varsayım kayıt değildir ("neden 70'in altına inemiyorum?" tartı kaydı değildir). Soruyla biten bildirim yine yazılır, soruyu koç cevaplar. Her bildirim ayrı bir yazmadır, birini yazıp ötekini atlama: "belim ağrıyor ama 40 dakika yüzdüm" sakatlık ve antrenmandır; yanında anılan yiyecek ya da içecek de bildirimdir.
 2. Kimin hakkında. Kişinin kendisi mi, başkası mı? Başkasına ait alerji, yemek ya da ölçü kişinin kaydına yazılmaz; "ablamla alışverişe çıktım" cinsiyet bilgisi değildir.
-3. Gün. Günü bağlamdaki yerel tarihe göre ver; gelecek ve yedi günden eski kayıt yazılmaz.
-4. Miktarın iki yüzü. as_stated kişinin ifadesidir, aynen yazılır ("annemin tabağı kadar"); kod onu ayrıştırmaz. Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; dilimlenmeyen bir yiyecekte "dilim" çoğunlukla adettir. Bardak ya da şişe sayısı quantity'dir, litreyi kod hesaplar. Küçük miktarlar da geçerlidir; bir tutam baharat ~0 kcal'dir, soru gerektirmez.
+3. Gün. Günü bağlamdaki yerel tarihe göre ver; gelecek ve yedi günden eski kayıt yazılmaz. Uyku uyandığı günündür.
+4. Miktarın iki yüzü. as_stated kişinin ifadesidir, aynen yazılır ("annemin tabağı kadar"); kod onu ayrıştırmaz. Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; bütün pişen, dilimlenmeyen bir yiyecekte "dilim" çoğunlukla adettir; söylenmeyen bir kesir (yarım, çeyrek) uydurma. Bardak ya da şişe sayısı quantity'dir, litreyi kod hesaplar. Küçük ya da ~0 kcal olanlar da yazılır (bir tutam baharat, şekersiz bir içecek); soru gerektirmez.
 5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak ve kendi tahminini ver. Kelime benzerliği aynı yiyecek demek değildir.
 6. Mevcut kayıtlar. Geri alma (record_ops delete) ve düzeltme yalnızca bağlamdaki ref'lerle (m12, d3) yapılır. Kişi gösterilen bir kaydı düzeltiyorsa record_ops update: basis user_correction, evidence_quote onun cümlesinden, patch kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır; düzeltmeyi bir de yeni yazma olarak ekleme, çift sayım olur. Listedeki bir öğünü yeniden anlatıyorsa status restatement; "bir kase daha" yeni yemektir. Makul görünmeyen eski bir kaydı kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, koç bir kez sorar, evet gelirse pending_ops confirm olur.
-7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda birden çok yazma varken "onu sil" de, son ya da ilk gibi bir sıra sözü de hangisini söylemez; listedeki sıra anlam taşımaz. Yeni yenen bir şey yeni meal_log'dur; öğününü sormak için yazmayı bekletme. Soru hiçbir kaydı silmez ya da değiştirmez.
+7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda birden çok yazma varken "onu sil" de, son ya da ilk gibi bir sıra sözü de hangisini söylemez; listedeki sıra anlam taşımaz. Yeni yenen bir şey, kayıtlı bir öğüne eklense de yeni meal_log'dur; öğününü sormak için yazmayı bekletme. Soru hiçbir kaydı silmez ya da değiştirmez.
 8. Bağlantılar. Son konuşma bağlamdadır; kısa bir cevap ("68", "evet", "2 bardak") koçun son mesajına verilmiş olabilir. Bekleyen onaya (p#) ya da açık söze (k#) verilen cevap pending_ops ya da commitment_ops olur.
 9. Güvenlik okuması. Her belirsiz tetik için tripwire_readings'e hit_id, okuma ve gerekçe yaz. Kelime gerçek bir durumu mu anlatıyor, mecaz mı ("filme bayıldım" beğenmek, "koşarken bayıldım" bilinç kaybı)? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Hastalıkla ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting). Tek seferlik bir fazla yeme yakınması en fazla binge low'dur; tekrarlayan tıkınma, kontrol kaybı ya da telafi niyeti (kusma, aç kalma, zorlayıcı spor) en az medium'dur. ed_signal'in kanıtı kişinin sözüdür; koçun cümleleri sinyal sayılmaz. Alerjisi olduğu bir şeyi yediğini söylüyorsa, acil olsa da öğünü allergens ile yaz: maruziyeti kod o kayıttan görür.
-10. Alerji ve sakatlık. Her öğeyi ayrı yaz; olumsuzluk yalnızca ait olduğu öğeye geçer ve her "X alerjim yok" bir does_not_have yazmasıdır. Şiddet söylenmediyse unknown yaz; kod onu netleşene dek ciddi sayar. Bir kısıtın artık geçmediğini söylüyorsa, ciddi alerji de olsa constraint_retract yaz; onayı kod ister.
+10. Alerji ve sakatlık. Her öğeyi ayrı yaz; olumsuzluk yalnızca ait olduğu öğeye geçer ve her "X alerjim yok" bir does_not_have yazmasıdır. Kişinin kendi alerjisini ya da sakatlığını bu turda yaz: türü ya da bölgesi belirsizse en olası okumayı seç, ayrıntıyı clarify ile sordur. Tepkiyi anlatan koşul cümlesi varsayım değil, beyandır. Şiddet söylenmediyse unknown yaz; kod onu netleşene dek ciddi sayar. Bir kısıtın artık geçmediğini ya da baştan yanlış olduğunu söylüyorsa, ciddi alerji de olsa yine yaz: etkin bir kısıtsa constraint_retract, pasifse ya da listede yoksa does_not_have; onayı kod ister.
 11. Plan. Kişi açıkça plan istiyor, değiştiriyor ya da onaylıyorsa plan_action'ı buna göre seç; açık taslağa dönük her işlemde draft_ref taslağın ref'idir. Taslak açıkken tarif ya da öneri istemek none'dır; revise yalnız taslağı değiştirme isteğidir. Plan isteğinin gerekçesi ("öğlenleri vaktim olmuyor") profil bilgisi değildir.
 12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason listesinden seç; uyan bir neden yoksa null bırak, koç sorar. Geri alma, onay ve senin fark ettiğin şüpheli kayıt kişinin bildirdiği yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
 13. Rota. reply_route koçun hangi sözleşmeyle konuşacağıdır: acil tıbbi durumda emergency, kendine zarar ya da orta/yüksek yeme bozukluğu sinyalinde crisis (low ise coach), plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca düşünmek isteyen turlarda (sıkıntı, yeme bozukluğu, telafi, analiz, plan).
@@ -130,10 +138,12 @@ const REPORTED = { reported_new_facts: true } as const;
 
 /**
  * The few-shots teach PRINCIPLES, never an eval case: no example repeats a fixture's message, foods,
- * numbers or ref+food pair (eval/overlap.test.ts fails when one drifts close — token Jaccard > 0.6
- * against any fixture message, or a fixture's exact ref with the same food). Each example below is
- * one principle in details of its own; the eval's fixtures (and its untouched holdout set) then
- * measure whether the model generalises it.
+ * numbers or ref+food pair. eval/overlap.test.ts fails when one drifts close: token Jaccard > 0.6
+ * against any fixture message; more than one shared content word (foods, symptoms — by stem, so
+ * inflections count) with a fixture message, or a fixture ref line whatever its ref; a shared
+ * number+word pair ("2 dilim", "2 değil"); a fixture's exact ref with the same food. Each example
+ * below is one principle in details of its own; the eval's fixtures (and its untouched holdout set)
+ * then measure whether the model generalises it.
  */
 export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   {
@@ -179,25 +189,28 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
     why: 'Aday aynı yiyecek değil; reference_key boş kalır, sayılar senin tahminindir.',
   },
   {
-    id: 'kucuk_miktar',
-    context: [],
-    message: 'öğlen 2 dilim hellim yedim, üstüne bir tutam kekik',
+    id: 'dilim_adet_tutam',
+    context: ['REFERANS ADAYLARI: krep: krep (sade) 220 kcal/100 g · 1 adet ≈55 g'],
+    message: 'ikindi 4 dilim krep yedim, üstüne bir tutam tarçın',
     decision: {
       intent: { primary: 'report' },
       writes: [{
         op: 'meal_log',
         day: 'today',
-        meal_type: 'lunch',
-        raw: 'öğlen 2 dilim hellim yedim, üstüne bir tutam kekik',
+        meal_type: 'snack',
+        raw: 'ikindi 4 dilim krep yedim, üstüne bir tutam tarçın',
         status: 'new',
         items: [
-          { name: 'hellim', as_stated: '2 dilim', grams: 60, kcal: 190, protein_g: 13, carbs_g: 1, fat_g: 15, allergens: ['milk'], confidence: 0.7 },
-          { name: 'kekik', as_stated: 'bir tutam', grams: 0.3, kcal: 1, confidence: 0.6 },
+          {
+            name: 'krep', as_stated: '4 dilim', grams: 220, kcal: 485, protein_g: 14, carbs_g: 62, fat_g: 20, allergens: ['gluten', 'egg', 'milk'],
+            reference_key: 'krep', confidence: 0.7,
+          },
+          { name: 'tarçın', as_stated: 'bir tutam', grams: 0.3, kcal: 1, confidence: 0.6 },
         ],
       }],
       self_check: REPORTED,
     },
-    why: '"bir tutam" aynen saklanır; küçük ve ~0 kcal olması soru gerektirmez.',
+    why: 'Krep bütün pişer, dilimlenmez: "dilim" adettir, gram = 4 × 55 (ekmekte, kekte dilim gerçekten dilimdir). "bir tutam" aynen saklanır, soru gerektirmez.',
   },
   {
     id: 'su_gun_toplami',
@@ -223,18 +236,18 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   {
     id: 'ref_ile_duzeltme',
     context: ['KAYITLAR: m44 · bugün akşam · "2 tabak makarna" → makarna 2 tabak ~500 g 760 kcal (son tur)'],
-    message: 'yanlış olmuş, 2 değil 1 tabak makarna yedim',
+    message: 'makarnayı fazla girmişsin, bir tabaktı sadece',
     decision: {
       intent: { primary: 'correction' },
       record_ops: [{
         op: 'update',
         ref: 'm44',
         basis: 'user_correction',
-        reason: '2 değil 1 tabak',
-        evidence_quote: '2 değil 1 tabak makarna yedim',
+        reason: 'makarna yalnız bir tabakmış',
+        evidence_quote: 'makarnayı fazla girmişsin, bir tabaktı sadece',
         patch: {
-          op: 'meal_log', day: 'today', meal_type: 'dinner', raw: '1 tabak makarna yedim', status: 'new',
-          items: [{ name: 'makarna', as_stated: '1 tabak', grams: 250, kcal: 380, protein_g: 13, carbs_g: 72, fat_g: 5, allergens: ['gluten'], confidence: 0.7 }],
+          op: 'meal_log', day: 'today', meal_type: 'dinner', raw: 'bir tabak', status: 'new',
+          items: [{ name: 'makarna', as_stated: 'bir tabak', grams: 250, kcal: 380, protein_g: 13, carbs_g: 72, fat_g: 5, allergens: ['gluten'], confidence: 0.7 }],
         },
       }],
       self_check: REPORTED,
@@ -317,22 +330,22 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   {
     id: 'alerji_beyani',
     context: [],
-    message: 'susama ciddi alerjim var, ceviz ise bana hiç dokunmuyor',
+    message: 'hardala ciddi alerjim var, kereviz ise bana hiç dokunmuyor',
     decision: {
       intent: { primary: 'report' },
       writes: [
         {
-          op: 'constraint_add', kind: 'allergen', subject_id: 'sesame', display_tr: 'susam', whose: 'self', polarity: 'has',
-          severity: 'severe', evidence_quote: 'susama ciddi alerjim var',
+          op: 'constraint_add', kind: 'allergen', subject_id: 'mustard', display_tr: 'hardal', whose: 'self', polarity: 'has',
+          severity: 'severe', evidence_quote: 'hardala ciddi alerjim var',
         },
         {
-          op: 'constraint_add', kind: 'allergen', subject_id: 'walnut', display_tr: 'ceviz', whose: 'self', polarity: 'does_not_have',
-          severity: 'unknown', evidence_quote: 'ceviz ise bana hiç dokunmuyor',
+          op: 'constraint_add', kind: 'allergen', subject_id: 'celery', display_tr: 'kereviz', whose: 'self', polarity: 'does_not_have',
+          severity: 'unknown', evidence_quote: 'kereviz ise bana hiç dokunmuyor',
         },
       ],
       self_check: REPORTED,
     },
-    why: 'İki ayrı beyan; "dokunmuyor" yalnızca cevize aittir, susam has kalır.',
+    why: 'İki ayrı beyan; "dokunmuyor" yalnızca kereviz için, hardal has kalır.',
   },
   {
     id: 'baskasinin_alerjisi',
@@ -375,10 +388,10 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   {
     id: 'tetik_gercek',
     context: ['GÜVENLİK TETİKLERİ: tw1 [acil durum · belirsiz] "bayıldım"'],
-    message: 'sabah antrenmanda bir an bayıldım, şimdi iyiyim ama başım hâlâ dönüyor',
+    message: 'sabah antrenmanda bir an bayıldım, şimdi iyiyim ama hâlâ sersem gibiyim',
     decision: {
       intent: { primary: 'report' },
-      safety: { acute_medical: true, tripwire_readings: [{ hit_id: 'tw1', reading: 'positive', reason: 'egzersiz sırasında gerçek bilinç kaybı ve süren baş dönmesi' }] },
+      safety: { acute_medical: true, tripwire_readings: [{ hit_id: 'tw1', reading: 'positive', reason: 'egzersiz sırasında gerçek bilinç kaybı ve süren sersemlik' }] },
       reply_route: { contract: 'emergency', effort_hint: 'medium' },
       self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
     },

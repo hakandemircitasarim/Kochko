@@ -5,8 +5,9 @@
  *     capitals, decomposed (NFD) and inside a longer sentence — on their own, not via the floor.
  *  2. THE V1 FLOOR. Everything v1's detectEmergency/detectCrisis answers instantly is protected in
  *     v2 IN BEHAVIOUR (§7.4: a demotion needs owner approval + shadow evidence): explicit and
- *     canned — or, for the spec's own AMBIGUOUS-list phrases (bayıldım/bayılıyorum, tükendim, kalp
- *     çarpıntısı), a live ambiguous hit that is PROTECTIVE BY DEFAULT (Stage A failure → canned;
+ *     canned — or, for the AMBIGUOUS-list phrases (the spec's bayıldım/bayılıyorum, tükendim, kalp
+ *     çarpıntısı; the owner's 2026-10-11 additions yutamıyorum, ben bittim / bittim ben), a live
+ *     ambiguous hit that is PROTECTIVE BY DEFAULT (Stage A failure → canned;
  *     no qualifying benign reading → protective; normal only with the override gate on AND, for
  *     emergency/self-harm, the classifier's independent benign). The parity golden test runs a
  *     broad generated Turkish corpus (inflections, contexts, diacritics, capitals, NFD, typos).
@@ -228,17 +229,18 @@ Deno.test('explicit: the matched text is quoted in the user\'s own spelling, who
 /**
  * The phrases earlier waves demoted to Stage A (wave-1/2 V1_PHRASES_READ_BY_STAGE_A) that the spec
  * does NOT call ambiguous. v1 answers each instantly; without owner approval and shadow evidence
- * (§7.4) v2 must too.
+ * (§7.4) v2 must too. ("yutamıyorum" and "ben bittim / bittim ben" left this list on 2026-10-11:
+ * the owner moved them to the ambiguous list — see V1_AMBIGUOUS_LIST below.)
  */
 const V1_RESTORED: Record<'emergency' | 'self_harm', string[]> = {
   emergency: [
     // (v1's list spells "gorme kaybı" without ö — "görme kaybı" is in the "meant but missed" test.)
-    'kalp krizi', 'felç', 'felc', 'kan küstüm', 'kan kusdum', 'yutamıyorum', 'gorme kaybı', 'gorme kaybi', 'göremiyorum',
+    'kalp krizi', 'felç', 'felc', 'kan küstüm', 'kan kusdum', 'gorme kaybı', 'gorme kaybi', 'göremiyorum',
     'dayanılmaz ağrı', 'çok şiddetli ağrı', 'nefesim kesildi', 'nefesim yok', 'dayanılmaz ağrı var', 'kalp krizi mi bu',
-    'felç mi geçiriyorum bilmiyorum', 'yemek yerken yutamıyorum', 'sol gözümde gorme kaybı başladı',
+    'felç mi geçiriyorum bilmiyorum', 'sol gözümde gorme kaybı başladı',
   ],
   self_harm: [
-    'ben bittim', 'bittim ben', 'olup kurtul', 'ölüp kurtulsam', 'olup kurtulmak istiyorum', 'hayata veda',
+    'olup kurtul', 'ölüp kurtulsam', 'olup kurtulmak istiyorum', 'hayata veda',
     'böyle yaşamak istemiyorum', 'bugün kendimi öldürdüm', 'ipi alıp kendimi', 'yok olmak isti',
   ],
 };
@@ -256,25 +258,42 @@ for (const [category, sentences] of Object.entries(V1_RESTORED) as ['emergency' 
   });
 }
 
-/** v1-instant sentences whose ONLY v1 trigger is on the spec's AMBIGUOUS list (§3.2 T2, §7.2). */
+/**
+ * v1-instant sentences whose ONLY v1 trigger is on the AMBIGUOUS list: the spec's own (§3.2 T2,
+ * §7.2) and the two phrases the owner moved there on 2026-10-11 ("yutamıyorum", "ben bittim /
+ * bittim ben" — DEVIR §10, docs/AI_MIMARI_V2.md §11 q3). Protective by default, like the spec's.
+ */
 const V1_AMBIGUOUS_LIST: Record<'emergency' | 'self_harm', string[]> = {
   emergency: [
     'bayıldım', 'bayılıyorum', 'bayildim', 'bayiliyorum', 'az önce bayıldım', 'antrenmanda bayıldım', 'şu an bayılıyorum',
     'kalp çarpıntısı', 'kalp carpintisi', 'kalp çarpıntısı var', 'kalp çarpıntısı başladı, korkuyorum',
+    // owner-approved 2026-10-11
+    'yutamıyorum', 'yutamiyorum', 'yemek yerken yutamıyorum', 'boğazım düğümlendi yutamıyorum', 'su bile yutamıyorum, korkuyorum',
   ],
-  self_harm: ['tükendim', 'tukendim', 'artık tükendim', 'tükendim, dayanamıyorum'],
+  self_harm: [
+    'tükendim', 'tukendim', 'artık tükendim', 'tükendim, dayanamıyorum',
+    // owner-approved 2026-10-11
+    'ben bittim', 'bittim ben', 'artık ben bittim', 'bittim ben, hiçbir şeyin anlamı kalmadı gibi',
+  ],
 };
 
-Deno.test('the spec\'s ambiguous list is exactly v1 spellings of bayıldım/bayılıyorum, tükendim, kalp çarpıntısı', () => {
+/** The folded phrases of the ambiguous list: the spec's own, then the owner's 2026-10-11 additions. */
+const AMBIGUOUS_FOLDED = {
+  emergency: ['bayildim', 'bayiliyorum', 'kalp carpintisi', 'yutamiyorum'],
+  self_harm: ['ben bittim', 'bittim ben', 'tukendim'],
+} as const;
+
+Deno.test('the ambiguous list is exactly v1 spellings of bayıldım/bayılıyorum, tükendim, kalp çarpıntısı + (owner 2026-10-11) yutamıyorum, ben bittim', () => {
   for (const p of V1_AMBIGUOUS_PHRASES.emergency) assert(V1_EMERGENCY_PHRASES.includes(p), p);
   for (const p of V1_AMBIGUOUS_PHRASES.self_harm) assert(V1_CRISIS_PHRASES.includes(p), p);
   const folded = (l: readonly string[]) => [...new Set(l.map(foldTripwireText))].sort();
-  assertEquals(folded(V1_AMBIGUOUS_PHRASES.emergency), ['bayildim', 'bayiliyorum', 'kalp carpintisi']);
-  assertEquals(folded(V1_AMBIGUOUS_PHRASES.self_harm), ['tukendim']);
+  assertEquals(folded(V1_AMBIGUOUS_PHRASES.emergency), [...AMBIGUOUS_FOLDED.emergency]);
+  assertEquals(folded(V1_AMBIGUOUS_PHRASES.self_harm), [...AMBIGUOUS_FOLDED.self_harm]);
   // Every spelling v1 carries of those words is on the list (no v1 spelling left explicit by accident).
+  const all: readonly string[] = [...AMBIGUOUS_FOLDED.emergency, ...AMBIGUOUS_FOLDED.self_harm];
   for (const p of [...V1_EMERGENCY_PHRASES, ...V1_CRISIS_PHRASES]) {
     const f = foldTripwireText(p);
-    if (['bayildim', 'bayiliyorum', 'kalp carpintisi', 'tukendim'].includes(f)) assert([...V1_AMBIGUOUS_PHRASES.emergency, ...V1_AMBIGUOUS_PHRASES.self_harm].includes(p), p);
+    if (all.includes(f)) assert([...V1_AMBIGUOUS_PHRASES.emergency, ...V1_AMBIGUOUS_PHRASES.self_harm].includes(p), p);
   }
 });
 
@@ -377,18 +396,21 @@ Deno.test('PARITY GOLDEN: on a broad generated Turkish corpus, anything v1 answe
   for (const s of CORPUS) for (const v of spellings(s)) run(v);
   // Floors so the corpus cannot quietly shrink: the explicit part and the ambiguous-list part.
   assert(explicit > 85000, `v1-instant sentences explicit in v2: ${explicit} of ${total}`);
-  assert(ambiguous > 3000, `v1-instant sentences on the spec's ambiguous list (protective by default): ${ambiguous} of ${total}`);
+  assert(ambiguous > 3000, `v1-instant sentences on the ambiguous list (protective by default): ${ambiguous} of ${total}`);
 });
 
 /**
- * v1's verified false positives the spec calls AMBIGUOUS (§1: "bu tarife bayıldım" → 112). Not
- * instant any more, never unprotected: the curated reading is the one live fact Stage A reads; no
- * qualifying benign → protective; a normal turn only with BOTH independent benign readings behind
- * the override gate (§7.4.1, §10 Faz 3).
+ * v1's verified false positives on the AMBIGUOUS list (§1: "bu tarife bayıldım" → 112; owner
+ * 2026-10-11: "bacak gününde bittim ben", "bu kadar kuru ekmeği yutamıyorum"). Not instant any
+ * more, never unprotected: the curated reading is the one live fact Stage A reads; no qualifying
+ * benign → protective; a normal turn only with BOTH independent benign readings behind the override
+ * gate (§7.4.1, §10 Faz 3).
  */
 const V1_FALSE_POSITIVES_PROTECTIVE: [string, string][] = [
   ['bu tarife bayıldım!', 'emg.bayilma'], ['bu tatlıya bayılıyorum', 'emg.bayilma'],
   ['kahveden sonra kalp çarpıntısı oluyor bazen', 'emg.kalp_carpintisi'], ['işte tükendim bugün, toplantılar bitmedi', 'sh.tukendim'],
+  // owner-approved ambiguous since 2026-10-11 (were instant via the v1 floor until then)
+  ['bu kadar kuru ekmeği yutamıyorum', 'emg.yutamiyorum'], ['bacak gününde bittim ben', 'sh.bittim'],
 ];
 
 Deno.test('v1 floor: v1\'s ambiguous-list false positives are one live fact each, protective by default, normal only through both gated benign readings', () => {
@@ -420,14 +442,12 @@ Deno.test('v1 floor: v1\'s ambiguous-list false positives are one live fact each
 const V1_FALSE_POSITIVES_STILL_INSTANT: [string, string | null][] = [
   ['koşudan sonra nefesim kesildi', 'emg.nefes_darligi'], ['bugün koşacak nefesim yok', 'emg.nefes_darligi'],
   ['kalori yazısını göremiyorum ekranda', 'emg.gorme_kaybi'], ['annemde gorme kaybi var', 'emg.gorme_kaybi'],
-  ['bu kadar kuru ekmeği yutamıyorum', 'emg.yutamiyorum'],
   ['babam geçen yıl kalp krizi geçirdi', 'emg.kalp_krizi'], ['kalp krizi riskini azaltmak için ne yemeliyim?', 'emg.kalp_krizi'],
   ['faturayı görünce kalp krizi geçirecektim', 'emg.kalp_krizi'],
   ['koşuda kalp krizi geçiriyormuş gibiydim, normal mi?', 'emg.kalp_krizi_simdi.anlatim'],
   ['dedem felç geçirdi', 'emg.felc'],
   ['regl döneminde dayanılmaz ağrı oluyor', 'emg.siddetli_agri'], ['dişimde çok şiddetli ağrı vardı', 'emg.siddetli_agri'],
   ['koşuda göğsüm ağrıyordu, normal mi?', 'emg.gogus_agrisi.anlatim'], ['babamın göğüs ağrısı vardı', 'emg.gogus_agrisi.anlatim'],
-  ['bacak gününde bittim ben', 'sh.bittim'],
   ['bugün antrenmanda kendimi öldürdüm', 'sh.kendimi_oldurdum'],
   ['böyle yaşamak istemiyorum, değişmek istiyorum', 'sh.yasamak_istemiyorum_nitelikli'],
   ['bu kiloyla yaşamak istemiyorum', 'sh.yasamak_istemiyorum_nitelikli'],
@@ -686,8 +706,9 @@ Deno.test('a v1 phrase\'s simile ("-iyormuş gibi") is never weaker than its pre
   let checked = 0;
   for (const p of V1_EMERGENCY_PHRASES) {
     const base = scanTripwires(p);
-    // Curated present form → curated simile. Present form instant only via the floor ("bayılıyorum",
-    // "yutamıyorum", "göremiyorum"): v1 is silent on the simile, so it is a live fact, never lost.
+    // Curated present form → curated simile. Present form instant only via the floor ("göremiyorum")
+    // or an ambiguous-list fact ("bayılıyorum", "yutamıyorum"): v1 is silent on the simile, so it is
+    // a live fact, never lost.
     const curated = base.explicit !== null && !V1_FLOOR_TRIGGERS.has(base.explicit.trigger);
     for (const s of similes(p)) {
       for (const v of variants(s)) {
@@ -1077,18 +1098,20 @@ Deno.test('classifier: only emergency/self-harm ambiguous hits ask for the secon
 });
 
 Deno.test('classifier: skipped / ok / invalid / error / timeout — never throws', async () => {
+  // The live caller passes the turn's Stage A budget (ai-chat/v2/understand.ts runLiveTripwireClassifier).
+  const T = { timeoutMs: 1_000 };
   const scan = scanTripwires(BAYIL);
-  assertEquals((await runTripwireClassifier(scan, 'x', null)).status, 'skipped');
-  assertEquals((await runTripwireClassifier(scanTripwires('dün gece kustum'), 'x', async () => ({ reading: 'benign', reason: '' }))).status, 'skipped');
+  assertEquals((await runTripwireClassifier(scan, 'x', null, T)).status, 'skipped');
+  assertEquals((await runTripwireClassifier(scanTripwires('dün gece kustum'), 'x', async () => ({ reading: 'benign', reason: '' }), T)).status, 'skipped');
 
   let seen: unknown = null;
-  const okOut = await runTripwireClassifier(scan, BAYIL, async (req) => { seen = req; return '{"reading":"benign","reason":"beğeni"}'; });
+  const okOut = await runTripwireClassifier(scan, BAYIL, async (req) => { seen = req; return '{"reading":"benign","reason":"beğeni"}'; }, T);
   assert(okOut.status === 'ok' && okOut.verdict.reading === 'benign' && okOut.verdict.reason === 'beğeni');
   assertEquals((seen as { hits: { trigger: string }[] }).hits.map((h) => h.trigger), ['emg.bayilma']);
 
-  const invalid = await runTripwireClassifier(scan, 'x', async () => ({ reading: 'maybe' }));
+  const invalid = await runTripwireClassifier(scan, 'x', async () => ({ reading: 'maybe' }), T);
   assert(invalid.status === 'failed' && invalid.reason === 'invalid');
-  const error = await runTripwireClassifier(scan, 'x', async () => { throw new Error('boom'); });
+  const error = await runTripwireClassifier(scan, 'x', async () => { throw new Error('boom'); }, T);
   assert(error.status === 'failed' && error.reason === 'error');
   const timeout = await runTripwireClassifier(scan, 'x', (_req, signal) => new Promise((_res, rej) => {
     signal.addEventListener('abort', () => rej(new Error('aborted')));

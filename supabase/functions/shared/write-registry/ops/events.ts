@@ -15,7 +15,7 @@ export const life_event = op({
   channel: 'writes',
   envelope: 'life_event',
   title_tr: 'Yaklaşan olay',
-  when_tr: 'İleri tarihli, motive eden bir olay ("3 hafta sonra kardeşimin düğünü").',
+  when_tr: 'İleri tarihli, motive eden bir olay ("iki ay sonra kızımın mezuniyet töreni").',
   not_when_tr: 'geçmiş ya da tarihsiz olaylar.',
   fields: {
     title: f.text({ max: 80 }),

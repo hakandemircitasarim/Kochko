@@ -23,11 +23,16 @@ import { estimateTokens } from './tokens.ts';
  * strict-mode floor for 28 ops + the envelope); JSON tokenizes denser than prose, so this
  * over-counts it most. The floor on the doc catches a doc gutted by accident (§2 rule 3: the model
  * must see what it may write).
+ * 2026-10-11 (tuning round 3): doc 3300 → 3350, total 8600 → 8650. Two safety/understanding facts
+ * moved into the doc instead of the rules — the sleep day ("dün" of a night's sleep is the night
+ * one went to bed) and the allergen hint that a bare "fıstık" is mostly peanut (a peanut-allergic
+ * user's "fıstık alerjim var" was once written as tree_nut, which does not cover peanuts) — under
+ * the owner's 2026-10-10 rule "önce doğruluk, sonra tasarruf" (the prefix is ~99 % cached).
  */
 export const STAGE_A_REGISTRY_BUDGET = {
-  doc: { floor: 2000, ceiling: 3300 },
+  doc: { floor: 2000, ceiling: 3350 },
   schema: { ceiling: 5300 },
-  total: { ceiling: 8600 },
+  total: { ceiling: 8650 },
 } as const;
 
 export interface RegistryPromptSize {

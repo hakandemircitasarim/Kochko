@@ -109,7 +109,7 @@ export async function runFixtureOnce(fixture: EvalFixture, rep: number, opts: Ru
   }
   const key = await requestKey(payload);
   const { response, cache } = await opts.transport.call({ fixture_id: fixture.id, rep, payload, key });
-  // The §7.2 live budget class this turn would get (a tripwire fact → 7 s): the E gate splits latency by it.
+  // The §7.2 live budget class this turn would get (a tripwire fact → 10 s, else 6 s): the E gate judges p90 per class.
   const common = { cache, request_key: key, latency_ms: response.latency_ms, usage: response.usage, tripwire: stageABudgetClass(t2.scan) === 'tripwire' };
   if (cache === 'miss') return finish({ ...common, status: 'skipped', skip_reason: 'replay kaydı yok' });
   if (!isModelAnswer(response)) return finish({ ...common, status: 'error', error: response.error ?? `HTTP ${response.status ?? '?'}` });

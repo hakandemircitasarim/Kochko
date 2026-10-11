@@ -67,7 +67,7 @@ async function rows(): Promise<Record<string, unknown>[]> {
     writes: [{ ...SAMPLE_WRITES.water_log, quantity: 1, unit: 'litre', mode: 'set_day_total' }],
   }), 2500));
   // 4. a REJECT (unit other without ml).
-  await run('bir şişe su içtim', [], stageA(sampleDecision({ writes: [{ ...SAMPLE_WRITES.water_log, unit: 'other', other_ml_each: null }] }), 5200));
+  await run('bir şişe su içtim', [], stageA(sampleDecision({ writes: [{ ...SAMPLE_WRITES.water_log, unit: 'other', other_ml_each: null }] }), 6200));
   // 5. a refusal (parse/schema error class) on a tripwire turn.
   await run('bu tarife bayılmıştım', [], stageA(null, 900, { status: 'refused', decision: null, refusal: 'no' }));
   // 6. a benign reading on a tripwire turn.
@@ -90,12 +90,12 @@ Deno.test('summarizeShadowRows: agreement, net-vs-silent, ask/reject, parse erro
   assertEquals(s.skipped, { explicit_tripwire: 1 });
   assertEquals(s.parse_error_rate, 1 / 6);
   assertEquals(s.errors, { refused: 1 });
-  // latencies of the 6 turns that ran: 1200 1500 2500 5200 900 1800 → nearest-rank p50 1500, p90 5200
-  assertEquals([s.latency.n, s.latency.p50, s.latency.p90, s.latency.over_live_budget], [6, 1500, 5200, 1]);
-  // Split by the §7.2 budget class: the 4 tripwire-free turns against 4 s, the 2 'bayılmıştım' turns against 7 s.
+  // latencies of the 6 turns that ran: 1200 1500 2500 6200 900 1800 → nearest-rank p50 1500, p90 6200
+  assertEquals([s.latency.n, s.latency.p50, s.latency.p90, s.latency.over_live_budget], [6, 1500, 6200, 1]);
+  // Split by the §7.2 budget class: the 4 tripwire-free turns against 6 s, the 2 'bayılmıştım' turns against 10 s.
   assertEquals(s.latency.by_class, {
-    normal: { n: 4, p50: 1500, p90: 5200, budget_ms: 4000, over_budget: 1 },
-    tripwire: { n: 2, p50: 900, p90: 1800, budget_ms: 7000, over_budget: 0 },
+    normal: { n: 4, p50: 1500, p90: 6200, budget_ms: 6000, over_budget: 1 },
+    tripwire: { n: 2, p50: 900, p90: 1800, budget_ms: 10000, over_budget: 0 },
   });
   assertEquals(s.tokens, { input_avg: 10000, cached_ratio: 0.9, output_avg: 200, reasoning_avg: 100 });
   assertEquals(s.ops.water_log, { both: 1, v1_only: 0, v2_only: 1, neither: 1, agreement_rate: 0.5 });
@@ -121,9 +121,9 @@ Deno.test('renderShadowReport: every §10 Faz 2 section, counts only (no user te
   for (const s of [
     'KOCHKO v2 Stage A gölge raporu — 2026-10-07 → 2026-10-08',
     'Ayrıştırma/şema hatası: 16.7%',
-    'Stage A gecikmesi: p50 1.50 sn · p90 5.20 sn · n=6 · kendi canlı bütçesini aşan 1',
-    '  tetiksiz: p50 1.50 sn · p90 5.20 sn · n=4 · 4 sn bütçesini aşan 1 (25.0%)',
-    '  tetikli: p50 0.90 sn · p90 1.80 sn · n=2 · 7 sn bütçesini aşan 0 (0.0%)',
+    'Stage A gecikmesi: p50 1.50 sn · p90 6.20 sn · n=6 · kendi canlı bütçesini aşan 1',
+    '  tetiksiz: p50 1.50 sn · p90 6.20 sn · n=4 · 6 sn bütçesini aşan 1 (25.0%)',
+    '  tetikli: p50 0.90 sn · p90 1.80 sn · n=2 · 10 sn bütçesini aşan 0 (0.0%)',
     'OP BAŞINA UYUM',
     'body_weight',
     'v1 AĞI TETİKLENDİ, v2 SESSİZ',
@@ -137,7 +137,7 @@ Deno.test('renderShadowReport: every §10 Faz 2 section, counts only (no user te
   for (const userText of ['bardak su içtim', 'tarife bayılmıştım', 'öldürmek istiyorum', USER]) assert(!text.includes(userText), userText);
 });
 
-Deno.test('late Stage A (parsed past the tripwire turn\'s 7 s budget): the fallback keeps its cause, the late reading is counted apart — never as "no Stage A"', async () => {
+Deno.test('late Stage A (parsed past the tripwire turn\'s 10 s budget): the fallback keeps its cause, the late reading is counted apart — never as "no Stage A"', async () => {
   resetShadowSinkState();
   const t = seedTables();
   t.weekly_plans = t.weekly_plans.filter((p) => p.status !== 'draft');
@@ -152,10 +152,10 @@ Deno.test('late Stage A (parsed past the tripwire turn\'s 7 s budget): the fallb
     },
     self_check: { reported_new_facts: true, not_written_reason: 'illness_not_food' },
   });
-  await runShadow({ userId: USER, message: msg, turnInput, v1Actions: [], v1Mode: 'safety', now: NOW }, { understand: stageA(decision, 7345), sink, log: () => {} });
+  await runShadow({ userId: USER, message: msg, turnInput, v1Actions: [], v1Mode: 'safety', now: NOW }, { understand: stageA(decision, 10345), sink, log: () => {} });
   const s = summarizeShadowRows(sink.rows);
   assertEquals(s.tripwire.outcomes, { fallback: 1 });
-  assertEquals(s.latency.by_class.tripwire.over_budget, 1, 'a tripwire turn is late only past 7 s');
+  assertEquals(s.latency.by_class.tripwire.over_budget, 1, 'a tripwire turn is late only past 10 s');
   assertEquals(s.tripwire.fallback_causes, { timeout: 1 });
   assertEquals(s.tripwire.on_time_outcomes, { protective: 1 });
   assertEquals(s.tripwire.matrix['ed.kustum'], { tier: 'ambiguous', positive: 0, benign: 0, missing: 0, 'n/a': 1, late_positive: 0, late_benign: 1, late_missing: 0 });

@@ -70,7 +70,7 @@ export const record_update = op({
     patch: f.write({ tr: 'kaydın düzeltilmiş TAM hâli, ref’in kayıt türündeki op ile' }),
   },
   hold_tr: 'suspicious bekletilir, koç bir kez sorar; reddedilen şüphe yeniden önerilmez.',
-  capability_tr: 'Yanlış bir kaydı düzeltmek; fark ettiğin şüpheli bir geçmiş kaydı (ör. 6 nugget için 1708 kcal) önce kullanıcıya sorarak.',
+  capability_tr: 'Yanlış bir kaydı düzeltmek; fark ettiğin şüpheli bir geçmiş kaydı (ör. küçük bir porsiyona binlerce kcal) önce kullanıcıya sorarak.',
   writes: { rpc: 'w_record_supersede', tables: ['turn_writes'], undo: 'restore_previous', hold_op: 'record_update' },
   invariants: ['supersede_in_one_transaction', 'no_double_count'],
 }).rules({

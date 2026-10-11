@@ -41,8 +41,10 @@ export type AllergenId = keyof typeof ALLERGENS;
 export const ALLERGEN_DOC_HINTS: Readonly<Partial<Record<AllergenId, string>>> = {
   gluten: 'buğday, arpa, çavdar, yulaf',
   crustacean: 'karides, yengeç, ıstakoz, krill',
-  peanut: 'yer fıstığı',
-  tree_nut: 'sert kabuklu, türü belirsiz',
+  // A bare "fıstık" is mostly peanut in everyday Turkish, and tree_nut does NOT cover peanuts (a
+  // legume): reading "fıstık" as tree_nut leaves a peanut-allergic user unprotected (tuning round 3).
+  peanut: 'yer fıstığı; yalın "fıstık" çoğunlukla budur',
+  tree_nut: 'sert kabuklu, türü belirsiz; yer fıstığı değil',
   pistachio: 'antep fıstığı',
   lupin: 'acı bakla',
   mollusc: 'midye, kalamar, ahtapot',

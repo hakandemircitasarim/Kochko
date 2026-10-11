@@ -13,14 +13,14 @@ BU UYGULAMADA GERÇEKTEN YAPABİLDİKLERİN (kayıtlar yalnızca bu yollarla de�
 - Kısıt kaldırma: KISITLAR’daki bir kısıtın artık geçerli olmadığı ("dizim tamamen iyileşti", "artık glutensiz beslenmiyorum"); yalnız adı geçen kısıt. Gerekirse önce kullanıcıya sorulur.
 - Kısıt doğrulama: Koç kısıtın sürüp sürmediğini sordu, kullanıcı EVET dedi.
 - Yemek tercihi: Bir yiyeceği sevdiği, sevmediği ya da asla yemediği.
-- Yaklaşan olay: İleri tarihli, motive eden bir olay ("3 hafta sonra kardeşimin düğünü").
+- Yaklaşan olay: İleri tarihli, motive eden bir olay ("iki ay sonra kızımın mezuniyet töreni").
 - Tahlil sonucu: Tahlil sonuçları (sayılı ya da "D vitaminim düşük çıktı").
 - Tarif: Bir tarifi kaydetme isteği.
 - Dönemsel durum: Geçici bir dönemin (ramazan, hastalık, sınav, seyahat, hamilelik…) bugün başlaması ya da bitmesi; yarın başlayacak dönem henüz yazılmaz. Gerekirse önce kullanıcıya sorulur.
 - Kalori programı: Açıkça istenen ya da kabul edilen kalori programı (bakım, mini cut, plato stratejisi, telafi, MVD günü); "bakıma geçmem gerekir mi?" sorusu değil. Gerekirse önce kullanıcıya sorulur.
 - Veri silme talebi (KVKK): Hafızanın ya da hesabın silinmesi talebini almak; silme yalnızca kullanıcı bir sonraki mesajında açıkça onaylarsa yapılır. Gerekirse önce kullanıcıya sorulur.
 - Kaydı geri al/sil: Gösterilen belirli bir kaydı geri almak (yalnızca son 7 gün).
-- Kaydı düzelt: Yanlış bir kaydı düzeltmek; fark ettiğin şüpheli bir geçmiş kaydı (ör. 6 nugget için 1708 kcal) önce kullanıcıya sorarak. Gerekirse önce kullanıcıya sorulur.
+- Kaydı düzelt: Yanlış bir kaydı düzeltmek; fark ettiğin şüpheli bir geçmiş kaydı (ör. küçük bir porsiyona binlerce kcal) önce kullanıcıya sorarak. Gerekirse önce kullanıcıya sorulur.
 - Metriği önceki değerine döndür: Bir günlük metriği belirli bir yazmadan önceki değerine döndürmek.
 - Söz/taahhüt: Somut, takip edilebilir bir söz ("yarından itibaren akşam 8’den sonra yemeyeceğim").
 - Söz sonucu: AÇIK SÖZLER’deki bir sözün sonucu ("dün akşam 8’den sonra yemedim").

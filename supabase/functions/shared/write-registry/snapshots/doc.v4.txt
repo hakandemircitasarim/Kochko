@@ -3,7 +3,7 @@ Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aral
 day: today | yesterday | YYYY-MM-DD; en fazla 7 gün geri, gelecek yok.
 Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. Kayıt düzeltmenin tek yolu record_ops update; yazmalardaki replaces hep null.
 Ref’ler yalnız bu turda gösterilenler: KAYITLAR: m=öğün · d=günlük metrik (su, uyku, ruh hali, adım, tartı) · w=antrenman · s=takviye · t=son tur yazması · e=olay · l=tahlil · f=yemek tercihi | KISITLAR: c | BEKLEYEN ONAYLAR: p | AÇIK SÖZLER: k | PLAN TASLAĞI: dft.
-ALERJENLER: gluten (buğday, arpa, çavdar, yulaf) · crustacean (karides, yengeç, ıstakoz, krill) · egg · fish · peanut (yer fıstığı) · soy · milk · tree_nut (sert kabuklu, türü belirsiz) · hazelnut · walnut · almond · pistachio (antep fıstığı) · cashew · celery · mustard · sesame · sulphite · lupin (acı bakla) · mollusc (midye, kalamar, ahtapot) · listede yoksa (yalnız kısıtta) custom:<ad>
+ALERJENLER: gluten (buğday, arpa, çavdar, yulaf) · crustacean (karides, yengeç, ıstakoz, krill) · egg · fish · peanut (yer fıstığı; yalın "fıstık" çoğunlukla budur) · soy · milk · tree_nut (sert kabuklu, türü belirsiz; yer fıstığı değil) · hazelnut · walnut · almond · pistachio (antep fıstığı) · cashew · celery · mustard · sesame · sulphite · lupin (acı bakla) · mollusc (midye, kalamar, ahtapot) · listede yoksa (yalnız kısıtta) custom:<ad>
 BÖLGELER: knee=diz · back=sırt/bel · shoulder=omuz · ankle=ayak bileği · wrist=el bileği · elbow=dirsek · hip=kalça · neck=boyun · hamstring=arka bacak · quad=ön bacak · groin=kasık
 
 ## writes[] — kullanıcının bildirdikleri
@@ -30,7 +30,7 @@ Kod: litre = quantity × birimin ml’si / 1000.
 Son 7 gündeki bir tartı sonucu (eski hatıra değil).
 
 ### sleep_log
-Uyuduğu süre; day = UYANDIĞI gün ("dün gece 1'de yatıp 8'de kalktım" → today).
+Uyuduğu süre; day = UYANDIĞI gün, gece uykusunda "dün" yatılan gecedir ("dün gece 1'de yatıp 8'de kalktım" → today).
 - hours: aralıksa ortası ("6-7" → 6.5)
 
 ### mood_log
@@ -39,7 +39,7 @@ Ruh hali puanı ya da açık tarifi.
 Kod: 1–10 ölçeği 1–5’e çevrilir (8/10 → 4), kırpma yok.
 
 ### step_log
-Attığı adım sayısı (süre yoksa antrenman değil). Değil: "her gün 8 bin adımı hedefliyorum" (profile_set step_target).
+Attığı adım sayısı (süre yoksa antrenman değil). Değil: bir adım hedefi (profile_set step_target).
 
 ### workout_log
 Yaptığı egzersiz ya da spor. Değil: yalnız adım sayısı (step_log).
@@ -77,7 +77,7 @@ Alerji, intolerans, sakatlık, ameliyat, hastalık, ilaç ya da diyet kısıtı 
 - body_parts: sakatlık/ameliyatta BÖLGELER’den
 
 ### constraint_retract
-KISITLAR’daki bir kısıtın artık geçerli olmadığı ("dizim tamamen iyileşti", "artık glutensiz beslenmiyorum"); yalnız adı geçen kısıt. Değil: ağrı sürüyorsa ("dizim eskisi gibi ağrıyor").
+KISITLAR’daki bir kısıtın artık geçerli olmadığı ("dizim tamamen iyileşti", "artık glutensiz beslenmiyorum"); yalnız adı geçen kısıt. Değil: ağrı ya da şikâyet hâlâ sürüyorsa.
 İki adım: yazma bu turda yapılır; ciddi/bilinmeyen alerjen, ameliyat ya da ciddi sakatlığı kod bekletir, SONRAKİ turdaki açık onayla (pending_ops confirm) kalkar.
 
 ### food_pref
@@ -86,7 +86,7 @@ Bir yiyeceği sevdiği, sevmediği ya da asla yemediği. Değil: alerji ve intol
 - preference: can_cook = yapabildiği yemek; never = asla yemez (alerji değil)
 
 ### life_event
-İleri tarihli, motive eden bir olay ("3 hafta sonra kardeşimin düğünü"). Değil: geçmiş ya da tarihsiz olaylar.
+İleri tarihli, motive eden bir olay ("iki ay sonra kızımın mezuniyet töreni"). Değil: geçmiş ya da tarihsiz olaylar.
 
 ### data_erase_request
 AÇIKÇA hesabın ve tüm verilerin ya da yalnız koç hafızasının silinmesi isteği. Değil: "bu hesaplamayı sil" (hesaplama), "nasıl silerim?" (soru), tek kayıt (record_ops); kapsam belirsizse clarify.

@@ -274,7 +274,7 @@ export interface FixtureRunResult {
   canned?: boolean;
   /** The fixture is in the untouched HOLDOUT set (tag 'holdout'): graded in its own gate set, never tuned on. */
   holdout?: boolean;
-  /** T2 handed Stage A a tripwire fact → the 7 s §7.2 live budget class (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS). */
+  /** T2 handed Stage A a tripwire fact → the 10 s §7.2 live budget class (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS). */
   tripwire?: boolean;
 }
 
@@ -312,7 +312,7 @@ export interface EvalReport {
   holdout_gates: GateResult[];
   totals: Record<RunStatus, number> & { cache_miss: number };
   latency: { p50_ms: number | null; p90_ms: number | null; samples: number };
-  /** Latency split by the §7.2 live budget class: a turn with a tripwire fact (7 s) vs without (4 s). */
+  /** Latency split by the §7.2 live budget class: a turn with a tripwire fact (10 s) vs without (6 s). */
   latency_split: { normal: LatencyClassStats; tripwire: LatencyClassStats };
   cost_usd_estimate: number | null;
 }

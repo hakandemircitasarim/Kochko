@@ -13,7 +13,12 @@
  *   · a whole fixture message (≥ 3 tokens) inside a prompt message/quote;
  *   · a prompt quote (≥ 3 tokens) inside a fixture message — unless it is one of GRAMMAR_CUES, the
  *     conditional-mood markers the rules exist to teach ("-sem ne olur", "-sem yeter mi");
- *   · a few-shot context line with a fixture's ref AND a shared food word on that ref's line.
+ *   · a few-shot context line with a fixture's ref AND a shared food word on that ref's line;
+ *   · (round 3) more than CONTENT_SHARED_MAX shared content words (by stem: "fındık/fındığa") between
+ *     a prompt example and a fixture message — or between a few-shot context line and ANY fixture
+ *     ref line, whatever the ref — i.e. the same case in other words;
+ *   · (round 3) a shared number+word pair ("2 dilim", "2 değil"): the same amount, the same template.
+ * The coach's capability text (write-registry capabilities, Stage B) is held to the same checks.
  */
 
 /** Above this token Jaccard a prompt example is a near-copy of a fixture message. */
@@ -133,6 +138,107 @@ export function refFoodOverlaps(shots: readonly RefLineCase[], fixtures: readonl
     }
   }
   return out;
+}
+
+// ─── content words and number+unit pairs (review of tuning round 2) ─────────────────────────────
+// Token Jaccard misses a paraphrase that keeps the CASE: the same foods in other words ("fındığa"
+// vs "fındık"), the same amount of the same thing ("2 dilim …"), the same correction template
+// ("2 değil 1 …"). These two checks look at what an example is ABOUT, whatever its wording or ref.
+
+/**
+ * Words that say who/when/how, not WHAT (function words, pronouns, auxiliaries, the everyday verbs
+ * of a log message, time words, units, quantity words, record-line markers) and the vocabulary of a
+ * principle the rules teach ("alerji", "ciddi": every allergy example needs them, as every
+ * hypothetical needs "-sem ne olur"). Folded spelling, matched on the 5-letter stem, so inflections
+ * ("yedim/yedik", "bardağı/bardak") fall out together. Anything left is a content word: a food, a
+ * drink, an activity, a body part, a symptom.
+ */
+const CONTENT_STOP_WORDS = [
+  ...LINE_STOP,
+  // weekdays, log verbs in the evidential, the principle vocabulary
+  'pazartesi', 'sali', 'carsamba', 'persembe', 'cuma', 'cumartesi', 'pazar', 'ikindi',
+  'yemisim', 'yemis', 'icmisim', 'icmis', 'girmissin', 'girmis', 'girdin', 'alerji', 'alerjim', 'alerjisi', 'ciddi',
+  // function words, pronouns, particles
+  've', 'ile', 'ama', 'fakat', 'ise', 'de', 'da', 'ki', 'mi', 'mu', 'bu', 'su', 'o', 'bir', 'hic', 'cok', 'az', 'daha', 'en',
+  'gibi', 'kadar', 'icin', 'sonra', 'once', 'beri', 'yine', 'artik', 'zaten', 'sadece', 'bile', 'hem', 'ya', 'yok', 'var',
+  'ben', 'bana', 'beni', 'benim', 'sen', 'sana', 'onu', 'ona', 'onun', 'biz', 'siz', 'bunu', 'buna', 'bunun', 'kendi',
+  'hangi', 'nasil', 'neden', 'niye', 'nedir', 'kac', 'ne', 'misin', 'musun', 'lazim', 'gerek', 'tamam', 'evet',
+  'hayir', 'olur', 'pardon', 'aslinda', 'galiba', 'herhalde', 'sanirim', 'hep', 'her', 'toplam', 'toplamda', 'yaninda',
+  'ustune', 'uzerine', 'icinde', 'baska', 'diger', 'tum', 'butun', 'biraz', 'fazla', 'yarim', 'tek', 'iki', 'uc', 'dort', 'bes',
+  // everyday verbs of a log / correction / question
+  'yedim', 'yedik', 'yemek', 'yiyor', 'yiyeyim', 'yesem', 'ictim', 'icmek', 'iciyor', 'icsem', 'icerken', 'yaptim', 'yapmak',
+  'yapti', 'ettim', 'etmek', 'oldu', 'olmus', 'olsun', 'oluyor', 'olmadi', 'yazdim', 'yazmis', 'yazilmis', 'yanlis', 'dogru',
+  'duzelt', 'duzeltir', 'sil', 'silin', 'geri', 'iptal', 'ekle', 'eklemeni', 'istemistim', 'istiyorum', 'isterim', 'gideyim',
+  'gittim', 'geldi', 'aldim', 'var', 'yeterli', 'yeter', 'koydum', 'attim', 'bilmiyorum', 'emin', 'degil', 'degilim',
+  'demek', 'dedim', 'soyle', 'boyle', 'oyle', 'kaldi', 'basla', 'baslayalim', 'cikarir', 'uygun', 'guzel', 'iyi', 'kotu',
+  // time words
+  'bugun', 'dun', 'yarin', 'sabah', 'ogle', 'oglen', 'aksam', 'gece', 'kahvalti', 'kahvaltida', 'ogun', 'gun', 'gunde', 'gunu', 'gunler', 'hafta',
+  'haftada', 'saat', 'dakika', 'simdi', 'az', 'once', 'demin', 'biraz', 'onceki', 'gelecek', 'onumuzdeki',
+  // units and quantity words (not "çay"/"tatlı": in "çay kaşığı" they are units, but mostly they are food)
+  'adet', 'tane', 'parca', 'porsiyon', 'kase', 'tabak', 'dilim', 'bardak', 'bardagi', 'fincan', 'kupa', 'sise', 'kutu', 'paket',
+  'avuc', 'tutam', 'cimdik', 'kasik', 'litre', 'gram', 'kilo', 'kilogram', 'kalori', 'kcal', 'dk',
+];
+
+/** Letters of a stem: enough to merge Turkish inflections ("makarna/makarnayı", "fındık/fındığa"). */
+export const STEM_LEN = 5;
+
+const stemOf = (t: string) => t.slice(0, STEM_LEN);
+const CONTENT_STOP_STEMS = new Set(CONTENT_STOP_WORDS.map(stemOf));
+
+/** Content-word stems of a text: letters only, ≥ 3 letters, not a stop word (by stem). */
+export function contentStems(text: string): Set<string> {
+  return new Set(foldTokens(text).filter((t) => /^[a-z]{3,}$/.test(t)).map(stemOf).filter((s) => !CONTENT_STOP_STEMS.has(s)));
+}
+
+/**
+ * Number + following word pairs ("2 dilim", "1 tabak", "2 degil"), the word stemmed. A number at
+ * the end of a text pairs with nothing. Catches a reused amount of a thing AND a reused correction
+ * template — the shapes token Jaccard cannot see.
+ */
+export function numberUnitPairs(text: string): Set<string> {
+  const toks = foldTokens(text);
+  const out = new Set<string>();
+  for (let i = 0; i + 1 < toks.length; i++) {
+    if (/^\d+$/.test(toks[i]) && /^[a-z]+$/.test(toks[i + 1])) out.add(`${toks[i]} ${stemOf(toks[i + 1])}`);
+  }
+  return out;
+}
+
+/** Content words two examples may share before they are about the same CASE (one food is vocabulary). */
+export const CONTENT_SHARED_MAX = 1;
+
+/** Prompt texts (few-shot messages, quotes) sharing more than CONTENT_SHARED_MAX content stems with a fixture text. */
+export function contentOverlaps(probes: readonly TextCase[], fixtures: readonly TextCase[], max = CONTENT_SHARED_MAX): Overlap[] {
+  const out: Overlap[] = [];
+  const fx = fixtures.map((f) => ({ id: f.id, stems: contentStems(f.text) }));
+  for (const p of probes) {
+    const ps = contentStems(p.text);
+    for (const f of fx) {
+      const shared = [...ps].filter((s) => f.stems.has(s));
+      if (shared.length > max) out.push({ probe: p.id, fixture: f.id, why: `ortak içerik kelimeleri: ${shared.join(', ')}` });
+    }
+  }
+  return out;
+}
+
+/** Prompt texts reusing a fixture's number+word pair ("2 dilim", "2 degil"). */
+export function numberUnitOverlaps(probes: readonly TextCase[], fixtures: readonly TextCase[]): Overlap[] {
+  const out: Overlap[] = [];
+  const fx = fixtures.map((f) => ({ id: f.id, pairs: numberUnitPairs(f.text) }));
+  for (const p of probes) {
+    const pp = numberUnitPairs(p.text);
+    for (const f of fx) {
+      const shared = [...pp].filter((x) => f.pairs.has(x));
+      if (shared.length) out.push({ probe: p.id, fixture: f.id, why: `ortak sayı+birim: ${shared.join(', ')}` });
+    }
+  }
+  return out;
+}
+
+/** The examples a capability text gives: "(ör. …)" asides and "…" quotes (the coach reads both). */
+export function capabilityExamples(text: string): string[] {
+  const asides = [...text.matchAll(/\((?:ör|örn)\.?\s*([^)]*)\)/gu)].map((m) => m[1].trim()).filter((s) => s !== '');
+  return [...asides, ...quotedPhrases(text)];
 }
 
 /** `KAYITLAR: m12 · …` → { ref: 'm12', line: '…' } (the first token after the label is the ref). */

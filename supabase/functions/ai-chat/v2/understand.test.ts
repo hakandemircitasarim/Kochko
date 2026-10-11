@@ -16,7 +16,7 @@ import { loadTurnInput, renderTurnInput, stageAView, type TurnInput } from './in
 import { fakeResponses, fakeTurnInputDb, NOW, refusalBody, responsesBody, seedTables, USER, OTHER } from './testing.ts';
 import {
   buildUnderstandRequest, respondArgs, STAGE_A_CACHE_KEY, STAGE_A_LIVE_BUDGET_MS, STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MAX_OUTPUT_TOKENS, STAGE_A_SHADOW_TIMEOUT_MS,
-  stageALiveBudgetMs, understand,
+  runLiveTripwireClassifier, stageALiveBudgetMs, tripwireClassifierTimeoutMs, understand,
 } from './understand.ts';
 import { buildStageARequest, renderTurnInputBlock, stageABudgetClass, stageASchema, stageASystemPrompt } from './stage-a-request.ts';
 import { UNDERSTAND_CACHE_KEY, UNDERSTAND_PROMPT_VERSION, UNDERSTAND_RULES } from './understand-prompt.ts';
@@ -91,8 +91,8 @@ Deno.test('§8.4 effort through the wrapper: low by default; medium for image, o
   assertEquals(buildUnderstandRequest({ turnInput: failedSafety, message: msg, scan: scanTripwires(msg) }).effort, 'medium', 'unreadable tier');
 });
 
-Deno.test('§7.2 live budgets: ONE place (normal 4 s, tripwire 7 s), chosen by the same certain fact as effort; live mode times out at them', async () => {
-  assertEquals(STAGE_A_LIVE_BUDGETS_MS, { normal: 4_000, tripwire: 7_000 });
+Deno.test('§7.2 live budgets: ONE place (owner 2026-10-11: normal 6 s, tripwire 10 s), chosen by the same certain fact as effort; live mode times out at them', async () => {
+  assertEquals(STAGE_A_LIVE_BUDGETS_MS, { normal: 6_000, tripwire: 10_000 });
   assertEquals(STAGE_A_LIVE_BUDGET_MS, STAGE_A_LIVE_BUDGETS_MS.normal, 'the old name is the normal budget, not a second constant');
   assert(STAGE_A_LIVE_BUDGETS_MS.tripwire > STAGE_A_LIVE_BUDGETS_MS.normal);
   assert(STAGE_A_SHADOW_TIMEOUT_MS > STAGE_A_LIVE_BUDGETS_MS.tripwire, 'the shadow measures past both budgets');
@@ -117,7 +117,19 @@ Deno.test('§7.2 live budgets: ONE place (normal 4 s, tripwire 7 s), chosen by t
     // The budget is the call's, not the model's: the ai-decide body never carries it.
     const body = JSON.stringify(buildStageARequest({ view: stageAView(ti), scan, message: msg, model: 'gpt-5.6-terra' }));
     assert(!body.includes('live_ms') && !body.includes('liveBudget'), msg);
+    // The parallel second reading waits exactly as long as Stage A may (one owner for the wait).
+    assertEquals(tripwireClassifierTimeoutMs(scan), STAGE_A_LIVE_BUDGETS_MS[cls], `${msg}: classifier wait = the turn's Stage A budget`);
   }
+});
+
+Deno.test('live tripwire classifier: runs at the turn\'s Stage A budget, skipped without an emergency/self-harm fact, fail-closed on error', async () => {
+  const bayil = scanTripwires('antrenmanda bir an bayılacak gibi oldum');
+  assertEquals(tripwireClassifierTimeoutMs(bayil), STAGE_A_LIVE_BUDGETS_MS.tripwire);
+  const ok = await runLiveTripwireClassifier(bayil, 'antrenmanda bir an bayılacak gibi oldum', async () => ({ reading: 'positive', reason: 'gerçek belirti' }));
+  assert(ok.status === 'ok' && ok.verdict.reading === 'positive');
+  assertEquals((await runLiveTripwireClassifier(scanTripwires('1 bardak su içtim'), 'x', async () => ({ reading: 'benign', reason: 'x' }))).status, 'skipped');
+  const err = await runLiveTripwireClassifier(bayil, 'x', async () => { throw new Error('boom'); });
+  assert(err.status === 'failed' && err.reason === 'error');
 });
 
 Deno.test('understand(): strict schema + cache key + store:false on the wire; a valid decision is parsed', async () => {

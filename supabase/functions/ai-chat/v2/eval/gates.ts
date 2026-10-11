@@ -13,7 +13,7 @@
  * the gate `incomplete`: a gate is never green on partial data.
  */
 import type { EvalReport, FixtureRunResult, GateResult, LatencyClassStats, PackageId, Usage } from './types.ts';
-import { STAGE_A_LIVE_BUDGETS_MS } from '../stage-a-request.ts';
+import { STAGE_A_LIVE_BUDGETS_MS, type StageABudgetClass } from '../stage-a-request.ts';
 
 interface RateGate { min_rate: number; every_rep?: boolean; label_tr: string }
 export const RATE_GATES: Partial<Record<PackageId, RateGate>> = {
@@ -25,9 +25,19 @@ export const RATE_GATES: Partial<Record<PackageId, RateGate>> = {
 };
 
 export interface Budget {
-  /** Stage A alone: §3.3 estimates 1.2–3.0 s; T2 fails closed past 4 s. */
+  /**
+   * Stage A p50 of an ORDINARY turn (no tripwire fact, effort low): §3.3 estimates 1.2–3.0 s. A
+   * tripwire turn thinks at effort medium (§8.4) and has no p50 estimate of its own — only its
+   * fail-closed budget below.
+   */
   p50_ms: number;
-  p90_ms: number;
+  /**
+   * p90 per §7.2 live budget class: at most ~10 % of a class's calls may run past the budget at
+   * which live v2 would fail closed to today's canned protection. Defaults to the live budgets
+   * themselves (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS — owner decision 2026-10-11: normal 6 s,
+   * tripwire 10 s), so the gate and the live timeout cannot drift apart.
+   */
+  p90_ms_by_class: Readonly<Record<StageABudgetClass, number>>;
   /** Faz 2 gate: parse/schema errors ≤ %0,5. */
   max_parse_schema_error_rate: number;
   /**
@@ -40,7 +50,13 @@ export interface Budget {
   /** §10 Faz 3: repair calls (validateDecision repair.needed) ≤ %5 of answered turns. */
   max_repair_rate: number;
 }
-export const DEFAULT_BUDGET: Budget = { p50_ms: 3000, p90_ms: 4000, max_parse_schema_error_rate: 0.005, max_cost_per_turn_usd: 0.0126, max_repair_rate: 0.05 };
+export const DEFAULT_BUDGET: Budget = {
+  p50_ms: 3000,
+  p90_ms_by_class: STAGE_A_LIVE_BUDGETS_MS,
+  max_parse_schema_error_rate: 0.005,
+  max_cost_per_turn_usd: 0.0126,
+  max_repair_rate: 0.05,
+};
 
 /** $ per 1M tokens: [input, cached input, output] (§3.3). */
 export const PRICES: Record<string, [number, number, number]> = {
@@ -57,7 +73,7 @@ export function percentile(sorted: number[], p: number): number | null {
 
 /**
  * Stage A latency split by the §7.2 live budget class (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS):
- * turns where T2 handed Stage A a tripwire fact (7 s budget) vs the rest (4 s). `over_budget` counts
+ * turns where T2 handed Stage A a tripwire fact (10 s budget) vs the rest (6 s). `over_budget` counts
  * the calls that would have failed closed to today's canned protection in live v2. Real calls only.
  */
 export function latencySplit(results: FixtureRunResult[]): { normal: LatencyClassStats; tripwire: LatencyClassStats } {
@@ -71,7 +87,7 @@ export function latencySplit(results: FixtureRunResult[]): { normal: LatencyClas
   return { normal: stats('normal'), tripwire: stats('tripwire') };
 }
 
-/** "tetiksiz p50 2,7 sn · p90 3,9 sn (n=500, >4 sn %8)" — one line per class, for the E gate and the report. */
+/** "tetiksiz p50 2700 ms · p90 3900 ms (n=500, >6 sn: 8 = %1,6)" — one line per class, for the E gate and the report. */
 export function formatLatencySplit(s: { normal: LatencyClassStats; tripwire: LatencyClassStats }): string {
   const one = (label: string, c: LatencyClassStats) =>
     `${label} p50 ${c.p50_ms ?? '—'} ms · p90 ${c.p90_ms ?? '—'} ms (n=${c.n}, >${c.budget_ms / 1000} sn: ${c.over_budget}${c.n ? ` = %${((c.over_budget / c.n) * 100).toFixed(1)}` : ''})`;
@@ -136,11 +152,29 @@ export function qualityGate(pairs: QualityPair[]): GateResult {
   };
 }
 
+/**
+ * The E gate's latency part, per §7.2 budget class: an ordinary turn's p50 ≤ budget.p50_ms (§3.3),
+ * and EACH class's p90 ≤ its own budget (normal 6 s, tripwire 10 s by default). A class with no
+ * answered call is not judged (a run of plain turns says nothing about tripwire turns).
+ */
+export function latencyWithinBudget(split: { normal: LatencyClassStats; tripwire: LatencyClassStats }, budget: Budget = DEFAULT_BUDGET): { ok: boolean; breaches: string[] } {
+  const breaches: string[] = [];
+  const label = { normal: 'tetiksiz', tripwire: 'tetikli' } as const;
+  if (split.normal.n && split.normal.p50_ms !== null && split.normal.p50_ms > budget.p50_ms) breaches.push(`${label.normal} p50 ${split.normal.p50_ms} > ${budget.p50_ms} ms`);
+  for (const cls of ['normal', 'tripwire'] as const) {
+    const c = split[cls];
+    const max = budget.p90_ms_by_class[cls];
+    if (c.n && c.p90_ms !== null && c.p90_ms > max) breaches.push(`${label[cls]} p90 ${c.p90_ms} > ${max} ms`);
+  }
+  return { ok: breaches.length === 0, breaches };
+}
+
 export function budgetGate(results: FixtureRunResult[], budget: Budget = DEFAULT_BUDGET, model?: string): GateResult {
   const pct = (budget.max_parse_schema_error_rate * 100).toFixed(1).replace('.', ',');
   const costLabel = budget.max_cost_per_turn_usd === null ? '' : `, maliyet/tur ≤ $${budget.max_cost_per_turn_usd}`;
   const repairPct = (budget.max_repair_rate * 100).toFixed(0);
-  const label_tr = `Gecikme/maliyet: Stage A p50 ≤ ${budget.p50_ms} ms, p90 ≤ ${budget.p90_ms} ms, ayrıştırma/şema hatası ≤ %${pct}, onarım ≤ %${repairPct}${costLabel}`;
+  const p90s = `p90 tetiksiz ≤ ${budget.p90_ms_by_class.normal} ms / tetikli ≤ ${budget.p90_ms_by_class.tripwire} ms`;
+  const label_tr = `Gecikme/maliyet: Stage A tetiksiz p50 ≤ ${budget.p50_ms} ms, ${p90s} (§7.2 sınıf bütçesi), ayrıştırma/şema hatası ≤ %${pct}, onarım ≤ %${repairPct}${costLabel}`;
   // Only real Stage A calls are latency/cost evidence (a T2 canned turn makes no call).
   const live = results.filter((r) => r.cache === 'live' || r.cache === 'hit');
   const lat = live.map((r) => r.latency_ms).filter((x): x is number => typeof x === 'number').sort((a, b) => a - b);
@@ -170,10 +204,13 @@ export function budgetGate(results: FixtureRunResult[], budget: Budget = DEFAULT
   const costOk = budget.max_cost_per_turn_usd === null || costPerTurn === null || costPerTurn <= budget.max_cost_per_turn_usd;
   const repairs = answered.filter((r) => r.repair_needed === true).length;
   const repairRate = repairs / answered.length;
-  const ok = p50 <= budget.p50_ms && p90 <= budget.p90_ms && errRate <= budget.max_parse_schema_error_rate && costOk && repairRate <= budget.max_repair_rate;
+  const split = latencySplit(results);
+  const latency = latencyWithinBudget(split, budget);
+  const ok = latency.ok && errRate <= budget.max_parse_schema_error_rate && costOk && repairRate <= budget.max_repair_rate;
   const detail = [
-    `p50 ${p50} ms · p90 ${p90} ms · ayrıştırma/şema hatası ${bad}/${answered.length} · onarım ${repairs}/${answered.length}`,
-    formatLatencySplit(latencySplit(results)),
+    `p50 ${p50} ms · p90 ${p90} ms (tümü) · ayrıştırma/şema hatası ${bad}/${answered.length} · onarım ${repairs}/${answered.length}`,
+    formatLatencySplit(split),
+    latency.breaches.length ? `bütçe aşımı: ${latency.breaches.join(', ')}` : '',
     outMean !== null ? `ort. çıktı ${outMean} token` : '',
     cacheRatio !== null ? `önbellek %${Math.round(cacheRatio * 100)}` : '',
     costPerTurn !== null ? `maliyet/tur $${costPerTurn.toFixed(4)}` : '',

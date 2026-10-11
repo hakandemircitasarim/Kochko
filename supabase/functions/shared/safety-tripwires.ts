@@ -34,21 +34,22 @@
  * read any negative verb after "gibi" demoted real emergencies (rejected, d1fd68b SIMILE_DENIED).
  *
  * THE V1 FLOOR. Demoting a phrase v1 answers instantly (bare "kalp krizi", "felç", "kan küstüm",
- * "yutamıyorum", "nefesim kesildi", "ben bittim", "hayata veda", "babam … göğüs ağrısı vardı" …)
- * to Stage A removes an instant block, and §7.4 needs owner approval AND shadow evidence for that
- * — which we do not have. So until then v1's own lists and root regexes run as the LAST explicit
- * tier: a curated pattern still names the words first, and a curated ambiguous reading of the same
- * words (emg.kalp_krizi, `<id>.anlatim` …) is still recorded next to the floor hit — ledger
- * evidence for that future decision — but the outcome is instant.
- * The one exception is the spec's own AMBIGUOUS list (§3.2 T2, §7.2: "bayıldım, tükendim, kustum,
- * kalp çarpıntısı, aç kalma…" — V1_AMBIGUOUS_PHRASES; "kustum"/"aç kalma" are ED, ambiguous in v2
- * anyway): v1 over-fires on exactly these ("bu tarife bayıldım" → 112, §1), and §7.4.1 already
- * says how they stay protected — "her hit ya korumayı uygular ya da iki bağımsız benign okuma
- * ister". They are ambiguous hits, PROTECTIVE BY DEFAULT: with the override gate off (production
- * today) every one of them ends in the protective path or, when Stage A fails, in today's canned
- * reply — never in a normal turn. The golden parity test in safety-tripwires.test.ts holds this
- * over a broad Turkish corpus: v1 instant ⇒ v2 explicit, or an ambiguous-list hit that resolves
- * protective without a qualifying benign reading.
+ * "nefesim kesildi", "hayata veda", "babam … göğüs ağrısı vardı" …) to Stage A removes an instant
+ * block, and §7.4 needs owner approval AND shadow evidence for that. So until then v1's own lists
+ * and root regexes run as the LAST explicit tier: a curated pattern still names the words first,
+ * and a curated ambiguous reading of the same words (emg.kalp_krizi, `<id>.anlatim` …) is still
+ * recorded next to the floor hit — ledger evidence for that future decision — but the outcome is
+ * instant.
+ * The exception is the AMBIGUOUS list (V1_AMBIGUOUS_PHRASES): the spec's own (§3.2 T2, §7.2:
+ * "bayıldım, tükendim, kustum, kalp çarpıntısı, aç kalma…"; "kustum"/"aç kalma" are ED, ambiguous
+ * in v2 anyway) plus the two phrases the OWNER moved there on 2026-10-11 ("ben bittim / bittim
+ * ben", "yutamıyorum"): v1 over-fires on exactly these ("bu tarife bayıldım", "bacak gününde bittim
+ * ben" → 112), and §7.4.1 already says how they stay protected — "her hit ya korumayı uygular ya da
+ * iki bağımsız benign okuma ister". They are ambiguous hits, PROTECTIVE BY DEFAULT: with the
+ * override gate off (production today) every one of them ends in the protective path or, when
+ * Stage A fails, in today's canned reply — never in a normal turn. The golden parity test in
+ * safety-tripwires.test.ts holds this over a broad Turkish corpus: v1 instant ⇒ v2 explicit, or an
+ * ambiguous-list hit that resolves protective without a qualifying benign reading.
  * v1's lists and regexes live here (guardrails.ts imports them — a pure move, v1 behaviour
  * unchanged); editing a V1_* list changes v1 too. Rules for editing (§7.4): ADDING a pattern
  * ships any time; a curated pattern may be narrowed (an `.anlatim` reading) with a review and a
@@ -67,7 +68,7 @@
  * Pure: no I/O, no Deno/npm imports (the eval runner and any runtime can load it).
  */
 
-export const TRIPWIRES_VERSION = 'tw-2026-10-10b';
+export const TRIPWIRES_VERSION = 'tw-2026-10-11';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -530,10 +531,11 @@ export const EXPLICIT_TRIPWIRES: readonly TripwireDef[] = [
 
 export const AMBIGUOUS_TRIPWIRES: readonly TripwireDef[] = [
   // A reading per phrasing. Where v1 answers the message instantly through an explicit-floor
-  // phrase ("kalp krizi", "ben bittim" …) the v1 floor decides and these only record what Stage A
-  // would be asked (§7.4 evidence); for the spec's ambiguous-list phrases ("bayıldım", "tükendim",
-  // "kalp çarpıntısı") and everything v1 is silent on ("bayılacak gibiyim", "nefesim daralıyor")
-  // they are the live §7.2 trigger — protective by default.
+  // phrase ("kalp krizi", "felç" …) the v1 floor decides and these only record what Stage A would
+  // be asked (§7.4 evidence); for the ambiguous-list phrases ("bayıldım", "tükendim", "kalp
+  // çarpıntısı", and since the owner's 2026-10-11 decision "ben bittim", "yutamıyorum") and
+  // everything v1 is silent on ("bayılacak gibiyim", "nefesim daralıyor") they are the live §7.2
+  // trigger — protective by default.
   // ── emergency ──
   // "bayılırım" (I'd love it) is not even a fact; "bayıldım/bayılıyorum" can be either.
   { id: 'emg.bayilma', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})bayil(?!ir(?:im|sin|iz|siniz)(?!\p{L}))/u, question_tr: 'Gerçekten bayılma mı, yoksa "çok beğendim" anlamında mı?' },
@@ -545,7 +547,7 @@ export const AMBIGUOUS_TRIPWIRES: readonly TripwireDef[] = [
   { id: 'emg.felc', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})felc/u, question_tr: 'Şu an yaşanan bir felç belirtisi mi, yoksa geçmiş/başkası/risk sorusu mu?' },
   { id: 'emg.gogus_genis', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})gogu?s\p{L}*\s+(?:\p{L}+\s+)?(?:agri|sikis|baski)/u, question_tr: 'Göğüs ağrısı/sıkışması akut mu, yoksa antrenman sonrası kas ağrısı mı?' },
   { id: 'emg.kan_kusma', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})kan\s+kus(?:tum|dum|tu(?!r)|ma)/u, question_tr: 'Gerçekten kan kusma mı, yoksa "çok zorlandım" deyimi mi?' },
-  { id: 'emg.yutamiyorum', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:yutamiyo|yutkunamiyo)/u, question_tr: 'Yutma güçlüğü (boğazda şişme/tıkanma) mı, yoksa bir yemeği sevmemek mi?' },
+  { id: 'emg.yutamiyorum', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:yutamiyo|yutkunamiyo)/u, question_tr: 'Bir belirti mi (boğazda şişme, takılma, hiçbir şeyi yutamama), yoksa yemeğin dokusu, miktarı ya da tadı yüzünden mi?' },
   { id: 'emg.gorme_kaybi', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:goremiyo|gorme\s+kayb|goz\p{L}*\s+karar)/u, question_tr: 'Ani görme kaybı/kararma mı, yoksa ekrandaki bir yazıyı görememek mi?' },
   { id: 'emg.siddetli_agri', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:siddetli|dayanilmaz|cekilmez)\s+(?:bir\s+)?agri/u, question_tr: 'Acil müdahale gerektiren şiddetli bir ağrı mı, yoksa bilinen/hafif bir ağrı mı?' },
   { id: 'emg.anafilaksi_belirti', category: 'emergency', tier: 'ambiguous', re: /(?<!\p{L})(?:anafila(?:ksi|ktik)|(?:bogaz|dil|dudak|yuz)\p{L}*\s+(?:\p{L}+\s+)?(?:sis(?:iyo|ti|mis|me|ik)|kapan))/u, question_tr: 'Şu an süren bir alerjik reaksiyon (şişme, nefes darlığı) mı, yoksa geçmişten/genel bilgi mi?' },
@@ -599,10 +601,18 @@ export const SIGNAL_TRIPWIRES: readonly TripwireDef[] = [
  * v1's ED list is ambiguous in v2 already.) Every other v1 phrase and root regex stays explicit.
  * Adding a phrase here removes an instant block: a §7.4 decision (owner approval, shadow
  * evidence, 100% golden-positive recall) — never a code-review call.
+ *
+ * OWNER DECISION 2026-10-11 (docs/AI_MIMARI_V2.md §11 q3, DEVIR §10): "ben bittim / bittim ben"
+ * (self-harm) and "yutamıyorum" (emergency) moved here from the v1 floor. Both are verified v1
+ * false positives ("bacak gününde bittim ben", "bu kadar kuru ekmeği yutamıyorum" → 112). They stay
+ * PROTECTIVE BY DEFAULT exactly like the spec's own list: with the benign-override gate off
+ * (production today) every hit ends in the protective path or, when Stage A fails or is late,
+ * today's canned reply; a normal turn needs Stage A's reasoned benign AND the classifier's
+ * independent benign behind the B+ gate. v1 itself (guardrails.ts) is unchanged.
  */
 export const V1_AMBIGUOUS_PHRASES: Readonly<Record<'emergency' | 'self_harm', readonly string[]>> = {
-  emergency: ['bayiliyorum', 'bayılıyorum', 'bayildim', 'bayıldım', 'kalp çarpıntısı', 'kalp carpintisi'],
-  self_harm: ['tukendim', 'tükendim'],
+  emergency: ['bayiliyorum', 'bayılıyorum', 'bayildim', 'bayıldım', 'kalp çarpıntısı', 'kalp carpintisi', 'yutamiyorum', 'yutamıyorum'],
+  self_harm: ['tukendim', 'tükendim', 'bittim ben', 'ben bittim'],
 };
 
 /** v1's phrases v2 keeps explicit: everything not on the spec's ambiguous list. */
@@ -632,13 +642,14 @@ export const V1_FLOOR_TRIPWIRES: readonly TripwireDef[] = [
 ];
 
 /**
- * The spec's ambiguous-list phrases as v1 spells them (folded, glued into words too): AMBIGUOUS,
- * scanned right after the curated ambiguous tier, so "bayıldım" is read as emg.bayilma and this
- * only surfaces where no curated pattern recognised the words ("çokbayıldım"). Either way the
- * message holds a live ambiguous hit — protective by default.
+ * The ambiguous-list phrases as v1 spells them (folded, glued into words too): AMBIGUOUS, scanned
+ * right after the curated ambiguous tier, so "bayıldım" is read as emg.bayilma, "yutamıyorum" as
+ * emg.yutamiyorum, "ben bittim" as sh.bittim, and this only surfaces where no curated pattern
+ * recognised the words ("çokbayıldım"). Either way the message holds a live ambiguous hit —
+ * protective by default.
  */
 export const V1_AMBIGUOUS_FLOOR_TRIPWIRES: readonly TripwireDef[] = [
-  { id: 'emg.v1_belirsiz', category: 'emergency', tier: 'ambiguous', find: phraseFinder(V1_AMBIGUOUS_PHRASES.emergency), question_tr: 'Şu an süren bir belirti (bayılma, çarpıntı) mı, yoksa "çok beğendim" gibi bir deyim ya da geçici/genel bir soru mu?' },
+  { id: 'emg.v1_belirsiz', category: 'emergency', tier: 'ambiguous', find: phraseFinder(V1_AMBIGUOUS_PHRASES.emergency), question_tr: 'Şu an süren bir belirti (bayılma, çarpıntı, yutma güçlüğü) mı, yoksa "çok beğendim" gibi bir deyim, bir yemeği sevmemek ya da geçici/genel bir soru mu?' },
   { id: 'sh.v1_belirsiz', category: 'self_harm', tier: 'ambiguous', find: phraseFinder(V1_AMBIGUOUS_PHRASES.self_harm), question_tr: 'Umutsuzluk/kendine zarar düşüncesi mi, yoksa iş/antrenman yorgunluğu mu?' },
 ];
 
@@ -1074,15 +1085,20 @@ export function classifierNeeded(scan: TripwireScan): boolean {
 /**
  * Run the classifier in parallel with Stage A. Never throws: a timeout, transport error or
  * malformed answer is a FAILED outcome, which resolveTripwires treats as "not benign".
+ *
+ * `timeoutMs` has NO default on purpose: the classifier runs beside Stage A and must wait exactly
+ * as long as Stage A may on this turn — the §7.2 live budget owned by ai-chat/v2/stage-a-request.ts
+ * (STAGE_A_LIVE_BUDGETS_MS; the live caller is understand.ts runLiveTripwireClassifier). A second
+ * hard-coded number here would give the tripwire-turn wait two owners.
  */
 export async function runTripwireClassifier(
   scan: TripwireScan,
   userMessage: string,
   classifier: TripwireClassifier | null | undefined,
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs: number },
 ): Promise<ClassifierOutcome> {
   if (!classifier || !classifierNeeded(scan)) return { status: 'skipped' };
-  const timeoutMs = opts.timeoutMs ?? 4000;
+  const timeoutMs = opts.timeoutMs;
   const req: ClassifierRequest = {
     message: userMessage,
     hits: liveAmbiguousHits(scan)
