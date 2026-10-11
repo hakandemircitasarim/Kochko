@@ -1,0 +1,248 @@
+{
+  "key": "213d0ddf17ea3597d5beb57ede9953398c18a89f1cd213d18ef19ab44a8d928c",
+  "recorded_at": "2026-10-11T21:15:18.536Z",
+  "fixture_ids": [
+    "trial-mem-squat-sayisiz-set-uydurmaz"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"workout_log\",\"day\":\"yesterday\",\"raw\":\"dün squat yaptım\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[{\"exercise\":\"squat\",\"as_stated\":\"squat\",\"sets\":null,\"reps\":null,\"weight_kg\":null}],\"replaces\":null},{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"knee_pain\",\"display_tr\":\"diz ağrısı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":\"2026-10-03\",\"note\":\"Squat sonrası diz ağrısı\",\"evidence_quote\":\"dizim ağrıyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "workout_log",
+            "day": "yesterday",
+            "raw": "dün squat yaptım",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [
+              {
+                "exercise": "squat",
+                "as_stated": "squat",
+                "sets": null,
+                "reps": null,
+                "weight_kg": null
+              }
+            ],
+            "replaces": null
+          },
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "knee_pain",
+            "display_tr": "diz ağrısı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": "2026-10-03",
+            "note": "Squat sonrası diz ağrısı",
+            "evidence_quote": "dizim ağrıyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12726,
+        "output_tokens": 420,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 117
+      },
+      "latency_ms": 4513,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"knee_pain\",\"display_tr\":\"diz ağrısı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":\"2026-10-03\",\"note\":\"Squat sonrası diz ağrısı.\",\"evidence_quote\":\"dün squat yaptım dizim ağrıyor\"},{\"op\":\"workout_log\",\"day\":\"yesterday\",\"raw\":\"dün squat yaptım\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "knee_pain",
+            "display_tr": "diz ağrısı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": "2026-10-03",
+            "note": "Squat sonrası diz ağrısı.",
+            "evidence_quote": "dün squat yaptım dizim ağrıyor"
+          },
+          {
+            "op": "workout_log",
+            "day": "yesterday",
+            "raw": "dün squat yaptım",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12726,
+        "output_tokens": 413,
+        "cached_tokens": 12723,
+        "reasoning_tokens": 134
+      },
+      "latency_ms": 4284,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"workout_log\",\"day\":\"yesterday\",\"raw\":\"dün squat yaptım\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[],\"replaces\":null},{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"knee_pain\",\"display_tr\":\"diz ağrısı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":\"2026-10-03\",\"note\":\"Squat sonrası diz ağrısı\",\"evidence_quote\":\"dizim ağrıyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "workout_log",
+            "day": "yesterday",
+            "raw": "dün squat yaptım",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [],
+            "replaces": null
+          },
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "knee_pain",
+            "display_tr": "diz ağrısı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": "2026-10-03",
+            "note": "Squat sonrası diz ağrısı",
+            "evidence_quote": "dizim ağrıyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12726,
+        "output_tokens": 379,
+        "cached_tokens": 12723,
+        "reasoning_tokens": 104
+      },
+      "latency_ms": 4642,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

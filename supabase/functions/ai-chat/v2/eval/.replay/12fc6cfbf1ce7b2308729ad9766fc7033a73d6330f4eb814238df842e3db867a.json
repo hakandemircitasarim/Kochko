@@ -1,0 +1,303 @@
+{
+  "key": "12fc6cfbf1ce7b2308729ad9766fc7033a73d6330f4eb814238df842e3db867a",
+  "recorded_at": "2026-10-11T21:10:20.274Z",
+  "fixture_ids": [
+    "ho-makarnaya-kasar"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"makarnamın üstüne bolca rendelenmiş kaşar serptim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"makarna\",\"as_stated\":\"makarnam\",\"grams\":250,\"kcal\":380,\"protein_g\":13,\"carbs_g\":74,\"fat_g\":3,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45},{\"name\":\"kaşar peyniri\",\"as_stated\":\"bolca rendelenmiş kaşar\",\"grams\":40,\"kcal\":162,\"protein_g\":10,\"carbs_g\":1,\"fat_g\":13,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"rendelenmiş\",\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.5}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "makarnamın üstüne bolca rendelenmiş kaşar serptim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "makarna",
+                "as_stated": "makarnam",
+                "grams": 250,
+                "kcal": 380,
+                "protein_g": 13,
+                "carbs_g": 74,
+                "fat_g": 3,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.45
+              },
+              {
+                "name": "kaşar peyniri",
+                "as_stated": "bolca rendelenmiş kaşar",
+                "grams": 40,
+                "kcal": 162,
+                "protein_g": 10,
+                "carbs_g": 1,
+                "fat_g": 13,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": "rendelenmiş",
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.5
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12540,
+        "output_tokens": 358,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3465,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":\"13:30\",\"raw\":\"makarnamın üstüne bolca rendelenmiş kaşar serptim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"makarna\",\"as_stated\":\"makarnam\",\"grams\":250,\"kcal\":390,\"protein_g\":13,\"carbs_g\":75,\"fat_g\":3,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45},{\"name\":\"rendelenmiş kaşar peyniri\",\"as_stated\":\"bolca rendelenmiş kaşar\",\"grams\":40,\"kcal\":162,\"protein_g\":10,\"carbs_g\":1,\"fat_g\":13,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.5}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": "13:30",
+            "raw": "makarnamın üstüne bolca rendelenmiş kaşar serptim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "makarna",
+                "as_stated": "makarnam",
+                "grams": 250,
+                "kcal": 390,
+                "protein_g": 13,
+                "carbs_g": 75,
+                "fat_g": 3,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.45
+              },
+              {
+                "name": "rendelenmiş kaşar peyniri",
+                "as_stated": "bolca rendelenmiş kaşar",
+                "grams": 40,
+                "kcal": 162,
+                "protein_g": 10,
+                "carbs_g": 1,
+                "fat_g": 13,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.5
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12540,
+        "output_tokens": 361,
+        "cached_tokens": 12537,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3617,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"makarnamın üstüne bolca rendelenmiş kaşar serptim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"makarna\",\"as_stated\":\"makarnam\",\"grams\":250,\"kcal\":380,\"protein_g\":13,\"carbs_g\":75,\"fat_g\":3,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45},{\"name\":\"rendelenmiş kaşar peyniri\",\"as_stated\":\"bolca rendelenmiş kaşar\",\"grams\":40,\"kcal\":160,\"protein_g\":10,\"carbs_g\":1,\"fat_g\":13,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.5}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"makarnanın yaklaşık miktarı ve sos/yağ eklenip eklenmediği\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "makarnamın üstüne bolca rendelenmiş kaşar serptim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "makarna",
+                "as_stated": "makarnam",
+                "grams": 250,
+                "kcal": 380,
+                "protein_g": 13,
+                "carbs_g": 75,
+                "fat_g": 3,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.45
+              },
+              {
+                "name": "rendelenmiş kaşar peyniri",
+                "as_stated": "bolca rendelenmiş kaşar",
+                "grams": 40,
+                "kcal": 160,
+                "protein_g": 10,
+                "carbs_g": 1,
+                "fat_g": 13,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.5
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "makarnanın yaklaşık miktarı ve sos/yağ eklenip eklenmediği",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12540,
+        "output_tokens": 383,
+        "cached_tokens": 12537,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3757,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

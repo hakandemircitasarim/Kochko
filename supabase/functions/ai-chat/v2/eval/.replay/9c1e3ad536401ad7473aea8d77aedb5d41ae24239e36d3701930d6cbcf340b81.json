@@ -1,0 +1,319 @@
+{
+  "key": "9c1e3ad536401ad7473aea8d77aedb5d41ae24239e36d3701930d6cbcf340b81",
+  "recorded_at": "2026-10-11T21:15:59.253Z",
+  "fixture_ids": [
+    "owner-supheli-eski-kayit-sessizce-duzeltilmez"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"question\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"suspicious\",\"reason\":\"6 adet tavuk nugget için 900 g ve 1708 kcal kaydı makul görünmüyor\",\"evidence_quote\":null,\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane\",\"grams\":180,\"kcal\":470,\"protein_g\":27,\"carbs_g\":30,\"fat_g\":26,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"kızartılmış\",\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":20,\"kcal\":20,\"protein_g\":0.3,\"carbs_g\":4.6,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"question_only\"}}",
+      "decision": {
+        "intent": {
+          "primary": "question",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "suspicious",
+            "reason": "6 adet tavuk nugget için 900 g ve 1708 kcal kaydı makul görünmüyor",
+            "evidence_quote": null,
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "6 tane",
+                  "grams": 180,
+                  "kcal": 470,
+                  "protein_g": 27,
+                  "carbs_g": 30,
+                  "fat_g": 26,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": "kızartılmış",
+                  "allergens": [
+                    "gluten"
+                  ],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.65
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 20,
+                  "kcal": 20,
+                  "protein_g": 0.3,
+                  "carbs_g": 4.6,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.45
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "question_only"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12703,
+        "output_tokens": 412,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3529,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"question\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"suspicious\",\"reason\":\"6 adet tavuk nugget için 900 g ve 1708 kcal olağandışı yüksek görünüyor\",\"evidence_quote\":null,\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane\",\"grams\":150,\"kcal\":430,\"protein_g\":24,\"carbs_g\":26,\"fat_g\":26,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"kızartılmış\",\"allergens\":[\"gluten\"],\"may_contain\":[\"egg\",\"milk\",\"soy\"],\"reference_key\":null,\"confidence\":0.55},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":15,\"kcal\":17,\"protein_g\":0.2,\"carbs_g\":4,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"question_only\"}}",
+      "decision": {
+        "intent": {
+          "primary": "question",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "suspicious",
+            "reason": "6 adet tavuk nugget için 900 g ve 1708 kcal olağandışı yüksek görünüyor",
+            "evidence_quote": null,
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "6 tane",
+                  "grams": 150,
+                  "kcal": 430,
+                  "protein_g": 24,
+                  "carbs_g": 26,
+                  "fat_g": 26,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": "kızartılmış",
+                  "allergens": [
+                    "gluten"
+                  ],
+                  "may_contain": [
+                    "egg",
+                    "milk",
+                    "soy"
+                  ],
+                  "reference_key": null,
+                  "confidence": 0.55
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 15,
+                  "kcal": 17,
+                  "protein_g": 0.2,
+                  "carbs_g": 4,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.45
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "question_only"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12703,
+        "output_tokens": 417,
+        "cached_tokens": 12700,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3959,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"question\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"suspicious\",\"reason\":\"6 adet tavuk nugget için 900 g ve 1.708 kcal fiziksel olarak çok yüksek görünüyor\",\"evidence_quote\":null,\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane\",\"grams\":180,\"kcal\":500,\"protein_g\":27,\"carbs_g\":34,\"fat_g\":29,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":20,\"kcal\":20,\"protein_g\":0.3,\"carbs_g\":4.8,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":\"question_only\"}}",
+      "decision": {
+        "intent": {
+          "primary": "question",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "suspicious",
+            "reason": "6 adet tavuk nugget için 900 g ve 1.708 kcal fiziksel olarak çok yüksek görünüyor",
+            "evidence_quote": null,
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "6 tane",
+                  "grams": 180,
+                  "kcal": 500,
+                  "protein_g": 27,
+                  "carbs_g": 34,
+                  "fat_g": 29,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [
+                    "gluten"
+                  ],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.65
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 20,
+                  "kcal": 20,
+                  "protein_g": 0.3,
+                  "carbs_g": 4.8,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.45
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": "question_only"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12703,
+        "output_tokens": 411,
+        "cached_tokens": 12700,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3537,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

@@ -1,0 +1,219 @@
+{
+  "key": "560375062556ec4947baa4662e678f34aebff58fa92e63a341d8ad76d9bc62bd",
+  "recorded_at": "2026-10-11T21:14:53.404Z",
+  "fixture_ids": [
+    "bplus-meniskus-yirtigi-beyani"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi dizindeki menisküs yırtığını ve çömelince ağrı olduğunu bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"meniscus_tear\",\"display_tr\":\"dizde menisküs yırtığı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":null,\"note\":\"Çömelince ağrıyor.\",\"evidence_quote\":\"dizimde menisküs yırtığı var, çömelince ağrıyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi dizindeki menisküs yırtığını ve çömelince ağrı olduğunu bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "meniscus_tear",
+            "display_tr": "dizde menisküs yırtığı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": null,
+            "note": "Çömelince ağrıyor.",
+            "evidence_quote": "dizimde menisküs yırtığı var, çömelince ağrıyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12662,
+        "output_tokens": 316,
+        "cached_tokens": 12659,
+        "reasoning_tokens": 55
+      },
+      "latency_ms": 4061,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi dizindeki menisküs yırtığını ve çömelince ağrıyı bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"meniscus_tear\",\"display_tr\":\"dizde menisküs yırtığı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":null,\"note\":\"Çömelince ağrıyor.\",\"evidence_quote\":\"dizimde menisküs yırtığı var, çömelince ağrıyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi dizindeki menisküs yırtığını ve çömelince ağrıyı bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "meniscus_tear",
+            "display_tr": "dizde menisküs yırtığı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": null,
+            "note": "Çömelince ağrıyor.",
+            "evidence_quote": "dizimde menisküs yırtığı var, çömelince ağrıyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12662,
+        "output_tokens": 297,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 35
+      },
+      "latency_ms": 3281,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı dizinde menisküs yırtığı olduğunu ve çömelince ağrı bildirdiğini söylüyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"injury\",\"subject_id\":\"meniscus_tear\",\"display_tr\":\"dizde menisküs yırtığı\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[\"knee\"],\"event_date\":null,\"note\":\"Çömelince ağrıyor.\",\"evidence_quote\":\"dizimde menisküs yırtığı var, çömelince ağrıyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı dizinde menisküs yırtığı olduğunu ve çömelince ağrı bildirdiğini söylüyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "injury",
+            "subject_id": "meniscus_tear",
+            "display_tr": "dizde menisküs yırtığı",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [
+              "knee"
+            ],
+            "event_date": null,
+            "note": "Çömelince ağrıyor.",
+            "evidence_quote": "dizimde menisküs yırtığı var, çömelince ağrıyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12662,
+        "output_tokens": 332,
+        "cached_tokens": 12659,
+        "reasoning_tokens": 69
+      },
+      "latency_ms": 4235,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

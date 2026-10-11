@@ -1,0 +1,225 @@
+{
+  "key": "dd4500259f317c5be08bbc048ea57419676acb4e166b9dc17ee16a79c7b9095f",
+  "recorded_at": "2026-10-11T21:10:14.580Z",
+  "fixture_ids": [
+    "ho-gogus-omuz-sayisiz"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"workout_log\",\"day\":\"today\",\"raw\":\"bugün salonda göğüs ve omuz çalıştım\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "workout_log",
+            "day": "today",
+            "raw": "bugün salonda göğüs ve omuz çalıştım",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12536,
+        "output_tokens": 202,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2799,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"workout_log\",\"day\":\"today\",\"raw\":\"bugün salonda göğüs ve omuz çalıştım\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[{\"exercise\":\"chest_training\",\"as_stated\":\"göğüs\",\"sets\":null,\"reps\":null,\"weight_kg\":null},{\"exercise\":\"shoulder_training\",\"as_stated\":\"omuz\",\"sets\":null,\"reps\":null,\"weight_kg\":null}],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "workout_log",
+            "day": "today",
+            "raw": "bugün salonda göğüs ve omuz çalıştım",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [
+              {
+                "exercise": "chest_training",
+                "as_stated": "göğüs",
+                "sets": null,
+                "reps": null,
+                "weight_kg": null
+              },
+              {
+                "exercise": "shoulder_training",
+                "as_stated": "omuz",
+                "sets": null,
+                "reps": null,
+                "weight_kg": null
+              }
+            ],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12536,
+        "output_tokens": 261,
+        "cached_tokens": 12533,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3588,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"workout_log\",\"day\":\"today\",\"raw\":\"bugün salonda göğüs ve omuz çalıştım\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":null,\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[{\"exercise\":\"chest_training\",\"as_stated\":\"göğüs\",\"sets\":null,\"reps\":null,\"weight_kg\":null},{\"exercise\":\"shoulder_training\",\"as_stated\":\"omuz\",\"sets\":null,\"reps\":null,\"weight_kg\":null}],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "workout_log",
+            "day": "today",
+            "raw": "bugün salonda göğüs ve omuz çalıştım",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": null,
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [
+              {
+                "exercise": "chest_training",
+                "as_stated": "göğüs",
+                "sets": null,
+                "reps": null,
+                "weight_kg": null
+              },
+              {
+                "exercise": "shoulder_training",
+                "as_stated": "omuz",
+                "sets": null,
+                "reps": null,
+                "weight_kg": null
+              }
+            ],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12536,
+        "output_tokens": 261,
+        "cached_tokens": 12533,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3113,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

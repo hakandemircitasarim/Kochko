@@ -1,0 +1,230 @@
+{
+  "key": "cd2f8a17b1b70872e6c1262487b6395953ad84f4d159149bf7f23cf5b88aa3f2",
+  "recorded_at": "2026-10-11T21:11:18.721Z",
+  "fixture_ids": [
+    "bminus-hamilelik-sabah-bulantisi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":{\"category\":\"illness_vomiting\",\"severity\":\"low\",\"evidence_quote\":\"sabahları kusma oluyor\"},\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Kusma hamilelik bağlamında sabahları oluyor; kilo kontrolü için çıkarma isteği belirtisi yok.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"condition\",\"subject_id\":\"pregnancy\",\"display_tr\":\"hamilelik\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"hamileyim\"},{\"op\":\"periodic_state\",\"state\":\"pregnancy\",\"end_date\":null,\"note\":\"hamileyim\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": {
+            "category": "illness_vomiting",
+            "severity": "low",
+            "evidence_quote": "sabahları kusma oluyor"
+          },
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Kusma hamilelik bağlamında sabahları oluyor; kilo kontrolü için çıkarma isteği belirtisi yok."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "condition",
+            "subject_id": "pregnancy",
+            "display_tr": "hamilelik",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "hamileyim"
+          },
+          {
+            "op": "periodic_state",
+            "state": "pregnancy",
+            "end_date": null,
+            "note": "hamileyim"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12641,
+        "output_tokens": 274,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2880,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":{\"category\":\"illness_vomiting\",\"severity\":\"low\",\"evidence_quote\":\"sabahları kusma oluyor\"},\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Kusma hamilelikle birlikte sabah bulantısı bağlamında anlatılıyor; kilo kontrolü veya telafi niyeti yok.\"}]},\"writes\":[{\"op\":\"periodic_state\",\"state\":\"pregnancy\",\"end_date\":null,\"note\":\"hamileyim\"},{\"op\":\"constraint_add\",\"kind\":\"condition\",\"subject_id\":\"pregnancy\",\"display_tr\":\"hamilelik\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":\"sabahları kusma oluyor\",\"evidence_quote\":\"hamileyim\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"illness_not_food\"}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": {
+            "category": "illness_vomiting",
+            "severity": "low",
+            "evidence_quote": "sabahları kusma oluyor"
+          },
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Kusma hamilelikle birlikte sabah bulantısı bağlamında anlatılıyor; kilo kontrolü veya telafi niyeti yok."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "periodic_state",
+            "state": "pregnancy",
+            "end_date": null,
+            "note": "hamileyim"
+          },
+          {
+            "op": "constraint_add",
+            "kind": "condition",
+            "subject_id": "pregnancy",
+            "display_tr": "hamilelik",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": "sabahları kusma oluyor",
+            "evidence_quote": "hamileyim"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "illness_not_food"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12641,
+        "output_tokens": 285,
+        "cached_tokens": 12638,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3387,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":{\"category\":\"illness_vomiting\",\"severity\":\"low\",\"evidence_quote\":\"sabahları kusma oluyor\"},\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Kusma gebelik bağlamında sabah bulantısı olarak anlatılıyor; kilo kontrolü ya da telafi amacı belirtilmiyor.\"}]},\"writes\":[{\"op\":\"periodic_state\",\"state\":\"pregnancy\",\"end_date\":null,\"note\":\"hamileyim\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"illness_not_food\"}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": {
+            "category": "illness_vomiting",
+            "severity": "low",
+            "evidence_quote": "sabahları kusma oluyor"
+          },
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Kusma gebelik bağlamında sabah bulantısı olarak anlatılıyor; kilo kontrolü ya da telafi amacı belirtilmiyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "periodic_state",
+            "state": "pregnancy",
+            "end_date": null,
+            "note": "hamileyim"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "illness_not_food"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12641,
+        "output_tokens": 224,
+        "cached_tokens": 12638,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3006,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

@@ -1,0 +1,300 @@
+{
+  "key": "1c6d1ea23764574fc09bea92f00fe1ca526f5955b947dcea25496b6fb20eec4b",
+  "recorded_at": "2026-10-11T21:16:10.988Z",
+  "fixture_ids": [
+    "probe-cap-iki-dilim-lahmacun-ayran"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"2 dilim lahmacun ve 1 ayran\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"lahmacun\",\"as_stated\":\"2 dilim\",\"grams\":260,\"kcal\":624,\"protein_g\":26,\"carbs_g\":72,\"fat_g\":26,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":\"lahmacun\",\"confidence\":0.7},{\"name\":\"ayran\",\"as_stated\":\"1 ayran\",\"grams\":200,\"kcal\":72,\"protein_g\":4,\"carbs_g\":6,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":\"ayran\",\"confidence\":0.75}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "2 dilim lahmacun ve 1 ayran",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "lahmacun",
+                "as_stated": "2 dilim",
+                "grams": 260,
+                "kcal": 624,
+                "protein_g": 26,
+                "carbs_g": 72,
+                "fat_g": 26,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": "lahmacun",
+                "confidence": 0.7
+              },
+              {
+                "name": "ayran",
+                "as_stated": "1 ayran",
+                "grams": 200,
+                "kcal": 72,
+                "protein_g": 4,
+                "carbs_g": 6,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": "ayran",
+                "confidence": 0.75
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12597,
+        "output_tokens": 345,
+        "cached_tokens": 12594,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3453,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"2 dilim lahmacun ve 1 ayran\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"lahmacun\",\"as_stated\":\"2 dilim\",\"grams\":260,\"kcal\":624,\"protein_g\":31,\"carbs_g\":65,\"fat_g\":27,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":\"lahmacun\",\"confidence\":0.65},{\"name\":\"ayran\",\"as_stated\":\"1 ayran\",\"grams\":200,\"kcal\":72,\"protein_g\":4,\"carbs_g\":6,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":\"ayran\",\"confidence\":0.8}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "2 dilim lahmacun ve 1 ayran",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "lahmacun",
+                "as_stated": "2 dilim",
+                "grams": 260,
+                "kcal": 624,
+                "protein_g": 31,
+                "carbs_g": 65,
+                "fat_g": 27,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": "lahmacun",
+                "confidence": 0.65
+              },
+              {
+                "name": "ayran",
+                "as_stated": "1 ayran",
+                "grams": 200,
+                "kcal": 72,
+                "protein_g": 4,
+                "carbs_g": 6,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": "ayran",
+                "confidence": 0.8
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12597,
+        "output_tokens": 345,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3113,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":\"21:30\",\"raw\":\"2 dilim lahmacun ve 1 ayran\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"lahmacun\",\"as_stated\":\"2 dilim\",\"grams\":260,\"kcal\":624,\"protein_g\":26,\"carbs_g\":72,\"fat_g\":26,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":\"lahmacun\",\"confidence\":0.7},{\"name\":\"ayran\",\"as_stated\":\"1 ayran\",\"grams\":200,\"kcal\":72,\"protein_g\":4,\"carbs_g\":6,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":\"ayran\",\"confidence\":0.8}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": "21:30",
+            "raw": "2 dilim lahmacun ve 1 ayran",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "lahmacun",
+                "as_stated": "2 dilim",
+                "grams": 260,
+                "kcal": 624,
+                "protein_g": 26,
+                "carbs_g": 72,
+                "fat_g": 26,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": "lahmacun",
+                "confidence": 0.7
+              },
+              {
+                "name": "ayran",
+                "as_stated": "1 ayran",
+                "grams": 200,
+                "kcal": 72,
+                "protein_g": 4,
+                "carbs_g": 6,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": "ayran",
+                "confidence": 0.8
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12597,
+        "output_tokens": 347,
+        "cached_tokens": 12594,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3236,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

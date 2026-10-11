@@ -1,0 +1,204 @@
+{
+  "key": "124c52db3fa1a284aa9f9fe0689d876b5c0f8d97c32a1dd7e7b383412d7efbd0",
+  "recorded_at": "2026-10-11T21:17:22.091Z",
+  "fixture_ids": [
+    "r3-mem-6c-taslak-acikken-aclik-sekeri"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"lab_value\",\"measured_at\":\"2026-10-03\",\"items\":[{\"parameter\":\"aclik_sekeri\",\"value\":118,\"unit\":null,\"status\":\"high\",\"reference_min\":null,\"reference_max\":null,\"reference_source\":\"typical\",\"note\":\"açlık şekeri\"}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "lab_value",
+            "measured_at": "2026-10-03",
+            "items": [
+              {
+                "parameter": "aclik_sekeri",
+                "value": 118,
+                "unit": null,
+                "status": "high",
+                "reference_min": null,
+                "reference_max": null,
+                "reference_source": "typical",
+                "note": "açlık şekeri"
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12805,
+        "output_tokens": 197,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2823,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"lab_value\",\"measured_at\":\"2026-10-03\",\"items\":[{\"parameter\":\"aclik_sekeri\",\"value\":118,\"unit\":null,\"status\":\"high\",\"reference_min\":null,\"reference_max\":null,\"reference_source\":\"typical\",\"note\":\"Açlık şekeri olarak bildirildi.\"}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "lab_value",
+            "measured_at": "2026-10-03",
+            "items": [
+              {
+                "parameter": "aclik_sekeri",
+                "value": 118,
+                "unit": null,
+                "status": "high",
+                "reference_min": null,
+                "reference_max": null,
+                "reference_source": "typical",
+                "note": "Açlık şekeri olarak bildirildi."
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12805,
+        "output_tokens": 201,
+        "cached_tokens": 12802,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2616,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"lab_value\",\"measured_at\":\"2026-10-03\",\"items\":[{\"parameter\":\"aclik_sekeri\",\"value\":118,\"unit\":\"mg/dL\",\"status\":\"high\",\"reference_min\":null,\"reference_max\":null,\"reference_source\":\"typical\",\"note\":null}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "lab_value",
+            "measured_at": "2026-10-03",
+            "items": [
+              {
+                "parameter": "aclik_sekeri",
+                "value": 118,
+                "unit": "mg/dL",
+                "status": "high",
+                "reference_min": null,
+                "reference_max": null,
+                "reference_source": "typical",
+                "note": null
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12805,
+        "output_tokens": 195,
+        "cached_tokens": 12802,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2703,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

@@ -1,0 +1,225 @@
+{
+  "key": "cb817568430a3fe5d3fc5c3af6350fa61c646296efbb42706b817047d9267f5e",
+  "recorded_at": "2026-10-11T21:16:31.723Z",
+  "fixture_ids": [
+    "r3-diff-2c-toplam-ve-yeni-su-hedefi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugün toplam 2 litre su içtim\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null},{\"op\":\"profile_set\",\"subject\":\"self\",\"changes\":[{\"field\":\"water_target_liters\",\"value\":\"3\",\"unit\":\"litre\",\"list_op\":null,\"as_stated\":\"yeni hedefim 3 litre\"}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "bugün toplam 2 litre su içtim",
+            "quantity": 2,
+            "unit": "litre",
+            "other_ml_each": null,
+            "mode": "set_day_total",
+            "replaces": null
+          },
+          {
+            "op": "profile_set",
+            "subject": "self",
+            "changes": [
+              {
+                "field": "water_target_liters",
+                "value": "3",
+                "unit": "litre",
+                "list_op": null,
+                "as_stated": "yeni hedefim 3 litre"
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12539,
+        "output_tokens": 278,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 48
+      },
+      "latency_ms": 2971,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugün toplam 2 litre su içtim\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null},{\"op\":\"profile_set\",\"subject\":\"self\",\"changes\":[{\"field\":\"water_target_liters\",\"value\":\"3\",\"unit\":\"litre\",\"list_op\":null,\"as_stated\":\"yeni hedefim 3 litre\"}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "bugün toplam 2 litre su içtim",
+            "quantity": 2,
+            "unit": "litre",
+            "other_ml_each": null,
+            "mode": "set_day_total",
+            "replaces": null
+          },
+          {
+            "op": "profile_set",
+            "subject": "self",
+            "changes": [
+              {
+                "field": "water_target_liters",
+                "value": "3",
+                "unit": "litre",
+                "list_op": null,
+                "as_stated": "yeni hedefim 3 litre"
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12539,
+        "output_tokens": 259,
+        "cached_tokens": 12536,
+        "reasoning_tokens": 29
+      },
+      "latency_ms": 2631,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugün toplam 2 litre su içtim\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null},{\"op\":\"profile_set\",\"subject\":\"self\",\"changes\":[{\"field\":\"water_target_liters\",\"value\":\"3\",\"unit\":\"litre\",\"list_op\":null,\"as_stated\":\"yeni hedefim 3 litre\"}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "bugün toplam 2 litre su içtim",
+            "quantity": 2,
+            "unit": "litre",
+            "other_ml_each": null,
+            "mode": "set_day_total",
+            "replaces": null
+          },
+          {
+            "op": "profile_set",
+            "subject": "self",
+            "changes": [
+              {
+                "field": "water_target_liters",
+                "value": "3",
+                "unit": "litre",
+                "list_op": null,
+                "as_stated": "yeni hedefim 3 litre"
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12539,
+        "output_tokens": 261,
+        "cached_tokens": 12536,
+        "reasoning_tokens": 31
+      },
+      "latency_ms": 2676,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

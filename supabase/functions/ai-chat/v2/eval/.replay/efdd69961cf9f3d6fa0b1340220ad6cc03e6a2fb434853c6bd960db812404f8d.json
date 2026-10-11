@@ -1,0 +1,207 @@
+{
+  "key": "efdd69961cf9f3d6fa0b1340220ad6cc03e6a2fb434853c6bd960db812404f8d",
+  "recorded_at": "2026-10-11T21:16:53.491Z",
+  "fixture_ids": [
+    "r3-diff-5-su-duzeltmesi-ogle-yemegini-silmez"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"d4\",\"basis\":\"user_correction\",\"reason\":\"Bugünün su toplamı 2 litre olarak düzeltildi.\",\"evidence_quote\":\"su yanlış, düzelt: bugünün toplamı 2 litre\",\"patch\":{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugünün toplamı 2 litre\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "d4",
+            "basis": "user_correction",
+            "reason": "Bugünün su toplamı 2 litre olarak düzeltildi.",
+            "evidence_quote": "su yanlış, düzelt: bugünün toplamı 2 litre",
+            "patch": {
+              "op": "water_log",
+              "day": "today",
+              "as_stated": "bugünün toplamı 2 litre",
+              "quantity": 2,
+              "unit": "litre",
+              "other_ml_each": null,
+              "mode": "set_day_total",
+              "replaces": null
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12618,
+        "output_tokens": 231,
+        "cached_tokens": 12615,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3010,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"d4\",\"basis\":\"user_correction\",\"reason\":\"Bugünün su toplamı 2 litre olarak düzeltildi.\",\"evidence_quote\":\"su yanlış, düzelt: bugünün toplamı 2 litre\",\"patch\":{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugünün toplamı 2 litre\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "d4",
+            "basis": "user_correction",
+            "reason": "Bugünün su toplamı 2 litre olarak düzeltildi.",
+            "evidence_quote": "su yanlış, düzelt: bugünün toplamı 2 litre",
+            "patch": {
+              "op": "water_log",
+              "day": "today",
+              "as_stated": "bugünün toplamı 2 litre",
+              "quantity": 2,
+              "unit": "litre",
+              "other_ml_each": null,
+              "mode": "set_day_total",
+              "replaces": null
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12618,
+        "output_tokens": 231,
+        "cached_tokens": 12292,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3118,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"d4\",\"basis\":\"user_correction\",\"reason\":\"Bugünün su toplamı 2 litre olarak düzeltildi.\",\"evidence_quote\":\"su yanlış, düzelt: bugünün toplamı 2 litre\",\"patch\":{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugünün toplamı 2 litre\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "d4",
+            "basis": "user_correction",
+            "reason": "Bugünün su toplamı 2 litre olarak düzeltildi.",
+            "evidence_quote": "su yanlış, düzelt: bugünün toplamı 2 litre",
+            "patch": {
+              "op": "water_log",
+              "day": "today",
+              "as_stated": "bugünün toplamı 2 litre",
+              "quantity": 2,
+              "unit": "litre",
+              "other_ml_each": null,
+              "mode": "set_day_total",
+              "replaces": null
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12618,
+        "output_tokens": 231,
+        "cached_tokens": 12615,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2936,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}
