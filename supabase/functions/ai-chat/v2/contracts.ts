@@ -113,6 +113,23 @@ export interface CoachInput {
    * facts twice, possibly with conflicting numbers.
    */
   userState: string[];
+  /**
+   * Turn-level facts only the handler knows (data, never rendered text; facts.ts renders them).
+   * Absent = all false (callers that build a CoachInput without the handler: tests, the eval).
+   */
+  facts?: CoachTurnFacts;
+}
+
+export interface CoachTurnFacts {
+  /**
+   * The adopted Stage A decision STILL has missed_write after the ONE repair (or no repair could run):
+   * the user stated a new fact and nothing was written, clarified or explained. No pending_writes row
+   * stands behind any "kaydedeyim mi / onaylıyor musun?" question, so the user's "evet" would have
+   * nothing to resolve (first live trial: mem "yumurta alerjim yok" → "onaylıyor musun?" → dead end).
+   * The coach must NOT offer a write confirmation: ask an open question or say plainly that nothing
+   * was saved. commit.flags keeps its 'missed_write' flag and ai_turn_log its missed_write issue.
+   */
+  unanchoredQuestionForbidden: boolean;
 }
 
 export interface CoachReply {

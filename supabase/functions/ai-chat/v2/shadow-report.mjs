@@ -15,8 +15,8 @@
  *   · ASK / REJECT rates (per verdict and per turn) with their top codes
  *   · parse / schema errors (refused, invalid, incomplete, error) and skipped turns
  *   · Stage A latency p50 / p90 and the share over the live budget, split by budget class
- *     (normal 6 s · a turn with a tripwire fact 10 s — stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS,
- *     owner decision 2026-10-11)
+ *     (normal 10 s · a turn with a tripwire fact 10 s — stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS,
+ *     owner decisions 2026-10-11; normal was 6 s until the first live trial)
  *   · tripwire × reading matrix and the §7.2 outcome counts
  *   · writes v2 would make on QUESTION / HYPOTHETICAL turns (the A′ "must not write" class) and the
  *     FLAG codes, split by that intent (wave-2a review: watch koruyucu_beyan_teyidi on such turns)
@@ -26,7 +26,7 @@
  * Live Stage A budgets (§7.2) — mirror stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS (plain JS cannot import
  * the TS owner; shadow-report.test.ts pins the mirror). A turn with a tripwire fact gets the longer one.
  */
-export const LIVE_BUDGETS_MS = Object.freeze({ normal: 6000, tripwire: 10000 });
+export const LIVE_BUDGETS_MS = Object.freeze({ normal: 10000, tripwire: 10000 });
 /** The normal budget (kept by name). */
 export const LIVE_BUDGET_MS = LIVE_BUDGETS_MS.normal;
 

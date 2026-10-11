@@ -551,7 +551,8 @@ export const DECISION_RETENTION_DAYS = 30;
 /**
  * Decided at T5 from what was ACTUALLY committed, never guessed before the LLM:
  * record = the turn wrote ≥1 log and nothing else · conversation = everything else ·
- * exempt = client undo button / explicit emergency path (no LLM). NULL = v1 row.
+ * exempt = client undo button / explicit emergency path (no LLM) / a protective turn / a fail-closed
+ * turn nobody read (Stage A failed or the cap hit; nothing understood or written). NULL = v1 row.
  */
 export const QUOTA_CLASSES = ['conversation', 'record', 'exempt'] as const;
 export type QuotaClass = typeof QUOTA_CLASSES[number];

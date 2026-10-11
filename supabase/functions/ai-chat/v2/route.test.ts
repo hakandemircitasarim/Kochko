@@ -7,10 +7,10 @@
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import { rolloutEnvKey } from '../../shared/rollout.ts';
-import type { TurnState, V2Outcome } from './handler.ts';
+import { handleV2Turn, STAGE_A_FAILED_LINE, STAGE_A_FALLBACK_V1_CODES, type TurnState, type V2Outcome } from './handler.ts';
 import { routeTurn, routingUserId, v2TurnConfigured, type RouteDeps } from './route.ts';
 import { USER } from './testing.ts';
-import { chatRequest, fakeJwt } from './turn-testing.ts';
+import { chatRequest, failedOutcome, fakeDeps, fakeJwt, type FakeDepsOptions } from './turn-testing.ts';
 
 interface Spy {
   v1Bodies: unknown[];
@@ -137,6 +137,50 @@ Deno.test('v2 crash AFTER a side effect → never v1 again (it would write twice
   assertEquals(await via(await routeTurn(chatRequest({ message: 'x' }), d)), 'honest');
   assertEquals(spy.v1Bodies.length, 0);
   assertEquals(spy.cleaned, [], 'the journal claim is not released after a write');
+});
+
+/** The route over the REAL v2 handler (fake DB / Stage A / Stage B transport) and a v1 that answers normally. */
+function e2e(o: FakeDepsOptions) {
+  const f = fakeDeps(o);
+  const v1Bodies: unknown[] = [];
+  const logs: Array<{ line: string; data: Record<string, unknown> }> = [];
+  const v1Answer = { message: 'Tamam, güncelledim.', actions: [], task_mode: 'coaching' };
+  const d: RouteDeps = {
+    configured: () => true,
+    mode: () => 'on',
+    v1: async (req) => { v1Bodies.push(await req.json()); return new Response(JSON.stringify(v1Answer)); },
+    v2: (req, uid, state) => handleV2Turn(req, uid, f.deps, state),
+    honest: () => { throw new Error('no honest path: nothing was written'); },
+    log: (line, data) => { logs.push({ line, data }); },
+  };
+  return { f, d, v1Bodies, logs, v1Answer };
+}
+
+Deno.test('END TO END: Stage A times out on an ordinary turn → v2 cleans up, v1 answers the ORIGINAL body (a normal v1 answer, never "tekrar yazar mısın")', async () => {
+  // First live trial (mem): "evet güncelle" timed out twice in a row at 6 s and got the canned line both times.
+  const { f, d, v1Bodies, logs, v1Answer } = e2e({ stageA: (req) => failedOutcome(req, 'timeout') });
+  const body = { message: 'evet güncelle', session_id: 'sess-9', idempotency_key: 'k-e2e', client_timezone: 'Europe/Istanbul' };
+  const res = await routeTurn(chatRequest(body), d);
+  assertEquals(await res.json(), v1Answer, 'the user gets v1\'s own answer');
+  assertEquals(v1Bodies, [body], 'v1 reads the original request body from the clone, byte for byte');
+  assertEquals(f.rec.understandReqs.length, 1);
+  assertEquals(f.rec.persisted.length, 0, 'v2 stored nothing (v1 stores its own turn: no duplicate chat rows)');
+  assertEquals(f.rec.released, ['res-1'], 'v2\'s quota reservation is released before v1 reserves its own (counted once)');
+  assertEquals(f.rec.journal.map((j) => j.kind), ['claim', 'fail'], 'the journal claim is released so v1 reclaims the same key');
+  assertEquals(f.rec.coachCalls.length, 0, 'no Stage B call');
+  assertEquals(logs.find((l) => l.line === '[v2_route] handed to v1')?.data.reason, STAGE_A_FALLBACK_V1_CODES.timeout);
+  const row = f.rec.turnLogs[0];
+  assertEquals([row.stage, row.pipeline, (row.issues as Array<{ code: string }>)[0].code], ['understand', 'v2', STAGE_A_FALLBACK_V1_CODES.timeout], 'the turn is logged with the hand-over code');
+});
+
+Deno.test('END TO END: the same timeout on a turn naming the user\'s own allergen stays in v2 (code-owned guidance) — v1 never runs', async () => {
+  const { f, d, v1Bodies } = e2e({ stageA: (req) => failedOutcome(req, 'timeout') });
+  const res = await routeTurn(chatRequest({ message: 'kahvaltıda fıstık ezmeli ekmek yedim', idempotency_key: 'k-e2e-al' }), d);
+  const env = await res.json() as { message: string };
+  assertEquals(v1Bodies.length, 0);
+  assert(env.message.startsWith(STAGE_A_FAILED_LINE) && env.message.includes('ciddi fıstık alerjine') && env.message.includes("112'yi ara"), env.message);
+  assertEquals(f.rec.persisted[0].quotaClass, 'exempt');
+  assertEquals(f.rec.journal.map((j) => j.kind), ['claim', 'commit']);
 });
 
 Deno.test('routingUserId: the JWT sub (unverified, routing only); service calls route on x-user-id', () => {

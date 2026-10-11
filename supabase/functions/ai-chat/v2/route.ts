@@ -5,7 +5,11 @@
  *   set (allowlist / pct / on)          → the request's user is routed by rolloutMode('v2_turn');
  *                                         'on' runs the v2 turn, everything else v1.
  *   v2 says fallback_v1                 → its cleanup runs (journal claim, quota reservation) and v1
- *                                         answers the ORIGINAL request (a clone kept for this).
+ *                                         answers the ORIGINAL request (a clone kept for this). The
+ *                                         handler says it only before any side effect: a client
+ *                                         protocol v2 does not own, a plan action, an undo the ledger
+ *                                         cannot answer, or an ordinary turn Stage A did not read in
+ *                                         time (stage_a_*_fallback_v1 — never "tekrar yazar mısın").
  *   v2 crashes before any side effect   → logged, cleanup, v1 answers.
  *   v2 crashes after a side effect      → NO v1 re-run (it would write twice): an honest answer with
  *                                         whatever was really written.

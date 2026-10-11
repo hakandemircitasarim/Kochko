@@ -22,6 +22,7 @@ import {
 } from './shadow.ts';
 import { fakeResponses, fakeSink, fakeTurnInputDb, NOW, responsesBody, seedTables, USER } from './testing.ts';
 import type { UnderstandOutcome, UnderstandRequest } from './understand.ts';
+import { STAGE_A_LIVE_BUDGETS_MS } from './stage-a-request.ts';
 
 const DUP = '__dup_skip__';
 
@@ -164,13 +165,15 @@ Deno.test('stageASafetyOutcome: the per-hit readings, positives, live budget = t
     assertEquals(out.readings.map((r) => r.reading), scan.hits.filter((h) => h.tier === 'ambiguous').map(() => 'benign'));
     assertEquals(out.positives, [{ category: 'self_harm' }]);
   }
-  // A tripwire turn's live budget is 10 s (STAGE_A_LIVE_BUDGETS_MS.tripwire); a plain turn's is 6 s.
-  assertEquals(stageASafetyOutcome(parsed(d, 6200), v, scan)?.status, 'ok', '6,2 s is inside the tripwire budget');
-  assertEquals(stageASafetyOutcome(parsed(d, 10200), v, scan), { status: 'timeout' }, 'over the 10 s tripwire budget');
+  // Each class against its OWN live budget (STAGE_A_LIVE_BUDGETS_MS — imported, never hard-coded:
+  // the owner moves the numbers there; 2026-10-11 normal 6 s → 10 s after the first live trial).
+  const { normal: N, tripwire: T } = STAGE_A_LIVE_BUDGETS_MS;
+  assertEquals(stageASafetyOutcome(parsed(d, T - 200), v, scan)?.status, 'ok', 'inside the tripwire budget');
+  assertEquals(stageASafetyOutcome(parsed(d, T + 200), v, scan), { status: 'timeout' }, 'over the tripwire budget');
   const plain = scanTripwires('bugün 3 km yürüdüm');
-  assertEquals(stageASafetyOutcome(parsed(d, 5800), v, plain)?.status, 'ok', '5,8 s is inside the 6 s budget of a turn without a tripwire fact');
-  assertEquals(stageASafetyOutcome(parsed(d, 6200), v, plain), { status: 'timeout' }, 'over the 6 s budget of a turn without a tripwire fact');
-  assertEquals(stageASafetyOutcome(parsed(d, 10200), v, scan, { ignoreBudget: true })?.status, 'ok', 'evidence read ignores the budget');
+  assertEquals(stageASafetyOutcome(parsed(d, N - 200), v, plain)?.status, 'ok', 'inside the normal budget of a turn without a tripwire fact');
+  assertEquals(stageASafetyOutcome(parsed(d, N + 200), v, plain), { status: 'timeout' }, 'over the normal budget of a turn without a tripwire fact');
+  assertEquals(stageASafetyOutcome(parsed(d, T + 200), v, scan, { ignoreBudget: true })?.status, 'ok', 'evidence read ignores the budget');
   assertEquals(stageASafetyOutcome({ ...parsed(d), status: 'refused', decision: null, refusal: 'no' }, null, scan), { status: 'refused' });
   assertEquals(stageASafetyOutcome({ ...parsed(d), status: 'invalid', decision: null }, null, scan), { status: 'error' });
   assertEquals(stageASafetyOutcome(null, null, scan), null);
@@ -278,16 +281,17 @@ Deno.test('runShadow: refusal or a Stage A over the live budget → the canned f
   const refused = await shadow({ message: 'bu tarife bayılmıştım' }, null, { over: { status: 'refused', decision: null, refusal: 'Yardımcı olamam.' } });
   assertEquals([refused.rec.stage_a.status, refused.row?.finish_reason, refused.rec.tripwire.outcome], ['refused', 'refused', 'fallback']);
   assertEquals(refused.rec.validation, null);
-  // A tripwire turn's budget is 10 s (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS): late past it, on time below.
-  const slow = await shadow({ message: 'bu tarife bayılmıştım' }, sampleDecision(), { latencyMs: 10200 });
+  // Each class against its own budget (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS): late past it, on time below.
+  const { normal: N, tripwire: T } = STAGE_A_LIVE_BUDGETS_MS;
+  const slow = await shadow({ message: 'bu tarife bayılmıştım' }, sampleDecision(), { latencyMs: T + 200 });
   assertEquals([slow.rec.stage_a.status, slow.rec.stage_a.over_live_budget, slow.rec.tripwire.outcome], ['parsed', true, 'fallback']);
-  assertEquals([slow.rec.stage_a.budget_class, slow.rec.stage_a.live_budget_ms], ['tripwire', 10000]);
-  const tw7s = await shadow({ message: 'bu tarife bayılmıştım' }, sampleDecision(), { latencyMs: 7200 });
-  assertEquals([tw7s.rec.stage_a.over_live_budget, tw7s.rec.tripwire.log.stage_a], [false, 'ok'], '7,2 s is inside the tripwire budget');
-  // A turn without a tripwire fact keeps the 6 s budget.
-  const plain7s = await shadow({ message: 'bugün 3 km yürüdüm' }, sampleDecision(), { latencyMs: 7200 });
-  assertEquals([plain7s.rec.stage_a.budget_class, plain7s.rec.stage_a.live_budget_ms, plain7s.rec.stage_a.over_live_budget], ['normal', 6000, true]);
-  assert((plain7s.row!.issues as Record<string, unknown>[]).some((e) => e.code === 'live_budget' && e.value === 'normal'));
+  assertEquals([slow.rec.stage_a.budget_class, slow.rec.stage_a.live_budget_ms], ['tripwire', T]);
+  const twOnTime = await shadow({ message: 'bu tarife bayılmıştım' }, sampleDecision(), { latencyMs: T - 2800 });
+  assertEquals([twOnTime.rec.stage_a.over_live_budget, twOnTime.rec.tripwire.log.stage_a], [false, 'ok'], 'inside the tripwire budget');
+  // A turn without a tripwire fact is measured against the normal budget.
+  const plainLate = await shadow({ message: 'bugün 3 km yürüdüm' }, sampleDecision(), { latencyMs: N + 200 });
+  assertEquals([plainLate.rec.stage_a.budget_class, plainLate.rec.stage_a.live_budget_ms, plainLate.rec.stage_a.over_live_budget], ['normal', N, true]);
+  assert((plainLate.row!.issues as Record<string, unknown>[]).some((e) => e.code === 'live_budget' && e.value === 'normal'));
   assert((slow.row!.issues as Record<string, unknown>[]).some((e) => e.code === 'live_budget' && e.value === 'tripwire'));
   assertEquals(refused.rec.tripwire.late, null, 'no late reading without a parsed decision');
   assert((refused.row!.issues as Record<string, unknown>[]).some((e) => e.code === 'tripwire_fallback_cause' && e.value === 'refused'));

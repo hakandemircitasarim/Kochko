@@ -237,7 +237,7 @@ export function tripwireReadingsOf(decision: unknown, scan: TripwireScan): Tripw
 
 /**
  * What resolveTripwires receives from Stage A. A Stage A slower than the turn's live budget (§7.2:
- * 6 s, 10 s when T2 handed it a tripwire fact — stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS) counts as a
+ * stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS, normal or — T2 handed it a tripwire fact — tripwire) counts as a
  * timeout here — the shadow reports what LIVE v2 would do. `ignoreBudget` reads a parsed
  * but late decision as if it had arrived in time: EVIDENCE only (the late reading, §7.4), never the
  * outcome the shadow reports as live-equivalent.

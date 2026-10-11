@@ -34,8 +34,8 @@ export interface Budget {
   /**
    * p90 per §7.2 live budget class: at most ~10 % of a class's calls may run past the budget at
    * which live v2 would fail closed to today's canned protection. Defaults to the live budgets
-   * themselves (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS — owner decision 2026-10-11: normal 6 s,
-   * tripwire 10 s), so the gate and the live timeout cannot drift apart.
+   * themselves (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS — owner decisions 2026-10-11: normal 10 s
+   * after the first live trial, tripwire 10 s), so the gate and the live timeout cannot drift apart.
    */
   p90_ms_by_class: Readonly<Record<StageABudgetClass, number>>;
   /** Faz 2 gate: parse/schema errors ≤ %0,5. */
@@ -47,7 +47,7 @@ export interface Budget {
    * an owner-adjustable number, not a spec constant. null = report only.
    */
   max_cost_per_turn_usd: number | null;
-  /** §10 Faz 3: repair calls (validateDecision repair.needed) ≤ %5 of answered turns. */
+  /** §10 Faz 3: repair calls (stage-a-request.ts stageARepairWanted: a repairable REJECT or a missed write) ≤ %5 of answered turns. */
   max_repair_rate: number;
 }
 export const DEFAULT_BUDGET: Budget = {
@@ -73,7 +73,7 @@ export function percentile(sorted: number[], p: number): number | null {
 
 /**
  * Stage A latency split by the §7.2 live budget class (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS):
- * turns where T2 handed Stage A a tripwire fact (10 s budget) vs the rest (6 s). `over_budget` counts
+ * turns where T2 handed Stage A a tripwire fact (tripwire budget) vs the rest (normal budget). `over_budget` counts
  * the calls that would have failed closed to today's canned protection in live v2. Real calls only.
  */
 export function latencySplit(results: FixtureRunResult[]): { normal: LatencyClassStats; tripwire: LatencyClassStats } {
@@ -87,7 +87,7 @@ export function latencySplit(results: FixtureRunResult[]): { normal: LatencyClas
   return { normal: stats('normal'), tripwire: stats('tripwire') };
 }
 
-/** "tetiksiz p50 2700 ms · p90 3900 ms (n=500, >6 sn: 8 = %1,6)" — one line per class, for the E gate and the report. */
+/** "tetiksiz p50 2700 ms · p90 3900 ms (n=500, >10 sn: 8 = %1,6)" — one line per class, for the E gate and the report. */
 export function formatLatencySplit(s: { normal: LatencyClassStats; tripwire: LatencyClassStats }): string {
   const one = (label: string, c: LatencyClassStats) =>
     `${label} p50 ${c.p50_ms ?? '—'} ms · p90 ${c.p90_ms ?? '—'} ms (n=${c.n}, >${c.budget_ms / 1000} sn: ${c.over_budget}${c.n ? ` = %${((c.over_budget / c.n) * 100).toFixed(1)}` : ''})`;
@@ -154,7 +154,7 @@ export function qualityGate(pairs: QualityPair[]): GateResult {
 
 /**
  * The E gate's latency part, per §7.2 budget class: an ordinary turn's p50 ≤ budget.p50_ms (§3.3),
- * and EACH class's p90 ≤ its own budget (normal 6 s, tripwire 10 s by default). A class with no
+ * and EACH class's p90 ≤ its own budget (STAGE_A_LIVE_BUDGETS_MS by default). A class with no
  * answered call is not judged (a run of plain turns says nothing about tripwire turns).
  */
 export function latencyWithinBudget(split: { normal: LatencyClassStats; tripwire: LatencyClassStats }, budget: Budget = DEFAULT_BUDGET): { ok: boolean; breaches: string[] } {

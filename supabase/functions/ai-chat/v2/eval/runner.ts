@@ -21,7 +21,7 @@ import { isModelAnswer, type LlmTransport, parseDecision } from './transport.ts'
 import { requestKey } from './replay-store.ts';
 import { postStageA } from './bind.ts';
 import { type Budget, computeGates, costOf, latencySplit, percentile, type QualityPair } from './gates.ts';
-import { stageABudgetClass, stageASchema } from '../stage-a-request.ts';
+import { stageABudgetClass, stageARepairWanted, stageASchema } from '../stage-a-request.ts';
 import { validateJsonSchema } from '../../../shared/json-schema-check.ts';
 
 /** Integration seam for Stage B (+ envelope, facts) once they land: extra roots after the commit. */
@@ -109,7 +109,7 @@ export async function runFixtureOnce(fixture: EvalFixture, rep: number, opts: Ru
   }
   const key = await requestKey(payload);
   const { response, cache } = await opts.transport.call({ fixture_id: fixture.id, rep, payload, key });
-  // The §7.2 live budget class this turn would get (a tripwire fact → 10 s, else 6 s): the E gate judges p90 per class.
+  // The §7.2 live budget class this turn would get (STAGE_A_LIVE_BUDGETS_MS; a tripwire fact → tripwire): the E gate judges p90 per class.
   const common = { cache, request_key: key, latency_ms: response.latency_ms, usage: response.usage, tripwire: stageABudgetClass(t2.scan) === 'tripwire' };
   if (cache === 'miss') return finish({ ...common, status: 'skipped', skip_reason: 'replay kaydı yok' });
   if (!isModelAnswer(response)) return finish({ ...common, status: 'error', error: response.error ?? `HTTP ${response.status ?? '?'}` });
@@ -133,7 +133,8 @@ export async function runFixtureOnce(fixture: EvalFixture, rep: number, opts: Ru
       const post = postStageA(fixture, parsed.decision);
       for (const [root, v] of Object.entries(post.outputs) as [StageRoot, unknown][]) setStage(turn, root, v);
       turn.unbound!.receipts = { ...post.unbound.receipts };
-      repair_needed = post.validation.repair.needed;
+      // The live handler's ONE repair predicate (a repairable REJECT or a missed write): the E gate's repair rate counts what live pays for.
+      repair_needed = stageARepairWanted(post.validation);
     } catch (err) {
       return finish({ ...common, status: 'error', error: `validateDecision/commit simülasyonu hatası: ${(err as Error).message}` });
     }

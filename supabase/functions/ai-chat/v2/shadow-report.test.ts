@@ -67,7 +67,7 @@ async function rows(): Promise<Record<string, unknown>[]> {
     writes: [{ ...SAMPLE_WRITES.water_log, quantity: 1, unit: 'litre', mode: 'set_day_total' }],
   }), 2500));
   // 4. a REJECT (unit other without ml).
-  await run('bir şişe su içtim', [], stageA(sampleDecision({ writes: [{ ...SAMPLE_WRITES.water_log, unit: 'other', other_ml_each: null }] }), 6200));
+  await run('bir şişe su içtim', [], stageA(sampleDecision({ writes: [{ ...SAMPLE_WRITES.water_log, unit: 'other', other_ml_each: null }] }), 10200));
   // 5. a refusal (parse/schema error class) on a tripwire turn.
   await run('bu tarife bayılmıştım', [], stageA(null, 900, { status: 'refused', decision: null, refusal: 'no' }));
   // 6. a benign reading on a tripwire turn.
@@ -90,12 +90,12 @@ Deno.test('summarizeShadowRows: agreement, net-vs-silent, ask/reject, parse erro
   assertEquals(s.skipped, { explicit_tripwire: 1 });
   assertEquals(s.parse_error_rate, 1 / 6);
   assertEquals(s.errors, { refused: 1 });
-  // latencies of the 6 turns that ran: 1200 1500 2500 6200 900 1800 → nearest-rank p50 1500, p90 6200
-  assertEquals([s.latency.n, s.latency.p50, s.latency.p90, s.latency.over_live_budget], [6, 1500, 6200, 1]);
-  // Split by the §7.2 budget class: the 4 tripwire-free turns against 6 s, the 2 'bayılmıştım' turns against 10 s.
+  // latencies of the 6 turns that ran: 1200 1500 2500 10200 900 1800 → nearest-rank p50 1500, p90 10200
+  assertEquals([s.latency.n, s.latency.p50, s.latency.p90, s.latency.over_live_budget], [6, 1500, 10200, 1]);
+  // Split by the §7.2 budget class: the 4 tripwire-free turns against the normal budget, the 2 'bayılmıştım' turns against the tripwire one.
   assertEquals(s.latency.by_class, {
-    normal: { n: 4, p50: 1500, p90: 6200, budget_ms: 6000, over_budget: 1 },
-    tripwire: { n: 2, p50: 900, p90: 1800, budget_ms: 10000, over_budget: 0 },
+    normal: { n: 4, p50: 1500, p90: 10200, budget_ms: STAGE_A_LIVE_BUDGETS_MS.normal, over_budget: 1 },
+    tripwire: { n: 2, p50: 900, p90: 1800, budget_ms: STAGE_A_LIVE_BUDGETS_MS.tripwire, over_budget: 0 },
   });
   assertEquals(s.tokens, { input_avg: 10000, cached_ratio: 0.9, output_avg: 200, reasoning_avg: 100 });
   assertEquals(s.ops.water_log, { both: 1, v1_only: 0, v2_only: 1, neither: 1, agreement_rate: 0.5 });
@@ -121,9 +121,9 @@ Deno.test('renderShadowReport: every §10 Faz 2 section, counts only (no user te
   for (const s of [
     'KOCHKO v2 Stage A gölge raporu — 2026-10-07 → 2026-10-08',
     'Ayrıştırma/şema hatası: 16.7%',
-    'Stage A gecikmesi: p50 1.50 sn · p90 6.20 sn · n=6 · kendi canlı bütçesini aşan 1',
-    '  tetiksiz: p50 1.50 sn · p90 6.20 sn · n=4 · 6 sn bütçesini aşan 1 (25.0%)',
-    '  tetikli: p50 0.90 sn · p90 1.80 sn · n=2 · 10 sn bütçesini aşan 0 (0.0%)',
+    'Stage A gecikmesi: p50 1.50 sn · p90 10.20 sn · n=6 · kendi canlı bütçesini aşan 1',
+    `  tetiksiz: p50 1.50 sn · p90 10.20 sn · n=4 · ${STAGE_A_LIVE_BUDGETS_MS.normal / 1000} sn bütçesini aşan 1 (25.0%)`,
+    `  tetikli: p50 0.90 sn · p90 1.80 sn · n=2 · ${STAGE_A_LIVE_BUDGETS_MS.tripwire / 1000} sn bütçesini aşan 0 (0.0%)`,
     'OP BAŞINA UYUM',
     'body_weight',
     'v1 AĞI TETİKLENDİ, v2 SESSİZ',
