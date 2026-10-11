@@ -273,6 +273,14 @@ export function holdSubjectKey(v: WriteVerdict, refs: TurnRefs): string | null {
   }
 }
 
+/**
+ * A committed hold's class for T7: the stored hold_class when the commit set it, else by op (a hold
+ * built elsewhere). Fail-safe: an erase / retract / goal / band hold is a safety hold either way.
+ */
+export function isSafetyHold(h: V2Hold): boolean {
+  return h.hold_class === 'safety' || SAFETY_HOLD_OPS.has(h.op);
+}
+
 /** 'safety' holds: the coach must ask — if it does not, code appends the question (§5.2). */
 export function holdClassOf(v: WriteVerdict): 'ask' | 'safety' {
   if (SAFETY_HOLD_OPS.has(v.hold_op ?? v.op)) return 'safety';
@@ -548,7 +556,13 @@ export interface AdapterOutcome {
   write_id: string | null;
   /** Extra Turkish note appended to the receipt line (e.g. "set ayrıntıları kaydedilemedi"). */
   note_tr?: string | null;
+  /** The write landed but its undoable ledger row did not (best-effort append failed). */
+  ledger_missing?: boolean;
 }
+
+/** Receipt note / coach fact when an adapter write's ledger row is missing (never a silent ok). */
+export const LEDGER_MISSING_NOTE = 'bu kayıt sohbetten geri alınamaz';
+export const LEDGER_MISSING_FLAG = 'kaydedildi ama geri alma defterine yazılamadı: sohbetten geri alınamaz ya da düzeltilemez — kullanıcıya dürüstçe söyle, gerekirse Günlük ekranından silebilir';
 
 export interface AdapterRequest {
   userId: string;
@@ -594,6 +608,7 @@ interface StepResult {
   receipt: V2Receipt | null;
   hold?: V2Hold;
   reject?: V2Reject;
+  flags?: V2Flag[];
   ref?: string | null;
   exposureItems?: Array<{ name: unknown; allergens: unknown; may_contain: unknown }>;
   exposureSource?: 'meal' | 'supplement';
@@ -726,7 +741,12 @@ async function runStep(step: CommitStep, plan: CommitPlan, ports: CommitPorts, m
       }
       if (step.pendingId) await closeHold(ports, plan, step.pendingId, out.ok, out.ref, out.failure_class);
       if (!out.ok) return failResult(v, out.failure_class ?? 'write_failed');
-      const res: StepResult = { receipt: okReceipt(v, plan, out, out.note_tr ?? null), ref: out.ref };
+      // The write stands but its ledger row did not land (adapter writes are two statements until
+      // their atomic RPCs exist): say so — on the receipt and to the coach — instead of a silent ok
+      // that a later "geri al" / correction would contradict with not_in_ledger.
+      const notes = [out.note_tr ?? null, out.ledger_missing ? LEDGER_MISSING_NOTE : null].filter((x): x is string => !!x);
+      const res: StepResult = { receipt: okReceipt(v, plan, out, notes.length ? notes.join(' · ') : null), ref: out.ref };
+      if (out.ledger_missing) res.flags = [{ op: step.op, code: 'ledger_missing', note_tr: LEDGER_MISSING_FLAG }];
       if (step.op === 'supplement_log') {
         res.exposureSource = 'supplement';
         res.exposureItems = [{ name: step.row.name, allergens: step.row.allergens, may_contain: step.row.may_contain }];
@@ -747,7 +767,10 @@ async function runStep(step: CommitStep, plan: CommitPlan, ports: CommitPorts, m
       }
       return {
         receipt: null,
-        hold: { op: step.holdOp, reason_code: ask?.code ?? 'onay', question_tr: v.question_tr ?? ask?.question_tr ?? ask?.tr ?? 'Bunu kaydetmemi onaylıyor musun?', hold_id: r.pending_id },
+        hold: {
+          op: step.holdOp, reason_code: ask?.code ?? 'onay', question_tr: v.question_tr ?? ask?.question_tr ?? ask?.tr ?? 'Bunu kaydetmemi onaylıyor musun?', hold_id: r.pending_id,
+          hold_class: step.opts.hold_class ?? holdClassOf(v),
+        },
       };
     }
     case 'erase_hold': {
@@ -758,7 +781,7 @@ async function runStep(step: CommitStep, plan: CommitPlan, ports: CommitPorts, m
         res = { ok: false };
       }
       if (!res.ok) return { receipt: null, reject: { op: v.op, reason_code: 'hold_persist_failed', reason_tr: failureTr('hold_persist_failed') } };
-      return { receipt: null, hold: { op: ERASE_HOLD_OP, reason_code: 'kvkk_onay', question_tr: eraseQuestion(step.scope), hold_id: res.id ?? null } };
+      return { receipt: null, hold: { op: ERASE_HOLD_OP, reason_code: 'kvkk_onay', question_tr: eraseQuestion(step.scope), hold_id: res.id ?? null, hold_class: 'safety' } };
     }
     case 'erase_confirm': {
       markWrite();
@@ -818,6 +841,7 @@ export async function executeCommit(plan: CommitPlan, ports: CommitPorts): Promi
     }
     if (out.hold) result.holds.push(out.hold);
     if (out.reject) result.rejects.push(out.reject);
+    if (out.flags) result.flags.push(...out.flags);
     if (out.receipt?.ok && out.ref) result.writtenRefs.push(out.ref);
     if (out.receipt?.ok && out.exposureItems && out.exposureSource) {
       exposureCandidates.push({ source: out.exposureSource, ref: out.ref ?? '', items: out.exposureItems });

@@ -68,14 +68,27 @@ export interface AdapterDeps {
 
 // ─── outcomes ────────────────────────────────────────────────────────────────────────────────────
 
-const ok = (rows: number | null, ledger: { ref: string | null; write_id: string | null }, note?: string | null): AdapterOutcome =>
-  ({ ok: true, rows_affected: rows, failure_class: null, ref: ledger.ref, write_id: ledger.write_id, note_tr: note ?? null });
-const fail = (failure_class: string): AdapterOutcome => ({ ok: false, rows_affected: 0, failure_class, ref: null, write_id: null });
-const NO_LEDGER = { ref: null, write_id: null };
+interface LedgerHandle {
+  ref: string | null;
+  write_id: string | null;
+  /** An UNDOABLE entry (soft_delete / restore_previous / revert_delta) failed to land. */
+  missing?: boolean;
+}
 
-/** Append ledger entries; never throws. The FIRST entry's ref/write_id is the write's handle. */
-async function ledger(d: AdapterDeps, req: AdapterRequest, entries: LedgerAppendEntry[]): Promise<{ ref: string | null; write_id: string | null }> {
+const ok = (rows: number | null, ledger: LedgerHandle, note?: string | null): AdapterOutcome =>
+  ({ ok: true, rows_affected: rows, failure_class: null, ref: ledger.ref, write_id: ledger.write_id, note_tr: note ?? null, ...(ledger.missing ? { ledger_missing: true } : {}) });
+const fail = (failure_class: string): AdapterOutcome => ({ ok: false, rows_affected: 0, failure_class, ref: null, write_id: null });
+const NO_LEDGER: LedgerHandle = { ref: null, write_id: null };
+
+/**
+ * Append ledger entries; never throws. The FIRST entry's ref/write_id is the write's handle. A failed
+ * append of an undoable entry is reported back (`missing`) so the receipt and the coach say the write
+ * cannot be undone from chat; an audit-only ('none') entry failing changes nothing the user can do.
+ */
+async function ledger(d: AdapterDeps, req: AdapterRequest, entries: LedgerAppendEntry[]): Promise<LedgerHandle> {
   if (entries.length === 0) return NO_LEDGER;
+  const undoable = entries.some((e) => e.undo_mode !== 'none');
+  const lost: LedgerHandle = undoable ? { ...NO_LEDGER, missing: true } : NO_LEDGER;
   try {
     const r = await d.db.rpc(V2_RPC.ledgerAppend, {
       p_user: req.userId, p_turn_id: req.turnId,
@@ -86,13 +99,13 @@ async function ledger(d: AdapterDeps, req: AdapterRequest, entries: LedgerAppend
       : parseRpcReceipt<LedgerAppendOk>(r.data, ['ledger_append']);
     if (!parsed.ok) {
       d.log?.('[v2_adapter] LEDGER APPEND FAILED (write stands, not undoable by ref)', { op: req.op, failure_class: parsed.failure_class, detail: parsed.detail });
-      return NO_LEDGER;
+      return lost;
     }
     const first = parsed.entries[0];
     return { ref: first?.ref ?? null, write_id: first?.write_id ?? null };
   } catch (e) {
     d.log?.('[v2_adapter] LEDGER APPEND THREW (write stands, not undoable by ref)', { op: req.op, error: errMsg(e) });
-    return NO_LEDGER;
+    return lost;
   }
 }
 

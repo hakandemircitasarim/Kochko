@@ -65,11 +65,13 @@ import { syncConstraint, confirmConstraint, deactivateConstraints, syncInjuryFro
 import { getEffectiveDateForUser, shiftDateString, getLocalParts, getLocalHour } from '../shared/day-boundary.ts';
 import { judgeTodayWeighIn } from '../shared/weigh-in-guard.ts';
 import { isIFCompatible, type PeriodicState } from '../shared/periodic-config.ts';
-import { beginShadowTurn } from './v2/shadow.ts';
+import { beginShadowTurn, scheduleBackground } from './v2/shadow.ts';
 // AI_MIMARI_V2 §10 Faz 3 — the v2 turn behind KOCHKO_ROLLOUT_V2_TURN (default off → v1, untouched).
 import { handleV2Turn, honestCrashResponse, type AppliedWrite } from './v2/handler.ts';
 import { routeTurn, v2TurnConfigured, V2_TURN_STEP } from './v2/route.ts';
 import { buildLiveV2Deps, type StoreV2Extras } from './v2/live.ts';
+// AI_MIMARI_V2 §6.1 — v1's writes in the turn_writes ledger during the mixed period (v1-ledger.ts).
+import { appendV1Ledger, fieldWriteEntry, insertedRowEntry, mealSummary, newV1Ledger, V1_METRIC_COLUMNS, type V1Ledger } from './v1-ledger.ts';
 import type { TurnInput } from './v2/input.ts';
 
 const corsHeaders = {
@@ -3057,7 +3059,16 @@ AYNI cumleyi veya kalibi TEKRARLAMA — bugunun verisinden beslenen, farkli ve t
 
     const inputSource: 'photo' | 'voice' | 'ai_chat' = image_base64 ? 'photo' : audio_base64 ? 'voice' : 'ai_chat';
     timer.mark('nets');
-    const { feedback: actionFeedback, receipts: actionReceipts, allergenExposures = [] } = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz);
+    // AI_MIMARI_V2 §6.1 (v1-ledger.ts): while the v2 turn is configured (mixed period), this v1 turn's
+    // writes go into the turn_writes ledger under their own turn_id, so a v2-cohort user can undo a
+    // photo / voice / plan-fallback write from v2 too. Unset/off → undefined: v1 exactly as before.
+    const v1Ledger: V1Ledger | undefined = v2TurnConfigured() ? newV1Ledger(crypto.randomUUID()) : undefined;
+    const { feedback: actionFeedback, receipts: actionReceipts, allergenExposures = [] } = await executeActions(userId, actions, profile?.gender, (target_date as string | undefined) ?? effectiveToday, inputSource, idempotency_key as string | undefined, userTz, v1Ledger);
+    // One v2_ledger_append for the turn, in flight while the reply is finished; awaited before the
+    // chat rows are stored (the undo button can only be pressed after they are). Never throws.
+    const v1LedgerAppend = v1Ledger && v1Ledger.entries.length > 0
+      ? appendV1Ledger((name, args) => supabaseAdmin.rpc(name, args), userId, v1Ledger, (line, data) => console.error(line, JSON.stringify(data)))
+      : null;
     // KVKK: a confirmed erase ran this turn → nothing on this turn may write memory back (the
     // summary regen and the model's layer2_update below are skipped; the tombstone stands).
     const eraseExecuted = actionReceipts.some((r) => r.action_type === 'data_erase_confirm' && r.ok);
@@ -3545,7 +3556,17 @@ Doğru anladıysam: ${parsed}.${tail}`;
     // the word "antrenman"), so approving it would have sent plan_type=diet. Plan turns report the
     // canonical mode; every other turn keeps the historical raw value its readers expect.
     const reportedMode = planTurn ? effectiveMode : taskMode;
-    const assistantMessageId = await storeMessages(userId, message ?? '[foto]', assistantMessage, reportedMode, modelSelection.model, tokenEstimate, persistedActions, session_id, reservedUserMessageId);
+    const v1LedgerResult = v1LedgerAppend ? await v1LedgerAppend : null;
+    const assistantMessageId = await storeMessages(userId, message ?? '[foto]', assistantMessage, reportedMode, modelSelection.model, tokenEstimate, persistedActions, session_id, reservedUserMessageId, undefined, v1Ledger ? { turnId: v1Ledger.turnId } : undefined);
+    if (v1Ledger && v1LedgerResult && v1LedgerResult.written > 0 && assistantMessageId) {
+      // Stamp the turn's ledger rows with their chat message (v2's "⟦m12 …⟧" history lines read it).
+      // Not needed by the undo lookup (that goes by turn_id) — background, best effort.
+      const linkTurnId = v1Ledger.turnId;
+      scheduleBackground(async () => {
+        const { error } = await supabaseAdmin.rpc('v2_link_turn_message', { p_user: userId, p_turn_id: linkTurnId, p_chat_message_id: assistantMessageId });
+        if (error) console.warn('[v1_ledger] v2_link_turn_message failed:', error.message);
+      });
+    }
     // FIX (audit AI-MDL-05): the turn is now persisted (assistant reply appended to the reserved
     // row's conversation). Clear the handle so a throw in the post-store steps below does NOT
     // make the catch release an already-answered, legitimately-counted message.
@@ -4930,7 +4951,10 @@ async function validateTaskCompletion(
 // `v2` (AI_MIMARI_V2 §3.2 T9, migration 112): the v2 turn's server-only columns — turn_id, pipeline,
 // the user row's quota_class, the assistant row's code_notes and FULL receipts in actions_executed.
 // Absent (every v1 call site) → the rows are written exactly as before.
-async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string, reservedUserMessageId?: string | null, v2?: StoreV2Extras): Promise<string | null> {
+// `v1Turn` (AI_MIMARI_V2 §6.1, mixed period only): the v1 turn's ledger turn_id + pipeline 'v1' on both
+// rows, so the v2 undo button can resolve "the last turn" to its turn_writes rows. Nothing else changes
+// (actions_executed stays [{type}], no quota_class, no code_notes). Ignored when `v2` is given.
+async function storeMessages(userId: string, userMsg: string, assistantMsg: string, taskMode?: string, modelUsed?: string, tokenCount?: number, executedActions?: Record<string, unknown>[], externalSessionId?: string, reservedUserMessageId?: string | null, v2?: StoreV2Extras, v1Turn?: { turnId: string }): Promise<string | null> {
   let sessionId: string | null = null;
   let assistantMessageId: string | null = null;
 
@@ -4988,8 +5012,9 @@ async function storeMessages(userId: string, userMsg: string, assistantMsg: stri
   // RESERVATION, do NOT insert a second user row — append only the assistant reply, and backfill
   // the reserved row's session_id/task_mode so it shares the conversation we just resolved.
   // v2 only (empty for v1): server-only columns of migration 112 on both rows.
-  const v2UserCols: Record<string, unknown> = v2 ? { turn_id: v2.turnId, pipeline: v2.pipeline, quota_class: v2.quotaClass } : {};
-  const v2AssistantCols: Record<string, unknown> = v2 ? { turn_id: v2.turnId, pipeline: v2.pipeline, code_notes: v2.codeNotes } : {};
+  const v1TurnCols: Record<string, unknown> = !v2 && v1Turn ? { turn_id: v1Turn.turnId, pipeline: 'v1' } : {};
+  const v2UserCols: Record<string, unknown> = v2 ? { turn_id: v2.turnId, pipeline: v2.pipeline, quota_class: v2.quotaClass } : v1TurnCols;
+  const v2AssistantCols: Record<string, unknown> = v2 ? { turn_id: v2.turnId, pipeline: v2.pipeline, code_notes: v2.codeNotes } : v1TurnCols;
   const actionsExecuted = v2
     ? v2.actionsExecuted
     : (executedActions?.length ? executedActions.map(a => ({ type: a.type })) : null);
@@ -5074,10 +5099,48 @@ async function executeActions(
   // times, the afternoon-caffeine warning) was computed from the UTC edge clock and was therefore
   // wrong by the user's offset for every user outside UTC.
   tzForActions?: string | null,
+  // AI_MIMARI_V2 §6.1 (v1-ledger.ts): when given (mixed period only), every write below that the
+  // ledger covers is recorded with its before/after so the v2 undo button / d# refs can take it back.
+  // Absent → not one extra query or call; v1 writes exactly as before.
+  ledger?: V1Ledger,
 ): Promise<ActionExecResult> {
   if (!actions || !Array.isArray(actions) || actions.length === 0) return { feedback: [], receipts: [] };
   const today = targetDate ?? new Date().toISOString().split('T')[0];
   const feedback: (string | null)[] = [];
+  // v1 ledger only: the day rows' values BEFORE this turn's writes (one read per day, kept current as
+  // the turn writes), so each metric entry carries the value its undo restores. null = no row yet;
+  // undefined = the read failed → that write is NOT ledgered (a guessed "before" would let an undo
+  // erase a real value).
+  const metricsSeen = new Map<string, Record<string, unknown> | null>();
+  const metricsBefore = async (date: string): Promise<Record<string, unknown> | null | undefined> => {
+    if (metricsSeen.has(date)) return metricsSeen.get(date) ?? null;
+    const { data, error } = await supabaseAdmin.from('daily_metrics').select(V1_METRIC_COLUMNS).eq('user_id', userId).eq('date', date).maybeSingle();
+    if (error) {
+      console.warn('[v1_ledger] daily_metrics before-read failed (write not ledgered):', error.message);
+      return undefined;
+    }
+    const row = (data as Record<string, unknown> | null) ?? null;
+    metricsSeen.set(date, row);
+    return row;
+  };
+  // Only a day ALREADY read is patched: seeding an unread day with just this write's fields would make
+  // a later write's `before` read null for a field the row really had (a water add, then sleep → the
+  // sleep undo would empty the real earlier sleep value). An unread day is read fresh, write included.
+  const metricsAfter = (date: string, rowId: string, values: Record<string, unknown>) => {
+    if (!metricsSeen.has(date)) return;
+    metricsSeen.set(date, { ...(metricsSeen.get(date) ?? {}), id: rowId, ...values });
+  };
+  // The daily_metrics upsert every metric case uses. Without the ledger it is the exact call v1 always
+  // made; with it the row id comes back too (the ledger entry's row_id).
+  const upsertDailyMetrics = async (row: Record<string, unknown>): Promise<{ error: { message: string } | null; id: string | null }> => {
+    const q = supabaseAdmin.from('daily_metrics').upsert(row, { onConflict: 'user_id,date' });
+    if (!ledger) {
+      const { error } = await q;
+      return { error, id: null };
+    }
+    const { data, error } = await q.select('id').maybeSingle();
+    return { error, id: ((data as { id?: unknown } | null)?.id as string | undefined) ?? null };
+  };
   // B2a (plan v2): TYPED receipts riding next to the legacy positional feedback strings. Every
   // push goes through pushFb — same 1:1 action↔entry invariant, but the envelope now carries
   // {action_type, ok, failure_class} STRUCTURE instead of only prose the client can't reason
@@ -5357,6 +5420,14 @@ async function executeActions(
 
           // Faz 0 #9: past every failure/dup `break` above → the meal really persisted.
           allergenExposures.push(...mealAllergenHits);
+          // §6.1: the persisted meal is undoable from v2 (undo button / m# ref) — soft delete, like v2's own.
+          if (ledger) {
+            ledger.add(insertedRowEntry({
+              op: 'meal_log', table: 'meal_logs', rowId: log.id as string, forDate: actionDate, group: ledger.nextGroup(),
+              summary: mealSummary({ mealType, forDate: actionDate, raw: rawText, items: mealRows ?? [] }),
+              meta: { input_method: inputMethod },
+            }));
+          }
 
           // --- Caffeine Integration (Spec 5.34) ---
           // Caffeine notices used to be pushed as separate feedback entries (and the case
@@ -5452,6 +5523,14 @@ async function executeActions(
             console.error('[workout_logs] insert failed:', wlogErr?.message);
             pushFb('Antrenmanı kaydedemedim, tekrar dener misin?', { ok: false, failureClass: 'write_failed' });
             break;
+          }
+          // §6.1: the workout row stands from here on (sets/PR notes below are extras) — undoable from
+          // v2; the undo engine soft-deletes its sets with it.
+          if (ledger) {
+            ledger.add(insertedRowEntry({
+              op: 'workout_log', table: 'workout_logs', rowId: wlogRow.id as string, forDate: actionDate, group: ledger.nextGroup(),
+              meta: { input_method: inputMethod },
+            }));
           }
 
           // Per-set strength data: the system-prompt contract carries detail as a nested
@@ -5580,16 +5659,46 @@ async function executeActions(
         case 'weight_log': {
           const w = action.value as number;
           if (w > 20 && w < 300) {
+            // §6.1 ledger only: what this weigh-in is about to overwrite (day row, weight_history, profile).
+            // A failed read leaves that entry out (undefined), never a guessed value.
+            const dmBefore = ledger ? await metricsBefore(actionDate) : undefined;
+            let whBefore: { id?: string; weight_kg?: unknown } | null | undefined;
+            let profBefore: { weight_kg?: unknown } | null | undefined;
+            if (ledger) {
+              const wh = await supabaseAdmin.from('weight_history').select('id, weight_kg').eq('user_id', userId).eq('recorded_at', actionDate).maybeSingle();
+              whBefore = wh.error ? undefined : (wh.data as { id?: string; weight_kg?: unknown } | null);
+              if (actionDate === today) {
+                const pr = await supabaseAdmin.from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
+                profBefore = pr.error ? undefined : (pr.data as { weight_kg?: unknown } | null);
+              }
+            }
             // FIX (audit HIGH — swallowed upsert → false "Tartı kaydedildi"): capture the error and
             // stop on failure instead of claiming success (mirrors the sleep/mood paths).
-            const { error: weightErr } = await supabaseAdmin.from('daily_metrics').upsert(
+            const { error: weightErr, id: weightRowId } = await upsertDailyMetrics(
               { user_id: userId, date: actionDate, weight_kg: w, water_liters: await waterFor(actionDate), synced: true },
-              { onConflict: 'user_id,date' }
             );
             if (weightErr) { console.error('[weight_log] upsert failed:', weightErr.message); pushFb('Tartı kaydı başarısız', { ok: false, failureClass: 'write_failed' }); break; }
+            // The side effects ride in the weigh-in's group, so they are recorded only with it.
+            const weightGroup = ledger && weightRowId && dmBefore !== undefined ? ledger.nextGroup() : null;
+            if (ledger && weightRowId && weightGroup) {
+              ledger.add(fieldWriteEntry({ op: 'body_weight', table: 'daily_metrics', rowId: weightRowId, forDate: actionDate, group: weightGroup, before: dmBefore ?? {}, after: { weight_kg: w } }));
+              metricsAfter(actionDate, weightRowId, { weight_kg: w });
+            }
             // weight_history is the canonical measurement store (export + trend source)
             // but was never written by any code path before (#R1-M2). Record each weigh-in.
-            await supabaseAdmin.from('weight_history').upsert({ user_id: userId, weight_kg: w, recorded_at: actionDate }, { onConflict: 'user_id,recorded_at' });
+            const whWrite = supabaseAdmin.from('weight_history').upsert({ user_id: userId, weight_kg: w, recorded_at: actionDate }, { onConflict: 'user_id,recorded_at' });
+            if (!ledger || !weightGroup) {
+              await whWrite;
+            } else {
+              const { data: whRow, error: whErr } = await whWrite.select('id').maybeSingle();
+              const whId = (whBefore?.id ?? (whRow as { id?: string } | null)?.id) ?? null;
+              if (!whErr && whId && whBefore !== undefined) {
+                ledger.add(fieldWriteEntry({
+                  op: 'body_weight', table: 'weight_history', rowId: whId, forDate: actionDate, group: weightGroup, isPrimary: false,
+                  before: whBefore?.id ? { weight_kg: whBefore.weight_kg ?? null } : null, after: { weight_kg: w },
+                }));
+              }
+            }
             // #arch step 11: append the weight belief. Bitemporal — a backdated weigh-in is a
             // RETROACTIVE record (valid-time = the past date), not a new current value.
             await logBelief(userId, { belief_key: 'weight', operation: 'set', new_value: w, source: 'user_stated', temporal_scope: actionDate === today ? 'prospective' : 'retroactive', effective_from: actionDate });
@@ -5599,7 +5708,10 @@ async function executeActions(
             // otherwise an old weight clobbers the real current one and re-derives BMR/TDEE
             // and every calorie range from a stale value.
             if (actionDate === today) {
-              await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
+              const { error: profWeightErr } = await supabaseAdmin.from('profiles').update({ weight_kg: w, updated_at: new Date().toISOString() }).eq('id', userId);
+              if (ledger && weightGroup && !profWeightErr && profBefore !== undefined) {
+                ledger.add(fieldWriteEntry({ op: 'body_weight', table: 'profiles', rowId: userId, forDate: actionDate, group: weightGroup, isPrimary: false, before: { weight_kg: profBefore?.weight_kg ?? null }, after: { weight_kg: w } }));
+              }
               // T1.19: Check if TDEE recalculation needed
               recalculateTDEEIfNeeded(userId, w).then(() => {}, () => {});
               // The weigh-in answers any pending "N gündür tartı kaydı yok" card — leaving it unread
@@ -5655,15 +5767,24 @@ async function executeActions(
             const next = nextWaterLiters(prevWater, l, isTotal);
             setWaterFor(actionDate, next); // keep running totals so later metric upserts preserve them
             // FIX (audit HIGH — swallowed upsert → false "Su +XL"): stop on failure, don't claim success.
-            const { error: waterErr } = await supabaseAdmin.from('daily_metrics').upsert(
+            const { error: waterErr, id: waterRowId } = await upsertDailyMetrics(
               { user_id: userId, date: actionDate, water_liters: next, synced: true },
-              { onConflict: 'user_id,date' }
             );
             if (waterErr) {
               // Revert the in-memory running total (bumped BEFORE the upsert) so a later same-turn
               // metric upsert doesn't silently persist the water we just told the user FAILED.
               setWaterFor(actionDate, prevWater);
               console.error('[water_log] upsert failed:', waterErr.message); pushFb('Su kaydı başarısız', { ok: false, failureClass: 'write_failed' }); break;
+            }
+            // §6.1: an 'add' is undone by subtracting its delta (a client water add in between survives);
+            // a day total by restoring the previous total. prevWater is the running total before this write.
+            if (ledger && waterRowId) {
+              ledger.add(fieldWriteEntry({
+                op: 'water_log', table: 'daily_metrics', rowId: waterRowId, forDate: actionDate, group: ledger.nextGroup(),
+                before: { water_liters: prevWater }, after: { water_liters: next }, additive: !isTotal,
+                meta: { mode: isTotal ? 'set_day_total' : 'add', liters: l, as_stated: typeof action.as_stated === 'string' ? action.as_stated.slice(0, 120) : null },
+              }));
+              metricsAfter(actionDate, waterRowId, { water_liters: next });
             }
             const fmtL = (v: number) => `${v.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} L`;
             const dayWord = actionDate === today ? 'Bugünkü' : 'O günkü';
@@ -5696,12 +5817,19 @@ async function executeActions(
             const rawQ = (action.quality as string | undefined)?.toLowerCase();
             const mapped = rawQ ? (SQ_MAP[rawQ] ?? rawQ) : undefined;
             const sleepQuality = mapped && ['good', 'ok', 'bad'].includes(mapped) ? mapped : null; // null is allowed (nullable col)
-            const { error: sleepErr } = await supabaseAdmin.from('daily_metrics').upsert(
+            const sleepBefore = ledger ? await metricsBefore(actionDate) : undefined;
+            const { error: sleepErr, id: sleepRowId } = await upsertDailyMetrics(
               { user_id: userId, date: actionDate, sleep_hours: h, sleep_quality: sleepQuality, water_liters: await waterFor(actionDate), synced: true },
-              { onConflict: 'user_id,date' }
             );
             if (sleepErr) { console.error('[sleep_log] upsert failed:', sleepErr.message); pushFb('Uyku kaydi basarisiz', { ok: false, failureClass: 'write_failed' }); }
-            else pushFb('Uyku kaydedildi');
+            else {
+              if (ledger && sleepRowId && sleepBefore !== undefined) {
+                const after = { sleep_hours: h, sleep_quality: sleepQuality };
+                ledger.add(fieldWriteEntry({ op: 'sleep_log', table: 'daily_metrics', rowId: sleepRowId, forDate: actionDate, group: ledger.nextGroup(), before: sleepBefore ?? {}, after }));
+                metricsAfter(actionDate, sleepRowId, after);
+              }
+              pushFb('Uyku kaydedildi');
+            }
           } else {
             pushFb(null); // alignment (#R2-6)
           }
@@ -5713,11 +5841,17 @@ async function executeActions(
           const s = Number(action.score);
           const moodScore = Number.isFinite(s) ? Math.min(5, Math.max(1, Math.round(s))) : null;
           if (moodScore === null) { pushFb(null); break; } // alignment (#R2-6)
-          const { error: moodErr } = await supabaseAdmin.from('daily_metrics').upsert(
+          const moodBefore = ledger ? await metricsBefore(actionDate) : undefined;
+          const { error: moodErr, id: moodRowId } = await upsertDailyMetrics(
             { user_id: userId, date: actionDate, mood_score: moodScore, mood_note: action.note as string, water_liters: await waterFor(actionDate), synced: true },
-            { onConflict: 'user_id,date' }
           );
           if (moodErr) { console.error('[mood_log] upsert failed:', moodErr.message); pushFb(null); break; }
+          if (ledger && moodRowId && moodBefore !== undefined) {
+            // An absent note is not sent (JSON drops undefined) and so not touched; null/text is written.
+            const after: Record<string, unknown> = action.note === undefined ? { mood_score: moodScore } : { mood_score: moodScore, mood_note: action.note ?? null };
+            ledger.add(fieldWriteEntry({ op: 'mood_log', table: 'daily_metrics', rowId: moodRowId, forDate: actionDate, group: ledger.nextGroup(), before: moodBefore ?? {}, after }));
+            metricsAfter(actionDate, moodRowId, after);
+          }
           pushFb('Ruh hali kaydedildi');
           break;
         }
@@ -5727,11 +5861,16 @@ async function executeActions(
           const s = Number(action.steps);
           const stepCount = Number.isFinite(s) ? Math.round(s) : 0;
           if (stepCount < 100 || stepCount > 100000) { pushFb(null); break; } // implausible → alignment
-          const { error: stepErr } = await supabaseAdmin.from('daily_metrics').upsert(
+          const stepBefore = ledger ? await metricsBefore(actionDate) : undefined;
+          const { error: stepErr, id: stepRowId } = await upsertDailyMetrics(
             { user_id: userId, date: actionDate, steps: stepCount, steps_source: 'manual', water_liters: await waterFor(actionDate), synced: true },
-            { onConflict: 'user_id,date' }
           );
           if (stepErr) { console.error('[step_log] upsert failed:', stepErr.message); pushFb('Adım kaydı başarısız', { ok: false, failureClass: 'write_failed' }); break; }
+          if (ledger && stepRowId && stepBefore !== undefined) {
+            const after = { steps: stepCount, steps_source: 'manual' };
+            ledger.add(fieldWriteEntry({ op: 'step_log', table: 'daily_metrics', rowId: stepRowId, forDate: actionDate, group: ledger.nextGroup(), before: stepBefore ?? {}, after }));
+            metricsAfter(actionDate, stepRowId, after);
+          }
           pushFb(`${stepCount.toLocaleString('tr-TR')} adım kaydedildi`);
           break;
         }
@@ -5740,11 +5879,24 @@ async function executeActions(
           // error, and never claim success on failure (#R2-5).
           const suppName = (action.name as string | undefined)?.trim();
           if (!suppName) { pushFb(null); break; }
-          const { error: suppErr } = await supabaseAdmin.from('supplement_logs').insert({
+          const suppInsert = supabaseAdmin.from('supplement_logs').insert({
             user_id: userId, supplement_name: suppName,
             amount: action.amount as string, logged_for_date: actionDate,
           });
+          // Without the ledger: the exact insert v1 always made. With it: the row id comes back too.
+          let suppErr: { message: string } | null;
+          let suppRowId: string | null = null;
+          if (ledger) {
+            const r = await suppInsert.select('id').maybeSingle();
+            suppErr = r.error;
+            suppRowId = ((r.data as { id?: unknown } | null)?.id as string | undefined) ?? null;
+          } else {
+            ({ error: suppErr } = await suppInsert);
+          }
           if (suppErr) { console.error('[supplement_logs] insert failed:', suppErr.message); pushFb('Supplement kaydedilemedi'); break; }
+          if (ledger && suppRowId) {
+            ledger.add(insertedRowEntry({ op: 'supplement_log', table: 'supplement_logs', rowId: suppRowId, forDate: actionDate, group: ledger.nextGroup() }));
+          }
           // #memory: maintain a DISTINCT supplement-routine note so the coach knows the stack.
           // ai_summary.supplement_notes was a read-into-prompt-but-never-written dead column; this
           // gives it a cheap, deterministic writer (append the name only if not already present).
@@ -5807,6 +5959,8 @@ async function executeActions(
         }
         case 'profile_update': {
           const updates: Record<string, unknown> = {};
+          // §6.1 ledger only: a today weigh-in's profiles.weight_kg entry, recorded once the update lands.
+          let profileWeightLedger: { group: string; before: unknown; after: number } | null = null;
           // Core demographics
           if (action.height_cm) updates.height_cm = action.height_cm;
           if (action.weight_kg) {
@@ -5816,18 +5970,49 @@ async function executeActions(
             // from chat-logged weights.
             const wv = Number(action.weight_kg);
             if (Number.isFinite(wv) && wv > 20 && wv < 300) {
-              await supabaseAdmin.from('daily_metrics').upsert(
+              // §6.1 ledger only (this is the COMMON chat weigh-in path): the same body_weight group the
+              // weight_log case records — day row (the w# write) + weight_history + today's profile weight.
+              const pwDmBefore = ledger ? await metricsBefore(actionDate) : undefined;
+              let pwWhBefore: { id?: string; weight_kg?: unknown } | null | undefined;
+              if (ledger) {
+                const wh = await supabaseAdmin.from('weight_history').select('id, weight_kg').eq('user_id', userId).eq('recorded_at', actionDate).maybeSingle();
+                pwWhBefore = wh.error ? undefined : (wh.data as { id?: string; weight_kg?: unknown } | null);
+              }
+              // The error stays unchecked here, exactly as v1 always had it; only the ledger looks at it.
+              const { error: pwDmErr, id: pwDmId } = await upsertDailyMetrics(
                 { user_id: userId, date: actionDate, weight_kg: wv, water_liters: await waterFor(actionDate), synced: true },
-                { onConflict: 'user_id,date' }
               );
+              const pwGroup = ledger && !pwDmErr && pwDmId && pwDmBefore !== undefined ? ledger.nextGroup() : null;
+              if (ledger && pwGroup && pwDmId) {
+                ledger.add(fieldWriteEntry({ op: 'body_weight', table: 'daily_metrics', rowId: pwDmId, forDate: actionDate, group: pwGroup, before: pwDmBefore ?? {}, after: { weight_kg: wv } }));
+                metricsAfter(actionDate, pwDmId, { weight_kg: wv });
+              }
               // #live-S6: weight_history is the canonical measurement store (KVKK export +
               // trend/ETA source). The weight_log handler writes it; this profile_update
               // path (the most common chat weigh-in, "85.5 kiloyum") must mirror it or the
               // weigh-in is missing from the export and any weight_history-based reader.
-              await supabaseAdmin.from('weight_history').upsert(
+              const pwWhWrite = supabaseAdmin.from('weight_history').upsert(
                 { user_id: userId, weight_kg: wv, recorded_at: actionDate },
                 { onConflict: 'user_id,recorded_at' }
               );
+              if (!ledger || !pwGroup) {
+                await pwWhWrite;
+              } else {
+                const { data: whRow, error: whErr } = await pwWhWrite.select('id').maybeSingle();
+                const whId = (pwWhBefore?.id ?? (whRow as { id?: string } | null)?.id) ?? null;
+                if (!whErr && whId && pwWhBefore !== undefined) {
+                  ledger.add(fieldWriteEntry({
+                    op: 'body_weight', table: 'weight_history', rowId: whId, forDate: actionDate, group: pwGroup, isPrimary: false,
+                    before: pwWhBefore?.id ? { weight_kg: pwWhBefore.weight_kg ?? null } : null, after: { weight_kg: wv },
+                  }));
+                }
+                // Today's profile weight is written below with the other profile fields; its entry is
+                // added there, only if that update really landed.
+                if (actionDate === today) {
+                  const pr = await supabaseAdmin.from('profiles').select('weight_kg').eq('id', userId).maybeSingle();
+                  if (!pr.error) profileWeightLedger = { group: pwGroup, before: ((pr.data as { weight_kg?: unknown } | null)?.weight_kg) ?? null, after: wv };
+                }
+              }
               // FIX (audit AI-INT-04): only a CURRENT-day weigh-in is the live weight.
               // A backdated profile_update weight (days_ago set, "geçen hafta 95 kiloydum")
               // must record history but must NOT overwrite profiles.weight_kg or recalc TDEE,
@@ -6004,6 +6189,12 @@ async function executeActions(
             }
             if (pfErr) console.error('[profile_update] update failed:', pfErr.message);
             else {
+              if (ledger && profileWeightLedger && updates.weight_kg !== undefined) {
+                ledger.add(fieldWriteEntry({
+                  op: 'body_weight', table: 'profiles', rowId: userId, forDate: actionDate, group: profileWeightLedger.group, isPrimary: false,
+                  before: { weight_kg: profileWeightLedger.before }, after: { weight_kg: profileWeightLedger.after },
+                }));
+              }
               // FIX (AI-behaviour #1): "Profil güncellendi" told the user NOTHING — which field, what
               // value, and (for weight/goal) that it silently re-cut all four calorie bands. Name what
               // actually changed so the receipt is challengeable.

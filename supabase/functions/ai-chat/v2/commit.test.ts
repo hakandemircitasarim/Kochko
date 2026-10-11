@@ -10,8 +10,8 @@ import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/st
 import { SCHEMA_VERSION, validateDecision } from '../../shared/write-registry/mod.ts';
 import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleDecision, sampleMeal } from '../../shared/write-registry/samples.ts';
 import {
-  executeCommit, exposuresOf, holdPayloadOf, isHoldPayloadV2, mealPayload, metricPayload, pathKeys, planCommit, setAtPath, targetOf,
-  thawHoldArgs, type CommitPlan,
+  executeCommit, exposuresOf, holdPayloadOf, isHoldPayloadV2, isSafetyHold, LEDGER_MISSING_NOTE, mealPayload, metricPayload, pathKeys, planCommit,
+  setAtPath, targetOf, thawHoldArgs, type CommitPlan,
 } from './commit.ts';
 import { turnRefs, validationContext, type TurnInput } from './input.ts';
 import { NOW, USER } from './testing.ts';
@@ -272,6 +272,33 @@ Deno.test('execute hold: v2_hold_open with the payload; a V2Hold with its id and
   assertEquals(result.holds[0].hold_id, 'pw-new');
   assert(result.holds[0].question_tr.endsWith('?'));
   assertEquals(result.receipts.length, 0, 'nothing was written yet: no badge');
+  assertEquals(result.holds[0].hold_class, 'ask', 'the stored class rides on the hold (T7 reads it, never the prose)');
+  assertEquals(isSafetyHold(result.holds[0]), false);
+});
+
+Deno.test('safety holds carry hold_class safety into T7 (allergen removal, KVKK erase); unknown class falls back to the op', async () => {
+  const ti = await seededTurnInput();
+  const msg = 'fıstık alerjim geçti';
+  const { plan } = planFor(ti, sampleDecision({ writes: [{ op: 'constraint_retract', target: 'c1', evidence_quote: msg, note: null }] }), msg);
+  const { result } = await run(plan);
+  assertEquals(result.holds[0].hold_class, 'safety');
+  assert(isSafetyHold(result.holds[0]));
+  const erase = await executeCommit(planFor(ti, sampleDecision({ writes: [w('data_erase_request')] }), SAMPLE_MESSAGES.data_erase_request).plan, fakeCommitPorts());
+  assertEquals(erase.holds[0].hold_class, 'safety');
+  assert(isSafetyHold({ op: 'goal_set', reason_code: 'x', question_tr: 'q?', hold_id: null }), 'a hold built without a class: by op');
+  assert(!isSafetyHold({ op: 'water_log', reason_code: 'x', question_tr: 'q?', hold_id: null }));
+});
+
+Deno.test('an adapter write whose ledger row did not land → receipt says it cannot be undone + a ledger_missing fact for the coach', async () => {
+  const ti = await seededTurnInput();
+  const { plan } = planFor(ti, sampleDecision({ writes: [w('supplement_log')] }), 'whey aldım');
+  const adapter = fakeAdapter(() => ({ ok: true, rows_affected: 1, failure_class: null, ref: null, write_id: null, ledger_missing: true }));
+  const result = await executeCommit(plan, fakeCommitPorts({ adapter }));
+  assertEquals(result.receipts[0].ok, true, 'the write stands');
+  assertStringIncludes(result.receipts[0].user_line ?? '', LEDGER_MISSING_NOTE);
+  assertEquals(result.flags.map((f) => [f.op, f.code]), [['supplement_log', 'ledger_missing']]);
+  const clean = await executeCommit(plan, fakeCommitPorts());
+  assertEquals(clean.flags.filter((f) => f.code === 'ledger_missing'), [], 'a landed ledger row → no flag');
 });
 
 Deno.test('execute record_delete: resolves the target, calls w_record_delete by persistent ref → "Kayıt geri alındı"', async () => {

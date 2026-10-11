@@ -201,15 +201,26 @@ export function buildLiveV2Deps(h: IndexHelpers): V2Deps {
     recordEdSignal: (userId, severity) => recordEDSignal(userId, severity),
     coach: (input) => runCoach(input),
     undo: {
-      async findLastTurnWrite(userId, op) {
-        const { data: last } = await from('chat_messages').select('turn_id').eq('user_id', userId).eq('role', 'assistant')
+      // The last turn = the newest assistant row (v2 turns and, in the mixed period, v1 turns carry a
+      // turn_id; v1-ledger.ts). handler.ts undoTargetOf decides; a read error rejects → v1 answers.
+      async lastTurnLedger(userId) {
+        const { data: last, error } = await from('chat_messages').select('turn_id').eq('user_id', userId).eq('role', 'assistant')
           .order('created_at', { ascending: false }).limit(1).maybeSingle();
+        if (error) throw new Error(`last assistant row: ${error.message}`);
         const turnId = (last as { turn_id?: unknown } | null)?.turn_id;
-        if (typeof turnId !== 'string') return null;
-        const { data } = await from('turn_writes').select('id, ref').eq('user_id', userId).eq('turn_id', turnId).eq('op', op)
-          .eq('is_primary', true).is('undone_at', null).is('reverses', null).order('seq', { ascending: false }).limit(1);
-        const w = rowsOf(data)?.[0];
-        return w && typeof w.id === 'string' ? { write_id: w.id, ref: typeof w.ref === 'string' ? w.ref : null } : null;
+        if (typeof turnId !== 'string') return { turnId: null, rows: [] };
+        const { data, error: e2 } = await from('turn_writes').select('id, ref, op, is_primary, undone_at, reverses')
+          .eq('user_id', userId).eq('turn_id', turnId).order('seq', { ascending: false }).limit(100);
+        if (e2) throw new Error(`turn_writes: ${e2.message}`);
+        const rows = (rowsOf(data) ?? []).filter((r) => typeof r.id === 'string' && typeof r.op === 'string').map((r) => ({
+          id: r.id as string,
+          ref: typeof r.ref === 'string' ? r.ref : null,
+          op: r.op as string,
+          is_primary: r.is_primary === true,
+          undone_at: typeof r.undone_at === 'string' ? r.undone_at : null,
+          reverses: typeof r.reverses === 'string' ? r.reverses : null,
+        }));
+        return { turnId, rows };
       },
     },
     store: {

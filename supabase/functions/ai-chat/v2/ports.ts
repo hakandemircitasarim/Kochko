@@ -18,6 +18,7 @@ import type { ActionReceipt, EnvelopeAction, TurnEnvelope } from '../../shared/c
 import { ensureRequiredSafetyLine, hasRequiredSafetyLine, type SafetyCategory } from '../../shared/safety-tripwires.ts';
 import { replyWarnsAboutExposure } from '../../shared/supplement-allergens.ts';
 import type { CodeNote } from '../../shared/v2-db-types.ts';
+import { isSafetyHold } from './commit.ts';
 import type { CoachInput, CoachReply, CommitResult, TripwireResolution } from './contracts.ts';
 import type { TurnInput } from './input.ts';
 
@@ -71,8 +72,9 @@ function exposureLine(e: CommitResult['exposures'][number]): string {
 
 /**
  * Code's guaranteed lines, appended LAST, never removing anything (§5.2, §7.1, §7.2):
- *   112 / referral on a protective turn · the KVKK erase question and outcome · a safety hold's
- *   question when the reply asks none · the allergen exposure acknowledgement.
+ *   112 / referral on a protective turn · the KVKK erase outcome · every SAFETY hold's question
+ *   (always — never inferred from the reply's prose) and a plain ask hold's question when the reply
+ *   asks nothing · the allergen exposure acknowledgement.
  */
 export const defaultPostcheck: PostcheckPort = (p) => {
   const notes: CodeNote[] = [];
@@ -100,13 +102,19 @@ export const defaultPostcheck: PostcheckPort = (p) => {
       // The erase outcome is a fact the code owns (erase-hold.ts lines), never the model's claim.
       if (r.legacy_type === 'data_erase_confirm' && r.user_line) add('other', r.user_line);
     }
-    const asked = (p.reply?.reply ?? '').includes('?');
+    // §5.2: a SAFETY hold's question (allergen/injury removal, identity, band, goal, KVKK erase) is
+    // code-owned and always appended — a stray "?" elsewhere in the reply must never let a later
+    // "evet" confirm a removal the user was never asked about. Only a plain ASK hold relies on the
+    // coach asking in its own words (template appended when the reply asks nothing at all).
+    const askedSomething = (p.reply?.reply ?? '').includes('?');
     for (const h of commit.holds) {
-      if (h.op === 'account_erase_request') {
+      if (!h.question_tr) continue;
+      if (isSafetyHold(h)) {
         add('safety_hold', h.question_tr);
+        issues.push(`safety_hold_question:${h.op}`);
         continue;
       }
-      if (!asked && h.question_tr) {
+      if (!askedSomething) {
         add('safety_hold', h.question_tr);
         issues.push(`hold_question_appended:${h.op}`);
       }

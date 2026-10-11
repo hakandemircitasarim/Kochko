@@ -193,6 +193,16 @@ Deno.test('a failed insert is ok:false write_failed; a failed LEDGER append stil
   assertEquals(out2.ok, true);
   assertEquals(out2.ref, null);
   assert(logs.some((l) => l.includes('LEDGER APPEND FAILED')));
+  assertEquals(out2.ledger_missing, true, 'an undoable write without its ledger row is reported, never a silent ok');
+});
+
+Deno.test('a failed AUDIT-only ledger append (goal, spine, prefs…) is not reported as an undo loss', async () => {
+  const noLedger = fakeAdapterDb({}, { rpc: (name) => (name === 'v2_ledger_append' ? { data: null, error: { message: 'boom' } } : undefined) });
+  const out = await createAdapter({ db: noLedger, helpers: fakeHelpers() }).apply(await req(w('constraint_add'), 'fıstık alerjim var'));
+  assertEquals(out.ok, true);
+  assertEquals(out.ledger_missing, undefined, 'audit-only entries were never undoable by ref');
+  const ok = await createAdapter({ db: fakeAdapterDb(), helpers: fakeHelpers() }).apply(await req(w('workout_log')));
+  assertEquals(ok.ledger_missing, undefined, 'a landed ledger row carries no flag');
 });
 
 Deno.test('correction on an adapter op: undo the old record first; a failed new write restores it', async () => {

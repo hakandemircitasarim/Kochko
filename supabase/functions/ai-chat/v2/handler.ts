@@ -5,7 +5,10 @@
  *       reservation), injected so nothing is forked; anything v2 does not own yet (photo, voice,
  *       plan chips, the approval button, an unreadable request) goes to v1 BEFORE any side effect.
  *   T1  fixed client protocols (exact equality, no language parsing): the 10-second undo button
- *       literal → the last turn's write of that type is undone through the ledger, no LLM.
+ *       literal → the last turn's write of that type is undone through the ledger, no LLM. A last
+ *       turn the ledger cannot answer for (pre-ledger v1 history, a failed v1 ledger append) goes to
+ *       v1's handleUndo before any side effect (undoTargetOf) — never "nothing to undo" for a write
+ *       that is still there.
  *   T2  safety tripwires (shared/safety-tripwires.ts): an explicit hit → today's canned reply at
  *       once; ambiguous hits → facts for Stage A, resolved by the §7.2 table after it.
  *   T3  loadTurnInput (input.ts).
@@ -38,6 +41,7 @@ import type { CoachInput, CoachReply, CommitResult, TripwireResolution, Understa
 import { constraintLine, profilePhrases, stageAView, turnRefs, validationContext, type TurnInput } from './input.ts';
 import { defaultEnvelope, defaultPostcheck, protectiveCategory, type CoachPort, type EnvelopePort, type PostcheckPort } from './ports.ts';
 import { stageASafetyOutcome } from './shadow.ts';
+import { enforceSuggestionInvariant, SUGGESTION_UNVERIFIED_LINE, suggestionFallbackLine, suggestionSafetyOf } from './suggestions.ts';
 import { buildUnderstandRequest, type UnderstandOutcome, type UnderstandRequest } from './understand.ts';
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -55,6 +59,10 @@ export const STAGE_A_FAILED_LINE = 'Mesajını şu an tam işleyemedim, bu yüzd
 /** Stage B failed after the writes: say what was stored, honestly, and nothing more. */
 export const STAGE_B_FAILED_LINE = 'Şu an cevabımı tamamlayamadım; yukarıdakiler kaydedildi. Birazdan devam edelim mi?';
 export const STAGE_B_FAILED_NOTHING_LINE = 'Şu an cevabımı tamamlayamadım ve bu mesajdan bir şey kaydetmedim. Birkaç saniye sonra tekrar yazar mısın?';
+/** Stage B failed on a turn that only opened holds: nothing is saved yet — the question below decides. */
+export const STAGE_B_FAILED_HELD_LINE = 'Şu an cevabımı tamamlayamadım; bu mesajdan henüz bir şey kaydetmedim — önce aşağıdaki soruyu netleştirelim.';
+/** Stage B failed on a turn that wrote AND opened holds. */
+export const STAGE_B_FAILED_WRITTEN_HELD_LINE = 'Şu an cevabımı tamamlayamadım; yukarıdakiler kaydedildi, kalanı için aşağıdaki soruyu netleştirelim.';
 export const NOTHING_TO_UNDO_LINE = 'Geri alınacak bir kayıt bulunamadı.';
 export const BUSY_LINE = 'Mesajını işliyorum, birazdan hazır olacak — bir saniye sonra tekrar dener misin?';
 
@@ -109,9 +117,23 @@ export interface StorePort {
   linkTurnMessage(userId: string, turnId: string, chatMessageId: string): Promise<void>;
 }
 
+/** One turn_writes row of the last turn, as the undo lookup needs it. */
+export interface LastTurnLedgerRow {
+  id: string;
+  ref: string | null;
+  op: string;
+  is_primary: boolean;
+  undone_at: string | null;
+  reverses: string | null;
+}
+
 export interface UndoPort {
-  /** The newest live primary ledger write of `op` from the user's LAST turn (null = nothing to undo). */
-  findLastTurnWrite(userId: string, op: string): Promise<{ write_id: string; ref: string | null } | null>;
+  /**
+   * The user's LAST turn (newest assistant chat row): its turn_id (null = a turn the ledger never
+   * saw — pre-ledger v1 history) and that turn's ledger rows, newest first. Rejects on a read error
+   * (the handler then hands the button to v1, before any side effect).
+   */
+  lastTurnLedger(userId: string): Promise<{ turnId: string | null; rows: LastTurnLedgerRow[] }>;
 }
 
 export interface NudgePort {
@@ -202,6 +224,28 @@ export function v1OnlyReason(body: ChatBody): string | null {
   if (typeof body.plan_type === 'string' && body.plan_type) return 'plan_type';
   if (typeof body.task_mode_hint === 'string' && PLAN_HINTS.has(body.task_mode_hint)) return 'plan_hint';
   return null;
+}
+
+/**
+ * T1 undo button → what the ledger can say about the last turn's write of `op`:
+ *   write          a live primary write of that op → undo it by write_id (its whole group);
+ *   already_undone the turn wrote that op and every such write is already undone → nothing_to_undo;
+ *   not_in_ledger  no turn_id, or the turn has no ledger row of that op (pre-ledger v1 history, a v1
+ *                  write whose best-effort ledger append failed, a turn that wrote something else) →
+ *                  the ledger cannot answer, so v1's handleUndo answers exactly as before (§6.1
+ *                  mixed period: v2 never regresses below v1 here).
+ */
+export type UndoTarget =
+  | { kind: 'write'; write_id: string; ref: string | null }
+  | { kind: 'already_undone' }
+  | { kind: 'not_in_ledger' };
+
+export function undoTargetOf(last: { turnId: string | null; rows: readonly LastTurnLedgerRow[] }, op: string): UndoTarget {
+  if (!last.turnId) return { kind: 'not_in_ledger' };
+  const ofOp = last.rows.filter((r) => r.op === op && r.is_primary && !r.reverses);
+  if (ofOp.length === 0) return { kind: 'not_in_ledger' };
+  const live = ofOp.find((r) => !r.undone_at);
+  return live ? { kind: 'write', write_id: live.id, ref: live.ref } : { kind: 'already_undone' };
 }
 
 /** The ONE repair call (§3.2 T5): same system prefix (cache-warm), the rejected parts as a user note. */
@@ -397,7 +441,7 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
 
   // ── T1 undo button literal ──
   const undo = UNDO_LITERALS[message.trim()];
-  if (undo) return { kind: 'response', response: await undoTurn(tc, undo) };
+  if (undo) return await undoTurn(tc, undo);
 
   // ── T3 TurnInput (read BEFORE the reservation inserts this turn's user row) ──
   const now = deps.now();
@@ -408,6 +452,14 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   // ── T0 quota reservation (inserts the user row; the record-parse ceiling caps cost) ──
   const reservation = await deps.quota.reserve(userId, message);
   if (!reservation.allowed) {
+    // §7.2 "belirsiz = varsayılan koruyucu": a live safety trigger is never answered with the
+    // rate-limit text (v1 answers its safety early returns before its rate limit too). At the cap
+    // there is no Stage A to read the trigger, so it resolves exactly like an unread trigger:
+    // today's canned reply, no LLM call, quota-exempt.
+    const atCap = resolveTripwires({ scan, stageA: null });
+    if (atCap.kind === 'fallback') {
+      return { kind: 'response', response: await failClosedTurn(tc, atCap, null, [], { capMessage: reservation.message ?? '' }) };
+    }
     await releaseJournal(tc);
     return { kind: 'response', response: deps.respond({ message: reservation.message, actions: [], task_mode: 'rate_limited', rate_limited: true, remaining: 0 }) };
   }
@@ -492,7 +544,10 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   }
 
   // ── quota class from what was written; a capped conversation turn stops before Stage B ──
-  const quotaClass = quotaClassOf(commit);
+  // A protective turn (ambiguous trigger read as real, or a Stage A positive) is exempt from the
+  // conversation cap: the user at the cap gets the protective reply, never the rate-limit text.
+  const writtenClass = quotaClassOf(commit);
+  const quotaClass: QuotaClass = writtenClass === 'conversation' && tripwire.kind === 'protective' ? 'exempt' : writtenClass;
   let remaining: number | undefined = -1;
   if (quotaClass === 'conversation') {
     const cap = await deps.quota.conversationCap(userId, reservedId !== null);
@@ -524,19 +579,46 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   };
   let reply: CoachReply | null = null;
   const coachStarted = Date.now();
+  // ONE Stage B deadline for the turn (coach + the suggestion regen): on a protective turn §7.2's
+  // 6 s covers both, then the canned reply goes out.
+  const stageBBudget = tripwire.kind === 'protective' ? STAGE_B_CRISIS_TIMEOUT_MS : STAGE_B_TIMEOUT_MS;
+  const callCoach = async (input: CoachInput, ms: number): Promise<CoachReply | null> => {
+    const r = await withTimeout(deps.coach(input), ms, 'stage_b');
+    return r && typeof r.reply === 'string' && r.reply.trim() !== '' ? r : null;
+  };
   try {
-    reply = await withTimeout(deps.coach(coachInput), tripwire.kind === 'protective' ? STAGE_B_CRISIS_TIMEOUT_MS : STAGE_B_TIMEOUT_MS, 'stage_b');
-    if (!reply || typeof reply.reply !== 'string' || reply.reply.trim() === '') reply = null;
+    reply = await callCoach(coachInput, stageBBudget);
   } catch (e) {
     deps.log('[v2_turn] Stage B failed', { error: errMsg(e), turn_id: turnId });
     reply = null;
+  }
+  // ── T7 §7.1 suggestion invariant, owned HERE whatever the coach port does inside: tags ∩ severe
+  // allergens / injured regions = ∅; one regen naming the excluded items; then the safe fallback. ──
+  const gate = await enforceSuggestionInvariant({
+    reply, input: coachInput, safety: suggestionSafetyOf(ti, validation),
+    remainingMs: () => stageBBudget - (Date.now() - coachStarted),
+    regen: (input, ms) => callCoach(input, ms),
+  });
+  let suggestionFallback: string | null = null;
+  if (gate.kind === 'pass') {
+    reply = gate.reply;
+  } else {
+    deps.log('[v2_turn] suggestion invariant → fallback', { turn_id: turnId, reason: gate.reason, issues: gate.issues });
+    reply = null;
+    // A protective turn falls back to its canned safety reply (below), never to a coaching line.
+    if (tripwire.kind !== 'protective') {
+      suggestionFallback = gate.reason === 'unverified' ? SUGGESTION_UNVERIFIED_LINE : suggestionFallbackLine(ti.last_assistant?.content);
+    }
   }
   deps.mark?.('stage_b');
 
   let baseText: string;
   if (reply) baseText = reply.reply;
   else if (tripwire.kind === 'protective') baseText = tripwire.fallback.message;
-  else baseText = honestFallbackText(commit);
+  else if (suggestionFallback) {
+    const facts = receiptFactLines(commit);
+    baseText = [...facts.written, ...facts.failed, suggestionFallback].join('\n');
+  } else baseText = honestFallbackText(commit);
 
   // ── T7 post-checks (append-only) ──
   const post = await (deps.postcheck ?? defaultPostcheck)({ reply, text: baseText, commit, tripwire, turnInput: ti, message });
@@ -556,7 +638,7 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   await logRows(tc, [
     ...stageARows,
     commitRow(tc, commit, validation),
-    coachRow(tc, reply, tripwire, commit, taskMode, Date.now() - coachStarted, post.issues),
+    coachRow(tc, reply, tripwire, commit, taskMode, Date.now() - coachStarted, [...gate.issues, ...post.issues]),
   ]);
   if (tc.idemKey) await deps.journal.commit(userId, tc.idemKey, envelope);
 
@@ -580,7 +662,9 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
  */
 export async function honestCrashResponse(state: TurnState, deps: Pick<V2Deps, 'respond' | 'journal' | 'log'>): Promise<Response> {
   const commit = state.commit;
-  const message = commit ? honestFallbackText(commit) : STAGE_B_FAILED_NOTHING_LINE;
+  // No T7 ran on this path: the open holds' questions are appended here (the honest line points at them).
+  const questions = (commit?.holds ?? []).map((h) => h.question_tr).filter((q) => !!q);
+  const message = commit ? [honestFallbackText(commit), ...questions].join('\n\n') : STAGE_B_FAILED_NOTHING_LINE;
   const envelope: TurnEnvelope = {
     message,
     actions: (commit?.receipts ?? []).filter((r) => r.ok).map((r) => ({ type: r.legacy_type, feedback: r.user_line })),
@@ -595,13 +679,37 @@ export async function honestCrashResponse(state: TurnState, deps: Pick<V2Deps, '
   return deps.respond(envelope);
 }
 
-/** Stage B failed after the commit: the receipts are the truth, said plainly. */
-export function honestFallbackText(commit: CommitResult): string {
+/**
+ * The commit's facts as Turkish lines: what was written, what failed, and every reject no failed
+ * receipt already explains (a hold that could not be stored has no receipt — it must not vanish).
+ */
+export function receiptFactLines(commit: CommitResult): { written: string[]; failed: string[] } {
   const written = commit.receipts.filter((r) => r.ok && r.user_line).map((r) => r.user_line as string);
-  const failed = commit.receipts.filter((r) => !r.ok && r.user_line).map((r) => r.user_line as string);
-  const parts = [...written, ...failed];
-  if (written.length === 0 && commit.holds.length === 0) return [...failed, STAGE_B_FAILED_NOTHING_LINE].join('\n');
-  return [...parts, STAGE_B_FAILED_LINE].join('\n');
+  const failedReceipts = commit.receipts.filter((r) => !r.ok);
+  const failed = failedReceipts.filter((r) => r.user_line).map((r) => r.user_line as string);
+  const unmatched = [...failedReceipts];
+  for (const rj of commit.rejects) {
+    const i = unmatched.findIndex((r) => r.action_type === rj.op || r.legacy_type === rj.op);
+    if (i >= 0) {
+      unmatched.splice(i, 1);
+      continue;
+    }
+    failed.push(`Kaydedilmedi: ${rj.reason_tr}`);
+  }
+  return { written, failed };
+}
+
+/**
+ * Stage B failed after the commit: the receipts are the truth, said plainly. "Kaydedildi" only when
+ * something WAS written; a holds-only turn says nothing is saved yet and points at its question.
+ */
+export function honestFallbackText(commit: CommitResult): string {
+  const { written, failed } = receiptFactLines(commit);
+  const held = commit.holds.length > 0;
+  const tail = written.length > 0
+    ? (held ? STAGE_B_FAILED_WRITTEN_HELD_LINE : STAGE_B_FAILED_LINE)
+    : (held ? STAGE_B_FAILED_HELD_LINE : STAGE_B_FAILED_NOTHING_LINE);
+  return [...written, ...failed, tail].join('\n');
 }
 
 async function releaseJournal(tc: TurnCtx): Promise<void> {
@@ -683,12 +791,19 @@ async function salvageFacts(tc: TurnCtx, scan: TripwireScan): Promise<void> {
 
 // ─── T4 fail-closed path ─────────────────────────────────────────────────────────────────────────
 
-async function failClosedTurn(tc: TurnCtx, t: TripwireResolution, reservedId: string | null, rows: Record<string, unknown>[]): Promise<Response> {
+async function failClosedTurn(
+  tc: TurnCtx, t: TripwireResolution, reservedId: string | null, rows: Record<string, unknown>[],
+  opts: { capMessage?: string } = {},
+): Promise<Response> {
   const { deps } = tc;
+  // At the daily cap (opts.capMessage): the turn was never processed — the cap text replaces the
+  // "could not process" line, and the safety reply is quota-exempt.
+  const atCap = opts.capMessage !== undefined;
+  const lead = atCap ? opts.capMessage!.trim() : STAGE_A_FAILED_LINE;
   let text: string;
   let taskMode = 'coaching';
   if (t.kind === 'fallback') {
-    text = t.mode === 'replace' ? t.response.message : `${STAGE_A_FAILED_LINE}\n\n${t.response.message}`;
+    text = t.mode === 'replace' || !lead ? t.response.message : `${lead}\n\n${t.response.message}`;
     taskMode = t.response.task_mode;
     if (t.ed_signal) {
       try { await deps.recordEdSignal(tc.userId, t.ed_signal); } catch (e) { deps.log('[v2_turn] recordEdSignal failed', { error: errMsg(e) }); }
@@ -697,12 +812,12 @@ async function failClosedTurn(tc: TurnCtx, t: TripwireResolution, reservedId: st
     text = STAGE_A_FAILED_LINE;
   }
   const notes: CodeNote[] = [{ kind: t.kind === 'fallback' ? (t.category === 'ed' ? 'referral' : 'emergency') : 'other', text }];
-  const id = await persist(tc, { assistantMessage: text, taskMode, quotaClass: 'conversation', codeNotes: notes, receipts: [], reservedId, model: null });
+  const id = await persist(tc, { assistantMessage: text, taskMode, quotaClass: atCap ? 'exempt' : 'conversation', codeNotes: notes, receipts: [], reservedId, model: null });
   if (id === 'SESSION_NOT_FOUND') return deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404);
   await logRows(tc, [...rows, {
     ...baseRow(tc, 'tripwire', V2_FUNCTION_NAME),
     system_mode: taskMode, model_requested: 'none', model_served: 'none',
-    finish_reason: t.kind === 'fallback' ? `fallback:${t.category}` : 'stage_a_failed',
+    finish_reason: t.kind === 'fallback' ? `${atCap ? 'cap_protective' : 'fallback'}:${t.category}` : 'stage_a_failed',
     guard_verdict: guardVerdict(t, null),
     issues: [{ code: 'tripwire_outcome', path: null, outcome: null, value: t.kind, stage_a: t.log.stage_a }],
   }]);
@@ -713,11 +828,24 @@ async function failClosedTurn(tc: TurnCtx, t: TripwireResolution, reservedId: st
 
 // ─── T1 undo fast path ───────────────────────────────────────────────────────────────────────────
 
-async function undoTurn(tc: TurnCtx, undo: { op: string; label: string }): Promise<Response> {
+async function undoTurn(tc: TurnCtx, undo: { op: string; label: string }): Promise<V2Outcome> {
   const { deps } = tc;
   let receipt: ActionReceipt;
   let line: string;
-  const target = await deps.undo.findLastTurnWrite(tc.userId, undo.op);
+  let found: UndoTarget;
+  try {
+    found = undoTargetOf(await deps.undo.lastTurnLedger(tc.userId), undo.op);
+  } catch (e) {
+    deps.log('[v2_turn] undo lookup failed → v1', { error: errMsg(e), turn_id: tc.turnId });
+    found = { kind: 'not_in_ledger' };
+  }
+  if (found.kind === 'not_in_ledger') {
+    // Nothing written, nothing persisted yet: the route releases the journal claim and v1's
+    // handleUndo answers the ORIGINAL request, exactly as it does for every v1 user.
+    deps.log('[v2_turn] undo: last turn not in the ledger → v1 handleUndo', { op: undo.op, turn_id: tc.turnId });
+    return { kind: 'fallback_v1', reason: 'undo_not_in_ledger' };
+  }
+  const target = found.kind === 'write' ? found : null;
   if (!target) {
     line = NOTHING_TO_UNDO_LINE;
     receipt = { action_type: 'undo', ok: false, rows_affected: 0, user_line: line, failure_class: 'nothing_to_undo' };
@@ -751,7 +879,7 @@ async function undoTurn(tc: TurnCtx, undo: { op: string; label: string }): Promi
   }
   const v2Receipt: V2Receipt = { ...receipt, ref: target?.ref ?? null, write_id: target?.write_id ?? null, legacy_type: 'undo' };
   const id = await persist(tc, { assistantMessage: line, taskMode: 'repair', quotaClass: 'exempt', codeNotes: null, receipts: [v2Receipt], reservedId: null, model: null });
-  if (id === 'SESSION_NOT_FOUND') return deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404);
+  if (id === 'SESSION_NOT_FOUND') return { kind: 'response', response: deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404) };
   await logRows(tc, [{
     ...baseRow(tc, 'undo_fast', V2_FUNCTION_NAME),
     system_mode: 'repair', model_requested: 'none', model_served: 'none', finish_reason: receipt.ok ? 'undone' : (receipt.failure_class ?? 'failed'),
@@ -765,7 +893,7 @@ async function undoTurn(tc: TurnCtx, undo: { op: string; label: string }): Promi
     assistant_message_id: id,
   };
   if (tc.idemKey) await deps.journal.commit(tc.userId, tc.idemKey, envelope);
-  return deps.respond(envelope);
+  return { kind: 'response', response: deps.respond(envelope) };
 }
 
 // ─── background memory (Stage B memory[]) ────────────────────────────────────────────────────────

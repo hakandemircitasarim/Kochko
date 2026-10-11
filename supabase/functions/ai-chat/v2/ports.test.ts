@@ -44,6 +44,25 @@ Deno.test('postcheck: a hold whose question the coach did not ask → the questi
   assertEquals(asked.code_notes, []);
 });
 
+Deno.test('postcheck: a SAFETY hold’s question is appended even when the reply asks something unrelated (no prose heuristic)', async () => {
+  // Review (Faz 3, medium): "Bugün nasılsın?" used to suppress the allergen-removal question; a stray
+  // "evet" next turn could then deactivate the allergy without the user ever being asked.
+  const retract = { op: 'constraint_retract', reason_code: 'iki_adimli_kaldirma', question_tr: 'Fıstık alerjini kayıtlardan kaldırmamı onaylıyor musun?', hold_id: 'pw-r', hold_class: 'safety' as const };
+  const out = await defaultPostcheck({ reply: coachReply('Anladım. Bugün nasılsın?'), text: 'Anladım. Bugün nasılsın?', commit: commitOf({ holds: [retract] }), tripwire: normal, turnInput: null, message: 'x' });
+  assert(out.text.startsWith('Anladım. Bugün nasılsın?'), 'nothing removed');
+  assert(out.text.endsWith(retract.question_tr));
+  assertEquals(out.code_notes.map((n) => n.kind), ['safety_hold']);
+  // classified by op when the class is absent (a hold built elsewhere), and an identity profile hold by its class
+  const goal = { op: 'goal_set', reason_code: 'hedef_degisiyor', question_tr: 'Hedefini kilo vermeye çevireyim mi?', hold_id: 'pw-g' };
+  const identity = { op: 'profile_set', reason_code: 'kimlik_degisimi', question_tr: 'Doğum yılını 1990 olarak düzelteyim mi?', hold_id: 'pw-p', hold_class: 'safety' as const };
+  const both = await defaultPostcheck({ reply: coachReply('Kaç kalori aldın?'), text: 'Kaç kalori aldın?', commit: commitOf({ holds: [goal, identity] }), tripwire: normal, turnInput: null, message: 'x' });
+  assert(both.text.includes(goal.question_tr) && both.text.endsWith(identity.question_tr));
+  // a plain ASK hold still relies on the coach asking in its own words
+  const ask = { op: 'water_log', reason_code: 'tek_seferde_cok', question_tr: 'Tek seferde mi içtin?', hold_id: 'pw', hold_class: 'ask' as const };
+  const asked = await defaultPostcheck({ reply: coachReply('2 litreyi tek seferde mi içtin?'), text: '2 litreyi tek seferde mi içtin?', commit: commitOf({ holds: [ask] }), tripwire: normal, turnInput: null, message: 'x' });
+  assertEquals(asked.code_notes, []);
+});
+
 Deno.test('postcheck: the KVKK erase question and outcome are code-owned lines, always appended', async () => {
   const erase = { op: 'account_erase_request', reason_code: 'kvkk_onay', question_tr: 'Emin olmak için soruyorum: …?', hold_id: 'pw' };
   const out = await defaultPostcheck({ reply: coachReply('Tamam, anladım?'), text: 'Tamam, anladım?', commit: commitOf({ holds: [erase] }), tripwire: normal, turnInput: null, message: 'x' });

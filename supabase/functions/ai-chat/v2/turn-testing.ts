@@ -6,7 +6,7 @@
 import type { AdapterDb, AdapterHelpers, DbRows } from './adapter.ts';
 import type { AdapterOutcome, AdapterPort, AdapterRequest, CommitPorts, ResolvedTarget, RpcResult, TargetSpec } from './commit.ts';
 import type { CoachInput, CoachReply } from './contracts.ts';
-import type { ClaimResult, PersistTurnInput, V2Deps } from './handler.ts';
+import type { ClaimResult, LastTurnLedgerRow, PersistTurnInput, V2Deps } from './handler.ts';
 import { loadTurnInput, type TurnInput } from './input.ts';
 import { fakeTurnInputDb, NOW, seedTables, USER } from './testing.ts';
 import type { UnderstandOutcome, UnderstandRequest } from './understand.ts';
@@ -256,7 +256,8 @@ export interface FakeDepsOptions {
   claim?: ClaimResult;
   reserveAllowed?: boolean;
   capAllowed?: boolean;
-  lastTurnWrite?: { write_id: string; ref: string | null } | null;
+  /** What UndoPort.lastTurnLedger answers ('error' = the read fails). Default: a turn the ledger never saw. */
+  lastTurn?: { turnId: string | null; rows: LastTurnLedgerRow[] } | 'error';
   persistThrows?: string;
   sideEffectsClaim?: boolean;
 }
@@ -303,7 +304,11 @@ export function fakeDeps(o: FakeDepsOptions = {}): { deps: V2Deps; rec: Recorder
     recordEdSignal: (_u, s) => { rec.edSignals.push(s); return Promise.resolve('watch'); },
     coach: (input) => { rec.coachInputs.push(input); return o.coach ? o.coach(input) : Promise.resolve(coachReply('Afiyet olsun! Akşam için protein ağırlıklı bir şey düşünelim mi?')); },
     undo: {
-      findLastTurnWrite: (_u, op) => { rec.undoLookups.push(op); return Promise.resolve(o.lastTurnWrite === undefined ? null : o.lastTurnWrite); },
+      lastTurnLedger: (u) => {
+        rec.undoLookups.push(u);
+        if (o.lastTurn === 'error') return Promise.reject(new Error('read failed'));
+        return Promise.resolve(o.lastTurn ?? { turnId: null, rows: [] });
+      },
     },
     store: {
       persist: (p) => {
@@ -318,6 +323,11 @@ export function fakeDeps(o: FakeDepsOptions = {}): { deps: V2Deps; rec: Recorder
     rolloutStamp: () => 'v2_turn=on',
   };
   return { deps, rec, commit };
+}
+
+/** One ledger row of the last turn (live primary write unless overridden). */
+export function ledgerRow(op: string, id: string, over: Partial<LastTurnLedgerRow> = {}): LastTurnLedgerRow {
+  return { id, ref: null, op, is_primary: true, undone_at: null, reverses: null, ...over };
 }
 
 /** A POST like the client's sendMessageToSession. */

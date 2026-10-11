@@ -41,6 +41,12 @@ export interface V2Hold {
   reason_code: string;
   question_tr: string;
   hold_id: string | null;
+  /**
+   * pending_writes.hold_class (109). 'safety' (allergen/injury removal, identity, band change, goal,
+   * KVKK erase — §5.2 güvenlik bekletmeleri): code appends the question unconditionally; it never
+   * depends on what the coach's prose looks like. Absent → classify by op (isSafetyHold).
+   */
+  hold_class?: 'ask' | 'safety';
 }
 
 /** REJECT (or a writer failure): nothing written; the coach says why, honestly. */

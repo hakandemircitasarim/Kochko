@@ -14,12 +14,14 @@ import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleDecision, sampleMeal } from '../.
 import { scanTripwires } from '../../shared/safety-tripwires.ts';
 import { validateDecision } from '../../shared/write-registry/mod.ts';
 import {
-  actionsExecutedOf, BUSY_LINE, buildRepairRequest, handleV2Turn, honestCrashResponse, newTurnState, NOTHING_TO_UNDO_LINE, quotaClassOf,
-  STAGE_A_FAILED_LINE, STAGE_B_FAILED_LINE, taskModeOf, userStateLines, v1OnlyReason, type TurnState,
+  actionsExecutedOf, BUSY_LINE, buildRepairRequest, handleV2Turn, honestCrashResponse, honestFallbackText, newTurnState, NOTHING_TO_UNDO_LINE, quotaClassOf,
+  receiptFactLines, STAGE_A_FAILED_LINE, STAGE_B_FAILED_HELD_LINE, STAGE_B_FAILED_LINE, STAGE_B_FAILED_NOTHING_LINE, STAGE_B_FAILED_WRITTEN_HELD_LINE,
+  taskModeOf, undoTargetOf, userStateLines, v1OnlyReason, type TurnState,
 } from './handler.ts';
+import { SUGGESTION_FALLBACK_LINES, SUGGESTION_UNVERIFIED_LINE } from './suggestions.ts';
 import { turnRefs, validationContext } from './input.ts';
 import { NOW, OTHER, USER } from './testing.ts';
-import { chatRequest, coachReply, failedOutcome, fakeAdapter, fakeCommitPorts, fakeDeps, parsedOutcome, seededTurnInput } from './turn-testing.ts';
+import { chatRequest, coachReply, failedOutcome, fakeAdapter, fakeCommitPorts, fakeDeps, ledgerRow, parsedOutcome, seededTurnInput } from './turn-testing.ts';
 import type { CommitResult } from './contracts.ts';
 import type { TurnEnvelope } from '../../shared/contracts/turn-envelope.ts';
 
@@ -339,8 +341,8 @@ Deno.test('a stale session_id answers 404 like v1 (SESSION_NOT_FOUND)', async ()
 // ─── T1 undo button ──────────────────────────────────────────────────────────────────────────────
 
 Deno.test('undo button literal → the last turn’s meal write undone by write_id, no LLM, typed undo receipt', async () => {
-  const t = await turn({ message: 'Son öğün kaydını geri al', idempotency_key: 'k8' }, { lastTurnWrite: { write_id: 'wid-77', ref: 'm40' } });
-  assertEquals(t.rec.undoLookups, ['meal_log']);
+  const t = await turn({ message: 'Son öğün kaydını geri al', idempotency_key: 'k8' }, { lastTurn: { turnId: 'turn-prev', rows: [ledgerRow('water_log', 'wid-w'), ledgerRow('meal_log', 'wid-77', { ref: 'm40' })] } });
+  assertEquals(t.rec.undoLookups, [USER]);
   assertEquals(t.commit.rpcCalls.map((c) => c.name), ['w_record_delete']);
   assertEquals(t.commit.rpcCalls[0].args.p_target, { write_id: 'wid-77' });
   assertEquals(t.rec.understandReqs.length, 0);
@@ -354,17 +356,60 @@ Deno.test('undo button literal → the last turn’s meal write undone by write_
   assertEquals(t.rec.journal.map((j) => j.kind), ['claim', 'commit']);
 });
 
-Deno.test('undo with nothing in the last turn → nothing_to_undo (the client shows no extra alert)', async () => {
-  const t = await turn({ message: 'Son antrenman kaydını geri al' }, { lastTurnWrite: null });
+Deno.test('undo when the last turn’s write of that type is already undone → nothing_to_undo (the client shows no extra alert)', async () => {
+  const t = await turn({ message: 'Son antrenman kaydını geri al' }, { lastTurn: { turnId: 'turn-prev', rows: [ledgerRow('workout_log', 'wid-t', { undone_at: '2026-10-08T09:00:00Z' })] } });
   assertEquals(t.commit.rpcCalls.length, 0);
   assertEquals(t.env!.message, NOTHING_TO_UNDO_LINE);
   assertEquals(t.env!.receipts?.[0].failure_class, 'nothing_to_undo');
   assertEquals(t.env!.actions, []);
 });
 
+// HIGH (Faz 3 review): photo / voice / plan-fallback turns are answered by v1. A last turn the ledger
+// cannot answer for must NOT get "nothing to undo" while the meal stays logged: v1's handleUndo answers.
+for (const [label, lastTurn] of [
+  ['pre-ledger v1 turn (no turn_id on the chat row)', { turnId: null, rows: [] }],
+  ['v1 turn whose best-effort ledger append failed (turn_id, no rows)', { turnId: 'turn-v1', rows: [] }],
+  ['turn that wrote another op only', { turnId: 'turn-prev', rows: [ledgerRow('water_log', 'wid-w')] }],
+  ['the previous undo turn (only record_delete rows)', { turnId: 'turn-undo', rows: [ledgerRow('record_delete', 'wid-r', { reverses: 'wid-77' })] }],
+] as const) {
+  Deno.test(`undo button, ${label} → v1 handleUndo answers (fallback before any side effect)`, async () => {
+    const t = await turn({ message: 'Son öğün kaydını geri al', idempotency_key: 'k10' }, { lastTurn: structuredClone(lastTurn) as never });
+    assertEquals(t.out.kind, 'fallback_v1');
+    if (t.out.kind === 'fallback_v1') assertEquals(t.out.reason, 'undo_not_in_ledger');
+    assertEquals(t.commit.rpcCalls.length, 0, 'nothing undone by v2');
+    assertEquals(t.rec.persisted.length, 0, 'nothing stored: v1 stores its own undo turn');
+    assertEquals(t.state.sideEffects, false, 'the route may still hand the ORIGINAL request to v1');
+    for (const job of t.state.cleanup) await job();
+    assertEquals(t.rec.journal.map((j) => j.kind), ['claim', 'fail'], 'the journal claim is released for v1');
+  });
+}
+
+Deno.test('undo button: a failed ledger read → v1 handleUndo answers (never a guess)', async () => {
+  const t = await turn({ message: 'Son supplement kaydını geri al' }, { lastTurn: 'error' });
+  assertEquals(t.out.kind, 'fallback_v1');
+  assertEquals(t.commit.rpcCalls.length, 0);
+});
+
+Deno.test('undo button after a LEDGERED v1 turn (photo meal, pipeline v1) → undone by v2 through the ledger', async () => {
+  // v1-ledger.ts wrote the photo meal under the v1 turn's turn_id (storeMessages stamped the chat row).
+  const t = await turn({ message: 'Son öğün kaydını geri al' }, { lastTurn: { turnId: 'turn-v1-photo', rows: [ledgerRow('meal_log', 'wid-v1-meal', { ref: 'm12' })] } });
+  assertEquals(t.out.kind, 'response');
+  assertEquals(t.commit.rpcCalls.map((c) => c.name), ['w_record_delete']);
+  assertEquals(t.commit.rpcCalls[0].args.p_target, { write_id: 'wid-v1-meal' });
+  assertEquals(t.env!.receipts?.[0].ok, true);
+});
+
+Deno.test('undoTargetOf: the ledger answers only for a turn it knows wrote that op', () => {
+  assertEquals(undoTargetOf({ turnId: null, rows: [] }, 'meal_log'), { kind: 'not_in_ledger' });
+  assertEquals(undoTargetOf({ turnId: 't', rows: [ledgerRow('meal_log', 'a', { is_primary: false })] }, 'meal_log'), { kind: 'not_in_ledger' }, 'a side effect is not the write');
+  assertEquals(undoTargetOf({ turnId: 't', rows: [ledgerRow('meal_log', 'b', { ref: 'm2' }), ledgerRow('meal_log', 'a', { ref: 'm1' })] }, 'meal_log'), { kind: 'write', write_id: 'b', ref: 'm2' }, 'newest live write first');
+  assertEquals(undoTargetOf({ turnId: 't', rows: [ledgerRow('meal_log', 'b', { undone_at: 'x' }), ledgerRow('meal_log', 'a')] }, 'meal_log'), { kind: 'write', write_id: 'a', ref: null });
+  assertEquals(undoTargetOf({ turnId: 't', rows: [ledgerRow('supplement_log', 'a', { undone_at: 'x' })] }, 'supplement_log'), { kind: 'already_undone' });
+});
+
 Deno.test('undo refused by the ledger (later_write) → honest reason, ok:false', async () => {
   const ports = fakeCommitPorts({ rpc: (name) => (name === 'w_record_delete' ? { ok: false, op: 'record_delete', failure_class: 'later_write', detail: {} } : undefined) });
-  const t = await turn({ message: 'Son supplement kaydını geri al' }, { lastTurnWrite: { write_id: 'wid-1', ref: 's3' }, commit: ports });
+  const t = await turn({ message: 'Son supplement kaydını geri al' }, { lastTurn: { turnId: 'turn-prev', rows: [ledgerRow('supplement_log', 'wid-1', { ref: 's3' })] }, commit: ports });
   assertEquals(t.env!.receipts?.[0].ok, false);
   assertEquals(t.env!.receipts?.[0].failure_class, 'later_write');
   assertStringIncludes(t.env!.message, 'Kaydı geri alamadım');
@@ -374,6 +419,124 @@ Deno.test('only the exact literal is the button: a typed "son öğünü geri al"
   const t = await turn({ message: 'son öğünü geri al' }, { stageA: parsed(sampleDecision()) });
   assertEquals(t.rec.undoLookups.length, 0);
   assertEquals(t.rec.understandReqs.length, 1);
+});
+
+// ─── T7 §7.1 suggestion invariant (handler-owned) ────────────────────────────────────────────────
+
+const peanutToast = coachReply('Akşama fıstık ezmeli tost yapabilirsin.', { suggested_foods: [{ name: 'fıstık ezmeli tost', allergens: ['peanut'], may_contain: [] }], why: 'protein' });
+const yogurt = coachReply('Akşama yoğurtlu meyve iyi gider.', { suggested_foods: [{ name: 'yoğurtlu meyve', allergens: ['milk'], may_contain: [] }] });
+
+Deno.test('suggestion invariant: a severe-allergen suggestion → ONE regen naming it; the clean regen is what the user gets', async () => {
+  let n = 0;
+  const t = await turn({ message: 'akşam ne yiyeyim?' }, { stageA: parsed(sampleDecision()), coach: () => Promise.resolve(++n === 1 ? peanutToast : yogurt) });
+  assertEquals(t.rec.coachInputs.length, 2, 'exactly one regen');
+  assertStringIncludes(t.rec.coachInputs[1].userState.at(-1)!, 'fıstık ezmeli tost (fıstık)');
+  assertEquals(t.env!.message, 'Akşama yoğurtlu meyve iyi gider.');
+  const issues = (t.rec.turnLogs.find((r) => r.stage === 'coach')?.issues as Array<{ code: string }>).map((i) => i.code);
+  assert(issues.includes('suggestion_regen'));
+});
+
+Deno.test('suggestion invariant: still violating after the regen → the safe fallback (receipts kept, no why/memory from the bad reply)', async () => {
+  const bad = coachReply('Squat ve fıstık ezmesi!', {
+    suggested_foods: [{ name: 'fıstık ezmesi', allergens: [], may_contain: [] }],
+    suggested_exercises: [{ name: 'squat', loads: ['knee'] }],
+    memory: [{ op: 'memory_note', kind: 'coach_note', text: 'x', food: null, grams: null, confidence: 0.5 }],
+  });
+  const t = await turn({ message: '6 tavuk nugget yedim, sonra ne yapayım?' }, { stageA: parsed(sampleDecision({ writes: [sampleMeal()] })), coach: () => Promise.resolve(bad) });
+  assertEquals(t.rec.coachInputs.length, 2);
+  assert(t.env!.message.startsWith('Öğün kaydedildi — '), 'what was written is still said');
+  assert(t.env!.message.endsWith(SUGGESTION_FALLBACK_LINES[0]));
+  assert(!t.env!.message.includes('fıstık ezmesi') && !t.env!.message.includes('Squat'));
+  assertEquals(t.env!.actions[0].type, 'meal_log');
+  assertEquals(t.rec.jobs.length, 1);
+  await t.rec.jobs[0]();
+  assertEquals(t.commit.adapter.calls.filter((c) => c.op === 'memory_note').length, 0, 'the rejected reply’s memory is not committed');
+});
+
+Deno.test('suggestion invariant on a PROTECTIVE turn: the canned safety reply (with 112), never a coaching fallback', async () => {
+  const msg = 'antrenmanda bayıldım';
+  const hit = scanTripwires(msg).hits[0].hit_id;
+  const decision = sampleDecision({ safety: { acute_medical: true, self_harm: false, ed_signal: null, tripwire_readings: [{ hit_id: hit, reading: 'positive', reason: 'gerçek bayılma' }] } });
+  const t = await turn({ message: msg }, { stageA: parsed(decision), coach: () => Promise.resolve(peanutToast) });
+  assertStringIncludes(t.env!.message, '112');
+  assert(!t.env!.message.includes('fıstık'));
+  assert(!SUGGESTION_FALLBACK_LINES.some((l) => t.env!.message.includes(l)));
+});
+
+Deno.test('suggestion invariant: an unreadable spine never lets a suggestion out (honest "could not check" line)', async () => {
+  const ti = await seededTurnInput();
+  ti.load_errors.push({ section: 'constraints', message: 'timeout' });
+  const t = await turn({ message: 'akşam ne yiyeyim?' }, { turnInput: ti, stageA: parsed(sampleDecision()), coach: () => Promise.resolve(yogurt) });
+  assertEquals(t.rec.coachInputs.length, 1, 'no regen: it could not be verified either');
+  assertEquals(t.env!.message, SUGGESTION_UNVERIFIED_LINE);
+});
+
+// ─── protective turns are never rate-limited ─────────────────────────────────────────────────────
+
+Deno.test('daily ceiling + a live ambiguous safety trigger → today’s canned safety reply (quota-exempt), never the rate-limit text', async () => {
+  const t = await turn({ message: 'antrenmanda bayıldım', idempotency_key: 'k11' }, { reserveAllowed: false });
+  assertStringIncludes(t.env!.message, "112'yi ara");
+  assertEquals(t.env!.task_mode, 'emergency');
+  assert(!t.env!.rate_limited);
+  assertEquals(t.rec.understandReqs.length, 0, 'no LLM call at the cap');
+  assertEquals(t.rec.persisted[0].quotaClass, 'exempt');
+  assertEquals(t.rec.turnLogs[0].finish_reason, 'cap_protective:emergency');
+  assertEquals(t.rec.journal.map((j) => j.kind), ['claim', 'commit']);
+  // an ED trigger (append mode): the cap text, then the referral — both true
+  const ed = await turn({ message: 'aç kalmak istiyorum' }, { reserveAllowed: false });
+  assert(ed.env!.message.startsWith('Bugünlük kayıt limitine ulaştın.'));
+  assertStringIncludes(ed.env!.message, 'uzman');
+  assertEquals(ed.rec.edSignals, ['medium']);
+  // no trigger → the ordinary rate-limit answer
+  const plain = await turn({ message: 'nasılsın' }, { reserveAllowed: false });
+  assertEquals(plain.env!.rate_limited, true);
+});
+
+Deno.test('conversation cap + a PROTECTIVE turn → Stage B still answers (quota exempt), no rate-limit text', async () => {
+  const msg = 'antrenmanda bayıldım';
+  const hit = scanTripwires(msg).hits[0].hit_id;
+  const decision = sampleDecision({ safety: { acute_medical: true, self_harm: false, ed_signal: null, tripwire_readings: [{ hit_id: hit, reading: 'positive', reason: 'gerçek bayılma' }] } });
+  const t = await turn({ message: msg }, { stageA: parsed(decision), capAllowed: false, coach: () => Promise.resolve(coachReply('Geçmiş olsun. Şu an nasılsın?')) });
+  assert(!t.env!.rate_limited);
+  assertEquals(t.rec.coachInputs.length, 1);
+  assertStringIncludes(t.env!.message, '112');
+  assertEquals(t.rec.persisted[0].quotaClass, 'exempt');
+  assertEquals(t.env!.remaining, -1);
+  assertEquals(t.rec.released, [], 'the reservation stays: the turn was answered');
+});
+
+// ─── honest Stage B fallback ─────────────────────────────────────────────────────────────────────
+
+Deno.test('Stage B failure on a holds-only turn: never "kaydedildi" — nothing saved yet, the hold question follows', async () => {
+  const decision = sampleDecision({ writes: [w('water_log', { quantity: 2, unit: 'litre', as_stated: '2 litre' })] });
+  const t = await turn({ message: '2 litre su içtim' }, { stageA: parsed(decision), coach: () => Promise.reject(new Error('provider 500')) });
+  assertEquals(t.commit.rpcCalls.map((c) => c.name), ['v2_hold_open']);
+  assert(t.env!.message.startsWith(STAGE_B_FAILED_HELD_LINE));
+  assert(!t.env!.message.includes('kaydedildi'));
+  assert(t.env!.message.trimEnd().endsWith('?'), 'the code-guaranteed hold question is appended after it');
+  assertEquals(t.env!.actions, []);
+});
+
+Deno.test('Stage B failure when a hold could not even be stored: the reject is said (no receipt existed for it)', async () => {
+  const ports = fakeCommitPorts({ rpc: (name) => (name === 'v2_hold_open' ? { ok: false, op: 'hold_open', failure_class: 'write_failed', detail: {} } : undefined) });
+  const decision = sampleDecision({ writes: [w('water_log', { quantity: 2, unit: 'litre', as_stated: '2 litre' })] });
+  const t = await turn({ message: '2 litre su içtim' }, { stageA: parsed(decision), commit: ports, coach: () => Promise.reject(new Error('provider 500')) });
+  assertStringIncludes(t.env!.message, 'Kaydedilmedi: onay sorusunu kaydedemedim');
+  assert(t.env!.message.endsWith(STAGE_B_FAILED_NOTHING_LINE));
+});
+
+Deno.test('honestFallbackText / receiptFactLines: written, held, failed and receipt-less rejects, each said once', () => {
+  const okR = { action_type: 'meal_log', ok: true, rows_affected: 1, user_line: 'Öğün kaydedildi — x', failure_class: null, legacy_type: 'meal_log' };
+  const failR = { action_type: 'water_log', ok: false, rows_affected: 0, user_line: 'Su kaydedilemedi: x', failure_class: 'later_write', legacy_type: 'water_log' };
+  const hold = { op: 'water_log', reason_code: 'tek_seferde_cok', question_tr: 'Tek seferde mi?', hold_id: 'p1' };
+  assertEquals(honestFallbackText(commitOf({ receipts: [okR] })), `Öğün kaydedildi — x\n${STAGE_B_FAILED_LINE}`);
+  assertEquals(honestFallbackText(commitOf({ holds: [hold] })), STAGE_B_FAILED_HELD_LINE);
+  assertEquals(honestFallbackText(commitOf({ receipts: [okR], holds: [hold] })), `Öğün kaydedildi — x\n${STAGE_B_FAILED_WRITTEN_HELD_LINE}`);
+  const facts = receiptFactLines(commitOf({
+    receipts: [failR],
+    rejects: [{ op: 'water_log', reason_code: 'later_write', reason_tr: 'sonradan yazılmış' }, { op: 'constraint_retract', reason_code: 'hold_persist_failed', reason_tr: 'onay sorusunu kaydedemedim; bu yüzden yazmadım' }],
+  }));
+  assertEquals(facts.failed, ['Su kaydedilemedi: x', 'Kaydedilmedi: onay sorusunu kaydedemedim; bu yüzden yazmadım'], 'the reject a receipt explains is not repeated');
 });
 
 // ─── pure helpers ────────────────────────────────────────────────────────────────────────────────
@@ -413,6 +576,11 @@ Deno.test('honestCrashResponse: after a side effect the receipts are answered an
   assert(env.message.startsWith('Öğün kaydedildi'));
   assertEquals(env.actions[0].type, 'meal_log');
   assertEquals(f.rec.journal[0].kind, 'commit');
+  // a crash after a hold opened: no T7 ran, so the hold question is appended here
+  state.commit = commitOf({ holds: [{ op: 'constraint_retract', reason_code: 'iki_adimli_kaldirma', question_tr: 'Fıstık alerjini kaldırmamı onaylıyor musun?', hold_id: 'p1', hold_class: 'safety' }] });
+  const env2 = await (await honestCrashResponse(state, f.deps)).json() as TurnEnvelope;
+  assert(env2.message.startsWith(STAGE_B_FAILED_HELD_LINE));
+  assert(env2.message.endsWith('Fıstık alerjini kaldırmamı onaylıyor musun?'));
 });
 
 Deno.test('fakeAdapter sanity: the default adapter answers ok', async () => {
