@@ -3,6 +3,7 @@
  * person reads after a run: gates first, then every failing fixture with its failing checks.
  */
 import type { EvalReport, FixtureRunResult, GateResult } from './types.ts';
+import { formatLatencySplit } from './gates.ts';
 
 const ICON: Record<GateResult['status'], string> = { pass: 'GEÇTİ', fail: 'KALDI', no_data: 'VERİ YOK', incomplete: 'EKSİK' };
 
@@ -20,10 +21,17 @@ export function formatReport(rep: EvalReport, opts: { verbose?: boolean } = {}):
   const t = rep.totals;
   out.push(`Sonuç: ${t.pass} geçti · ${t.fail} kaldı · ${t.skipped} atlandı · ${t.error} hata${t.cache_miss ? ` · ${t.cache_miss} replay kaydı yok` : ''}`);
   if (rep.latency.samples) out.push(`Stage A gecikme: p50 ${rep.latency.p50_ms} ms · p90 ${rep.latency.p90_ms} ms (${rep.latency.samples} ölçüm)`);
+  if (rep.latency.samples && rep.latency_split) out.push(`  canlı bütçe sınıfına göre (§7.2): ${formatLatencySplit(rep.latency_split)}`);
   if (rep.cost_usd_estimate !== null) out.push(`Tahmini maliyet: $${rep.cost_usd_estimate}`);
+  const gateLine = (g: GateResult) => `  [${ICON[g.status]}${g.status === 'pass' && g.partial ? ' · KISMİ' : ''}] ${g.package.padEnd(2)} ${g.label_tr} — ${g.detail}`;
   out.push('');
   out.push('KAPILAR (§9.4):');
-  for (const g of rep.gates) out.push(`  [${ICON[g.status]}${g.status === 'pass' && g.partial ? ' · KISMİ' : ''}] ${g.package.padEnd(2)} ${g.label_tr} — ${g.detail}`);
+  for (const g of rep.gates) out.push(gateLine(g));
+  if (rep.holdout_gates?.length) {
+    out.push('');
+    out.push('TUTULAN SET (holdout) KAPILARI — ayarda hiç kullanılmadı, ayrı raporlanır:');
+    for (const g of rep.holdout_gates) out.push(gateLine(g));
+  }
   const canned = rep.results.filter((r) => r.canned).length;
   if (canned) out.push(`  (T2 açık listesi ${canned} koşuda hazır cevabı verdi; Stage A çağrılmadı — üretimdeki gibi)`);
 
@@ -32,7 +40,7 @@ export function formatReport(rep: EvalReport, opts: { verbose?: boolean } = {}):
     out.push('');
     out.push('KALAN FIXTURE\'LAR:');
     for (const r of failed) {
-      out.push(`  ${r.fixture_id} [${r.package}] tekrar ${r.rep} (${r.source})`);
+      out.push(`  ${r.fixture_id} [${r.package}${r.holdout ? ' · holdout' : ''}] tekrar ${r.rep} (${r.source})`);
       out.push(...failingLines(r));
     }
   }

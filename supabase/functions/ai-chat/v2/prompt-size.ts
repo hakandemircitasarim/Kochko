@@ -31,6 +31,12 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * 3.2K. The prefix is ~99 % cached (live: cached 10.8K/11K input tokens) and latency follows OUTPUT
  * tokens (≈8.6 ms/token, r² 0.69), not the cached prefix — the owner's 2026-10-10 call is quality
  * first, cost (Stage A → luna, prefix trimming) after, with measurements.
+ * 2026-10-11 (prompt v5, teaching-to-the-test review): every few-shot was rewritten in details of its
+ * own and the doc/rule examples that copied eval fixtures were replaced; the two guard lines round 1
+ * trimmed (rule 6 double count, rule 9 "bayıldım" real vs figurative) and the binge-severity sentence
+ * were added back by trimming what the doc already says. Measured: rules ≈1696/1700, few-shots
+ * ≈3101 (20) — over the old 3000, so the 3200 ceiling is now needed, not slack — prefix ≈13234/13400.
+ * No ceiling moved.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],

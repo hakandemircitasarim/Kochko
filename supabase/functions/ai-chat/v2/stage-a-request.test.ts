@@ -175,7 +175,7 @@ Deno.test('BYTE IDENTITY: the shadow (understand.ts over stageAView) and the eva
     // 1. One composition: the shadow's request IS the eval body plus the live call's own knobs.
     const shadowReq = buildUnderstandRequest({ turnInput: ti, message: msg, scan, model: 'gpt-5.6-terra' });
     const evalBody = buildStageARequest({ view: v, scan, message: msg, model: 'gpt-5.6-terra' });
-    const { timeoutMs: _t, sizes: _s, ...shadowBody } = shadowReq;
+    const { timeoutMs: _t, sizes: _s, liveBudgetMs: _l, budgetClass: _c, ...shadowBody } = shadowReq;
     assertEquals(shadowBody, evalBody, msg);
 
     // 2. On the wire: what understand() sends == what ai-decide sends for the eval body.

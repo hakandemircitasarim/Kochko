@@ -54,8 +54,8 @@ export const target_change = op({
   channel: 'writes',
   envelope: (a) => ENVELOPE_BY_PROGRAM[a.program],
   title_tr: 'Kalori programı',
-  when_tr: 'Açıkça istenen ya da kabul edilen kalori programı (bakım, mini cut, plato stratejisi, telafi, MVD günü); "hedefime ulaştım mı?" sorusu değil.',
-  not_when_tr: '"hedefime ulaştım mı sence?" gibi soru.',
+  when_tr: 'Açıkça istenen ya da kabul edilen kalori programı (bakım, mini cut, plato stratejisi, telafi, MVD günü); "bakıma geçmem gerekir mi?" sorusu değil.',
+  not_when_tr: '"bakıma geçmeli miyim?" gibi soru.',
   fields: {
     program: f.enum(PROGRAMS, { explain: true }),
     strategy_id: f.enum(PLATEAU_STRATEGIES, { nullable: true, tr: 'yalnız plateau_strategy’de' }),

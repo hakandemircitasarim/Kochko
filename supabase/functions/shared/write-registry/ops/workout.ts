@@ -59,7 +59,7 @@ export const supplement_log = op({
   envelope: 'supplement_log',
   title_tr: 'Takviye',
   when_tr: 'Aldığı bir takviye (kreatin, whey, omega-3, vitamin…); alerjisiyle çakışsa da yazılır.',
-  not_when_tr: '"her sabah kreatin alıyorum" gibi alışkanlık anlatısı.',
+  not_when_tr: '"akşamları magnezyum kullanıyorum" gibi alışkanlık anlatısı.',
   fields: {
     day: f.day(),
     name: f.text({ max: 80 }),

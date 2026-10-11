@@ -90,7 +90,7 @@ export const constraint_retract = op({
   channel: 'writes',
   envelope: 'profile_update',
   title_tr: 'Kısıt kaldırma',
-  when_tr: 'KISITLAR’daki bir kısıtın artık geçerli olmadığı ("dizim tamamen iyileşti", "artık vegan değilim"); yalnız adı geçen kısıt.',
+  when_tr: 'KISITLAR’daki bir kısıtın artık geçerli olmadığı ("dizim tamamen iyileşti", "artık glutensiz beslenmiyorum"); yalnız adı geçen kısıt.',
   not_when_tr: 'ağrı sürüyorsa ("dizim eskisi gibi ağrıyor").',
   fields: {
     target: f.ref(['c']),

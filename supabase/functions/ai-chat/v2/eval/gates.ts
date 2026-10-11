@@ -12,7 +12,8 @@
  * A harness error (transport down) or a replay miss never counts as a model failure, but it makes
  * the gate `incomplete`: a gate is never green on partial data.
  */
-import type { EvalReport, FixtureRunResult, GateResult, PackageId, Usage } from './types.ts';
+import type { EvalReport, FixtureRunResult, GateResult, LatencyClassStats, PackageId, Usage } from './types.ts';
+import { STAGE_A_LIVE_BUDGETS_MS } from '../stage-a-request.ts';
 
 interface RateGate { min_rate: number; every_rep?: boolean; label_tr: string }
 export const RATE_GATES: Partial<Record<PackageId, RateGate>> = {
@@ -52,6 +53,29 @@ export function percentile(sorted: number[], p: number): number | null {
   if (!sorted.length) return null;
   const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1));
   return sorted[idx];
+}
+
+/**
+ * Stage A latency split by the §7.2 live budget class (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS):
+ * turns where T2 handed Stage A a tripwire fact (7 s budget) vs the rest (4 s). `over_budget` counts
+ * the calls that would have failed closed to today's canned protection in live v2. Real calls only.
+ */
+export function latencySplit(results: FixtureRunResult[]): { normal: LatencyClassStats; tripwire: LatencyClassStats } {
+  // Answered calls only: an infra error (HTTP 4xx/5xx, "no credits") returns fast and would fake a low latency.
+  const live = results.filter((r) => (r.cache === 'live' || r.cache === 'hit') && r.status !== 'error' && typeof r.latency_ms === 'number');
+  const stats = (cls: 'normal' | 'tripwire'): LatencyClassStats => {
+    const lat = live.filter((r) => (r.tripwire === true) === (cls === 'tripwire')).map((r) => r.latency_ms!).sort((a, b) => a - b);
+    const budget = STAGE_A_LIVE_BUDGETS_MS[cls];
+    return { n: lat.length, p50_ms: percentile(lat, 0.5), p90_ms: percentile(lat, 0.9), budget_ms: budget, over_budget: lat.filter((x) => x > budget).length };
+  };
+  return { normal: stats('normal'), tripwire: stats('tripwire') };
+}
+
+/** "tetiksiz p50 2,7 sn · p90 3,9 sn (n=500, >4 sn %8)" — one line per class, for the E gate and the report. */
+export function formatLatencySplit(s: { normal: LatencyClassStats; tripwire: LatencyClassStats }): string {
+  const one = (label: string, c: LatencyClassStats) =>
+    `${label} p50 ${c.p50_ms ?? '—'} ms · p90 ${c.p90_ms ?? '—'} ms (n=${c.n}, >${c.budget_ms / 1000} sn: ${c.over_budget}${c.n ? ` = %${((c.over_budget / c.n) * 100).toFixed(1)}` : ''})`;
+  return `${one('tetiksiz', s.normal)} · ${one('tetikli', s.tripwire)}`;
 }
 
 export function costOf(model: string, u: Usage | undefined): number | null {
@@ -149,6 +173,7 @@ export function budgetGate(results: FixtureRunResult[], budget: Budget = DEFAULT
   const ok = p50 <= budget.p50_ms && p90 <= budget.p90_ms && errRate <= budget.max_parse_schema_error_rate && costOk && repairRate <= budget.max_repair_rate;
   const detail = [
     `p50 ${p50} ms · p90 ${p90} ms · ayrıştırma/şema hatası ${bad}/${answered.length} · onarım ${repairs}/${answered.length}`,
+    formatLatencySplit(latencySplit(results)),
     outMean !== null ? `ort. çıktı ${outMean} token` : '',
     cacheRatio !== null ? `önbellek %${Math.round(cacheRatio * 100)}` : '',
     costPerTurn !== null ? `maliyet/tur $${costPerTurn.toFixed(4)}` : '',
@@ -175,9 +200,10 @@ export function computeGates(results: FixtureRunResult[], opts: { budget?: Budge
  * a PARTIAL pass (checks skipped because a stage is not built yet) blocks only with requireFull —
  * Faz 1/2 gates run before Stage B exists, Faz 3 needs full coverage.
  */
-export function gatesFailed(report: Pick<EvalReport, 'gates'>, opts: { allowNoData?: boolean; requireFull?: boolean } = {}): GateResult[] {
+export function gatesFailed(report: Pick<EvalReport, 'gates'> & Partial<Pick<EvalReport, 'holdout_gates'>>, opts: { allowNoData?: boolean; requireFull?: boolean } = {}): GateResult[] {
   const allowNoData = opts.allowNoData ?? true;
-  return report.gates.filter((g) =>
+  // The holdout gates block too (reported apart so they are never tuned on, not so they can fail silently).
+  return [...report.gates, ...(report.holdout_gates ?? [])].filter((g) =>
     g.status === 'fail' || g.status === 'incomplete' || (!allowNoData && g.status === 'no_data') || (opts.requireFull === true && g.status === 'pass' && g.partial === true)
   );
 }

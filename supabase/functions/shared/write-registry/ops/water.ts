@@ -63,7 +63,7 @@ export const water_log = op({
   derive_tr: 'litre = quantity × birimin ml’si / 1000.',
   writes: { rpc: 'w_water_apply', tables: ['daily_metrics', 'turn_writes'], undo: 'restore_previous' },
   invariants: ['atomic_increment'],
-  examples_tr: ['"1 bardak su daha içtim" → quantity 1, unit bardak, mode add (kod +0,20 L yazar)'],
+  examples_tr: ['"2 kupa su daha içtim" → quantity 2, unit kupa, mode add (kod +0,50 L yazar)'],
 }).rules({
   hard: [
     requireWhen('other_ml_eksik', 'unit=other iken other_ml_each boş olamaz', (a) => a.unit === 'other', (a) => a.other_ml_each, 'other_ml_each'),
