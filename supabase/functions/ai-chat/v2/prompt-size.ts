@@ -55,11 +55,31 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * schema's strength_sets sets/reps became `["number","null"]` (+18 chars, unavoidable — the required
  * number is what made the model invent "1 × 1 × 0 kg") and the doc says "söylenmeyen sayı null"
  * (+23 chars). Measured prefix ≈13607.
+ * 2026-10-11 (prompt v8, the FIRST LIVE TRIAL on the test accounts): Stage A left real statements
+ * unwritten or over-read them — "yumurta alerjisi yanlış, alerjim yok", "süte karşı hassasiyetim yok
+ * aslında" (no retraction, so the code could not ask), "14 litre su" minutes after 2 L (routed to 112),
+ * "motivasyonum düşük" (an invented mood score), "salataya tuz" (a salt-only dinner), "fıstık alerjim
+ * var" next to a stored fıstık row (a duplicate). Fixed at principle level: a retraction is a write the
+ * code must see (rule 10), an implausible amount with no symptom is not acute (rule 9), no unstated
+ * score/set/rep (rule 4), an addition carries its dish (rule 7), a stored constraint is not re-added
+ * but a two-reading name on it is still asked, a narrowed constraint is not removed (rule 10) — plus
+ * ONE new few-shot (kisit_yanlis: no example had ever shown a retraction). Trimmed first (the intro's
+ * "the coach will ask" excuse, rule 2/11/13 wording, the doc pointer, rule 6, four few-shot "why"
+ * lines); live probes then showed each remaining clause pulling its weight (removing the salad's
+ * "clarify" or the typo's "clarify" regressed them). Measured: rules ≈2047, few-shots ≈3314, prefix
+ * ≈13844 (+249 over v7). The ceilings move by the owner's "quality first" allowance — +250 on the
+ * prefix (the binding, cost-relevant number), split +150 rules / +50 few-shots; the prefix is ~99 %
+ * cached, so this is ≈ $0,00005 per turn at terra's cached-input price. The registry doc (another
+ * lane) is NOT inside this headroom: a doc change has to be measured against the merged bytes.
+ * 2026-10-11 (integration of the live-trial lanes): lane B's +12 schema/doc chars and lane C's
+ * +249 prompt-v8 chars were each measured on their own bytes; together they land at the measured
+ * merged prefix: measured ≈13856 (rules ≈2047, few-shots ≈3314, schema ≈5147), so stageAPrefix
+ * 13850 → 13860 (lane B's +10 on top of lane C's +250). No other ceiling moved.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],
-  understandRules: [900, 1900],
-  understandFewShots: [1500, 3300],
+  understandRules: [900, 2050],
+  understandFewShots: [1500, 3350],
   exemplars: [1100, 2400],
-  stageAPrefix: [9000, 13610],
+  stageAPrefix: [9000, 13860],
 } as const satisfies Record<string, readonly [number, number]>;

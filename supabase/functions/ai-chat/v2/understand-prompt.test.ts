@@ -108,6 +108,12 @@ const FIXTURES: Record<string, Fixture> = {
   plan_istegi: { expect: { verdicts: [], plan: 'generate:COMMIT' } },
   taslak_onayi: { refs: { dft4: { kind: 'dft', target: 'plan_draft' } }, expect: { verdicts: [], plan: 'approve:COMMIT' } },
   alerji_beyani: { expect: { verdicts: ['constraint_add:COMMIT', 'constraint_add:COMMIT'] } },
+  // v8 (live trial 2026-10-11): a retraction of an allergy whose severity is unknown (counts as severe)
+  // is WRITTEN — the code then holds it (two-step removal); the model never skips it to "let the coach ask".
+  kisit_yanlis: {
+    refs: { c4: { kind: 'c', target: 'constraint', constraint: { kind: 'allergen', subject: 'soy', severity: null } } },
+    expect: { verdicts: ['constraint_retract:ASK'], issues: ['iki_adimli_kaldirma'] },
+  },
   baskasinin_alerjisi: { expect: { verdicts: ['constraint_add:COMMIT'] } },
   // A self injury of unknown severity is stored AND flagged (counts as severe, coach asks once).
   sakatlik: { expect: { verdicts: ['constraint_add:FLAG'], issues: ['siddet_bilinmiyor'] } },
@@ -218,8 +224,9 @@ Deno.test('understand rules agree with the registry: corrections by ref, suspici
 Deno.test('few-shots: well-formed — unique ids, a fixture each, decision keys from the schema, labelled context', () => {
   const ids = UNDERSTAND_FEW_SHOTS.map((s) => s.id);
   assertEquals(new Set(ids).size, ids.length);
-  // 20 since the first live eval (2026-10-10: iki_aday_sil, bildirim_ve_soru); the token budget is the real cap.
-  assert(UNDERSTAND_FEW_SHOTS.length >= 10 && UNDERSTAND_FEW_SHOTS.length <= 20, '§8.3 list + the review and live-eval additions; the token budget is the real cap');
+  // 20 since the first live eval (2026-10-10: iki_aday_sil, bildirim_ve_soru); 21 since the first live
+  // trial (2026-10-11: kisit_yanlis — no example had shown a retraction); the token budget is the real cap.
+  assert(UNDERSTAND_FEW_SHOTS.length >= 10 && UNDERSTAND_FEW_SHOTS.length <= 21, '§8.3 list + the review, live-eval and live-trial additions; the token budget is the real cap');
   assertEquals(Object.keys(FIXTURES).sort(), [...ids].sort(), 'every few-shot has exactly one validation fixture');
   for (const s of UNDERSTAND_FEW_SHOTS) {
     assert(s.message.trim() && s.why.trim(), `${s.id}: empty message/why`);
@@ -595,6 +602,36 @@ Deno.test('rules (v6, v7): a protective declaration is never held for a detail �
   assert(UNDERSTAND_RULES.includes('Tepkiyi anlatan koşul cümlesi varsayım değil, beyandır.'));
   // A retraction of a constraint that was never true is written as well (listed → retract, else does_not_have).
   assert(UNDERSTAND_RULES.includes('etkin bir kısıtsa constraint_retract, pasifse ya da listede yoksa does_not_have'));
+});
+
+Deno.test('rules (v8, first live trial 2026-10-11): each trial miss is answered by a principle, not a phrase', () => {
+  const head = UNDERSTAND_RULES.slice(0, UNDERSTAND_RULES.indexOf('\n1. '));
+  // The intro no longer tells the model an unwritten fact is the coach's to complete (read as permission to skip).
+  assert(!head.includes('koç tek soruyla tamamlar'));
+  // Retractions/negations are writes the CODE must see; confirmation is the code's job (rule 10).
+  assert(UNDERSTAND_RULES.includes('Bir kısıtın kişiye geçmediğini söyleyen her cümle (geçti, yanlış yazıldı, dokunmuyor) yazmadır, ciddi alerji de olsa'));
+  assert(UNDERSTAND_RULES.includes('Onayı kod sorar; yazmazsan soramaz.'));
+  assert(!UNDERSTAND_RULES.includes('null bırak, koç sorar'), 'rule 12 no longer hands an omission to the coach');
+  // A constraint already listed is not added again (the duplicate fıstık row), and a two-reading name is
+  // still asked even when it is on the list (the yer/Antep question the trial never got).
+  assert(UNDERSTAND_RULES.includes('listede kayıtlı olsa da türünü clarify ile sor; aynısı listedeyse ve yeni bilgi yoksa yeniden yazma (already_recorded)'));
+  // …and narrowing a stored constraint ("not that kind") is not removing it (live probe: the stored row got retracted).
+  assert(UNDERSTAND_RULES.includes('Türü netleştirmek kaldırmak değildir: kayıtlı kısıta dokunma, yalnız geçmeyen türü does_not_have yaz.'));
+  // The typo: written as stated when the doc's range takes it (code asks), else asked — never acute, never skipped.
+  assert(UNDERSTAND_RULES.includes('belgedeki aralığa sığıyorsa söylendiği gibi yaz (kod sorar), sığmıyorsa clarify ile sor'));
+  // An implausible amount with no symptom is a likely typo, not acute (rule 9).
+  assert(UNDERSTAND_RULES.includes('Belirtisiz, mantıksız bir miktar acil değil, olası yazım hatasıdır'));
+  // No unstated score, set or rep (rule 4) — and the mood example is not the trial's wording.
+  assert(UNDERSTAND_RULES.includes('Söylenmeyen puan, set ya da tekrar uydurma'));
+  assert(!UNDERSTAND_RULES.includes('motivasyon'));
+  // An addition carries its dish (rule 7) — taught with a dish of its own, not the trial's salad.
+  assert(UNDERSTAND_RULES.includes('Bir yemeğe eklenen şey (pilava tereyağı) o yemeği de anlatır'));
+  assert(!/salata/u.test(UNDERSTAND_RULES));
+  // The retraction example: an unknown-severity allergy (counts as severe) is retracted by ref, and the code holds it.
+  const k = shot('kisit_yanlis').decision;
+  assertEquals(itemsOf(k, 'writes').map((w) => [w.op, w.target]), [['constraint_retract', 'c4']]);
+  assertEquals(k.clarify, undefined);
+  assertEquals(k.self_check?.not_written_reason, undefined, 'written, not explained away');
 });
 
 // ─── rendering and the prefix ────────────────────────────────────────────────────────────────────

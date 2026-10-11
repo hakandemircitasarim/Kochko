@@ -52,6 +52,27 @@ Deno.test('constitution: carries the load-bearing principles', () => {
   assert(c.includes('yetenek listesi'), 'promises bounded by the capability list');
 });
 
+Deno.test('constitution v2 (live trial 2026-10-11): the principles each trial defect was traced to', () => {
+  const c = COACH_CONSTITUTION;
+  // "güncelleyeyim mi?" with no hold behind it: the user's "evet" resolved nothing (mem#2, mem#15-16, final2#14).
+  assert(c.includes('Onay sorusu ("kaydedeyim mi?", "güncelleyeyim mi?") yalnızca olgularda bekletilen bir kayıt ya da bekleyen onay varsa sorulur'));
+  assert(c.includes('kaydetmediğini açıkça söyle ve ne olduğunu açık uçlu sor'), 'a missed write is said plainly, asked openly');
+  // "tartı sonucunu doğru mu yazdım?" with no numbers (final2#11).
+  assert(c.includes('olgulardaki sayılarla') && c.includes('soru ona yöneliktir'), 'a held value is asked with its numbers, about what the user wrote');
+  // "sistem de bu kaydı belirsiz olarak işaretledi" after the user had confirmed (final2#12).
+  assert(c.includes('Onaylanan bir kayıt kesindir'));
+  // "bu turdaki kayıtlarda", "düzeltme makbuzu" (mem#16, final2#1), also in the visible "why".
+  assert(c.includes('iç sözcükler (tur, makbuz, sistem, kod, bekletme) senin içindir'));
+  assert(c.includes('iç sözcük kullanma'), 'the why field is read by the user too');
+  assert(!/makbuzlarıdır|makbuz olarak görürsün/u.test(c), 'the constitution itself no longer calls receipts "makbuz" to the model');
+  // "telafi etme" in 4 replies of one evening (final2#4, #14, #15).
+  assert(c.includes('geçmişteki cevaplarında verdiğin bir tavsiyeyi ya da uyarıyı') && c.includes('kişi telafiden söz etmediyse uyarı olarak açma'));
+  // "bacak antrenmanını şimdilik önermem" and nothing else (mem#13).
+  assert(c.includes('düz bir ret yerine o bölgeyi yüklemeyen seçenekler öner'));
+  // "14 litre su" → a flat 112 command (final2#7); real symptoms keep the plain duty.
+  assert(c.includes("112'yi koşullu tek cümleyle an, sayıyı sor") && c.includes("kişiyi hemen 112'yi aramaya"));
+});
+
 Deno.test('constitution: the 112 / referral line is code-owned — no claim that the model\'s flag stops it (Faz 3 review)', () => {
   // guarantees.ts judges the line by the TEXT and never reads referral_included (it is only logged):
   // telling the coach the flag prevents a second copy would be a false statement about the code.
@@ -86,6 +107,6 @@ Deno.test('coach prefix: refuses an empty capability list instead of letting the
 });
 
 Deno.test('coach cache key is per user and versioned', () => {
-  assertEquals(coachCacheKey('u1'), 'kochko-coach:v1:u1');
+  assertEquals(coachCacheKey('u1'), 'kochko-coach:v2:u1');
   assert(coachCacheKey('u1') !== coachCacheKey('u2'));
 });

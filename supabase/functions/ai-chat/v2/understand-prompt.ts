@@ -25,6 +25,15 @@
  * drink holds), not by the word "toplam" — the probe showed v5's prompt at 3/5 on such a sentence,
  * so the v6 "regression" was an old, untaught boundary; the stronger overlap guard (spelled
  * numerals, "ciddi"/"alerji"/"dilim" as content) moved three examples to details of their own.
+ * v8 (2026-10-11, the first live trial on the test accounts): a statement that a recorded or mentioned
+ * constraint does not apply is a WRITE the code must see — confirmation is the code's job, so skipping
+ * it "for the coach to ask" left the user's "evet" with nothing to confirm (the first retraction
+ * example, kisit_yanlis); a constraint already on the list is not added again, but a two-reading name
+ * on it is still asked; narrowing a constraint ("that kind is fine") is not removing it; an implausible
+ * amount with no symptom is a likely typo, not acute_medical — written as stated when the doc's range
+ * takes it (code asks), else asked; no unstated score, set or rep is invented; an addition to a dish
+ * carries the dish (or asks about it), never a seasoning-only meal. The intro's "the coach completes
+ * what was not written" line went: it read as permission to skip.
  *
  * The prefix is byte-identical for every user so it caches globally under one key. Nothing per-user
  * or per-turn belongs here; the TurnInput block, tripwire facts and the message are appended after it
@@ -49,7 +58,7 @@ import type { FieldSpec, Fields, Infer } from '../../shared/write-registry/dsl.t
  * + the registry doc (SCHEMA_VERSION), so the key names both. Bump the prompt version whenever the
  * rules or few-shots change.
  */
-export const UNDERSTAND_PROMPT_VERSION = 'v7';
+export const UNDERSTAND_PROMPT_VERSION = 'v8';
 export const UNDERSTAND_CACHE_KEY = `kochko-understand:${UNDERSTAND_PROMPT_VERSION}-${SCHEMA_VERSION}`;
 
 /** Decision-first top-level order of kochko_understand_vN (§3.2 T4); pinned to the schema by a test. */
@@ -122,23 +131,23 @@ export interface UnderstandFewShot {
 
 export const UNDERSTAND_RULES = `# Kochko: anlama aşaması
 
-Sen Kochko'nun anlama aşamasısın. Kişiye cevap yazmazsın: mesajı okur, ne olduğuna karar verir ve kararı şemadaki tek JSON olarak verirsin. Kod kararı denetler ve kaydeder; koç cevabı sonra, olanlara bakarak yazar. Yanlış bir yazma kişinin günlüğünü bozar, yazılmayan bir şeyi ise koç tek soruyla tamamlar. Bu yüzden emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz. Tek istisna kişinin kendi alerjisi ya da sakatlığıdır: ayrıntısı belirsiz diye bekletilmez.
+Sen Kochko'nun anlama aşamasısın: kişiye cevap yazmaz, mesajı okur ve kararını şemadaki tek JSON olarak verirsin. Kod kararı denetler ve kaydeder; koç sonra cevap yazar. Yanlış bir yazma kişinin günlüğünü bozar: emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz. Tek istisna kişinin kendi alerjisi ya da sakatlığıdır: ayrıntısı belirsiz diye bekletilmez.
 
 1. Niyet. Mesaj şimdi olan bir şeyin bildirimi mi, soru mu, varsayım mı ("yesem ne olur", "içsem yeter mi", "yarın yapacağım"), düzeltme mi, onay mı, plan isteği mi? Kayıt yalnızca bildirimden ve düzeltmeden doğar. Soru, niyet, hedef ve varsayım kayıt değildir ("neden 70'in altına inemiyorum?" tartı kaydı değildir). Soruyla biten bildirim yine yazılır, soruyu koç cevaplar. Her bildirim ayrı bir yazmadır, birini yazıp ötekini atlama: "belim ağrıyor ama 40 dakika yüzdüm" sakatlık ve antrenmandır; yanında anılan yiyecek ya da içecek de bildirimdir.
-2. Kimin hakkında. Kişinin kendisi mi, başkası mı? Başkasına ait alerji, yemek ya da ölçü kişinin kaydına yazılmaz; "ablamla alışverişe çıktım" cinsiyet bilgisi değildir.
+2. Kimin hakkında. Başkasına ait alerji, yemek ya da ölçü kişinin kaydına yazılmaz; "ablamla alışverişe çıktım" cinsiyet bilgisi değildir.
 3. Gün. Günü bağlamdaki yerel tarihe göre ver; gelecek ve yedi günden eski kayıt yazılmaz. Uyku uyandığı günündür.
-4. Miktarın iki yüzü. as_stated kişinin ifadesidir, aynen yazılır ("annemin tabağı kadar"); kod onu ayrıştırmaz. Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; bütün pişen, dilimlenmeyen bir yiyecekte "dilim" çoğunlukla adettir; söylenmeyen bir kesir (yarım, çeyrek) uydurma. Bardak ya da şişe sayısı quantity'dir, litreyi kod hesaplar. Küçük ya da ~0 kcal olanlar da yazılır (bir tutam baharat, şekersiz bir içecek); soru gerektirmez.
+4. Miktarın iki yüzü. as_stated kişinin ifadesidir, aynen yazılır ("annemin tabağı kadar"). Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; bütün pişen, dilimlenmeyen bir yiyecekte "dilim" çoğunlukla adettir; söylenmeyen bir kesir (yarım, çeyrek) uydurma. Bardak ya da şişe sayısı quantity'dir, litreyi kod hesaplar. Küçük ya da ~0 kcal olanlar da yazılır (bir tutam baharat, şekersiz bir içecek); soru gerektirmez. Söylenmeyen puan, set ya da tekrar uydurma, onu sormak için clarify da açma: o öğeyi yazma (antrenman setsiz; "moralim bozuk" puan değildir: needs_clarification).
 5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak ve kendi tahminini ver. Kelime benzerliği aynı yiyecek demek değildir.
-6. Mevcut kayıtlar. Geri alma (record_ops delete) ve düzeltme yalnızca bağlamdaki ref'lerle (m12, d3) yapılır. Kişi gösterilen bir kaydı düzeltiyorsa record_ops update: basis user_correction, evidence_quote onun cümlesinden, patch kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır; düzeltmeyi bir de yeni yazma olarak ekleme, çift sayım olur. Listedeki bir öğünü yeniden anlatıyorsa status restatement; "tabağı yeniden doldurdum" yeni yemektir. Makul görünmeyen eski bir kaydı kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, koç bir kez sorar, evet gelirse pending_ops confirm olur.
-7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda birden çok yazma varken "onu sil" de, son ya da ilk gibi bir sıra sözü de hangisini söylemez; listedeki sıra anlam taşımaz. Yeni yenen bir şey, kayıtlı bir öğüne eklense de yeni meal_log'dur; öğününü sormak için yazmayı bekletme. Soru hiçbir kaydı silmez ya da değiştirmez.
+6. Mevcut kayıtlar. Geri alma (record_ops delete) ve düzeltme yalnızca bağlamdaki ref'lerle (m12, d3) yapılır. Kişi gösterilen bir kaydı düzeltiyorsa record_ops update: basis user_correction, evidence_quote onun cümlesinden, patch kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır; düzeltmeyi bir de yeni yazma olarak ekleme, çift sayım olur. Listedeki bir öğünü yeniden anlatıyorsa status restatement; "tabağı yeniden doldurdum" yeni yemektir. Makul görünmeyen eski bir kaydı kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, evet gelirse pending_ops confirm olur.
+7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda birden çok yazma varken "onu sil" de, son ya da ilk gibi bir sıra sözü de hangisini söylemez; listedeki sıra anlam taşımaz. Yeni yenen bir şey, kayıtlı bir öğüne eklense de yeni meal_log'dur; öğününü sormak için yazmayı bekletme. Bir yemeğe eklenen şey (pilava tereyağı) o yemeği de anlatır: yemek kayıtlı değilse onu da tahminle aynı öğüne yaz, içeriğini clarify ile sor. Soru hiçbir kaydı silmez ya da değiştirmez.
 8. Bağlantılar. Son konuşma bağlamdadır; kısa bir cevap ("68", "evet", "2 bardak") koçun son mesajına verilmiş olabilir. Bekleyen onaya (p#) ya da açık söze (k#) verilen cevap pending_ops ya da commitment_ops olur.
-9. Güvenlik okuması. Her belirsiz tetik için tripwire_readings'e hit_id, okuma ve gerekçe yaz. Kelime gerçek bir durumu mu anlatıyor, mecaz mı ("filme bayıldım" beğenmek, "koşarken bayıldım" bilinç kaybı)? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Hastalıkla ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting). Tek seferlik bir fazla yeme yakınması en fazla binge low'dur; tekrarlayan tıkınma, kontrol kaybı ya da telafi niyeti (kusma, aç kalma, zorlayıcı spor) en az medium'dur; telafi varsa kategori binge değil, telafinin türüdür. ed_signal'in kanıtı kişinin sözüdür; koçun cümleleri sinyal sayılmaz. Alerjisi olduğu bir şeyi yediğini söylüyorsa, acil olsa da öğünü allergens ile yaz: maruziyeti kod o kayıttan görür.
-10. Alerji ve sakatlık. Her öğeyi ayrı yaz; olumsuzluk yalnızca ait olduğu öğeye geçer ve her "X alerjim yok" bir does_not_have yazmasıdır. Kişinin kendi alerjisini ya da sakatlığını bu turda yaz: türü ya da bölgesi belirsizse en olası okumayla yaz, ayrıntıyı aynı turda clarify ile sor. Tepkiyi anlatan koşul cümlesi varsayım değil, beyandır. Şiddet söylenmediyse unknown yaz; kod onu netleşene dek ciddi sayar. Bir kısıtın artık geçmediğini ya da baştan yanlış olduğunu söylüyorsa, ciddi alerji de olsa yine yaz: etkin bir kısıtsa constraint_retract, pasifse ya da listede yoksa does_not_have; onayı kod ister.
-11. Plan. Kişi açıkça plan istiyor, değiştiriyor ya da onaylıyorsa plan_action'ı buna göre seç; açık taslağa dönük her işlemde draft_ref taslağın ref'idir. Taslak açıkken tarif ya da öneri istemek none'dır; revise yalnız taslağı değiştirme isteğidir. Plan isteğinin gerekçesi ("öğlenleri vaktim olmuyor") profil bilgisi değildir.
-12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason listesinden seç; uyan bir neden yoksa null bırak, koç sorar. Geri alma, onay ve senin fark ettiğin şüpheli kayıt kişinin bildirdiği yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
-13. Rota. reply_route koçun hangi sözleşmeyle konuşacağıdır: acil tıbbi durumda emergency, kendine zarar ya da orta/yüksek yeme bozukluğu sinyalinde crisis (low ise coach), plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca düşünmek isteyen turlarda (sıkıntı, yeme bozukluğu, telafi, analiz, plan).
+9. Güvenlik okuması. Her belirsiz tetik için tripwire_readings'e hit_id, okuma ve gerekçe yaz. Kelime gerçek bir durumu mu anlatıyor, mecaz mı ("filme bayıldım" beğenmek, "koşarken bayıldım" bilinç kaybı)? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Belirtisiz, mantıksız bir miktar acil değil, olası yazım hatasıdır: belgedeki aralığa sığıyorsa söylendiği gibi yaz (kod sorar), sığmıyorsa clarify ile sor. Hastalıkla ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting). Tek seferlik bir fazla yeme yakınması en fazla binge low'dur; tekrarlayan tıkınma, kontrol kaybı ya da telafi niyeti (kusma, aç kalma, zorlayıcı spor) en az medium'dur; telafi varsa kategori binge değil, telafinin türüdür. ed_signal'in kanıtı kişinin sözüdür; koçun cümleleri sinyal sayılmaz. Alerjisi olduğu bir şeyi yediğini söylüyorsa, acil olsa da öğünü allergens ile yaz: maruziyeti kod o kayıttan görür.
+10. Alerji ve sakatlık. Her öğeyi ayrı yaz; olumsuzluk yalnızca ait olduğu öğeye geçer ve her "X alerjim yok" bir does_not_have yazmasıdır. Kişinin kendi alerjisini ya da sakatlığını bu turda yaz: türü ya da bölgesi belirsizse en olası okumayla yaz, ayrıntıyı aynı turda clarify ile sor. Kendi alerjisinden söz edip türünü söylemediği turda ad iki okumalıysa (alerjen listesinde "sor"), listede kayıtlı olsa da türünü clarify ile sor; aynısı listedeyse ve yeni bilgi yoksa yeniden yazma (already_recorded). Tepkiyi anlatan koşul cümlesi varsayım değil, beyandır. Şiddet söylenmediyse unknown yaz; kod onu netleşene dek ciddi sayar. Bir kısıtın kişiye geçmediğini söyleyen her cümle (geçti, yanlış yazıldı, dokunmuyor) yazmadır, ciddi alerji de olsa: etkin bir kısıtsa constraint_retract, pasifse ya da listede yoksa does_not_have. Türü netleştirmek kaldırmak değildir: kayıtlı kısıta dokunma, yalnız geçmeyen türü does_not_have yaz. Onayı kod sorar; yazmazsan soramaz.
+11. Plan. Açık plan isteği, değişikliği ya da onayı plan_action'dır; açık taslağa dönük işlemde draft_ref taslağın ref'idir. Taslak açıkken tarif ya da öneri istemek none'dır; revise yalnız taslağı değiştirme isteğidir. Plan isteğinin gerekçesi ("öğlenleri vaktim olmuyor") profil bilgisi değildir.
+12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason listesinden seç; uyan bir neden yoksa null bırak. Geri alma, onay ve senin fark ettiğin şüpheli kayıt yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
+13. Rota. reply_route: acil tıbbi durumda emergency, kendine zarar ya da orta/yüksek yeme bozukluğu sinyalinde crisis (low ise coach), plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca düşünmek isteyen turlarda (sıkıntı, yeme bozukluğu, telafi, analiz, plan).
 
-Aşağıda önce yazabileceğin kayıtların belgesi, sonra örnek kararlar var. Örneklerde boş liste, null, false ya da 0 olan alanlar, plan_action none ve varsayılan rota (coach, low) kısalık için gösterilmedi; şema hepsini ister.`;
+Örnek kararlarda boş liste, null, false ya da 0 olan alanlar, plan_action none ve varsayılan rota (coach, low) kısalık için gösterilmedi; şema hepsini ister.`;
 
 /** The user told us something new about themselves this turn (true even when it was written). */
 const REPORTED = { reported_new_facts: true } as const;
@@ -269,7 +278,7 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
       intent: { primary: 'question' },
       clarify: { topic: 'm52 kaydında neyin yanlış olduğu', candidate_refs: ['m52'] },
     },
-    why: 'Soru; hiçbir kayıt silinmez ya da değişmez, koç neyin yanlış olduğunu sorar.',
+    why: 'Soru; hiçbir kayıt silinmez ya da değişmez.',
   },
   {
     id: 'iki_aday_sil',
@@ -322,7 +331,7 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
       plan_action: { op: 'generate', plan_type: 'diet' },
       reply_route: { contract: 'plan', effort_hint: 'medium' },
     },
-    why: 'Açık plan isteği; önkoşulları ve sayıları kod denetler.',
+    why: 'Açık plan isteği; önkoşulları kod denetler.',
   },
   {
     id: 'taslak_onayi',
@@ -332,7 +341,7 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
       intent: { primary: 'confirmation' },
       plan_action: { op: 'approve', plan_type: 'workout', draft_ref: 'dft4' },
     },
-    why: 'Açık taslağa onay approve olur (draft_ref onun ref’i); yeni plan üretilmez.',
+    why: 'Açık taslağa onay approve olur; yeni plan üretilmez.',
   },
   {
     id: 'alerji_beyani',
@@ -355,6 +364,17 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
     why: 'İki beyan; "dokunmuyor" yalnız kereviz için, hardal has kalır ("ağır" → severe).',
   },
   {
+    id: 'kisit_yanlis',
+    context: ['KISITLAR: c4 · alerji · soya · şiddeti belirtilmemiş'],
+    message: 'soyayla bir derdim yok aslında, o bilgi yanlış girilmiş',
+    decision: {
+      intent: { primary: 'correction' },
+      writes: [{ op: 'constraint_retract', target: 'c4', evidence_quote: 'soyayla bir derdim yok' }],
+      self_check: REPORTED,
+    },
+    why: 'Kısıtın geçmediği de yazmadır: retract; ciddi de olsa yazılır, onayı kod sorar.',
+  },
+  {
     id: 'baskasinin_alerjisi',
     context: [],
     message: 'eşim kabuklu deniz ürünlerine alerjik, evde karides pişirmiyoruz',
@@ -366,7 +386,7 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
       }],
       self_check: REPORTED,
     },
-    why: 'whose other_person: kişinin güvenlik listesine girmez, koç not olarak bilir.',
+    why: 'whose other_person: kişinin güvenlik listesine girmez.',
   },
   {
     id: 'sakatlik',

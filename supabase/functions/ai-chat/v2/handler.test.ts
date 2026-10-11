@@ -94,7 +94,7 @@ Deno.test('meal log end to end: Stage A → commit → the REAL Stage B over the
   assertEquals(countOf(user, 'Kısıtlar:'), 1, 'the constraints appear once');
   assert(!user.includes('PROFİL:') && !user.includes('BUGÜNKÜ HEDEF:'), 'the old handler-rendered duplicate block is gone');
   assertStringIncludes(user, '- KAYDEDİLDİ: Öğün kaydedildi — ');
-  assertStringIncludes(user, '(bu turdaki kayıtlar dahil)', 'today\'s number includes this turn (§8.2, one target function)');
+  assertStringIncludes(user, '(az önce yazılanlar dahil)', 'today\'s number includes this turn (§8.2, one target function)');
   assertEquals(t.rec.judgeCalls.length, 1, 'the seed user has a severe allergy: the luna judge read the reply');
   // the envelope the app reads today
   const env = t.env!;
