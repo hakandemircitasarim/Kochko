@@ -18,16 +18,17 @@ import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/st
 import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleDecision, sampleMeal } from '../../shared/write-registry/samples.ts';
 import { CANNED_SAFETY, REQUIRED_SAFETY_LINE, resolveTripwires, scanTripwires } from '../../shared/safety-tripwires.ts';
 import { validateDecision } from '../../shared/write-registry/mod.ts';
-import { STAGE_A_MIN_REPAIR_MS } from './budgets.ts';
+import { STAGE_A_MIN_REPAIR_MS, STAGE_A_REPAIR_TIMEOUT_MS } from './budgets.ts';
 import { clientLive, clientReload, V1_KEYS } from './client-parsers.test.ts';
 import { coachModel } from './coach.ts';
 import { quotaClassOf } from './commit.ts';
 import type { CommitResult, PostcheckOutput, PostcheckPort, TripwireResolution } from './contracts.ts';
 import { COACH_UNAVAILABLE_TR, RECEIPTS_BELOW_TR, SAFE_FALLBACK_VARIANTS, SUGGESTION_UNVERIFIED_LINE } from './guarantees.ts';
 import {
-  actionsExecutedOf, BUSY_LINE, buildRepairRequest, extraFacts, handleV2Turn, honestCrashResponse, honestFallbackText, newTurnState,
-  NOTHING_TO_UNDO_LINE, receiptFactLines, STAGE_A_FAILED_LINE, STAGE_B_FAILED_HELD_LINE, STAGE_B_FAILED_LINE, STAGE_B_FAILED_NOTHING_LINE,
-  STAGE_B_FAILED_WRITTEN_HELD_LINE, TASK_MODE_HINT_UNKNOWN, undoTargetOf, v1OnlyReason, type TurnState,
+  actionsExecutedOf, ALLERGEN_MENTION_ISSUE, allergenMentionLine, allergenMentionOf, betterOf, BUSY_LINE, buildRepairRequest, extraFacts,
+  handleV2Turn, honestCrashResponse, honestFallbackText, MISSED_WRITE_REPAIR_LINE, newTurnState, NOTHING_TO_UNDO_LINE, receiptFactLines,
+  STAGE_A_FAILED_LINE, STAGE_A_FALLBACK_V1_CODES, STAGE_B_FAILED_HELD_LINE, STAGE_B_FAILED_LINE, STAGE_B_FAILED_NOTHING_LINE,
+  STAGE_B_FAILED_WRITTEN_HELD_LINE, TASK_MODE_HINT_UNKNOWN, UNANCHORED_QUESTION_FORBIDDEN_ISSUE, undoTargetOf, v1OnlyReason, type TurnState,
 } from './handler.ts';
 import { turnRefs, validationContext } from './input.ts';
 // The owner's §7.2 budgets live in stage-a-request.ts (a tuning branch moves them): imported, never hard-coded.
@@ -233,6 +234,8 @@ Deno.test('ambiguous ED trigger + Stage A failure → honest line + the ED refer
   assert(t.env!.message.startsWith(STAGE_A_FAILED_LINE));
   assertStringIncludes(t.env!.message, 'uzman');
   assertEquals(t.rec.edSignals, ['medium']);
+  assertEquals(t.out.kind, 'response', 'a live trigger stays fail-closed: its referral line is code\'s, never another model\'s');
+  assertEquals(t.rec.persisted[0].quotaClass, 'exempt', 'a turn nobody read is never charged (first live trial: it was "conversation")');
 });
 
 Deno.test('ambiguous trigger read POSITIVE → the protective route (crisis contract, 112 guaranteed by code, no judge latency)', async () => {
@@ -256,13 +259,30 @@ Deno.test('a benign reading does NOT lift protection while the B+ gate is closed
   assertEquals(t.rec.coachInputs[0].tripwire.kind, 'protective');
 });
 
-Deno.test('Stage A failure on an ordinary turn → a short honest line; nothing recorded; reservation kept as a used turn', async () => {
-  const t = await turn({ message: '2 dilim lahmacun yedim', idempotency_key: 'k2' }, { stageA: (req) => failedOutcome(req) });
-  assertEquals(t.env!.message, STAGE_A_FAILED_LINE);
-  assertEquals(t.commit.rpcCalls.length, 0);
-  assertEquals(t.rec.persisted[0].quotaClass, 'conversation');
-  assertEquals(t.rec.journal.map((j) => j.kind), ['claim', 'commit']);
-});
+for (const [label, stageA, code] of [
+  ['timeout', (req: Parameters<typeof failedOutcome>[0]) => failedOutcome(req, 'timeout'), STAGE_A_FALLBACK_V1_CODES.timeout],
+  ['provider error', (req: Parameters<typeof failedOutcome>[0]) => failedOutcome(req, 'http'), STAGE_A_FALLBACK_V1_CODES.error],
+  ['refusal', (req: Parameters<typeof failedOutcome>[0]) => ({ ...failedOutcome(req), status: 'refused' as const, error: null, refusal: 'no' }), STAGE_A_FALLBACK_V1_CODES.refused],
+] as const) {
+  Deno.test(`Stage A ${label} on an ordinary turn → v1 answers the ORIGINAL request (nothing understood, nothing written); never "tekrar yazar mısın"`, async () => {
+    const t = await turn({ message: 'yok yanlış yazdım 1.4', idempotency_key: 'k2' }, { stageA });
+    assertEquals(t.out.kind, 'fallback_v1');
+    if (t.out.kind === 'fallback_v1') assertEquals(t.out.reason, code);
+    assertEquals(t.rec.understandReqs.length, 1, 'no second Stage A call');
+    assertEquals(t.rec.understandReqs[0].timeoutMs, STAGE_A_LIVE_BUDGETS_MS.normal);
+    assertEquals(t.commit.rpcCalls.length, 0);
+    assertEquals(t.rec.coachInputs.length, 0, 'no Stage B for a turn v1 answers');
+    assertEquals(t.rec.persisted.length, 0, 'nothing stored: v1 stores its own reply');
+    assertEquals(t.state.sideEffects, false, 'no side effect, so the route may hand over');
+    // The understand row is kept, carrying the hand-over code (the route logs the reason too).
+    assertEquals(t.rec.turnLogs.map((r) => r.stage), ['understand']);
+    assertEquals(issueCodes(t.rec.turnLogs[0]), [code]);
+    // The route runs this cleanup before v1: the journal claim and the quota reservation are released.
+    for (const job of t.state.cleanup) await job();
+    assertEquals(t.rec.released, ['res-1']);
+    assertEquals(t.rec.journal.map((j) => j.kind), ['claim', 'fail']);
+  });
+}
 
 Deno.test('an accepted ED signal (verbatim user quote) escalates the durable tier', async () => {
   const msg = 'yedikten sonra parmağımı boğazıma sokuyorum';
@@ -277,13 +297,26 @@ Deno.test('an accepted ED signal (verbatim user quote) escalates the durable tie
 Deno.test('Stage A budget per class: an ordinary turn waits the normal budget, a turn with a tripwire fact the tripwire budget', async () => {
   const ordinary = await turn({ message: '2 dilim lahmacun yedim' }, { stageA: (req) => failedOutcome(req, 'timeout') });
   assertEquals(ordinary.rec.understandReqs[0].timeoutMs, STAGE_A_LIVE_BUDGETS_MS.normal);
-  assertEquals(ordinary.env!.message, STAGE_A_FAILED_LINE, 'late on an ordinary turn: honest "nothing recorded"');
+  assertEquals([ordinary.rec.understandReqs[0].budgetClass, ordinary.rec.understandReqs[0].liveBudgetMs], ['normal', STAGE_A_LIVE_BUDGETS_MS.normal]);
+  assertEquals(ordinary.out.kind, 'fallback_v1', 'late on an ordinary turn: v1 answers (nothing was written)');
   const tripwire = await turn({ message: 'antrenmanda bayıldım' }, { stageA: (req) => failedOutcome(req, 'timeout') });
   assertEquals(tripwire.rec.understandReqs[0].timeoutMs, STAGE_A_LIVE_BUDGETS_MS.tripwire);
   assertEquals(tripwire.env!.message, CANNED_SAFETY.emergency.message, 'late on a live trigger: today\'s canned protection');
+  assertEquals(tripwire.rec.persisted[0].quotaClass, 'exempt', 'a fail-closed turn is never charged');
   const declaration = await turn({ message: 'fıstık alerjim var' }, { stageA: parsed(sampleDecision()) });
   assertEquals(declaration.rec.understandReqs[0].timeoutMs, STAGE_A_LIVE_BUDGETS_MS.tripwire, 'a declaration cue is a tripwire fact too (the effort rule\'s same certain fact)');
-  assert(STAGE_A_LIVE_BUDGETS_MS.tripwire > STAGE_A_LIVE_BUDGETS_MS.normal, 'the safety turns wait longer, still fail-closed');
+  assert(STAGE_A_LIVE_BUDGETS_MS.tripwire >= STAGE_A_LIVE_BUDGETS_MS.normal, 'a safety turn never waits less than an ordinary one, still fail-closed');
+});
+
+Deno.test('a declaration cue with nothing protective to say (no live trigger, no allergen of the user named) + Stage A failure → v1, never a bare "tekrar yaz"', async () => {
+  // "susam alerjim var": a declaration cue (tripwire budget class) for a user whose spine has no sesame.
+  // The fail-closed path would carry no code-owned line at all — only "tekrar yazar mısın" — while v1
+  // records a declared allergy itself (its deterministic allergy net), so v1 is the safer answer.
+  const t = await turn({ message: 'susam alerjim var', idempotency_key: 'k-decl' }, { stageA: (req) => failedOutcome(req, 'timeout') });
+  assertEquals(t.rec.understandReqs[0].timeoutMs, STAGE_A_LIVE_BUDGETS_MS.tripwire, 'still waited the tripwire budget');
+  assertEquals(t.out.kind, 'fallback_v1');
+  if (t.out.kind === 'fallback_v1') assertEquals(t.out.reason, STAGE_A_FALLBACK_V1_CODES.timeout);
+  assertEquals(t.rec.persisted.length, 0);
 });
 
 Deno.test('a parsed Stage A past the tripwire budget on a live-trigger turn is a timeout (canned); on time its reading counts; an ordinary late answer is used', async () => {
@@ -912,6 +945,149 @@ Deno.test('a protective turn that crashes AFTER its write (end to end): the hand
   assertEquals(f.rec.journal.at(-1)?.kind, 'commit', 'a retry replays this answer, 112 line included');
 });
 
+// ─── first live trial (Lane A): allergen-mention net, missed-write repair, hold answers at the cap ──
+
+const PEANUT_BREAKFAST = 'kahvaltıda fıstık ezmeli ekmek yedim';
+
+Deno.test('allergen mention + Stage A failure → fail-closed with the code-owned exposure guidance (never v1, never a bare "tekrar yaz"); tripwire budget; exempt', async () => {
+  // First live trial (mem): a peanut-allergic user's peanut-butter breakfast hit a Stage A timeout and
+  // got only "tekrar yazar mısın". The seed user has an active SEVERE 'fıstık' row.
+  const ti = await seededTurnInput();
+  assertEquals(scanTripwires(PEANUT_BREAKFAST).hits.length, 0, 'precondition: T2 sees nothing (no allergy word in the message)');
+  const t = await turn({ message: PEANUT_BREAKFAST, idempotency_key: 'k-al' }, { stageA: (req) => failedOutcome(req, 'timeout') });
+  assertEquals(t.out.kind, 'response', 'the guidance line must not depend on another model answering');
+  assertEquals([t.rec.understandReqs[0].budgetClass, t.rec.understandReqs[0].timeoutMs], ['tripwire', STAGE_A_LIVE_BUDGETS_MS.tripwire]);
+  const line = allergenMentionLine(ti, ['fıstık']);
+  assertEquals(t.env!.message, `${STAGE_A_FAILED_LINE}\n\n${line}`, 'the honest "nothing recorded" line, then the guidance LAST');
+  assertStringIncludes(line, 'ciddi fıstık alerjine');
+  assertStringIncludes(line, "112'yi ara");
+  assert(!line.includes('Kaydettim') && !line.includes('kaydettiğin'), 'nothing was recorded: the line claims no meal');
+  assertEquals(t.env!.actions, []);
+  assertEquals(t.commit.rpcCalls.length, 0);
+  assertEquals(t.rec.coachInputs.length, 0);
+  const p = t.rec.persisted[0];
+  assertEquals(p.quotaClass, 'exempt');
+  assertEquals(p.codeNotes?.map((n) => n.kind), ['other', 'allergen_exposure']);
+  const row = t.rec.turnLogs.find((r) => r.stage === 'tripwire')!;
+  assertEquals([row.finish_reason, row.guard_verdict], ['stage_a_failed_allergen', 'allergen_warned']);
+  assertEquals((row.issues as Array<{ code: string; allergens?: string[] }>).find((i) => i.code === ALLERGEN_MENTION_ISSUE)?.allergens, ['fıstık']);
+  assertEquals(t.rec.journal.map((j) => j.kind), ['claim', 'commit'], 'a retry replays this answer');
+});
+
+Deno.test('allergen mention on a turn Stage A DID read: only the wait changes (tripwire budget); the reply is Stage B\'s, the exposure from the written meal', async () => {
+  const meal = sampleMeal([{ name: 'fıstık ezmeli ekmek', allergens: ['peanut', 'gluten'], may_contain: [] }], { raw: PEANUT_BREAKFAST, meal_type: 'breakfast' });
+  const t = await turn({ message: PEANUT_BREAKFAST }, { stageA: parsed(sampleDecision({ writes: [meal] })), coach: () => coachReply('Kaydettim. Şu an bir belirti var mı?') });
+  assertEquals(t.rec.understandReqs[0].timeoutMs, STAGE_A_LIVE_BUDGETS_MS.tripwire);
+  assertEquals(t.rec.understandReqs[0].effort, 'low', 'the net changes the wait, never the request (effort stays the scan\'s)');
+  assertEquals(t.commit.rpcCalls.map((c) => c.name), ['w_meal_apply']);
+  assert(t.env!.message.startsWith('Kaydettim. Şu an bir belirti var mı?'));
+  assert(!t.env!.message.includes(allergenMentionLine(await seededTurnInput(), ['fıstık'])), 'the mention line belongs to the fail-closed path only');
+  assertEquals(t.rec.coachInputs[0].commit.exposures.map((e) => e.allergens), [['fıstık']], 'the consumption check reads the WRITTEN meal');
+});
+
+Deno.test('allergenMentionOf / allergenMentionLine: commit.ts exposuresOf\'s matcher on the message (single source); active rows only; severe → 112, mild → no 112', async () => {
+  const ti = await seededTurnInput();
+  assertEquals(allergenMentionOf(ti, PEANUT_BREAKFAST), ['fıstık']);
+  assertEquals(allergenMentionOf(ti, '2 dilim lahmacun yedim'), []);
+  assertEquals(allergenMentionOf(ti, 'sütlü kahve içtim'), [], 'the seed\'s süt row is INACTIVE: never an allergen');
+  // A v2 canonical id ('peanut') matches through the same alias table the consumption check uses.
+  const canonical = await seededTurnInput((tb) => { tb.user_constraints = tb.user_constraints.map((c) => (c.id === 'uc-1' ? { ...c, subject: 'peanut' } : c)); });
+  assertEquals(allergenMentionOf(canonical, PEANUT_BREAKFAST), ['peanut']);
+  assertStringIncludes(allergenMentionLine(canonical, ['peanut']), 'ciddi yer fıstığı alerjine', 'the Turkish label of the id');
+  // An explicitly MILD active row: the sensitivity wording, no 112 (§7.1: only explicit mild leaves the severe set).
+  const mild = await seededTurnInput((tb) => { tb.user_constraints = tb.user_constraints.map((c) => (c.id === 'uc-old' ? { ...c, active: true } : c)); });
+  assertEquals(allergenMentionOf(mild, 'sütlü kahve içtim'), ['süt']);
+  const mildLine = allergenMentionLine(mild, ['süt']);
+  assertStringIncludes(mildLine, 'süt hassasiyetine');
+  assert(!mildLine.includes('112'), mildLine);
+  const none = await seededTurnInput((tb) => { tb.user_constraints = []; });
+  assertEquals(allergenMentionOf(none, PEANUT_BREAKFAST), [], 'no spine → no mention');
+});
+
+Deno.test('daily cap + a message naming the user\'s own allergen → the cap text, then the code-owned guidance (no LLM, exempt) — never the bare rate-limit envelope', async () => {
+  const t = await turn({ message: PEANUT_BREAKFAST, idempotency_key: 'k-cap-al' }, { reserveAllowed: false });
+  assertEquals(t.rec.understandReqs.length, 0, 'no LLM call at the cap');
+  assert(t.env!.message.startsWith('Bugünlük kayıt limitine ulaştın.'), t.env!.message);
+  assert(t.env!.message.endsWith(allergenMentionLine(await seededTurnInput(), ['fıstık'])));
+  assertEquals(t.rec.persisted[0].quotaClass, 'exempt');
+  assertEquals(t.rec.turnLogs[0].finish_reason, 'cap_allergen_mention');
+});
+
+Deno.test('missed write → the EXISTING single repair call carries the missed-write note; the repaired decision writes the stated fact; the coach is not told to forbid anything', async () => {
+  // First live trial (mem): "yumurta alerjisi yanlış, yumurta alerjim yok" → issues=[missed_write], writes=[] →
+  // the coach asked "onaylıyor musun?" with no hold behind it, and the user's "evet" resolved nothing.
+  const msg = 'yumurta alerjim yok aslında';
+  const missed = sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: null } });
+  const fixed = sampleDecision({
+    self_check: { reported_new_facts: true, not_written_reason: null },
+    writes: [w('constraint_add', { subject_id: 'egg', display_tr: 'yumurta', polarity: 'does_not_have', severity: 'unknown', evidence_quote: 'yumurta alerjim yok' })],
+  });
+  const t = await turn({ message: msg }, { stageA: (req, n) => parsedOutcome(n === 1 ? missed : fixed, req), coach: () => coachReply('Not aldım: yumurta alerjin yok.') });
+  assertEquals(t.rec.understandReqs.length, 2, 'ONE repair, never a second');
+  const note = t.rec.understandReqs[1].input[1].content;
+  assertStringIncludes(note, 'ONARIM');
+  assertStringIncludes(note, MISSED_WRITE_REPAIR_LINE);
+  assertEquals(t.rec.understandReqs[1].timeoutMs, STAGE_A_REPAIR_TIMEOUT_MS, 'no live trigger: the repair gets its own short budget');
+  assertEquals(t.commit.adapter.calls.map((c) => c.op), ['constraint_add']);
+  assertEquals(t.commit.adapter.calls[0].row.polarity, 'does_not_have');
+  assertEquals(t.rec.coachInputs[0].facts, { unanchoredQuestionForbidden: false });
+  const understandRow = t.rec.turnLogs.find((r) => r.stage === 'understand')!;
+  assertEquals(understandRow.repaired, true);
+  assert(!issueCodes(understandRow).includes('missed_write'), 'the adopted decision no longer misses it');
+  const repairRow = t.rec.turnLogs.find((r) => r.stage === 'repair')!;
+  assertEquals((repairRow.issues as Record<string, unknown>[])[0], { code: 'repair_trigger', path: null, outcome: null, value: ['missed_write'] });
+  assert(!issueCodes(coachRowOf(t)).includes(UNANCHORED_QUESTION_FORBIDDEN_ISSUE));
+});
+
+Deno.test('missed write the repair does NOT fix (same miss, or the repair times out) → the turn goes on; Stage B gets facts.unanchoredQuestionForbidden; missed_write stays in the issues', async () => {
+  const missed = sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: null } });
+  for (const [label, second] of [
+    ['same miss', (req: Parameters<typeof parsedOutcome>[1]) => parsedOutcome(missed, req)],
+    ['repair timeout', (req: Parameters<typeof parsedOutcome>[1]) => failedOutcome(req, 'timeout')],
+  ] as const) {
+    const t = await turn({ message: 'bugün iş çok yoğundu, yorgunum' }, { stageA: (req, n) => (n === 1 ? parsedOutcome(missed, req) : second(req)), coach: () => coachReply('Yoğun bir gün olmuş.') });
+    assertEquals(t.rec.understandReqs.length, 2, `${label}: exactly ONE repair`);
+    assertEquals(t.out.kind, 'response', `${label}: a failed repair never fails the turn (the original decision stands)`);
+    assertEquals(t.rec.coachInputs[0].facts, { unanchoredQuestionForbidden: true }, label);
+    assertEquals(t.rec.coachInputs[0].commit.holds, [], `${label}: no hold exists for a write question to resolve`);
+    assert(issueCodes(t.rec.turnLogs.find((r) => r.stage === 'understand')!).includes('missed_write'), `${label}: missed_write stays in the issues`);
+    assert(issueCodes(coachRowOf(t)).includes(UNANCHORED_QUESTION_FORBIDDEN_ISSUE), `${label}: the coach row records the flag it ran with`);
+  }
+  // A decision that wrote nothing for a DECLARED reason is no miss: no repair, no flag.
+  const reasoned = sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' } });
+  const r = await turn({ message: 'bugün iş çok yoğundu, yorgunum' }, { stageA: parsed(reasoned) });
+  assertEquals(r.rec.understandReqs.length, 1);
+  assertEquals(r.rec.coachInputs[0].facts, { unanchoredQuestionForbidden: false });
+});
+
+Deno.test('betterOf: a missed write is one defect like a REJECT — writing the stated fact wins a tie, two refusals lose to it', async () => {
+  const ti = await seededTurnInput();
+  const ctx = validationContext(ti, 'bir termos su içtim', NOW, turnRefs(ti));
+  const missed = validateDecision(sampleDecision({ self_check: { reported_new_facts: true, not_written_reason: null } }), ctx);
+  const oneReject = validateDecision(sampleDecision({ writes: [w('water_log', { unit: 'other', other_ml_each: null, as_stated: 'bir termos' })] }), ctx);
+  const twoRejects = validateDecision(sampleDecision({ writes: [w('water_log', { unit: 'other', other_ml_each: null, as_stated: 'bir termos' }), w('water_log', { unit: 'other', other_ml_each: null, as_stated: 'bir termos' })] }), ctx);
+  const clean = validateDecision(sampleDecision({ writes: [w('water_log', { unit: 'other', other_ml_each: 500, as_stated: 'bir termos' })] }), ctx);
+  assertEquals([missed.missed_write, oneReject.counts.REJECT, twoRejects.counts.REJECT], [true, 1, 2], 'preconditions');
+  assertEquals(betterOf(missed, clean), 'repaired');
+  assertEquals(betterOf(missed, oneReject), 'repaired', 'a tie goes to the repair: a refusal is said honestly, a silence is not');
+  assertEquals(betterOf(missed, twoRejects), 'original');
+  assertEquals(betterOf(missed, missed), 'repaired', 'the same miss: the latest reading stands (still flagged)');
+});
+
+Deno.test('a hold ANSWER that writes nothing ("vazgeçtim") is a conversation turn — and at the conversation cap it is still answered (the discard happened; only this reply says so)', async () => {
+  const ti = await seededTurnInput();
+  const erase = ti.pending.find((p) => p.op === 'account_erase_request')!;
+  const decision = sampleDecision({ pending_ops: [{ op: 'discard', ref: erase.ref }], intent: { primary: 'confirmation', is_hypothetical: false, about_other_person: false } });
+  const t = await turn({ message: 'hayır vazgeçtim, kalsın', idempotency_key: 'k-disc' }, { stageA: parsed(decision), capAllowed: false, coach: () => coachReply('Tamam, olduğu gibi kalıyor.') });
+  assertEquals(t.commit.rpcCalls.find((c) => c.name === 'v2_hold_resolve')?.args.p_status, 'discarded');
+  assertEquals(t.rec.coachInputs[0].commit.receipts.map((r) => [r.action_type, r.ok]), [['pending_discard', true]]);
+  assertEquals(t.rec.persisted[0].quotaClass, 'conversation', 'first live trial: it was charged as a record turn');
+  assert(!t.env!.rate_limited, 'never the rate-limit text after a side effect');
+  assertEquals(t.env!.message, 'Tamam, olduğu gibi kalıyor.');
+  assertEquals(t.rec.released, [], 'the reservation stays: the turn was answered');
+  assertEquals(t.rec.journal.map((j) => j.kind), ['claim', 'side_effects', 'commit'], 'the journal is committed, never released after a side effect');
+});
+
 // ─── pure helpers ────────────────────────────────────────────────────────────────────────────────
 
 Deno.test('quotaClassOf (the ONE definition, commit.ts) / actionsExecutedOf / extraFactLines', () => {
@@ -922,6 +1098,14 @@ Deno.test('quotaClassOf (the ONE definition, commit.ts) / actionsExecutedOf / ex
   const hold = { op: 'water_log', reason_code: 'x', question_tr: 'q', hold_id: 'p' };
   assertEquals(quotaClassOf(commitOf({ holds: [hold] })), 'conversation', 'hold-only: no record written yet (spec 112: record = the turn wrote one)');
   assertEquals(quotaClassOf(commitOf({ receipts: [okR], holds: [hold] })), 'record', 'a landed write makes it a record turn, holds or not');
+  // Answers to a hold that wrote nothing (first live trial: "hayır vazgeçtim, kalsın" was charged as a record turn).
+  const discard = { action_type: 'pending_discard', ok: true, rows_affected: 1, user_line: 'Vazgeçildi', failure_class: null, legacy_type: 'pending_discard' };
+  const emptyConfirm = { action_type: 'pending_confirm', ok: true, rows_affected: 0, user_line: 'Onaylandı', failure_class: null, legacy_type: 'pending_confirm' };
+  const erased = { action_type: 'pending_confirm', ok: true, rows_affected: 1, user_line: 'hafızanı sıfırladım', failure_class: null, legacy_type: 'data_erase_confirm' };
+  assertEquals(quotaClassOf(commitOf({ receipts: [discard] })), 'conversation', 'a discard closes a hold row; it writes no record');
+  assertEquals(quotaClassOf(commitOf({ receipts: [emptyConfirm] })), 'conversation', 'a confirm receipt that affected nothing');
+  assertEquals(quotaClassOf(commitOf({ receipts: [erased] })), 'record', 'a confirm that DID something (the KVKK erase ran) still counts');
+  assertEquals(quotaClassOf(commitOf({ receipts: [discard, okR] })), 'record', 'discard + the superseding write (final2 "ek olarak"): the write counts');
   assertEquals(actionsExecutedOf([okR])?.[0], { type: 'water_log', ...okR });
   const failed = actionsExecutedOf([{ ...okR, ok: false, failure_class: 'later_write' }])![0];
   assertEquals(failed.type, undefined, 'a failed write never comes back from history as a green badge');

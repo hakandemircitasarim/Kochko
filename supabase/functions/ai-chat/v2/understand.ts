@@ -33,7 +33,7 @@ export const STAGE_A_CACHE_KEY: string = UNDERSTAND_CACHE_KEY;
 /**
  * §7.2: a live Stage A slower than its budget falls back to today's protection; the shadow measures
  * against the same budget. Two budgets, owned by stage-a-request.ts (STAGE_A_LIVE_BUDGETS_MS, owner
- * decision 2026-10-11): normal 6 s, a turn with a tripwire fact 10 s. This is the normal one, kept by
+ * decisions 2026-10-11): normal 10 s, a turn with a tripwire fact 10 s. This is the normal one, kept by
  * name for readers of v1 code.
  */
 export const STAGE_A_LIVE_BUDGET_MS: number = STAGE_A_LIVE_BUDGETS_MS.normal;
@@ -54,7 +54,7 @@ export interface UnderstandRequest extends StageARequest {
   timeoutMs: number;
   /** Character sizes of the parts (the shadow logs them; §3.3 budget check). */
   sizes: StageASizes;
-  /** §7.2 fail-closed budget of this turn and its class (tripwire fact → 10 s, otherwise 6 s). */
+  /** §7.2 fail-closed budget of this turn and its class (STAGE_A_LIVE_BUDGETS_MS: tripwire fact → tripwire, otherwise normal). */
   liveBudgetMs: number;
   budgetClass: StageABudgetClass;
 }

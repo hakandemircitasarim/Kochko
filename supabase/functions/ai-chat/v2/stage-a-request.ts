@@ -30,7 +30,9 @@
  * one module allowed to read them).
  */
 import { buildUnderstandPrefix, UNDERSTAND_CACHE_KEY } from './understand-prompt.ts';
-import { BLOCK_TITLES, buildUnderstandSchema, buildWriteDoc, type EdTier, type JsonSchema, SCHEMA_NAMES } from '../../shared/write-registry/mod.ts';
+import {
+  BLOCK_TITLES, buildUnderstandSchema, buildWriteDoc, type DecisionValidation, type EdTier, type JsonSchema, SCHEMA_NAMES,
+} from '../../shared/write-registry/mod.ts';
 import { renderTripwireFacts, type TripwireScan, tripwireFacts } from '../../shared/safety-tripwires.ts';
 import { shiftDateString } from '../../shared/day-boundary.ts';
 
@@ -55,19 +57,27 @@ export const STAGE_A_MAX_OUTPUT_TOKENS = 2_500;
  * measures against them, a live call times out at them, the parallel tripwire classifier waits as
  * long as they allow (understand.ts runLiveTripwireClassifier), the eval E gate holds each class's
  * p90 to its own budget, and the shadow report splits latency by them; shadow-report.mjs mirrors
- * them and its test pins the mirror). OWNER DECISION 2026-10-11 (docs/AI_MIMARI_V2.md §11 q3):
+ * them and its test pins the mirror). OWNER DECISIONS 2026-10-11 (docs/AI_MIMARI_V2.md §11 q3):
  *
- *   normal    6 s — an ordinary turn ("önce doğruluk": the first live runs had ~13 % of ordinary
- *             turns over the old 4 s, each of which would have lost Stage A's reading).
+ *   normal   10 s — an ordinary turn. First set at 6 s ("önce doğruluk": the first shadow runs had
+ *             ~13 % of ordinary turns over the old 4 s); the first LIVE trial then timed out 6 of ~27
+ *             ordinary-budget calls at 6,0 s (short corrections and confirmations that reason 100–240
+ *             tokens even at effort low) and each one blocked the user. The owner tolerates 10 s
+ *             ("can kurtaran app değiliz"), so an ordinary turn waits as long as a tripwire turn.
  *   tripwire 10 s — a turn where T2 hands Stage A a tripwire fact (an ambiguous hit or a declaration
- *             cue). Those turns think at effort medium (§8.4) and measured slower (round 1: ED-tripwire
- *             turns 55 % over 4 s). Past the budget live v2 answers with TODAY'S canned protection, so
- *             a short cut there replaces Stage A's reasoned reading with the canned reply on exactly
- *             the turns that need the reading — "can kurtaran app değiliz": wait for it, still fail
- *             closed.
- * Owner-adjustable numbers, not spec constants; change them here only with the owner's say-so.
+ *             cue), or one whose message names a food of the user's own active allergen
+ *             (stageABudgetClass `allergenMention`). Those turns think at effort medium (§8.4) and
+ *             measured slower (round 1: ED-tripwire turns 55 % over 4 s). Past the budget live v2
+ *             answers with TODAY'S canned protection — wait for the reading, still fail closed.
+ *
+ * What a miss costs differs by class (handler.ts T4): a tripwire-class turn fails closed with its
+ * code-owned lines; an ordinary turn — nothing understood, nothing written — is handed to v1, which
+ * answers the original request. The two classes stay separate even at equal numbers: the shadow
+ * report, the eval E gate and the live log keep splitting latency by them, and either number can
+ * move alone. Owner-adjustable numbers, not spec constants; change them here only with the owner's
+ * say-so (STAGE_A_REPAIR_TIMEOUT_MS in budgets.ts stays at or below the normal budget).
  */
-export const STAGE_A_LIVE_BUDGETS_MS = { normal: 6_000, tripwire: 10_000 } as const;
+export const STAGE_A_LIVE_BUDGETS_MS = { normal: 10_000, tripwire: 10_000 } as const;
 export type StageABudgetClass = keyof typeof STAGE_A_LIVE_BUDGETS_MS;
 
 /** How much of the recent conversation Stage A sees (oldest dropped first) and how long one line may be. */
@@ -227,14 +237,36 @@ export function hasTripwireFacts(scan: TripwireScan): boolean {
   return tripwireFacts(scan).length > 0;
 }
 
-/** Which §7.2 live budget a turn gets — the same certain fact that raises effort (never a keyword guess). */
-export function stageABudgetClass(scan: TripwireScan): StageABudgetClass {
-  return hasTripwireFacts(scan) ? 'tripwire' : 'normal';
+/**
+ * What else, besides T2's scan, puts a live turn in the tripwire class. `allergenMention`: the
+ * message names a food of one of the user's own ACTIVE allergen/intolerance rows (handler.ts
+ * allergenMentionOf — commit.ts exposuresOf's matching, the single source). The live handler is the
+ * only caller that knows it (it needs the TurnInput); the shadow and the eval classify by the scan.
+ */
+export interface StageABudgetExtras { allergenMention?: boolean }
+
+/**
+ * Which §7.2 live budget a turn gets — the same certain fact that raises effort (never a keyword
+ * guess), or a live allergen mention (a safety net for the turn Stage A might not read in time).
+ */
+export function stageABudgetClass(scan: TripwireScan, extra: StageABudgetExtras = {}): StageABudgetClass {
+  return hasTripwireFacts(scan) || extra.allergenMention === true ? 'tripwire' : 'normal';
 }
 
 /** The fail-closed budget (ms) of a live Stage A call for this turn. */
-export function stageALiveBudgetMs(scan: TripwireScan): number {
-  return STAGE_A_LIVE_BUDGETS_MS[stageABudgetClass(scan)];
+export function stageALiveBudgetMs(scan: TripwireScan, extra: StageABudgetExtras = {}): number {
+  return STAGE_A_LIVE_BUDGETS_MS[stageABudgetClass(scan, extra)];
+}
+
+/**
+ * Does the turn get the ONE repair call (§3.2 T5)? A repairable REJECT / decision issue
+ * (validateDecision repair.needed), or a missed write (§5.1.10: the user stated a new fact and the
+ * decision neither wrote it, nor clarified, nor gave a not_written_reason — the first live trial's
+ * "Antep fıstığında sorun yok" / "yumurta alerjim yok" left the coach a yes/no question no hold
+ * backed). One predicate for the live handler and the eval E gate's repair rate.
+ */
+export function stageARepairWanted(v: Pick<DecisionValidation, 'repair' | 'missed_write'>): boolean {
+  return v.repair.needed || v.missed_write;
 }
 
 let PREFIX: string | null = null;

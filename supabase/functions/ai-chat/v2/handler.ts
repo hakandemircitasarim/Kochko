@@ -11,12 +11,22 @@
  *       that is still there.
  *   T2  safety tripwires (shared/safety-tripwires.ts): an explicit hit → today's canned reply at
  *       once; ambiguous hits → facts for Stage A, resolved by the §7.2 table after it.
- *   T3  loadTurnInput (input.ts).
+ *   T3  loadTurnInput (input.ts) + the allergen-mention safety net (allergenMentionOf: the message
+ *       names a food of the user's own active allergen — commit.ts exposuresOf's matcher, never a
+ *       write, never a reading of meaning; it only picks the budget class and the fail-closed line).
  *   T4  Stage A (understand.ts, the ONE composer stage-a-request.ts) on the turn's §7.2 budget class
  *       (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS — an ordinary turn, or a turn T2 handed a tripwire
- *       fact). Fail-closed: on a turn with a live trigger a failed/late Stage A → today's canned reply;
- *       on an ordinary turn → a short honest line that nothing was recorded.
- *   T5  validateDecision → at most ONE repair call → commit.ts (writes, holds, rejects, receipts).
+ *       fact / that names one of the user's allergens). A failed/late Stage A:
+ *         live safety trigger → today's canned reply (fail-closed, code-owned 112 / referral line);
+ *         allergen mention    → the honest "nothing recorded" line + the code-owned exposure guidance;
+ *         anything else       → nothing was understood and nothing written, so v1 answers the
+ *                               ORIGINAL request (fallback_v1, logged as stage_a_*_fallback_v1) —
+ *                               never "tekrar yazar mısın" for a turn v1 can answer.
+ *       Every fail-closed turn is quota 'exempt' (the user is never charged for a turn nobody read).
+ *   T5  validateDecision → at most ONE repair call (a repairable REJECT, or a missed write: a stated
+ *       fact left unwritten with no reason) → commit.ts (writes, holds, rejects, receipts). A missed
+ *       write the repair did not fix reaches Stage B as CoachInput.facts.unanchoredQuestionForbidden:
+ *       no hold stands behind a "kaydedeyim mi?", so the coach must not offer one.
  *       A plan action (generate/revise/approve…) is Faz 4: the turn goes to v1 before any write.
  *   T6  Stage B through the coach PORT, from the receipts — the coach speaks after the writes.
  *   T7  the post-check PORT (suggestion invariant, prose judge, the ONE regen, fallbacks) — both under
@@ -36,6 +46,7 @@
  * (route.ts then refuses a v1 re-run and answers honestly instead).
  */
 import { liveAmbiguousHits, resolveTripwires, scanTripwires, type SafetyCategory, type TripwireScan } from '../../shared/safety-tripwires.ts';
+import { allergenSpine } from '../../shared/safety-invariants.ts';
 import { checkTaskModeHint, isPlanTaskHint } from '../../shared/task-mode-hints.ts';
 import { guardVerdictOf, type GuardFlag } from '../../shared/turn-failures.ts';
 import type { ActionReceipt, TurnEnvelope } from '../../shared/contracts/turn-envelope.ts';
@@ -44,18 +55,22 @@ import type { CodeNote, QuotaClass } from '../../shared/v2-db-types.ts';
 import {
   SCHEMA_VERSION, validateChannelItems, validateDecision, type DecisionValidation, type ValidationContext, type Verdict,
 } from '../../shared/write-registry/mod.ts';
-import { STAGE_A_MIN_REPAIR_MS, STAGE_A_REPAIR_TIMEOUT_MS, STAGE_A_SALVAGE_TIMEOUT_MS, stageALiveBudgetMs } from './budgets.ts';
 import {
-  executeCommit, failureTr, planCommit, quotaClassOf, type AdapterPort, type CommitPorts, type CommitStep,
+  STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MIN_REPAIR_MS, STAGE_A_REPAIR_TIMEOUT_MS, STAGE_A_SALVAGE_TIMEOUT_MS, stageABudgetClass,
+} from './budgets.ts';
+import {
+  allergenSpineOf, executeCommit, exposuresOf, failureTr, planCommit, quotaClassOf, type AdapterPort, type CommitPorts, type CommitStep,
 } from './commit.ts';
 import type {
   CoachInput, CoachPort, CommitResult, EnvelopePort, PostcheckPort, TripwireResolution, UnderstandDecision, V2Receipt,
 } from './contracts.ts';
 import { navigateOf } from './envelope.ts';
+import { vocabLabel } from './facts.ts';
 import { applyGuarantees, exposureLine, safetyLines, type GuaranteedReply } from './guarantees.ts';
 import { turnRefs, validationContext, type TurnInput } from './input.ts';
 import { runStageB, type StageBRun } from './ports.ts';
 import { stageASafetyOutcome } from './shadow.ts';
+import { stageARepairWanted } from './stage-a-request.ts';
 import { buildUnderstandRequest, type UnderstandOutcome, type UnderstandRequest } from './understand.ts';
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -68,8 +83,28 @@ export const V2_STAGE_FUNCTION_NAME = 'ai-chat-v2';
 
 // ─── code-owned lines (facts about what the code did) ────────────────────────────────────────────
 
-/** Stage A failed on an ordinary turn: nothing was understood, so nothing was written. */
+/**
+ * Stage A failed on a turn that stays fail-closed (an ambiguous ED trigger in append mode, an
+ * allergen mention, the daily cap with nothing else to say): nothing was understood, so nothing was
+ * written. An ordinary turn never gets this line — v1 answers it (T4).
+ */
 export const STAGE_A_FAILED_LINE = 'Mesajını şu an tam işleyemedim, bu yüzden hiçbir şey kaydetmedim. Birkaç saniye sonra tekrar yazar mısın?';
+
+/**
+ * ai_turn_log issue code (on the understand row) of an ordinary turn handed to v1 because Stage A
+ * did not answer in time / failed / refused: nothing was understood or written, v1 answered the
+ * original request. One code per failure status (the stage row's finish_reason keeps the detail).
+ */
+export const STAGE_A_FALLBACK_V1_CODES = {
+  timeout: 'stage_a_timeout_fallback_v1',
+  error: 'stage_a_error_fallback_v1',
+  refused: 'stage_a_refused_fallback_v1',
+} as const;
+
+/** ai_turn_log issue code: the fail-closed reply carried the allergen-mention guidance line. */
+export const ALLERGEN_MENTION_ISSUE = 'allergen_mention';
+/** ai_turn_log issue code (coach row): Stage B ran with CoachInput.facts.unanchoredQuestionForbidden. */
+export const UNANCHORED_QUESTION_FORBIDDEN_ISSUE = 'unanchored_question_forbidden';
 /** The turn crashed after the writes (honestCrashResponse): say what was stored, honestly, and nothing more. */
 export const STAGE_B_FAILED_LINE = 'Şu an cevabımı tamamlayamadım; yukarıdakiler kaydedildi. Birazdan devam edelim mi?';
 export const STAGE_B_FAILED_NOTHING_LINE = 'Şu an cevabımı tamamlayamadım ve bu mesajdan bir şey kaydetmedim. Birkaç saniye sonra tekrar yazar mısın?';
@@ -267,7 +302,20 @@ export function undoTargetOf(last: { turnId: string | null; rows: readonly LastT
   return live ? { kind: 'write', write_id: live.id, ref: live.ref } : { kind: 'already_undone' };
 }
 
-/** The ONE repair call (§3.2 T5): same system prefix (cache-warm), the rejected parts as a user note. */
+/**
+ * The repair note's line for a missed write (§5.1.10): the decision said the user reported a new fact
+ * but wrote nothing, asked nothing and gave no reason. It names the three ways out the model already
+ * knows (rule 12 of the Stage A prompt) — it never says WHAT to write: the model reads the message.
+ */
+export const MISSED_WRITE_REPAIR_LINE = '- karar: self_check.reported_new_facts true ama karar hiçbir şey yazmıyor, clarify ile sormuyor ve not_written_reason vermiyor. '
+  + 'Kişinin bildirdiği yeni olguyu uygun op ile yaz; yalnız mesajın o öğe için söylediğini yaz (olumsuzluk yalnızca ait olduğu öğeye geçer; '
+  + 'bir kısıtı ancak mesaj o kısıtın kendisinin geçersiz olduğunu söylüyorsa kaldır). Neyin ya da hangi kaydın kastedildiği belirsizse clarify ile tek soru sor; '
+  + 'bilinçli olarak yazmıyorsan not_written_reason listesinden uyan gerekçeyi seç. Mesajda gerçekten yeni bir olgu yoksa (onay, geri alma, soru) reported_new_facts false olur.';
+
+/**
+ * The ONE repair call (§3.2 T5): same system prefix (cache-warm), the rejected parts — and a missed
+ * write (stageARepairWanted) — as a user note.
+ */
 export function buildRepairRequest(req: UnderstandRequest, decision: unknown, v: DecisionValidation, timeoutMs: number): UnderstandRequest {
   const lines: string[] = [];
   for (const it of v.repair.items) {
@@ -275,6 +323,7 @@ export function buildRepairRequest(req: UnderstandRequest, decision: unknown, v:
   }
   for (const i of v.decision_issues) if (i.level === 'hard' && i.repairable) lines.push(`- karar: ${i.path ? `${i.path}: ` : ''}${i.tr}`);
   for (const i of v.plan?.issues ?? []) if (i.level === 'hard' && i.repairable) lines.push(`- plan_action: ${i.tr}`);
+  if (v.missed_write) lines.push(MISSED_WRITE_REPAIR_LINE);
   const note = [
     'ONARIM: Önceki kararının aşağıdaki kısımları kodun denetiminden geçmedi. Aynı mesaj için kararı TAM olarak yeniden yaz:',
     'yalnız bu hataları düzelt; düzeltemiyorsan o yazmayı çıkar ya da clarify kullan. Diğer kısımları değiştirme.',
@@ -285,11 +334,49 @@ export function buildRepairRequest(req: UnderstandRequest, decision: unknown, v:
   return { ...req, input: [...req.input, { role: 'user', content: note }], timeoutMs };
 }
 
-/** Keep the repaired decision only when it is not worse than the original. */
+/**
+ * Keep the repaired decision only when it is not worse than the original. A missed write counts as
+ * one defect like a REJECT: a repair that writes the stated fact (even if one write is then refused —
+ * the coach says why, honestly) beats an unexplained silence, and a repair that leaves the miss in
+ * place still wins a tie (the latest reading of the same message).
+ */
 export function betterOf(a: DecisionValidation, b: DecisionValidation): 'original' | 'repaired' {
-  const rejectsA = a.counts.REJECT + a.decision_issues.filter((i) => i.level === 'hard').length;
-  const rejectsB = b.counts.REJECT + b.decision_issues.filter((i) => i.level === 'hard').length;
-  return rejectsB <= rejectsA ? 'repaired' : 'original';
+  const defects = (v: DecisionValidation) => v.counts.REJECT + v.decision_issues.filter((i) => i.level === 'hard').length + (v.missed_write ? 1 : 0);
+  return defects(b) <= defects(a) ? 'repaired' : 'original';
+}
+
+/**
+ * §7.1/§7.2 allergen-mention safety net. First live trial: a peanut-allergic user's "kahvaltıda fıstık
+ * ezmeli ekmek yedim" hit a Stage A timeout and got only "tekrar yazar mısın" — the consumption check
+ * (commit.ts exposuresOf) runs on WRITTEN items, so a turn Stage A never read carried no guidance.
+ *
+ * The user's own ACTIVE allergen/intolerance subjects this message names, matched by exposuresOf
+ * itself (allergenTagsHit's name dictionary — the single source; the message stands in for an item
+ * name). It never writes, never decides what the message means and never touches a reply Stage A
+ * produced. It only (a) puts the turn in the tripwire budget class (stage-a-request.ts) and (b) when
+ * Stage A still fails, keeps the turn fail-closed with the code-owned guidance line
+ * (allergenMentionLine) instead of handing it to v1 — v1's own exposure net fires only for meal items
+ * v1's model actually logged (ai-chat/index.ts), so it is not a guarantee. A false positive (the word
+ * named, not eaten) costs one conditional line on a turn that failed anyway.
+ */
+export function allergenMentionOf(ti: TurnInput, message: string): string[] {
+  const hit = exposuresOf([{ source: 'meal', ref: '', items: [{ name: message, allergens: [], may_contain: [] }] }], allergenSpineOf(ti));
+  return hit[0]?.allergens ?? [];
+}
+
+/**
+ * The code-owned guidance line of a fail-closed allergen-mention turn. Nothing was recorded, so —
+ * unlike guarantees.ts exposureLine ("kaydettiğin öğün … içeriyor") — it claims no meal and no
+ * consumption: conditional, the 112 line for a severe (or severity-unknown, §7.1) allergen.
+ */
+export function allergenMentionLine(ti: TurnInput, allergens: readonly string[]): string {
+  const spine = allergenSpine(ti.constraints.map((c) => ({ kind: c.kind, subject: c.subject, severity: c.severity })));
+  const severe = new Set(spine.severe.map((s) => s.toLocaleLowerCase('tr')));
+  const isSevere = allergens.some((a) => severe.has(a.toLocaleLowerCase('tr')));
+  const labels = [...new Set(allergens.map(vocabLabel))].join(', ');
+  return isSevere
+    ? `⚠️ Mesajında profilindeki ciddi ${labels} alerjine dokunabilecek bir yiyecek geçiyor. Bunu yediysen kendini takip et; kaşıntı, şişlik ya da nefes darlığı olursa hemen 112'yi ara.`
+    : `⚠️ Mesajında profilindeki ${labels} hassasiyetine dokunabilecek bir yiyecek geçiyor. Bunu yediysen kendini nasıl hissettiğini takip et.`;
 }
 
 /** ai_turn_log issue code: the client's task_mode_hint was on no list (shared/task-mode-hints.ts) and was dropped. */
@@ -330,13 +417,13 @@ export function protectiveCategory(t: TripwireResolution): SafetyCategory | null
   return null;
 }
 
-function guardVerdict(tripwire: TripwireResolution, commit: CommitResult | null): string {
+function guardVerdict(tripwire: TripwireResolution, commit: CommitResult | null, allergenWarned = false): string {
   const flags: GuardFlag[] = [];
   const cat = protectiveCategory(tripwire);
   if (cat === 'emergency') flags.push('emergency');
   else if (cat === 'self_harm') flags.push('crisis');
   else if (cat === 'ed') flags.push('ed_referral');
-  if (commit && commit.exposures.length > 0) flags.push('allergen_warned');
+  if (allergenWarned || (commit && commit.exposures.length > 0)) flags.push('allergen_warned');
   return guardVerdictOf(flags);
 }
 
@@ -450,6 +537,9 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   const clientTz = typeof body.client_timezone === 'string' && body.client_timezone ? body.client_timezone : null;
   const ti = await deps.loadTurnInput(userId, now, clientTz);
   deps.mark?.('turn_input');
+  // §7.1/§7.2 safety net: the user's own allergens this message names (budget class + fail-closed line only).
+  const allergenMention = allergenMentionOf(ti, message);
+  const allergenLine = allergenMention.length > 0 ? allergenMentionLine(ti, allergenMention) : null;
 
   // ── T0 quota reservation (inserts the user row; the record-parse ceiling caps cost) ──
   const reservation = await deps.quota.reserve(userId, message);
@@ -457,10 +547,11 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     // §7.2 "belirsiz = varsayılan koruyucu": a live safety trigger is never answered with the
     // rate-limit text (v1 answers its safety early returns before its rate limit too). At the cap
     // there is no Stage A to read the trigger, so it resolves exactly like an unread trigger:
-    // today's canned reply, no LLM call, quota-exempt.
+    // today's canned reply, no LLM call, quota-exempt. A message naming one of the user's own
+    // allergens is unread the same way: the cap text, then the code-owned exposure guidance.
     const atCap = resolveTripwires({ scan, stageA: null });
-    if (atCap.kind === 'fallback') {
-      return { kind: 'response', response: await failClosedTurn(tc, atCap, null, [], { capMessage: reservation.message ?? '' }) };
+    if (atCap.kind === 'fallback' || allergenLine) {
+      return { kind: 'response', response: await failClosedTurn(tc, atCap, null, [], { capMessage: reservation.message ?? '', allergenLine, allergens: allergenMention }) };
     }
     await releaseJournal(tc);
     return { kind: 'response', response: deps.respond({ message: reservation.message, actions: [], task_mode: 'rate_limited', rate_limited: true, remaining: 0 }) };
@@ -475,8 +566,12 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
 
   // ── T4 Stage A, on the turn's §7.2 budget class (stage-a-request.ts owns the numbers) ──
   const liveSafety = hasLiveSafetyHit(scan);
-  const stageABudgetMs = stageALiveBudgetMs(scan);
-  const req4 = buildUnderstandRequest({ turnInput: ti, message, scan, timeoutMs: stageABudgetMs });
+  const budgetClass = stageABudgetClass(scan, { allergenMention: allergenMention.length > 0 });
+  const stageABudgetMs = STAGE_A_LIVE_BUDGETS_MS[budgetClass];
+  const req4: UnderstandRequest = {
+    ...buildUnderstandRequest({ turnInput: ti, message, scan, timeoutMs: stageABudgetMs }),
+    liveBudgetMs: stageABudgetMs, budgetClass,
+  };
   const outcome = await deps.understand(req4);
   deps.mark?.('stage_a');
   const stageARows: Record<string, unknown>[] = [stageRow(tc, 'understand', outcome, null, null, false)];
@@ -484,7 +579,19 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   if (outcome.status !== 'parsed') {
     const status = outcome.status === 'refused' ? 'refused' : outcome.status === 'error' && outcome.error?.class === 'timeout' ? 'timeout' : 'error';
     const fallback = resolveTripwires({ scan, stageA: { status } });
-    return { kind: 'response', response: await failClosedTurn(tc, fallback, reservedId, stageARows) };
+    // A live safety trigger (code-owned 112 / referral) or an allergen mention (code-owned exposure
+    // guidance) stays fail-closed: those lines must not depend on another model answering.
+    if (fallback.kind === 'fallback' || allergenLine) {
+      return { kind: 'response', response: await failClosedTurn(tc, fallback, reservedId, stageARows, { allergenLine, allergens: allergenMention }) };
+    }
+    // Anything else: nothing was understood and nothing written (no side effect yet), so v1 answers
+    // the ORIGINAL request — the route runs this turn's cleanup (journal claim, quota reservation)
+    // first, exactly as for a plan action. Never "tekrar yazar mısın" for a turn v1 can answer.
+    const code = STAGE_A_FALLBACK_V1_CODES[status];
+    stageARows[0] = { ...stageARows[0], issues: [{ code, path: null, outcome: null, value: outcome.error?.class ?? outcome.status, budget_class: budgetClass }] };
+    deps.log('[v2_turn] Stage A failed on an ordinary turn → v1', { turn_id: turnId, status, budget_class: budgetClass, latency_ms: outcome.meta.latencyMs });
+    await logRows(tc, stageARows);
+    return { kind: 'fallback_v1', reason: code };
   }
 
   // ── T5 validate (+ one repair) ──
@@ -493,14 +600,15 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   let decision = outcome.decision as UnderstandDecision;
   let validation = validateDecision(decision, ctx);
   let repaired = false;
-  if (validation.repair.needed) {
+  if (stageARepairWanted(validation)) {
     // On a turn with a live trigger the repair shares the class budget with the first call (the whole
     // Stage A reading stays inside §7.2's wait); on an ordinary turn it gets its own short budget.
     const repairMs = liveSafety ? stageABudgetMs - outcome.meta.latencyMs : STAGE_A_REPAIR_TIMEOUT_MS;
     if (repairMs >= STAGE_A_MIN_REPAIR_MS) {
       const repReq = buildRepairRequest(req4, decision, validation, repairMs);
       const rep = await deps.understand(repReq);
-      stageARows.push(stageRow(tc, 'repair', rep, null, null, true));
+      const trigger = [...(validation.repair.needed ? ['reject'] : []), ...(validation.missed_write ? ['missed_write'] : [])];
+      stageARows.push({ ...stageRow(tc, 'repair', rep, null, null, true), issues: [{ code: 'repair_trigger', path: null, outcome: null, value: trigger }] });
       if (rep.status === 'parsed') {
         const rv = validateDecision(rep.decision, ctx);
         if (betterOf(validation, rv) === 'repaired') {
@@ -525,7 +633,8 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   const tripwire = resolveTripwires({ scan, stageA: safetyIn, classifier: null, benignOverride: false });
   state.tripwire = tripwire;
   if (tripwire.kind === 'fallback') {
-    return { kind: 'response', response: await failClosedTurn(tc, tripwire, reservedId, stageARows) };
+    // A late reading is discarded (nothing is written): the same code-owned lines as a failed one.
+    return { kind: 'response', response: await failClosedTurn(tc, tripwire, reservedId, stageARows, { allergenLine, allergens: allergenMention }) };
   }
 
   // Faz 4 owns plan actions: hand the whole turn to v1 before anything is written.
@@ -566,11 +675,13 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   let remaining: number | undefined = -1;
   if (quotaClass === 'conversation') {
     const cap = await deps.quota.conversationCap(userId, reservedId !== null);
-    // A turn that opened a hold (pending_writes: a KVKK erase, an allergy removal, a suspicious amount)
-    // counts as conversation (commit.ts quotaClassOf) but is never stopped here: the stored decision
-    // waits for the user's answer, and only this reply asks the question. Stopping it would strand the
-    // hold behind the rate-limit text and release the journal after a side effect.
-    if (!cap.allowed && commit.holds.length === 0) {
+    // The cap stops a turn only BEFORE any side effect. A turn that opened a hold (pending_writes: a
+    // KVKK erase, an allergy removal, a suspicious amount), closed one ("vazgeçtim" — a discard writes
+    // no record, commit.ts quotaClassOf) or attempted a write counts as conversation but is answered:
+    // the stored decision waits for the user's answer and only this reply asks the question; the
+    // discard happened and only this reply says so. Stopping it would strand that state behind the
+    // rate-limit text and release the journal after a side effect.
+    if (!cap.allowed && !state.sideEffects) {
       if (reservedId) await deps.quota.release(reservedId);
       await releaseJournal(tc);
       await logRows(tc, stageARows);
@@ -593,6 +704,9 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     turnInput: ti, message, decision, commit, tripwire,
     history: ti.history.map((h) => ({ role: h.role, content: h.content, ...(h.action_types.length ? { receipts: h.action_types } : {}) })),
     userState: extra.lines,
+    // The ADOPTED decision still misses a stated fact after the ONE repair: no hold backs a write
+    // question, so the coach must not offer one (contracts.ts CoachTurnFacts).
+    facts: { unanchoredQuestionForbidden: validation.missed_write },
   };
   const stage = await runStageB(coachInput, { coach: deps.coach, postcheck: deps.postcheck }, { userId, log: deps.log });
 
@@ -618,7 +732,8 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     return { kind: 'response', response: deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404) };
   }
   envelope.assistant_message_id = assistantId;
-  await logRows(tc, [...stageARows, commitRow(tc, commit, validation), coachRow(tc, stage, final, tripwire, commit, taskMode, extra.issues)]);
+  const turnIssues = [...extra.issues, ...(validation.missed_write ? [UNANCHORED_QUESTION_FORBIDDEN_ISSUE] : [])];
+  await logRows(tc, [...stageARows, commitRow(tc, commit, validation), coachRow(tc, stage, final, tripwire, commit, taskMode, turnIssues)]);
   if (tc.idemKey) await deps.journal.commit(userId, tc.idemKey, envelope);
 
   // ── background: memory notes, nudge stamp, hooks ──
@@ -782,36 +897,51 @@ async function salvageFacts(tc: TurnCtx, scan: TripwireScan): Promise<void> {
 
 // ─── T4 fail-closed path ─────────────────────────────────────────────────────────────────────────
 
+/**
+ * A turn nobody read: Stage A failed/late on a protective turn, or the daily cap hit one. The reply is
+ * code's own, made of code notes only — today's canned protection (or the honest "nothing recorded"
+ * line) and, when the message named one of the user's allergens, the exposure guidance LAST. Always
+ * quota 'exempt': the user is never charged for a turn that understood and wrote nothing (first live
+ * trial: a timed-out "yok yanlış yazdım 1.4" was charged as conversation, and the retry again).
+ */
 async function failClosedTurn(
   tc: TurnCtx, t: TripwireResolution, reservedId: string | null, rows: Record<string, unknown>[],
-  opts: { capMessage?: string } = {},
+  opts: { capMessage?: string; allergenLine?: string | null; allergens?: readonly string[] } = {},
 ): Promise<Response> {
   const { deps } = tc;
   tc.state.tripwire = t;
   // At the daily cap (opts.capMessage): the turn was never processed — the cap text replaces the
-  // "could not process" line, and the safety reply is quota-exempt.
+  // "could not process" line.
   const atCap = opts.capMessage !== undefined;
   const lead = atCap ? opts.capMessage!.trim() : STAGE_A_FAILED_LINE;
-  let text: string;
+  let main: string;
   let taskMode = 'coaching';
   if (t.kind === 'fallback') {
-    text = t.mode === 'replace' || !lead ? t.response.message : `${lead}\n\n${t.response.message}`;
+    main = t.mode === 'replace' || !lead ? t.response.message : `${lead}\n\n${t.response.message}`;
     taskMode = t.response.task_mode;
     if (t.ed_signal) {
       try { await deps.recordEdSignal(tc.userId, t.ed_signal); } catch (e) { deps.log('[v2_turn] recordEdSignal failed', { error: errMsg(e) }); }
     }
   } else {
-    text = STAGE_A_FAILED_LINE;
+    main = lead || STAGE_A_FAILED_LINE;
   }
-  const notes: CodeNote[] = [{ kind: t.kind === 'fallback' ? (t.category === 'ed' ? 'referral' : 'emergency') : 'other', text }];
-  const id = await persist(tc, { assistantMessage: text, taskMode, quotaClass: atCap ? 'exempt' : 'conversation', codeNotes: notes, receipts: [], reservedId, model: null });
+  const notes: CodeNote[] = [{ kind: t.kind === 'fallback' ? (t.category === 'ed' ? 'referral' : 'emergency') : 'other', text: main }];
+  if (opts.allergenLine) notes.push({ kind: 'allergen_exposure', text: opts.allergenLine });
+  const text = notes.map((n) => n.text).join('\n\n');
+  const id = await persist(tc, { assistantMessage: text, taskMode, quotaClass: 'exempt', codeNotes: notes, receipts: [], reservedId, model: null });
   if (id === 'SESSION_NOT_FOUND') return deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404);
+  const finish = t.kind === 'fallback'
+    ? `${atCap ? 'cap_protective' : 'fallback'}:${t.category}`
+    : atCap ? 'cap_allergen_mention' : opts.allergenLine ? 'stage_a_failed_allergen' : 'stage_a_failed';
   await logRows(tc, [...rows, {
     ...baseRow(tc, 'tripwire', V2_FUNCTION_NAME),
     system_mode: taskMode, model_requested: 'none', model_served: 'none',
-    finish_reason: t.kind === 'fallback' ? `${atCap ? 'cap_protective' : 'fallback'}:${t.category}` : 'stage_a_failed',
-    guard_verdict: guardVerdict(t, null),
-    issues: [{ code: 'tripwire_outcome', path: null, outcome: null, value: t.kind, stage_a: t.log.stage_a }],
+    finish_reason: finish,
+    guard_verdict: guardVerdict(t, null, !!opts.allergenLine),
+    issues: [
+      { code: 'tripwire_outcome', path: null, outcome: null, value: t.kind, stage_a: t.log.stage_a },
+      ...(opts.allergenLine ? [{ code: ALLERGEN_MENTION_ISSUE, path: null, outcome: null, allergens: [...(opts.allergens ?? [])] }] : []),
+    ],
   }]);
   const envelope: TurnEnvelope = { message: text, actions: [], receipts: null, task_mode: taskMode, assistant_message_id: id };
   if (tc.idemKey) await deps.journal.commit(tc.userId, tc.idemKey, envelope);

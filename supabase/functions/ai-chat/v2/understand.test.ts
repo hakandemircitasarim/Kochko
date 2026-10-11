@@ -19,6 +19,7 @@ import {
   runLiveTripwireClassifier, stageALiveBudgetMs, tripwireClassifierTimeoutMs, understand,
 } from './understand.ts';
 import { buildStageARequest, renderTurnInputBlock, stageABudgetClass, stageASchema, stageASystemPrompt } from './stage-a-request.ts';
+import { STAGE_A_REPAIR_TIMEOUT_MS } from './budgets.ts';
 import { UNDERSTAND_CACHE_KEY, UNDERSTAND_PROMPT_VERSION, UNDERSTAND_RULES } from './understand-prompt.ts';
 
 async function turnInput(mutate?: (t: ReturnType<typeof seedTables>) => void, userId = USER): Promise<TurnInput> {
@@ -91,10 +92,11 @@ Deno.test('§8.4 effort through the wrapper: low by default; medium for image, o
   assertEquals(buildUnderstandRequest({ turnInput: failedSafety, message: msg, scan: scanTripwires(msg) }).effort, 'medium', 'unreadable tier');
 });
 
-Deno.test('§7.2 live budgets: ONE place (owner 2026-10-11: normal 6 s, tripwire 10 s), chosen by the same certain fact as effort; live mode times out at them', async () => {
-  assertEquals(STAGE_A_LIVE_BUDGETS_MS, { normal: 6_000, tripwire: 10_000 });
+Deno.test('§7.2 live budgets: ONE place (owner 2026-10-11: normal 10 s after the first live trial, tripwire 10 s), chosen by the same certain fact as effort; live mode times out at them', async () => {
+  assertEquals(STAGE_A_LIVE_BUDGETS_MS, { normal: 10_000, tripwire: 10_000 });
   assertEquals(STAGE_A_LIVE_BUDGET_MS, STAGE_A_LIVE_BUDGETS_MS.normal, 'the old name is the normal budget, not a second constant');
-  assert(STAGE_A_LIVE_BUDGETS_MS.tripwire > STAGE_A_LIVE_BUDGETS_MS.normal);
+  assert(STAGE_A_LIVE_BUDGETS_MS.tripwire >= STAGE_A_LIVE_BUDGETS_MS.normal, 'a safety turn never waits LESS than an ordinary one');
+  assert(STAGE_A_REPAIR_TIMEOUT_MS <= STAGE_A_LIVE_BUDGETS_MS.normal, 'the ONE repair re-emits a reasoned decision: never a longer wait than the first call');
   assert(STAGE_A_SHADOW_TIMEOUT_MS > STAGE_A_LIVE_BUDGETS_MS.tripwire, 'the shadow measures past both budgets');
   const ti = await turnInput(noDraft);
   const cases: Array<[string, 'normal' | 'tripwire']> = [

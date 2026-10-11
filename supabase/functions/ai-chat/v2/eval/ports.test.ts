@@ -235,20 +235,21 @@ Deno.test('budget gate (E): latency, parse/schema error rate, repair rate (≤ %
   assertEquals(costOf('gpt-5.6-terra', { input_tokens: 1_000_000, cached_tokens: 500_000, output_tokens: 100_000 }), 2.3);
 });
 
-Deno.test('budget gate (E): p90 is judged per §7.2 budget class (owner 2026-10-11: normal 6 s, tripwire 10 s), p50 on ordinary turns', () => {
+Deno.test('budget gate (E): p90 is judged per §7.2 budget class (STAGE_A_LIVE_BUDGETS_MS — owner 2026-10-11: normal 10 s, tripwire 10 s), p50 on ordinary turns', () => {
   assertEquals(DEFAULT_BUDGET.p90_ms_by_class, STAGE_A_LIVE_BUDGETS_MS, 'the gate reads the live budgets, never a copy');
+  const { normal: N, tripwire: T } = STAGE_A_LIVE_BUDGETS_MS;
   const plain = [...Array(20)].map((_, i) => res('A', 'pass', { cache: 'live', latency_ms: 1500 + i * 50 }));
-  // Tripwire turns at 6–9,8 s: past the ordinary budget, inside their own 10 s → pass.
-  const slowTripwire = [...Array(10)].map((_, i) => res('B+', 'pass', { cache: 'live', tripwire: true, latency_ms: 6000 + i * 420 }));
+  // Tripwire turns in the last 4 s of their own budget → pass.
+  const slowTripwire = [...Array(10)].map((_, i) => res('B+', 'pass', { cache: 'live', tripwire: true, latency_ms: T - 4000 + i * 380 }));
   const g = budgetGate([...plain, ...slowTripwire]);
   assertEquals(g.status, 'pass', g.detail);
-  assert(g.detail.includes('>10 sn: 0'), g.detail);
-  // The same 6–9,8 s latencies on ORDINARY turns breach the 6 s class budget.
-  const slowPlain = slowTripwire.map((r) => ({ ...r, tripwire: false }));
+  assert(g.detail.includes(`>${T / 1000} sn: 0`), g.detail);
+  // ORDINARY turns past the normal budget breach the class p90 (and the §3.3 p50).
+  const slowPlain = slowTripwire.map((r, i) => ({ ...r, tripwire: false, latency_ms: N + 200 + i * 100 }));
   const bad = budgetGate([...plain.slice(0, 5), ...slowPlain]);
   assertEquals(bad.status, 'fail');
   assert(bad.detail.includes('bütçe aşımı: tetiksiz p50') && bad.detail.includes('tetiksiz p90'), bad.detail);
-  // Tripwire turns past 10 s at p90 breach their own budget even when ordinary turns are fast.
+  // Tripwire turns past their budget at p90 breach it even when ordinary turns are fast.
   const lateTripwire = slowTripwire.map((r) => ({ ...r, latency_ms: (r.latency_ms ?? 0) + 4500 }));
   const late = budgetGate([...plain, ...lateTripwire]);
   assertEquals(late.status, 'fail');

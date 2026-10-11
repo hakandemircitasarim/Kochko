@@ -312,7 +312,7 @@ export interface EvalReport {
   holdout_gates: GateResult[];
   totals: Record<RunStatus, number> & { cache_miss: number };
   latency: { p50_ms: number | null; p90_ms: number | null; samples: number };
-  /** Latency split by the §7.2 live budget class: a turn with a tripwire fact (10 s) vs without (6 s). */
+  /** Latency split by the §7.2 live budget class (STAGE_A_LIVE_BUDGETS_MS): a turn with a tripwire fact vs without. */
   latency_split: { normal: LatencyClassStats; tripwire: LatencyClassStats };
   cost_usd_estimate: number | null;
 }

@@ -20,7 +20,7 @@ import { latencySplit } from './gates.ts';
 import { sampleDecision, sampleMeal, SAMPLE_WRITES } from '../../../shared/write-registry/samples.ts';
 import { validateJsonSchema } from '../../../shared/json-schema-check.ts';
 import { type ClassifierOutcome, resolveTripwires, type StageASafetyOutcome } from '../../../shared/safety-tripwires.ts';
-import { stageASchema } from '../stage-a-request.ts';
+import { STAGE_A_LIVE_BUDGETS_MS, stageASchema } from '../stage-a-request.ts';
 import { fixtureT2 } from './request.ts';
 
 const { fixtures } = await loadFixtureDir(new URL('./fixtures/', import.meta.url));
@@ -235,15 +235,18 @@ Deno.test('every shipped fixture evaluates without harness errors (paths resolve
   assert(rep.results.some((r) => r.canned), 'explicit T2 fixtures take the canned path');
 });
 
-Deno.test('holdout fixtures are graded in their own gate set; latency is split by the §7.2 budget class (tripwire fact → 10 s)', async () => {
+Deno.test('holdout fixtures are graded in their own gate set; latency is split by the §7.2 budget class (tripwire fact → the tripwire budget)', async () => {
   const holdout = fixtures.filter((f) => isHoldout(f));
   assert(holdout.length >= 24);
   const tuningIds = ['r3-final2-3-bir-bardak-su-daha', 'bminus-bu-tarife-bayildim'];
   const subset = [...tuningIds.map(byId), ...holdout.slice(0, 3)];
-  // Latency by fixture: the plain water turn 7 s (over its 6 s budget), the 'bayıldım' turn 7 s (inside 10 s).
+  // Latency by fixture: the plain water turn just past the normal budget, the 'bayıldım' turn at the
+  // same latency — inside the tripwire budget when that one is longer, past it when they are equal.
   // Recorded then replayed, so the calls count as real (live/hit) latency evidence like a paid run.
+  const { normal: N, tripwire: T } = STAGE_A_LIVE_BUDGETS_MS;
+  const slowMs = N + 500;
   const store = memoryReplayStore();
-  const fake = fakeDecideTransport((_b, call) => ({ decision: d(), latency_ms: call.fixture_id.startsWith('ho-') ? 1000 : 7000 }));
+  const fake = fakeDecideTransport((_b, call) => ({ decision: d(), latency_ms: call.fixture_id.startsWith('ho-') ? 1000 : slowMs }));
   await runEval({ ...opts({}), fixtures: subset, reps: 1, transport: recordingTransport(fake, store) });
   const transport = replayTransport(store);
   const rep = await runEval({ ...opts({}), fixtures: subset, reps: 1, transport });
@@ -255,8 +258,9 @@ Deno.test('holdout fixtures are graded in their own gate set; latency is split b
   assertEquals(rep.results.find((r) => r.fixture_id === 'bminus-bu-tarife-bayildim')?.tripwire, true);
   assertEquals(rep.results.find((r) => r.fixture_id === 'r3-final2-3-bir-bardak-su-daha')?.tripwire, false);
   const s = rep.latency_split;
-  assertEquals([s.tripwire.budget_ms, s.normal.budget_ms], [10000, 6000]);
-  assert(s.normal.over_budget >= 1 && s.tripwire.over_budget === 0, JSON.stringify(s));
+  assertEquals([s.tripwire.budget_ms, s.normal.budget_ms], [T, N], 'each class against its own live budget');
+  assert(s.normal.over_budget >= 1, JSON.stringify(s));
+  assertEquals(s.tripwire.over_budget, slowMs > T ? 1 : 0, JSON.stringify(s));
   // An infra error answers fast; it is never latency evidence for either class.
   const errored = latencySplit([...rep.results, { ...rep.results[0], status: 'error', latency_ms: 50 }]);
   assertEquals(errored, s);

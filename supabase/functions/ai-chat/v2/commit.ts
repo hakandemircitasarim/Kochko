@@ -879,9 +879,22 @@ export function exposuresOf(
  * yes, and THAT confirming turn is the record turn. So:
  *   a write that landed (ok receipt)       → 'record'
  *   holds only, failed writes, no writes   → 'conversation'
- * (The handler adds 'exempt' for protective turns, and never lets the conversation cap strand a hold
- * it just opened: handler.ts answers that turn and asks the question.)
+ * An answer to a hold that wrote nothing is not a record either: a pending_discard receipt ("Vazgeçildi"
+ * — the hold row is closed, no log is written; first live trial: "hayır vazgeçtim, kalsın" was charged
+ * as a record turn) and a pending_confirm receipt that reports no affected row. A confirm that DID
+ * something (the KVKK erase executed, rows_affected ≥ 1) and every write a confirmed hold landed (its
+ * own typed receipt) still count.
+ * (The handler adds 'exempt' for protective and fail-closed turns, and never lets the conversation cap
+ * stop a turn after a side effect — an opened hold, a closed one: handler.ts answers that turn.)
  */
 export function quotaClassOf(commit: CommitResult | null): 'record' | 'conversation' {
-  return commit && commit.receipts.some((r) => r.ok) ? 'record' : 'conversation';
+  return commit && commit.receipts.some(isRecordReceipt) ? 'record' : 'conversation';
+}
+
+/** A landed receipt that wrote something (quotaClassOf). */
+function isRecordReceipt(r: V2Receipt): boolean {
+  if (!r.ok) return false;
+  if (r.action_type === 'pending_discard') return false;
+  if (r.action_type === 'pending_confirm') return (r.rows_affected ?? 0) > 0;
+  return true;
 }

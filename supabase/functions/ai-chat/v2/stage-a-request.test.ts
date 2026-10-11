@@ -9,8 +9,9 @@
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import {
-  buildStageARequest, composeStageA, renderTurnInputBlock, STAGE_A_HISTORY_MESSAGES, STAGE_A_MAX_OUTPUT_TOKENS, stageAEffort,
-  type StageATurnView, stageASchema, stageASystemPrompt, stageAUserContent, TIER_GATE_LINE, TURN_BLOCK_TITLES,
+  buildStageARequest, composeStageA, renderTurnInputBlock, STAGE_A_HISTORY_MESSAGES, STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MAX_OUTPUT_TOKENS,
+  stageABudgetClass, stageAEffort, stageALiveBudgetMs, stageARepairWanted, type StageATurnView, stageASchema, stageASystemPrompt,
+  stageAUserContent, TIER_GATE_LINE, TURN_BLOCK_TITLES,
 } from './stage-a-request.ts';
 import { buildUnderstandPrefix, UNDERSTAND_CACHE_KEY, UNDERSTAND_RULES } from './understand-prompt.ts';
 import { BLOCK_TITLES, buildUnderstandSchema, buildWriteDoc, SCHEMA_NAMES } from '../../shared/write-registry/mod.ts';
@@ -138,6 +139,27 @@ Deno.test('§8.4 ONE effort rule: low by default; medium on image, open draft, A
   const decl = scanTripwires('fıstık alerjim var');
   assert(tripwireFacts(decl).length > 0 && tripwireFacts(decl).every((f) => f.category === 'declaration'), 'precondition: a declaration-only scan');
   assertEquals(stageAEffort(view(), decl), 'medium');
+});
+
+Deno.test('§7.2 budget class: the scan\'s tripwire fact, or a live allergen mention (handler.ts) — never a word guess here; the scan alone keeps the shadow/eval class', () => {
+  const plain = scanTripwires('kahvaltıda fıstık ezmeli ekmek yedim');
+  assertEquals(tripwireFacts(plain).length, 0, 'precondition: no tripwire fact in the scan (a food named, no allergy word)');
+  assertEquals(stageABudgetClass(plain), 'normal', 'the shadow and the eval classify by the scan alone');
+  assertEquals(stageABudgetClass(plain, { allergenMention: false }), 'normal');
+  assertEquals(stageABudgetClass(plain, { allergenMention: true }), 'tripwire', 'the live turn that names the user\'s own allergen waits the tripwire budget');
+  assertEquals(stageALiveBudgetMs(plain, { allergenMention: true }), STAGE_A_LIVE_BUDGETS_MS.tripwire);
+  assertEquals(stageABudgetClass(scanTripwires('fıstık alerjim var'), { allergenMention: false }), 'tripwire', 'a scan fact is never undone by the extra');
+  // The live allergen mention changes the wait, never the request: effort and bytes stay the scan's.
+  const ti = view();
+  assertEquals(stageAEffort(ti, plain), 'low');
+});
+
+Deno.test('stageARepairWanted: the ONE repair runs for a repairable REJECT or a missed write (the live handler and the eval E gate read this one predicate)', () => {
+  const v = (needed: boolean, missed: boolean) => ({ repair: { needed, items: [] }, missed_write: missed });
+  assertEquals(stageARepairWanted(v(false, false)), false);
+  assertEquals(stageARepairWanted(v(true, false)), true);
+  assertEquals(stageARepairWanted(v(false, true)), true, 'a stated fact left unwritten without a reason is worth the one repair');
+  assertEquals(stageARepairWanted(v(true, true)), true);
 });
 
 Deno.test('buildStageARequest is exactly the body ai-decide accepts, max_tokens included (parsed by the real handler parser)', () => {

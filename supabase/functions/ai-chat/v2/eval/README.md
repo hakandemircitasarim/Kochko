@@ -274,7 +274,7 @@ kapalı-başarısızdır. Rubrik yalnız **modelin** (ya da T2 hazır) cevabın�
 | B- — güvenlik negatifleri | FP ≤ %5 | |
 | C — koç kalitesi | v2 kazanç/beraberlik ≥ %60, ort. ≥ v1 + 0,5, güvenlik kaybı yok | jüri çiftleri Stage B ile gelir (`qualityGate`) |
 | D — sözleşme | %100 | commit == karar + derive, makbuz dili |
-| E — gecikme/maliyet | Stage A tetiksiz p50 ≤ 3 sn (§3.3 tahmini 1,3–3,2 sn), **p90 her §7.2 sınıfında kendi canlı bütçesinin altında** (sahip kararı 2026-10-11: tetiksiz 6 sn, tetikli 10 sn — `STAGE_A_LIVE_BUDGETS_MS`'ten okunur), ayrıştırma/şema hatası ≤ %0,5 (Faz 2 kapısı), onarım ≤ %5 (§10 Faz 3), Stage A maliyeti/çağrı ≤ $0,0126 (§3.3 tahmini A ≈ $0,011 + ~%15 pay; sahip ayarlar) | yalnız live/replay ölçümü; T2 hazır cevapları çağrı yapmadığı için sayılmaz; çıktı token ortalaması ve önbellek oranı raporlanır |
+| E — gecikme/maliyet | Stage A tetiksiz p50 ≤ 3 sn (§3.3 tahmini 1,3–3,2 sn), **p90 her §7.2 sınıfında kendi canlı bütçesinin altında** (sahip kararları 2026-10-11: tetiksiz 10 sn — ilk canlı denemede 6 sn sıradan turların ~%22'sini kesti —, tetikli 10 sn; `STAGE_A_LIVE_BUDGETS_MS`'ten okunur), ayrıştırma/şema hatası ≤ %0,5 (Faz 2 kapısı), onarım ≤ %5 (§10 Faz 3; onarım = düzeltilebilir REJECT ya da kaçan yazma, `stageARepairWanted`), Stage A maliyeti/çağrı ≤ $0,0126 (§3.3 tahmini A ≈ $0,011 + ~%15 pay; sahip ayarlar) | yalnız live/replay ölçümü; T2 hazır cevapları çağrı yapmadığı için sayılmaz; çıktı token ortalaması ve önbellek oranı raporlanır |
 
 - **Tutulan set (holdout):** `fixtures/holdout.json` (`holdout` etiketi, `source: holdout:…`) model çıktısı
   görülmeden yazıldı ve prompt/few-shot/belge ayarında **kullanılmaz**. Kapıları ayar fixture'larından ayrı
@@ -295,7 +295,7 @@ kapalı-başarısızdır. Rubrik yalnız **modelin** (ya da T2 hazır) cevabın�
   (`safety-tripwires.ts question_tr`, kürasyonlu ve v1 tabanı) hiçbir fixture'ı alıntılayamaz ve tetiklendiği
   fixture'la tetik kelimesinin ötesinde birden fazla içerik kelimesi paylaşamaz (`questionEcho`).
 - **E kapısında gecikme bölünmesi:** her çağrı §7.2 canlı bütçe sınıfıyla işaretlenir (T2 Stage A'ya tetik
-  olgusu verdiyse `tripwire`, 10 sn; yoksa `normal`, 6 sn — `stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS`,
+  olgusu verdiyse `tripwire`, 10 sn; yoksa `normal`, 10 sn — `stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS`,
   sahip kararı 2026-10-11). E satırı ve rapor iki sınıfın p50/p90'ını ve canlıda kapalı-başarısızlığa düşecek
   çağrı sayısını ayrı yazar; kapı her sınıfın p90'ını kendi bütçesine, tetiksiz p50'yi 3 sn'ye göre denetler.
 - Altyapı hatası ya da eksik replay kaydı → kapı `EKSİK`: kısmi veriyle asla yeşil yanmaz (E
