@@ -131,7 +131,9 @@ Deno.test('model-emitted machine blocks are removed before ours are written (mar
   assertEquals(live.reasoning, 'neden ‹/reasoning› böyle', 'a why cannot close its own block early');
   assertEquals(live.hasPlanSuggestion, false);
   // Unclosed blocks are prose, not markers: left alone.
-  assertEquals(stripMachineMarkers('a <reasoning> b'), 'a <reasoning> b');
+  // A lone open tag is removed (integration review): left in place it let the client's reasoning regex
+  // swallow the code-owned safety lines that follow.
+  assertEquals(stripMachineMarkers('a <reasoning> b'), 'a  b');
   assertEquals(renderMessage({ text: 'x', confirmReject: false }), 'x');
 });
 
@@ -252,4 +254,14 @@ Deno.test('canned envelope: the code notes coachTurn appended to the ready-made 
   assert(env.message.startsWith(CANNED_SAFETY.self_harm.message), 'the ready-made reply first, untouched');
   assertStringIncludes(env.message, '\n\n⚠️ Dikkat: profilinde ciddi fıstık alerjisi', 'the note survives');
   assertEquals(env.task_mode, 'safety');
+});
+
+Deno.test('integration review: a lone "<reasoning>" in model text cannot hide code-owned lines on the client', async () => {
+  const { parseReasoning } = await import('./client-parsers.test.ts');
+  const { renderMessage } = await import('./envelope.ts');
+  const text = "Biraz dinlen.\n<reasoning>yarım kalmış etiket\n\nAcil bir durum varsa hemen 112'yi ara.";
+  const msg = renderMessage({ text, why: 'neden', simulation: null, confirmReject: false });
+  const shown = parseReasoning(msg).cleanContent;
+  assertStringIncludes(shown, "112'yi ara");
+  assert(!msg.includes('<reasoning>yarım'), 'the lone open tag is removed');
 });

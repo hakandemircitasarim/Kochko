@@ -82,9 +82,20 @@ function stripConfirmReject(text: string): string {
 }
 
 /** The model's prose without any client machine block or marker (see header). */
+/** Paired blocks + confirm marker only (the why text is then made block-safe, so lone tags are inert there). */
+function stripPairedMarkers(text: string): string {
+  let t = text ?? '';
+  for (const tag of MACHINE_BLOCK_TAGS) t = stripBlock(t, tag);
+  return stripConfirmReject(t).trim();
+}
+
 export function stripMachineMarkers(text: string): string {
   let t = text ?? '';
   for (const tag of MACHINE_BLOCK_TAGS) t = stripBlock(t, tag);
+  // A LONE open/close machine tag (unclosed "<reasoning>") must not survive: the client's
+  // /<reasoning>([\s\S]*?)<\/reasoning>/ would then capture from it to OUR real block and hide
+  // everything in between — including the code-owned safety lines (112/referral, exposure).
+  for (const tag of MACHINE_BLOCK_TAGS) t = t.split(`<${tag}>`).join('').split(`</${tag}>`).join('');
   return stripConfirmReject(t).trim();
 }
 
@@ -220,7 +231,7 @@ export function navigateOf(ui: unknown): string | null {
 /** `message` exactly as stored and as the client parses it (live AND history reload). */
 export function renderMessage(p: { text: string; why?: string | null; simulation?: EnvelopeSimulation | null; confirmReject: boolean }): string {
   const parts: string[] = [stripMachineMarkers(p.text)];
-  const why = p.why ? blockSafe(stripMachineMarkers(p.why)) : '';
+  const why = p.why ? blockSafe(stripPairedMarkers(p.why)) : '';
   if (why) parts.push(`<reasoning>${why}</reasoning>`);
   if (p.simulation) parts.push(`<simulation>${JSON.stringify(p.simulation)}</simulation>`);
   let message = parts.filter((s) => s !== '').join('\n');
