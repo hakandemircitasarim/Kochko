@@ -827,9 +827,10 @@ function hasEdReferral(reply: string): boolean {
 
 /**
  * Reads the REPLY (never the user's message): does it already carry the required line?
- * HEURISTIC over the coach's prose — when Stage B reports a structured referral/112 flag, that flag
- * is the primary signal and this is only the code-side check. It errs toward "missing": a false
- * "missing" costs one appended line, a false "present" would drop the referral.
+ * HEURISTIC over the coach's prose, and the ONLY signal: Stage B's structured referral_included flag
+ * is logged, never trusted — a flag can claim a referral the text does not carry (§7.2 "kod garanti
+ * eder"). It errs toward "missing": a false "missing" costs one appended line, a false "present"
+ * would drop the referral.
  */
 export function hasRequiredSafetyLine(reply: string, category: SafetyCategory): boolean {
   if (category === 'ed') return hasEdReferral(reply ?? '');

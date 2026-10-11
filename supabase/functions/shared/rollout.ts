@@ -147,7 +147,8 @@ export const isRolloutOn = (step: string, userId?: string | null, fallback: Roll
  * `supabase secrets set KOCHKO_ROLLOUT_<STEP>=off` — seconds, no deploy.
  *   v2_understand_shadow — Faz 2: Stage A + validateDecision after the v1 reply (waitUntil), no
  *                          writes except one ai_turn_log row; 'shadow' and 'on' both run it.
- *   v2_turn              — Faz 3: the v2 turn answers the user (no call site yet).
+ *   v2_turn              — Faz 3: the v2 turn answers the user (ai-chat/v2/route.ts; only 'on' routes
+ *                          to v2 — 'shadow' is v1; unset/off = v1 with zero extra work).
  *   v2_plan              — Faz 4: strict plan pipeline (no call site yet).
  *   v2_classifier        — §3.2 T2: parallel luna tripwire classifier (no call site yet).
  *   v2_stream            — Faz 6: Stage B streaming (no call site yet).
