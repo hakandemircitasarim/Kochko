@@ -1,99 +1,112 @@
 /**
- * ports.test.ts — the default T7 post-checks and T8 envelope. Pinned: post-checks only APPEND
- * (each appended line is a code note), the required 112/referral line on a protective turn, the
- * KVKK question/outcome lines, the one hold question when the coach asked none, the allergen
- * exposure acknowledgement unless the coach already gave it; the envelope speaks the client's
- * contract (legacy badge names, typed receipts, in-message <reasoning>, whitelisted navigate_to).
+ * ports.test.ts — the T6/T7/T8 seams (AI_MIMARI_V2 §3.2): the production wiring and the ONE T6+T7
+ * orchestration the handler runs.
+ *
+ * Pinned: stageBPorts wires the coach builder's modules (coach.ts runCoach over the strict reply
+ * schema and the per-user cache key, postcheck.ts with the luna judge on the SAME transport,
+ * envelope.ts renderEnvelope); runStageB gives the whole T6+T7 ONE budget (budgets.ts: protective /
+ * normal) and every call only what is left of it; a coach or post-check port that throws, hangs or
+ * answers nonsense never breaks the turn (the code's own fallback stands in); an explicit tripwire
+ * never reaches a port.
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
-import { resolveTripwires, scanTripwires } from '../../shared/safety-tripwires.ts';
-import type { CommitResult, V2Receipt } from './contracts.ts';
-import { defaultEnvelope, defaultPostcheck, messageWithReasoning, navigateToOf, toEnvelopeActions, toEnvelopeReceipts } from './ports.ts';
-import { coachReply } from './turn-testing.ts';
+import { CANNED_SAFETY, resolveTripwires, scanTripwires } from '../../shared/safety-tripwires.ts';
+import { buildReplySchema, SCHEMA_NAMES } from '../../shared/write-registry/mod.ts';
+import { COACH_TIMEOUT_MS, CRISIS_TIMEOUT_MS, POSTCHECK_GRACE_MS } from './budgets.ts';
+import { coachCacheKey } from './coach-constitution.ts';
+import type { CoachPort, CoachRun, PostcheckPort } from './contracts.ts';
+import { renderEnvelope } from './envelope.ts';
+import { COACH_UNAVAILABLE_TR } from './guarantees.ts';
+import { coachTurn, runStageB, stageBPorts } from './ports.ts';
+import { coachInput, commit, protectiveTripwire, replyJson, seededTurnInput, stageBTransport, USER } from './stage-b-testing.ts';
 
-const normal = resolveTripwires({ scan: scanTripwires('6 tavuk nugget yedim'), stageA: { status: 'ok', readings: [], positives: [] } });
-const commitOf = (over: Partial<CommitResult> = {}): CommitResult => ({ turnId: 't', receipts: [], holds: [], rejects: [], flags: [], writtenRefs: [], exposures: [], ...over });
-const meal: V2Receipt = { action_type: 'meal_log', ok: true, rows_affected: 1, user_line: 'Öğün kaydedildi — nugget (6 adet) ~300 kcal · toplam 300 kcal', failure_class: null, ref: 'm4', write_id: 'w', legacy_type: 'meal_log' };
-const failedWater: V2Receipt = { action_type: 'water_log', ok: false, rows_affected: 0, user_line: 'Su kaydedilemedi: …', failure_class: 'later_write', legacy_type: 'water_log' };
+function okRun(reply = replyJson(), regen = false): CoachRun {
+  return { status: 'ok', reply, model: 'gpt-5.6-terra', effort: 'low', contract: null, latencyMs: 5, usage: null, attempts: 1, retries: [], detail: null, regen };
+}
 
-Deno.test('postcheck: an ordinary reply passes untouched', async () => {
-  const out = await defaultPostcheck({ reply: coachReply('Afiyet olsun!'), text: 'Afiyet olsun!', commit: commitOf({ receipts: [meal] }), tripwire: normal, turnInput: null, message: 'x' });
-  assertEquals(out.text, 'Afiyet olsun!');
-  assertEquals(out.code_notes, []);
+Deno.test('stageBPorts: the coach builder\'s modules — strict reply schema, per-user cache key, the luna judge on the same transport, renderEnvelope', async () => {
+  const ti = await seededTurnInput();
+  const t = stageBTransport({ coach: [replyJson({ reply: 'Izgara tavuk iyi gider.' })], judge: [{ violation: false, items: [] }] });
+  const ports = stageBPorts({ transport: t.transport });
+  const input = coachInput(ti);
+  const first = await ports.coach(input, { userId: USER, timeoutMs: 5_000, regen: null });
+  assertEquals(first.status, 'ok');
+  const body = t.coachCalls()[0].body;
+  assertEquals((body.text as { format: Record<string, unknown> }).format, { type: 'json_schema', name: SCHEMA_NAMES.reply, schema: buildReplySchema(), strict: true });
+  assertEquals(body.prompt_cache_key, coachCacheKey(USER));
+  const out = await ports.postcheck({ input, first, regen: () => Promise.reject(new Error('no regen expected')), remainingMs: () => 5_000 });
+  assertEquals([out.log.outcome, out.codeAuthored, out.log.judge], ['first', false, ['clean']]);
+  assertEquals(t.judgeCalls().length, 1, 'the severe-constraint user\'s reply was judged over the same transport');
+  const req = { text: 'x', codeNotes: [], why: 'y', commit: null, decision: null, tripwire: null, navigateTo: null, assistantMessageId: 'a1', remaining: -1 };
+  assertEquals(ports.envelope(req), renderEnvelope(req));
 });
 
-Deno.test('postcheck: a protective ED turn without a referral gets the line appended LAST (nothing removed)', async () => {
-  const msg = 'aç kalmak istiyorum';
-  const hit = scanTripwires(msg).hits[0].hit_id;
-  const t = resolveTripwires({ scan: scanTripwires(msg), stageA: { status: 'ok', readings: [{ hit_id: hit, reading: 'positive', reason: 'kısıtlama' }], positives: [] } });
-  assertEquals(t.kind, 'protective');
-  const out = await defaultPostcheck({ reply: coachReply('Bunu duyduğuma üzüldüm.'), text: 'Bunu duyduğuma üzüldüm.', commit: commitOf(), tripwire: t, turnInput: null, message: msg });
-  assert(out.text.startsWith('Bunu duyduğuma üzüldüm.'));
-  assertStringIncludes(out.text, 'uzman');
-  assertEquals(out.code_notes[0].kind, 'referral');
-  const already = await defaultPostcheck({ reply: coachReply('Bir diyetisyenle görüşmeni öneririm.'), text: 'Bir diyetisyenle görüşmeni öneririm.', commit: commitOf(), tripwire: t, turnInput: null, message: msg });
-  assertEquals(already.code_notes, [], 'the reply already refers: nothing appended');
+Deno.test('runStageB: ONE budget for T6+T7 — the first call gets all of it, the regen what is left (protective 6 s, normal 25 s)', async () => {
+  const ti = await seededTurnInput();
+  for (const [tripwire, budget] of [[protectiveTripwire('ed'), CRISIS_TIMEOUT_MS], [coachInput(ti).tripwire, COACH_TIMEOUT_MS]] as const) {
+    const clock = { t: 0 };
+    const asked: number[] = [];
+    const coach: CoachPort = (_i, call) => { asked.push(call.timeoutMs); clock.t += 1_000; return Promise.resolve(okRun(replyJson(), call.regen !== null)); };
+    const postcheck: PostcheckPort = async (p) => {
+      clock.t += 500;
+      assertEquals(p.remainingMs(), budget - 1_500);
+      const second = await p.regen({ excluded: [{ name: 'x', why: 'y' }], judgeFailed: false });
+      return { reply: second.reply!, codeNotes: [], codeAuthored: false, log: { outcome: 'regen', invariant_hits: [], judge: [], judge_fail_reasons: [], regens: 1, budget_exhausted: false, referral_flag_mismatch: false, code_notes: [] } };
+    };
+    const run = await runStageB(coachInput(ti, { tripwire }), { coach, postcheck }, { userId: USER, now: () => clock.t });
+    assertEquals(asked, [budget, budget - 1_500], `${tripwire.kind}: first call ${budget}, the regen what is left`);
+    assertEquals(run.runs.map((r) => r.regen), [false, true]);
+    assertEquals(run.ms, 2_500);
+  }
 });
 
-Deno.test('postcheck: a hold whose question the coach did not ask → the question appended once; asked → nothing', async () => {
-  const hold = { op: 'water_log', reason_code: 'tek_seferde_cok', question_tr: 'Bu kadarını tek seferde mi içtin, yoksa günün toplamı mı?', hold_id: 'pw' };
-  const silent = await defaultPostcheck({ reply: coachReply('Not aldım.'), text: 'Not aldım.', commit: commitOf({ holds: [hold] }), tripwire: normal, turnInput: null, message: 'x' });
-  assert(silent.text.endsWith(hold.question_tr));
-  assertEquals(silent.code_notes.map((n) => n.kind), ['safety_hold']);
-  const asked = await defaultPostcheck({ reply: coachReply('2 litreyi tek seferde mi içtin?'), text: '2 litreyi tek seferde mi içtin?', commit: commitOf({ holds: [hold] }), tripwire: normal, turnInput: null, message: 'x' });
-  assertEquals(asked.code_notes, []);
+Deno.test('runStageB: a coach port that hangs is cut at the budget; one that throws is an error run — the post-check falls back', async () => {
+  const ti = await seededTurnInput((t) => { t.user_constraints = []; });
+  const ports = stageBPorts({ judge: null });
+  const hang: CoachPort = () => new Promise(() => { /* never settles, holds no timer */ });
+  const started = Date.now();
+  const crisis = await runStageB(coachInput(ti, { tripwire: protectiveTripwire('self_harm') }), { coach: hang, postcheck: ports.postcheck }, { userId: USER, budgetMs: 50 });
+  assertEquals([crisis.runs.map((r) => r.status), crisis.out.log.outcome], [['timeout'], 'crisis_canned']);
+  assertStringIncludes(crisis.out.reply.reply, '112');
+  assert(Date.now() - started < 2_000, 'cut at ~50 ms');
+  const boom: CoachPort = () => { throw new Error('port bug'); };
+  const normal = await runStageB(coachInput(ti), { coach: boom, postcheck: ports.postcheck }, { userId: USER });
+  assertEquals([normal.runs.map((r) => r.status), normal.out.log.outcome, normal.issues], [['error'], 'coach_failed', ['coach_port_threw']]);
+  assertEquals(normal.out.reply.reply, COACH_UNAVAILABLE_TR);
 });
 
-Deno.test('postcheck: a SAFETY hold’s question is appended even when the reply asks something unrelated (no prose heuristic)', async () => {
-  // Review (Faz 3, medium): "Bugün nasılsın?" used to suppress the allergen-removal question; a stray
-  // "evet" next turn could then deactivate the allergy without the user ever being asked.
-  const retract = { op: 'constraint_retract', reason_code: 'iki_adimli_kaldirma', question_tr: 'Fıstık alerjini kayıtlardan kaldırmamı onaylıyor musun?', hold_id: 'pw-r', hold_class: 'safety' as const };
-  const out = await defaultPostcheck({ reply: coachReply('Anladım. Bugün nasılsın?'), text: 'Anladım. Bugün nasılsın?', commit: commitOf({ holds: [retract] }), tripwire: normal, turnInput: null, message: 'x' });
-  assert(out.text.startsWith('Anladım. Bugün nasılsın?'), 'nothing removed');
-  assert(out.text.endsWith(retract.question_tr));
-  assertEquals(out.code_notes.map((n) => n.kind), ['safety_hold']);
-  // classified by op when the class is absent (a hold built elsewhere), and an identity profile hold by its class
-  const goal = { op: 'goal_set', reason_code: 'hedef_degisiyor', question_tr: 'Hedefini kilo vermeye çevireyim mi?', hold_id: 'pw-g' };
-  const identity = { op: 'profile_set', reason_code: 'kimlik_degisimi', question_tr: 'Doğum yılını 1990 olarak düzelteyim mi?', hold_id: 'pw-p', hold_class: 'safety' as const };
-  const both = await defaultPostcheck({ reply: coachReply('Kaç kalori aldın?'), text: 'Kaç kalori aldın?', commit: commitOf({ holds: [goal, identity] }), tripwire: normal, turnInput: null, message: 'x' });
-  assert(both.text.includes(goal.question_tr) && both.text.endsWith(identity.question_tr));
-  // a plain ASK hold still relies on the coach asking in its own words
-  const ask = { op: 'water_log', reason_code: 'tek_seferde_cok', question_tr: 'Tek seferde mi içtin?', hold_id: 'pw', hold_class: 'ask' as const };
-  const asked = await defaultPostcheck({ reply: coachReply('2 litreyi tek seferde mi içtin?'), text: '2 litreyi tek seferde mi içtin?', commit: commitOf({ holds: [ask] }), tripwire: normal, turnInput: null, message: 'x' });
-  assertEquals(asked.code_notes, []);
+Deno.test('runStageB: a post-check port that hangs past the budget (+ grace), throws or answers nonsense → the code\'s fallback', async () => {
+  const ti = await seededTurnInput();
+  const coach: CoachPort = () => Promise.resolve(okRun());
+  const input = coachInput(ti, { commit: commit({ holds: [{ op: 'meal_log', reason_code: 'x', question_tr: 'Porsiyonu doğru anladım mı?', hold_id: 'p1' }] }) });
+  const started = Date.now();
+  const hung = await runStageB(input, { coach, postcheck: () => new Promise(() => {}) }, { userId: USER, budgetMs: 50 });
+  assert(Date.now() - started < 50 + POSTCHECK_GRACE_MS + 1_000);
+  assertEquals([hung.issues, hung.out.log.outcome, hung.out.codeAuthored], [['postcheck_timeout'], 'coach_failed', true]);
+  assertEquals(hung.out.codeNotes, [{ kind: 'other', text: 'Porsiyonu doğru anladım mı?' }], 'the code-authored reply asks the hold itself');
+  const thrown = await runStageB(input, { coach, postcheck: () => { throw new Error('bug'); } }, { userId: USER });
+  assertEquals(thrown.issues, ['postcheck_failed']);
+  const nonsense = await runStageB(input, { coach, postcheck: (() => Promise.resolve({ reply: 7 })) as unknown as PostcheckPort }, { userId: USER });
+  assertEquals([nonsense.issues, nonsense.out.reply.reply], [['postcheck_invalid'], COACH_UNAVAILABLE_TR]);
+  const protective = await runStageB(coachInput(ti, { tripwire: protectiveTripwire('emergency') }), { coach, postcheck: () => { throw new Error('bug'); } }, { userId: USER });
+  assertEquals(protective.out.log.outcome, 'crisis_canned');
 });
 
-Deno.test('postcheck: the KVKK erase question and outcome are code-owned lines, always appended', async () => {
-  const erase = { op: 'account_erase_request', reason_code: 'kvkk_onay', question_tr: 'Emin olmak için soruyorum: …?', hold_id: 'pw' };
-  const out = await defaultPostcheck({ reply: coachReply('Tamam, anladım?'), text: 'Tamam, anladım?', commit: commitOf({ holds: [erase] }), tripwire: normal, turnInput: null, message: 'x' });
-  assert(out.text.endsWith(erase.question_tr), 'even when the coach asked something else');
-  const done: V2Receipt = { action_type: 'pending_confirm', ok: true, rows_affected: 1, user_line: 'Onayın üzerine … sıfırladım.', failure_class: null, legacy_type: 'data_erase_confirm' };
-  const out2 = await defaultPostcheck({ reply: coachReply('Tamam.'), text: 'Tamam.', commit: commitOf({ receipts: [done] }), tripwire: normal, turnInput: null, message: 'evet' });
-  assert(out2.text.endsWith('sıfırladım.'));
+Deno.test('runStageB: an explicit tripwire or a fail-closed replace never reaches a port (no LLM, no latency)', async () => {
+  const ti = await seededTurnInput();
+  const canned = resolveTripwires({ scan: scanTripwires('kendimi öldürmek istiyorum'), stageA: null });
+  const never: CoachPort = () => { throw new Error('no coach call expected'); };
+  const run = await runStageB(coachInput(ti, { tripwire: canned }), { coach: never, postcheck: () => { throw new Error('no post-check expected'); } }, { userId: USER });
+  assertEquals([run.runs, run.out.reply.reply, run.out.log.outcome], [[], CANNED_SAFETY.self_harm.message, 'crisis_canned']);
 });
 
-Deno.test('postcheck: allergen exposure acknowledged by code unless the coach already warned', async () => {
-  const exp = { allergens: ['fıstık'], source: 'meal' as const, ref: 'm4' };
-  const out = await defaultPostcheck({ reply: coachReply('Afiyet olsun!'), text: 'Afiyet olsun!', commit: commitOf({ exposures: [exp] }), tripwire: normal, turnInput: null, message: 'x' });
-  assertStringIncludes(out.text, "112'yi ara");
-  assertEquals(out.code_notes[0].kind, 'allergen_exposure');
-  const warned = await defaultPostcheck({ reply: coachReply('Dikkat, fıstık alerjin var!'), text: 'Dikkat, fıstık alerjin var!', commit: commitOf({ exposures: [exp] }), tripwire: normal, turnInput: null, message: 'x' });
-  assertEquals(warned.code_notes, []);
-});
-
-Deno.test('envelope: legacy badge names, typed receipts (a failed write has no green action), reasoning, navigate whitelist', () => {
-  const commit = commitOf({ receipts: [meal, failedWater] });
-  assertEquals(toEnvelopeActions(commit), [{ type: 'meal_log', feedback: meal.user_line }]);
-  assertEquals(toEnvelopeReceipts(commit).map((r) => [r.action_type, r.ok, r.failure_class]), [['meal_log', true, null], ['water_log', false, 'later_write']]);
-  const env = defaultEnvelope({ text: 'Afiyet olsun!', commit, reply: coachReply('Afiyet olsun!', { why: 'öğün kaydı', ui: { navigate_to: '/plan/diet' } }), taskMode: 'register', assistantMessageId: 'a1', remaining: -1 });
-  assertEquals(env.message, '<reasoning>öğün kaydı</reasoning>\nAfiyet olsun!');
-  assertEquals(env.navigate_to, '/plan/diet');
-  assertEquals(env.remaining, -1);
-  assertEquals(env.assistant_message_id, 'a1');
-  assertEquals(env.task_mode, 'register');
-  assertEquals(navigateToOf(coachReply('x', { ui: { navigate_to: 'https://evil.example' } })), null);
-  assertEquals(messageWithReasoning('m', 'a</reasoning>b'), '<reasoning>ab</reasoning>\nm');
-  const none = defaultEnvelope({ text: 'x', commit: null, reply: null, taskMode: 'coaching', assistantMessageId: null, remaining: undefined });
-  assertEquals(none.receipts, null);
-  assert(!('remaining' in none));
+Deno.test('coachTurn = runStageB with the production ports + the code-owned guarantees', async () => {
+  const ti = await seededTurnInput();
+  const t = stageBTransport({ coach: [replyJson({ reply: 'Kaydettim.' })] });
+  const input = coachInput(ti, { commit: commit({ exposures: [{ allergens: ['peanut'], source: 'meal', ref: 'm4' }] }) });
+  const out = await coachTurn(input, { userId: USER, transport: t.transport });
+  assertEquals(out.log.outcome, 'first');
+  assertEquals(out.codeNotes.map((n) => n.kind), ['allergen_exposure']);
+  assertEquals(out.added, [], 'the default port appended it itself');
+  assertEquals(out.runs.length, 1);
 });

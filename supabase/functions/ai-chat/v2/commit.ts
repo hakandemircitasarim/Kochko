@@ -37,7 +37,11 @@ import {
 } from '../../shared/write-registry/mod.ts';
 import { trNum } from '../../shared/write-registry/util.ts';
 import type { CommitResult, V2Flag, V2Hold, V2Receipt, V2Reject } from './contracts.ts';
+import { SAFETY_HOLD_OPS } from './facts.ts';
 import type { RefMapTarget, TurnInput, TurnRefs } from './input.ts';
+
+/** The ONE safety-hold classifier lives in facts.ts (facts, post-checks and guarantees read it too). */
+export { isSafetyHold } from './facts.ts';
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
@@ -71,9 +75,6 @@ export const ADAPTER_OPS: ReadonlySet<string> = new Set([
 export const UNSUPPORTED_OPS: Readonly<Record<string, string>> = {
   target_change: 'kalori programlarını (bakım, mini cut, plato, telafi, MVD günü) sohbetten başlatmak bu sürümde henüz açık değil; hiçbir şey değiştirmedim',
 };
-
-/** Holds whose question code guarantees even when the coach forgets it (§5.2 güvenlik bekletmeleri). */
-const SAFETY_HOLD_OPS: ReadonlySet<string> = new Set(['constraint_retract', 'goal_set', 'target_change', ERASE_HOLD_OP]);
 
 /** Turkish reasons for writer failure classes (v2-db-types V2_FAILURE_CLASSES + adapter classes). */
 export const FAILURE_TR: Readonly<Record<string, string>> = {
@@ -274,19 +275,14 @@ export function holdSubjectKey(v: WriteVerdict, refs: TurnRefs): string | null {
 }
 
 /**
- * A committed hold's class for T7: the stored hold_class when the commit set it, else by op (a hold
- * built elsewhere). Fail-safe: an erase / retract / goal / band hold is a safety hold either way.
+ * 'safety' holds: the coach must ask — if it does not, code appends the question (§5.2). An identity
+ * field in ANY change of a profile_set makes the hold a safety hold (not only the first change).
  */
-export function isSafetyHold(h: V2Hold): boolean {
-  return h.hold_class === 'safety' || SAFETY_HOLD_OPS.has(h.op);
-}
-
-/** 'safety' holds: the coach must ask — if it does not, code appends the question (§5.2). */
 export function holdClassOf(v: WriteVerdict): 'ask' | 'safety' {
-  if (SAFETY_HOLD_OPS.has(v.hold_op ?? v.op)) return 'safety';
+  if (SAFETY_HOLD_OPS.has(v.hold_op ?? v.op) || v.op === ERASE_HOLD_OP) return 'safety';
   if (v.op === 'profile_set') {
-    const c = Array.isArray(v.args.changes) && isRec(v.args.changes[0]) ? v.args.changes[0] : null;
-    if (c && typeof c.field === 'string' && PROFILE_FIELD_SPECS[c.field]?.identity) return 'safety';
+    const changes = Array.isArray(v.args.changes) ? v.args.changes.filter(isRec) : [];
+    if (changes.some((c) => typeof c.field === 'string' && PROFILE_FIELD_SPECS[c.field]?.identity)) return 'safety';
   }
   return 'ask';
 }
@@ -875,7 +871,11 @@ export function exposuresOf(
   return out;
 }
 
-/** Turn quota class from what was REALLY written (112): record = ≥1 successful log write. */
+/**
+ * The ONE turn quota class (112), from what the commit REALLY did — never a pre-LLM guess: a write
+ * that landed, or a hold opened (a stored decision awaiting the user's yes, not idle chat), is a
+ * record turn; everything else is conversation. (The handler adds 'exempt' for protective turns.)
+ */
 export function quotaClassOf(commit: CommitResult | null): 'record' | 'conversation' {
-  return commit && commit.receipts.some((r) => r.ok) ? 'record' : 'conversation';
+  return commit && (commit.receipts.some((r) => r.ok) || commit.holds.length > 0) ? 'record' : 'conversation';
 }

@@ -1,14 +1,18 @@
 /**
  * ai-chat/v2/turn-testing.ts — test doubles for the v2 TURN (commit.ts, adapter.ts, handler.ts,
- * route.ts): a fake writer-RPC backend, a fake adapter DB, a fake Stage A / Stage B and a full
- * fake V2Deps that records every side effect. No network, no database. Imported by *.test.ts only.
+ * route.ts): a fake writer-RPC backend, a fake adapter DB, a fake Stage A, and a full fake V2Deps
+ * that records every side effect. Stage B is NOT faked: the deps carry the PRODUCTION ports
+ * (ports.ts stageBPorts — coach.ts runCoach, postcheck.ts with the luna judge, envelope.ts) over a
+ * fake Responses transport, so a handler test runs the real T6/T7/T8 end to end. No network, no
+ * database. Imported by *.test.ts only.
  */
 import type { AdapterDb, AdapterHelpers, DbRows } from './adapter.ts';
 import type { AdapterOutcome, AdapterPort, AdapterRequest, CommitPorts, ResolvedTarget, RpcResult, TargetSpec } from './commit.ts';
-import type { CoachInput, CoachReply } from './contracts.ts';
+import type { CoachInput, CoachReply, PostcheckPort } from './contracts.ts';
 import type { ClaimResult, LastTurnLedgerRow, PersistTurnInput, V2Deps } from './handler.ts';
 import { loadTurnInput, type TurnInput } from './input.ts';
-import { fakeTurnInputDb, NOW, seedTables, USER } from './testing.ts';
+import { stageBPorts } from './ports.ts';
+import { fakeResponses, fakeTurnInputDb, NOW, responsesBody, seedTables, USER } from './testing.ts';
 import type { UnderstandOutcome, UnderstandRequest } from './understand.ts';
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -226,8 +230,20 @@ export function failedOutcome(req: UnderstandRequest, cls: 'timeout' | 'http' = 
   return { ...parsedOutcome(null, req), status: 'error', decision: null, error: { class: cls, status: cls === 'http' ? 500 : null, message: 'boom' } };
 }
 
+/** A strict-schema-valid 'kochko_reply_vN' answer (the fake transport sends it as the model's output). */
 export function coachReply(text: string, over: Partial<CoachReply> = {}): CoachReply {
-  return { reply: text, suggested_foods: [], suggested_exercises: [], memory: [], ui: null, referral_included: false, why: null, ...over };
+  return {
+    suggested_foods: [], suggested_exercises: [], reply: text, why: null, memory: [],
+    ui: { navigate_to: null, task_completion_summary: null }, referral_included: false, ...over,
+  };
+}
+
+/** The default Stage B answer of fakeDeps. */
+export const DEFAULT_COACH_TEXT = 'Afiyet olsun! Akşam için protein ağırlıklı bir şey düşünelim mi?';
+
+/** A provider error the coach reports as status 'error' at once (4xx: no transient retry, no backoff). */
+export function providerError(): Response {
+  return new Response('{"error":{"message":"bad request"}}', { status: 400 });
 }
 
 // ─── full V2Deps ─────────────────────────────────────────────────────────────────────────────────
@@ -239,7 +255,11 @@ export interface Recorder {
   reserved: string[];
   released: string[];
   understandReqs: UnderstandRequest[];
+  /** Every CoachInput the coach PORT was called with (the first call and the ONE regen). */
   coachInputs: CoachInput[];
+  /** The HTTP bodies the real coach sent / the luna judge received over the fake transport. */
+  coachCalls: Record<string, unknown>[];
+  judgeCalls: Record<string, unknown>[];
   edSignals: string[];
   jobs: Array<() => Promise<unknown>>;
   links: string[];
@@ -250,7 +270,16 @@ export interface Recorder {
 export interface FakeDepsOptions {
   turnInput?: TurnInput;
   stageA?: (req: UnderstandRequest, n: number) => UnderstandOutcome;
-  coach?: (input: CoachInput) => Promise<CoachReply>;
+  /**
+   * Stage B's answers by call (1-based; the first call and the ONE regen), sent by the fake transport
+   * as the model's strict output — a Response goes as is (providerError(), refusalBody()). Default:
+   * DEFAULT_COACH_TEXT.
+   */
+  coach?: (n: number, input: CoachInput) => CoachReply | Response;
+  /** The luna judge's answers by call (default: clean). */
+  judge?: (n: number) => { violation: boolean; items: unknown[] } | Response;
+  /** Replace the T7 port (tests proving the code-owned lines survive ANY port). */
+  postcheck?: PostcheckPort;
   commit?: FakeCommitPorts;
   userId?: string;
   claim?: ClaimResult;
@@ -264,9 +293,23 @@ export interface FakeDepsOptions {
 
 export function fakeDeps(o: FakeDepsOptions = {}): { deps: V2Deps; rec: Recorder; commit: FakeCommitPorts } {
   const rec: Recorder = {
-    persisted: [], turnLogs: [], journal: [], reserved: [], released: [], understandReqs: [], coachInputs: [], edSignals: [], jobs: [], links: [], logs: [], undoLookups: [],
+    persisted: [], turnLogs: [], journal: [], reserved: [], released: [], understandReqs: [], coachInputs: [], coachCalls: [], judgeCalls: [],
+    edSignals: [], jobs: [], links: [], logs: [], undoLookups: [],
   };
   const commit = o.commit ?? fakeCommitPorts();
+  // ONE fake Responses transport for both models, routed by the strict schema name in the body.
+  const stageB = fakeResponses((call) => {
+    const format = (call.body.text as Record<string, unknown> | undefined)?.format as Record<string, unknown> | undefined;
+    if (format?.name === 'kochko_judge_v1') {
+      rec.judgeCalls.push(call.body);
+      const a = o.judge ? o.judge(rec.judgeCalls.length) : { violation: false, items: [] };
+      return a instanceof Response ? a : responsesBody(a);
+    }
+    rec.coachCalls.push(call.body);
+    const a = o.coach ? o.coach(rec.coachCalls.length, rec.coachInputs[rec.coachInputs.length - 1]) : coachReply(DEFAULT_COACH_TEXT);
+    return a instanceof Response ? a : responsesBody(a);
+  });
+  const ports = stageBPorts({ transport: stageB.transport });
   let ids = 0;
   const deps: V2Deps = {
     now: () => NOW,
@@ -302,7 +345,9 @@ export function fakeDeps(o: FakeDepsOptions = {}): { deps: V2Deps; rec: Recorder
     commitPorts: commit,
     adapter: commit.adapter,
     recordEdSignal: (_u, s) => { rec.edSignals.push(s); return Promise.resolve('watch'); },
-    coach: (input) => { rec.coachInputs.push(input); return o.coach ? o.coach(input) : Promise.resolve(coachReply('Afiyet olsun! Akşam için protein ağırlıklı bir şey düşünelim mi?')); },
+    coach: (input, call) => { rec.coachInputs.push(input); return ports.coach(input, call); },
+    postcheck: o.postcheck ?? ports.postcheck,
+    envelope: ports.envelope,
     undo: {
       lastTurnLedger: (u) => {
         rec.undoLookups.push(u);

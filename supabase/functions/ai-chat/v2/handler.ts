@@ -12,36 +12,49 @@
  *   T2  safety tripwires (shared/safety-tripwires.ts): an explicit hit → today's canned reply at
  *       once; ambiguous hits → facts for Stage A, resolved by the §7.2 table after it.
  *   T3  loadTurnInput (input.ts).
- *   T4  Stage A (understand.ts, the ONE composer stage-a-request.ts). Fail-closed: on a tripwire
- *       turn a failed/late Stage A → today's canned reply; on an ordinary turn → a short honest
- *       line that nothing was recorded.
+ *   T4  Stage A (understand.ts, the ONE composer stage-a-request.ts) on the turn's §7.2 budget class
+ *       (stage-a-request.ts STAGE_A_LIVE_BUDGETS_MS — an ordinary turn, or a turn T2 handed a tripwire
+ *       fact). Fail-closed: on a turn with a live trigger a failed/late Stage A → today's canned reply;
+ *       on an ordinary turn → a short honest line that nothing was recorded.
  *   T5  validateDecision → at most ONE repair call → commit.ts (writes, holds, rejects, receipts).
  *       A plan action (generate/revise/approve…) is Faz 4: the turn goes to v1 before any write.
- *   T6  Stage B through the coach port, from the receipts — the coach speaks after the writes.
- *   T7  post-checks (append-only code notes) · T8 the TurnEnvelope the app reads today.
+ *   T6  Stage B through the coach PORT, from the receipts — the coach speaks after the writes.
+ *   T7  the post-check PORT (suggestion invariant, prose judge, the ONE regen, fallbacks) — both under
+ *       ONE end-to-end budget (ports.ts runStageB) — and then, owned HERE and always last,
+ *       guarantees.ts applyGuarantees: the suggestion invariant on structure and the code-owned lines
+ *       (112 / referral, the KVKK erase outcome, the allergen-exposure acknowledgement, every safety-hold
+ *       question), append-only. No port can drop them.
+ *   T8  the envelope PORT: the TurnEnvelope the app reads today.
  *   T9  chat_messages (model text + code notes, full receipts, turn_id, pipeline, quota_class) and
  *       one ai_turn_log row per stage; memory / hooks in the background.
+ *
+ * The ports' production implementations are the coach builder's modules (ports.ts stageBPorts:
+ * coach.ts runCoach, postcheck.ts postcheckReply, envelope.ts renderEnvelope), wired in live.ts.
  *
  * The handler never decides alone whether v1 takes over after a failure: it reports `fallback_v1`
  * only before any side effect, and it marks TurnState.sideEffects the moment one may have happened
  * (route.ts then refuses a v1 re-run and answers honestly instead).
  */
-import { liveAmbiguousHits, resolveTripwires, scanTripwires, type TripwireScan } from '../../shared/safety-tripwires.ts';
+import { liveAmbiguousHits, resolveTripwires, scanTripwires, type SafetyCategory, type TripwireScan } from '../../shared/safety-tripwires.ts';
 import { guardVerdictOf, type GuardFlag } from '../../shared/turn-failures.ts';
 import type { ActionReceipt, TurnEnvelope } from '../../shared/contracts/turn-envelope.ts';
+import type { RespondUsage } from '../../shared/openai.ts';
 import type { CodeNote, QuotaClass } from '../../shared/v2-db-types.ts';
 import {
   SCHEMA_VERSION, validateChannelItems, validateDecision, type DecisionValidation, type ValidationContext, type Verdict,
 } from '../../shared/write-registry/mod.ts';
-import { STAGE_A_LIVE_BUDGET_MS, STAGE_A_REPAIR_TIMEOUT_MS, STAGE_A_TURN_TIMEOUT_MS, STAGE_B_CRISIS_TIMEOUT_MS, STAGE_B_TIMEOUT_MS } from './budgets.ts';
+import { STAGE_A_MIN_REPAIR_MS, STAGE_A_REPAIR_TIMEOUT_MS, STAGE_A_SALVAGE_TIMEOUT_MS, stageALiveBudgetMs } from './budgets.ts';
 import {
-  executeCommit, failureTr, planCommit, type AdapterPort, type CommitPorts, type CommitStep,
+  executeCommit, failureTr, planCommit, quotaClassOf, type AdapterPort, type CommitPorts, type CommitStep,
 } from './commit.ts';
-import type { CoachInput, CoachReply, CommitResult, TripwireResolution, UnderstandDecision, V2Receipt } from './contracts.ts';
-import { constraintLine, profilePhrases, stageAView, turnRefs, validationContext, type TurnInput } from './input.ts';
-import { defaultEnvelope, defaultPostcheck, protectiveCategory, type CoachPort, type EnvelopePort, type PostcheckPort } from './ports.ts';
+import type {
+  CoachInput, CoachPort, CommitResult, EnvelopePort, PostcheckPort, TripwireResolution, UnderstandDecision, V2Receipt,
+} from './contracts.ts';
+import { navigateOf } from './envelope.ts';
+import { applyGuarantees, exposureLine, type GuaranteedReply } from './guarantees.ts';
+import { turnRefs, validationContext, type TurnInput } from './input.ts';
+import { runStageB, type StageBRun } from './ports.ts';
 import { stageASafetyOutcome } from './shadow.ts';
-import { enforceSuggestionInvariant, SUGGESTION_UNVERIFIED_LINE, suggestionFallbackLine, suggestionSafetyOf } from './suggestions.ts';
 import { buildUnderstandRequest, type UnderstandOutcome, type UnderstandRequest } from './understand.ts';
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -56,12 +69,12 @@ export const V2_STAGE_FUNCTION_NAME = 'ai-chat-v2';
 
 /** Stage A failed on an ordinary turn: nothing was understood, so nothing was written. */
 export const STAGE_A_FAILED_LINE = 'Mesajını şu an tam işleyemedim, bu yüzden hiçbir şey kaydetmedim. Birkaç saniye sonra tekrar yazar mısın?';
-/** Stage B failed after the writes: say what was stored, honestly, and nothing more. */
+/** The turn crashed after the writes (honestCrashResponse): say what was stored, honestly, and nothing more. */
 export const STAGE_B_FAILED_LINE = 'Şu an cevabımı tamamlayamadım; yukarıdakiler kaydedildi. Birazdan devam edelim mi?';
 export const STAGE_B_FAILED_NOTHING_LINE = 'Şu an cevabımı tamamlayamadım ve bu mesajdan bir şey kaydetmedim. Birkaç saniye sonra tekrar yazar mısın?';
-/** Stage B failed on a turn that only opened holds: nothing is saved yet — the question below decides. */
+/** Crash on a turn that only opened holds: nothing is saved yet — the question below decides. */
 export const STAGE_B_FAILED_HELD_LINE = 'Şu an cevabımı tamamlayamadım; bu mesajdan henüz bir şey kaydetmedim — önce aşağıdaki soruyu netleştirelim.';
-/** Stage B failed on a turn that wrote AND opened holds. */
+/** Crash on a turn that wrote AND opened holds. */
 export const STAGE_B_FAILED_WRITTEN_HELD_LINE = 'Şu an cevabımı tamamlayamadım; yukarıdakiler kaydedildi, kalanı için aşağıdaki soruyu netleştirelim.';
 export const NOTHING_TO_UNDO_LINE = 'Geri alınacak bir kayıt bulunamadı.';
 export const BUSY_LINE = 'Mesajını işliyorum, birazdan hazır olacak — bir saniye sonra tekrar dener misin?';
@@ -107,7 +120,7 @@ export interface PersistTurnInput {
   turnId: string;
   quotaClass: QuotaClass;
   codeNotes: CodeNote[] | null;
-  /** chat_messages.actions_executed: full receipts, each with the legacy `type` v1 readers key on. */
+  /** chat_messages.actions_executed: full receipts; a landed write also carries the legacy `type` v1 readers key on. */
   actionsExecuted: Record<string, unknown>[] | null;
 }
 
@@ -162,9 +175,10 @@ export interface V2Deps {
   commitPorts: Omit<CommitPorts, 'onWrite'>;
   adapter: AdapterPort;
   recordEdSignal(userId: string, severity: 'medium' | 'high'): Promise<unknown>;
+  /** T6 / T7 / T8 (contracts.ts; production: ports.ts stageBPorts). The code-owned lines are never theirs. */
   coach: CoachPort;
-  postcheck?: PostcheckPort;
-  envelope?: EnvelopePort;
+  postcheck: PostcheckPort;
+  envelope: EnvelopePort;
   undo: UndoPort;
   store: StorePort;
   turnLog(rows: Record<string, unknown>[]): Promise<void>;
@@ -273,50 +287,33 @@ export function betterOf(a: DecisionValidation, b: DecisionValidation): 'origina
   return rejectsB <= rejectsA ? 'repaired' : 'original';
 }
 
-/** The facts Stage B reads about the user, as Turkish lines (input.ts wording, never re-invented). */
-export function userStateLines(ti: TurnInput, extra: string[] = []): string[] {
+/**
+ * CoachInput.userState: the EXTRA facts only the handler can see (the onboarding card the user wrote
+ * from, an accepted nudge). Never the profile, targets, today, constraints, ED tier or clock — facts.ts
+ * renders those from the TurnInput itself, once (contracts.ts).
+ */
+export function extraFactLines(p: { taskModeHint: string | null; nudge: string | null }): string[] {
   const out: string[] = [];
-  const prof = profilePhrases(ti.profile, ti.goal);
-  if (prof.length) out.push(`PROFİL: ${prof.join(' · ')}`);
-  const view = stageAView(ti);
-  if (view.today.length) out.push(`BUGÜN (bu turdan önce): ${view.today.join(' · ')}`);
-  const t = ti.targets_today;
-  if (isRec(t) && typeof t.calorie_target_min === 'number' && typeof t.calorie_target_max === 'number') {
-    const p = typeof t.protein_target_g === 'number' ? ` · protein ${t.protein_target_g} g` : '';
-    out.push(`BUGÜNKÜ HEDEF: ${t.calorie_target_min}–${t.calorie_target_max} kcal${p}`);
-  }
-  for (const c of ti.constraints) out.push(`KISIT ${c.ref}: ${constraintLine(c)}`);
-  const tier = ti.safety?.ed_tier;
-  if (tier && tier !== 'none') out.push(`GÜVENLİK: yeme bozukluğu kademesi ${tier} (kalori açığı önerme)`);
-  if (ti.load_errors.some((e) => e.section === 'safety')) out.push('GÜVENLİK: güvenlik durumu okunamadı — kalori açığı önerme');
-  out.push(`ŞİMDİ: ${ti.local.weekday_tr} ${ti.local.date} ${ti.local.time}`);
-  return [...out, ...extra];
+  if (p.taskModeHint && p.taskModeHint.startsWith('onboarding_')) out.push(`TANIŞMA KARTI: kullanıcı "${p.taskModeHint}" kartından yazıyor`);
+  if (p.nudge) out.push(`KABUL EDİLEN TEKLİF (bu turda): "${p.nudge.slice(0, 200)}"`);
+  return out;
 }
 
-/** chat_messages.actions_executed: the full receipt, with `type` (legacy) for v1 readers ([{type}] ⊂). */
+/**
+ * chat_messages.actions_executed: the full receipt; `type` (the legacy name v1 readers and the
+ * client's badge row key on) ONLY on a write that landed. A history reload reads actions_executed
+ * without receipts, so a failed write carrying `type` would come back as a green "kaydedildi" badge
+ * (v1's DUP_SKIP rule: a write that did not happen never reaches actions_executed as a type).
+ */
 export function actionsExecutedOf(receipts: readonly V2Receipt[]): Record<string, unknown>[] | null {
   if (receipts.length === 0) return null;
-  return receipts.map((r) => ({ type: r.legacy_type, ...r }));
+  return receipts.map((r) => (r.ok ? { type: r.legacy_type, ...r } : { ...r }));
 }
 
-/** Canonical task_mode string the client already knows. */
-export function taskModeOf(p: { tripwire: TripwireResolution; decision: UnderstandDecision | null; commit: CommitResult | null }): string {
-  const cat = protectiveCategory(p.tripwire);
-  if (cat === 'emergency') return 'emergency';
-  if (cat) return 'safety';
-  const d = p.decision;
-  const route = isRec(d?.reply_route) ? d!.reply_route.contract : null;
-  if (route === 'onboarding') return 'onboarding';
-  const intent = isRec(d?.intent) ? d!.intent.primary : null;
-  if (intent === 'correction') return 'repair';
-  if (p.commit && p.commit.receipts.some((r) => r.ok) && intent === 'report') return 'register';
-  return 'coaching';
-}
-
-/** Turn quota class from what was REALLY written (112), never from a pre-LLM guess. */
-export function quotaClassOf(commit: CommitResult | null): QuotaClass {
-  if (!commit) return 'conversation';
-  return commit.receipts.some((r) => r.ok) || commit.holds.length > 0 ? 'record' : 'conversation';
+/** The protective path's category, when the turn is on it. */
+export function protectiveCategory(t: TripwireResolution): SafetyCategory | null {
+  if (t.kind === 'protective' || t.kind === 'canned' || t.kind === 'fallback') return t.category;
+  return null;
 }
 
 function guardVerdict(tripwire: TripwireResolution, commit: CommitResult | null): string {
@@ -344,16 +341,6 @@ export function issueEntries(v: DecisionValidation | null): Record<string, unkno
   for (const i of v.decision_issues) out.push({ code: i.code, path: i.path ?? null, outcome: null, level: i.level });
   if (v.missed_write) out.push({ code: 'missed_write', path: null, outcome: null });
   return out;
-}
-
-async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const t = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`${label}_timeout`)), ms); });
-  try {
-    return await Promise.race([p, t]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
 }
 
 function hasLiveSafetyHit(scan: TripwireScan): boolean {
@@ -471,9 +458,10 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   }
   deps.mark?.('reserve');
 
-  // ── T4 Stage A ──
+  // ── T4 Stage A, on the turn's §7.2 budget class (stage-a-request.ts owns the numbers) ──
   const liveSafety = hasLiveSafetyHit(scan);
-  const req4 = buildUnderstandRequest({ turnInput: ti, message, scan, timeoutMs: liveSafety ? STAGE_A_LIVE_BUDGET_MS : STAGE_A_TURN_TIMEOUT_MS });
+  const stageABudgetMs = stageALiveBudgetMs(scan);
+  const req4 = buildUnderstandRequest({ turnInput: ti, message, scan, timeoutMs: stageABudgetMs });
   const outcome = await deps.understand(req4);
   deps.mark?.('stage_a');
   const stageARows: Record<string, unknown>[] = [stageRow(tc, 'understand', outcome, null, null, false)];
@@ -491,23 +479,34 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   let validation = validateDecision(decision, ctx);
   let repaired = false;
   if (validation.repair.needed) {
-    const repReq = buildRepairRequest(req4, decision, validation, liveSafety ? STAGE_A_LIVE_BUDGET_MS : STAGE_A_REPAIR_TIMEOUT_MS);
-    const rep = await deps.understand(repReq);
-    stageARows.push(stageRow(tc, 'repair', rep, null, null, true));
-    if (rep.status === 'parsed') {
-      const rv = validateDecision(rep.decision, ctx);
-      if (betterOf(validation, rv) === 'repaired') {
-        decision = rep.decision as UnderstandDecision;
-        validation = rv;
-        repaired = true;
+    // On a turn with a live trigger the repair shares the class budget with the first call (the whole
+    // Stage A reading stays inside §7.2's wait); on an ordinary turn it gets its own short budget.
+    const repairMs = liveSafety ? stageABudgetMs - outcome.meta.latencyMs : STAGE_A_REPAIR_TIMEOUT_MS;
+    if (repairMs >= STAGE_A_MIN_REPAIR_MS) {
+      const repReq = buildRepairRequest(req4, decision, validation, repairMs);
+      const rep = await deps.understand(repReq);
+      stageARows.push(stageRow(tc, 'repair', rep, null, null, true));
+      if (rep.status === 'parsed') {
+        const rv = validateDecision(rep.decision, ctx);
+        if (betterOf(validation, rv) === 'repaired') {
+          decision = rep.decision as UnderstandDecision;
+          validation = rv;
+          repaired = true;
+        }
       }
+    } else {
+      deps.log('[v2_turn] repair skipped: the tripwire turn\'s Stage A budget is spent', { turn_id: turnId, left_ms: repairMs });
     }
   }
   stageARows[0] = stageRow(tc, 'understand', outcome, decision, validation, repaired);
 
-  // §7.2: a late Stage A counts only on a turn with a live trigger; a positive reading always counts.
-  // The readings are the ADOPTED decision's (after a repair); the latency is the first call's.
-  const safetyIn = stageASafetyOutcome({ ...outcome, decision }, validation, scan, { ignoreBudget: !liveSafety });
+  // §7.2: on a turn with a live trigger, a reading that arrived after the class budget counts as a
+  // timeout (fail-closed: today's canned protection); a positive reading always counts. The readings
+  // are the ADOPTED decision's (after a repair); the latency is the first call's.
+  const late = liveSafety && outcome.meta.latencyMs > stageABudgetMs;
+  const safetyIn = late
+    ? { status: 'timeout' as const }
+    : stageASafetyOutcome({ ...outcome, decision }, validation, scan, { ignoreBudget: true });
   const tripwire = resolveTripwires({ scan, stageA: safetyIn, classifier: null, benignOverride: false });
   if (tripwire.kind === 'fallback') {
     return { kind: 'response', response: await failClosedTurn(tc, tripwire, reservedId, stageARows) };
@@ -560,97 +559,57 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     remaining = cap.remaining;
   }
 
-  // ── T6 Stage B ──
-  const extraFacts: string[] = [];
-  if (typeof body.task_mode_hint === 'string' && body.task_mode_hint.startsWith('onboarding_')) {
-    extraFacts.push(`TANIŞMA KARTI: kullanıcı "${body.task_mode_hint}" kartından yazıyor`);
-  }
+  // ── T6 Stage B + T7 post-checks, through the ports, under ONE end-to-end budget ──
   const nudgeId = typeof body.accepted_nudge_id === 'string' && body.accepted_nudge_id ? body.accepted_nudge_id : null;
+  let nudgeText: string | null = null;
   if (nudgeId && deps.nudge) {
     try {
-      const n = await deps.nudge.read(userId, nudgeId);
-      if (n) extraFacts.push(`KABUL EDİLEN TEKLİF (bu turda): "${n.content.slice(0, 200)}"`);
+      nudgeText = (await deps.nudge.read(userId, nudgeId))?.content ?? null;
     } catch (e) { deps.log('[v2_turn] nudge read failed', { error: errMsg(e) }); }
   }
   const coachInput: CoachInput = {
     turnInput: ti, message, decision, commit, tripwire,
     history: ti.history.map((h) => ({ role: h.role, content: h.content, ...(h.action_types.length ? { receipts: h.action_types } : {}) })),
-    userState: userStateLines(ti, extraFacts),
+    userState: extraFactLines({ taskModeHint: typeof body.task_mode_hint === 'string' ? body.task_mode_hint : null, nudge: nudgeText }),
   };
-  let reply: CoachReply | null = null;
-  const coachStarted = Date.now();
-  // ONE Stage B deadline for the turn (coach + the suggestion regen): on a protective turn §7.2's
-  // 6 s covers both, then the canned reply goes out.
-  const stageBBudget = tripwire.kind === 'protective' ? STAGE_B_CRISIS_TIMEOUT_MS : STAGE_B_TIMEOUT_MS;
-  const callCoach = async (input: CoachInput, ms: number): Promise<CoachReply | null> => {
-    const r = await withTimeout(deps.coach(input), ms, 'stage_b');
-    return r && typeof r.reply === 'string' && r.reply.trim() !== '' ? r : null;
-  };
-  try {
-    reply = await callCoach(coachInput, stageBBudget);
-  } catch (e) {
-    deps.log('[v2_turn] Stage B failed', { error: errMsg(e), turn_id: turnId });
-    reply = null;
-  }
-  // ── T7 §7.1 suggestion invariant, owned HERE whatever the coach port does inside: tags ∩ severe
-  // allergens / injured regions = ∅; one regen naming the excluded items; then the safe fallback. ──
-  const gate = await enforceSuggestionInvariant({
-    reply, input: coachInput, safety: suggestionSafetyOf(ti, validation),
-    remainingMs: () => stageBBudget - (Date.now() - coachStarted),
-    regen: (input, ms) => callCoach(input, ms),
-  });
-  let suggestionFallback: string | null = null;
-  if (gate.kind === 'pass') {
-    reply = gate.reply;
-  } else {
-    deps.log('[v2_turn] suggestion invariant → fallback', { turn_id: turnId, reason: gate.reason, issues: gate.issues });
-    reply = null;
-    // A protective turn falls back to its canned safety reply (below), never to a coaching line.
-    if (tripwire.kind !== 'protective') {
-      suggestionFallback = gate.reason === 'unverified' ? SUGGESTION_UNVERIFIED_LINE : suggestionFallbackLine(ti.last_assistant?.content);
-    }
-  }
+  const stage = await runStageB(coachInput, { coach: deps.coach, postcheck: deps.postcheck }, { userId, log: deps.log });
+
+  // ── T7, owned HERE and LAST, whatever the post-check port did: the suggestion invariant on
+  //    structure and the code-owned lines (112 / referral, the KVKK erase outcome, the exposure
+  //    acknowledgement, every safety-hold question). Append-only. ──
+  const final = applyGuarantees(coachInput, stage.out);
   deps.mark?.('stage_b');
 
-  let baseText: string;
-  if (reply) baseText = reply.reply;
-  else if (tripwire.kind === 'protective') baseText = tripwire.fallback.message;
-  else if (suggestionFallback) {
-    const facts = receiptFactLines(commit);
-    baseText = [...facts.written, ...facts.failed, suggestionFallback].join('\n');
-  } else baseText = honestFallbackText(commit);
-
-  // ── T7 post-checks (append-only) ──
-  const post = await (deps.postcheck ?? defaultPostcheck)({ reply, text: baseText, commit, tripwire, turnInput: ti, message });
-  const taskMode = taskModeOf({ tripwire, decision, commit });
-
   // ── T8 envelope (its message — in-message <reasoning> etc. included — is exactly what is stored) ──
-  const envelope = (deps.envelope ?? defaultEnvelope)({ text: post.text, commit, reply, taskMode, assistantMessageId: null, remaining });
+  const envelope = deps.envelope({
+    text: final.text, codeNotes: final.codeNotes, why: final.reply.why, commit, decision, tripwire,
+    navigateTo: navigateOf(final.reply.ui), remaining, assistantMessageId: null,
+  });
+  const taskMode = envelope.task_mode;
 
   // ── T9 persist; the stored row id rides back in the envelope ──
   const assistantId = await persist(tc, {
-    assistantMessage: envelope.message, taskMode, quotaClass, codeNotes: post.code_notes, receipts: commit.receipts, reservedId, model: outcome.meta.model,
+    assistantMessage: envelope.message, taskMode, quotaClass, codeNotes: final.codeNotes, receipts: commit.receipts, reservedId,
+    model: stage.runs[0]?.model ?? outcome.meta.model,
   });
   if (assistantId === 'SESSION_NOT_FOUND') {
     return { kind: 'response', response: deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404) };
   }
   envelope.assistant_message_id = assistantId;
-  await logRows(tc, [
-    ...stageARows,
-    commitRow(tc, commit, validation),
-    coachRow(tc, reply, tripwire, commit, taskMode, Date.now() - coachStarted, [...gate.issues, ...post.issues]),
-  ]);
+  await logRows(tc, [...stageARows, commitRow(tc, commit, validation), coachRow(tc, stage, final, tripwire, commit, taskMode)]);
   if (tc.idemKey) await deps.journal.commit(userId, tc.idemKey, envelope);
 
   // ── background: memory notes, nudge stamp, hooks ──
+  const memory = final.reply.memory;
   deps.schedule(async () => {
-    if (reply && Array.isArray(reply.memory) && reply.memory.length > 0) await commitMemory(tc, reply.memory, ctx);
+    if (Array.isArray(memory) && memory.length > 0) await commitMemory(tc, memory, ctx);
     if (nudgeId && deps.nudge) await deps.nudge.stamp(userId, nudgeId);
     if (deps.afterCommit && applied.length > 0) await deps.afterCommit({ userId, turnInput: ti, applied });
   });
   deps.log('[v2_turn]', {
     turn_id: turnId, ms: Date.now() - startedMs, counts: validation.counts, repaired, tripwire: tripwire.kind,
-    receipts: commit.receipts.length, holds: commit.holds.length, rejects: commit.rejects.length, coach: reply ? 'ok' : 'fallback',
+    receipts: commit.receipts.length, holds: commit.holds.length, rejects: commit.rejects.length,
+    coach: stage.out.log.outcome, guarantee_lines: final.added.length,
   });
   return { kind: 'response', response: deps.respond(envelope) };
 }
@@ -658,13 +617,15 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
 /**
  * The route's answer when v2 crashed AFTER a side effect: v1 must not run again (double write).
  * The receipts of what was really written are returned; the journal stores this envelope so a
- * client retry replays it instead of re-running the writes.
+ * client retry replays it instead of re-running the writes. No T7 ran on this path, so the code-owned
+ * lines it can still state are appended here: the exposure acknowledgement (severity unknown on this
+ * path → worded as severe, §7.1) and every open hold's question.
  */
 export async function honestCrashResponse(state: TurnState, deps: Pick<V2Deps, 'respond' | 'journal' | 'log'>): Promise<Response> {
   const commit = state.commit;
-  // No T7 ran on this path: the open holds' questions are appended here (the honest line points at them).
   const questions = (commit?.holds ?? []).map((h) => h.question_tr).filter((q) => !!q);
-  const message = commit ? [honestFallbackText(commit), ...questions].join('\n\n') : STAGE_B_FAILED_NOTHING_LINE;
+  const exposures = (commit?.exposures ?? []).map((e) => exposureLine(e, true));
+  const message = commit ? [honestFallbackText(commit), ...exposures, ...questions].join('\n\n') : STAGE_B_FAILED_NOTHING_LINE;
   const envelope: TurnEnvelope = {
     message,
     actions: (commit?.receipts ?? []).filter((r) => r.ok).map((r) => ({ type: r.legacy_type, feedback: r.user_line })),
@@ -700,8 +661,9 @@ export function receiptFactLines(commit: CommitResult): { written: string[]; fai
 }
 
 /**
- * Stage B failed after the commit: the receipts are the truth, said plainly. "Kaydedildi" only when
- * something WAS written; a holds-only turn says nothing is saved yet and points at its question.
+ * The turn crashed after the commit (honestCrashResponse): the receipts are the truth, said plainly.
+ * "Kaydedildi" only when something WAS written; a holds-only turn says nothing is saved yet and points
+ * at its question.
  */
 export function honestFallbackText(commit: CommitResult): string {
   const { written, failed } = receiptFactLines(commit);
@@ -774,7 +736,7 @@ async function salvageFacts(tc: TurnCtx, scan: TripwireScan): Promise<void> {
   try {
     const now = deps.now();
     const ti = await deps.loadTurnInput(tc.userId, now, typeof tc.body.client_timezone === 'string' ? tc.body.client_timezone : null);
-    const outcome = await deps.understand(buildUnderstandRequest({ turnInput: ti, message: tc.message, scan, timeoutMs: STAGE_A_TURN_TIMEOUT_MS }));
+    const outcome = await deps.understand(buildUnderstandRequest({ turnInput: ti, message: tc.message, scan, timeoutMs: STAGE_A_SALVAGE_TIMEOUT_MS }));
     if (outcome.status !== 'parsed') return;
     const refs = turnRefs(ti);
     const ctx = validationContext(ti, tc.message, now, refs);
@@ -949,12 +911,34 @@ function commitRow(tc: TurnCtx, commit: CommitResult, v: DecisionValidation): Re
   };
 }
 
-function coachRow(tc: TurnCtx, reply: CoachReply | null, t: TripwireResolution, commit: CommitResult, taskMode: string, ms: number, issues: string[]): Record<string, unknown> {
+/**
+ * The coach row = THE reply row (function_name 'ai-chat'): the Stage B calls' models/tokens, T7's
+ * outcome, judge verdicts, regen count and invariant hits (§7.4 item 4), and every line the code-owned
+ * step had to add (a port that kept its contract leaves none).
+ */
+function coachRow(tc: TurnCtx, stage: StageBRun, final: GuaranteedReply, t: TripwireResolution, commit: CommitResult, taskMode: string): Record<string, unknown> {
+  const runs = stage.runs;
+  const sum = (k: keyof RespondUsage) => runs.reduce((a, r) => a + (r.usage?.[k] ?? 0), 0);
+  const log = stage.out.log;
   return {
     ...baseRow(tc, 'coach', V2_FUNCTION_NAME),
-    system_mode: taskMode, mode: taskMode, model_requested: 'stage_b', model_served: 'stage_b', latency_ms: ms,
-    finish_reason: reply ? 'stop' : 'coach_fallback', guard_verdict: guardVerdict(t, commit),
-    issues: [{ code: 'tripwire_outcome', path: null, outcome: null, value: t.kind }, ...issues.map((code) => ({ code, path: null, outcome: null }))],
+    system_mode: taskMode, mode: taskMode,
+    model_requested: runs[0]?.model ?? 'none', model_served: runs.at(-1)?.model ?? 'none',
+    prompt_tokens: sum('inputTokens'), completion_tokens: sum('outputTokens'), total_tokens: sum('totalTokens'),
+    reasoning_tokens: sum('reasoningTokens'), cached_tokens: sum('cachedTokens'),
+    latency_ms: stage.ms, attempts: Math.max(1, runs.reduce((a, r) => a + (r.attempts || 0), 0)),
+    finish_reason: log.outcome,
+    fallback_reason: runs.filter((r) => r.status !== 'ok').map((r) => `${r.regen ? 'regen' : 'first'}:${r.status}`).join(',') || null,
+    guard_verdict: guardVerdict(t, commit),
+    issues: [
+      { code: 'tripwire_outcome', path: null, outcome: null, value: t.kind },
+      {
+        code: 'postcheck', path: null, outcome: null, value: log.outcome, judge: log.judge, judge_fail_reasons: log.judge_fail_reasons,
+        regens: log.regens, invariant_hits: log.invariant_hits, budget_exhausted: log.budget_exhausted,
+        referral_flag_mismatch: log.referral_flag_mismatch, code_notes: final.codeNotes.map((n) => n.kind),
+      },
+      ...[...stage.issues, ...final.issues].map((code) => ({ code, path: null, outcome: null })),
+    ],
   };
 }
 

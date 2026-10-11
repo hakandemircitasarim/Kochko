@@ -6,8 +6,11 @@
  * the helpers that live inside ai-chat/index.ts (request journal, storeMessages, respond, the TDEE /
  * onboarding hooks) are passed in by index.ts — one implementation each, never a fork.
  *
- * T7/T8: the coach builder's postcheck/envelope modules plug in here (postcheck/envelope below);
- * until they are merged the handler uses ports.ts defaultPostcheck/defaultEnvelope.
+ * T6/T7/T8: the coach builder's modules, through ports.ts stageBPorts — coach = coach.ts runCoach
+ * (bounded by the turn's ONE Stage B budget), postcheck = postcheck.ts postcheckReply with the
+ * gpt-6-luna prose judge, envelope = envelope.ts renderEnvelope. The code-owned lines (112 / referral,
+ * KVKK, exposure, safety-hold questions) are not a port's: the handler appends them after any
+ * post-check (guarantees.ts applyGuarantees).
  */
 import { appendBehavioralPatterns, updateLayer2 } from '../../shared/memory.ts';
 import { appendCoachingNote } from '../../shared/coaching-notes.ts';
@@ -20,10 +23,10 @@ import { recordEDSignal } from '../../shared/safety-state.ts';
 import { getUserId, supabaseAdmin } from '../../shared/supabase-admin.ts';
 import type { CodeNote, QuotaClass } from '../../shared/v2-db-types.ts';
 import { createAdapter, type AdapterDb, type DbError } from './adapter.ts';
-import { runCoach } from './coach.ts';
 import type { CommitPorts, ResolvedTarget, TargetSpec } from './commit.ts';
 import type { AppliedWrite, ClaimResult, V2Deps } from './handler.ts';
 import { loadTurnInput, supabaseTurnInputDb, type PgClientLike, type TurnInput } from './input.ts';
+import { stageBPorts } from './ports.ts';
 import { scheduleBackground } from './shadow.ts';
 import { understand } from './understand.ts';
 
@@ -159,6 +162,7 @@ export function buildLiveV2Deps(h: IndexHelpers): V2Deps {
     log,
   };
   const turnInputDb = supabaseTurnInputDb(supabaseAdmin as unknown as PgClientLike);
+  const stageB = stageBPorts();
   return {
     now: () => new Date(),
     newId: () => crypto.randomUUID(),
@@ -199,7 +203,9 @@ export function buildLiveV2Deps(h: IndexHelpers): V2Deps {
     commitPorts,
     adapter,
     recordEdSignal: (userId, severity) => recordEDSignal(userId, severity),
-    coach: (input) => runCoach(input),
+    coach: stageB.coach,
+    postcheck: stageB.postcheck,
+    envelope: stageB.envelope,
     undo: {
       // The last turn = the newest assistant row (v2 turns and, in the mixed period, v1 turns carry a
       // turn_id; v1-ledger.ts). handler.ts undoTargetOf decides; a read error rejects → v1 answers.

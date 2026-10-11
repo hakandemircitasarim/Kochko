@@ -50,6 +50,26 @@ export const TURN_BLOCK_TITLES = {
 /** Visible-output budget of a Stage A call (a decision is 60–350 tokens); respond() adds the reasoning reserve. */
 export const STAGE_A_MAX_OUTPUT_TOKENS = 2_500;
 
+/**
+ * §7.2 fail-closed time budgets of a LIVE Stage A call — the ONE place both numbers live (the shadow
+ * measures against them, a live call times out at them, the parallel tripwire classifier waits as
+ * long as they allow (understand.ts runLiveTripwireClassifier), the eval E gate holds each class's
+ * p90 to its own budget, and the shadow report splits latency by them; shadow-report.mjs mirrors
+ * them and its test pins the mirror). OWNER DECISION 2026-10-11 (docs/AI_MIMARI_V2.md §11 q3):
+ *
+ *   normal    6 s — an ordinary turn ("önce doğruluk": the first live runs had ~13 % of ordinary
+ *             turns over the old 4 s, each of which would have lost Stage A's reading).
+ *   tripwire 10 s — a turn where T2 hands Stage A a tripwire fact (an ambiguous hit or a declaration
+ *             cue). Those turns think at effort medium (§8.4) and measured slower (round 1: ED-tripwire
+ *             turns 55 % over 4 s). Past the budget live v2 answers with TODAY'S canned protection, so
+ *             a short cut there replaces Stage A's reasoned reading with the canned reply on exactly
+ *             the turns that need the reading — "can kurtaran app değiliz": wait for it, still fail
+ *             closed.
+ * Owner-adjustable numbers, not spec constants; change them here only with the owner's say-so.
+ */
+export const STAGE_A_LIVE_BUDGETS_MS = { normal: 6_000, tripwire: 10_000 } as const;
+export type StageABudgetClass = keyof typeof STAGE_A_LIVE_BUDGETS_MS;
+
 /** How much of the recent conversation Stage A sees (oldest dropped first) and how long one line may be. */
 export const STAGE_A_HISTORY_MESSAGES = 4;
 const HISTORY_CHARS = { user: 300, assistant: 600 } as const;
@@ -199,7 +219,22 @@ export function renderTurnInputBlock(v: StageATurnView): string {
  * more).
  */
 export function stageAEffort(v: Pick<StageATurnView, 'image' | 'drafts' | 'ed_tier'>, scan: TripwireScan): 'low' | 'medium' {
-  return v.image || v.drafts.length > 0 || tripwireFacts(scan).length > 0 || v.ed_tier !== 'none' ? 'medium' : 'low';
+  return v.image || v.drafts.length > 0 || hasTripwireFacts(scan) || v.ed_tier !== 'none' ? 'medium' : 'low';
+}
+
+/** Stage A is handed at least one tripwire fact (ambiguous hit or declaration cue; explicit hits never reach it). */
+export function hasTripwireFacts(scan: TripwireScan): boolean {
+  return tripwireFacts(scan).length > 0;
+}
+
+/** Which §7.2 live budget a turn gets — the same certain fact that raises effort (never a keyword guess). */
+export function stageABudgetClass(scan: TripwireScan): StageABudgetClass {
+  return hasTripwireFacts(scan) ? 'tripwire' : 'normal';
+}
+
+/** The fail-closed budget (ms) of a live Stage A call for this turn. */
+export function stageALiveBudgetMs(scan: TripwireScan): number {
+  return STAGE_A_LIVE_BUDGETS_MS[stageABudgetClass(scan)];
 }
 
 let PREFIX: string | null = null;

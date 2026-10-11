@@ -10,7 +10,7 @@ import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/st
 import { SCHEMA_VERSION, validateDecision } from '../../shared/write-registry/mod.ts';
 import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleDecision, sampleMeal } from '../../shared/write-registry/samples.ts';
 import {
-  executeCommit, exposuresOf, holdPayloadOf, isHoldPayloadV2, isSafetyHold, LEDGER_MISSING_NOTE, mealPayload, metricPayload, pathKeys, planCommit,
+  executeCommit, exposuresOf, holdClassOf, holdPayloadOf, isHoldPayloadV2, isSafetyHold, LEDGER_MISSING_NOTE, mealPayload, metricPayload, pathKeys, planCommit,
   setAtPath, targetOf, thawHoldArgs, type CommitPlan,
 } from './commit.ts';
 import { turnRefs, validationContext, type TurnInput } from './input.ts';
@@ -286,7 +286,15 @@ Deno.test('safety holds carry hold_class safety into T7 (allergen removal, KVKK 
   const erase = await executeCommit(planFor(ti, sampleDecision({ writes: [w('data_erase_request')] }), SAMPLE_MESSAGES.data_erase_request).plan, fakeCommitPorts());
   assertEquals(erase.holds[0].hold_class, 'safety');
   assert(isSafetyHold({ op: 'goal_set', reason_code: 'x', question_tr: 'q?', hold_id: null }), 'a hold built without a class: by op');
+  assert(isSafetyHold({ op: 'profile_set', reason_code: 'kimlik_degisimi', question_tr: 'q?', hold_id: null }), '…or by its reason code (the ONE classifier, facts.ts)');
   assert(!isSafetyHold({ op: 'water_log', reason_code: 'x', question_tr: 'q?', hold_id: null }));
+});
+
+Deno.test('holdClassOf: an identity field in ANY change of a profile_set makes a safety hold (not only the first change)', () => {
+  const verdict = (changes: Record<string, unknown>[]) => ({ op: 'profile_set', args: { op: 'profile_set', subject: 'self', changes } }) as unknown as Parameters<typeof holdClassOf>[0];
+  assertEquals(holdClassOf(verdict([{ field: 'activity_level' }, { field: 'birth_year' }])), 'safety');
+  assertEquals(holdClassOf(verdict([{ field: 'height_cm' }])), 'safety');
+  assertEquals(holdClassOf(verdict([{ field: 'activity_level' }])), 'ask');
 });
 
 Deno.test('an adapter write whose ledger row did not land → receipt says it cannot be undone + a ledger_missing fact for the coach', async () => {

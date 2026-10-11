@@ -1,190 +1,183 @@
 /**
- * ai-chat/v2/ports.ts — the T6/T7/T8 seams of the v2 turn (AI_MIMARI_V2 §3.2) and their DEFAULTS.
+ * ai-chat/v2/ports.ts — the T6/T7/T8 seams of the v2 turn (AI_MIMARI_V2 §3.2): their production
+ * implementations and the ONE T6+T7 orchestration the handler runs.
  *
- *   CoachPort      T6 Stage B — coach.ts runCoach (the coach builder's module).
- *   PostcheckPort  T7 structural post-checks: required safety lines, the safety-hold question, the
- *                  allergen-exposure acknowledgement. Append-only: code never deletes from a reply
- *                  (§5.3); every appended line is a CodeNote, stored apart from the model's text.
- *   EnvelopePort   T8 the TurnEnvelope the app reads today (message, actions[] with legacy type
- *                  names for BADGE_DEFS, receipts[], task_mode, remaining, assistant_message_id).
+ *   stageBPorts()   the ports V2Deps carries in production (live.ts) and in the end-to-end tests
+ *                   (over a fake transport): coach = coach.ts runCoach (bounded), postcheck =
+ *                   postcheck.ts postcheckReply (judge = gpt-6-luna over the same transport),
+ *                   envelope = envelope.ts renderEnvelope. Types: contracts.ts.
+ *   runStageB()     T6 + T7 under ONE end-to-end budget (budgets.ts coachTurnBudgetMs: 6 s on the
+ *                   protective path, 25 s otherwise): the first generation, then the post-check port
+ *                   (which may spend the ONE regen through the coach port). Every call gets only what
+ *                   is left. A port that throws, hangs or answers nonsense never breaks the turn: the
+ *                   code's own fallback (the ready-made safety reply on the protective path, the honest
+ *                   "could not answer" line otherwise) stands in. It never throws.
+ *   coachTurn()     runStageB with the production ports + guarantees.ts applyGuarantees — the whole
+ *                   Stage B of a turn in one call (eval / shadow triage / tests).
  *
- * defaultPostcheck / defaultEnvelope are the conservative implementations the handler runs with
- * until the coach builder's postcheck/envelope modules are wired in live.ts (one line each). They
- * read structure (receipts, holds, exposures, the tripwire resolution) — the only prose they look
- * at is the coach's reply, to avoid appending a line it already carries (the shared, tested
- * helpers hasRequiredSafetyLine / replyWarnsAboutExposure).
+ * The handler runs runStageB and then ALWAYS applyGuarantees itself: the code-owned lines (112 /
+ * referral, the KVKK erase outcome, the allergen-exposure acknowledgement, every safety-hold question)
+ * do not depend on any port keeping its contract.
  */
-import type { ActionReceipt, EnvelopeAction, TurnEnvelope } from '../../shared/contracts/turn-envelope.ts';
-import { ensureRequiredSafetyLine, hasRequiredSafetyLine, type SafetyCategory } from '../../shared/safety-tripwires.ts';
-import { replyWarnsAboutExposure } from '../../shared/supplement-allergens.ts';
-import type { CodeNote } from '../../shared/v2-db-types.ts';
-import { isSafetyHold } from './commit.ts';
-import type { CoachInput, CoachReply, CommitResult, TripwireResolution } from './contracts.ts';
-import type { TurnInput } from './input.ts';
+import type {
+  CoachInput, CoachPort, CoachRun, EnvelopePort, PostcheckLog, PostcheckOutput, PostcheckPort, RegenNote,
+} from './contracts.ts';
+import { coachTurnBudgetMs, POSTCHECK_GRACE_MS, withinBudget } from './budgets.ts';
+import { coachModel, type CoachOptions, runCoachWithin } from './coach.ts';
+import { renderEnvelope } from './envelope.ts';
+import { applyGuarantees, emptyReply, failedReplyFor, type GuaranteedReply, mandatoryLines } from './guarantees.ts';
+import { emptyPostcheckLog, lunaJudge, postcheckPort, type ProseJudge } from './postcheck.ts';
+import type { respond, Transport } from '../../shared/openai.ts';
 
-export type CoachPort = (input: CoachInput) => Promise<CoachReply>;
+const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const errMsg = (e: unknown) => ((e as Error)?.message ?? String(e)).slice(0, 300);
 
-export interface PostcheckInput {
-  /** Stage B's reply, or null when Stage B failed (then `text` is the code's fallback). */
-  reply: CoachReply | null;
-  /** The text to check: reply.reply, or the fallback text. */
-  text: string;
-  commit: CommitResult | null;
-  tripwire: TripwireResolution;
-  turnInput: TurnInput | null;
-  message: string;
+export interface StageBPorts {
+  coach: CoachPort;
+  postcheck: PostcheckPort;
+  envelope: EnvelopePort;
 }
 
-export interface PostcheckOutput {
-  /** Final text = the model's text + the code notes, appended in order. */
-  text: string;
-  code_notes: CodeNote[];
+export interface StageBPortOptions {
+  /** Injected respond() / transport (tests, eval); production uses shared/openai.ts defaults. */
+  respond?: typeof respond;
+  transport?: Transport;
+  apiKey?: string;
+  baseUrl?: string;
+  /** Stage B model override (default coach.ts coachModel: KOCHKO_MODEL_COACH, else terra). */
+  model?: string;
+  /** Registry capability list override (tests). */
+  capabilities?: string;
+  /** The §7.2 prose judge; default lunaJudge() over the same transport. null = none (fail-closed). */
+  judge?: ProseJudge | null;
+  judgeScope?: 'always' | 'suggestions';
+}
+
+/** The production T6/T7/T8 ports: the coach builder's modules, wired once. */
+export function stageBPorts(o: StageBPortOptions = {}): StageBPorts {
+  const coachOpts = (userId: string): CoachOptions => ({
+    userId, model: o.model, capabilities: o.capabilities, respond: o.respond, transport: o.transport, apiKey: o.apiKey, baseUrl: o.baseUrl,
+  });
+  const judge = o.judge === undefined
+    ? lunaJudge({ respond: o.respond, transport: o.transport, apiKey: o.apiKey, baseUrl: o.baseUrl })
+    : o.judge;
+  return {
+    coach: (input, call) => runCoachWithin(input, coachOpts(call.userId), call.regen, call.timeoutMs),
+    postcheck: postcheckPort({ judge, judgeScope: o.judgeScope }),
+    envelope: (p) => renderEnvelope(p),
+  };
+}
+
+export interface StageBRun {
+  /** What the T7 port returned — or the code's fallback when the port failed, hung or answered nonsense. */
+  out: PostcheckOutput;
+  /** Every Stage B generation made (the first, and the ONE regen when there was one) — for ai_turn_log. */
+  runs: CoachRun[];
+  /** Wall time of T6 + T7. */
+  ms: number;
+  /** ai_turn_log issue codes of the orchestration itself ('postcheck_timeout', 'coach_port_threw' …). */
   issues: string[];
 }
 
-export type PostcheckPort = (input: PostcheckInput) => Promise<PostcheckOutput>;
-
-export interface EnvelopeInput {
-  /** Final text (after T7). */
-  text: string;
-  commit: CommitResult | null;
-  reply: CoachReply | null;
-  taskMode: string;
-  assistantMessageId: string | null;
-  remaining: number | undefined;
-}
-
-export type EnvelopePort = (input: EnvelopeInput) => TurnEnvelope;
-
-// ─── default T7 ──────────────────────────────────────────────────────────────────────────────────
-
-/** The protective path's category, when the turn is on it. */
-export function protectiveCategory(t: TripwireResolution): SafetyCategory | null {
-  if (t.kind === 'protective') return t.category;
-  if (t.kind === 'canned' || t.kind === 'fallback') return t.category;
-  return null;
-}
-
-function exposureLine(e: CommitResult['exposures'][number]): string {
-  const what = e.source === 'meal' ? 'öğün' : 'takviye';
-  return `⚠️ Dikkat: profilinde ${e.allergens.join(', ')} alerjisi ya da hassasiyeti kayıtlı ve kaydettiğin ${what} bunu içeriyor olabilir. Kaydettim; kaşıntı, şişlik ya da nefes darlığı olursa hemen 112'yi ara.`;
-}
-
-/**
- * Code's guaranteed lines, appended LAST, never removing anything (§5.2, §7.1, §7.2):
- *   112 / referral on a protective turn · the KVKK erase outcome · every SAFETY hold's question
- *   (always — never inferred from the reply's prose) and a plain ask hold's question when the reply
- *   asks nothing · the allergen exposure acknowledgement.
- */
-export const defaultPostcheck: PostcheckPort = (p) => {
-  const notes: CodeNote[] = [];
-  const issues: string[] = [];
-  let text = p.text ?? '';
-  const add = (kind: CodeNote['kind'], line: string) => {
-    notes.push({ kind, text: line });
-    text = text.trim() ? `${text.trimEnd()}\n\n${line}` : line;
-  };
-
-  const cat = protectiveCategory(p.tripwire);
-  if (cat && !hasRequiredSafetyLine(text, cat)) {
-    const before = text;
-    const withLine = ensureRequiredSafetyLine(before, cat);
-    const line = withLine.slice(before.trimEnd().length).trim();
-    if (line) {
-      add(cat === 'ed' ? 'referral' : 'emergency', line);
-      issues.push(`required_line_appended:${cat}`);
-    }
-  }
-
-  const commit = p.commit;
-  if (commit) {
-    for (const r of commit.receipts) {
-      // The erase outcome is a fact the code owns (erase-hold.ts lines), never the model's claim.
-      if (r.legacy_type === 'data_erase_confirm' && r.user_line) add('other', r.user_line);
-    }
-    // §5.2: a SAFETY hold's question (allergen/injury removal, identity, band, goal, KVKK erase) is
-    // code-owned and always appended — a stray "?" elsewhere in the reply must never let a later
-    // "evet" confirm a removal the user was never asked about. Only a plain ASK hold relies on the
-    // coach asking in its own words (template appended when the reply asks nothing at all).
-    const askedSomething = (p.reply?.reply ?? '').includes('?');
-    for (const h of commit.holds) {
-      if (!h.question_tr) continue;
-      if (isSafetyHold(h)) {
-        add('safety_hold', h.question_tr);
-        issues.push(`safety_hold_question:${h.op}`);
-        continue;
-      }
-      if (!askedSomething) {
-        add('safety_hold', h.question_tr);
-        issues.push(`hold_question_appended:${h.op}`);
-      }
-    }
-    for (const e of commit.exposures) {
-      const warned = replyWarnsAboutExposure(text, { item: e.source === 'meal' ? 'öğün' : 'takviye', allergens: e.allergens, sources: e.allergens, possible: false, severe: false });
-      if (!warned) {
-        add('allergen_exposure', exposureLine(e));
-        issues.push('allergen_exposure_appended');
-      }
-    }
-  }
-  return Promise.resolve({ text, code_notes: notes, issues });
-};
-
-// ─── default T8 ──────────────────────────────────────────────────────────────────────────────────
-
-/** Typed receipts → the client's ActionReceipt (action_type = the legacy name BADGE_DEFS knows). */
-export function toEnvelopeReceipts(commit: CommitResult | null): ActionReceipt[] {
-  return (commit?.receipts ?? []).map((r) => ({
-    action_type: r.legacy_type, ok: r.ok, rows_affected: r.rows_affected, user_line: r.user_line, failure_class: r.failure_class,
-  }));
-}
-
-/** Successful writes → actions[] (the badge row; a failed write has no green badge). */
-export function toEnvelopeActions(commit: CommitResult | null): EnvelopeAction[] {
-  return (commit?.receipts ?? []).filter((r) => r.ok).map((r) => ({ type: r.legacy_type, feedback: r.user_line }));
-}
-
-/**
- * The coach's `why` re-serialised as the in-message <reasoning> block the client already parses
- * (ChatThreadScreen parseReasoning → the "Neden?" panel, also after a history reload).
- */
-export function messageWithReasoning(text: string, why: string | null | undefined): string {
-  const w = (why ?? '').trim();
-  if (!w) return text;
-  // The client's parser ends the block at the first closing tag: never let the text close it early.
-  const safe = w.split('</reasoning>').join('');
-  return `<reasoning>${safe}</reasoning>\n${text}`;
-}
-
-/** The screens the app can open from a reply (the same set v1 accepts for navigate_to). */
-export const NAVIGATE_ROUTES: ReadonlySet<string> = new Set([
-  '/plan/diet', '/plan/workout', '/(tabs)', '/(tabs)/chat', '/(tabs)/profile',
-  '/settings/coach-memory', '/settings/goals', '/settings/premium',
-]);
-
-export function navigateToOf(reply: CoachReply | null): string | null {
-  const ui = reply?.ui;
-  const to = ui && typeof ui === 'object' ? (ui as Record<string, unknown>).navigate_to : null;
-  return typeof to === 'string' && NAVIGATE_ROUTES.has(to) ? to : null;
-}
-
-export const defaultEnvelope: EnvelopePort = (p) => {
-  const receipts = toEnvelopeReceipts(p.commit);
+function failedRun(status: 'timeout' | 'error', regen: RegenNote | null, ms: number, detail: string): CoachRun {
   return {
-    message: messageWithReasoning(p.text, p.reply?.why),
-    actions: toEnvelopeActions(p.commit),
-    receipts: receipts.length ? receipts : null,
-    assistant_message_id: p.assistantMessageId,
-    task_mode: p.taskMode,
-    task_completion: null,
-    plan_snapshot: null,
-    plan_draft_id: null,
-    plan_type: null,
-    plan_reasoning: null,
-    plan_persist_error: null,
-    plan_approved: null,
-    navigate_to: navigateToOf(p.reply),
-    simulation: null,
-    ...(p.remaining !== undefined ? { remaining: p.remaining } : {}),
+    status, reply: null, model: coachModel(), effort: 'low', contract: null, latencyMs: ms, usage: null, attempts: 0, retries: [],
+    detail: detail.slice(0, 300), regen: regen !== null,
   };
-};
+}
+
+/** A post-check port's answer, if it has the contract's shape (the guarantees re-check its content). */
+function isOutput(v: unknown): v is PostcheckOutput {
+  return isRec(v) && isRec(v.reply) && typeof v.reply.reply === 'string' && Array.isArray(v.codeNotes) && isRec(v.log);
+}
+
+/** The code's own T7 answer when the port gave none: nothing the model wrote, every notice kept. */
+function codeFallback(input: CoachInput): PostcheckOutput {
+  const reply = failedReplyFor(input);
+  const codeNotes = mandatoryLines(input, reply, { codeAuthored: true });
+  const log: PostcheckLog = {
+    ...emptyPostcheckLog(input.tripwire.kind === 'protective' ? 'crisis_canned' : 'coach_failed'),
+    code_notes: codeNotes.map((n) => n.kind),
+  };
+  return { reply, codeNotes, codeAuthored: true, log };
+}
+
+/**
+ * T6 + T7 through the ports, under ONE budget. An explicit tripwire (canned) or a fail-closed replace
+ * never reaches a model (§7.1: no LLM, no latency): the ready-made reply, with the turn's notices.
+ */
+export async function runStageB(
+  input: CoachInput,
+  ports: Pick<StageBPorts, 'coach' | 'postcheck'>,
+  opts: { userId: string; budgetMs?: number; now?: () => number; log?: (line: string, data?: Record<string, unknown>) => void },
+): Promise<StageBRun> {
+  const t = input.tripwire;
+  const now = opts.now ?? Date.now;
+  const started = now();
+  const issues: string[] = [];
+  const runs: CoachRun[] = [];
+  if (t.kind === 'canned' || (t.kind === 'fallback' && t.mode === 'replace')) {
+    const reply = { ...emptyReply(t.response.message), referral_included: true };
+    const codeNotes = mandatoryLines(input, reply, { codeAuthored: true });
+    const log = { ...emptyPostcheckLog('crisis_canned'), code_notes: codeNotes.map((n) => n.kind) };
+    return { out: { reply, codeNotes, codeAuthored: true, log }, runs, ms: 0, issues };
+  }
+
+  const deadline = started + (opts.budgetMs ?? coachTurnBudgetMs(input));
+  const remainingMs = () => Math.max(0, deadline - now());
+  const callCoach = async (regen: RegenNote | null, ms: number): Promise<CoachRun> => {
+    const bounded = Math.max(1, Math.floor(ms));
+    let r: CoachRun;
+    try {
+      // Bounded here too: a port that ignores its timeout still cannot stretch the turn.
+      const call = Promise.resolve().then(() => ports.coach(input, { userId: opts.userId, timeoutMs: bounded, regen }));
+      r = await withinBudget(call, bounded, () => failedRun('timeout', regen, bounded, `turn budget: no answer within ${bounded}ms`));
+    } catch (e) {
+      issues.push('coach_port_threw');
+      r = failedRun('error', regen, 0, errMsg(e));
+    }
+    if (!isRec(r) || typeof r.status !== 'string') r = failedRun('error', regen, 0, 'coach port returned no run');
+    runs.push(r);
+    return r;
+  };
+
+  const first = await callCoach(null, remainingMs());
+  let out: PostcheckOutput | null = null;
+  try {
+    const call = Promise.resolve().then(() => ports.postcheck({ input, first, regen: (note, ms) => callCoach(note, ms ?? remainingMs()), remainingMs }));
+    out = await withinBudget<PostcheckOutput | null>(call, remainingMs() + POSTCHECK_GRACE_MS, () => {
+      issues.push('postcheck_timeout');
+      return null;
+    });
+  } catch (e) {
+    issues.push('postcheck_failed');
+    opts.log?.('[v2_turn] post-check port threw', { error: errMsg(e) });
+  }
+  if (out !== null && !isOutput(out)) {
+    issues.push('postcheck_invalid');
+    out = null;
+  }
+  // A copy: a regen the post-check stopped waiting for cannot change the returned record afterwards.
+  return { out: out ?? codeFallback(input), runs: [...runs], ms: now() - started, issues };
+}
+
+export interface CoachTurnOptions extends StageBPortOptions {
+  /** The cache key is per user (§3.2 T6). */
+  userId: string;
+  /** Override the end-to-end T6+T7 budget (default budgets.ts coachTurnBudgetMs). */
+  budgetMs?: number;
+  /** Clock (tests); default Date.now. */
+  now?: () => number;
+}
+
+export interface CoachTurnResult extends GuaranteedReply {
+  log: PostcheckLog;
+  /** Every Stage B call made (first, and the regen when there was one) — for ai_turn_log. */
+  runs: CoachRun[];
+}
+
+/** The whole Stage B of a turn: T6 + T7 (production ports) + the code-owned guarantees. Never throws. */
+export async function coachTurn(input: CoachInput, opts: CoachTurnOptions): Promise<CoachTurnResult> {
+  const stage = await runStageB(input, stageBPorts(opts), opts);
+  return { ...applyGuarantees(input, stage.out), log: stage.out.log, runs: stage.runs };
+}

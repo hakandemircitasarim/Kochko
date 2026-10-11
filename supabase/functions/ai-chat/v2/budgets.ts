@@ -1,19 +1,58 @@
 /**
- * ai-chat/v2/budgets.ts — the live v2 turn's time budgets, in ONE place (AI_MIMARI_V2 §3.3, §7.2).
+ * ai-chat/v2/budgets.ts — the live v2 turn's time budgets, read from ONE module (AI_MIMARI_V2 §3.3,
+ * §7.2), and the helper that enforces them.
  *
- * STAGE_A_LIVE_BUDGET_MS is owned by understand.ts (the shadow measures against the same value) and
- * re-exported here so every live budget is read from this module. It is the SAFETY budget: on a
- * turn with a live ambiguous tripwire, a Stage A slower than this is a timeout and today's canned
- * protection answers (§7.2). Ordinary turns get the longer turn budget — a slow understanding of
- * "2 dilim lahmacun" must not become "nothing recorded" when no safety question hangs on it.
+ * Stage A's §7.2 fail-closed budgets are owned by stage-a-request.ts (STAGE_A_LIVE_BUDGETS_MS, the
+ * owner's numbers: an ordinary turn and a turn T2 hands a tripwire fact) and re-exported here — the
+ * live turn, the shadow and the eval read the same constant; nothing in the handler hard-codes them.
+ * Past the budget on a turn with a live safety trigger, today's canned protection answers (§7.2); on
+ * an ordinary turn, an honest "nothing recorded" line.
+ *
+ * Stage B has ONE end-to-end budget per turn (coach + prose judge + the ONE regen + its judge):
+ * CRISIS_TIMEOUT_MS on the protective path (§7.2: "6 sn'yi aşarsa hazır cevap"), COACH_TIMEOUT_MS
+ * otherwise. Every call gets only what is left of it (ports.ts runStageB).
  */
-export { STAGE_A_LIVE_BUDGET_MS } from './understand.ts';
+import type { CoachInput } from './contracts.ts';
 
-/** Stage A on an ordinary turn (no live safety trigger). */
-export const STAGE_A_TURN_TIMEOUT_MS = 12_000;
-/** The ONE repair call (§3.2 T5) — same prefix, cache-warm, short. */
+export { STAGE_A_LIVE_BUDGETS_MS, stageABudgetClass, stageALiveBudgetMs, type StageABudgetClass } from './stage-a-request.ts';
+
+/** The ONE repair call (§3.2 T5) on an ordinary turn — same prefix, cache-warm, short. */
 export const STAGE_A_REPAIR_TIMEOUT_MS = 8_000;
-/** Stage B on an ordinary turn. */
-export const STAGE_B_TIMEOUT_MS = 20_000;
-/** Stage B on a protective (crisis/ED) turn: past this the canned answer is used (§7.2: 6 s). */
-export const STAGE_B_CRISIS_TIMEOUT_MS = 6_000;
+/** Below this much of a tripwire turn's Stage A budget no repair is started (the original decision stands). */
+export const STAGE_A_MIN_REPAIR_MS = 1_000;
+/** The background Stage A read after an explicit tripwire's canned reply (facts salvage, never on the reply path). */
+export const STAGE_A_SALVAGE_TIMEOUT_MS = 12_000;
+
+/** A normal turn's Stage B budget — the whole T6+T7 (coach + judge + regen + judge). */
+export const COACH_TIMEOUT_MS = 25_000;
+/**
+ * §7.2: on the protective path the ready-made reply goes out if Stage B is slower than this — the
+ * whole T6+T7 run (coach, judge, regen), not each call.
+ */
+export const CRISIS_TIMEOUT_MS = 6_000;
+/** A T7 port that has not answered this long after the Stage B budget ran out is abandoned (code fallback). */
+export const POSTCHECK_GRACE_MS = 1_000;
+/** Do not start a (re)generation with less than this left of the turn's budget: it could not finish. */
+export const MIN_COACH_CALL_MS = 2_000;
+/** Do not start a judge call with less than this left: the reply then counts as unconfirmed (fail-closed). */
+export const MIN_JUDGE_CALL_MS = 750;
+
+/** The turn's end-to-end Stage B budget (a caller's outer guard must not be shorter). */
+export function coachTurnBudgetMs(input: Pick<CoachInput, 'tripwire'>): number {
+  return input.tripwire.kind === 'protective' ? CRISIS_TIMEOUT_MS : COACH_TIMEOUT_MS;
+}
+
+/**
+ * `p`, or `late()` once `ms` have passed — whichever comes first — so a callee that ignores its own
+ * timeout still cannot stretch the turn. An infinite `ms` means no bound. The timer is always cleared.
+ */
+export async function withinBudget<T>(p: Promise<T>, ms: number, late: () => T): Promise<T> {
+  if (!Number.isFinite(ms)) return await p;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const guard = new Promise<T>((resolve) => { timer = setTimeout(() => resolve(late()), Math.max(0, ms)); });
+  try {
+    return await Promise.race([p, guard]);
+  } finally {
+    clearTimeout(timer);
+  }
+}

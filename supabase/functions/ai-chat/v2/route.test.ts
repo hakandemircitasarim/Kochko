@@ -52,6 +52,35 @@ Deno.test('step unset/off → v1 with the original request; v2 never runs', asyn
   assertEquals(spy.v1Bodies, [{ message: 'selam' }]);
 });
 
+Deno.test('v2_turn unset or off (the real env reader): v1 gets the very SAME request — no clone, no body read, no cohort lookup', async () => {
+  for (const value of [null, 'off', 'OFF', '0', 'false', '']) {
+    const req = chatRequest({ message: 'selam' });
+    const seen: Request[] = [];
+    let cohortLookups = 0;
+    const d: RouteDeps = {
+      configured: () => v2TurnConfigured((k) => (k === rolloutEnvKey('v2_turn') ? value : null)),
+      mode: () => { cohortLookups++; return 'on'; },
+      v1: (r) => { seen.push(r); return Promise.resolve(new Response('v1')); },
+      v2: () => { throw new Error('v2 must not run while the step is off'); },
+      honest: () => { throw new Error('no honest answer while the step is off'); },
+      log: () => { throw new Error('nothing to log while the step is off'); },
+    };
+    const res = await routeTurn(req, d);
+    assertEquals(await res.text(), 'v1');
+    assert(seen[0] === req, `${value}: v1 gets the original Request object itself`);
+    assertEquals(req.bodyUsed, false, `${value}: the body is untouched for v1 to read`);
+    assertEquals(cohortLookups, 0, `${value}: no rollout decode`);
+  }
+});
+
+Deno.test('index.ts: serve() routes through routeTurn with the env gate; v1 is handleChat itself, and v1 ledger writes are gated on the same flag', () => {
+  const v1 = Deno.readTextFileSync(new URL('../index.ts', import.meta.url));
+  assert(v1.includes('const res = await routeChatTurn(req, timer);'), 'serve() goes through the router');
+  assert(v1.includes('configured: () => v2TurnConfigured(),'), 'the gate is the KOCHKO_ROLLOUT_V2_TURN secret');
+  assert(v1.includes('v1: (r) => handleChat(r, timer),'), 'v1 is the untouched handleChat');
+  assert(v1.includes('const v1Ledger: V1Ledger | undefined = v2TurnConfigured() ? newV1Ledger(crypto.randomUUID()) : undefined;'), 'unset/off → no ledger work in v1');
+});
+
 Deno.test('outside the cohort → v1; OPTIONS → v1', async () => {
   const { d, spy } = deps({ mode: () => 'off' });
   assertEquals(await via(await routeTurn(chatRequest({ message: 'x' }), d)), 'v1');
